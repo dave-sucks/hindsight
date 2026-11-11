@@ -3,9 +3,10 @@
 /**
  * One request to the model, drawn as squares of 1,000 characters. Every
  * agent gets the same parts: its job prompt, the house rules, the analyst
- * brief, its tool menu and the read, with situation guidance and a full row
- * added only when needed (drawn outlined). Picking an agent changes the
- * sizes, never the parts. Hovering a line lights its squares.
+ * brief, its tool menu, the Market and portfolio block and the read, with
+ * situation guidance and a full row added only when needed (drawn outlined).
+ * Picking an agent changes the sizes, never the parts. Hovering a line
+ * lights its squares.
  */
 
 import { useState, type CSSProperties } from "react";
@@ -16,7 +17,7 @@ import { DOOR_COPY, MEASURED_REQUEST, type FrameworkData, type FrameworkDoorId }
 import { cn } from "@/lib/utils";
 import { Mono } from "../primitives";
 
-type PartId = "job" | "house" | "analyst" | "tools" | "read" | "guidance" | "named";
+type PartId = "job" | "house" | "analyst" | "tools" | "market" | "read" | "guidance" | "named";
 
 /** How each part's squares are drawn. Solid parts ride on every request; outlined ones are added when needed. */
 const SWATCH: Record<PartId, { className: string; style?: CSSProperties }> = {
@@ -24,6 +25,7 @@ const SWATCH: Record<PartId, { className: string; style?: CSSProperties }> = {
   house: { className: "bg-sky-400" },
   analyst: { className: "bg-violet-400" },
   tools: { className: "bg-brand" },
+  market: { className: "bg-amber-400" },
   read: { className: "bg-blue-500" },
   guidance: { className: "border border-dashed border-muted-foreground bg-muted-foreground/35" },
   named: { className: "border border-dashed border-muted-foreground/50 bg-muted-foreground/10" },
@@ -39,9 +41,12 @@ interface Part {
   source: string;
   href?: string;
   hrefLabel?: string;
+  /** Its own parts, drawn under it (the Market and portfolio block's table). */
+  parts?: FrameworkData["blockParts"];
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US");
+const SOURCE_WORD: Record<FrameworkData["blockParts"][number]["source"], string> = { AI: "written by a reviewer", code: "read by code", notes: "notes from you and the reviewers" };
 const squaresOf = (n: number) => Math.max(1, Math.round(n / 1000));
 
 /** The agents to pick between, in the order a stock meets them. */
@@ -67,16 +72,17 @@ export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; link
   const [hover, setHover] = useState<PartId | null>(null);
 
   const door = data.doors.find((d) => d.id === agent);
-  const job = (door?.promptChars ?? 0) - (door?.houseRules ? data.houseRulesChars : 0);
+  const job = (door?.promptChars ?? 0) - (door?.houseRules ? data.houseRulesChars : 0) - (door?.marketAndPortfolio ? data.marketAndPortfolioChars : 0);
   const flags = data.situations.filter((s) => EXAMPLE_FLAGS.includes(s.code));
   const guidanceChars = flags.reduce((a, s) => a + s.chars, 0);
   const read = READ[agent];
 
   const always: Part[] = [
     { id: "job", label: "Job prompt", body: DOOR_COPY[agent].job, chars: job, squares: squaresOf(job), source: "Measured from this deploy" },
-    { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, and how to write.", chars: data.houseRulesChars, squares: squaresOf(data.houseRulesChars), source: "Measured from this deploy" },
+    { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, how to weigh the market and portfolio, and how to write.", chars: data.houseRulesChars, squares: squaresOf(data.houseRulesChars), source: "Measured from this deploy" },
     { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, squares: squaresOf(MEASURED_REQUEST.after.analystBrief), source: "Measured on the Compounder" },
     { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/how-it-works#tools", hrefLabel: "Catalog" },
+    { id: "market", label: "Market and portfolio", body: "Two short reviewer briefs, the market's and the account's numbers read by code, and the notes to the account. Context, not an instruction. Each part is left out when it's empty or switched off.", chars: data.marketAndPortfolioChars, squares: squaresOf(data.marketAndPortfolioChars), source: "A sample day; about 2,000 at most", parts: data.blockParts, href: "/docs/what-each-agent-is-given", hrefLabel: "Each agent" },
     { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: `${linkBase}#read`, hrefLabel: "Zoom in" },
   ];
   const whenNeeded: Part[] = [
@@ -160,6 +166,16 @@ function PartRow({ part, hover, setHover }: { part: Part; hover: PartId | null; 
         <span className="ml-auto text-sm text-foreground tabular-nums">{part.chars != null ? fmt(part.chars) : "Varies"}</span>
       </div>
       <p className="pl-5 text-sm text-muted-foreground">{part.body}</p>
+      {part.parts?.length ? (
+        <ul className="flex flex-col gap-0.5 pl-5 text-xs text-muted-foreground">
+          {part.parts.map((p) => (
+            <li key={p.heading} className={cn("flex gap-2", !p.on && "line-through")}>
+              <span className="text-foreground">{p.heading}</span>
+              <span>{SOURCE_WORD[p.source]}{p.on ? "" : " · off"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex items-center gap-3 pl-5 text-xs text-muted-foreground">
         <span>{part.source}</span>
         {part.href ? (

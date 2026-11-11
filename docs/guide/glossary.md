@@ -68,7 +68,12 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eighteen. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and setups, written once and given to every agent.
-- **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.
+- **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, how to weigh the Market and portfolio block, and how to write.
+- **Market and portfolio block:** one short block every agent that decides on stocks gets on every request, in five parts that are each left out when empty: the market brief, the market numbers, the portfolio brief, the portfolio numbers and the notes to the account or its analyst. Context, not an instruction. See [What each agent is given](deep-dives/what-each-agent-is-given.md).
+- **Market brief:** the Market Reviewer's 3 to 5 sentences each morning on what the market is doing and what it means for the book. Every agent reads it.
+- **Portfolio brief:** the [Portfolio Reviewer](agents/portfolio-reviewer.md)'s 3 to 5 sentences each evening on what only a view of the whole account sees: a theme getting crowded, sales piling up against the analysts' own notes. It never repeats the numbers. Every agent reads it.
+- **Sales waiting:** each sale proposal waiting for your approval, one line in the Portfolio numbers: how many times a sale has been proposed since the position opened, since when, the move since, and the verdict in today's note.
+- **Portfolio digest:** the Portfolio Reviewer's longer recap of the account's day, for you on the home page's digest card. No agent reads it.
 
 ## Trades
 

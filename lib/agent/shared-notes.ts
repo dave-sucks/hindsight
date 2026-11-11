@@ -8,8 +8,9 @@
  *
  * Audiences:
  * - STOCKS: the stocks it names. A note in each one's Activity.
- * - ANALYST: that analyst's runs read it once, at the top, while it lasts.
- * - ACCOUNT: every run reads it once, at the top, while it lasts.
+ * - ANALYST: that analyst's agents read it in their Market and portfolio
+ *   block (lib/agent/market-and-portfolio.ts), once per request, while it lasts.
+ * - ACCOUNT: every agent reads it there, while it lasts.
  *
  * A note to stocks can be pinned until a date at most two weeks out. Pinned,
  * it reads in its own block above the stock's newest 8 Activity lines and
@@ -85,9 +86,9 @@ export function inStockActivity(
 
 /**
  * The stock's newest 8 as its next run reads them, from the Activity tab's
- * list. A run reads a note to the account or an analyst once at the top, and
- * the stock's two newest pinned notes in their own block, so none of those
- * counts toward the 8.
+ * list. A run reads a note to the account or an analyst in its Market and
+ * portfolio block, and the stock's two newest pinned notes in their own
+ * block, so none of those counts toward the 8.
  */
 export function newestEightForRuns<T extends { type: string; fieldChanges?: unknown }>(feed: readonly T[], now: Date): T[] {
   let pinnedLeft = PINNED_PER_STOCK;
@@ -107,7 +108,7 @@ export function newestEightForRuns<T extends { type: string; fieldChanges?: unkn
   return read;
 }
 
-/** The notes read once at the top of a run: the account's and the analyst's, while they last. An account-wide read gets every analyst's. */
+/** The notes in a run's Market and portfolio block: the account's and the analyst's, while they last. A run with no analyst gets every analyst's. */
 export function runNotes(notes: readonly SharedNoteRow[], analystId: string | null | undefined, now: Date): SharedNoteRow[] {
   return notes.filter(
     (n) => isPinned(n, now) && (n.audience === "ACCOUNT" || (n.audience === "ANALYST" && (!analystId || n.analystId === analystId))),
@@ -178,7 +179,7 @@ export function pinnedBlock(ticker: string, pinned: readonly SharedNoteRow[], sh
   return [`PINNED ON $${T}: notes to more than this stock, read before its Activity lines:`, ...lines].join("\n");
 }
 
-/** One line per note read at the top of a run. */
+/** One line per note in the Market and portfolio block. */
 export function runNoteLine(n: SharedNoteRow, analystName?: string | null): string {
   const about = n.eventDate ? `, about ${n.eventDate}` : "";
   const until = n.pinnedUntil ? `, until ${dayOf(n.pinnedUntil)}` : "";

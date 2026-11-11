@@ -147,7 +147,7 @@ describe("the situations for a person: the sheet's flag line", () => {
 describe("the guidance: each situation's text, once", () => {
   it("every text is under the 2,200-character cap and says when, what to do and what answers it", () => {
     for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
-      expect([code, guidance.length <= 2_200]).toEqual([code, true]);
+      expect([code, guidance.length < 2_200]).toEqual([code, true]);
       for (const part of ["When:", "Answered:", "The note:", "Mistakes:"]) expect([code, guidance.includes(part)]).toEqual([code, true]);
     }
   });
@@ -311,7 +311,7 @@ describe("the words per run (step 12, part 2)", () => {
     }
   });
   it("every text stays under the cap in every run's words", () => {
-    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode)[code]!.length <= 2_200]).toEqual([code, runMode, true]);
+    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode)[code]!.length < 2_200]).toEqual([code, runMode, true]);
   });
   it("a refresh changes a stock's levels or tier", () => {
     expect(SITUATIONS.STALE_RESEARCH.guidance).toContain("change its levels or tier if the new work changed your view");

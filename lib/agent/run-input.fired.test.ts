@@ -29,6 +29,8 @@ const table = new Proxy(
     get: (_t, op: string) => async () => (op === "findMany" ? [] : op === "count" ? 0 : null),
   },
 );
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 jest.mock("@/lib/prisma", () => ({
   prisma: new Proxy(
     {},
@@ -42,6 +44,7 @@ jest.mock("@/lib/prisma", () => ({
   ),
 }));
 jest.mock("@/lib/alpaca", () => ({ getLatestPrices: async () => ({}), getAccount: async () => null }));
+jest.mock("@/lib/market-data/live-quote", () => ({ getLiveQuotes: async () => ({}) }));
 jest.mock("@/lib/agent/triggers/load-levels", () => ({
   ...jest.requireActual("@/lib/agent/triggers/load-levels"),
   loadLevelSources: async () => new Map(),

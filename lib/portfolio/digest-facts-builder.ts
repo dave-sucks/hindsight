@@ -21,13 +21,19 @@ import {
 } from "@/lib/actions/api-keys.actions";
 import {
   getAccount,
+  getAllPositions,
   getFundingActivities,
-  getLatestPrices,
   type AlpacaAccount,
   type AlpacaCredentials,
+  type AlpacaPosition,
 } from "@/lib/alpaca";
 import { type FundingEvent } from "@/lib/portfolio/contributions";
+import { getLiveQuotes } from "@/lib/market-data/live-quote";
+import { isMarketOpen } from "@/lib/market-hours";
+import { dayChangeAt, priceBook, type PriorClose } from "@/lib/portfolio/value-at-quotes";
+import { closedDay } from "@/lib/portfolio/closed-day";
 import { assembleDigestFacts, type DigestFacts } from "@/lib/portfolio/digest-facts";
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
 
 const STARTING_CAPITAL_FALLBACK = 100_000;
 /** Days back to surface PASSED theses for the regret signal. */
@@ -68,6 +74,8 @@ export async function buildDigestFacts(
   accountId: string,
   date: string,
   environment: AlpacaEnvironment = "PAPER",
+  /** The broker's prior close as it stood that evening, for a build after it moved on (scripts/portfolio-review-dry-run.ts). */
+  opts: { priorClose?: PriorClose } = {},
 ): Promise<DigestFacts> {
   const generatedAtIso = new Date().toISOString();
   const { start, end } = etDayWindow(date);
@@ -76,7 +84,8 @@ export async function buildDigestFacts(
 
   // ── Runs today ────────────────────────────────────────────────────────────
   const runRows = await prisma.researchRun.findMany({
-    where: { accountId, environment, startedAt: { gte: start, lt: end } },
+    // The analysts' runs only: not the account's own reviews (the Portfolio Reviewer reads these facts), so a failed review is never counted as a failed run.
+    where: { accountId, environment, startedAt: { gte: start, lt: end }, mode: { notIn: Object.keys(ACCOUNT_RUN_NAMES) } },
     select: {
       id: true,
       mode: true,
@@ -248,7 +257,10 @@ export async function buildDigestFacts(
 
   // ── Alpaca account + funding (deposit-adjusted P&L) ──────────────────────────
   let account: AlpacaAccount | null = null;
+  let positions: AlpacaPosition[] | null = null;
   let fundingEvents: FundingEvent[] = [];
+  // A failed read is not "no transfers": a deposit that day would read as profit, so the day's change is unknown.
+  let transfersUnread = false;
   let creds: AlpacaCredentials | undefined;
   const ownerUserId = await getOwnerUserId(accountId);
   if (ownerUserId) {
@@ -263,11 +275,18 @@ export async function buildDigestFacts(
         );
         return null;
       });
+      positions = await getAllPositions(creds).catch((err) => {
+        console.warn(
+          `[digest-facts] getAllPositions failed: ${err instanceof Error ? err.message : err}`,
+        );
+        return null;
+      });
       if (environment === "LIVE") {
         fundingEvents = await getFundingActivities(creds).catch((err) => {
           console.warn(
             `[digest-facts] getFundingActivities failed: ${err instanceof Error ? err.message : err}`,
           );
+          transfersUnread = true;
           return [] as FundingEvent[];
         });
       }
@@ -275,10 +294,10 @@ export async function buildDigestFacts(
   }
 
   // ── Live quotes (one batch) for held + passed + today's traded symbols ───────
-  // Best-effort and never throws: getLatestPrices returns the symbols it could
-  // resolve; the pure assembler leaves price fields null for the rest. SAME
-  // batched util the coverage table uses (lib/alpaca.ts getLatestPrices), so the
-  // Alpaca-batch → Finnhub → single-symbol fallback ladder is shared.
+  // The one quote path (lib/market-data/live-quote.ts): the latest trade in
+  // the session, the close outside it. Never throws; a symbol no vendor priced
+  // is absent and the assembler leaves its price fields null. The broker's
+  // holdings are valued at these same prices, never at its after-hours marks.
   const quoteSymbols = Array.from(
     new Set([
       ...heldRows.map((p) => p.symbol),
@@ -286,17 +305,22 @@ export async function buildDigestFacts(
       ...openedRows.map((p) => p.symbol),
       ...closedRows.map((p) => p.symbol),
       ...mgmtRows.map((m) => m.position.symbol),
+      ...(positions ?? []).map((p) => p.symbol),
     ]),
   );
-  const quotes =
-    quoteSymbols.length > 0
-      ? await getLatestPrices(quoteSymbols, creds).catch((err) => {
-          console.warn(
-            `[digest-facts] getLatestPrices failed: ${err instanceof Error ? err.message : err}`,
-          );
-          return {} as Record<string, number>;
-        })
-      : ({} as Record<string, number>);
+  const live = quoteSymbols.length > 0 ? await getLiveQuotes(quoteSymbols, { caller: "other", creds }) : {};
+  const quotes: Record<string, number> = {};
+  for (const symbol of quoteSymbols) {
+    const c = live[symbol.toUpperCase()]?.quote?.c;
+    if (c != null) quotes[symbol] = c;
+  }
+  const marketOpen = isMarketOpen(new Date(generatedAtIso));
+  const book = account && positions ? priceBook(parseFloat(account.cash), positions, live, marketOpen) : null;
+  // At 8 PM the broker's prior close is the session before; a later build reads the day's figure from its own digest.
+  const prior: PriorClose = opts.priorClose ?? { equity: account?.last_equity ? parseFloat(account.last_equity) : null, asOf: account?.balance_asof ?? null };
+  const session = book?.closeOf ?? date;
+  const closed = book && prior.asOf != null && prior.asOf >= session ? await closedDay(accountId, environment, session).catch(() => null) : null;
+  const priced = book ? { book, day: transfersUnread ? null : dayChangeAt(book, prior, fundingEvents, date, closed), marketOpen } : null;
 
   return assembleDigestFacts({
     accountId,
@@ -381,5 +405,7 @@ export async function buildDigestFacts(
     startingCapitalFallback: STARTING_CAPITAL_FALLBACK,
     account,
     quotes,
+    priced,
+    transfersUnread,
   });
 }

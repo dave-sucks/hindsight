@@ -12,6 +12,8 @@ import {
   type DigestRawInputs,
 } from "./digest-facts";
 import type { AlpacaAccount } from "@/lib/alpaca";
+import nov10 from "@/lib/agent/__fixtures__/account-2026-11-10.json";
+import { dayChangeAt, priceBook } from "./value-at-quotes";
 
 const GEN_AT = "2026-06-17T20:00:00.000Z";
 const DATE = "2026-06-17";
@@ -413,5 +415,44 @@ describe("assembleDigestFacts — decisions + version", () => {
       runId: "r1",
       analystId: "a1",
     });
+  });
+});
+
+describe("assembleDigestFacts — the account at the app's own prices (the stand-in book on Tue Nov 10)", () => {
+  // The broker's equity marks holdings at after-hours prints: the stand-in book
+  // is $96,793.85 there, −$484.15 on the day. At the close it is $95,802.32,
+  // down $1,475.68 (lib/agent/__fixtures__/account-2026-11-10.json).
+  const quotes = Object.fromEntries(
+    Object.entries(nov10.quotes).map(([s, q]) => [s, { quote: { ...q, d: null, dp: null, o: null, h: null, l: null, source: "alpaca" as const } }]),
+  );
+  const broker = account({ ...nov10.broker, short_market_value: "0" });
+  const book = priceBook(Number(nov10.broker.cash), nov10.positions, quotes, false);
+
+  it("the value, the holdings and the day at the close, not at the broker's marks", () => {
+    const f = assembleDigestFacts(
+      baseInputs({
+        date: "2026-11-10",
+        account: broker,
+        priced: { book, day: dayChangeAt(book, { equity: Number(nov10.broker.last_equity), asOf: nov10.broker.balance_asof }, [], "2026-11-10"), marketOpen: false },
+      }),
+    );
+    expect(f.book.totalEquity).toBeCloseTo(95_802.32, 2);
+    expect(f.book.longMarketValue).toBeCloseTo(70_802.32, 2);
+    expect(f.pnl.dayPnl).toBeCloseTo(-1475.68, 2);
+    expect(f.pnl.dayPnlPct).toBeCloseTo(-1.517, 3);
+    expect(f.book.closeOf).toBe("2026-11-10");
+  });
+
+  it("after the broker has moved on, with no figure for the day, the change is said to be unknown, never 0", () => {
+    const f = assembleDigestFacts(baseInputs({ date: "2026-11-10", account: broker, priced: { book, day: null, marketOpen: false } }));
+    expect(f.book.totalEquity).toBeCloseTo(95_802.32, 2);
+    expect(f.pnl.dayUnknown).toBe(true);
+  });
+
+  it("without the prices the broker's figures stand, and no close is claimed", () => {
+    const f = assembleDigestFacts(baseInputs({ date: "2026-11-10", account: broker }));
+    expect(f.book.totalEquity).toBeCloseTo(96_793.85, 2);
+    expect(f.pnl.dayPnl).toBeCloseTo(-484.15, 2);
+    expect(f.book.closeOf).toBeNull();
   });
 });

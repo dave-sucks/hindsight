@@ -3,6 +3,8 @@
  * held MRVL 13 @ $293.98 on paper with a $256.50 floor and a $330 target, both now Send to Agent. Paper
  * approvals are off, so only the forced proposal stops a "Send to Agent" sale from executing unasked.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 

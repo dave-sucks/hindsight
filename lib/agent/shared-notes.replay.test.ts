@@ -1,7 +1,8 @@
 /**
  * shared-notes.replay.test.ts: a shared note through the real entry points.
  * The owner writes one note to two stocks with write_note; get_theses then
- * reads it on both stocks, and reads a note to the account once per read.
+ * reads it on both stocks. A note to the account is not on the read: every
+ * agent gets it in its Market and portfolio block (market-and-portfolio.replay.test.ts).
  * Against the doubled database.
  */
 import { replayTool, thesisRow, REPLAY_USER_ID } from "@/lib/replay";
@@ -101,10 +102,10 @@ describe("get_theses reads the notes", () => {
     expect(listed(d, "t_gev")?.situations).toEqual(["PINNED_NOTE"]);
   });
 
-  it("a note to the account is read once, at the top of the read", async () => {
+  it("a note to the account is not on the read: the Market and portfolio block carries it, so it is sent once", async () => {
     const d = await read({ sharedNote: [sharedNote({ id: "note_fed", audience: "ACCOUNT", tickers: [], eventDate: "2026-12-09", body: "Fed decision Dec 9; the market prices a rise." })] });
-    expect(d.notes).toHaveLength(1);
-    expect(d.notes?.[0]).toContain("Portfolio manager's note to the whole account, about 2026-12-09");
+    expect(d.notes).toBeUndefined();
+    expect(JSON.stringify(d)).not.toContain("Fed decision Dec 9");
     expect(d.theses).toHaveLength(0);
   });
 });

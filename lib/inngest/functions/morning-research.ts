@@ -1026,9 +1026,9 @@ export const morningResearch = inngest.createFunction(
             console.error(`[morning-research] could not put the notes on ${config.name}'s proposals:`, err instanceof Error ? err.message : err);
           }
 
-          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
-          // continuity now comes from the account-level PortfolioDigest, read
-          // by buildRunInput. updateAnalystBriefing no longer called.
+          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md).
+          // The run's prompt carries the Market and portfolio block, which
+          // buildRunInput loads.
 
           return { tradesPlaced, steps: steps.length, toolCalls, elapsedMs: elapsed };
         } catch (err) {

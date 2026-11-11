@@ -4,8 +4,9 @@
  * prompt-size.test.ts pins (lib/agent/__fixtures__/sample-prompts.ts), and
  * its tool menu is measured the way that test measures it: every tool on the
  * door's list, description plus the JSON schema the SDK sends. Whether a door
- * carries the house rules is read off its prompt, not written down here. The
- * situation texts are the SITUATIONS table itself.
+ * carries the house rules and the Market and portfolio block is read off its
+ * prompt, not written down here. The situation texts are the SITUATIONS table
+ * itself.
  *
  * Measured once per server instance; a deploy that changes a prompt changes
  * the page. If a build step throws, that number is left out and the page says
@@ -13,8 +14,9 @@
  */
 
 import { zodSchema } from "ai";
-import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
+import { SAMPLE_MARKET_AND_PORTFOLIO, SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { BLOCK_PARTS } from "@/lib/agent/market-and-portfolio";
 import { MODES, type AgentMode } from "@/lib/agent/modes";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -62,6 +64,7 @@ function measure(): FrameworkData {
       maxSteps: cfg.maxSteps,
       promptChars: prompt?.length ?? null,
       houseRules: prompt != null ? prompt.includes(HOUSE_RULES) : null,
+      marketAndPortfolio: prompt != null ? prompt.includes(SAMPLE_MARKET_AND_PORTFOLIO) : null,
       tools: menu?.names ?? (d.id === "writer" ? [...WRITER_TOOLS] : []),
       toolChars: menu?.chars ?? null,
     };
@@ -74,7 +77,7 @@ function measure(): FrameworkData {
     opening: SITUATIONS[code].guidance.replace(/`/g, "").split(/(?<=[.!?])\s+/)[0]?.slice(0, 220) ?? "",
     origin: SITUATION_ORIGIN[code],
   }));
-  return { houseRulesChars: HOUSE_RULES.length, doors, situations, read: buildFrameworkRead() };
+  return { houseRulesChars: HOUSE_RULES.length, marketAndPortfolioChars: SAMPLE_MARKET_AND_PORTFOLIO.length, blockParts: BLOCK_PARTS.map(({ heading, source, on, what }) => ({ heading, source, on, what })), doors, situations, read: buildFrameworkRead() };
 }
 
 let cached: FrameworkData | null = null;

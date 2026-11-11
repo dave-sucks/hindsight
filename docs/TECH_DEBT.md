@@ -142,6 +142,23 @@ covers more entry points (CI, new clones, worktree creation).
 
 ---
 
+## TD-5 — The morning cron stops a run at 30 steps while its mode says 65
+
+`lib/inngest/functions/morning-research.ts` runs the agent with
+`stopWhen: [stepCountIs(30), …]`, while `MODES["research-run"].maxSteps` is
+65 (`lib/agent/modes.ts`), and the guide's facts strips and the Framework page
+print 65 from the mode. The Run button's path (`app/api/agent/[mode]/route.ts`)
+uses the mode's 65, so a cron run and a manual run of the same analyst stop at
+different points.
+
+**Why not urgent:** the retry pass gives a stopped run up to 15 more steps,
+and a morning run on today's book rarely needs 30.
+
+**Fix shape:** read `MODES["research-run"].maxSteps` in the cron, or set the
+mode to the number the cron means, so there is one number.
+
+---
+
 ## How to use this file
 
 - Spotted a code smell that's not tied to the thesis architecture

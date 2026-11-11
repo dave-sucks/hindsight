@@ -114,6 +114,7 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 | **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
 | Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
+| Change what every agent is given about the account and the market | The Market and portfolio block: `BLOCK_PARTS` in `lib/agent/market-and-portfolio.ts` (market brief, market numbers, portfolio brief, portfolio numbers, notes; each with an on/off switch). The market brief plugs in at `lib/agent/market-digest-slot.ts`; the market numbers are `lib/market-data/load-market-numbers.ts`. Its paragraph is in `HOUSE_RULES` |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
@@ -509,8 +510,10 @@ a list here goes stale.
 - eod-evaluation.ts — end-of-day price snapshots
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
   the 8 AM morning runs did
-- portfolio-digest.ts — 8 PM ET Mon–Fri, the Daily Portfolio Digest
-  (one per account per trading day)
+- portfolio-digest.ts — 8 PM ET Mon–Fri, the Portfolio Reviewer: a run per
+  account and book that writes PortfolioDigest.brief (every agent reads it in
+  the Market and portfolio block) and the digest for the home page
+  (`lib/agent/portfolio-reviewer.ts`)
 - accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 
 ## AI Elements Components (components/ai-elements/)

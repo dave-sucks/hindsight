@@ -9,7 +9,7 @@
  * Alpaca lives in `digest-facts-builder.ts` (`buildDigestFacts`).
  *
  * The blob is the single source of truth: every number the narration writer
- * (lib/agent/digest-writer.ts) prints comes from here, and it carries the ids
+ * (lib/agent/portfolio-reviewer.ts) prints comes from here, and it carries the ids
  * the writer needs to embed reference tokens (`[TICKER](thesis:id)`,
  * `[Analyst](analyst:id)`, `[label](run:id)`).
  *
@@ -22,6 +22,7 @@
 // never loads the alpaca SDK (keeps it jest-importable without prisma/SDK ESM).
 import type { AlpacaAccount } from "@/lib/alpaca";
 import { netContributedTotal, type FundingEvent } from "@/lib/portfolio/contributions";
+import type { PricedBook } from "@/lib/portfolio/value-at-quotes";
 
 // ─── Facts shape ────────────────────────────────────────────────────────────
 
@@ -122,6 +123,9 @@ export interface DigestBookSnapshot {
   topSectorConcentration: number | null;
   topSector: string | null;
   held: DigestHeldFact[];
+  /** The New York day of the close the account is valued at; null in the session or at the broker's marks. Absent on facts from before 2026-11-11. */
+  closeOf?: string | null;
+  marketOpen?: boolean;
 }
 
 /** Deposit-adjusted P&L facts. day + cumulative, never STARTING_CAPITAL-based. */
@@ -132,6 +136,8 @@ export interface DigestPnlFacts {
   totalPnlPct: number;
   netContributed: number;
   realizedToday: number;
+  /** The day's change couldn't be worked out (dayPnl is 0, not a figure). */
+  dayUnknown?: boolean;
 }
 
 /** Capacity / cadence signals — the "are we idle / fully deployed" read. */
@@ -330,6 +336,14 @@ export interface DigestRawInputs {
   startingCapitalFallback: number;
   /** Alpaca account snapshot, or null when creds missing / fetch failed. */
   account: AlpacaAccount | null;
+  /**
+   * The account at the app's own prices (lib/portfolio/value-at-quotes.ts):
+   * its value and the day's change. Without it the broker's figures stand,
+   * which mark holdings at after-hours prints.
+   */
+  priced?: { book: PricedBook; day: { dollars: number; pct: number } | null; marketOpen: boolean } | null;
+  /** The transfers couldn't be read (LIVE): the day's change is unknown rather than counting a deposit as profit. */
+  transfersUnread?: boolean;
 }
 
 /** ET HH:MM for a Date, used for run/decision/trade labels. */
@@ -372,6 +386,8 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
     account,
     quotes,
     dayChangePct,
+    priced,
+    transfersUnread,
   } = input;
   const dayChange = dayChangePct ?? {};
 
@@ -472,17 +488,24 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
   let dayPnlPct = 0;
   let totalPnl = 0;
   let totalPnlPct = 0;
+  let dayUnknown = false;
 
   if (account) {
-    totalEquity = parseFloat(account.equity);
+    // At the app's own prices when they were read; the broker's equity marks
+    // holdings at after-hours prints.
+    totalEquity = priced ? priced.book.value : parseFloat(account.equity);
     cash = parseFloat(account.cash);
     buyingPower = parseFloat(account.buying_power);
-    longMarketValue = account.long_market_value
-      ? parseFloat(account.long_market_value)
-      : 0;
-    const shortRaw = account.short_market_value
-      ? parseFloat(account.short_market_value)
-      : 0;
+    longMarketValue = priced
+      ? priced.book.long
+      : account.long_market_value
+        ? parseFloat(account.long_market_value)
+        : 0;
+    const shortRaw = priced
+      ? priced.book.short
+      : account.short_market_value
+        ? parseFloat(account.short_market_value)
+        : 0;
     shortMarketValue = Math.abs(shortRaw);
 
     // total P&L = equity − net contributed (the deposit-adjusted identity).
@@ -496,7 +519,14 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
     const depositsToday = fundingEvents
       .filter((e) => e.date === date)
       .reduce((sum, e) => sum + e.amount, 0);
-    if (lastEquity != null && Number.isFinite(lastEquity)) {
+    if (priced) {
+      if (priced.day) {
+        dayPnl = priced.day.dollars;
+        dayPnlPct = priced.day.pct;
+      } else dayUnknown = true;
+    } else if (transfersUnread) {
+      dayUnknown = true;
+    } else if (lastEquity != null && Number.isFinite(lastEquity)) {
       dayPnl = totalEquity - lastEquity - depositsToday;
       dayPnlPct = lastEquity > 0 ? (dayPnl / lastEquity) * 100 : 0;
     }
@@ -566,6 +596,8 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
     topSectorConcentration,
     topSector,
     held,
+    closeOf: priced?.book.closeOf ?? null,
+    marketOpen: priced?.marketOpen ?? false,
   };
 
   // ── Passes aged (regret signal) ──────────────────────────────────────────────
@@ -626,6 +658,7 @@ export function assembleDigestFacts(input: DigestRawInputs): DigestFacts {
       totalPnlPct,
       netContributed,
       realizedToday,
+      ...(dayUnknown ? { dayUnknown } : {}),
     },
     passesAged,
     cadence,

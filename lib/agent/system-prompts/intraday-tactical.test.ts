@@ -17,6 +17,7 @@ import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { EMPTY_BLOCK, marketAndPortfolioBlock } from "@/lib/agent/market-and-portfolio";
 
 const trailTrigger: Trigger = {
   id: "trig_trail",
@@ -245,6 +246,25 @@ describe("buildTacticalSystemPrompt — the stock's own row, not yesterday's dig
     expect(noDigestArgument).toBe(true);
     const prompt = buildTacticalSystemPrompt({ ...makeArgs(), latestDigest: { narrative: "No pending proposals.", date: "2026-10-07" } });
     expect(prompt).not.toContain("No pending proposals.");
+  });
+
+  it("the Market and portfolio block reads the waiting sale when the request is built, before the row that carries it", () => {
+    const block = marketAndPortfolioBlock({
+      ...EMPTY_BLOCK,
+      portfolioNumbers: {
+        at: new Date("2026-10-07T14:00:00Z"), close: null, open: true, equity: 100_000, today: null, cash: 20_000, holdings: 6, biggest: [], pending: [], reporting: [],
+        sales: [{ ticker: "ASML", kind: "sell", times: 1, firstAt: "2026-10-06T18:25:18.399Z", movePct: null, verdict: null }],
+      },
+    });
+    const prompt = buildTacticalSystemPrompt({
+      ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }),
+      marketAndPortfolio: block,
+    });
+    const waiting = '"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"';
+    expect(block).toContain("Sales waiting for approval:\n- ASML: proposed once, on Oct 6");
+    expect(prompt.indexOf(block)).toBeGreaterThan(-1);
+    expect(prompt.indexOf(block)).toBeLessThan(prompt.indexOf(waiting));
+    expect(prompt).not.toMatch(/DIGEST/i);
   });
 });
 

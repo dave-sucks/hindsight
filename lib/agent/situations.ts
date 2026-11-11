@@ -193,10 +193,10 @@ Mistakes:
     guidance: `When: a buy trigger fired or is true now on a stock we watch and the analyst has room, or the price sits at the plan's buy level.
 
 Answer, in order:
-1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (\`street\`).
+1. What is the story now: the company's news, its sector, the market and the account's room (Market and portfolio block; get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (\`street\`).
 2. Does the price still hold the level? If it touched and slipped back, say so.
 3. Did the setup confirm? By the setup (the row's \`setup\` line, or its \`setup_lines\`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-4. Is it chased? An unanswered buy shows in \`plan_checks\`, with the chase limit and how far past it the stock is.
+4. Is it chased? \`plan_checks\` shows the chase limit and how far past it the stock is.
 5. Did the principal decline this buy (\`said\`), with nothing they named changed since? Then say so and pass.
 6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (\`variant_view\`).
 
@@ -243,6 +243,7 @@ Answer, in order:
 1. Why did it move: its news, its sector, the market (get_stock_data, one web_search; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.
 2. Does the live price still confirm, with no headline against it, and does the reward to a justified target still beat the risk? The Street's average target (\`street\`) is one reading of what is left.
 3. Did the principal decline this add (\`said\`), with nothing they named changed since? Then say so and pass.
+4. Before an add, weigh the Market and portfolio block: the market's mood, and the account's room (its cash, and how much of it already rides with this stock).
 
 What you can do (one of these):
 - Press: manage_position add_to_position (it sizes the add), then update_thesis raising the target, and the floor (stop_loss) under the bigger position.
@@ -268,7 +269,7 @@ Answer, in order:
 2. How did the stock take it? The reaction is the information. Read the call before trusting a number (get_earnings_data, web_search).
 
 What you can do:
-- Reports within days: sizing, not a trade. Held: sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story. Watched: hold the buy until the report.
+- Reports within days: decide before the date, not at your next look after it. Sizing, not a trade. Held: sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story. Watched: hold the buy until the report.
 - Beat on both lines, guidance up: raise the target and floor; consider adding.
 - EPS beat, revenue missed: the beat came from cost; raise nothing on it.
 - A beat the stock is down on: the market wanted more; tighten the floor.

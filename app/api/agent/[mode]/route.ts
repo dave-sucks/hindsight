@@ -24,6 +24,8 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
+import { blockForConversation } from "@/lib/agent/load-market-and-portfolio";
+import { READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -160,8 +162,10 @@ export async function POST(
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
-        select: { environment: true, agentConfigId: true },
+        select: { environment: true, agentConfigId: true, mode: true },
       });
+      // The account's own reviews take no messages (their page has no composer).
+      if (runRow && READ_ONLY_RUN_MODES.has(runRow.mode ?? "")) return new Response("This run takes no messages", { status: 403 });
       if (runRow) {
         runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
       }
@@ -310,8 +314,6 @@ export async function POST(
         try {
           const [money, book] = await Promise.all([
             getMoneyContext({
-              userId: user.id,
-              tradingEnvironment: ac.tradingEnvironment,
               minPositionSize: ac.minPositionSize,
               maxPositionSize: ac.maxPositionSize,
               maxPositionTotal: ac.maxPositionTotal,
@@ -473,6 +475,8 @@ export async function POST(
         bookBlock: scopedBookBlock,
         room,
         roomLines,
+        // Once per conversation, kept 30 minutes, so the prompt cache holds from message to message.
+        marketAndPortfolio: await blockForConversation(runId, { accountId, environment: runEnvironment, userId: user.id, analystId: resolvedAnalystId, creds: alpacaCreds }),
       });
 
     } else if (agentMode === "podcast-builder") {
@@ -999,9 +1003,9 @@ export async function POST(
           // the screen holds them, then this turn's.
           await saveRunThread(runId!, { opening: messages ?? [], messages: response?.messages, steps }, `agent/${agentMode}`);
 
-          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
-          // continuity now comes from the account-level PortfolioDigest read
-          // by buildRunInput. updateAnalystBriefing no longer called here.
+          // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md).
+          // Every request carries the Market and portfolio block
+          // (lib/agent/market-and-portfolio.ts).
         } finally {
           resolveOnFinish!();
         }

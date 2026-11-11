@@ -6,6 +6,8 @@
  * V's floor (Send to Agent) asks the analyst; a review set to Send to Agent starts a run; TRV's
  * Auto-buy calls place_trade with the trigger's arguments, then the write-up's note is the buy's whole reason.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";

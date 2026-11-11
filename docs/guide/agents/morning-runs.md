@@ -50,7 +50,7 @@ Two reads open the run. `get_portfolio_context` gives positions, cash, the accou
 
 The sizes are the point. The whole book at full size is tens of thousands of tokens, re-sent on every step. Sized this way, the run's attention goes to the stocks that need it.
 
-It also reads the analyst's brief: your strategy, word for word, its rules on direction and size, and how many slots are free.
+It also reads the analyst's brief: your strategy, word for word, its rules on direction and size, and how many slots are free. Its prompt ends with the Market and portfolio block: the two reviewers' briefs, the market's and the account's numbers, and the notes to the account or its analyst. See [What each agent is given](../deep-dives/what-each-agent-is-given.md).
 
 ## What it decides
 
@@ -89,7 +89,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `research-run` in `lib/agent/modes.ts`: `gpt-5.4`, up to 65 steps, an 800-second limit.
 
 #### Prompt
-`lib/agent/system-prompt.ts`, with the analyst brief and the house rules. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
+`lib/agent/system-prompt.ts`, with the analyst brief, the house rules and the Market and portfolio block (`lib/agent/market-and-portfolio.ts`, loaded by `buildRunInput`). Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
 
 #### The read
 `get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).

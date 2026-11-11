@@ -20,6 +20,8 @@
 // Stub prisma — the prompt-builder tests are pure; the idempotency tests
 // configure reads per-case (the guard short-circuits before any phase
 // work, so only prisma is exercised).
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     researchRun: {

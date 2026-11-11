@@ -47,6 +47,8 @@ Before the model starts, code pulls seven data sets at once: five years of state
 
 Then up to four web searches fill in what data can't: the call, the guidance, what changed this week. Every paragraph names its source, and a catalyst dated after today is written as expected, never as reported.
 
+Its prompt ends with the Market and portfolio block: the two reviewers' briefs, the market's and the account's numbers, and the notes to the account or its analyst. See [What each agent is given](../deep-dives/what-each-agent-is-given.md).
+
 It also reads what the agent that sent the stock found first: its reason, its notes (the numbers it pulled, what it read) and, when the stock came from someone's thesis, the post or article itself, with who wrote it, the link and the day. It tests that author's claims against the data and says which held. The thesis keeps the author as where it came from, shown on its first Activity line.
 
 ## What it decides
@@ -86,7 +88,7 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 `claude-sonnet-4-6` with Anthropic's web search, up to 4 searches (`WEB_SEARCH_MAX_USES`) and 8 steps.
 
 #### Pipeline
-`lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts`; the decision's checks in `thesis-research/decision.ts`.
+`lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts`; the decision's checks in `thesis-research/decision.ts`. The prompt ends with the Market and portfolio block (`lib/agent/market-and-portfolio.ts`).
 
 #### Saved through
 `submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save.

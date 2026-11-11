@@ -52,6 +52,8 @@ import {
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
 import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { marketAndPortfolioBlock } from "@/lib/agent/market-and-portfolio";
+import { loadMarketAndPortfolio } from "@/lib/agent/load-market-and-portfolio";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -724,6 +726,7 @@ export const tacticalRun = inngest.createFunction(
         // sale now waiting, the read lists none.)
         situations: auto ? { codes: ["AUTO_TRADE"], guidance: guidanceFor(["AUTO_TRADE"], "INTRADAY_TACTICAL") } : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
+        marketAndPortfolio: marketAndPortfolioBlock(await loadMarketAndPortfolio({ accountId: agentConfig.accountId, environment: runEnvironment, userId: agentConfig.userId, analystId: agentConfig.id })),
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

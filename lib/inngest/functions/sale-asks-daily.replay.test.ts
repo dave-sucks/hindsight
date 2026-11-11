@@ -13,6 +13,8 @@
  *
  * Real handlers, rows and tape; doubled: the database, Alpaca, the model, the clock.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type PrismaDouble } from "@/lib/replay";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";

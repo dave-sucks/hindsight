@@ -88,6 +88,7 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   "morning-runs": { title: "the morning run", icon: Sun },
   "trigger-runs": { title: "the trigger run", icon: Zap },
   chat: { title: "chat", icon: MessageCircle },
+  "portfolio-reviewer": { title: "the Portfolio Reviewer", icon: BookOpen },
   "analyst-builder": { title: "the analyst builder", icon: UserRound },
   theses: { title: "theses", icon: FileText },
   triggers: { title: "triggers", icon: Zap },
@@ -104,6 +105,7 @@ const REFS: Record<string, { title: string; icon: LucideIcon }> = {
   "sizing-and-limits": { title: "sizing and limits", icon: Layers },
   "proposal-to-fill": { title: "from proposal to fill", icon: CheckCircle2 },
   "trigger-fire-to-run": { title: "from fire to run", icon: Zap },
+  "what-each-agent-is-given": { title: "what each agent is given", icon: Layers },
 };
 
 /** Another page named in a sentence, an agent or a concept. Opens it. */

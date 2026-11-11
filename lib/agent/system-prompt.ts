@@ -19,6 +19,7 @@ import type { RunInput } from "./run-input";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { marketAndPortfolioBlock } from "@/lib/agent/market-and-portfolio";
 
 // ─── Daily-Run System Prompt ──────────────────────────────────────────────────
 //
@@ -87,15 +88,13 @@ export function buildDailyRunSystemPromptV2(
   }
 
   // ── Regime and cash — inputs to the decision, never gates (DAV-253) ─────
+  // The cash itself is in the Market and portfolio block, so it isn't said here.
   {
-    const cash = runInput.portfolio?.cash ?? 0;
-    const equity = runInput.portfolio?.portfolioValue ?? 0;
-    const cashPct = equity > 0 ? Math.round((cash / equity) * 100) : null;
     const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
     sections.push(
       [
         "## Regime and cash",
-        `Cash is $${Math.round(cash).toLocaleString()}${cashPct != null ? ` (${cashPct}% of equity)` : ""}. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
+        "`get_portfolio_context` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.",
         "- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
         `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
       ].join("\n"),
@@ -146,6 +145,11 @@ Each morning:
 
 Tools enforce all the constraints — confidence thresholds, target/stop shape, goalpost-moving, duplicate positions, target/stop relative ordering vs live price — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`,
   );
+
+  // ── Market and portfolio (lib/agent/market-and-portfolio.ts) ───────────
+  // After every fixed instruction, before the read (get_theses).
+  const marketAndPortfolio = marketAndPortfolioBlock(runInput.marketAndPortfolio);
+  if (marketAndPortfolio) sections.push(marketAndPortfolio);
 
   return sections.join("\n\n");
 }

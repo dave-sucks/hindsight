@@ -13,7 +13,7 @@ This folder is the guide, and this page is where to start. The /docs pages in th
 
 The folders match the sidebar:
 
-- `agents/`: the five trading agents and the analyst builder, one doc each.
+- `agents/`: the five trading agents, the Portfolio Reviewer and the analyst builder, one doc each.
 - `concepts/`: theses, triggers, analysts, situations, approvals and price targets.
 - `deep-dives/`: one mechanism or workflow end to end, like [saving a thesis](deep-dives/saving-a-thesis.md).
 - `reference/`: exact lists built from the code, like the [Situations library](reference/situations-library.md).
@@ -45,6 +45,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
+- **[Portfolio Reviewer](agents/portfolio-reviewer.md):** every weekday evening, the account's day: a brief every agent reads and a digest for you.
 - **[The analyst builder](agents/analyst-builder.md):** interviews you and proposes a whole analyst, checked against today's market. It sets up the analysts the other five work for.
 
 ## The concepts
@@ -64,6 +65,7 @@ One mechanism or one workflow, end to end, for when the concept doc isn't enough
 - **[Sizing and limits](deep-dives/sizing-and-limits.md):** how big a trade is: risk to the floor, conviction, the market, the analyst's band and slots, the account-wide lines.
 - **[From proposal to fill](deep-dives/proposal-to-fill.md):** a trade from the agent's call through the approval gate, the broker and the fill, and what each step does to the thesis.
 - **[From fire to run](deep-dives/trigger-fire-to-run.md):** the five-minute check, what fires, what holds a fire back, and where each one goes.
+- **[What each agent is given](deep-dives/what-each-agent-is-given.md):** the parts of every request, agent by agent, and the Market and portfolio block: the reviewers' briefs, the market's and the account's numbers, and the notes.
 
 ## Reference
 

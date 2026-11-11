@@ -9,6 +9,8 @@
  *
  * Real handlers; the model is captured, never called.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, replayTool, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
 

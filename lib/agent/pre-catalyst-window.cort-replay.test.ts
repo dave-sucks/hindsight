@@ -17,6 +17,8 @@
  * model call captured, not made) and place_trade — against CORT's rows
  * (lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json).
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import raw from "@/lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json";
 import {
   replayTool,

@@ -284,6 +284,8 @@ export interface EarningsWindow {
   reported: Map<string, EarningsReport>;
   /** Next scheduled report inside the lookahead. `epsActual` is null. */
   upcoming: Map<string, EarningsReport>;
+  /** Set when the calendar couldn't be read: the maps are empty for that reason, not because nothing reports. */
+  error?: string;
 }
 
 const EMPTY_WINDOW = (): EarningsWindow => ({ reported: new Map(), upcoming: new Map() });
@@ -341,7 +343,7 @@ export async function fetchEarningsWindow(opts: {
     console.warn(
       `[earnings] calendar ${from}→${to} unavailable (${res.error ?? "no data"}); skipping earnings evaluation this pass`,
     );
-    return out;
+    return { ...out, error: res.error ?? "no data" };
   }
   const rows =
     (res.data as { earningsCalendar?: FinnhubCalendarRow[] }).earningsCalendar ??

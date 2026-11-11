@@ -50,6 +50,7 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 - **Your queue:** `list_proposals`, what's waiting for you, each with its reason and time left.
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
 - **Research:** the market data, filings, earnings, the web and X, the same tools as every other agent.
+- **The account:** each conversation reads the Market and portfolio block once and keeps it 30 minutes, or until an order is approved, declined or proposed or a position opens or closes: the two reviewers' briefs, the market's numbers, the account's numbers at the app's own prices, and the notes to the account and its analysts. It is the one account value chat is given; a chat on one analyst also gets that seat's trade sizes. See [What each agent is given](../deep-dives/what-each-agent-is-given.md).
 
 Every message you send reaches chat with the day, the time and whether the market is open. A lookup older than 15 minutes is hidden from it, so it looks again before it quotes a price. A conversation picked up days later never answers from the old numbers. What chat changed (a trade, an edit, a note) stays visible, so it never does it twice.
 
@@ -89,7 +90,7 @@ Everything chat can call, read from `lib/agent/modes.ts`.
 With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so its edits and trades are recorded like a morning run's.
 
 #### Prompt
-`buildPrincipalSystemPrompt` in `lib/agent/modes.ts`, with the analyst brief and the house rules.
+`buildPrincipalSystemPrompt` in `lib/agent/modes.ts`, with the analyst brief, the house rules and the Market and portfolio block (`lib/agent/market-and-portfolio.ts`, loaded by the route).
 
 #### Edits
 `update_thesis` saves chat's trigger edits as an agent's (`actor: "AGENT"`), so the floor ratchet applies. Your own edits on the thesis sheet are the principal's and skip it.

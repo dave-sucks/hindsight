@@ -14,6 +14,8 @@ export interface FrameworkDoor {
   maxSteps: number;
   promptChars: number | null;
   houseRules: boolean | null;
+  /** Whether its prompt carries the Market and portfolio block, read off the prompt. */
+  marketAndPortfolio: boolean | null;
   tools: string[];
   toolChars: number | null;
 }
@@ -48,6 +50,10 @@ export interface FrameworkRead {
 
 export interface FrameworkData {
   houseRulesChars: number;
+  /** The Market and portfolio block on the sample day (lib/agent/__fixtures__/sample-prompts.ts). */
+  marketAndPortfolioChars: number;
+  /** The block's parts, as BLOCK_PARTS lists them (lib/agent/market-and-portfolio.ts). */
+  blockParts: Array<{ heading: string; source: "AI" | "code" | "notes"; on: boolean; what: string }>;
   doors: FrameworkDoor[];
   situations: FrameworkSituation[];
   read: FrameworkRead;

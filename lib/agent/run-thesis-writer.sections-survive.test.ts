@@ -19,6 +19,8 @@ const mockWriteThesisUpdate = jest.fn().mockResolvedValue(undefined);
 const mockRunEventCreate = jest.fn().mockResolvedValue({});
 const mockGenerateText = jest.fn();
 
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 jest.mock("ai", () => ({ ...jest.requireActual("ai"), generateText: (...a: unknown[]) => mockGenerateText(...a) }));
 jest.mock("@/lib/prisma", () => ({
   prisma: {

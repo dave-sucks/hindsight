@@ -22,7 +22,6 @@ import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { SituationSources } from "@/lib/agent/situations";
-import { runNotes, type SharedNoteRow } from "@/lib/agent/shared-notes";
 import { loadSharedNotes, noteShares } from "@/lib/agent/shared-notes.server";
 
 
@@ -81,8 +80,6 @@ export interface StockFacts {
   /** What situationsFor and listsTheStock read, per stock. */
   sources: Map<string, SituationSources>;
   heldThroughFloor: Map<string, HeldThroughFloor>;
-  /** The notes every run reads once at the top: the account's and this analyst's, while they last (lib/agent/shared-notes.ts). */
-  runNotes: SharedNoteRow[];
 }
 
 /**
@@ -329,5 +326,5 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     heldThroughFloor.set(t.id, { floorPrice, declined: ht.declineCount, lapsed: ht.lapseCount, rejectMessage: ht.rejectMessage, recentLow: load.recentLow.get(t.id) ?? null });
   }
 
-  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor, runNotes: runNotes(notes, ctx.analystId, notesAt) };
+  return { load, now, setupOverrides, needs, context, resolved, blocked, sources, heldThroughFloor };
 }

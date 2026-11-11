@@ -26,6 +26,7 @@ export type DocSlug =
   | "morning-runs"
   | "trigger-runs"
   | "chat"
+  | "portfolio-reviewer"
   | "analyst-builder"
   | "analysts"
   | "theses"
@@ -41,7 +42,8 @@ export type DocSlug =
   | "saving-a-thesis"
   | "sizing-and-limits"
   | "proposal-to-fill"
-  | "trigger-fire-to-run";
+  | "trigger-fire-to-run"
+  | "what-each-agent-is-given";
 
 export interface DocMeta {
   slug: DocSlug;
@@ -57,6 +59,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "Every weekday morning, each analyst reviews its whole book." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
+  { slug: "portfolio-reviewer", title: "Portfolio Reviewer", group: "Agents", icon: BookOpen, blurb: "Every evening, the account's day: a brief every agent reads and a digest for you." },
   { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },
@@ -70,6 +73,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "sizing-and-limits", title: "Sizing and limits", group: "Deep dives", icon: Layers, blurb: "How big a trade is: risk to the floor, conviction, the market, the analyst's band and slots." },
   { slug: "proposal-to-fill", title: "From proposal to fill", group: "Deep dives", icon: CheckCircle2, blurb: "A trade's life from the agent's call through approval, the broker and the fill." },
   { slug: "trigger-fire-to-run", title: "From fire to run", group: "Deep dives", icon: Zap, blurb: "The five-minute check, what fires, and where each fire goes." },
+  { slug: "what-each-agent-is-given", title: "What each agent is given", group: "Deep dives", icon: Layers, blurb: "The parts of every request, agent by agent, and the Market and portfolio block." },
   { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All seventeen situations: each code, what it means and the exact text an agent is sent." },
   { slug: "trigger-measures", title: "Trigger measures", group: "Reference", icon: Zap, blurb: "Every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in." },
   { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every setup in the playbook: what must be true, where the buy, floor and target go, and when it has failed." },
@@ -107,6 +111,8 @@ export function docForRunMode(mode: string | null | undefined): DocSlug {
       return "writer";
     case "PRINCIPAL_CHAT":
       return "chat";
+    case "PORTFOLIO_REVIEW":
+      return "portfolio-reviewer";
     default:
       return "morning-runs";
   }

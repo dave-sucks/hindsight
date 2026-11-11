@@ -6,6 +6,8 @@
  * did not duplicate it, and still moved the buy level to $908.72. The run is
  * the trigger run's real handler, the model captured, never called.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, planTriggers, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";

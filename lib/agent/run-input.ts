@@ -12,7 +12,8 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
+import { getAccount, type AlpacaAccount, type AlpacaCredentials } from "@/lib/alpaca";
+import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -27,11 +28,13 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { filingsOnBook } from "@/lib/agent/filings-on-book";
 import { listOpenRefusalsForAnalyst, type OpenRefusal } from "@/lib/agent/gate-rejections";
-import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
+import { describeEarningsReport, EARNINGS_LOOKAHEAD_DAYS, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
+import type { MarketAndPortfolio } from "@/lib/agent/market-and-portfolio";
+import { loadMarketAndPortfolio } from "@/lib/agent/load-market-and-portfolio";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -163,6 +166,9 @@ export interface RunInput {
   // redone (2026-09-25). Rendered as "Blocked last time — resolve today":
   // a refusal is carried to the next run, never dropped.
   openRefusals: OpenRefusal[];
+  // The Market and portfolio block for the analyst's book (account +
+  // environment): lib/agent/market-and-portfolio.ts.
+  marketAndPortfolio?: MarketAndPortfolio | null;
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
@@ -269,8 +275,11 @@ export async function buildRunInput(
   let cash = 0;
   let buyingPower = 0;
   let portfolioValue = 0;
+  // Kept for the Market and portfolio block, so it doesn't read the account again.
+  let brokerAccount: AlpacaAccount | null = null;
   try {
     const account = await getAccount(alpacaCreds);
+    brokerAccount = account;
     cash = parseFloat(account.cash);
     buyingPower = parseFloat(account.buying_power);
     portfolioValue = parseFloat(account.portfolio_value);
@@ -281,9 +290,15 @@ export async function buildRunInput(
   // 4. Live prices for positions
   const symbols = openPositions.map((p) => p.symbol);
   let livePrices: Record<string, number> = {};
+  // The one quote path, read once: the block prices the same holdings from these.
+  let quotes: Record<string, LiveQuoteResult> = {};
   if (symbols.length > 0) {
     try {
-      livePrices = await getLatestPrices(symbols, alpacaCreds);
+      quotes = await getLiveQuotes(symbols, { caller: "other", creds: alpacaCreds });
+      for (const s of symbols) {
+        const c = quotes[s.toUpperCase()]?.quote?.c;
+        if (c != null) livePrices[s] = c;
+      }
     } catch (err) {
       console.warn("[buildRunInput] Failed to fetch live prices:", err);
     }
@@ -557,10 +572,12 @@ export async function buildRunInput(
     ]);
     if (book.size > 0) {
       const now = new Date();
-      const w = await fetchEarningsWindow({ now, lookaheadDays: 7 });
+      // The earnings triggers' own window, so the block's report dates come from the same call; this week's are listed here.
+      const w = await fetchEarningsWindow({ now, lookaheadDays: EARNINGS_LOOKAHEAD_DAYS });
+      const weekOut = new Date(now.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
       earnings = {
         reportingSoon: [...w.upcoming.values()]
-          .filter((r) => book.has(r.symbol))
+          .filter((r) => book.has(r.symbol) && r.reportDate <= weekOut)
           .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
           .map((r) => ({ ticker: r.symbol, date: r.reportDate, hour: r.hour })),
         justReported: [...w.reported.values()]
@@ -606,6 +623,16 @@ export async function buildRunInput(
 
   // 12b. Refused calls never redone — what the run is told to resolve.
   const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
+
+  // 13. The Market and portfolio block for the analyst's book (lib/agent/market-and-portfolio.ts).
+  const marketAndPortfolio = await loadMarketAndPortfolio({
+    accountId: config.accountId,
+    environment: config.tradingEnvironment,
+    userId,
+    analystId: config.id,
+    creds: alpacaCreds,
+    preload: { account: brokerAccount, quotes },
+  });
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
@@ -683,6 +710,7 @@ export async function buildRunInput(
     triggersMatchingNow,
     earnings,
     filings,
+    marketAndPortfolio,
   };
 }
 

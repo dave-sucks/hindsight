@@ -34,6 +34,10 @@ export interface AlpacaAccount {
   /** Previous trading day's closing equity. `equity − last_equity` is the
    *  day's change (net of any same-day deposit) — drives "Day's P&L". */
   last_equity?: string;
+  /** The day (YYYY-MM-DD) whose close `last_equity` is. It moves to a session's
+   *  own day overnight after that close: between 2:37 and 3:16 AM ET after Tue
+   *  Nov 10, 2026 (lib/portfolio/value-at-quotes.ts). */
+  balance_asof?: string;
   buying_power: string;
   /** Long side market value. Present on margin/paper accounts; may be absent on cash accounts. */
   long_market_value?: string;

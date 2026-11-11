@@ -1211,6 +1211,8 @@ model PortfolioDigest {
   environment String   @default("PAPER") // "PAPER" | "LIVE" — PAPER and LIVE share one accountId
   date        DateTime // the trading day (ET)
   narrative   String // markdown prose with inline reference tokens
+  /// The Portfolio Reviewer's brief for every agent: 3 to 5 sentences, 700 characters at most.
+  brief       String?
   facts       Json // the deterministic facts blob (DigestFacts)
   model       String? // which LLM wrote the narrative
   createdAt   DateTime @default(now())

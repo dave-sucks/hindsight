@@ -143,6 +143,8 @@ interface AgentChatProps {
   theses?: ThesisRowData[];
   /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
   transcript?: TranscriptRowData | null;
+  /** research-run: a run that takes no messages (lib/runs/modes.ts READ_ONLY_RUN_MODES) shows no composer. */
+  readOnly?: boolean;
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
@@ -206,6 +208,7 @@ export function AgentChat({
   sources = [],
   theses = [],
   transcript = null,
+  readOnly = false,
   currentConfig,
   heldOrWatched,
   messages,
@@ -287,6 +290,7 @@ export function AgentChat({
         sources={sources}
         theses={theses}
         transcript={transcript}
+        readOnly={readOnly}
         currentConfig={currentConfig}
         heldOrWatched={heldOrWatched}
         composerSlot={composerSlot}
@@ -316,6 +320,7 @@ interface InnerProps {
   sources: RunSourceItem[];
   theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
+  readOnly: boolean;
   currentConfig?: Record<string, unknown>;
   heldOrWatched?: string[];
   composerSlot?: ReactNode;
@@ -343,6 +348,7 @@ function AgentChatInner({
   sources,
   theses,
   transcript,
+  readOnly,
   currentConfig,
   heldOrWatched,
   composerSlot,
@@ -441,12 +447,16 @@ function AgentChatInner({
           <Thread
             welcomeConfig={{
               title: analystName ?? "Research Agent",
-              subtitle: isFollowupMode
-                ? "Run complete — ask follow-up questions or place trades"
-                : "Autonomous research agent",
+              subtitle: readOnly
+                ? "The account's review: read only"
+                : isFollowupMode
+                  ? "Run complete — ask follow-up questions or place trades"
+                  : "Autonomous research agent",
             }}
             composerSlot={
-              composerSlot ?? (
+              readOnly ? (
+                <p className="px-4 py-3 text-center text-sm text-muted-foreground">This run is the account&apos;s review. It takes no messages.</p>
+              ) : composerSlot ?? (
                 <HindsightComposer
                   features={{
                     placeholder: isFollowupMode

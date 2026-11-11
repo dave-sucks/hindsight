@@ -1,7 +1,7 @@
 /**
  * context-bundle.test.ts — the pure halves of System 1's money context
- * (THREE_SYSTEMS.md Move 1). The fetch half is deliberately thin (creds →
- * equity, fail-open) and covered by the writer/discovery paths using it.
+ * (THREE_SYSTEMS.md Move 1): the seat's band. The account's value is the
+ * Market and portfolio block's.
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -13,43 +13,20 @@ jest.mock("@/lib/alpaca", () => ({ getAccount: jest.fn() }));
 import { formatMoneyContextBlock } from "./context-bundle";
 
 describe("formatMoneyContextBlock", () => {
-  it("states equity, the band, and the PASS rule", () => {
-    const block = formatMoneyContextBlock({
-      equityUSD: 125_000,
-      floorDollars: 7000,
-      ceilingDollars: 14_000,
-    });
-    expect(block).toContain("$125,000");
+  it("states the band and the PASS rule, and no account value: the block's is the one, at the app's prices", () => {
+    const block = formatMoneyContextBlock({ floorDollars: 7000, ceilingDollars: 14_000 });
     expect(block).toContain("$7,000 floor to $14,000 ceiling");
     expect(block).toContain("PASS");
-  });
-
-  it("degrades honestly when equity is unavailable", () => {
-    const block = formatMoneyContextBlock({
-      equityUSD: null,
-      floorDollars: 7000,
-      ceilingDollars: 14_000,
-    });
-    expect(block).toContain("equity unavailable");
-    expect(block).toContain("$7,000 floor");
+    expect(block).toContain("the account's value and cash are in the Market and portfolio block");
+    expect(block).not.toMatch(/equity/i);
   });
 
   it("returns empty when the seat has no band at all", () => {
-    expect(
-      formatMoneyContextBlock({
-        equityUSD: 125_000,
-        floorDollars: 0,
-        ceilingDollars: null,
-      }),
-    ).toBe("");
+    expect(formatMoneyContextBlock({ floorDollars: 0, ceilingDollars: null })).toBe("");
   });
 
   it("handles ceiling-only seats (no floor configured)", () => {
-    const block = formatMoneyContextBlock({
-      equityUSD: null,
-      floorDollars: 0,
-      ceilingDollars: 5000,
-    });
+    const block = formatMoneyContextBlock({ floorDollars: 0, ceilingDollars: 5000 });
     expect(block).toContain("ceiling: $5,000");
     expect(block).toContain("no floor configured");
   });

@@ -1,19 +1,20 @@
 /**
- * portfolio-digest.ts — EOD cron that writes one Daily Portfolio Digest per
- * account per trading day. See docs/plans/PORTFOLIO_DIGEST.md (Feature A).
- *
- * Runs after market close + after the last tactical settles (8:00 PM ET,
- * Mon-Fri). For each account with trading activity (see
- * lib/portfolio/digest-pairs.ts for what qualifies):
- *   1. buildDigestFacts(accountId, date, environment) — the facts blob
- *   2. writeDigestNarrative(facts)       — cheap-model markdown narration
- *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date)
+ * portfolio-digest.ts — the Portfolio Reviewer's cron (8:00 PM ET, Mon-Fri,
+ * after the market closes and the last trigger run settles). For each
+ * account with trading activity (lib/portfolio/digest-pairs.ts says what
+ * qualifies):
+ *   1. buildDigestFacts(accountId, date, environment): the facts, from code;
+ *   2. a ResearchRun named "Portfolio Reviewer" (mode PORTFOLIO_REVIEW) reads
+ *      them and writes the brief and the digest (lib/agent/portfolio-reviewer.ts),
+ *      its thread saved so the run opens like any other;
+ *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date).
  *
  * The unit of work is an (account, environment) PAIR — PAPER and LIVE share one
  * accountId, so each environment that had activity today gets its own row.
  *
- * ADDITIVE: nothing consumes these rows yet (the agent rewire is a separate
- * reviewed PR). Safe to run; it only writes to the new PortfolioDigest table.
+ * Every agent reads the newest brief in its Market and portfolio block
+ * (lib/agent/market-and-portfolio.ts); the digest is for the home page's
+ * digest card.
  */
 
 import { inngest } from "@/lib/inngest/client";
@@ -21,21 +22,15 @@ import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import type { DigestFacts } from "@/lib/portfolio/digest-facts";
 import { buildDigestFacts } from "@/lib/portfolio/digest-facts-builder";
-import { writeDigestNarrative } from "@/lib/agent/digest-writer";
+import { fallbackNarrative, PORTFOLIO_REVIEWER, writePortfolioReview, type PortfolioReview } from "@/lib/agent/portfolio-reviewer";
+import { getOwnerUserId } from "@/lib/auth/account";
+import { loadWaitingForReview } from "@/lib/portfolio/load-sale-queue";
+import { saveRunThread } from "@/lib/agent/run-thread";
+import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import {
   selectDigestPairs,
   TRADING_RUN_MODES,
 } from "@/lib/portfolio/digest-pairs";
-
-/** YYYY-MM-DD (ET) for the trading day a Date falls in. */
-function etDateString(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
 
 export const portfolioDigest = inngest.createFunction(
   {
@@ -46,10 +41,11 @@ export const portfolioDigest = inngest.createFunction(
   },
   { cron: "TZ=America/New_York 0 20 * * 1-5" }, // 8:00 PM ET, Mon-Fri
   async ({ step }) => {
-    const today = etTradingDayDate();
-    const dateStr = etDateString(today);
-    // The DB `date` column anchors at ET midnight (same as etTradingDayDate).
-    const digestDate = today;
+    // Today's New York date, as the DB stores it (midnight UTC of that date)
+    // and as YYYY-MM-DD. Read back in New York time, that midnight is the
+    // evening before, which made every digest cover the previous day.
+    const digestDate = etTradingDayDate();
+    const dateStr = digestDate.toISOString().slice(0, 10);
 
     // Step 1: find (account, environment) PAIRS with TRADING activity today.
     // PAPER and LIVE share one accountId, so the unit of work is the pair.
@@ -132,12 +128,51 @@ export const portfolioDigest = inngest.createFunction(
         );
       });
 
-      const { narrative, model } = await step.run(
-        `narrate-${key}`,
-        async () => {
-          return writeDigestNarrative(facts as unknown as DigestFacts);
-        },
-      );
+      // The run the review is saved as, so it opens on /runs like any other.
+      const runId = await step.run(`run-${key}`, async () => {
+        const userId = await getOwnerUserId(accountId);
+        if (!userId) return null;
+        const run = await prisma.researchRun.create({
+          data: {
+            userId,
+            accountId,
+            source: "AGENT",
+            status: "RUNNING",
+            mode: PORTFOLIO_REVIEWER.mode,
+            environment,
+            parameters: { name: PORTFOLIO_REVIEWER.name, date: dateStr, triggeredBy: "portfolio-review-cron" } as object,
+          },
+          select: { id: true },
+        });
+        return run.id;
+      });
+
+      // Never throws: whatever fails, the run ends COMPLETE or FAILED (nothing else sweeps a run with no
+      // analyst out of RUNNING), and the digest is the plain facts with no brief.
+      const { brief, narrative, model } = await step.run(`review-${key}`, async () => {
+        const warn = (what: string) => (err: unknown) => console.warn(`[portfolio-reviewer] ${what} for ${key}:`, err instanceof Error ? err.message : err);
+        let review: PortfolioReview | null = null;
+        try {
+          // Every proposal waiting, and each sale as the owner's decision: its history, the floor that fired and the note in full.
+          const { pending, sales } = await loadWaitingForReview({ accountId, environment, facts: facts as unknown as DigestFacts });
+          review = await writePortfolioReview(facts as unknown as DigestFacts, pending, { sales });
+          if (runId) {
+            await saveRunThread(runId, { opening: review.opening, messages: review.messages, steps: [] }, "portfolio-reviewer").catch(warn("the thread couldn't be saved"));
+            const usage = emptyTokenUsage();
+            for (const u of review.usage) addTokenUsage(usage, u);
+            await recordTokenUsage(runId, usage, PORTFOLIO_REVIEWER.model).catch(warn("the token use couldn't be saved"));
+          }
+          return { brief: review.brief, narrative: review.narrative, model: review.model };
+        } catch (err) {
+          warn("the review failed")(err);
+          return { brief: null, narrative: fallbackNarrative(facts as unknown as DigestFacts), model: "fallback" };
+        } finally {
+          if (runId)
+            await prisma.researchRun
+              .update({ where: { id: runId }, data: { status: review && review.model !== "fallback" ? "COMPLETE" : "FAILED", completedAt: new Date() } })
+              .catch(warn("the run couldn't be marked done"));
+        }
+      });
 
       await step.run(`save-${key}`, async () => {
         await prisma.portfolioDigest.upsert({
@@ -153,14 +188,20 @@ export const portfolioDigest = inngest.createFunction(
             environment,
             date: digestDate,
             narrative,
+            brief,
             facts: facts as unknown as object,
             model,
           },
-          update: {
-            narrative,
-            facts: facts as unknown as object,
-            model,
-          },
+          // A rerun whose model failed leaves a written digest and brief as they were.
+          update:
+            model === "fallback"
+              ? {}
+              : {
+                  narrative,
+                  brief,
+                  facts: facts as unknown as object,
+                  model,
+                },
         });
       });
 

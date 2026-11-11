@@ -4,6 +4,8 @@
  * 11 shares at $911.415), with its real "Trim if above $1090" set Auto at 30%. Both handlers are the real ones on
  * one database double; the trade tool is the edge.
  */
+// The Market and portfolio block reads the broker and the market; not this test's subject.
+jest.mock("@/lib/agent/load-market-and-portfolio", () => ({ loadMarketAndPortfolio: async () => ({ marketBrief: null, marketNumbers: null, portfolioBrief: null, portfolioNumbers: null, notes: [] }) }));
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";

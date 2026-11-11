@@ -220,9 +220,10 @@ describe("fetchEarningsWindow", () => {
     expect(map.get("DUP")?.reportDate).toBe("2026-09-02");
   });
 
-  it("returns an empty map when the client reports an error", async () => {
+  it("returns empty maps and the error when the client reports one", async () => {
     // finnhub() resolves rather than throws; a vendor failure must delay a
-    // look, never block the price triggers evaluating on the same tick.
+    // look, never block the price triggers evaluating on the same tick. The
+    // error says the maps are empty because the calendar wasn't read.
     finnhubMock.mockResolvedValue({
       data: null,
       error: "Finnhub /calendar/earnings rate limited (429) after 1 retries",
@@ -232,16 +233,18 @@ describe("fetchEarningsWindow", () => {
     await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
       reported: new Map(),
       upcoming: new Map(),
+      error: "Finnhub /calendar/earnings rate limited (429) after 1 retries",
     });
   });
 
-  it("returns an empty map when the payload has no data", async () => {
+  it("returns empty maps and an error when the payload has no data", async () => {
     finnhubMock.mockResolvedValue({ data: null });
     jest.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
       reported: new Map(),
       upcoming: new Map(),
+      error: "no data",
     });
   });
 

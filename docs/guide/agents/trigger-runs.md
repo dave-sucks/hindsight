@@ -43,6 +43,8 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
+Before the row it reads the Market and portfolio block: the two reviewers' briefs, the market's and the account's numbers, and the notes to the account or its analyst, with the proposals waiting. Where it and the row differ, the row is right. See [What each agent is given](../deep-dives/what-each-agent-is-given.md).
+
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
 ## What it decides
@@ -77,7 +79,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `tactical` in `lib/agent/modes.ts`: `gpt-5.4`, up to 15 steps.
 
 #### Prompt
-`lib/agent/system-prompts/intraday-tactical.ts`, with the analyst brief, the house rules and the stock's row from `row-for-model.ts`.
+`lib/agent/system-prompts/intraday-tactical.ts`, with the analyst brief, the house rules, the Market and portfolio block (`lib/agent/market-and-portfolio.ts`) and the stock's row from `row-for-model.ts`.
 
 #### Fire rules
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on its crossing, a protective rule every day it holds.

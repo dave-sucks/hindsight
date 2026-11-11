@@ -55,6 +55,8 @@ import { saveRunThread } from "@/lib/agent/run-thread";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
+import { marketAndPortfolioBlock } from "@/lib/agent/market-and-portfolio";
+import { loadMarketAndPortfolio } from "@/lib/agent/load-market-and-portfolio";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -358,6 +360,8 @@ export interface WriterResearchPromptOpts {
     daysAgo: number;
     closeReason: string | null;
   } | null;
+  /** The Market and portfolio block, rendered (lib/agent/market-and-portfolio.ts). Last in the prompt; the data block comes after it. */
+  marketAndPortfolio?: string | null;
 }
 
 /**
@@ -685,7 +689,7 @@ rationale is the first Activity line the owner reads.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
-accepted, STOP. Do not write anything after acceptance.`;
+accepted, STOP. Do not write anything after acceptance.${opts.marketAndPortfolio ? `\n\n${opts.marketAndPortfolio}` : ""}`;
 }
 
 // ── Idempotency guard ───────────────────────────────────────────────────
@@ -916,6 +920,7 @@ export async function writerResearchPhase(
         analystId: analyst.id,
         environment: analyst.tradingEnvironment ?? "PAPER",
       }),
+      marketAndPortfolio: marketAndPortfolioBlock(await loadMarketAndPortfolio({ accountId: analyst.accountId, environment: analyst.tradingEnvironment, userId: analyst.userId, analystId: analyst.id })),
     });
     const userPrompt = `═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict

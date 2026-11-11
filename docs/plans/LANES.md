@@ -31,7 +31,9 @@ purpose on 2026-11-07, below.
 manager writes a note once and addresses it to the account, one analyst or
 a list of stocks it names (`SharedNote`, `lib/agent/shared-notes.ts`).
 Every stock it reaches shows it in its Activity; a pinned one reads above
-the newest 8 until a run answers it. This is not the router, and four rules
+the newest 8 until a run answers it, and one to the account or an analyst
+is in every agent's Market and portfolio block (`lib/agent/market-and-portfolio.ts`)
+until it ends. This is not the router, and four rules
 keep it from becoming one: one author picks every audience by hand; nothing
 matches by tag; every note shows in Activity, where you read it; a pinned
 note ends within two weeks. A Signals-lane fact still comes in through the

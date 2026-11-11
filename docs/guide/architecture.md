@@ -2,7 +2,7 @@
 
 **How the pieces fit.** Data comes in, one record holds it, clocks wake the agents, and every trade waits for you.
 
-Five agents work on one shared record, and [the analyst builder](agents/analyst-builder.md) sets up the analysts they work for. Each part of the system is defined in one place, so no two parts can disagree about a stock.
+Five agents work on one shared record, [the Portfolio Reviewer](agents/portfolio-reviewer.md) reads it every evening for all of them, and [the analyst builder](agents/analyst-builder.md) sets up the analysts they work for. Each part of the system is defined in one place, so no two parts can disagree about a stock.
 
 <!-- asset: system-layers -->
 
@@ -27,6 +27,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
 - **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
 - **The rules every agent shares:** `HOUSE_RULES` in `lib/agent/house-rules.ts`, with the writing rules in `lib/agent/voice.ts`.
+- **Where the account and the market stand, for every agent:** the Market and portfolio block, `lib/agent/market-and-portfolio.ts`.
 - **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
 - **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
@@ -45,7 +46,7 @@ Eastern time, on trading days unless it says otherwise.
 - **10:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
-- **8:00 PM:** The portfolio digest the next morning's runs read.
+- **8:00 PM:** The [Portfolio Reviewer](agents/portfolio-reviewer.md): a brief every agent reads, and the digest on the home page's digest card.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
 - **Discovery** has no schedule. It is done in chat, when you ask.
 
@@ -77,11 +78,12 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires; right after an Auto trade, to write it up | The one stock it woke for, with the fire | The plan and a note; an Auto trade's reason | Proposes (an Auto trade is made before it reads) |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |
+| [Portfolio Reviewer](agents/portfolio-reviewer.md) | 8:00 PM ET on weekdays | The day's facts, gathered by code | Nothing: it writes a brief and a digest | Never |
 | [Analyst builder](agents/analyst-builder.md) | When you build or edit one | Your answers, the playbook, today's market | A whole analyst, on your yes | Never |
 
 ## What an agent is told
 
-Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. Pick an agent to see the same parts at its sizes.
+Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, the Market and portfolio block (the reviewers' briefs, the market's and the account's numbers, and the notes), and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. Pick an agent to see the same parts at its sizes, or read [What each agent is given](deep-dives/what-each-agent-is-given.md).
 
 <!-- asset: request-grid -->
 
@@ -103,7 +105,7 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 `lib/market-data/street-consensus.ts` (Nasdaq's feed and its parser) → `StreetConsensus`, written by `indicator-snapshot.ts` and on demand by `get_analyst_coverage`.
 
 #### Prompts
-`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.
+`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`, `lib/agent/market-and-portfolio.ts`.
 
 #### Plans
 `docs/plans/AGENT_ARCHITECTURE.md` · `docs/PRINCIPLES.md`

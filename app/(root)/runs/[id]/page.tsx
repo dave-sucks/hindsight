@@ -10,6 +10,7 @@ import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
 import type { TranscriptRowData } from "@/components/ui/transcript-row";
+import { ACCOUNT_RUN_NAMES, READ_ONLY_RUN_MODES, SERVER_RUN_MODES } from "@/lib/runs/modes";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ export default async function RunPage({
 
   const analystName = isPodcastSegmentRun
     ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
-    : (run.agentConfig?.name ??
+    : (run.agentConfig?.name ?? ACCOUNT_RUN_NAMES[run.mode] ??
         (run.source === "MANUAL" ? "Manual Research" : "Agent"));
 
   // Extract config snapshot from the run parameters
@@ -167,7 +168,8 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !SERVER_RUN_MODES.has(run.mode)}
+            readOnly={READ_ONLY_RUN_MODES.has(run.mode)}
             messages={persistedMessages ?? undefined}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}

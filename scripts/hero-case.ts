@@ -172,6 +172,10 @@ function systemFor(c: HeroCase): string {
       // JSON turned the refusals' dates into strings; the builder wants dates.
       const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
       for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
+      // And the Market and portfolio block's times: it renders against the time it was read, not today's.
+      const block = (runInput as { marketAndPortfolio?: { at?: string | Date; portfolioNumbers?: { at: string | Date } | null } }).marketAndPortfolio;
+      if (block?.at) block.at = new Date(block.at);
+      if (block?.portfolioNumbers) block.portfolioNumbers.at = new Date(block.portfolioNumbers.at);
       // Cases saved before step 10 carry the count on the run input's analyst copy.
       runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
       return buildDailyRunSystemPromptV2(c.promptArgs.config as never, runInput as never);

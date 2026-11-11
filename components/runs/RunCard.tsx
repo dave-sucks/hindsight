@@ -7,6 +7,7 @@ import {
   type ActionColor,
 } from "@/lib/run-summary";
 import type { RunCardRun } from "@/lib/actions/run-cards";
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -69,7 +70,7 @@ export function RunCard({ run }: { run: RunCardRun }) {
   const isPodcastSegmentRun = run.podcastSegmentId != null;
   const analystName = isPodcastSegmentRun
     ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
-    : run.agentConfig?.name ??
+    : run.agentConfig?.name ?? ACCOUNT_RUN_NAMES[run.mode ?? ""] ??
       (run.source === "MANUAL" ? "Manual Research" : "Agent");
 
   const summary = buildRunSummary(run);

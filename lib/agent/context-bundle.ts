@@ -8,10 +8,10 @@
  * when a new mode needs money/history context, it imports from here; adding
  * another inline fetch to a mode file is the bug this module exists to end.
  *
- * First slice: MONEY — live account equity + the seat's position band,
- * with the floor expressed as a percent of real equity. Extracted from the
- * writer's inline #540 code (the first path that got it right) so the
- * writer, discovery, and future paths share one implementation.
+ * First slice: MONEY — the seat's position band. The account's value and
+ * cash are the Market and portfolio block's (lib/agent/market-and-portfolio.ts),
+ * priced at the app's own quotes; the broker's equity, which marks holdings
+ * at after-hours prints, was a second account value here and is gone.
  *
  * Everything here is FAIL-OPEN by design: a missing credential or a vendor
  * outage yields nulls, never a thrown error — context must never be the
@@ -20,13 +20,9 @@
  * exactly what it was before the bundle existed.
  */
 
-import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { getAccount } from "@/lib/alpaca";
 import { positionBand } from "@/lib/agent/position-sizing";
 
 export interface MoneyContext {
-  /** Live account equity, or null when creds/vendor were unavailable. */
-  equityUSD: number | null;
   /** The seat's entry floor in dollars (0 = no floor configured). */
   floorDollars: number;
   /** The seat's largest trade — the number place_trade enforces. */
@@ -34,39 +30,18 @@ export interface MoneyContext {
 }
 
 export async function getMoneyContext(analyst: {
-  userId: string;
-  tradingEnvironment: string | null;
   // `unknown` deliberately: callers hand Prisma rows whose Decimal/BigInt
   // columns type as unknown; Number() normalizes all of them at runtime.
   minPositionSize: unknown;
   maxPositionSize: unknown;
   maxPositionTotal: unknown;
 }): Promise<MoneyContext> {
-  const environment =
-    (analyst.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
-  const floorDollars = Number(analyst.minPositionSize) || 0;
   const band = positionBand({
     minPositionSize: Number(analyst.minPositionSize) || undefined,
     maxPositionSize: Number(analyst.maxPositionSize) || undefined,
     maxPositionTotal: Number(analyst.maxPositionTotal) || undefined,
   });
-
-  let equityUSD: number | null = null;
-  try {
-    const creds =
-      (await resolveAlpacaCredentials(analyst.userId, environment)) ??
-      undefined;
-    const eq = Number((await getAccount(creds))?.equity);
-    if (Number.isFinite(eq) && eq > 0) equityUSD = eq;
-  } catch {
-    /* fail-open — no equity; the block says so */
-  }
-
-  return {
-    equityUSD,
-    floorDollars,
-    ceilingDollars: band.ceiling,
-  };
+  return { floorDollars: Number(analyst.minPositionSize) || 0, ceilingDollars: band.ceiling };
 }
 
 /**
@@ -76,14 +51,7 @@ export async function getMoneyContext(analyst: {
  */
 export function formatMoneyContextBlock(m: MoneyContext): string {
   if (m.floorDollars <= 0 && m.ceilingDollars == null) return "";
-  const lines: string[] = ["ACCOUNT MONEY CONTEXT (live):"];
-  if (m.equityUSD != null) {
-    lines.push(`  • Account equity ≈ $${Math.round(m.equityUSD).toLocaleString()}.`);
-  } else {
-    lines.push(
-      "  • Live equity unavailable this run — size toward the upper end of the band rather than under-sizing.",
-    );
-  }
+  const lines: string[] = ["TRADE SIZES (the account's value and cash are in the Market and portfolio block):"];
   if (m.floorDollars > 0) {
     lines.push(
       `  • Per-entry band: $${Math.round(m.floorDollars).toLocaleString()} floor${
