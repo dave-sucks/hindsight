@@ -32,6 +32,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
 - **The floor rule:** `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`.
 - **Which tools each agent has:** `lib/agent/modes.ts`.
+- **What a model call was sent:** `recordRequests` in `lib/agent/run-requests.ts`, one record per call.
 
 ## Everything runs on a clock
 
@@ -87,6 +88,14 @@ Every agent is a job and a list of tools, plus the parts every agent shares: the
 
 [Open the Framework →](/how-it-works/framework)
 
+### Seeing what a run was sent
+
+Every model call in a run keeps the requests it sent, exactly as they went to OpenAI or Anthropic: the instructions, the first message, the tool menu, every tool result in the version the model read, and any nudge added along the way. On the run's page they show as chips on the first message, each with its size in characters. A chip opens its full text, and from there any request of the call as raw JSON. A run that made more than one call (a retry, a recovery, a chat's turns) has a picker for them.
+
+The instructions are split where the prompt's own blocks begin, so each chip says where its text came from: the agent's own instructions, the analyst's brief, the house rules, each part of the Market and portfolio block under its heading, and on a trigger run the stock's row, the notes on the stock and its Activity lines. The instructions chip marks where each of the others sat.
+
+What isn't kept: a request still waiting on its reply when a call failed (the call's record says why it stopped), and anything from runs made before this was added, which say so. The digest writer, the trade reviewer and the weekly scorer aren't runs and keep nothing yet.
+
 <details>
 <summary>Technical details</summary>
 
@@ -104,6 +113,9 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 
 #### Prompts
 `lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.
+
+#### What a run was sent
+`recordRequests` in `lib/agent/run-requests.ts` takes each step's `request.body` from `onStepFinish` and writes one `RunMessage` row per model call (role `request`), each request kept as its difference from the one before (`lib/agent/run-requests-format.ts`). Read by `app/api/runs/[id]/requests/route.ts` through `lib/agent/run-requests-view.ts`; the instructions are cut into blocks at the builders' own openers by `lib/agent/prompt-blocks.ts`; shown by `components/agent/RunRequests.tsx`. The thread the screen replays is the separate `thread` row (`lib/agent/run-thread.ts`).
 
 #### Plans
 `docs/plans/AGENT_ARCHITECTURE.md` · `docs/PRINCIPLES.md`

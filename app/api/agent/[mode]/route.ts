@@ -28,6 +28,7 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
@@ -778,6 +779,14 @@ export async function POST(
     // added to the turns before it (token-usage.ts). Builder and editor
     // chats have no run row and are not recorded.
     const tokenUsage = emptyTokenUsage();
+    // Every request this turn sends, kept as sent (run-requests.ts). Saved
+    // when the stream ends, errors or is stopped; no run row, nothing kept.
+    const isFirstTurn = !(messages ?? []).some((m: { role?: string }) => m?.role === "assistant");
+    const sent = recordRequests(
+      runId,
+      agentMode === "principal" ? "Chat turn" : isFirstTurn ? "Run" : "Follow-up",
+      `agent/${agentMode}`,
+    );
     const result = streamText({
       model: resolvedModel,
       // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
@@ -839,7 +848,9 @@ export async function POST(
           : []),
       ],
 
-      onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
+      onStepFinish(step) {
+        sent.step(step);
+        const { stepNumber, toolCalls, toolResults, finishReason, usage } = step;
         addTokenUsage(tokenUsage, usage);
         const now = Date.now();
         const elapsed = now - t0;
@@ -895,7 +906,12 @@ export async function POST(
         if (agentMode === "research-run") {
           waitUntil(markRunFailed(runId, `Stream error after ${(elapsed / 1000).toFixed(0)}s: ${msg}`));
         }
+        waitUntil(sent.save(error));
         resolveOnFinish!();
+      },
+
+      onAbort() {
+        waitUntil(sent.save("The stream was stopped before the call finished."));
       },
 
       async onFinish({ response, steps, finishReason, usage }) {
@@ -903,6 +919,9 @@ export async function POST(
         console.log(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
+
+        // What this turn sent (no-op without a run row).
+        await sent.save();
 
         // Builder/editor and unscoped principal-chat don't have a
         // ResearchRun. Scoped principal-chat does — persist messages

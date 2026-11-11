@@ -38,7 +38,7 @@ function withScreenOutputs(messages: unknown[], steps: ReadonlyArray<RunStep>): 
 }
 
 /**
- * Save a run's thread, replacing any saved before: `opening` as given (the
+ * Save a run's thread, replacing the thread saved before: `opening` as given (the
  * prompt the run started from, a note), then the model's messages with each
  * tool result as the screen got it. When the SDK handed back no messages (a
  * text-only tail), they are rebuilt from the steps. A failed save is logged,
@@ -62,7 +62,8 @@ export async function saveRunThread(
     }
     const content = JSON.stringify(all);
     await prisma.$transaction([
-      prisma.runMessage.deleteMany({ where: { runId } }),
+      // Only the old thread: the run's other rows (its model calls' records, run-requests.ts) stay.
+      prisma.runMessage.deleteMany({ where: { runId, role: "thread" } }),
       prisma.runMessage.create({ data: { runId, role: "thread", content } }),
     ]);
     console.log(`[${label}] saved ${all.length} messages (${(content.length / 1024).toFixed(0)}KB) for run ${runId}`);

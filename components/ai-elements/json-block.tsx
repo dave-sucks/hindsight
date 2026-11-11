@@ -17,17 +17,23 @@ import { cn } from "@/lib/utils";
 
 export type JsonBlockProps = {
   /** Any JSON-serializable value. Non-serializable input degrades to String(). */
-  value: unknown;
+  value?: unknown;
+  /** Text shown exactly as given instead (a request as it was sent), its long lines wrapped. */
+  text?: string;
   className?: string;
 };
 
-export const JsonBlock = memo(function JsonBlock({ value, className }: JsonBlockProps) {
+export const JsonBlock = memo(function JsonBlock({ value, text: verbatim, className }: JsonBlockProps) {
   let text: string;
-  try {
-    text = JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    // Circular refs / BigInt — never let a display concern throw in chat.
-    text = String(value);
+  if (verbatim !== undefined) {
+    text = verbatim;
+  } else {
+    try {
+      text = JSON.stringify(value, null, 2) ?? String(value);
+    } catch {
+      // Circular refs / BigInt — never let a display concern throw in chat.
+      text = String(value);
+    }
   }
 
   return (
@@ -35,6 +41,7 @@ export const JsonBlock = memo(function JsonBlock({ value, className }: JsonBlock
       className={cn(
         // eslint-disable-next-line no-restricted-syntax -- code blocks are exactly the case the design rule's "dedicated component" carve-out is for
         "overflow-x-auto rounded-md border border-border/50 bg-muted/40 p-3 text-xs font-mono leading-relaxed text-muted-foreground",
+        verbatim !== undefined && "whitespace-pre-wrap break-all",
         className,
       )}
     >

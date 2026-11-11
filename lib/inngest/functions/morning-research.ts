@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { recordRequests } from "@/lib/agent/run-requests";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -385,7 +386,9 @@ export const morningResearch = inngest.createFunction(
         const userPrompt = "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.";
 
         try {
-          const { text, steps, response } = await generateText({
+          // Every request the call sends, kept as sent (run-requests.ts), also when it throws.
+          const sentMain = recordRequests(run.id, "Main", "morning-research");
+          const { text, steps, response } = await sentMain.around(generateText({
             // 2026-05-15 — model + abortSignal now read from MODES["research-run"]
             // instead of hardcoded "gpt-4o" + 240_000ms. The cron path was the
             // last spot still hardcoded; tactical + discovery already used the
@@ -435,7 +438,9 @@ export const morningResearch = inngest.createFunction(
             abortSignal: AbortSignal.timeout(
               (MODES["research-run"].maxDuration - 30) * 1000,
             ),
-            onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
+            onStepFinish(step) {
+              sentMain.step(step);
+              const { stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage } = step;
               trackUsage(usage);
               const now = Date.now();
               const elapsed = now - t0;
@@ -490,7 +495,7 @@ export const morningResearch = inngest.createFunction(
                 }
               }
             },
-          });
+          }));
 
           let toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
           let elapsed = Date.now() - t0;
@@ -728,8 +733,9 @@ export const morningResearch = inngest.createFunction(
             // the rescue); the system prompt already carries the Live Theses table,
             // so a historyless retry can still complete Step 2+.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const runRetry = async (messages: any[]): Promise<number> => {
-              const retry = await generateText({
+            const runRetry = async (messages: any[], call: string): Promise<number> => {
+              const sent = recordRequests(run.id, call, "morning-research");
+              const retry = await sent.around(generateText({
                 // Same model as the main run — switches with research-run config.
                 model: openai.chat(MODES["research-run"].model),
                 system: systemPrompt,
@@ -742,7 +748,9 @@ export const morningResearch = inngest.createFunction(
                 // of the main run's maxDuration. gpt-5.5 at ~13s/call still fits
                 // 9 calls in 120s, plenty for a focused finish-the-summary pass.
                 abortSignal: AbortSignal.timeout(120_000),
-                onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason, usage }) {
+                onStepFinish(step) {
+                  sent.step(step);
+                  const { stepNumber, toolCalls: stepTools, toolResults, finishReason, usage } = step;
                   trackUsage(usage);
                   const now = Date.now();
                   const stepLatencyMs = now - lastStepTimeMs;
@@ -784,7 +792,7 @@ export const morningResearch = inngest.createFunction(
                     }
                   }
                 },
-              });
+              }));
               return retry.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
             };
 
@@ -794,7 +802,7 @@ export const morningResearch = inngest.createFunction(
               retryToolCalls = await runRetry([
                 ...responseMessages,
                 { role: "user", content: nudgeWithRefusals },
-              ]);
+              ], "Retry");
             } catch (seedErr) {
               // The seed was a malformed ModelMessage[] — don't lose the rescue.
               console.error(
@@ -802,7 +810,7 @@ export const morningResearch = inngest.createFunction(
               );
               try {
                 // Tier 2 — historyless. The system prompt carries the state.
-                retryToolCalls = await runRetry([{ role: "user", content: nudgeWithRefusals }]);
+                retryToolCalls = await runRetry([{ role: "user", content: nudgeWithRefusals }], "Retry, no history");
               } catch (retryErr) {
                 console.error(
                   `[morning-research] 🔁 ${config.name} retry failed:`,
@@ -1056,7 +1064,8 @@ export const morningResearch = inngest.createFunction(
               `[morning-research] 🔁 ${config.name} aborted with zero tool calls — attempting catch-path recovery`,
             );
             try {
-              const recoveryResp = await generateText({
+              const sentRecovery = recordRequests(run.id, "Recovery", "morning-research");
+              const recoveryResp = await sentRecovery.around(generateText({
                 // Same model as the main run.
                 model: openai.chat(MODES["research-run"].model),
                 system: systemPrompt,
@@ -1072,7 +1081,8 @@ export const morningResearch = inngest.createFunction(
                 // keep 120s regardless of main maxDuration. If recovery itself
                 // produces no tool calls, FAILED is correct.
                 abortSignal: AbortSignal.timeout(120_000),
-              });
+                onStepFinish: sentRecovery.step,
+              }));
               const recoveryToolCalls = recoveryResp.steps.reduce(
                 (sum, s) => sum + (s.toolCalls?.length ?? 0),
                 0,
