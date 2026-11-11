@@ -113,6 +113,7 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 |---|---|
 | **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
 | Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
+| **Change what the Market Reviewer reads (its inputs, each with its source, cap and why)** | **`lib/agent/market-reviewer/inputs.ts`** |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | Change what every agent is given about the account and the market | The Market and portfolio block: `BLOCK_PARTS` in `lib/agent/market-and-portfolio.ts` (market brief, market numbers, portfolio brief, portfolio numbers, notes; each with an on/off switch). The market brief plugs in at `lib/agent/market-digest-slot.ts`; the market numbers are `lib/market-data/load-market-numbers.ts`. Its paragraph is in `HOUSE_RULES` |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
@@ -511,6 +512,11 @@ a list here goes stale.
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
+- market-reviewer.ts — 7:30 AM ET Mon–Fri, the Market Reviewer: one agent
+  run per traded book reads the market and the book and writes the market
+  brief every agent reads and the Market tab's digest (`MarketDigest`), and
+  notes where it finds something. It never trades (lib/agent/market-reviewer/,
+  docs/guide/agents/market-reviewer.md)
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
   the 8 AM morning runs did
 - portfolio-digest.ts — 8 PM ET Mon–Fri, the Portfolio Reviewer: a run per
@@ -802,7 +808,7 @@ When you spot something new, file it there — not here.)
 - lib/intelligence/types.ts — shared signal types (the per-analyst
   IntelligencePolicy was deleted 2026-10-31: no run ever read it; every
   run gets the fixed five web searches, `LIVE_SEARCH_BUDGET` in
-  `lib/agent/tools/web-search.ts`)
+  `lib/agent/tools/web-search.ts`; the Market Reviewer gets ten)
 - app/(root)/intelligence/page.tsx — read-only signal history
 - (firecrawl.ts, signals.ts, data-payload-extractor.ts, trading-day.ts,
   email-signal-extractor.ts, urgent-trigger.ts and the four pipeline

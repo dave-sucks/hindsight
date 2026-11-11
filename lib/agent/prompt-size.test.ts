@@ -28,13 +28,19 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // +1,848 for the block on a sample day (the real market numbers at the Nov 10 close, the book at that close (stand-in amounts) with its 4 waiting
   // sales and their history, two stand-in briefs with their times, no notes), 2 between. The morning prompt is 33 less: its own
   // cash sentence goes, the block says it. The block's size moves with the briefs (700 each at most), the sales and the notes (3 shown).
-  daily: 11_249,
-  tactical: 16_703,
+  // 2026-11-11: +71 each, Friday's producer price index in the block's market dates (the PPI and PCE dates joined
+  // lib/market-data/market-calendar.ts with #949).
+  // 2026-11-11: −1 on daily, tactical, writer and chat: a sector move that rounds to zero prints "0.0%", no sign (lib/market-data/market-numbers.ts).
+  daily: 11_319,
+  tactical: 16_773,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
-  writer: 18_500,
+  writer: 18_570,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
-  chat: 37_600,
+  chat: 37_670,
+  // 2026-11-11: the Market Reviewer's instructions (lib/agent/market-reviewer/prompt.ts); its inputs are its first message.
+  // 2026-11-11: +503, a development that moves toward a numbered line is REVIEW and cites it; the brief and the overview never restate the market numbers.
+  reviewer: 10_917,
 };
 
 /**

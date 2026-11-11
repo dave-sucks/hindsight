@@ -208,7 +208,9 @@ describe("the market numbers at the Nov 10 close, as Wednesday's morning run rea
       "S&P 500 (SPY) −0.37% on Tue Nov 10; 1.7% below its 50-day and 3.0% above its 200-day at the Mon Nov 9 close",
       "Nasdaq (QQQ) −0.68% on Tue Nov 10",
       "VIX 19.46 (19.92 the day before), 10-year yield 4.98% (4.86% the day before) at the Tue Nov 10 close",
-      "Sectors on Tue Nov 10, best to worst: Financials +0.5% · Energy +0.4% · Communication +0.4% · Health care +0.3% · Consumer staples +0.2% · Consumer discretionary +0.0% · Industrials −0.1% · Real estate −0.1% · Utilities −0.1% · Materials −0.2% · Tech −1.2%",
+      "Sectors on Tue Nov 10, best to worst: Financials +0.5% · Energy +0.4% · Communication +0.4% · Health care +0.3% · Consumer staples +0.2% · Consumer discretionary 0.0% · Industrials −0.1% · Real estate −0.1% · Utilities −0.1% · Materials −0.2% · Tech −1.2%",
+      // The producer price index joined the calendar with #949 (bls.gov, read 2026-11-11).
+      "Market dates in the next 7 days: Fri Nov 13 producer price index (PPI)",
     ]);
   });
 

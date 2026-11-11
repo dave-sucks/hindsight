@@ -68,6 +68,7 @@ function LogoWithDot({
 
 export function RunCard({ run }: { run: RunCardRun }) {
   const isPodcastSegmentRun = run.podcastSegmentId != null;
+  const isMarketReviewer = run.mode === "MARKET_REVIEWER";
   const analystName = isPodcastSegmentRun
     ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
     : run.agentConfig?.name ?? ACCOUNT_RUN_NAMES[run.mode ?? ""] ??
@@ -77,7 +78,7 @@ export function RunCard({ run }: { run: RunCardRun }) {
   const segments = buildActionSegments(summary);
 
   const isTactical = run.mode === "INTRADAY_TACTICAL";
-  const titlePrefix = isPodcastSegmentRun
+  const titlePrefix = isPodcastSegmentRun || isMarketReviewer
     ? null
     : run.mode === "INTRADAY_TACTICAL"
       ? "Tactical run by"

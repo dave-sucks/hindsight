@@ -53,6 +53,8 @@ export interface FactsContext extends WorkContext {
    * filtered to some tickers, whose held list is partial, skips the check).
    */
   slots: "rows" | "positions" | null;
+  /** Work out each note's share of the account (a positions read and a quote): only where the notes are shown with it, the agents' read. */
+  noteShares?: boolean;
 }
 
 /** A protective sale the principal declined or let lapse, the price still past the floor: what both doors show under this name. */
@@ -124,7 +126,9 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
   // a pinned note's share of the account worked out now.
   const notesAt = new Date();
   const notes = await loadSharedNotes(ctx.userId, notesAt);
-  const shares = await noteShares(notes, { userId: ctx.userId, environment: ctx.runEnvironment, equity: load.equity, creds: ctx.alpacaCreds, now: notesAt });
+  const shares = ctx.noteShares
+    ? await noteShares(notes, { userId: ctx.userId, environment: ctx.runEnvironment, equity: load.equity, creds: ctx.alpacaCreds, now: notesAt, tickers: live.map((t) => t.ticker) })
+    : new Map();
 
   // The work-flag list per live stock (lead first) and what's been said on
   // it: the block a full row carries, its open fires, and any decision of the

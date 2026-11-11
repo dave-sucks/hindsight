@@ -1,6 +1,7 @@
 /**
  * The market's own calendar: the dates that move the whole market, not one
- * stock. Fed decisions, the inflation (CPI) and jobs reports, US elections.
+ * stock. Fed decisions, the inflation reports (CPI, the producer price index,
+ * and PCE, the Fed's preferred measure), the jobs report, US elections.
  *
  * These dates are published a year or more ahead and don't move, so they are
  * written here, each list with where it came from. No vendor we hold serves
@@ -12,10 +13,11 @@
  * Why it exists: on Nov 2, 2026 the market check told every morning run the
  * regime and the sectors, and nothing about the vote the next day. Copied
  * from the closed market-tool PR; the market numbers read it
- * (lib/market-data/market-numbers.ts).
+ * (lib/market-data/market-numbers.ts), and so does the Market Reviewer
+ * (lib/agent/market-reviewer/inputs.ts).
  */
 
-export type MarketDateKind = "FED" | "CPI" | "JOBS" | "ELECTION";
+export type MarketDateKind = "FED" | "CPI" | "PPI" | "PCE" | "JOBS" | "ELECTION";
 
 export interface MarketDate {
   /** YYYY-MM-DD, US Eastern. */
@@ -43,6 +45,22 @@ const CPI_RELEASES: readonly string[] = [
   "2027-06-10", "2027-07-14", "2027-08-11", "2027-09-14", "2027-10-14", "2027-11-10", "2027-12-10",
 ];
 
+/** bls.gov/schedule/news_release/ppi.htm, read 2026-11-11. 8:30 AM ET. */
+const PPI_RELEASES: readonly string[] = [
+  "2026-11-13", "2026-12-15", "2027-01-14", "2027-02-12", "2027-03-12", "2027-04-14", "2027-05-13",
+  "2027-06-11", "2027-07-15", "2027-08-10", "2027-09-10", "2027-10-15", "2027-11-12", "2027-12-15",
+];
+
+/**
+ * bea.gov/news/schedule/full and /next-year, "Personal Income and Outlays",
+ * read 2026-11-11. 8:30 AM ET. It carries PCE prices, the inflation measure
+ * the Fed targets.
+ */
+const PCE_RELEASES: readonly string[] = [
+  "2026-11-25", "2026-12-23", "2027-01-28", "2027-02-25", "2027-03-31", "2027-04-29", "2027-05-27",
+  "2027-06-25", "2027-07-29", "2027-08-25", "2027-09-30", "2027-10-28", "2027-11-24", "2027-12-22",
+];
+
 /** bls.gov/schedule/news_release/empsit.htm, read 2026-11-06. 8:30 AM ET. */
 const JOBS_RELEASES: readonly string[] = [
   "2026-11-06", "2026-12-04", "2027-01-08", "2027-02-05", "2027-03-05", "2027-04-02", "2027-05-07",
@@ -58,6 +76,8 @@ const ELECTIONS: readonly (readonly [string, string])[] = [
 const LISTS: readonly { name: string; dates: readonly string[] }[] = [
   { name: "Fed decision", dates: FED_DECISIONS.map(([d]) => d) },
   { name: "inflation report", dates: CPI_RELEASES },
+  { name: "producer price index", dates: PPI_RELEASES },
+  { name: "PCE inflation", dates: PCE_RELEASES },
   { name: "jobs report", dates: JOBS_RELEASES },
 ];
 
@@ -76,7 +96,7 @@ export function dayLabel(iso: string): string {
 }
 
 /** When each kind comes out, New York time: a release today is no longer ahead once its time has passed. An election runs all day. */
-const RELEASED_AT: Record<MarketDateKind, string | null> = { FED: "14:00", CPI: "08:30", JOBS: "08:30", ELECTION: null };
+const RELEASED_AT: Record<MarketDateKind, string | null> = { FED: "14:00", CPI: "08:30", PPI: "08:30", PCE: "08:30", JOBS: "08:30", ELECTION: null };
 
 /** "20:00": the New York clock. */
 function etClock(now: Date): string {
@@ -100,6 +120,8 @@ export function scheduledMarketDates(today: string, days: number, now?: Date): M
       what: projections ? "Fed decision, with its projections" : "Fed decision",
     })),
     ...CPI_RELEASES.filter(inWindow).map((date) => ({ date, kind: "CPI" as const, what: "inflation report (CPI)" })),
+    ...PPI_RELEASES.filter(inWindow).map((date) => ({ date, kind: "PPI" as const, what: "producer price index (PPI)" })),
+    ...PCE_RELEASES.filter(inWindow).map((date) => ({ date, kind: "PCE" as const, what: "personal income and spending, with PCE inflation" })),
     ...JOBS_RELEASES.filter(inWindow).map((date) => ({ date, kind: "JOBS" as const, what: "jobs report" })),
     ...ELECTIONS.filter(([d]) => inWindow(d)).map(([date, what]) => ({ date, kind: "ELECTION" as const, what })),
   ];

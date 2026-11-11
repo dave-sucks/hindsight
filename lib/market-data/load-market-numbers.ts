@@ -42,7 +42,7 @@ export async function loadMarketNumbers(opts: { now?: Date; creds?: AlpacaCreden
   const now = opts.now ?? new Date();
   const [quotes, snapshots, g] = await Promise.all([
     getLiveQuotes(["SPY", "QQQ", ...SECTOR_FUNDS.map(([t]) => t)], { caller: "other", creds: opts.creds, now }).catch(() => ({})),
-    loadIndicatorSnapshots(["SPY"]).catch(() => new Map()),
+    loadIndicatorSnapshots(["SPY"], now).catch(() => new Map()),
     gauges(now).catch((): Gauges => ({ vix: null, tenYear: null, errors: [] })),
   ]);
   return marketNumbersFrom({ quotes, spy: snapshots.get("SPY") ?? null, gauges: g }, now);

@@ -8,28 +8,46 @@ import { getLiveQuotes } from "@/lib/market-data/live-quote";
 import type { AlpacaCredentials } from "@/lib/alpaca";
 import {
   coversStock,
-  isPinned,
+  levelFor,
   LOAD_DAYS,
   NOTE_MAX_PIN_DAYS,
   RUN_NOTE_DEFAULT_DAYS,
   SHARED_NOTE_CHARS,
   type NoteAudience,
   type NoteAuthor,
+  type NoteLevel,
   type NoteShare,
   type SharedNoteRow,
 } from "@/lib/agent/shared-notes";
 
 const DAY = 86_400_000;
 
-/** The account's notes from the last month and a half, newest first. Empty on a failed read: a note is never worth failing a run. */
+/** The newest notes a read loads; past it, the owner's and those still asking for an answer still load. */
+export const NOTES_LOADED = 100;
+
+/**
+ * The account's notes from the last month and a half, newest first: the
+ * newest NOTES_LOADED, and past them every note the owner wrote, every note
+ * still pinned, and every note that marks a stock to review or urgent (the
+ * stock's own lines say whether it was answered). Empty on a failed read: a
+ * note is never worth failing a run.
+ */
 export async function loadSharedNotes(userId: string | undefined, now: Date): Promise<SharedNoteRow[]> {
   if (!userId) return [];
   try {
-    return await prisma.sharedNote.findMany({
-      where: { userId, createdAt: { gte: new Date(now.getTime() - LOAD_DAYS * DAY) } },
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    });
+    const window = { userId, createdAt: { gte: new Date(now.getTime() - LOAD_DAYS * DAY) } };
+    const newest = await prisma.sharedNote.findMany({ where: window, orderBy: { createdAt: "desc" }, take: NOTES_LOADED });
+    if (newest.length < NOTES_LOADED) return newest;
+    const kept = new Set(newest.map((n) => n.id));
+    const older = { ...window, createdAt: { ...window.createdAt, lt: newest[newest.length - 1].createdAt } };
+    const [mine, asking] = await Promise.all([
+      prisma.sharedNote.findMany({ where: { ...older, OR: [{ author: "OWNER" }, { pinnedUntil: { gt: now } }] } }),
+      prisma.sharedNote.findMany({ where: { ...older, author: { not: "OWNER" }, audience: "STOCKS" }, select: { id: true, tickers: true, levels: true } }),
+    ]);
+    const askingIds = asking.filter((n) => n.tickers.some((t) => levelFor(n, t) === "REVIEW" || levelFor(n, t) === "URGENT")).map((n) => n.id);
+    const more = askingIds.length ? await prisma.sharedNote.findMany({ where: { id: { in: askingIds } } }) : [];
+    const extra = [...mine, ...more].filter((n) => !kept.has(n.id) && !!kept.add(n.id));
+    return [...newest, ...extra].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } catch (err) {
     console.warn("[shared-notes] load failed; runs read without them:", err);
     return [];
@@ -50,17 +68,19 @@ export async function loadNotesSince(userId: string, since: Date): Promise<Share
 }
 
 /**
- * Each pinned note's holdings and their share of the account, worked out now
- * from the open positions and live prices. Only pinned notes to stocks;
- * nothing is stored. Missing when the equity or a price is missing.
+ * Each note's holdings and their share of the account, worked out now from
+ * the open positions and live prices. Only notes to stocks; nothing is
+ * stored. Missing when the equity or a price is missing.
  */
 export async function noteShares(
   notes: readonly SharedNoteRow[],
-  opts: { userId?: string; environment?: "PAPER" | "LIVE"; equity: number | null; creds?: AlpacaCredentials; now: Date },
+  opts: { userId?: string; environment?: "PAPER" | "LIVE"; equity: number | null; creds?: AlpacaCredentials; now: Date; tickers?: readonly string[] },
 ): Promise<Map<string, NoteShare>> {
   const out = new Map<string, NoteShare>();
-  const pinned = notes.filter((n) => isPinned(n, opts.now) && n.audience === "STOCKS");
-  if (pinned.length === 0 || !opts.userId || !opts.equity || opts.equity <= 0) return out;
+  // Only the notes this read shows: to stocks, naming one of the read's stocks.
+  const read = opts.tickers ? new Set(opts.tickers.map((t) => t.toUpperCase())) : null;
+  const toStocks = notes.filter((n) => n.audience === "STOCKS" && (!read || n.tickers.some((t) => read.has(t))));
+  if (toStocks.length === 0 || !opts.userId || !opts.equity || opts.equity <= 0) return out;
   try {
     const positions = await prisma.position.findMany({
       where: { userId: opts.userId, status: "OPEN", environment: opts.environment ?? "LIVE" },
@@ -69,7 +89,7 @@ export async function noteShares(
     if (positions.length === 0) return out;
     const symbols = [...new Set(positions.map((p) => p.symbol.toUpperCase()))];
     const quotes = await getLiveQuotes(symbols, { caller: "other", creds: opts.creds });
-    for (const n of pinned) {
+    for (const n of toStocks) {
       let value = 0;
       const holdings: string[] = [];
       let priced = true;
@@ -89,6 +109,43 @@ export async function noteShares(
   return out;
 }
 
+/** A reviewer's note on a sale waiting, as its proposal card shows it. */
+export interface SaleNote {
+  id: string;
+  author: string;
+  at: string;
+  title: string;
+  /** The note's line for this stock: its level, what it touches and how much. */
+  line: string | null;
+}
+
+/**
+ * The reviewers' notes on a stock's waiting sale (level PROPOSAL for it),
+ * written since `since`, newest first: the proposal card shows them, since
+ * the stock is off its analyst's list while the sale waits. Empty on a
+ * failed read.
+ */
+export async function saleNotes(userId: string, ticker: string, since: Date): Promise<SaleNote[]> {
+  const T = ticker.toUpperCase();
+  try {
+    const rows = await prisma.sharedNote.findMany({
+      where: { userId, audience: "STOCKS", tickers: { has: T }, author: { in: ["MARKET_REVIEWER", "PORTFOLIO_REVIEWER"] }, createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, author: true, body: true, levels: true, createdAt: true },
+    });
+    return rows
+      .filter((n) => levelFor(n, T) === "PROPOSAL")
+      .slice(0, 5)
+      .map((n) => {
+        const lines = n.body.split("\n");
+        return { id: n.id, author: n.author, at: n.createdAt.toISOString(), title: lines[0], line: lines.find((l) => l.startsWith(`${T} ·`)) ?? null };
+      });
+  } catch (err) {
+    console.warn("[shared-notes] sale notes not read:", err);
+    return [];
+  }
+}
+
 /** What a note to more than one stock is saved with, after what doesn't fit is trimmed. */
 export interface SharedNoteInput {
   userId: string;
@@ -101,6 +158,8 @@ export interface SharedNoteInput {
   /** YYYY-MM-DD; anything else is dropped. */
   eventDate?: string | null;
   pinnedUntil?: Date | null;
+  /** Each named stock's level; a stock not listed is CONTEXT. */
+  levels?: Record<string, NoteLevel> | null;
   now?: Date;
 }
 
@@ -138,6 +197,7 @@ export async function writeSharedNote(input: SharedNoteInput): Promise<{ id: str
       tickers: input.audience === "STOCKS" ? [...new Set((input.tickers ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean))] : [],
       eventDate,
       pinnedUntil,
+      levels: input.audience === "STOCKS" ? (input.levels ?? {}) : {},
     },
     select: { id: true },
   });

@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CalendarDays, DollarSign, FileText, Repeat, Variable, X } from "lucide-react";
+import { Activity, CalendarDays, DollarSign, FileText, Repeat, StickyNote, Variable, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -53,6 +53,7 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   earnings: CalendarDays,
   filing: FileText,
   schedule: Repeat,
+  note: StickyNote,
 };
 
 /** What the form edits: the action, one condition or two, what it does on fire, and a trim's size. */

@@ -35,6 +35,8 @@ import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
 import { updateThesis } from "./update-thesis";
 import { writeNoteTool } from "./write-note";
+import { writeMarketNote } from "./write-market-note";
+import { writeMarketBrief } from "./write-market-brief";
 import { getTheses } from "./get-theses";
 import { placeTrade } from "./place-trade";
 import { closePosition } from "./close-position";
@@ -105,6 +107,8 @@ interface ToolCtx {
   firedTrim?: { ticker: string; pct: number };
   /** An Auto trigger: the account's cash — see ToolContext.payFromCash. */
   payFromCash?: number | null;
+  /** Check only: the saving tools stop before their first write — see ToolContext.dryRun. */
+  dryRun?: boolean;
 }
 
 export function createResearchTools(
@@ -167,6 +171,9 @@ export function createResearchTools(
     record_thesis: recordThesis(newCtx),
     update_thesis: updateThesis(newCtx),
     write_note: writeNoteTool(newCtx),
+    // The Market Reviewer's note and its last step (MODES["market-reviewer"] only).
+    write_market_note: writeMarketNote(newCtx),
+    write_market_brief: writeMarketBrief(newCtx),
     get_theses: getTheses(newCtx),
     place_trade: placeTrade(newCtx),
     close_position: closePosition(newCtx),
@@ -226,6 +233,8 @@ export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
 export { updateThesis } from "./update-thesis";
 export { writeNoteTool } from "./write-note";
+export { writeMarketNote } from "./write-market-note";
+export { writeMarketBrief } from "./write-market-brief";
 export { getTheses } from "./get-theses";
 export { placeTrade } from "./place-trade";
 export { closePosition } from "./close-position";

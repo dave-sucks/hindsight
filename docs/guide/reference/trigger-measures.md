@@ -349,3 +349,21 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
   ```json
   {"action":"REVIEW","predicate":{"watch":"from_date","is":"before","value":10,"variable":"event"}}
   ```
+
+## Note
+
+A reviewer's urgent note names the stock. Not on the five-minute check: it fires when an urgent note is saved, once on each stock the note names that we hold or watch, unless a run has written on the stock since. One account rule, which every stock inherits.
+
+### Urgent note
+
+`watch: "note"` · no number · actions: review · reads: the live quote
+
+**Rest period for a plain condition, when none is set:** none.
+
+**Examples:**
+
+- "Review if an urgent note names this stock". The Market Reviewer found something that can't wait for the next run: a run starts now.
+
+  ```json
+  {"action":"REVIEW","predicate":{"watch":"note"}}
+  ```

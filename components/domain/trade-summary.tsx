@@ -283,7 +283,7 @@ function TradeBanner(props: TradeSummaryProps) {
       {/* The reason, once asked for (and the "Writing" line while the note is on its way), a little below the rows. */}
       {pp && !pp.executing && (expanded || pp.writing) ? (
         <div className="pt-2">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} sale={pp.intent === "CLOSE" || pp.intent === "PARTIAL_CLOSE"} />
         </div>
       ) : null}
       {/* A proposal's answer, or "Executing" once answered, as a third row at the right. */}
@@ -367,7 +367,7 @@ function TradeCard(props: TradeSummaryProps) {
         <Separator />
       </div>
       {pp && !pp.executing ? (
-        <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={5} />
+        <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} clamp={5} sale={pp.intent === "CLOSE" || pp.intent === "PARTIAL_CLOSE"} />
       ) : note ? (
         <NoteClamp text={note} />
       ) : null}

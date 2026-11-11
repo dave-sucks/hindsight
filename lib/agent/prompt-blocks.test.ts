@@ -34,8 +34,8 @@ const sum = (text: string) => promptBlocks(text).reduce((s, b) => s + b.chars, 0
 const MARKET = ["Market brief", "Market numbers", "Portfolio brief", "Portfolio numbers"];
 /** A note to the account (a stand-in: none is written yet), and the sample day's block printed with it. */
 const ACCOUNT_NOTE: SharedNoteRow = {
-  id: "note_fed", author: "PORTFOLIO_MANAGER", runId: "run_pm", body: "The Fed speaks Wednesday; size buys for a swing.",
-  audience: "ACCOUNT", analystId: null, tickers: [], eventDate: "2026-11-12",
+  id: "note_fed", author: "MARKET_REVIEWER", runId: "run_mr", body: "The Fed speaks Wednesday; size buys for a swing.",
+  audience: "ACCOUNT", analystId: null, tickers: [], eventDate: "2026-11-12", levels: {},
   pinnedUntil: new Date("2026-11-13T05:00:00Z"), createdAt: new Date("2026-11-11T01:05:00Z"),
 };
 const WITH_NOTE = marketAndPortfolioBlock({ ...SAMPLE_BLOCK_PARTS, notes: [{ author: ACCOUNT_NOTE.author, line: runNoteLine(ACCOUNT_NOTE) }] }, SAMPLE_NOW);
@@ -67,16 +67,16 @@ describe("the four agents' prompts, from their builders", () => {
   });
 });
 
-describe("CEG's trigger run on 09-14, from its real Activity rows, with a note pinned on it", () => {
+describe("CEG's trigger run on 09-14, from its real Activity rows, with a Market Reviewer note to review on it", () => {
   const at = fx.runs.trigger0914_1530.loadedAt;
   const now = new Date(at);
   const rows = fx.updates
     .filter((u) => new Date(u.timestamp).getTime() < now.getTime())
     .map((u) => ({ ...u, thesisId: fx.thesis0918.id, timestamp: new Date(u.timestamp), fieldChanges: u.fieldChanges ?? {}, tradeId: null, signalIds: [], positionAtTime: null, run: u.runMode ? { mode: u.runMode } : null })) as unknown as StoredLine[];
   const note: SharedNoteRow = {
-    id: "note_power", author: "PORTFOLIO_MANAGER", runId: "run_pm", body: "CEG and VST trade together on power demand; read one's drop against the other.",
-    audience: "STOCKS", analystId: null, tickers: ["CEG", "VST"], eventDate: null,
-    pinnedUntil: new Date(now.getTime() + 3 * 86_400_000), createdAt: new Date(now.getTime() - 3_600_000),
+    id: "note_power", author: "MARKET_REVIEWER", runId: "run_mr", body: "CEG and VST trade together on power demand; read one's drop against the other.",
+    audience: "STOCKS", analystId: null, tickers: ["CEG", "VST"], eventDate: null, levels: { CEG: "REVIEW", VST: "CONTEXT" },
+    pinnedUntil: null, createdAt: new Date(now.getTime() - 3_600_000),
   };
   const context = stockContextFor({ ticker: "CEG", rows, notes: [note], now }).text;
   const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
@@ -95,10 +95,10 @@ describe("CEG's trigger run on 09-14, from its real Activity rows, with a note p
     expect(blocks.map((b) => b.label)).toEqual(["Instructions", "Analyst: Secular Compounder", ...MARKET, "Notes", "$CEG row", "Notes on $CEG", "Activity on $CEG", "House rules"]);
     // The note to the account is in the block; the note pinned on CEG is in its row.
     expect(by("Notes").text).toBe(`### Notes\n- ${runNoteLine(ACCOUNT_NOTE)}`);
-    expect(by("Notes on $CEG").text).toMatch(/^PINNED ON \$CEG: notes to more than this stock, read before its Activity lines:\n.+CEG and VST trade together/);
+    expect(by("Notes on $CEG").text).toMatch(/^NOTES ON \$CEG, read before its Activity lines: .+\n.+Market Reviewer to CEG, VST · to review — "CEG and VST trade together/);
     expect(by("Activity on $CEG").text).toMatch(/^WHAT'S BEEN SAID ON \$CEG — its newest 7 Activity lines, newest first, as the owner sees them:\n/);
     expect(by("Activity on $CEG").text).toMatch(/Declined sell \d+ shares/);
-    expect(by("Activity on $CEG").text).not.toContain("PINNED ON");
+    expect(by("Activity on $CEG").text).not.toContain("NOTES ON");
   });
 
   it("the row shows its notes and Activity by name, and nothing is lost or counted twice", () => {

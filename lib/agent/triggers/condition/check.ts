@@ -8,6 +8,7 @@
  * Pure and client-safe.
  */
 
+import { ACCOUNT_ONLY_ALONE } from "./valid";
 import { measureOf } from "./catalog";
 import type { CheckContext } from "./measure";
 import type { Condition, Direction, When } from "./types";
@@ -67,6 +68,7 @@ export function whenProblem(w: When, ctx: CheckContext): string | null {
   if (isGroup(w)) {
     if (w.conditions.length !== 2 || w.conditions.some(isGroup)) return "A trigger built here takes one condition or two.";
     if (conditionsOf(w).some((c) => measureOf(c).timed)) return "A schedule stands alone. Add it as its own trigger.";
+    if (conditionsOf(w).some((c) => measureOf(c).accountOnly)) return ACCOUNT_ONLY_ALONE;
   }
   for (const c of conditionsOf(w)) {
     const problem = conditionProblem(c, ctx);

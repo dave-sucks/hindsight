@@ -38,7 +38,7 @@
 export type FieldKind = "COMPUTED" | "CHOSEN" | "JUDGED" | "IDENTITY" | "TEXT" | "CARRIED";
 
 /** The prompts a rule can be stated in. */
-export type PromptName = "daily" | "tactical" | "chat" | "writer";
+export type PromptName = "daily" | "tactical" | "chat" | "writer" | "reviewer";
 
 /** A rule the tools enforce, and the words each prompt uses to state it. */
 export interface Rule {
@@ -79,6 +79,21 @@ const RULE_DEFS = {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",
     refusal: "none — a wrong date is not refused; it is noted.",
     markers: {},
+  },
+  NOTE_FIELDS: {
+    says: "Each field of a reviewer's note has a limit (NOTE_FIELD_CHARS); a note names at most 5 stocks and keeps 2,000 characters with its link.",
+    refusal: "write_market_note refuses once, naming every field over its limit and by how much; nothing is written.",
+    markers: { reviewer: "Each field has its limit" },
+  },
+  URGENT_NAMES_ITS_LINE: {
+    says: "An URGENT stock names what it hits: a held stock its numbered condition, a watched one a condition or the catalyst. At most 3 stocks a run are urgent.",
+    refusal: "write_market_note refuses the note, naming the stock and what its touches must be, or the stocks past the third.",
+    markers: { reviewer: "An URGENT stock names" },
+  },
+  BRIEF_LENGTH: {
+    says: "The market brief is 700 characters at most.",
+    refusal: "write_market_brief refuses with the overage and saves nothing; the run's last two steps can only write the brief.",
+    markers: { reviewer: "characters at most, for the agents" },
   },
   TRIGGER_SHAPE: {
     says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a plan level without a buy level is refused with the fix.",
@@ -234,6 +249,25 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("remove_trigger_ids", "IDENTITY"),
   ],
   write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
+  /** The Market Reviewer's note (lib/agent/tools/write-market-note.ts). */
+  write_market_note: [
+    f("title", "JUDGED", { rule: "NOTE_FIELDS" }),
+    f("stocks", "JUDGED", { rule: "URGENT_NAMES_ITS_LINE", note: "Each stock: its ticker (one we hold or watch in this book), its level (a closed set), what it touches (a numbered line the tool quotes from the thesis, or one of three phrases) and its impact (a limit)." }),
+    f("analyst_id", "IDENTITY"),
+    f("whole_account", "CHOSEN"),
+    f("evidence", "JUDGED", { rule: "NOTE_FIELDS" }),
+    f("source_title", "JUDGED", { rule: "NOTE_FIELDS" }),
+    f("source_url", "TEXT", { note: "The page's link; not counted in the fields' limits." }),
+    f("source_date", "TEXT", { note: "The day it was reported, as the source says." }),
+    f("meaning", "JUDGED", { rule: "NOTE_FIELDS" }),
+    f("check", "JUDGED", { rule: "NOTE_FIELDS" }),
+    f("about_date", "JUDGED", { note: "Kept only when it is ahead of today; the news's own date is dropped and said back." }),
+  ],
+  /** The Market Reviewer's last step (lib/agent/tools/write-market-brief.ts). */
+  write_market_brief: [
+    f("brief", "JUDGED", { rule: "BRIEF_LENGTH" }),
+    f("sections", "TEXT", { note: "The digest's six paragraphs for the owner, each with the pages it rests on." }),
+  ],
   /** The builder's and the editor's proposal (suggest-config.ts), one schema per mode. */
   suggest_config: [
     f("playbook", "CHOSEN", { note: "The builder's only: its setups, hold, confidence, slots and fence are filled in from the playbook (playbookFields)." }),
@@ -265,10 +299,13 @@ export const WRITE_TOOL_EXPORTS: Record<string, string> = {
   record_run_summary: "recordRunSummary",
   complete_run: "completeRun",
   dispatch_thesis_research: "dispatchThesisResearch",
+  write_market_note: "writeMarketNote",
+  write_market_brief: "writeMarketBrief",
 };
 
 export const MODE_PROMPTS: Array<{ mode: string; runMode: string; prompt: PromptName }> = [
   { mode: "research-run", runMode: "MORNING_PLAN", prompt: "daily" },
   { mode: "tactical", runMode: "INTRADAY_TACTICAL", prompt: "tactical" },
   { mode: "principal-chat", runMode: "PRINCIPAL_CHAT", prompt: "chat" },
+  { mode: "market-reviewer", runMode: "MARKET_REVIEWER", prompt: "reviewer" },
 ];

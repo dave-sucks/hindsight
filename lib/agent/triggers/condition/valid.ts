@@ -25,6 +25,9 @@ export function shapeOf(p: unknown): When | null {
   return isShape(p) ? p : null;
 }
 
+/** An account-only measure (an urgent note) is a whole rule: it takes no second condition. */
+export const ACCOUNT_ONLY_ALONE = "An urgent-note rule stands alone. Add it as its own trigger, with no other condition.";
+
 /** A condition, or a group of up to 8, that its measures can check with every number in range. */
 export function whenValid(w: unknown): w is When {
   return refusalOf(w) === null;
@@ -42,6 +45,7 @@ export function refusalOf(w: unknown): string | null {
     if (one !== undefined) return one;
   }
   if (cs.length < 1 || cs.length > 8) return `A trigger takes 1 to 8 conditions; this has ${cs.length}.`;
+  if (cs.some((c) => !isGroup(c) && MEASURES[c.watch]?.accountOnly)) return ACCOUNT_ONLY_ALONE;
   for (const c of cs) {
     const p = refusalOf(c);
     if (p) return p;

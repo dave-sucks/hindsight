@@ -133,7 +133,7 @@ The morning run through `buildRunInput` (`lib/agent/run-input.ts`), for the cron
 `buildDailyRunSystemPromptV2` (`lib/agent/system-prompt.ts`), `buildPrincipalSystemPrompt` (`lib/agent/modes.ts`) and `buildWriterResearchPrompt` put it last; `buildTacticalSystemPrompt` (`lib/agent/system-prompts/intraday-tactical.ts`) puts it before the stock's row.
 
 #### The reviewers
-The Portfolio Reviewer: `lib/agent/portfolio-reviewer.ts`, run by `lib/inngest/functions/portfolio-digest.ts`. The Market Reviewer fills `latestMarketBrief`.
+The Portfolio Reviewer: `lib/agent/portfolio-reviewer.ts`, run by `lib/inngest/functions/portfolio-digest.ts`. `latestMarketBrief` (`lib/agent/market-digest-slot.ts`) reads the Market Reviewer's newest `MarketDigest.brief` for the book, with the time it was written (`lib/agent/market-reviewer/latest.ts`).
 
 #### Sizes
 `lib/agent/prompt-size.test.ts` records every prompt's length with the block of a sample day. Model and steps above are checked against `lib/agent/modes.ts` by `lib/docs/framework.test.ts`.

@@ -67,7 +67,7 @@ export interface StockContext {
   text: string | null;
   openFires: OpenFire[];
   unansweredDecision: UnansweredWord | null;
-  /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
+  /** A note to review, an urgent one or one the owner pinned, that no run has written after (lib/agent/shared-notes.ts); absent when no note names the stock. */
   pinnedNote?: { id: string; at: Date } | null;
 }
 
@@ -96,6 +96,17 @@ export function isPrincipalRow(r: ActivityRow): boolean {
  */
 export function isAgentAnswer(r: ActivityRow): boolean {
   return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r);
+}
+
+/**
+ * A line a run wrote on the stock: its own update, or its note on a proposal
+ * it made, which the Activity feed folds into the proposal's step
+ * (lib/thesis/activity-feed.ts, `noteId`). The notes block and the newest-8
+ * mark both find "the last run line" through this, on the stored lines or on
+ * the feed, so they agree (MU, Nov 10: a sale proposed with its note).
+ */
+export function isRunLine(r: ActivityRow & { noteId?: string | null }): boolean {
+  return isAgentAnswer(r) || (r.type === "PROPOSAL_PROPOSED" && !!r.runId && !!r.noteId);
 }
 
 /**

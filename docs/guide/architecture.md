@@ -10,7 +10,7 @@ Five agents work on one shared record, [the Portfolio Reviewer](agents/portfolio
 
 1. **The data.** Live prices and bars from Alpaca, company numbers and news from Finnhub, filings from the SEC, the web and X. Read live, and named as missing when a source has nothing.
 2. **The record.** The database: analysts, theses with their triggers, positions, orders, your notes, and Activity, one line for every change.
-3. **The clocks.** The chart numbers at 6:30, [morning runs](agents/morning-runs.md) at 8, the [trigger](concepts/triggers.md) check every five minutes. They decide when an agent wakes.
+3. **The clocks.** The chart numbers at 6:30, the [Market Reviewer](agents/market-reviewer.md) at 7:30, [morning runs](agents/morning-runs.md) at 8, the [trigger](concepts/triggers.md) check every five minutes. They decide when an agent wakes.
 4. **The read.** What an agent sees of its book. Each stock is a row at the size today needs, with its [situations](concepts/situations.md) and their instructions attached.
 5. **The agents.** [Morning runs](agents/morning-runs.md), [trigger runs](agents/trigger-runs.md), [chat](agents/chat.md), [Discovery](agents/discovery.md) and [the Writer](agents/writer.md). Each is a job and a list of tools on top of the parts every agent shares.
 6. **The save.** Every change to a thesis goes through the same tool and the same checks, whoever makes it: an agent, the Writer, or you on the thesis sheet. Each agent may send only the fields its job needs, and no agent can lower a floor on a stock we hold.
@@ -41,6 +41,7 @@ Eastern time, on trading days unless it says otherwise.
 
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
 - **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys. Then Wall Street's price targets and EPS consensus for the same stocks.
+- **7:30 AM:** The [Market Reviewer](agents/market-reviewer.md): the market against the whole book, per book being traded. It writes the market brief every agent reads that day, the Market tab, and notes where it finds something.
 - **8:00 AM:** Morning runs, on each analyst's run days.
 - **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
 - **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty.
@@ -59,11 +60,11 @@ Live prices and every bar come from Alpaca, off the consolidated tape, with Finn
 
 Wall Street's price targets, its rating split and the EPS consensus with its revisions come from Nasdaq's own website feed: free, but a website's feed and not a licensed one, so it can change without notice and the 6:25 probe checks it every morning. A stock whose pull fails keeps the day before's numbers.
 
-Some data isn't on any plan we hold: forward revenue estimates, an economic calendar and options chains. The tools say so when asked, and never guess.
+Some data isn't on any plan we hold: forward revenue estimates, an economic calendar and options chains. The tools say so when asked, and never guess. The Market Reviewer's Fed, inflation, jobs and election dates are written into the code from the published calendars, and it says when a list runs out; the VIX and the 10-year yield come from Cboe's public history files.
 
 ## The right model for each job
 
-- **Morning runs and trigger runs:** GPT-5.4. Up to 65 and 15 steps a run, with the prompt cached between steps.
+- **Morning runs, trigger runs and the Market Reviewer:** GPT-5.4. Up to 65, 15 and 25 steps a run, with the prompt cached between steps.
 - **The Writer:** Claude Sonnet 4.6. Won a side-by-side test on grounded research and getting fiscal years right.
 - **Chat:** Claude Sonnet 4.6. With thinking on, for the questions that need a careful answer.
 - **Analyst builder:** GPT-4o. Fast, because you're waiting on it in a conversation.
@@ -77,6 +78,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 | [Discovery](agents/discovery.md) | When you ask in chat | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
 | [The Writer](agents/writer.md) | When an agent or you ask | Its own pull of one stock's data, and the web | The whole thesis | Never |
 | [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | The plan, its verdict and a note | Proposes |
+| [Market Reviewer](agents/market-reviewer.md) | 7:30 AM ET on weekdays | The market, the dates ahead, the book with each stock's written claim, situations, newest run line and headlines, the analysts, the Portfolio Digest | Its notes, a level per stock; the market brief and the Market tab | Never |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires; right after an Auto trade, to write it up | The one stock it woke for, with the fire | The plan and a note; an Auto trade's reason | Proposes (an Auto trade is made before it reads) |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | Also the belief and the direction | Proposes, at your word |
 | [Portfolio Reviewer](agents/portfolio-reviewer.md) | 8:00 PM ET on weekdays | The day's facts, gathered by code | Nothing: it writes a brief and a digest | Never |

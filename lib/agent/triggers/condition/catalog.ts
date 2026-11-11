@@ -17,6 +17,7 @@ import { report, surprise } from "./measures/earnings";
 import { filing, insiders } from "./measures/filing";
 import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
+import { note } from "./measures/note";
 import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch, When } from "./types";
 import { isGroup } from "./types";
 
@@ -33,6 +34,7 @@ export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   insiders,
   repeat,
   from_date: fromDate,
+  note,
 };
 
 export interface TypeDef {
@@ -49,6 +51,7 @@ const TYPES: readonly Omit<TypeDef, "measures">[] = [
   { id: "earnings", label: "Earnings" },
   { id: "filing", label: "Filing" },
   { id: "schedule", label: "Schedule" },
+  { id: "note", label: "Note" },
 ];
 
 export const TRIGGER_TYPES: readonly TypeDef[] = TYPES.map((t) => ({

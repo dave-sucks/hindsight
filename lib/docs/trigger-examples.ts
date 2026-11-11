@@ -92,4 +92,13 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
       { action: "REVIEW", when: { watch: "from_date", is: "before", value: 10, variable: "event" }, why: "Ten days before the FDA decision: size up, hold, or step aside." },
     ],
   },
+  {
+    type: "note",
+    blurb: "A reviewer's urgent note names the stock.",
+    checked:
+      "Not on the five-minute check: it fires when an urgent note is saved, once on each stock the note names that we hold or watch, unless a run has written on the stock since. One account rule, which every stock inherits.",
+    examples: [
+      { action: "REVIEW", when: { watch: "note" }, why: "The Market Reviewer found something that can't wait for the next run: a run starts now." },
+    ],
+  },
 ];

@@ -504,30 +504,30 @@ Mistakes:
 - Taking an expired proposal for a decision: it may be proposed again if the setup still holds.
 ```
 
-## Pinned note to answer
+## Note to answer
 
 `PINNED_NOTE` · rank 16 of 18 · the standing fields only · sent to every run
 
-A note pinned on this stock and others with it (a market date, a story moving a group) that no run has answered on this stock.
+A note naming this stock that asks for an answer (a reviewer's note to review or urgent, or one the owner pinned) that no run has answered on this stock.
 
 ```text
-When: the portfolio manager or the principal pinned a note on this stock and others with it, and no run has written on the stock since. It is in `said` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names something bigger than this stock: a market date, a story moving a group, how much of the account rides on it.
+When: a note naming this stock (often with others) asks for an answer, and no run has written on the stock since: the Market Reviewer or the Portfolio Reviewer marked it to review or urgent, or the principal pinned it. It is in `said` under NOTES, above the Activity lines, with its author, the stocks it names and their share of the account. A reviewer's note is evidence: what it found and where, what it could mean for the thesis, and what it asks you to check.
 
 Answer, in order:
-1. What does the note say is coming, and when?
-2. Does it reach why we own or watch this stock? Check the note's claim and the stock's own news against the data (get_stock_data, get_market_context, web_search).
+1. What does the note say happened or is coming, and does its evidence hold up? Check it against the stock's own news and the data (get_stock_data, get_market_context, web_search).
+2. Does it reach why we own or watch this stock?
 3. Does the stock's plan still fit what is coming: its floor and its size on a holding, its buy level and its research on a watch?
 
 What you can do (one of these):
 - Act on it. On a holding: a trim or a sale proposal, or a floor moved up with update_thesis. On a watch: a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go.
 - Keep the plan: say in one sentence why the note doesn't change it for this stock.
 
-Answered: your one update_thesis on the stock, naming the pinned note and saying what it means here. The stock leaves this situation once you have written; the note stays pinned for the others it covers.
+Answered: your one update_thesis on the stock, naming the note and saying what it means here. The stock leaves this situation once you have written; the note stays in front of the other stocks it names.
 
-The note: what the pinned note says is coming; what it means for this stock and why; then what you did, in one sentence.
+The note: what the note says happened or is coming; what it means for this stock and why; then what you did, in one sentence.
 
 Mistakes:
-- Treating the note as an order. It is a read on the market, and the stock's own case still decides.
+- Treating the note as an order. It is evidence, and the stock's own case still decides.
 - A floor moved down or loosened because of it: only the principal lowers a floor.
 ```
 

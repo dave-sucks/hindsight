@@ -79,7 +79,11 @@ export function marketNumbersFrom(input: MarketInputs, now: Date): MarketNumbers
 }
 
 const MINUS = "−";
-const signed = (n: number, digits = 2) => `${n < 0 ? MINUS : "+"}${Math.abs(n).toFixed(digits)}%`;
+const signed = (n: number, digits = 2) => {
+  const shown = Math.abs(n).toFixed(digits);
+  // A move that rounds to zero has no sign: "0.0%", never "−0.0%".
+  return Number(shown) === 0 ? `${shown}%` : `${n < 0 ? MINUS : "+"}${shown}%`;
+};
 const vsAverage = (n: number, label: string) => `${Math.abs(n).toFixed(1)}% ${n < 0 ? "below" : "above"} its ${label}`;
 
 /** The numbers as lines, each left out when its piece is missing. `now` names a session that isn't today's by its day. */

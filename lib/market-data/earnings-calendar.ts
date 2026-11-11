@@ -53,15 +53,19 @@ function normalize(row: FinnhubCalendarRow): EarningsReport | null {
   };
 }
 
-/** Every calendar row in [from, to], normalized. Symbol-scoped when given. */
+/** Every calendar row in [from, to], normalized. Symbol-scoped when given. `throwOnError`: a vendor miss throws instead of reading as no reports. */
 export async function fetchCalendarRows(opts: {
   from: string;
   to: string;
   symbol?: string;
+  throwOnError?: boolean;
 }): Promise<EarningsReport[]> {
   const sym = opts.symbol ? `&symbol=${opts.symbol.toUpperCase()}` : "";
   const res = await finnhub(`/calendar/earnings?from=${opts.from}&to=${opts.to}${sym}`, 1);
-  if (res.error || res.data == null) return [];
+  if (res.error || res.data == null) {
+    if (opts.throwOnError) throw new Error(res.error ?? "no answer");
+    return [];
+  }
   const rows = (res.data as { earningsCalendar?: FinnhubCalendarRow[] }).earningsCalendar ?? [];
   return rows.map(normalize).filter((r): r is EarningsReport => r != null);
 }

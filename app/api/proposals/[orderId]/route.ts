@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId } from "@/lib/auth/account";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
+import { saleNotes } from "@/lib/agent/shared-notes.server";
 
 export async function GET(
   _req: Request,
@@ -38,6 +39,7 @@ export async function GET(
       quantity: true,
       status: true,
       rationale: true,
+      createdAt: true,
       position: {
         select: {
           accountId: true,
@@ -93,5 +95,10 @@ export async function GET(
     // For the card: the reason, and whether the analyst is still writing it.
     rationale: order.rationale,
     writing: await writeupComing(order.id),
+    // A sale's card: the reviewers' notes on it, from the day before it was proposed on.
+    reviewerNotes:
+      order.intent === "CLOSE" || order.intent === "PARTIAL_CLOSE"
+        ? await saleNotes(user.id, order.symbol, new Date(order.createdAt.getTime() - 24 * 3_600_000))
+        : [],
   });
 }

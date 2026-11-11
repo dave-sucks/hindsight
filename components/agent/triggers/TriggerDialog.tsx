@@ -79,7 +79,8 @@ export function AddTrigger(props: AddProps & { label?: string; size?: "sm" | "xs
       <TypeMenu
         label={props.label ?? "Add trigger"}
         size={props.size ?? "sm"}
-        types={TRIGGER_TYPES.map((t) => t.id)}
+        // The urgent-note rule is the account's: a stock or an analyst doesn't offer it.
+        types={TRIGGER_TYPES.filter((t) => props.level === "ACCOUNT" || !t.measures.every((m) => m.accountOnly)).map((t) => t.id)}
         onPick={(t) => {
           setType(t);
           setOpen(true);
@@ -204,7 +205,7 @@ export function TriggerDialog({
             <TypeMenu
               variant="ghost"
               label="And also…"
-              types={TRIGGER_TYPES.filter((t) => !t.measures.every((m) => m.timed)).map((t) => t.id)}
+              types={TRIGGER_TYPES.filter((t) => !t.measures.every((m) => m.timed || m.accountOnly)).map((t) => t.id)}
               onPick={(t) => update({ conditions: [draft.conditions[0], typeDef(t).measures[0].fresh()] })}
             />
           )}

@@ -159,7 +159,8 @@ export const getTheses = defineTool({
       ...result,
       data: {
         ...restWithoutGuidance,
-        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
+        // The analysts' situation texts are theirs: the Market Reviewer's reads leave them out.
+        ...(Object.keys(guidance).length > 0 && ctx.runMode !== "MARKET_REVIEWER" ? { guidance } : {}),
         theses,
         ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history
@@ -451,6 +452,8 @@ export const getTheses = defineTool({
     // positions, as the sheet does.
     const tickerFiltered = !!(args.tickers && args.tickers.length > 0);
     const facts = await loadStockFacts(theses, {
+      // The agents read each note with its share of the account.
+      noteShares: true,
       userId: ctx.userId,
       analystId: ctx.analystId,
       runEnvironment: ctx.runEnvironment,
@@ -833,7 +836,8 @@ export const getTheses = defineTool({
         count: theses.length,
         active: activeCount,
         watching: watchingCount,
-        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
+        // The analysts' situation texts are theirs: the Market Reviewer's reads leave them out.
+        ...(Object.keys(guidance).length > 0 && ctx.runMode !== "MARKET_REVIEWER" ? { guidance } : {}),
         // Full rows: the work list (needsAction non-null / PROMOTED), or
         // the whole book under detail="book".
         theses: enriched,

@@ -57,6 +57,9 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 - **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
 - **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
+- **Market Reviewer:** the agent that reads the market and the whole book at 7:30 every weekday and writes the market brief, the market digest and notes. It never trades. See [Market Reviewer](agents/market-reviewer.md).
+- **Market digest:** the Market Reviewer's longer read for the homepage's Market tab, in sections with its sources linked.
+- **Note level:** each stock a note names gets its own: context (a run on the stock reads it), review (the stock goes on its analyst's next run), urgent (a run starts on the stock) or on the waiting sale (shown on the sale's proposal card).
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
 - **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it. See [Discovery](agents/discovery.md).
 - **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).

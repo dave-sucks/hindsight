@@ -1225,6 +1225,29 @@ model PortfolioDigest {
   @@index([date])
 }
 
+// What the Market Reviewer writes: one row per book per weekday, at 7:30 AM ET
+// (lib/inngest/functions/market-reviewer.ts).
+model MarketDigest {
+  id          String   @id @default(cuid())
+  accountId   String
+  environment String // "PAPER" | "LIVE"
+  date        DateTime // the trading day it was written for (ET)
+  /// The market brief every agent reads: 3 to 5 sentences, 700 characters at most.
+  brief       String
+  /// The digest for the Market tab: its sections in markdown, sources linked.
+  narrative   String
+  /// The inputs it was given (lib/agent/market-reviewer/inputs.ts).
+  facts       Json
+  model       String?
+  /// The ResearchRun that wrote it.
+  runId       String?
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, environment, date])
+  @@index([accountId])
+  @@index([date])
+}
+
 // ─── USER API KEYS ─────────────────────────────────────────────────────────
 // Stores encrypted third-party API credentials per user.
 // One row per (userId, provider) pair. Keys are AES-256-GCM encrypted at rest.
@@ -1506,7 +1529,7 @@ model StreetConsensus {
 model SharedNote {
   id          String    @id @default(cuid())
   userId      String
-  /// OWNER or PORTFOLIO_MANAGER
+  /// OWNER, MARKET_REVIEWER or PORTFOLIO_REVIEWER
   author      String
   /// The run that wrote it, when a run did.
   runId       String?
@@ -1517,6 +1540,8 @@ model SharedNote {
   tickers     String[]  @default([])
   /// The market date it is about, when there is one (YYYY-MM-DD, New York).
   eventDate   String?
+  /// Each named stock's level, ticker → CONTEXT | REVIEW | URGENT | PROPOSAL (lib/agent/shared-notes.ts); a stock not listed is CONTEXT.
+  levels      Json      @default("{}")
   /// Read above every covered stock's Activity lines until then; null when not pinned.
   pinnedUntil DateTime?
   createdAt   DateTime  @default(now())

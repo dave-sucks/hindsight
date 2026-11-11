@@ -29,6 +29,8 @@ describe("a message on the Portfolio Reviewer's run", () => {
 
   it("the run mode is in the one read-only set the page and the route both read", () => {
     expect(READ_ONLY_RUN_MODES.has("PORTFOLIO_REVIEW")).toBe(true);
+    // The Market Reviewer's run is the account's too: no composer, and the route refuses a message on it.
+    expect(READ_ONLY_RUN_MODES.has("MARKET_REVIEWER")).toBe(true);
     expect(READ_ONLY_RUN_MODES.has("MORNING_PLAN")).toBe(false);
   });
 });
