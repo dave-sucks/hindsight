@@ -67,7 +67,7 @@ export interface StockContext {
   text: string | null;
   openFires: OpenFire[];
   unansweredDecision: UnansweredWord | null;
-  /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
+  /** A note to review, an urgent one or one the owner pinned, that no run has written after (lib/agent/shared-notes.ts); absent when no note names the stock. */
   pinnedNote?: { id: string; at: Date } | null;
 }
 

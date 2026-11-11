@@ -171,7 +171,7 @@ export async function GET(
     { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
     FEED_WINDOW,
   ).catch(() => []);
-  const recent = newestEightForRuns(feed, new Date());
+  const recent = newestEightForRuns(feed, thesis.ticker, new Date());
   const noted = notedItems(feed);
 
 

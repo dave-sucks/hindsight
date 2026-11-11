@@ -89,6 +89,25 @@ export function secFilingStandingTriggers(): Trigger[] {
   ];
 }
 
+/**
+ * An urgent note starts a run now on each stock it names that we hold or
+ * watch: an account rule like the others, so it shows in Settings → Triggers
+ * and every thesis inherits it. It fires when the note is saved
+ * (lib/agent/triggers/urgent-note.ts), never on the five-minute check.
+ */
+export function urgentNoteStandingTriggers(): Trigger[] {
+  return [
+    {
+      id: "seed:urgent-note",
+      predicate: { watch: "note" },
+      action: "REVIEW",
+      rationale: "An urgent note names this stock: read it, check its evidence, and say what it means for the stock today.",
+      fireMode: "ASK_NOW",
+      source: "DEFAULT",
+    },
+  ];
+}
+
 /** The standing wakes every account carries: earnings and SEC filings. */
 function standingWakeTriggers(): Trigger[] {
   return [...earningsStandingTriggers(), ...secFilingStandingTriggers()];
@@ -101,6 +120,8 @@ function standingWakeTriggers(): Trigger[] {
  * seed stamp, so a later deletion by the principal sticks.
  */
 const STANDING_RULES_SINCE = new Date("2026-09-15T00:00:00Z");
+/** Accounts seeded before this date are missing the urgent-note rule, and only that is added. */
+export const URGENT_NOTE_RULE_SINCE = new Date("2026-11-10T00:00:00Z");
 
 export function accountSeedTriggers(): Trigger[] {
   return [
@@ -112,6 +133,7 @@ export function accountSeedTriggers(): Trigger[] {
     // The add prompts. Sell rules live on each analyst, not the account.
     ...accountStandingRules(),
     ...standingWakeTriggers(),
+    ...urgentNoteStandingTriggers(),
   ].map((t) =>
     withFireMode({
       ...t,
@@ -146,10 +168,12 @@ export async function seedAccountTriggers(accountId: string): Promise<boolean> {
 
 /**
  * Bring an already-seeded account up to the current standing set — the
- * earnings and filing wakes. Runs at the top of every morning run and is a
- * no-op once the seed stamp is past `STANDING_RULES_SINCE`, which is what keeps
- * it from resurrecting a rule the principal deleted: added once, stamped,
- * never again. Unseeded accounts go through the normal seed. Returns how
+ * earnings and filing wakes for an account seeded before they existed, and
+ * the urgent-note rule for one seeded before it did. Runs at the top of every
+ * morning run and the Market Reviewer's, and is a no-op once the seed stamp
+ * is past `URGENT_NOTE_RULE_SINCE`, which is what keeps it from resurrecting a
+ * rule the principal deleted: each is added once, stamped, never again. An
+ * account seeded after the earnings and filing wakes gets only the new rule. Unseeded accounts go through the normal seed. Returns how
  * many rules were added.
  */
 export async function ensureAccountStandingRules(accountId: string): Promise<number> {
@@ -161,11 +185,12 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
   if (account.triggersSeededAt == null) {
     return (await seedAccountTriggers(accountId)) ? accountSeedTriggers().length : 0;
   }
-  if (account.triggersSeededAt >= STANDING_RULES_SINCE) return 0;
+  if (account.triggersSeededAt >= URGENT_NOTE_RULE_SINCE) return 0;
 
   const current = Array.isArray(account.triggers) ? (account.triggers as unknown as Trigger[]) : [];
   const have = new Set(current.map(triggerSlot));
-  const missing = standingWakeTriggers()
+  const wanted = [...(account.triggersSeededAt < STANDING_RULES_SINCE ? standingWakeTriggers() : []), ...urgentNoteStandingTriggers()];
+  const missing = wanted
     .filter((t) => !have.has(triggerSlot(t)))
     .map((t) => withFireMode({ ...t, id: globalThis.crypto.randomUUID() }));
 

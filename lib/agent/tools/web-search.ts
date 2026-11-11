@@ -15,6 +15,8 @@ import type { SignalItem, WebSearchToolData } from "@/lib/agent/tool-types";
 const liveSearchCounts = new Map<string, number>();
 /** Searches per run (a first search on a stock doesn't count against it). */
 export const LIVE_SEARCH_BUDGET = 5;
+/** The Market Reviewer's: it reads the whole market and the book in one run, and its headlines arrive in its inputs, so no stock gets a free search. */
+export const MARKET_REVIEWER_SEARCH_BUDGET = 10;
 // The stocks whose one news search this run has spent (voice.ts: look it up before a decision note).
 const stockSearches = new Map<string, Set<string>>();
 /** The reply budget a search asks Sonar for. */
@@ -43,12 +45,12 @@ export const webSearch = defineTool({
   },
 
   execute: async ({ query, recency = "day", ticker }, ctx) => {
-    // Every run gets the same budget; there is no per-analyst setting.
-    const budget = LIVE_SEARCH_BUDGET;
+    // Every run gets the same budget, the Market Reviewer a larger one; there is no per-analyst setting.
+    const budget = ctx.runMode === "MARKET_REVIEWER" ? MARKET_REVIEWER_SEARCH_BUDGET : LIVE_SEARCH_BUDGET;
     const count = liveSearchCounts.get(ctx.runId) ?? 0;
     const searched = stockSearches.get(ctx.runId) ?? new Set<string>();
     const stock = ticker?.trim().toUpperCase().replace(/^\$/, "") || null;
-    const stockSearch = stock != null && !searched.has(stock);
+    const stockSearch = ctx.runMode !== "MARKET_REVIEWER" && stock != null && !searched.has(stock);
 
     if (!stockSearch && count >= budget) {
       return {

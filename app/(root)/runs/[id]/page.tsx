@@ -53,8 +53,10 @@ export default async function RunPage({
 
   const analystName = isPodcastSegmentRun
     ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
-    : (run.agentConfig?.name ??
-        (run.source === "MANUAL" ? "Manual Research" : "Agent"));
+    : run.mode === "MARKET_REVIEWER"
+      ? "Market Reviewer"
+      : (run.agentConfig?.name ??
+          (run.source === "MANUAL" ? "Manual Research" : "Agent"));
 
   // Extract config snapshot from the run parameters
   const config =
@@ -126,6 +128,9 @@ export default async function RunPage({
   // (a) wrong route, (b) spawn a competing agent. Replay still works
   // through the existing message-persistence path.
   const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
+  // The Market Reviewer runs inside its Inngest cron (lib/inngest/functions/
+  // market-reviewer.ts), the same shape as the writer: never auto-start here.
+  const isMarketDigestMode = run.mode === "MARKET_REVIEWER";
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -167,7 +172,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !isMarketDigestMode}
             messages={persistedMessages ?? undefined}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}

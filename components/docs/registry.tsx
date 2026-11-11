@@ -11,6 +11,7 @@ import {
   Flag,
   Layers,
   MessageCircle,
+  Newspaper,
   PenLine,
   Search,
   Sun,
@@ -25,6 +26,7 @@ export type DocSlug =
   | "writer"
   | "morning-runs"
   | "trigger-runs"
+  | "market-reviewer"
   | "chat"
   | "analyst-builder"
   | "analysts"
@@ -56,6 +58,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, blurb: "Researches one stock in depth and writes its thesis, plan and all." },
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "Every weekday morning, each analyst reviews its whole book." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
+  { slug: "market-reviewer", title: "Market Reviewer", group: "Agents", icon: Newspaper, blurb: "Every weekday at 7:30, it reads the market and the book and writes the market brief, the Market tab and notes where it finds something." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
   { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
@@ -107,6 +110,8 @@ export function docForRunMode(mode: string | null | undefined): DocSlug {
       return "writer";
     case "PRINCIPAL_CHAT":
       return "chat";
+    case "MARKET_REVIEWER":
+      return "market-reviewer";
     default:
       return "morning-runs";
   }

@@ -5,7 +5,7 @@ import type { DashboardData } from "@/lib/actions/portfolio.actions";
 import { getCoverageData } from "@/lib/actions/coverage.actions";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
-import { getLatestDigest } from "@/lib/actions/digest.actions";
+import { getLatestDigest, getLatestMarketDigest } from "@/lib/actions/digest.actions";
 import { getPinnedTickers } from "@/lib/actions/pins.actions";
 
 const EMPTY_DASHBOARD: DashboardData = {
@@ -41,9 +41,10 @@ const EMPTY_DASHBOARD: DashboardData = {
 export default async function Home() {
   const environment = await getCurrentEnvironment();
 
-  const [data, digest, coverage, pinned, supabase] = await Promise.all([
+  const [data, digest, marketDigest, coverage, pinned, supabase] = await Promise.all([
     getDashboardData(environment).catch(() => EMPTY_DASHBOARD),
     getLatestDigest(environment).catch(() => null),
+    getLatestMarketDigest(environment).catch(() => null),
     // Coverage Table (Feature B). Read-only, additive — failure degrades to
     // empty groups so the rest of the dashboard is unaffected.
     getCoverageData(environment).catch(() => ({ trades: [], sold: [], watching: [], passed: [] })),
@@ -62,6 +63,7 @@ export default async function Home() {
         data={data}
         userId={user?.id}
         digest={digest}
+        marketDigest={marketDigest}
         coverage={coverage}
         pinned={pinned}
       />

@@ -22,7 +22,6 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
-import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -58,13 +57,7 @@ import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
-import { DigestMarkdown } from '@/components/ui/ticker-markdown';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { DigestCard } from '@/components/dashboard/DigestCard';
 import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
@@ -729,135 +722,6 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
-// ── DigestPreviewCard ─────────────────────────────────────────────────────────
-// Compact teaser above the positions list. Shows the digest date + ~160 chars
-// of narrative (stripped of markdown) with a bottom fade, click opens dialog.
-
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold**
-    .replace(/\*([^*]+)\*/g, '$1')            // *italic*
-    .replace(/^#+\s/gm, '')                    // headings
-    .replace(/`[^`]*`/g, '')                   // code
-    .trim();
-}
-
-/** "Today, 4:32 PM" / "Yesterday, 4:32 PM" / "Mon Oct 26, 4:32 PM" — the
- *  trading day the digest covers (a UTC-midnight date) against today in ET,
- *  with the time it was written. */
-function formatDigestStamp(digest: LatestDigest): string {
-  const day = digest.date.slice(0, 10);
-  const etDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-  const now = new Date();
-  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const dayLabel =
-    day === etDay(now)
-      ? 'Today'
-      : day === etDay(yesterday)
-        ? 'Yesterday'
-        : new Date(digest.date).toLocaleDateString('en-US', {
-            weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
-          }).replace(',', '');
-  const written = new Date(digest.createdAt);
-  if (Number.isNaN(written.getTime())) return dayLabel;
-  const time = written.toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
-  });
-  return `${dayLabel}, ${time}`;
-}
-
-/** Win rate as ten ticks; the tooltip trigger is the ticks alone so hovering
- *  beside them does nothing. */
-function WinRateTicks({ winRate }: { winRate: number | null }) {
-  return (
-    <UITooltipProvider>
-      <UITooltip>
-        <UITooltipTrigger render={<span className="inline-flex cursor-default" />}>
-          <TickBar
-            height={12}
-            ticks={Array.from({ length: 10 }, (_, i): Tick => ({
-              color: winRate != null && i < Math.round(winRate * 10)
-                ? 'bg-foreground'
-                : 'bg-muted-foreground/25',
-            }))}
-            className="w-12"
-          />
-        </UITooltipTrigger>
-        <UITooltipContent side="bottom" align="end">
-          <div className="text-xs">
-            {winRate != null ? `${Math.round(winRate * 100)}% win rate` : 'No closed trades yet'}
-          </div>
-        </UITooltipContent>
-      </UITooltip>
-    </UITooltipProvider>
-  );
-}
-
-function DigestPreviewCard({
-  digest,
-  winRate,
-}: {
-  digest: LatestDigest | null | undefined;
-  winRate: number | null;
-}) {
-  const [open, setOpen] = useState(false);
-  if (digest === undefined) return null;
-
-  // Slice generously so the narrative fills the taller desktop card; the
-  // line-clamp + bottom fade handle the visual cutoff at either size.
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 700) : null;
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => digest && setOpen(true)}
-        className={cn(
-          // lg:h-[390px] matches the chart card so the two columns align;
-          // flex-col + overflow-hidden let the narrative fill and fade out.
-          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[390px]',
-          digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
-          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-            {digest ? formatDigestStamp(digest) : 'Portfolio Digest'}
-          </p>
-          <WinRateTicks winRate={winRate} />
-        </div>
-        {digest && preview ? (
-          <div className="relative flex-1 min-h-0 overflow-hidden">
-            <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
-              {preview}
-            </p>
-            {/* Subtle fade so the clamped narrative trails off into the card. */}
-            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
-        )}
-      </button>
-
-      {digest && (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-2xl p-0">
-            <DialogHeader className="px-5 pt-5 pb-3 border-b">
-              <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                {formatDigestStamp(digest)}
-              </p>
-              <DialogTitle className="text-base font-semibold">Portfolio Digest</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
-              <DigestMarkdown>{digest.narrative}</DigestMarkdown>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-    </>
-  );
-}
-
 // PositionsPanel and DashboardTradeRow were removed in favour of CoverageTable
 // (the full-width portfolio view replacing the right-rail trade list).
 // To restore, check git history for the PositionsPanel + DashboardTradeRow implementations.
@@ -874,6 +738,8 @@ interface DashboardClientProps {
    * the digest card.
    */
   digest?: LatestDigest | null;
+  /** The Market Digest (7:30 AM ET), the digest card's second tab. */
+  marketDigest?: LatestDigest | null;
   /**
    * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). When
    * present, the Active/Watching/Passed coverage tables render inside the
@@ -890,7 +756,7 @@ interface DashboardClientProps {
   pinned?: string[];
 }
 
-export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
+export default function DashboardClient({ data, userId, digest, marketDigest, coverage, pinned }: DashboardClientProps) {
   const router = useRouter();
   const [range, setRange] = useState<Range>('1D');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
@@ -1499,7 +1365,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
-            mobileDigest={<DigestPreviewCard digest={digest} winRate={portfolio.winRate} />}
+            mobileDigest={<DigestCard portfolio={digest} market={marketDigest} winRate={portfolio.winRate} />}
           />
           </div>
 
@@ -1514,7 +1380,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             {/* Pinned shortlist — the hand-picked names you want in view.
                 Below proposals (time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
+            <DigestCard portfolio={digest} market={marketDigest} winRate={portfolio.winRate} />
           </div>
 
         </div>

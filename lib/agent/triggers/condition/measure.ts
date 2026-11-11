@@ -88,6 +88,8 @@ export interface MeasureDef {
   actions?: readonly TriggerAction[];
   /** A clock, not a condition: "Review every 30 days." It stands alone. */
   timed?: boolean;
+  /** An account rule only: agents never write it, and its check refuses it on a stock or an analyst. */
+  accountOnly?: boolean;
   /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
   says?: (c: Condition, words: string) => string;
   /**

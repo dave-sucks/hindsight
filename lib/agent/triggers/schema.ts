@@ -49,7 +49,8 @@ export function predicateInputSchema() {
 let agentPredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
 
 function buildPredicateInputSchema() {
-  const byWatch = Object.fromEntries(Object.values(MEASURES).map((m) => [m.id, measureBranch(m)])) as Record<Watch, z.ZodObject>;
+  // An account-only measure (an urgent note's rule) is never an agent's to write.
+  const byWatch = Object.fromEntries(Object.values(MEASURES).filter((m) => !m.accountOnly).map((m) => [m.id, measureBranch(m)])) as Record<Watch, z.ZodObject>;
   // A refusal says what's wrong: the field a measure is missing, or, for no measure at all, the list of them.
   const explain = (input: unknown): string => {
     const w = input && typeof input === "object" ? (input as { watch?: unknown }).watch : undefined;

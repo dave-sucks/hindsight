@@ -7,7 +7,7 @@
 
 import type { AgentMode } from "@/lib/agent/modes";
 
-export type DocsAgentId = "morning" | "trigger" | "chat" | "writer" | "builder";
+export type DocsAgentId = "morning" | "trigger" | "market" | "chat" | "writer" | "builder";
 export type ToolKind = "market" | "book" | "thesis" | "trade" | "run";
 export type ToolSource = "alpaca" | "finnhub" | "sec" | "perplexity" | "anthropic" | "hindsight" | "inngest";
 
@@ -21,6 +21,7 @@ export interface DocsAgent {
 export const DOCS_AGENTS: readonly DocsAgent[] = [
   { id: "morning", name: "Morning run", modes: ["research-run"] },
   { id: "trigger", name: "Trigger run", modes: ["tactical"] },
+  { id: "market", name: "Market Reviewer", modes: ["market-reviewer"] },
   { id: "chat", name: "Chat", modes: ["principal"] },
   { id: "writer", name: "Writer", modes: [] },
   { id: "builder", name: "Analyst builder", modes: ["builder", "editor"] },
@@ -296,6 +297,12 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["hindsight"],
     summary: "Saves your reasoning on a stock, in your words. The analyst reads your newest notes first.",
   },
+  write_market_note: {
+    name: "Reviewer's note",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "The Market Reviewer's note to some stocks, one analyst or the whole account, at a level: context, review (each named stock goes on its analyst's next run) or urgent (a run starts now). It trades nothing and changes no plan.",
+  },
   dispatch_thesis_research: {
     name: "Send to the Writer",
     kind: "thesis",
@@ -367,6 +374,12 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     kind: "run",
     sources: ["hindsight"],
     summary: "The ranked recap: each stock with the action taken, checked against what the run actually did.",
+  },
+  write_market_brief: {
+    name: "Market brief and digest",
+    kind: "run",
+    sources: ["hindsight"],
+    summary: "Saves the market brief every agent reads today and the Market tab's digest, with the inputs the run was given, and ends the run.",
   },
   complete_run: {
     name: "Finish the run",

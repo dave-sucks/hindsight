@@ -58,7 +58,14 @@ export type AgentMode =
   // writes via record_thesis or update_thesis. Its toolAllowlist is empty by
   // design — the V2 pipeline calls those tools server-side, not through the
   // model. See docs/plans/THESIS_WRITER_V2.md.
-  | "thesis-writer";
+  | "thesis-writer"
+  // The Market Reviewer — 7:30 AM ET every weekday, before the morning runs.
+  // Reads the market and the book, writes the market brief every agent reads
+  // and the digest for the Market tab, and notes where it finds something.
+  // It never trades and never edits a thesis. Spawned by
+  // lib/inngest/functions/market-reviewer.ts; its inputs are
+  // lib/agent/market-reviewer/inputs.ts.
+  | "market-reviewer";
 
 // ── Mode config ──────────────────────────────────────────────────────────────
 
@@ -84,6 +91,9 @@ export interface ModeConfig {
   /** Vercel function maxDuration (seconds) */
   maxDuration: number;
 }
+
+/** The morning runs' model. The Market Reviewer reads the same day on the same model. */
+const MORNING_RUN_MODEL = "gpt-5.4";
 
 export const MODES: Record<AgentMode, ModeConfig> = {
   "research-run": {
@@ -123,7 +133,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // 2026-06-15 — gpt-5.5 → gpt-5.4 cost swap (~½ price, near-frontier).
     // docs/plans/OPENAI_COST_REDUCTION.md #1. Revert to gpt-5.5 if analyst
     // quality regresses on the next morning run.
-    model: "gpt-5.4",
+    model: MORNING_RUN_MODEL,
     provider: "openai",
     // Bumped 50 → 65 on 2026-04-24. A complete 6-stage run has roughly:
     //   Stage 1: 2–3 steps (brief + signals)
@@ -439,6 +449,30 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     // 330s etc.); typical pipeline is ~200-250s, worst case ~440s. This
     // value no longer drives an AbortSignal — the /api/inngest route's own
     // maxDuration (800) is the process ceiling.
+    maxDuration: 800,
+  },
+  // ── Market Reviewer (7:30 AM ET, before the morning runs) ───────────────
+  // The inputs arrive in its opening message (lib/agent/market-reviewer/
+  // inputs.ts); these tools are what it can pull or write on top. It feeds
+  // the trigger engine and trades nothing: no trade tool and no
+  // update_thesis. Its notes are SharedNote rows by the Market Reviewer; it
+  // ends once write_market_brief has saved the brief and the digest.
+  "market-reviewer": {
+    model: MORNING_RUN_MODEL,
+    provider: "openai",
+    // The last two steps can only write the brief (forceBriefAtTheEnd, lib/agent/market-reviewer/run.ts).
+    maxSteps: 25,
+    toolAllowlist: [
+      // Read (web_search has a larger budget on this run: lib/agent/tools/web-search.ts)
+      "get_theses",
+      "get_stock_data",
+      "web_search",
+      // A note to stocks, one analyst or the account, with its level
+      "write_market_note",
+      // Terminal: saves the brief and the digest and ends the run
+      "write_market_brief",
+    ] as const,
+    hasSuggestConfig: false,
     maxDuration: 800,
   },
 };

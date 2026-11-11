@@ -233,6 +233,11 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       return c.is === "before" ? daysUntil >= 0 && daysUntil <= c.value : -daysUntil >= c.value;
     },
   },
+
+  // Fires when an urgent note is saved (lib/agent/triggers/urgent-note.ts), never on the check.
+  note: {
+    holds: () => false,
+  },
 };
 
 export function whenHolds(w: When, ctx: EvaluationContext): boolean {

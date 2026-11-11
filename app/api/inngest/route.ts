@@ -27,6 +27,7 @@ import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
 // rows yet (agent rewire is a separate reviewed PR). See
 // docs/plans/PORTFOLIO_DIGEST.md (Feature A).
 import { portfolioDigest } from "@/lib/inngest/functions/portfolio-digest";
+import { marketReviewer } from "@/lib/inngest/functions/market-reviewer";
 // The approval email; an Auto trade's waits for the analyst's write-up.
 import { proposalPendingEmail } from "@/lib/inngest/functions/proposal-pending-email";
 
@@ -109,6 +110,9 @@ export const { GET, POST, PUT } = serve({
     proposalExpiry,
     // Daily Portfolio Digest — EOD account-level brief (Feature A backend).
     portfolioDigest,
+    // 7:30 AM ET Mon-Fri — the Market Reviewer, one agent run per traded book,
+    // before the morning runs (lib/agent/market-reviewer/).
+    marketReviewer,
     proposalPendingEmail,
   ],
 });

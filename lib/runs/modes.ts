@@ -9,4 +9,5 @@ export const RUNS_MODE_OPTIONS: { value: string; label: string }[] = [
   { value: "INTRADAY_TACTICAL", label: "Tactical" },
   { value: "DISCOVERY", label: "Discovery" },
   { value: "THESIS_WRITER", label: "Thesis Research" },
+  { value: "MARKET_REVIEWER", label: "Market Reviewer" },
 ];

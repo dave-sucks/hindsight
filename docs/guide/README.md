@@ -13,7 +13,7 @@ This folder is the guide, and this page is where to start. The /docs pages in th
 
 The folders match the sidebar:
 
-- `agents/`: the five trading agents and the analyst builder, one doc each.
+- `agents/`: the six trading agents and the analyst builder, one doc each.
 - `concepts/`: theses, triggers, analysts, situations, approvals and price targets.
 - `deep-dives/`: one mechanism or workflow end to end, like [saving a thesis](deep-dives/saving-a-thesis.md).
 - `reference/`: exact lists built from the code, like the [Situations library](reference/situations-library.md).
@@ -44,8 +44,9 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[The Writer](agents/writer.md):** researches one stock in depth and writes its thesis, plan and all.
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
+- **[Market Reviewer](agents/market-reviewer.md):** every weekday at 7:30, it reads the market and the whole book, writes the brief every agent reads and the Market tab, and notes where it finds something. It never trades.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
-- **[The analyst builder](agents/analyst-builder.md):** interviews you and proposes a whole analyst, checked against today's market. It sets up the analysts the other five work for.
+- **[The analyst builder](agents/analyst-builder.md):** interviews you and proposes a whole analyst, checked against today's market. It sets up the analysts the other six work for.
 
 ## The concepts
 

@@ -12,7 +12,7 @@
  */
 
 /** The five types in the Add trigger menu. Each groups some measures. */
-export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "schedule";
+export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "schedule" | "note";
 
 /** The measures: one catalog entry each (./measures). */
 export type Watch =
@@ -27,7 +27,8 @@ export type Watch =
   | "filing"
   | "insiders"
   | "repeat"
-  | "from_date";
+  | "from_date"
+  | "note";
 
 /** A measure's buttons. A measure with one choice has no buttons and no `is`: its input says the word. */
 export type Direction = "below" | "above" | "near" | "before" | "after" | "miss" | "beat";

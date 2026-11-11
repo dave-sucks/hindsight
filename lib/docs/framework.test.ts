@@ -50,6 +50,15 @@ describe("each agent doc's facts strip", () => {
     expect({ model: f.Model, steps: f.Steps, tools: f.Tools }).toEqual({ model: d.model, steps: `Up to ${d.maxSteps}`, tools: String(d.tools.length) });
   });
 
+  it("the Market Reviewer states the model, steps and tool count its mode has", () => {
+    const facts = parseDoc(guide["market-reviewer"])
+      .parts.flatMap((p) => (p.kind === "section" ? p.blocks : []))
+      .find((b) => b.kind === "facts");
+    const f = Object.fromEntries(facts && facts.kind === "facts" ? facts.facts : []);
+    const m = MODES["market-reviewer"];
+    expect({ model: f.Model, steps: f.Steps, tools: f.Tools }).toEqual({ model: m.model, steps: `Up to ${m.maxSteps}`, tools: String(m.toolAllowlist?.length) });
+  });
+
   it("the analyst builder states the builder's model and steps, and the builder and editor's tools together", () => {
     const facts = parseDoc(guide["analyst-builder"])
       .parts.flatMap((p) => (p.kind === "section" ? p.blocks : []))
