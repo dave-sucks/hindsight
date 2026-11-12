@@ -26,14 +26,17 @@ export function ProposalNote({
   writing,
   expanded,
   clamp = 2,
+  muted = false,
 }: {
   orderId: string;
   reason: string | null;
   writing: boolean;
   /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */
   expanded?: boolean;
-  /** How many lines show while closed (the banner asks for one, the page card for five). */
+  /** How many lines show while closed (the banner keeps the default two, the page card asks for five). */
   clamp?: 1 | 2 | 4 | 5;
+  /** The banner's note is muted, so it reads apart from the position line above it. */
+  muted?: boolean;
 }) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
@@ -70,7 +73,7 @@ export function ProposalNote({
   if (paragraphs.length === 0) return null;
   return (
     <div
-      className={cn("space-y-2 text-sm font-light text-foreground leading-relaxed", expanded === undefined && "cursor-pointer")}
+      className={cn("space-y-2 text-sm font-light leading-relaxed", muted ? "text-muted-foreground" : "text-foreground", expanded === undefined && "cursor-pointer")}
       onClick={
         expanded === undefined
           ? (e) => {
