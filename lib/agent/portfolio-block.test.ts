@@ -52,6 +52,13 @@ describe("the Market and portfolio block", () => {
     expect(marketFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: "acct", environment: "LIVE" }, orderBy: { date: "desc" } }));
   });
 
+  it("any heading in the market digest, even a stray # or ##, sits below the block's own", async () => {
+    marketFindFirst.mockResolvedValue({ ...MARKET, digest: "# Today\n\n## Overview\n\nStocks rose." });
+    const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });
+    expect(block).toContain("#### Today\n\n#### Overview\n\nStocks rose.");
+    expect(block.match(/^#{1,2} /gm)).toEqual(["## "]);
+  });
+
   it("a market digest older than 4 days reads as none", async () => {
     marketFindFirst.mockResolvedValue({ ...MARKET, createdAt: new Date("2026-11-06T12:40:00Z") });
     const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });

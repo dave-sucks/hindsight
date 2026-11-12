@@ -7,7 +7,7 @@
  * Three parts, each under its own heading:
  * - **Market digest:** the 7:30 Market Reviewer's digest (the market's day,
  *   researched, with its sources), stamped, if it is from the last 4 days.
- *   Its own section headings are one level down, so they sit inside its part.
+ *   Its own headings are moved down to ####, so they sit inside its part.
  * - **Portfolio snapshot:** the account's numbers, written by code when the
  *   request is built (lib/portfolio/snapshot.ts). The same text the 8 PM
  *   digest reads.
@@ -76,8 +76,8 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
   const marketFresh = market && now.getTime() - market.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
   if (market && marketFresh) {
     parts.push(`### Market digest (written ${stamp(market.createdAt)} ET)`);
-    // Its sections ("### Market overview" …) one level down, inside this part.
-    parts.push(market.digest.trim().replace(/^### /gm, "#### "));
+    // Any heading it has (#, ## or ###) goes to ####, so it sits inside this part, never beside "## Market and portfolio".
+    parts.push(market.digest.trim().replace(/^#{1,3} /gm, "#### "));
   } else {
     parts.push("### Market digest", `No market digest in the last ${DIGEST_SHELF_DAYS} days.`);
   }
