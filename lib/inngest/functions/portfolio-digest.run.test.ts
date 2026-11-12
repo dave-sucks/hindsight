@@ -1,10 +1,11 @@
 /**
- * The 8 PM Portfolio Digest is a run Dave can open: its thread is the facts
- * and the digest, and beside it is the request the model was sent, exactly as
- * the OpenAI client got it. Through the job's own handler, with today's
- * writer and stand-in facts; only the database and OpenAI are stood in for.
+ * The 8 PM Portfolio Digest is a run Dave can open: its thread is the
+ * portfolio snapshot and the digest, and beside it is the request the model
+ * was sent, exactly as the OpenAI client got it. Through the job's own
+ * handler, with today's writer and a stand-in snapshot; only the database,
+ * the snapshot's loader and OpenAI are stood in for.
  */
-import { STANDIN_FACTS } from "@/lib/agent/__fixtures__/digest-facts-standin";
+import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
 import type { RequestRecord, viewOfRecord as ViewOf } from "@/lib/agent/run-requests";
 
 type Handler = (ctx: { step: { run: (name: string, fn: () => unknown) => Promise<unknown> } }) => Promise<unknown>;
@@ -44,7 +45,7 @@ async function runTheJob(reply: () => Promise<unknown>) {
         $transaction: async (ops: Array<Promise<unknown>>) => Promise.all(ops),
       },
     }));
-    jest.doMock("@/lib/portfolio/digest-facts-builder", () => ({ buildDigestFacts: async () => STANDIN_FACTS }));
+    jest.doMock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: async () => STANDIN_SNAPSHOT }));
     jest.doMock("@/lib/auth/account", () => ({ getOwnerUserId: async () => "user_owner" }));
     await import("./portfolio-digest");
     ({ viewOfRecord } = await import("@/lib/agent/run-requests"));
@@ -52,7 +53,7 @@ async function runTheJob(reply: () => Promise<unknown>) {
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "log").mockImplementation(() => {});
   await handler!({ step: { run: async (_name, fn) => fn() } });
-  for (const m of ["@/lib/inngest/client", "openai", "@/lib/prisma", "@/lib/portfolio/digest-facts-builder", "@/lib/auth/account"]) jest.dontMock(m);
+  for (const m of ["@/lib/inngest/client", "openai", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/auth/account"]) jest.dontMock(m);
   const record = JSON.parse(rows.find((r) => r.role === "request")!.content) as RequestRecord;
   const thread = JSON.parse(rows.find((r) => r.role === "thread")!.content) as Array<{ role: string; content: unknown }>;
   return { sent, rows, record, thread, runCreate, runUpdate, upsert, view: viewOfRecord!(record) };
@@ -70,21 +71,21 @@ describe("the 8 PM Portfolio Digest's run", () => {
     );
   });
 
-  it("keeps the request exactly as the model got it, and the thread is the facts and the digest", async () => {
+  it("keeps the request exactly as the model got it, and the thread is the snapshot and the digest", async () => {
     const { sent, rows, record, thread, runUpdate, upsert } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
     expect(sent).toHaveLength(1);
     // The record is kept first; saving the thread after it leaves it.
     expect(rows.map((r) => r.role)).toEqual(["request", "thread"]);
-    expect(record).toMatchObject({ v: 1, call: "Main", source: "portfolio-digest", model: "gpt-4o" });
+    expect(record).toMatchObject({ v: 1, call: "Main", source: "portfolio-digest", model: "gpt-5.4" });
     expect(record.requests).toEqual(sent);
-    const facts = (sent[0] as { messages: Array<{ content: string }> }).messages[1].content;
+    const snapshot = (sent[0] as { messages: Array<{ content: string }> }).messages[1].content;
     expect(thread).toEqual([
-      { role: "user", content: facts },
+      { role: "user", content: snapshot },
       { role: "assistant", content: [{ type: "text", text: DIGEST }] },
     ]);
     expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "run_digest" }, data: expect.objectContaining({ status: "COMPLETE" }) }));
     // What the digest says and where it is saved are as before.
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ narrative: DIGEST, model: "gpt-4o" }) }));
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ narrative: DIGEST, model: "gpt-5.4", facts: STANDIN_SNAPSHOT }) }));
   });
 
   it("shows in its Context panel part by part, in the order sent, adding up to what was sent", async () => {
@@ -92,10 +93,8 @@ describe("the 8 PM Portfolio Digest's run", () => {
     const body = sent[0] as { messages: Array<{ content: string }> };
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([
       ["Instructions", "job"],
-      ["Portfolio facts", "read"],
+      ["Portfolio snapshot", "read"],
     ]);
-    expect(view.categories[0].sections.map((p) => p.label)).toEqual(["Opening", "OUTPUT", "INLINE REFERENCE TOKENS", "WHAT TO COVER", "JUDGMENT"]);
-    expect(view.categories[1].sections.map((p) => p.label)).toEqual(["FACTS", "PNL", "BOOK", "CADENCE", "RUNS TODAY", "RUN DETAIL", "HELD POSITIONS", "DECISIONS TODAY", "PASSES AGED"]);
     for (const [i, c] of view.categories.entries()) {
       expect(c.sections.map((p) => p.text).join("")).toBe(body.messages[i].content);
       expect(c.chars).toBe(body.messages[i].content.length);

@@ -65,7 +65,7 @@ export interface CallView {
 }
 
 /** What a call's first message is, by the code that made it. */
-const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio facts" };
+const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot" };
 
 /** A heading as the prompts print one: a markdown heading, or a line opening with a label in capitals ("HELD POSITIONS:", "WHAT TO COVER (in roughly this order):"). */
 const HEADING = /^(?:#{1,3} +(.+)|([A-Z][A-Z0-9&/' -]*[A-Z0-9])(?= *[:(—]))/;

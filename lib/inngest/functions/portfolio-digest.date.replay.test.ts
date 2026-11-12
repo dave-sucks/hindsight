@@ -20,7 +20,7 @@ type Handler = (ctx: { step: { run: (name: string, fn: () => unknown) => Promise
 
 /** The job's own handler at an instant, with the database, the facts and the writer stood in for. */
 async function runTheJobAt(now: string) {
-  const buildDigestFacts = jest.fn(async () => ({ date: "facts" }));
+  const loadPortfolioSnapshot = jest.fn(async () => ({ day: "snapshot" }));
   const upsert = jest.fn(async () => ({}));
   const runsQuery = jest.fn(async () => [{ accountId: ACCOUNT, environment: day.digest.environment }]);
   let handler: Handler | null = null;
@@ -34,7 +34,7 @@ async function runTheJobAt(now: string) {
         portfolioDigest: { upsert },
       },
     }));
-    jest.doMock("@/lib/portfolio/digest-facts-builder", () => ({ buildDigestFacts }));
+    jest.doMock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot }));
     jest.doMock("@/lib/agent/digest-writer", () => ({ writeDigestNarrative: async () => ({ narrative: "Stand-in digest.", model: "gpt-4o" }) }));
     jest.doMock("@/lib/runs/account-run", () => ({ runAccountCall: (_run: unknown, call: () => Promise<unknown>) => call() }));
     await import("./portfolio-digest");
@@ -45,8 +45,8 @@ async function runTheJobAt(now: string) {
   } finally {
     jest.useRealTimers();
   }
-  for (const m of ["@/lib/inngest/client", "@/lib/prisma", "@/lib/portfolio/digest-facts-builder", "@/lib/agent/digest-writer", "@/lib/runs/account-run"]) jest.dontMock(m);
-  return { buildDigestFacts, upsert, runsQuery };
+  for (const m of ["@/lib/inngest/client", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/agent/digest-writer", "@/lib/runs/account-run"]) jest.dontMock(m);
+  return { loadPortfolioSnapshot, upsert, runsQuery };
 }
 
 /** The New York calendar day an instant falls on. */
@@ -60,10 +60,9 @@ describe("the 8 PM digest on Mon 2026-11-09", () => {
     expect(day.mondayRuns.filter((r) => r.mode === "INTRADAY_TACTICAL")).toHaveLength(10);
   });
 
-  it("builds its facts for Monday, the day all fourteen of its runs started", async () => {
-    const { buildDigestFacts } = await runTheJobAt(day.digest.createdAt);
-    expect(buildDigestFacts).toHaveBeenCalledWith(ACCOUNT, nyDay(day.mondayRuns[0].startedAt), day.digest.environment);
-    expect(buildDigestFacts).toHaveBeenCalledWith(ACCOUNT, "2026-11-09", "LIVE");
+  it("reads the snapshot of the book it is writing about", async () => {
+    const { loadPortfolioSnapshot } = await runTheJobAt(day.digest.createdAt);
+    expect(loadPortfolioSnapshot).toHaveBeenCalledWith({ accountId: ACCOUNT, environment: "LIVE" });
   });
 
   it("keeps the row's date as it was: Nov 9, at midnight UTC", async () => {

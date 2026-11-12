@@ -1210,8 +1210,8 @@ model PortfolioDigest {
   accountId   String // account-level, NOT per-analyst
   environment String   @default("PAPER") // "PAPER" | "LIVE" — PAPER and LIVE share one accountId
   date        DateTime // the trading day (ET)
-  narrative   String // markdown prose with inline reference tokens
-  facts       Json // the deterministic facts blob (DigestFacts)
+  narrative   String // the digest's prose (lib/agent/digest-writer.ts)
+  facts       Json // the portfolio snapshot it was written from (lib/portfolio/snapshot.ts)
   model       String? // which LLM wrote the narrative
   createdAt   DateTime @default(now())
 
