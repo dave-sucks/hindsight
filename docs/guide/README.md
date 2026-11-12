@@ -45,6 +45,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
+- **[The Portfolio Digest](agents/portfolio-digest.md):** at 8 PM, your account's day, written from one snapshot of your portfolio.
 - **[The analyst builder](agents/analyst-builder.md):** interviews you and proposes a whole analyst, checked against today's market. It sets up the analysts the other five work for.
 
 ## The concepts

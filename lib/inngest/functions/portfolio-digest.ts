@@ -5,24 +5,22 @@
  * Runs after market close + after the last tactical settles (8:00 PM ET,
  * Mon-Fri). For each account with trading activity (see
  * lib/portfolio/digest-pairs.ts for what qualifies):
- *   1. buildDigestFacts(accountId, date, environment) — the facts blob
- *   2. writeDigestNarrative(facts)       — cheap-model markdown narration,
- *      saved as a read-only ResearchRun (mode PORTFOLIO_DIGEST) whose page
- *      shows the facts, the digest and what the model was sent
- *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date)
+ *   1. loadPortfolioSnapshot — the account, every holding and its moves, the
+ *      day's buys and sells, the proposals waiting (lib/portfolio/snapshot.ts)
+ *   2. writeDigestNarrative(snapshot) — the owner's summary of the day, saved
+ *      as a read-only ResearchRun (mode PORTFOLIO_DIGEST) whose Context panel
+ *      shows exactly what the model was sent
+ *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date);
+ *      its `facts` column keeps the snapshot
  *
  * The unit of work is an (account, environment) PAIR — PAPER and LIVE share one
  * accountId, so each environment that had activity today gets its own row.
- *
- * ADDITIVE: nothing consumes these rows yet (the agent rewire is a separate
- * reviewed PR). Safe to run; it only writes to the new PortfolioDigest table.
  */
 
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
-import type { DigestFacts } from "@/lib/portfolio/digest-facts";
-import { buildDigestFacts } from "@/lib/portfolio/digest-facts-builder";
+import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { writeDigestNarrative } from "@/lib/agent/digest-writer";
 import { runAccountCall } from "@/lib/runs/account-run";
 import {
@@ -59,7 +57,7 @@ export const portfolioDigest = inngest.createFunction(
     // Selection rule + rationale: lib/portfolio/digest-pairs.ts.
     const pairs = await step.run("find-active-pairs", async () => {
       const dayStart = new Date(`${dateStr}T00:00:00-05:00`);
-      // Use a generous window; the facts builder does its own precise ET window.
+      // A generous window for finding the books that were active today.
       const since = new Date(dayStart);
       since.setUTCHours(since.getUTCHours() - 6);
 
@@ -117,19 +115,16 @@ export const portfolioDigest = inngest.createFunction(
     for (const { accountId, environment } of pairs) {
       const key = `${accountId}::${environment}`;
 
-      // Build facts (IO: Prisma + Alpaca), scoped to this environment's book.
-      const facts = await step.run(`facts-${key}`, async () => {
-        return buildDigestFacts(
-          accountId,
-          dateStr,
-          environment as "PAPER" | "LIVE",
-        );
-      });
+      // The portfolio snapshot (lib/portfolio/snapshot.ts): the one set of numbers the digest reads.
+      const snapshot = await step.run(`snapshot-${key}`, () =>
+        loadPortfolioSnapshot({ accountId, environment: environment as "PAPER" | "LIVE" }),
+      );
+      if (!snapshot) continue;
 
-      // Saved as a read-only run with its one request (lib/runs/account-run.ts), after the facts so they never list it.
+      // Saved as a read-only run with its one request (lib/runs/account-run.ts).
       const { narrative, model } = await step.run(`narrate-${key}`, async () => {
         const out = await runAccountCall({ accountId, environment, mode: "PORTFOLIO_DIGEST", parameters: { date: dateStr } }, () =>
-          writeDigestNarrative(facts as unknown as DigestFacts),
+          writeDigestNarrative(snapshot),
         );
         return { narrative: out.narrative, model: out.model };
       });
@@ -148,12 +143,12 @@ export const portfolioDigest = inngest.createFunction(
             environment,
             date: digestDate,
             narrative,
-            facts: facts as unknown as object,
+            facts: snapshot as unknown as object,
             model,
           },
           update: {
             narrative,
-            facts: facts as unknown as object,
+            facts: snapshot as unknown as object,
             model,
           },
         });
