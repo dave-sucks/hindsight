@@ -40,7 +40,7 @@ At 8 AM Eastern on the analyst's run days, Monday to Friday by default. Market h
 
 ## What it reads
 
-The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
+The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
 
 Two reads open the run. `get_portfolio_context` gives positions, cash, the account's open risk and the market's mood. `get_theses` gives the book, each stock at the size today needs:
 

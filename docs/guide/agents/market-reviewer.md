@@ -2,7 +2,7 @@
 
 **The market, researched fresh every morning.** At 7:30 every weekday, before the analysts start, one call to the model researches the market on the web and writes the market digest.
 
-It never trades and never changes a stock's plan. You read the digest, and it is the same text the agents will be given once that piece lands.
+It never trades and never changes a stock's plan. You read the digest, and every agent that decides on stocks is given the same text, in its [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot), stamped with when it was written.
 
 ```facts
 Model: gpt-5.4
