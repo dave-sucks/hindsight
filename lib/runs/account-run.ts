@@ -15,14 +15,12 @@ export interface OneCall {
   request: RequestRecord;
   /** The run's thread: the model's first message, then its reply. */
   thread: unknown[];
-  /** A call of several steps (the Market Reviewer): every message after the first, and the steps they came from. */
-  messages?: unknown[];
-  steps?: Parameters<typeof saveRunThread>[1]["steps"];
 }
 
 /**
  * Open the run, make the call, keep what it sent and its thread, close the
- * run. With no owner on the account the call is made with no run. A call
+ * run. The call is handed the run's id (null with no run). With no owner on
+ * the account the call is made with no run. A call
  * that throws closes the run FAILED and throws on; nothing after the call
  * throws, so a step that wraps this is never retried into a second run.
  */
@@ -44,7 +42,7 @@ export async function runAccountCall<T extends OneCall>(
     const out = await call(runId);
     if (runId) {
       await saveRequestRecord(runId, out.request);
-      await saveRunThread(runId, { opening: out.thread, messages: out.messages ?? [], steps: out.steps ?? [] }, out.request.source).catch((err) =>
+      await saveRunThread(runId, { opening: out.thread, messages: [], steps: [] }, out.request.source).catch((err) =>
         console.error(`[account-run] run ${runId}'s thread couldn't be saved:`, err instanceof Error ? err.message : err),
       );
     }

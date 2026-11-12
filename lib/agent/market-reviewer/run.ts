@@ -1,37 +1,27 @@
 /**
  * The Market Reviewer V1: one run per traded book at 7:30 AM ET each weekday
- * (lib/inngest/functions/market-reviewer.ts). It is given its instructions,
- * the portfolio snapshot (the one set of numbers every reader gets), each
- * stock's belief in a line, and its own last digest, and nothing else: it
- * finds the market's moves, the calendar and the news with its tools, and
- * ends by saving the digest. Its run is read only; the first request is kept
- * exactly as sent, and every tool call and result after it is in the thread.
+ * (lib/inngest/functions/market-reviewer.ts). One call to the model, like
+ * the 8 PM Portfolio Digest's (lib/agent/digest-writer.ts): its instructions
+ * and one first message (the portfolio snapshot, each stock's belief in a
+ * line, its own last digest), with OpenAI's own web search as its one tool.
+ * The model searches inside that call; its reply is the digest, and the job
+ * saves it. The request is kept exactly as sent, for the run page's Context.
  */
-import { generateText, stepCountIs, type ModelMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
+import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
-import type { AlpacaCredentials } from "@/lib/alpaca";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText } from "@/lib/portfolio/snapshot";
 import { MODES } from "@/lib/agent/modes";
-import { createResearchTools } from "@/lib/agent/tools";
-import { createToolContext } from "@/lib/agent/tool-context";
-import { writeMarketDigest } from "@/lib/agent/tools/write-market-digest";
-import { forgetPagesFound } from "@/lib/agent/tools/web-search";
 import { buildMarketReviewerPrompt } from "@/lib/agent/market-reviewer/prompt";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import type { OneCall } from "@/lib/runs/account-run";
 
 /** The morning runs' model. */
 export const REVIEWER_MODEL = MODES["research-run"].model;
-export const REVIEWER_STEPS = 25;
-/** Its tools besides the one that saves the digest. */
-const READ_TOOLS = ["web_search", "get_market_context", "get_stock_data", "get_theses"] as const;
-/** What a save returned, when it saved the digest (a refused save carries neither). */
-const savedDigest = (r: { toolName: string; output: unknown }) => {
-  const o = r.output as { ok?: boolean; data?: { digest?: string; digestId?: string } } | undefined;
-  return r.toolName === "write_market_digest" && o?.ok && (o.data?.digestId || o.data?.digest) ? o : null;
-};
+/** The reply's budget: its thinking and its searches count against it. */
+const REPLY_TOKENS = 20_000;
+/** How long the call may take. */
+const CALL_MS = 600_000;
 /** A belief is its first sentence, cut here. */
 const BELIEF_CHARS = 160;
 
@@ -39,7 +29,6 @@ export interface ReviewBook {
   accountId: string;
   environment: "PAPER" | "LIVE";
   userId: string;
-  creds?: AlpacaCredentials;
 }
 
 const day = (iso: string) =>
@@ -94,53 +83,49 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<string> 
   ].join("\n");
 }
 
-/** The run's call: the agent with its five tools, ending on the saved digest. Never throws: a failure is on its record. */
-export async function writeMarketReview(book: ReviewBook, runId: string, opts: { now?: Date; dryRun?: boolean } = {}): Promise<OneCall & { digest: string | null }> {
-  const now = opts.now ?? new Date();
-  const startedAt = now.toISOString();
-  const ctx = createToolContext({ runId, userId: book.userId, accountId: book.accountId, runMode: "MARKET_REVIEWER", runEnvironment: book.environment, alpacaCreds: book.creds, dryRun: opts.dryRun });
-  const research = createResearchTools(ctx) as Record<string, unknown>;
-  const tools = { ...Object.fromEntries(READ_TOOLS.map((t) => [t, research[t]])), write_market_digest: writeMarketDigest(ctx) } as Parameters<typeof generateText>[0]["tools"];
-  const opening: ModelMessage[] = [{ role: "user", content: await bookMessage(book, now) }];
-  let result: Awaited<ReturnType<typeof generateText>> | null = null;
-  let error: string | undefined;
-  try {
-    result = await generateText({
-      model: openai.chat(REVIEWER_MODEL),
-      system: buildMarketReviewerPrompt(),
-      messages: opening,
-      tools,
-      // It ends on a saved digest: a refused save (too long) goes back for another try.
-      stopWhen: [stepCountIs(REVIEWER_STEPS), ({ steps }) => steps.some((s) => s.toolResults.some(savedDigest))],
-      // The last two steps can only save the digest, so a run always ends with one.
-      prepareStep: ({ stepNumber }) =>
-        stepNumber >= REVIEWER_STEPS - 2 ? { toolChoice: { type: "tool", toolName: "write_market_digest" }, activeTools: ["write_market_digest"] } : {},
-      abortSignal: AbortSignal.timeout(600_000),
-    });
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
-  } finally {
-    forgetPagesFound(runId);
-  }
-  const steps = result?.steps ?? [];
-  const saved = steps.flatMap((s) => s.toolResults).map(savedDigest).find(Boolean);
-  if (!error && !saved) error = "The run ended without saving a digest.";
-  return {
-    request: {
-      v: 1,
-      call: "Main",
-      source: "market-reviewer",
-      model: REVIEWER_MODEL,
-      startedAt,
-      endedAt: new Date().toISOString(),
-      // The first request, exactly as sent: what the run started with.
-      requests: steps[0]?.request?.body ? [steps[0].request.body] : [],
-      of: steps.length,
-      ...(error ? { error } : {}),
-    },
-    thread: opening,
-    messages: result?.response.messages ?? [],
-    steps: steps as unknown as OneCall["steps"],
-    digest: saved?.data?.digest ?? null,
+/** What the call searched, in one line for the run page. */
+const searchedLine = (searches: string[]) => `Searched the web ${searches.length} time${searches.length === 1 ? "" : "s"}: ${searches.map((q) => `“${q}”`).join(" · ")}`;
+
+/**
+ * The run's one call. Its reply is the digest (`digest`), or null when the
+ * call failed or was cut off; the record names why. Never throws.
+ */
+export async function writeMarketReview(book: ReviewBook, opts: { now?: Date } = {}): Promise<OneCall & { digest: string | null; searches: string[] }> {
+  const startedAt = new Date().toISOString();
+  const first = await bookMessage(book, opts.now ?? new Date());
+  // The request body, kept as it goes to OpenAI.
+  const body = {
+    model: REVIEWER_MODEL,
+    input: [
+      { role: "system" as const, content: buildMarketReviewerPrompt() },
+      { role: "user" as const, content: first },
+    ],
+    tools: [{ type: "web_search" as const }],
+    max_output_tokens: REPLY_TOKENS,
   };
+  const done = (digest: string | null, searches: string[], error?: string) => ({
+    request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], ...(error ? { error } : {}) },
+    thread: [
+      body.input[1],
+      ...(searches.length || digest
+        ? [{ role: "assistant", content: [...(searches.length ? [searchedLine(searches)] : []), ...(digest ? [digest] : [])].map((text) => ({ type: "text", text })) }]
+        : []),
+    ],
+    digest,
+    searches,
+  });
+  try {
+    const resp = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" }).responses.create(body, { timeout: CALL_MS });
+    const searches = resp.output.flatMap((o) =>
+      o.type === "web_search_call" && o.action?.type === "search" ? (o.action.queries?.length ? o.action.queries : o.action.query ? [o.action.query] : []) : [],
+    );
+    const text = resp.output_text?.trim() ?? "";
+    if (resp.status === "incomplete") return done(null, searches, `The reply was cut off: ${resp.incomplete_details?.reason ?? "incomplete"}.`);
+    if (!text) return done(null, searches, "The model replied with no text.");
+    return done(text, searches);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    console.warn(`[market-reviewer] model call failed: ${why}`);
+    return done(null, [], why);
+  }
 }

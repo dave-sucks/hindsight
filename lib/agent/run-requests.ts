@@ -23,8 +23,6 @@ export interface RequestRecord {
   endedAt: string;
   /** Each request the call sent, as the JSON body that went to the provider. */
   requests: unknown[];
-  /** A call of several steps keeps only its first request: how many it made in all. */
-  of?: number;
   /** Why the call failed, when it did. */
   error?: string;
 }
@@ -64,8 +62,6 @@ export interface CallView {
   /** The request exactly as sent, and its size as JSON. */
   raw: unknown;
   rawChars: number;
-  /** When the record is a run's first request of several: how many it made in all. */
-  of: number | null;
 }
 
 /** What a call's first message is, by the code that made it. */
@@ -95,7 +91,9 @@ export function partsAtHeadings(text: string): SentPart[] {
 /** One record as the run page shows it: each message of its last request but the model's own (the thread has those). */
 export function viewOfRecord(r: RequestRecord): CallView {
   const body = r.requests[r.requests.length - 1] ?? null;
-  const sent = (body as { messages?: Array<{ role?: string; content?: unknown }> } | null)?.messages ?? [];
+  // A Chat Completions body's `messages`, or a Responses body's `input` (the Market Reviewer's).
+  const b = body as { messages?: Array<{ role?: string; content?: unknown }>; input?: Array<{ role?: string; content?: unknown }> } | null;
+  const sent = b?.messages ?? (Array.isArray(b?.input) ? b.input : []);
   let users = 0;
   const categories = sent
     .filter((m) => m.role !== "assistant")
@@ -111,8 +109,9 @@ export function viewOfRecord(r: RequestRecord): CallView {
       };
     });
   // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
-  const tools = ((body as { tools?: Array<{ function?: { name?: string } }> } | null)?.tools ?? []).map((t) => ({
-    label: t.function?.name ?? "tool",
+  // A function tool by its name, a provider's own (OpenAI's web search) by its type.
+  const tools = ((body as { tools?: Array<{ function?: { name?: string }; name?: string; type?: string }> } | null)?.tools ?? []).map((t) => ({
+    label: t.function?.name ?? t.name ?? t.type ?? "tool",
     chars: JSON.stringify(t).length,
     text: JSON.stringify(t, null, 2),
   }));
@@ -125,7 +124,6 @@ export function viewOfRecord(r: RequestRecord): CallView {
     chars: categories.reduce((n, c) => n + c.chars, 0),
     raw: body,
     rawChars: JSON.stringify(body).length,
-    of: r.of && r.of > 1 ? r.of : null,
   };
 }
 

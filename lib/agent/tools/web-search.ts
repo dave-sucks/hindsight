@@ -2,8 +2,7 @@
  * web_search — migrated to defineTool().
  *
  * Live Perplexity Sonar search, LIVE_SEARCH_BUDGET searches a run (the
- * Market Reviewer's, which researches the market itself, gets
- * MARKET_REVIEWER_SEARCHES), tracked via a module-level Map keyed by runId.
+ * same for every run), tracked via a module-level Map keyed by runId.
  */
 
 import { z } from "zod";
@@ -16,18 +15,8 @@ import type { SignalItem, WebSearchToolData } from "@/lib/agent/tool-types";
 const liveSearchCounts = new Map<string, number>();
 /** Searches per run (a first search on a stock doesn't count against it). */
 export const LIVE_SEARCH_BUDGET = 5;
-/** The Market Reviewer's searches a run: it finds the market's moves and news itself. */
-export const MARKET_REVIEWER_SEARCHES = 10;
 // The stocks whose one news search this run has spent (voice.ts: look it up before a decision note).
 const stockSearches = new Map<string, Set<string>>();
-// The pages the Market Reviewer's searches returned, by run: its digest links only these (write-market-digest.ts).
-const pagesByRun = new Map<string, Set<string>>();
-/** A link as it is compared: no spaces, no trailing slash. */
-export const pageKey = (url: string) => url.trim().replace(/\/+$/, "");
-/** The pages this run's searches returned. */
-export const pagesFound = (runId: string): ReadonlySet<string> => pagesByRun.get(runId) ?? new Set();
-/** The run is over: forget its pages (lib/agent/market-reviewer/run.ts). */
-export const forgetPagesFound = (runId: string) => void pagesByRun.delete(runId);
 /** The reply budget a search asks Sonar for. */
 export const SEARCH_REPLY_TOKENS = 4096;
 
@@ -54,8 +43,8 @@ export const webSearch = defineTool({
   },
 
   execute: async ({ query, recency = "day", ticker }, ctx) => {
-    // One budget for every run but the Market Reviewer's; there is no per-analyst setting.
-    const budget = ctx.runMode === "MARKET_REVIEWER" ? MARKET_REVIEWER_SEARCHES : LIVE_SEARCH_BUDGET;
+    // Every run gets the same budget; there is no per-analyst setting.
+    const budget = LIVE_SEARCH_BUDGET;
     const count = liveSearchCounts.get(ctx.runId) ?? 0;
     const searched = stockSearches.get(ctx.runId) ?? new Set<string>();
     const stock = ticker?.trim().toUpperCase().replace(/^\$/, "") || null;
@@ -94,12 +83,6 @@ export const webSearch = defineTool({
       urgency: s.urgency,
       sources: toSourceRefs(s.sourceNames, s.sourceUrls),
     }));
-
-    if (ctx.runMode === "MARKET_REVIEWER") {
-      const pages = pagesByRun.get(ctx.runId) ?? new Set<string>();
-      for (const r of results) for (const s of r.sources) if (s.url) pages.add(pageKey(s.url));
-      pagesByRun.set(ctx.runId, pages);
-    }
 
     return {
       summary: `Found ${results.length} result${results.length !== 1 ? "s" : ""} for "${query.slice(0, 60)}". Budget: ${newCount}/${budget}.`,

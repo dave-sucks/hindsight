@@ -1,11 +1,9 @@
 /**
- * The Market Reviewer V1 is a run Dave can open: given the book in compact
- * form and its last digest, it researches with its tools and saves the
- * digest, and its page keeps the first request exactly as the SDK sent it.
- * Through the job's own handler, with the real run, the real digest tool and
- * the doubled database; OpenAI answers through a fake fetch, and the four
- * read tools are stand-ins so no vendor is called. Made-up book, stand-in
- * amounts.
+ * The Market Reviewer V1 is one model call with web search, a run Dave can
+ * open: given its instructions, the book and its last digest, its reply is
+ * the digest, and the job saves it. Through the job's own handler, with the
+ * real run and the doubled database; OpenAI's Responses API is stood in.
+ * Made-up book, stand-in amounts.
  */
 import { prismaDouble, thesisRow, type PrismaDouble } from "@/lib/replay";
 
@@ -18,7 +16,6 @@ jest.mock("@/lib/prisma", () => ({
 const mockJob: { handler?: (ctx: unknown) => Promise<unknown> } = {};
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: (ctx: unknown) => Promise<unknown>) => ((mockJob.handler = fn), {}) } }));
 jest.mock("@/lib/auth/account", () => ({ getOwnerUserId: async () => "user_owner" }));
-jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
 // The one portfolio snapshot, stood in: made-up numbers, one holding.
 jest.mock("@/lib/portfolio/load-snapshot", () => {
   const { buildSnapshot } = jest.requireActual("@/lib/portfolio/snapshot");
@@ -34,39 +31,20 @@ jest.mock("@/lib/portfolio/load-snapshot", () => {
   });
   return { loadPortfolioSnapshot: async () => snapshot };
 });
-// The real web_search, Perplexity stood in: it returns one Reuters page.
-jest.mock("@/lib/intelligence/sonar", () => ({
-  searchSignals: async () => ({
-    signals: [{ headline: "Stocks rebound on AI demand", summary: "Technology led.", tickers: [], themes: [], sentiment: "neutral", urgency: "low", sourceNames: ["Reuters"], sourceUrls: ["https://www.reuters.com/markets/us/example-rebound/"] }],
-  }),
+/** OpenAI's Responses API, stood in: the bodies it was sent, and its one reply (or a failure). */
+const mockOpenAI = { bodies: [] as unknown[], reply: null as unknown, fails: null as Error | null };
+jest.mock("openai", () => ({
+  __esModule: true,
+  default: class {
+    responses = {
+      create: async (body: unknown) => {
+        mockOpenAI.bodies.push(JSON.parse(JSON.stringify(body)));
+        if (mockOpenAI.fails) throw mockOpenAI.fails;
+        return mockOpenAI.reply;
+      },
+    };
+  },
 }));
-// The other three read tools, stood in: a call returns a line, as a real read would.
-jest.mock("@/lib/agent/tools", () => {
-  const { tool } = jest.requireActual("ai");
-  const { z } = jest.requireActual("zod");
-  const { webSearch } = jest.requireActual("@/lib/agent/tools/web-search");
-  const read = (name: string) => tool({ description: `${name}, stood in`, inputSchema: z.object({ query: z.string().optional() }), execute: async () => ({ ok: true, summary: `${name} read` }) });
-  return { createResearchTools: (ctx: unknown) => ({ web_search: webSearch(ctx), ...Object.fromEntries(["get_market_context", "get_stock_data", "get_theses"].map((n) => [n, read(n)])) }) };
-});
-/** One Chat Completions reply per request, in order; the request bodies are kept. */
-const mockOpenAI = { bodies: [] as Array<Record<string, unknown>>, replies: [] as Array<Record<string, unknown>> };
-jest.mock("@ai-sdk/openai", () => {
-  const actual = jest.requireActual("@ai-sdk/openai");
-  const provider = actual.createOpenAI({
-    apiKey: "test",
-    fetch: async (_url: string, init: { body: string }) => {
-      mockOpenAI.bodies.push(JSON.parse(init.body));
-      const message = mockOpenAI.replies[mockOpenAI.bodies.length - 1];
-      if (!message) throw new Error(`no fake reply for request ${mockOpenAI.bodies.length}`);
-      const finish = message.tool_calls ? "tool_calls" : "stop";
-      return new Response(JSON.stringify({ id: `c${mockOpenAI.bodies.length}`, object: "chat.completion", created: 1762900000, model: "gpt-5.4", choices: [{ index: 0, message, finish_reason: finish }], usage: { prompt_tokens: 900, completion_tokens: 80, total_tokens: 980 } }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    },
-  });
-  return { ...actual, openai: provider };
-});
 
 import "./market-reviewer";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
@@ -76,17 +54,23 @@ import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 const ACCOUNT = "account_live";
 /** Wed Nov 11, 7:30 AM ET. */
 const AT = new Date("2026-11-11T12:30:00Z");
-const call = (n: number, name: string, args: unknown) => ({ role: "assistant", content: null, tool_calls: [{ id: `call_${n}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
-const SOURCE = { title: "Reuters: stocks rebound on AI demand", url: "https://www.reuters.com/markets/us/example-rebound" };
-const section = (text: string) => ({ text, sources: [SOURCE] });
-const SECTIONS = {
-  market_overview: section("Stocks rebounded, led by technology (Reuters, Nov 11). That reads as relief on AI demand, not a turn in rates."),
-  sector_developments: section("Technology led; real estate was flat (get_market_context, Nov 11)."),
-  major_developments: section("A cloud provider said AI demand outruns supply (Reuters, Nov 11)."),
-  portfolio_implications: section("MU's case rests on memory demand; the report supports it, as interpretation."),
-  deserves_attention: section("Whether chip-export bills gain a vehicle in Congress (Reuters, Nov 11)."),
-  upcoming_events: section("The producer price index is due Friday at 8:30 AM ET (bls.gov)."),
-};
+const DIGEST = [
+  "### Market overview",
+  "Stocks rebounded, led by technology ([Reuters](https://www.reuters.com/markets/us/example-rebound/)). My interpretation is relief on AI demand.",
+  "### Upcoming events",
+  "The producer price index is due Friday at 8:30 AM ET ([BLS](https://www.bls.gov/schedule/)).",
+].join("\n\n");
+/** A finished reply: two searches, then the digest. */
+const reply = (over: Record<string, unknown> = {}) => ({
+  status: "completed",
+  output: [
+    { type: "web_search_call", id: "ws_1", status: "completed", action: { type: "search", query: "stock market today", queries: ["why stocks rose Nov 11 2026"] } },
+    { type: "web_search_call", id: "ws_2", status: "completed", action: { type: "search", query: "economic calendar November 2026 CPI PPI" } },
+    { type: "message", id: "m_1", role: "assistant", status: "completed", content: [{ type: "output_text", text: DIGEST, annotations: [] }] },
+  ],
+  output_text: DIGEST,
+  ...over,
+});
 const inBook = (over: Record<string, unknown>) =>
   thesisRow({ userId: "user_owner", ...over, researchRun: { agentConfigId: "analyst_1", agentConfig: { name: "Secular Compounder", setupIds: [], accountId: ACCOUNT, tradingEnvironment: "LIVE" } } });
 
@@ -103,7 +87,8 @@ async function runTheJob(at = AT) {
 beforeEach(() => {
   jest.useFakeTimers({ now: AT, doNotFake: ["setTimeout", "clearTimeout", "setImmediate", "nextTick", "queueMicrotask"] });
   mockOpenAI.bodies.length = 0;
-  mockOpenAI.replies.length = 0;
+  mockOpenAI.reply = reply();
+  mockOpenAI.fails = null;
   db = prismaDouble({
     agentConfig: [{ id: "analyst_1", accountId: ACCOUNT, tradingEnvironment: "LIVE", enabled: true }],
     thesis: [
@@ -121,33 +106,21 @@ afterEach(() => {
 });
 
 describe("the 7:30 Market Reviewer", () => {
-  it("researches with its tools, saves the digest, and keeps its first request exactly as sent", async () => {
-    // Its sources: the page its search returned, a vendor's docs link from a tool's data, and a made-up one.
-    const cited = {
-      ...SECTIONS,
-      market_overview: { ...SECTIONS.market_overview, sources: [SOURCE, { title: "Alpaca — SPY quote", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" }] },
-      upcoming_events: { ...SECTIONS.upcoming_events, sources: [{ title: "Thesis library", url: "internal://get_theses/live-book" }] },
-    };
-    mockOpenAI.replies.push(call(1, "get_market_context", {}), call(2, "web_search", { query: "why stocks rose Nov 11", recency: "day" }), call(3, "write_market_digest", { sections: cited }));
+  it("sends one request (its instructions, the book and its last digest, web search) and saves the reply as today's digest", async () => {
     const { record, thread, runs, digests } = await runTheJob();
 
-    // A read-only run for the account, closed COMPLETE.
-    expect(runs).toEqual([expect.objectContaining({ mode: "MARKET_REVIEWER", accountId: ACCOUNT, environment: "LIVE", userId: "user_owner", status: "COMPLETE" })]);
-    expect(runs[0].parameters).toEqual({ date: "2026-11-11", model: "gpt-5.4" });
-
-    // The first request, exactly as sent, and how many the run made.
-    expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
-    expect(record!.of).toBe(3);
-    const body = mockOpenAI.bodies[0] as { messages: Array<{ role: string; content: string }>; tools: Array<{ function: { name: string } }> };
-    expect(body.tools.map((t) => t.function.name)).toEqual(["web_search", "get_market_context", "get_stock_data", "get_theses", "write_market_digest"]);
-    expect(body.messages[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
-    expect(body.messages[0].content).toContain("Do not make trades.");
-    expect(body.messages[0].content).toContain("search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report)");
-    expect(body.messages[0].content).toContain("never read the whole book");
+    // One call, nothing else.
+    expect(mockOpenAI.bodies).toHaveLength(1);
+    const body = mockOpenAI.bodies[0] as { model: string; input: Array<{ role: string; content: string }>; tools: unknown[] };
+    expect(body.model).toBe("gpt-5.4");
+    expect(body.tools).toEqual([{ type: "web_search" }]);
+    expect(body.input.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(body.input[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
+    expect(body.input[0].content).toContain("Do not make trades.");
+    expect(body.input[0].content).toContain("search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report)");
     // Its first message: the portfolio snapshot's own text, each stock's belief in a line, then its last digest. Nothing else.
     const snapshot = (await loadPortfolioSnapshot({ accountId: ACCOUNT, environment: "LIVE" })) as PortfolioSnapshot;
-    expect(snapshotText(snapshot)).toContain("- MU: 10 shares at $650.00 = $6,500 (");
-    expect(body.messages[1].content).toBe(
+    expect(body.input[1].content).toBe(
       [
         "Wed Nov 11, the LIVE book.",
         "",
@@ -169,43 +142,39 @@ describe("the 7:30 Market Reviewer", () => {
       ].join("\n"),
     );
 
-    // The panel shows what it started with: the instructions, its first message and its tool menu.
+    // A read-only run for the account, closed COMPLETE, its request kept exactly as sent.
+    expect(runs).toEqual([expect.objectContaining({ mode: "MARKET_REVIEWER", accountId: ACCOUNT, environment: "LIVE", userId: "user_owner", status: "COMPLETE" })]);
+    expect(runs[0].parameters).toEqual({ date: "2026-11-11", model: "gpt-5.4" });
+    expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
+    expect(record!.error).toBeUndefined();
+
+    // Context shows the instructions, the first message and its one tool.
     const view = viewOfRecord(record!);
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Portfolio, watchlist and last digest", "read"], ["Tool menu", "tools"]]);
-    expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search", "get_market_context", "get_stock_data", "get_theses", "write_market_digest"]);
-    expect(view.of).toBe(3);
+    expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search"]);
 
-    // The thread the page replays: the first message, then every call and result.
-    expect(thread).toContain("get_market_context read");
-    expect(thread).toContain("write_market_digest");
+    // The run page: the first message, then what it searched and the digest.
+    expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”");
+    expect(thread).toContain("Stocks rebounded, led by technology");
 
-    // The digest: today's row, each section under its heading with its sources.
+    // Today's digest is the reply, as written, linked to its run.
     const today = digests.find((d) => (d.date as Date).toISOString() === "2026-11-11T00:00:00.000Z")!;
-    expect(today).toMatchObject({ accountId: ACCOUNT, environment: "LIVE", model: "gpt-5.4", runId: runs[0].id });
-    expect([...String(today.digest).matchAll(/^### (.+)$/gm)].map((m) => m[1])).toEqual([
-      "Market overview", "Sector developments", "Major developments", "Implications for your portfolio", "What deserves attention", "Upcoming events",
-    ]);
-    // Only the page a search returned is linked; the other two are dropped, and the tool says which.
-    expect(String(today.digest)).toContain(`Sources: [Reuters: stocks rebound on AI demand](${SOURCE.url})`);
-    expect(String(today.digest)).not.toMatch(/docs\.alpaca|internal:/);
-    expect(thread).toContain("Dropped 2 links no search in this run returned: https://docs.alpaca.markets/reference/stocksnapshots-1, internal://get_theses/live-book.");
+    expect(today).toMatchObject({ accountId: ACCOUNT, environment: "LIVE", model: "gpt-5.4", runId: runs[0].id, digest: DIGEST });
   });
 
-  it("a digest past 5,000 characters is refused with the overage, and the shorter one is saved", async () => {
-    const long = { ...SECTIONS, major_developments: section("x".repeat(5_000)) };
-    mockOpenAI.replies.push(call(1, "write_market_digest", { sections: long }), call(2, "write_market_digest", { sections: SECTIONS }));
-    const { thread, runs, digests } = await runTheJob();
-    const over = Object.values(long).reduce((n, s) => n + s.text.length, 0);
-    expect(thread).toContain(`Nothing saved: the six paragraphs are ${over.toLocaleString("en-US")} characters, 5,000 at most (cut ${(over - 5_000).toLocaleString("en-US")}). Aim for about 3,000, and send it again.`);
-    expect(runs[0].status).toBe("COMPLETE");
-    expect(digests).toHaveLength(2);
-  });
-
-  it("a run that ends without a digest closes FAILED, and its record says why", async () => {
-    mockOpenAI.replies.push({ role: "assistant", content: "Nothing to add today." });
+  it("a reply cut off at its limit saves nothing, and the run closes FAILED saying why", async () => {
+    mockOpenAI.reply = reply({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" } });
     const { record, runs, digests } = await runTheJob();
     expect(runs[0].status).toBe("FAILED");
-    expect(record!.error).toBe("The run ended without saving a digest.");
+    expect(record!.error).toBe("The reply was cut off: max_output_tokens.");
+    expect(digests).toHaveLength(1);
+  });
+
+  it("a call that fails saves nothing, and its record keeps the request and the error", async () => {
+    mockOpenAI.fails = new Error("Request timed out.");
+    const { record, runs, digests } = await runTheJob();
+    expect(runs[0].status).toBe("FAILED");
+    expect(record!.error).toBe("Request timed out.");
     expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
     expect(digests).toHaveLength(1);
   });
@@ -214,25 +183,5 @@ describe("the 7:30 Market Reviewer", () => {
     await runTheJob(new Date("2026-11-26T12:30:00Z")); // Thanksgiving
     expect(db.store.researchRun ?? []).toEqual([]);
     expect(mockOpenAI.bodies).toEqual([]);
-  });
-
-  it("in this run, get_theses takes tickers, at most 3 a call", async () => {
-    const { getTheses } = await import("@/lib/agent/tools/get-theses");
-    const { createToolContext } = await import("@/lib/agent/tool-context");
-    const schemaOf = (runMode: string) => (getTheses(createToolContext({ runId: "r", userId: "user_owner", accountId: ACCOUNT, runMode })) as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean } } }).inputSchema;
-    const reviewer = schemaOf("MARKET_REVIEWER");
-    expect(reviewer.safeParse({ tickers: ["MU", "NVDA", "ASML"] }).success).toBe(true);
-    expect(reviewer.safeParse({}).success).toBe(false);
-    expect(reviewer.safeParse({ tickers: ["MU", "NVDA", "ASML", "V"] }).success).toBe(false);
-    expect(schemaOf("MORNING_PLAN").safeParse({}).success).toBe(true);
-  });
-
-  it("the digest tool saves only on the Market Reviewer's run", async () => {
-    const { writeMarketDigest } = await import("@/lib/agent/tools/write-market-digest");
-    const { createToolContext } = await import("@/lib/agent/tool-context");
-    db.store.researchRun = [{ id: "run_morning", mode: "MORNING_PLAN", accountId: ACCOUNT, environment: "LIVE", startedAt: AT, parameters: {} }];
-    const t = writeMarketDigest(createToolContext({ runId: "run_morning", userId: "user_owner", accountId: ACCOUNT })) as unknown as { execute: (a: unknown, o: unknown) => Promise<{ summary: string }> };
-    expect((await t.execute({ sections: SECTIONS }, { toolCallId: "c", messages: [] })).summary).toBe("Only the Market Reviewer writes the market digest; nothing saved.");
-    expect(db.store.marketDigest).toHaveLength(1);
   });
 });

@@ -1,14 +1,14 @@
 /**
  * market-reviewer — 7:30 AM ET every weekday: the Market Reviewer's run for
  * each traded book (an account and environment with an enabled analyst
- * trading in it, or a stock held in it). It researches the market and saves
- * the market digest (lib/agent/market-reviewer/run.ts). A market holiday
- * writes nothing. Each book is its own step and its own read-only run.
+ * trading in it, or a stock held in it). One model call with web search
+ * writes the market digest (lib/agent/market-reviewer/run.ts), and the next
+ * step saves it, as the 8 PM Portfolio Digest saves its own. A market
+ * holiday writes nothing. Each book is its own read-only run.
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getOwnerUserId } from "@/lib/auth/account";
-import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { isTradingDay } from "@/lib/market-hours";
 import { runAccountCall } from "@/lib/runs/account-run";
 import { REVIEWER_MODEL, writeMarketReview } from "@/lib/agent/market-reviewer/run";
@@ -35,21 +35,32 @@ export const marketReviewer = inngest.createFunction(
   { cron: "TZ=America/New_York 30 7 * * 1-5" },
   async ({ step }) => {
     if (!isTradingDay(new Date())) return { skipped: "market holiday" };
-    const books = await step.run("books", tradedBooks);
+    const { date, books } = await step.run("books", async () => ({ date: etDateOf(new Date()), books: await tradedBooks() }));
     const done: Array<{ book: string; saved: boolean }> = [];
     for (const b of books) {
-      done.push(
-        await step.run(`review-${b.accountId}-${b.environment}`, async () => {
-          const userId = await getOwnerUserId(b.accountId);
-          if (!userId) return { book: `${b.accountId}:${b.environment}`, saved: false };
-          const creds = (await resolveAlpacaCredentials(userId, b.environment).catch(() => null)) ?? undefined;
-          const out = await runAccountCall(
-            { accountId: b.accountId, environment: b.environment, mode: "MARKET_REVIEWER", parameters: { date: etDateOf(new Date()), model: REVIEWER_MODEL } },
-            (runId) => writeMarketReview({ ...b, userId, creds }, runId ?? `market-reviewer-${Date.now()}`),
-          );
-          return { book: `${b.accountId}:${b.environment}`, saved: !out.request.error };
-        }),
-      );
+      const key = `${b.accountId}-${b.environment}`;
+      // Saved as a read-only run with its one request (lib/runs/account-run.ts).
+      const out = await step.run(`review-${key}`, async () => {
+        const userId = await getOwnerUserId(b.accountId);
+        if (!userId) return null;
+        const review = await runAccountCall(
+          { accountId: b.accountId, environment: b.environment, mode: "MARKET_REVIEWER", parameters: { date, model: REVIEWER_MODEL } },
+          async (runId) => ({ ...(await writeMarketReview({ ...b, userId })), runId }),
+        );
+        return { digest: review.digest, runId: review.runId };
+      });
+      if (out?.digest) {
+        const digest = out.digest;
+        await step.run(`save-${key}`, async () => {
+          const day = new Date(`${date}T00:00:00.000Z`);
+          await prisma.marketDigest.upsert({
+            where: { accountId_environment_date: { accountId: b.accountId, environment: b.environment, date: day } },
+            create: { accountId: b.accountId, environment: b.environment, date: day, digest, model: REVIEWER_MODEL, runId: out.runId },
+            update: { digest, model: REVIEWER_MODEL, runId: out.runId, createdAt: new Date() },
+          });
+        });
+      }
+      done.push({ book: key, saved: Boolean(out?.digest) });
     }
     console.log(`[market-reviewer] ${done.map((d) => `${d.book} ${d.saved ? "saved" : "not saved"}`).join("; ") || "no book is traded"}`);
     return { done };
