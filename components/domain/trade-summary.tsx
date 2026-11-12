@@ -164,7 +164,7 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
       </Tooltip>
     );
   } else if (pp) {
-    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" />;
+    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align={banner ? "start" : "end"} />;
   }
 
   if (pp && pp.intent === "OPEN") {
@@ -262,8 +262,8 @@ function NoteClamp({ text }: { text: string }) {
 // sheet's expand). Two rows a hair apart: the title row, then the sentence
 // with the gain at its right, the row setting the size once and the gain
 // inheriting it. While a proposal waits the card is not a link: its answer
-// buttons sit in the title row, and a click anywhere else opens or closes
-// the reason under the rows.
+// buttons are a row of their own at the foot, the reason's first two lines sit
+// above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
   const { ticker } = props;
   const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
@@ -280,15 +280,15 @@ function TradeBanner(props: TradeSummaryProps) {
         action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
       <p className="truncate text-base tabular-nums">{sentence}</p>
-      {/* The reason, once asked for (and the "Writing" line while the note is on its way), a little below the rows. */}
-      {pp && !pp.executing && (expanded || pp.writing) ? (
+      {/* The reason, muted: two lines until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
+      {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} muted />
         </div>
       ) : null}
-      {/* A proposal's answer, or "Executing" once answered, as a third row at the right. */}
+      {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}
       {reviewSlot ? (
-        <div className="flex justify-end pt-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex pt-2" onClick={(e) => e.stopPropagation()}>
           {reviewSlot}
         </div>
       ) : null}
