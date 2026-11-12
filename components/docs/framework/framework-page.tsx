@@ -28,7 +28,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
             as="h1"
             size="hero"
             lead="One agent, many doors."
-            rest="Every agent is sent the same parts on every request: its job, the house rules, the analyst, its tools and the read. Only the sizes change."
+            rest="Every agent is sent the same parts on every request: its job, the house rules, the analyst, the market and portfolio, its tools and the read. Only the sizes change."
           />
         </div>
 

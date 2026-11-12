@@ -37,7 +37,8 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");
-    expect(prompt).toContain("Cash is $31,000 (31% of equity)");
+    expect(prompt).toContain("Your cash is in the portfolio snapshot below.");
+    expect(prompt).not.toContain("Cash is $31,000");
     expect(prompt).toContain("(today: IOT)");
     expect(prompt).toContain("Cautious** (SPY more than 1% under its 50-day)");
     expect(prompt).toContain("Risk-off** (SPY more than 1% under its 200-day)");

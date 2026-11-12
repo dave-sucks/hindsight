@@ -9,6 +9,7 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
+import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
@@ -476,6 +477,8 @@ export async function POST(
         bookBlock: scopedBookBlock,
         room,
         roomLines,
+        // The Market and portfolio block: the portfolio snapshot, written for this message, and the latest digest.
+        portfolioBlock: await loadPortfolioBlock({ accountId, environment: runEnvironment }),
       });
 
     } else if (agentMode === "podcast-builder") {

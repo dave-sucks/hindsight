@@ -472,6 +472,8 @@ export function buildPrincipalSystemPrompt(opts: {
   /** Its slots, counted as place_trade counts them (pinned); every analyst's room line (unpinned). */
   room?: AnalystCapacity | null;
   roomLines?: string[];
+  /** The Market and portfolio block (lib/agent/portfolio-block.ts), last in the prompt. Loaded by the caller: this module is imported by client components. */
+  portfolioBlock?: string | null;
 }): string {
   const scope = opts.scopedAnalyst;
   // Pre-rendered by the caller via context-bundle's formatters. Passed as
@@ -709,7 +711,7 @@ ${HOUSE_RULES}
 - NO \`[1]\` \`[2]\` citation markers. The user sees every tool row inline; they can click to expand.
 - Concise. One paragraph is usually enough. Long lists go in the tool result, not in prose.
 - When asked a question, answer it. No "Sure! Let me check..." preamble — just call the tool.
-- When you're about to write something destructive (a trade, an analyst-prompt rewrite), name the action in one sentence first. For read-only and small edits (watchlist add, update_thesis with new target), just do it.`;
+- When you're about to write something destructive (a trade, an analyst-prompt rewrite), name the action in one sentence first. For read-only and small edits (watchlist add, update_thesis with new target), just do it.${opts.portfolioBlock ? `\n\n${opts.portfolioBlock}` : ""}`;
 }
 
 /**

@@ -49,7 +49,7 @@ Where each number comes from:
 ## Who reads it
 
 - You: the digest on the home page, and its run on /runs.
-- Chat, when no analyst is picked, reads the latest digest.
+- Every agent that decides on stocks (morning runs, trigger runs, chat and the Writer), on every request, in the Market and portfolio block: the snapshot, written fresh for that request, and the latest digest from the last 4 days, stamped with when it was written. The house rules tell them: where the block and a stock's own row differ, the row is right; where the digest and the snapshot differ, the snapshot is right.
 
 <details>
 <summary>Technical details</summary>

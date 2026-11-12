@@ -40,6 +40,7 @@
  * own its lifecycle.
  */
 
+import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { analystBrief, setupLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
@@ -358,6 +359,8 @@ export interface WriterResearchPromptOpts {
     daysAgo: number;
     closeReason: string | null;
   } | null;
+  /** The Market and portfolio block (lib/agent/portfolio-block.ts), last in the prompt. */
+  portfolioBlock?: string | null;
 }
 
 /**
@@ -685,7 +688,7 @@ rationale is the first Activity line the owner reads.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields
 and call it again — do NOT rewrite the research note. When it returns
-accepted, STOP. Do not write anything after acceptance.`;
+accepted, STOP. Do not write anything after acceptance.${opts.portfolioBlock ? `\n\n${opts.portfolioBlock}` : ""}`;
 }
 
 // ── Idempotency guard ───────────────────────────────────────────────────
@@ -916,6 +919,7 @@ export async function writerResearchPhase(
         analystId: analyst.id,
         environment: analyst.tradingEnvironment ?? "PAPER",
       }),
+      portfolioBlock: await loadPortfolioBlock({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER" }),
     });
     const userPrompt = `═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict
