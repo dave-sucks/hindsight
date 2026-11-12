@@ -2,7 +2,7 @@
 
 /**
  * AgentChat — unified chat component for all three surfaces:
- *   - research-run: live agent run + follow-up conversation (tabs: Chat, Sources, Theses)
+ *   - research-run: live agent run + follow-up conversation (the chat alone)
  *   - builder: analyst creation chat
  *   - editor: analyst editing chat
  *
@@ -36,10 +36,7 @@ import type { AgentConfigData } from "@/components/domain/agent-config-card";
 import { PanelRight, Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { RunSourcesPanel } from "@/components/research/run-sources-panel";
-import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
-import type { RunSourceItem } from "@/lib/actions/run-sources.actions";
 
 // ── Model preference storage key ──────────────────────────────────────────────
 const MODEL_PREF_KEY = "hindsight_research_model";
@@ -142,8 +139,6 @@ interface AgentChatProps {
   podcastId?: string;
   autoStart?: boolean;
   headerAction?: ReactNode;
-  sources?: RunSourceItem[];
-  theses?: ThesisRowData[];
   /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
   transcript?: TranscriptRowData | null;
   /** research-run: a run that takes no messages (READ_ONLY_RUN_MODES) shows no composer. */
@@ -210,8 +205,6 @@ export function AgentChat({
   podcastId,
   autoStart,
   headerAction,
-  sources = [],
-  theses = [],
   transcript = null,
   readOnly = false,
   requests = [],
@@ -293,8 +286,6 @@ export function AgentChat({
         // A reloaded chat already has its opening message — never send it again.
         autoStart={recovered ? false : autoStart}
         headerAction={headerAction}
-        sources={sources}
-        theses={theses}
         transcript={transcript}
         readOnly={readOnly}
         requests={requests}
@@ -324,8 +315,6 @@ interface InnerProps {
   analystName?: string;
   autoStart?: boolean;
   headerAction?: ReactNode;
-  sources: RunSourceItem[];
-  theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
   readOnly: boolean;
   requests: CallView[];
@@ -353,8 +342,6 @@ function AgentChatInner({
   analystName,
   autoStart,
   headerAction,
-  sources,
-  theses,
   transcript,
   readOnly,
   requests,
@@ -439,96 +426,67 @@ function AgentChatInner({
     [handleConfirmConfig, handleConfigSuggested, onConfigSuggested, onPodcastConfigSuggested, isMutating, mode, currentConfig, heldOrWatched],
   );
 
-  // ── research-run: tabbed layout ───────────────────────────────────────────
+  // ── research-run: the chat alone ──────────────────────────────────────────
+  // No tab bar. The header's buttons sit at the right, where the tabs' row was.
 
   if (mode === "research-run") {
     const isFollowupMode = !autoStart;
-    const tabs = (
-      <Tabs defaultValue={0} className="flex h-full flex-col">
-        <div className="shrink-0 px-4 pt-2 flex items-center">
-          <TabsList>
-            <TabsTrigger value={0}>Chat</TabsTrigger>
-            <TabsTrigger value={1}>Sources</TabsTrigger>
-            <TabsTrigger value={2}>Theses</TabsTrigger>
-          </TabsList>
-          {(headerAction || requests.length > 0) && (
-            <div className="ml-auto flex items-center gap-1">
-              {requests.length > 0 && (
-                <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
-                  <PanelRight /> Context
-                </Button>
-              )}
-              {/* Its own element: the page's button is never a list's unkeyed child. */}
-              {headerAction && <div>{headerAction}</div>}
-            </div>
-          )}
-        </div>
-
-        <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
-          <Thread
-            welcomeConfig={{
-              title: analystName ?? "Research Agent",
-              subtitle: readOnly
-                ? "Read only"
-                : isFollowupMode
-                  ? "Run complete — ask follow-up questions or place trades"
-                  : "Autonomous research agent",
-            }}
-            composerSlot={
-              readOnly ? (
-                <p className="px-4 py-3 text-center text-sm text-muted-foreground">This run takes no messages.</p>
-              ) : composerSlot ?? (
-                <HindsightComposer
-                  features={{
-                    placeholder: isFollowupMode
-                      ? "Ask about the run, research a ticker, or place a trade…"
-                      : "Ask a follow-up question…",
-                    tickerSearch: true,
-                    slashCommands: true,
-                    modelLabel: RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ?? selectedModel ?? "GPT-4o",
-                    modelOptions: RESEARCH_MODEL_OPTIONS,
-                    onModelChange,
-                  }}
-                />
-              )
-            }
-          />
-        </TabsContent>
-
-        <TabsContent value={1} className="flex-1 min-h-0 overflow-y-auto">
-          <RunSourcesPanel sources={sources} />
-        </TabsContent>
-
-        <TabsContent value={2} className="flex-1 min-h-0 overflow-y-auto">
-          {theses.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <p className="text-sm">No theses recorded</p>
-              <p className="text-xs mt-1">Theses appear here once the agent records its picks</p>
-            </div>
-          ) : (
-            <div className="mx-auto w-full max-w-2xl px-4 py-6 space-y-2">
-              {theses.map((t) => (
-                <ThesisRow key={t.id} thesis={t} />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-    );
     // The Context panel opens beside the conversation and pushes it left.
     return (
       <div className="flex h-full">
-        <div className="flex min-w-0 flex-1 flex-col">{tabs}</div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {(headerAction || requests.length > 0) && (
+            <div className="shrink-0 px-4 pt-2 flex items-center">
+              <div className="ml-auto flex items-center gap-1">
+                {requests.length > 0 && (
+                  <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+                    <PanelRight /> Context
+                  </Button>
+                )}
+                {/* Its own element: the page's button is never a list's unkeyed child. */}
+                {headerAction && <div>{headerAction}</div>}
+              </div>
+            </div>
+          )}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <Thread
+              welcomeConfig={{
+                title: analystName ?? "Research Agent",
+                subtitle: readOnly
+                  ? "Read only"
+                  : isFollowupMode
+                    ? "Run complete — ask follow-up questions or place trades"
+                    : "Autonomous research agent",
+              }}
+              composerSlot={
+                readOnly ? (
+                  <p className="px-4 py-3 text-center text-sm text-muted-foreground">This run takes no messages.</p>
+                ) : composerSlot ?? (
+                  <HindsightComposer
+                    features={{
+                      placeholder: isFollowupMode
+                        ? "Ask about the run, research a ticker, or place a trade…"
+                        : "Ask a follow-up question…",
+                      tickerSearch: true,
+                      slashCommands: true,
+                      modelLabel: RESEARCH_MODEL_OPTIONS.find((o) => o.value === selectedModel)?.label ?? selectedModel ?? "GPT-4o",
+                      modelOptions: RESEARCH_MODEL_OPTIONS,
+                      onModelChange,
+                    }}
+                  />
+                )
+              }
+            />
+          </div>
+        </div>
         <RunContext calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
       </div>
     );
   }
 
   // ── podcast-segment-run: tabbed layout (Chat | Transcript) ──────────────
-  // Mirror of the research-run tabbed layout, but Chat | Transcript instead
-  // of Chat | Sources | Theses. A segment run produces exactly ONE
-  // transcript (vs many theses for analyst runs), so the Transcript tab
-  // shows the full TranscriptCard with click-to-expand sheet.
+  // A segment run produces exactly ONE transcript, its output, so the
+  // Transcript tab shows the full TranscriptCard with click-to-expand sheet.
   if (mode === "podcast-segment-run") {
     const isFollowupMode = !autoStart;
     return (

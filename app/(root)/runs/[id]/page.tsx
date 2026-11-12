@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { docForRunMode } from "@/components/docs/registry";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
-import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
 import type { TranscriptRowData } from "@/components/ui/transcript-row";
 import { ACCOUNT_RUN_NAMES, READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
@@ -133,15 +132,6 @@ export default async function RunPage({
   // What its model call was sent (lib/agent/run-requests.ts); none for other runs yet.
   const requests = await loadRunRequests(run.id).catch(() => []);
 
-  // Load Sources + Theses tab data from the DB.
-  // Wrapped in try/catch so a DB error (e.g. pending migration) never
-  // crashes the whole page — tabs just render empty.
-  const { sources, theses } = await getRunSourcesData({
-    runId: run.id,
-    analystId: run.agentConfig?.id ?? null,
-    startedAt: run.startedAt,
-  }).catch(() => ({ sources: [], theses: [] }));
-
   // Build the Transcript tab payload for podcast segment runs.
   const transcriptForChat: TranscriptRowData | null =
     isPodcastSegmentRun && run.segmentTranscript
@@ -177,8 +167,6 @@ export default async function RunPage({
             readOnly={readOnly}
             requests={requests}
             messages={persistedMessages ?? undefined}
-            sources={isPodcastSegmentRun ? [] : sources}
-            theses={isPodcastSegmentRun ? [] : theses}
             transcript={transcriptForChat}
             headerAction={
               <Button variant="ghost" size="icon" aria-label="How this run works" nativeButton={false} render={<Link href={`/docs/${docForRunMode(run.mode)}`} />}>

@@ -551,8 +551,8 @@ The agent run page (`/runs/[id]`) renders via:
 5. Follow-up conversation happens in the SAME AgentChat instance (its
    composer stays live after the run finishes) — there is no separate
    post-run chat component or route.
-6. Sources / Theses (and, for podcast segment runs, Transcript) are tabs
-   inside AgentChat, fed by `getRunSourcesData` from the page.
+6. A run page is the chat alone: no tab bar, the Context and expand buttons
+   at the right. Only a podcast segment run keeps a tab, Transcript, its output.
 
 ## Tool UI architecture
 The primitive is `components/ai-elements/tool-progress.tsx` (`ToolProgress` +
@@ -785,8 +785,6 @@ When you spot something new, file it there — not here.)
   AND completed runs, and owns the per-mode autoStart guards
 - lib/agent/convert-messages.ts — convertPersistedToUIMessages(), the
   replay hydrator for COMPLETE/FAILED runs
-- components/research/run-sources-panel.tsx — Sources tab body
-  (the only file left in components/research/)
 
 ### Analyst System
 - app/(root)/analysts/new/client.tsx — AI creation chat (AgentChat, builder mode)
