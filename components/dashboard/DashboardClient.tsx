@@ -1241,7 +1241,7 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
               className="lg:h-[390px]"
               controls={
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-                  <TabsList size="sm" variant="outline">
+                  <TabsList size="sm">
                     {RANGES.map((r) => (
                       <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
                     ))}

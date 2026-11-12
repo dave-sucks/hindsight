@@ -38,7 +38,7 @@
  */
 
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -237,6 +237,24 @@ function TradeTitle({
   );
 }
 
+/** "Held 37 days", and on hover when: the day and time the shares were bought, and sold once they are. */
+function HeldFor({ position }: { position: ThesisStatePosition }) {
+  const stamp = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const when =
+    position.closed && position.closedAt
+      ? `${stamp(position.openedAt)} to ${stamp(position.closedAt)}`
+      : `Since ${stamp(position.openedAt)}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="pointer-events-auto cursor-default tabular-nums" />}>
+        Held {position.daysHeld} day{position.daysHeld === 1 ? "" : "s"}
+      </TooltipTrigger>
+      <TooltipContent>{when}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The newest analyst note at the foot of the page card: five lines, a click for the rest. */
 function NoteClamp({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -265,7 +283,7 @@ function NoteClamp({ text }: { text: string }) {
 // buttons are a row of their own at the foot, the reason's first two lines sit
 // above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
-  const { ticker } = props;
+  const { ticker, position } = props;
   const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const body = (
@@ -280,10 +298,10 @@ function TradeBanner(props: TradeSummaryProps) {
         action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
       <p className="truncate text-base tabular-nums">{sentence}</p>
-      {/* The reason, muted: two lines until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
+      {/* The reason, muted: two lines until the card is clicked, then all of it with the days held as its last line (or the "Writing" line while the note is on its way). */}
       {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} muted />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} muted tail={pp.intent === "OPEN" ? undefined : <HeldFor position={position} />} />
         </div>
       ) : null}
       {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}
@@ -349,18 +367,27 @@ function TradeCard(props: TradeSummaryProps) {
   const closed = position.closed === true;
   const proposedBuy = pp?.intent === "OPEN";
   const pastTrades = trades ? Math.max(0, trades.count - 1) : 0;
-  const footnote = [
-    ...(!proposedBuy ? [avgCost, `Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}`] : []),
+  const footnote: ReactNode[] = [
+    ...(!proposedBuy ? [avgCost, <HeldFor key="held" position={position} />] : []),
     ...(pastTrades > 0 ? [`${pastTrades} past trade${pastTrades === 1 ? "" : "s"}`] : []),
-  ].join(" · ");
+  ];
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
       <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} />
       <div className="pointer-events-none">
         {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
         <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
-        {/* The footnote: what the shares cost us, how long we have held them, and how many trades the thesis had before this one. */}
-        {footnote ? <p className="mt-2 text-xs text-muted-foreground tabular-nums">{footnote}</p> : null}
+        {/* The footnote: what the shares cost us, how long we have held them (the dates on hover), and how many trades the thesis had before this one. */}
+        {footnote.length > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+            {footnote.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 ? " · " : null}
+                {part}
+              </Fragment>
+            ))}
+          </p>
+        ) : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">
