@@ -47,7 +47,7 @@ describe("what the digest's model is given", () => {
     const out = await writeDigestNarrative(STANDIN_SNAPSHOT);
     expect(out.model).toBe("fallback");
     expect(out.narrative).toBe(
-      "Value $80,000.00 · cash $40,000.00 (50.0% of the account)\n\nWed, Nov 11: +0.6% (+$500) · since you started: −20.0% (−$20,000) on $100,000 put in\n\n2 proposals are waiting for your approval.",
+      "Value $80,000.00 · cash $40,000.00 (50.0% of the account)\n\nWed, Nov 11: +0.6% (+$500) · since the start: −20.0% (−$20,000) on $100,000 put in\n\n2 proposals are waiting for your approval.",
     );
   });
 });

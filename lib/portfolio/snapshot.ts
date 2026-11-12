@@ -223,12 +223,12 @@ function holdingLine(h: HoldingLine, dayName: string): string {
 /** The snapshot as every reader gets it: plain lines, no ids. */
 export function snapshotText(s: PortfolioSnapshot): string {
   const when = s.live ? `${dayLabel(s.day)}, ${etTime(new Date(s.at))} ET (market open, latest prices)` : `${dayLabel(s.day)} at the close`;
-  const out: string[] = [`Your portfolio, ${when}`];
+  const out: string[] = [`The account, ${when}`];
   out.push(`Value ${usd(s.value, true)} · cash ${usd(s.cash, true)} (${ratio(s.cash, s.value).toFixed(1)}% of the account)`);
   const dayName = s.live ? "today" : dayLabel(s.day);
   out.push(
     `${s.live ? "Today" : dayName}: ${s.dayChange ? change(s.dayChange) : "couldn't be worked out (a price is missing)"} · ` +
-      (s.lifetime ? `since you started: ${change(s.lifetime)} on ${usd(s.lifetime.contributed)} put in` : "since you started: couldn't be read"),
+      (s.lifetime ? `since the start: ${change(s.lifetime)} on ${usd(s.lifetime.contributed)} put in` : "since the start: couldn't be read"),
   );
   out.push("");
   out.push(s.holdings.length ? `Holdings (${s.holdings.length}), largest first:` : "Holdings: none.");
@@ -242,9 +242,9 @@ export function snapshotText(s: PortfolioSnapshot): string {
       out.push(`- ${etTime(new Date(t.at))} ET: ${t.side === "BUY" ? "bought" : "sold"} ${shares(t.shares)} of ${t.ticker} at ${usd(t.price, true)}${t.analyst ? ` · ${t.analyst}` : ""}`);
   }
   out.push("");
-  if (!s.waiting.length) out.push("Waiting for your approval: nothing.");
+  if (!s.waiting.length) out.push("Waiting for the owner's approval: nothing.");
   else {
-    out.push("Waiting for your approval (proposals, not trades, until you approve them):");
+    out.push("Waiting for the owner's approval (proposals, not trades, until approved):");
     for (const p of s.waiting) {
       const first = dayLabel(nyDay(new Date(p.firstProposed)));
       const history = p.times > 1 ? `proposed ${p.times} times since ${first}` : `proposed ${first}`;

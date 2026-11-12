@@ -22,9 +22,9 @@ Saves: The digest, and the snapshot it read
 The one set of numbers about your account, as plain text. With made-up amounts, it reads:
 
 ```
-Your portfolio, Wed, Nov 11 at the close
+The account, Wed, Nov 11 at the close
 Value $80,000.00 · cash $40,000.00 (50.0% of the account)
-Wed, Nov 11: +0.6% (+$500) · since you started: −20.0% (−$20,000) on $100,000 put in
+Wed, Nov 11: +0.6% (+$500) · since the start: −20.0% (−$20,000) on $100,000 put in
 
 Holdings (2), largest first:
 - AAA: 100 shares at $250.00 = $25,000 (31.3%) · day +4.2% (+$1,000) · since bought at $200.00: +25.0% (+$5,000) · Analyst One
@@ -32,7 +32,7 @@ Holdings (2), largest first:
 
 Bought or sold on Wed, Nov 11: nothing.
 
-Waiting for your approval (proposals, not trades, until you approve them):
+Waiting for the owner's approval (proposals, not trades, until approved):
 - Sell 50 shares of BBB, proposed 9 times since Tue, Oct 20 · Analyst Two. Its reason: "BBB closed under your sell line again, and I proposed selling all 50 shares. Nothing new broke at the company today."
 - Buy 10 shares of CCC, proposed Wed, Nov 11 · Analyst One. Its reason: "CCC crossed your buy level after a strong quarter."
 ```
