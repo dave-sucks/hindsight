@@ -262,8 +262,8 @@ function NoteClamp({ text }: { text: string }) {
 // sheet's expand). Two rows a hair apart: the title row, then the sentence
 // with the gain at its right, the row setting the size once and the gain
 // inheriting it. While a proposal waits the card is not a link: its answer
-// buttons sit in the title row, and a click anywhere else opens or closes
-// the reason under the rows.
+// buttons are a row of their own at the foot, the reason's first line sits
+// above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
   const { ticker } = props;
   const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
@@ -280,10 +280,10 @@ function TradeBanner(props: TradeSummaryProps) {
         action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
       <p className="truncate text-base tabular-nums">{sentence}</p>
-      {/* The reason, once asked for (and the "Writing" line while the note is on its way), a little below the rows. */}
-      {pp && !pp.executing && (expanded || pp.writing) ? (
+      {/* The reason: one line until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
+      {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} clamp={1} />
         </div>
       ) : null}
       {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}

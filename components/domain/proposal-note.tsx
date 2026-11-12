@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * A proposal's note: the analyst's reason. Where the card owns the click
- * (the trade banner) the note is hidden until the card says it is open —
- * the title row reads "Read reasoning" on hover; on its own it shows two
- * lines and a click for the rest. A run's note lands on its proposal at the end of the run
+ * A proposal's note: the analyst's reason, its first lines and a click for
+ * the rest. Where the card owns the click (the trade banner) the card says
+ * whether the note is open; on its own the note takes the click. A run's
+ * note lands on its proposal at the end of the run
  * (lib/proposals/auto-writeup.ts); until then the card shows one shimmering
  * line in its place and reads the reason again every few seconds, for up to
  * a quarter of an hour (a morning run's length).
@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 
 const POLL_MS = 8_000;
 const MAX_POLLS = 120;
+
+const CLAMP = { 1: "line-clamp-1", 2: "line-clamp-2", 4: "line-clamp-4", 5: "line-clamp-5" } as const;
 
 export const WRITING_LABEL = "Writing a summary for this proposal";
 
@@ -30,8 +32,8 @@ export function ProposalNote({
   writing: boolean;
   /** When the card owns the click, it says whether the note is open; the note then takes no clicks of its own. */
   expanded?: boolean;
-  /** On its own: how many lines show before the click (the page card asks for five). */
-  clamp?: 2 | 4 | 5;
+  /** How many lines show while closed (the banner asks for one, the page card for five). */
+  clamp?: 1 | 2 | 4 | 5;
 }) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
@@ -64,9 +66,6 @@ export function ProposalNote({
   }, [orderId, busy, polls]);
 
   if (busy && polls < MAX_POLLS) return <p className="text-sm shimmer-text">{WRITING_LABEL}</p>;
-  // The card says it is closed: nothing, not a clamp.
-  if (expanded === false) return null;
-
   const paragraphs = (text ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length === 0) return null;
   return (
@@ -82,7 +81,7 @@ export function ProposalNote({
       }
       title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >
-      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={clamp === 5 ? "line-clamp-5" : clamp === 4 ? "line-clamp-4" : "line-clamp-2"}>{paragraphs.join(" ")}</p>}
+      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={CLAMP[clamp]}>{paragraphs.join(" ")}</p>}
     </div>
   );
 }
