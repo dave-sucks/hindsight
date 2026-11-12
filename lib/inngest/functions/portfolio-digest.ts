@@ -30,16 +30,6 @@ import {
   TRADING_RUN_MODES,
 } from "@/lib/portfolio/digest-pairs";
 
-/** YYYY-MM-DD (ET) for the trading day a Date falls in. */
-function etDateString(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
 export const portfolioDigest = inngest.createFunction(
   {
     id: "portfolio-digest",
@@ -49,10 +39,11 @@ export const portfolioDigest = inngest.createFunction(
   },
   { cron: "TZ=America/New_York 0 20 * * 1-5" }, // 8:00 PM ET, Mon-Fri
   async ({ step }) => {
-    const today = etTradingDayDate();
-    const dateStr = etDateString(today);
-    // The DB `date` column anchors at ET midnight (same as etTradingDayDate).
-    const digestDate = today;
+    // Today's New York date, as the DB stores it (midnight UTC of that date)
+    // and as YYYY-MM-DD. Read back in New York time, that midnight is the
+    // evening before, which made every digest cover the previous day.
+    const digestDate = etTradingDayDate();
+    const dateStr = digestDate.toISOString().slice(0, 10);
 
     // Step 1: find (account, environment) PAIRS with TRADING activity today.
     // PAPER and LIVE share one accountId, so the unit of work is the pair.

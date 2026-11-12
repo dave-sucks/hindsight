@@ -45,7 +45,7 @@ Eastern time, on trading days unless it says otherwise.
 - **10:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
-- **8:00 PM:** The Portfolio Digest: a short write-up of the day on the whole account, on the home page and in the chat when no analyst is picked. It is a run you can open on /runs. It takes no messages, and its Context button opens a panel beside the conversation with exactly what the model was sent: the total size, each part (the instructions, the portfolio facts) with its size and share, its full text by section, and the raw request.
+- **8:00 PM:** The Portfolio Digest: a short write-up of the day on the whole account, on the home page and in the chat when no analyst is picked. It covers the day it runs on, and the only money it is given is the account's cash. It is a run you can open on /runs. It takes no messages, and its Context button opens a panel beside the conversation with exactly what the model was sent: the total size, each part (the instructions, the portfolio facts) with its size and share, its full text by section, and the raw request.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
 - **Discovery** has no schedule. It is done in chat, when you ask.
 

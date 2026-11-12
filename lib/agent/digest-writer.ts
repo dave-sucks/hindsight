@@ -48,13 +48,13 @@ INLINE REFERENCE TOKENS — use these exact markdown-link forms so the UI can re
 Tokens degrade to plain text if unrendered, so write them inline naturally. Do NOT use a token if the corresponding id is null/missing — just use plain text.
 
 WHAT TO COVER (in roughly this order):
-1. Portfolio-level state: equity, day P&L and total P&L (deposit-adjusted — these are pure trading P&L, not inflated by deposits), how deployed the book is (slots used vs capacity, idle cash).
+1. Portfolio-level state: equity, day P&L and total P&L (deposit-adjusted — these are pure trading P&L, not inflated by deposits), and the cash.
 2. The daily-vs-tactical-vs-discovery split: what each run type did today.
 3. Today's decisions and trades: entries, exits, trims, adds, reviews, passes — attribute to analyst/run where it adds traceability.
 4. The agent-memory timeline: how passes and entries have aged. For HELD names, narrate per-name moves using the NOW price + "since entry" %% and "today" %% from facts ("MU is +12% since entry, +1.2% today"). For PASSES, use the verdict + "since pass" move from facts: a MISSED pass is regret (the name ran without us — quote the % it ran), a DODGED pass was the right call (quote the drop avoided). Name the worst MISSES explicitly.
-5. A short forward read: is the book fully deployed, idle, over-concentrated, or has stale cadence?
+5. A short forward read: is the book over-concentrated, or has stale cadence?
 
-JUDGMENT (from facts only): say things like "book is fully deployed," "two passes are running without us," "no new entry in N days — cadence is cold," "concentration is heavy in <sector>." Do not soften with hedges. Do not fabricate.
+JUDGMENT (from facts only): say things like "two passes are running without us," "no new entry in N days — cadence is cold," "concentration is heavy in <sector>." Do not soften with hedges. Do not fabricate.
 
 If a day was quiet (no runs, no trades), say so plainly in 1-2 short paragraphs. Do not pad.`;
 
@@ -87,10 +87,11 @@ export function buildDigestPrompt(facts: DigestFacts): string {
   );
 
   const b = facts.book;
+  // The account's cash and no other money: no buying power, idle cash or slots to fill, which read as orders to buy.
   lines.push(
-    `BOOK: equity ${money(b.totalEquity)}, cash ${money(b.cash)}, buying power ${money(b.buyingPower)}, ` +
-      `gross exposure ${money(b.grossExposure)} (long ${money(b.longMarketValue)}, short ${money(b.shortMarketValue)}). ` +
-      `Slots used ${b.slotsUsedLabel}.` +
+    `BOOK: equity ${money(b.totalEquity)}, cash ${money(b.cash)}` +
+      (b.totalEquity > 0 ? ` (${((b.cash / b.totalEquity) * 100).toFixed(1)}% of the account)` : "") +
+      `, gross exposure ${money(b.grossExposure)} (long ${money(b.longMarketValue)}, short ${money(b.shortMarketValue)}).` +
       (b.topSector && b.topSectorConcentration != null
         ? ` Top sector ${b.topSector} = ${(b.topSectorConcentration * 100).toFixed(0)}% of gross.`
         : ""),
@@ -98,8 +99,7 @@ export function buildDigestPrompt(facts: DigestFacts): string {
 
   const c = facts.cadence;
   lines.push(
-    `CADENCE: fully deployed=${c.fullyDeployed}, idle cash ${money(c.idleCash)}, ` +
-      `days since last new entry=${c.daysSinceLastNewEntry ?? "n/a"}, pending proposals=${c.pendingProposals}.`,
+    `CADENCE: days since last new entry=${c.daysSinceLastNewEntry ?? "n/a"}, pending proposals=${c.pendingProposals}.`,
   );
 
   const rr = facts.runRollup;
@@ -239,8 +239,7 @@ export function fallbackNarrative(facts: DigestFacts): string {
   const lines: string[] = [];
   lines.push(
     `Book equity ${money(facts.book.totalEquity)}; day ${money(facts.pnl.dayPnl)} (${pct(facts.pnl.dayPnlPct)}), ` +
-      `total ${money(facts.pnl.totalPnl)} (${pct(facts.pnl.totalPnlPct)}, deposit-adjusted). ` +
-      `Slots used ${facts.book.slotsUsedLabel}, idle cash ${money(facts.cadence.idleCash)}.`,
+      `total ${money(facts.pnl.totalPnl)} (${pct(facts.pnl.totalPnlPct)}, deposit-adjusted). Cash ${money(facts.book.cash)}.`,
   );
   lines.push(
     `Runs: ${rr.daily} daily, ${rr.tactical} tactical, ${rr.discovery} discovery (${rr.failed} failed). ` +
