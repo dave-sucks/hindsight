@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * RunContext — what a run's latest model call was sent, read only from its
- * saved record (lib/agent/run-requests.ts), never rebuilt. The total, one
+ * RunContext — what a run's model calls were sent, read only from their
+ * saved records (lib/agent/run-requests.ts), never rebuilt: the run's own
+ * call and, beside it, its newest follow-up or chat message. The total, one
  * bar with a color per part (the Framework page's colors), a line per part
  * that opens its full text by section, and the raw request, copyable.
  *
+ * Read when the panel opens and again after each turn, never with the page.
  * Beside the conversation on a desktop, pushing it left so it still scrolls;
  * a Sheet on a phone. The ShadCN Sidebar is the app's fixed, full-height nav
  * (its own provider and shortcut) and Resizable isn't installed, so the
@@ -13,11 +15,13 @@
  */
 
 import { useEffect, useState } from "react";
+import { useAuiState } from "@assistant-ui/react";
 import { ChevronRight, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { JsonBlock } from "@/components/ai-elements/json-block";
 import { SWATCH } from "@/components/docs/framework/swatch";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -28,29 +32,66 @@ import { cn } from "@/lib/utils";
 const n = (x: number) => x.toLocaleString("en-US");
 const share = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 const color = (c: SentCategory) => (c.part ? SWATCH[c.part].className : "bg-muted-foreground/35");
+const isMessage = (c: CallView) => c.call === "Chat message" || c.call === "Follow-up";
 
-export function RunContext({ runId, calls, open, onOpenChange }: { runId?: string; calls: CallView[]; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function RunContext({
+  runId,
+  chatSessionId,
+  live = false,
+  open,
+  onOpenChange,
+}: {
+  runId?: string;
+  /** /chat: the session id its run is kept under. */
+  chatSessionId?: string | null;
+  /** The run is still going: its record is saved when it ends. */
+  live?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const isMobile = useIsMobile();
-  // Read again each time it opens: a chat keeps one record per message.
-  const [fresh, setFresh] = useState<CallView[] | null>(null);
+  const turning = useAuiState((s) => s.thread.isRunning);
+  const [calls, setCalls] = useState<CallView[] | null>(null);
+  const [pick, setPick] = useState(0);
   useEffect(() => {
-    if (!open || !runId) return;
-    let live = true;
-    getRunContext(runId)
-      .then((c) => live && setFresh(c))
-      .catch(() => {});
+    if (!open || turning || (!runId && !chatSessionId)) return;
+    let on = true;
+    getRunContext({ runId, chatSessionId })
+      // An empty or failed reply never replaces a record already shown.
+      .then((c) => on && setCalls((prev) => (c.length || !prev?.length ? c : prev)))
+      .catch(() => on && setCalls((prev) => prev ?? []));
     return () => {
-      live = false;
+      on = false;
     };
-  }, [open, runId]);
-  const list = fresh ?? calls;
-  const call = list[list.length - 1] ?? null;
-  const started = call?.call === "Chat message" || call?.call === "Follow-up" ? "What your latest message started with" : "What the run started with";
+  }, [open, turning, runId, chatSessionId]);
+
+  const call = calls?.length ? calls[Math.min(pick, calls.length - 1)] : null;
+  const empty =
+    calls === null && (runId || chatSessionId)
+      ? "Loading…"
+      : live || turning
+        ? "Recorded when the run ends."
+        : chatSessionId && !runId
+          ? "Each message's request shows here once it is sent."
+          : "This run kept no record of what it sent the model.";
   const subtitle = !call
     ? ""
     : call.of
-      ? `${started}: its first request to ${call.model}, as sent. It made ${call.of} in all; every tool call and result after this one is in the conversation.`
-      : `What the run sent ${call.model}, as it was sent.`;
+      ? `${isMessage(call) ? "What your latest message started with" : "What the run started with"}: its first request to ${call.model}, as sent. It made ${call.of} in all; every tool call and result after this one is in the conversation.`
+      : `What ${isMessage(call) ? "your latest message" : "the run"} sent ${call.model}, as it was sent.`;
+  const picker =
+    calls && calls.length > 1 ? (
+      <Tabs value={String(pick)} onValueChange={(v) => setPick(Number(v))}>
+        <TabsList size="sm">
+          {calls.map((c, i) => (
+            <TabsTrigger key={i} value={String(i)}>
+              {isMessage(c) ? "Latest message" : "The run"}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+    ) : null;
+
   if (isMobile)
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -59,7 +100,8 @@ export function RunContext({ runId, calls, open, onOpenChange }: { runId?: strin
             <SheetTitle>Context</SheetTitle>
             <SheetDescription>{subtitle}</SheetDescription>
           </SheetHeader>
-          <ContextBody call={call} />
+          {picker && <div className="px-4">{picker}</div>}
+          <ContextBody call={call} empty={empty} />
         </SheetContent>
       </Sheet>
     );
@@ -67,21 +109,22 @@ export function RunContext({ runId, calls, open, onOpenChange }: { runId?: strin
   return (
     <aside className="flex h-full w-96 shrink-0 flex-col border-l">
       <div className="flex items-start gap-2 px-4 pt-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-2">
           <p className="text-lg font-medium">Context</p>
+          {picker}
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
         <Button variant="ghost" size="icon-sm" aria-label="Close context" onClick={() => onOpenChange(false)}>
           <X />
         </Button>
       </div>
-      <ContextBody call={call} />
+      <ContextBody call={call} empty={empty} />
     </aside>
   );
 }
 
-function ContextBody({ call }: { call: CallView | null }) {
-  if (!call) return <p className="p-4 text-sm text-muted-foreground">This run kept no record of what it sent the model.</p>;
+function ContextBody({ call, empty }: { call: CallView | null; empty: string }) {
+  if (!call) return <p className="p-4 text-sm text-muted-foreground">{empty}</p>;
 
   async function copyRaw() {
     try {

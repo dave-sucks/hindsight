@@ -11,7 +11,6 @@ import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
 import type { TranscriptRowData } from "@/components/ui/transcript-row";
 import { ACCOUNT_RUN_NAMES, READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
-import { loadRunRequests } from "@/lib/agent/run-requests";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -130,8 +129,6 @@ export default async function RunPage({
   const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
   // The Portfolio Digest's run: written on the server, read only.
   const readOnly = READ_ONLY_RUN_MODES.has(run.mode);
-  // What its newest model call was sent (lib/agent/run-requests.ts); the Context panel reads it again when opened.
-  const requests = await loadRunRequests(run.id, { latest: true }).catch(() => []);
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -175,7 +172,7 @@ export default async function RunPage({
             analystName={analystName}
             autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !readOnly}
             readOnly={readOnly}
-            requests={requests}
+            runLive={isLive}
             messages={persistedMessages ?? undefined}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}

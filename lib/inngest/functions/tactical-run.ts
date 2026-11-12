@@ -26,7 +26,7 @@ import { generateText, stepCountIs } from "ai";
 import { recordFirstRequest } from "@/lib/agent/run-requests";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
@@ -777,7 +777,7 @@ export const tacticalRun = inngest.createFunction(
       const sent = recordFirstRequest(run.id, "Main", "tactical-run", MODES["tactical"].model);
       try {
         const { steps, response } = await sent.around(generateText({
-          model: openai(MODES["tactical"].model),
+          model: createOpenAI({ fetch: sent.fetch })(MODES["tactical"].model),
           system: systemPrompt,
           prompt: userPrompt,
           tools,

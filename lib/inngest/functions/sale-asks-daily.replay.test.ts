@@ -100,7 +100,7 @@ async function trigger(db: PrismaDouble, at: string, data: Sent["data"]) {
       jest.doMock("@/lib/prisma", () => ({ prisma: db }));
       jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
       jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
-      jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+      jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}), createOpenAI: () => Object.assign(() => ({}), { chat: () => ({}) }) }));
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
       jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: { execute: async () => ({ ok: false }) } }) }));
       await import("@/lib/inngest/functions/tactical-run");

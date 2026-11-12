@@ -34,7 +34,7 @@ async function fire(orderStatus: string) {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
     jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}), createOpenAI: () => Object.assign(() => ({}), { chat: () => ({}) }) }));
     jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     await import("@/lib/inngest/functions/tactical-run");

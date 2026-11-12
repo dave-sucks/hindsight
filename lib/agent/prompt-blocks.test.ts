@@ -5,7 +5,8 @@
  * The four agents' prompts come from their real builders (sample-prompts.ts).
  * The trigger run's stock is CEG on 2026-09-14 from its real Activity rows
  * (ceg-what-was-said-2026-09.json) with a note pinned on it. The Market and
- * portfolio block is a stand-in under the headings its builder prints.
+ * portfolio block is its loader's own output (loadPortfolioBlock) on the
+ * stand-in book and a digest of Wed Nov 11.
  */
 import { generateText, tool, type ModelMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -23,8 +24,10 @@ import type { StoredLine } from "@/lib/thesis/activity-feed";
 import type { SharedNoteRow } from "@/lib/agent/shared-notes";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
+import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 
-jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+jest.mock("@/lib/prisma", () => ({ prisma: { portfolioDigest: { findFirst: async () => ({ narrative: "Most of the book rides one theme; two sales wait on your decision.", createdAt: new Date("2026-11-12T01:00:00Z") }) } } }));
+jest.mock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: async () => jest.requireActual("@/lib/agent/__fixtures__/portfolio-snapshot-standin").STANDIN_SNAPSHOT }));
 
 const labels = (text: string) => promptBlocks(text).map((b) => b.label);
 const sum = (text: string) => promptBlocks(text).reduce((n, b) => n + b.chars, 0);
@@ -48,19 +51,17 @@ describe("the four agents' prompts, from their builders", () => {
 });
 
 describe("the Market and portfolio block", () => {
-  // The shape its builder prints; stand-in text and amounts.
-  const BLOCK = [
-    "## Market and portfolio",
-    "",
-    "### Portfolio snapshot\nValue $100,000 · cash $30,000 (30.0%) · 8 holdings",
-    "",
-    "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nMost of the book rides one theme; two sales wait on your decision.",
-  ].join("\n");
+  // As its loader prints it for 8 AM ET, Thu Nov 12.
+  let BLOCK = "";
+  beforeAll(async () => {
+    BLOCK = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: new Date("2026-11-12T13:00:00Z") });
+    expect(BLOCK).toMatch(/^## Market and portfolio\n\n### Portfolio snapshot\n/);
+  });
 
   it("one part, its ### parts its sections, last in the morning run's prompt and just before the trigger run's row", () => {
     const daily = `${SAMPLE_PROMPTS.daily()}\n\n${BLOCK}`;
     const block = promptBlocks(daily).find((b) => b.label === "Market and portfolio")!;
-    expect(block).toMatchObject({ part: null, text: BLOCK, chars: BLOCK.length });
+    expect(block).toMatchObject({ part: "portfolio", text: BLOCK, chars: BLOCK.length });
     expect(block.sections!.map((s) => s.label)).toEqual(["Portfolio snapshot", "Portfolio digest (written Wed, Nov 11, 8:00 PM ET)"]);
     expect(block.sections!.map((s) => s.text).join("")).toBe(BLOCK);
     expect(sum(daily)).toBe(daily.length);
@@ -77,7 +78,7 @@ describe("the Market and portfolio block", () => {
     const body = { model: "gpt-5.4", messages: [{ role: "system", content: `${SAMPLE_PROMPTS.daily()}\n\n${BLOCK}` }, { role: "user", content: "Start." }] };
     const view = viewOfRecord({ v: 1, call: "Main", source: "morning-research", model: "gpt-5.4", startedAt: "", endedAt: "", requests: [body] });
     const market = view.categories.find((c) => c.name === "Market and portfolio")!;
-    expect(market.part).toBeNull();
+    expect(market.part).toBe("portfolio");
     expect(market.sections.map((s) => [s.label, s.chars])).toEqual(promptBlocks(body.messages[0].content).find((b) => b.sections)!.sections!.map((s) => [s.label, s.text.length]));
   });
 });

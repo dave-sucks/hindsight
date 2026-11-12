@@ -64,7 +64,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}), createOpenAI: () => Object.assign(() => ({}), { chat: () => ({}) }) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({
       closeOpenPosition: jest.fn(async (...a: unknown[]) => {

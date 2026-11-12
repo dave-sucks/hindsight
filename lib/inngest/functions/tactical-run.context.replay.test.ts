@@ -3,11 +3,12 @@
  *
  * V's floor set to Send to Agent (as in tactical-run.on-fire.replay.test.ts,
  * stand-in position), through the real handler, the SDK's own loop and the
- * real OpenAI provider (the Responses API) with only `fetch` stood in for:
- * the model closes out with update_thesis, then stops. The record holds the
- * first request byte for byte and how many the call made, it outlives the
- * thread's save, and the panel shows the instructions in the parts the
- * builders print.
+ * real OpenAI provider (the Responses API) with only the network stood in
+ * for: the model closes out with update_thesis, then stops. The record holds
+ * the first request byte for byte, as the provider's fetch sent it, and how
+ * many the call made; it outlives the thread's save, and the panel shows the
+ * instructions in the parts the builders print. A first request the provider
+ * refuses is kept too, with the error.
  */
 import { tool } from "ai";
 import { z } from "zod";
@@ -26,7 +27,7 @@ const reply = (n: number) =>
     ? { id: "resp_1", object: "response", created_at: 1, model: "gpt-5.4", status: "completed", output: [{ type: "function_call", id: "fc_1", call_id: "call_1", name: "update_thesis", arguments: JSON.stringify({ thesis_id: "v", rationale: "Held: the dip came with the market." }), status: "completed" }], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }
     : { id: "resp_2", object: "response", created_at: 1, model: "gpt-5.4", status: "completed", output: [{ type: "message", id: "msg_2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Held.", annotations: [] }] }], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } };
 
-async function fire() {
+async function fire(opts: { refuse?: boolean } = {}) {
   const db = prismaDouble({
     thesis: [thesisRow({ id: "v", ticker: "V", status: "HOLDING", direction: "LONG", analystId: SECULAR, triggers: [V_FLOOR] })],
     position: [positionRow({ id: "pos_v", symbol: "V", analystId: SECULAR, environment: "LIVE", quantity: 10, avgCost: 350 })],
@@ -34,17 +35,20 @@ async function fire() {
     account: [accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true })],
   });
   const sent: string[] = [];
+  // The network: the provider's fetch passes through to it.
+  process.env.OPENAI_API_KEY ??= "test";
+  const network = jest.spyOn(globalThis, "fetch").mockImplementation((async (_u: unknown, init?: RequestInit) => {
+    sent.push(String(init?.body));
+    return opts.refuse
+      ? new Response(JSON.stringify({ error: { message: "Invalid schema for function 'update_thesis'.", type: "invalid_request_error" } }), { status: 400, headers: { "content-type": "application/json" } })
+      : json(reply(sent.length));
+  }) as typeof fetch);
   let mod: typeof import("@/lib/agent/run-requests") | undefined;
   let loaded: Awaited<ReturnType<typeof import("@/lib/agent/run-requests").loadRunRequests>> = [];
   await jest.isolateModulesAsync(async () => {
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
-    // The real provider; only the network is stood in for.
-    jest.doMock("@ai-sdk/openai", () => {
-      const actual = jest.requireActual("@ai-sdk/openai");
-      return { ...actual, openai: actual.createOpenAI({ apiKey: "test", fetch: async (_u: string, init: RequestInit) => (sent.push(String(init.body)), json(reply(sent.length))) }) };
-    });
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn() }));
     jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
@@ -71,9 +75,10 @@ async function fire() {
     // What the run page reads.
     const run = (db.store.researchRun as Array<{ id: string }>)[0];
     mod = await import("@/lib/agent/run-requests");
-    loaded = await mod.loadRunRequests(run.id, { latest: true });
+    loaded = await mod.loadRunRequests(run.id);
   });
-  for (const m of ["@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  network.mockRestore();
+  for (const m of ["@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
   return { sent, loaded, viewOfRecord: mod!.viewOfRecord, runs: rows("researchRun"), messages: rows("runMessage") as Array<{ runId: string; role: string; content: string }> };
 }
@@ -93,6 +98,7 @@ describe("a trigger run's Context", () => {
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([
       ["Instructions", "job"],
       ["Analyst: Secular Compounder", "analyst"],
+      ["Market and portfolio", "portfolio"],
       ["$V row", "read"],
       ["House rules", "house"],
       ["First message", "read"],
@@ -101,13 +107,27 @@ describe("a trigger run's Context", () => {
     // The instructions' parts are every character of the system message, once.
     const system = (JSON.parse(r.sent[0]) as { input: Array<{ role: string; content: string }> }).input[0];
     expect(system.role).toBe("developer");
-    expect(view.categories.slice(0, 4).reduce((n, c) => n + c.chars, 0)).toBe(system.content.length);
-    expect(view.categories[3].sections.map((s) => s.text).join("")).toBe(HOUSE_RULES);
-    expect(view.categories[4].sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\. Sell if below \$395\./);
-    expect(view.categories[5].sections.map((s) => s.label)).toEqual(["get_theses", "update_thesis"]);
+    const by = (name: string) => view.categories.find((c) => c.name === name)!;
+    expect(view.categories.slice(0, 5).reduce((n, c) => n + c.chars, 0)).toBe(system.content.length);
+    expect(by("House rules").sections.map((s) => s.text).join("")).toBe(HOUSE_RULES);
+    // The block as its builder printed it for this run, by its sections.
+    expect(by("Market and portfolio").sections.map((s) => s.label)).toEqual(["Portfolio snapshot", "Portfolio digest"]);
+    expect(by("First message").sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\. Sell if below \$395\./);
+    expect(by("Tool menu").sections.map((s) => s.label)).toEqual(["get_theses", "update_thesis"]);
     expect(view.of).toBe(2);
 
     // The run page reads the same record.
     expect(r.loaded).toEqual([view]);
+  });
+});
+
+describe("a trigger run whose first request is refused", () => {
+  it("keeps that request exactly as sent, with the provider's error", async () => {
+    const r = await fire({ refuse: true });
+    const record = JSON.parse(r.messages.find((m) => m.role === "request")!.content) as RequestRecord;
+    expect(record.requests.map((b) => JSON.stringify(b))).toEqual([r.sent[0]]);
+    expect(record.error).toMatch(/Invalid schema for function 'update_thesis'/);
+    expect(record.of).toBe(0);
+    expect(r.viewOfRecord(record).categories.map((c) => c.name)).toContain("Tool menu");
   });
 });

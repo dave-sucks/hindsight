@@ -119,7 +119,7 @@ async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}), createOpenAI: () => Object.assign(() => ({}), { chat: () => ({}) }) }));
     jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     await import("@/lib/inngest/functions/tactical-run");

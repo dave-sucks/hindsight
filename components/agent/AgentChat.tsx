@@ -19,7 +19,6 @@ import { MODES, RESEARCH_MODEL_OPTIONS } from "@/lib/agent/modes";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
 import { RunContext } from "@/components/agent/RunContext";
-import type { CallView } from "@/lib/agent/run-requests";
 import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
@@ -148,8 +147,8 @@ interface AgentChatProps {
   transcript?: TranscriptRowData | null;
   /** research-run: a run that takes no messages (READ_ONLY_RUN_MODES) shows no composer. */
   readOnly?: boolean;
-  /** research-run: what the run's model calls were sent (lib/agent/run-requests.ts), behind the header's Context button. */
-  requests?: CallView[];
+  /** research-run: the run is still going, so the Context panel says its record comes when it ends. */
+  runLive?: boolean;
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
@@ -214,7 +213,7 @@ export function AgentChat({
   theses = [],
   transcript = null,
   readOnly = false,
-  requests = [],
+  runLive = false,
   currentConfig,
   heldOrWatched,
   messages,
@@ -297,7 +296,7 @@ export function AgentChat({
         theses={theses}
         transcript={transcript}
         readOnly={readOnly}
-        requests={requests}
+        runLive={runLive}
         currentConfig={currentConfig}
         heldOrWatched={heldOrWatched}
         composerSlot={composerSlot}
@@ -328,7 +327,7 @@ interface InnerProps {
   theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
   readOnly: boolean;
-  requests: CallView[];
+  runLive: boolean;
   currentConfig?: Record<string, unknown>;
   heldOrWatched?: string[];
   composerSlot?: ReactNode;
@@ -357,7 +356,7 @@ function AgentChatInner({
   theses,
   transcript,
   readOnly,
-  requests,
+  runLive,
   currentConfig,
   heldOrWatched,
   composerSlot,
@@ -515,7 +514,7 @@ function AgentChatInner({
     return (
       <div className="flex h-full">
         <div className="flex min-w-0 flex-1 flex-col">{tabs}</div>
-        <RunContext runId={runId} calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
+        <RunContext runId={runId} live={runLive} open={contextOpen} onOpenChange={setContextOpen} />
       </div>
     );
   }
@@ -602,18 +601,29 @@ function AgentChatInner({
       ) : undefined,
       analystScope: principalScope,
     };
+    // The Context panel: what the newest message sent the model, beside the conversation.
     return (
-      <Thread
-        welcomeConfig={{
-          title: current?.name ?? PRINCIPAL_WELCOME.title,
-          subtitle: current
-            ? `Scoped to ${current.name} — full read + write authority on this analyst.`
-            : PRINCIPAL_WELCOME.subtitle,
-          icon: PRINCIPAL_WELCOME.icon,
-        }}
-        composerFeatures={principalComposer}
-        composerSlot={composerSlot}
-      />
+      <div className="flex h-full">
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <div className="absolute right-0 top-4 z-10 px-4">
+            <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+              <PanelRight /> Context
+            </Button>
+          </div>
+          <Thread
+            welcomeConfig={{
+              title: current?.name ?? PRINCIPAL_WELCOME.title,
+              subtitle: current
+                ? `Scoped to ${current.name} — full read + write authority on this analyst.`
+                : PRINCIPAL_WELCOME.subtitle,
+              icon: PRINCIPAL_WELCOME.icon,
+            }}
+            composerFeatures={principalComposer}
+            composerSlot={composerSlot}
+          />
+        </div>
+        <RunContext runId={runId} chatSessionId={chatSessionId} open={contextOpen} onOpenChange={setContextOpen} />
+      </div>
     );
   }
 

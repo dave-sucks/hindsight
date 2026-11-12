@@ -39,7 +39,7 @@ async function fire(fireMode: string) {
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}), createOpenAI: () => Object.assign(() => ({}), { chat: () => ({}) }) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/agent/tools", () => ({
       createResearchTools: (ctx: Record<string, unknown>) => {

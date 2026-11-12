@@ -3,36 +3,13 @@
  *
  * DYN's write on 2026-09-25 (writer-and-trade-refusals-2026-09-25.json, as in
  * run-thesis-writer.repair.test.ts), through the real research phase, the
- * SDK's own loop and the real Anthropic provider with only `fetch` stood in
- * for: the model writes its note and submits the decision that night's run
- * submitted. The record holds the first request byte for byte, and the panel
+ * SDK's own loop and the real Anthropic provider with only the network
+ * stood in for: the model writes its note and submits the decision that
+ * night's run submitted. The record holds the first request byte for byte, and the panel
  * shows the Writer's instructions, the analyst's brief and the house rules.
  */
 const mockRunMessages: Array<{ runId: string; role: string; content: string }> = [];
-const mockSent: string[] = [];
 
-jest.mock("@ai-sdk/anthropic", () => {
-  const actual = jest.requireActual("@ai-sdk/anthropic");
-  // The real provider; only the network is stood in for.
-  const { DYN } = jest.requireActual("@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json");
-  const reply = {
-    id: "msg_1",
-    type: "message",
-    role: "assistant",
-    model: "claude-sonnet-4-6",
-    stop_reason: "tool_use",
-    content: [
-      { type: "text", text: "## Company\nDyne makes a drug.\n## Bull Case\n- x\n## Bear Case\n- x" },
-      { type: "tool_use", id: "toolu_1", name: "submit_thesis", input: DYN.last.input },
-    ],
-    usage: { input_tokens: 1, output_tokens: 1 },
-  };
-  const fetch = async (_url: string, init: RequestInit) => {
-    mockSent.push(String(init.body));
-    return new Response(JSON.stringify(reply), { status: 200, headers: { "content-type": "application/json" } });
-  };
-  return { ...actual, anthropic: actual.createAnthropic({ apiKey: "test", fetch }) };
-});
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     agentConfig: { findUnique: jest.fn() },
@@ -57,6 +34,27 @@ import { writerResearchPhase } from "./run-thesis-writer";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { MODES } from "@/lib/agent/modes";
+import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
+
+const DYN = (raw as unknown as { DYN: { last: { input: unknown } } }).DYN;
+const sent: string[] = [];
+// The network: the provider's fetch passes through to it.
+process.env.ANTHROPIC_API_KEY ??= "test";
+beforeAll(() => {
+  jest.spyOn(globalThis, "fetch").mockImplementation((async (_u: unknown, init?: RequestInit) => {
+    sent.push(String(init?.body));
+    const reply = {
+      id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-4-6", stop_reason: "tool_use",
+      content: [
+        { type: "text", text: "## Company\nDyne makes a drug.\n## Bull Case\n- x\n## Bear Case\n- x" },
+        { type: "tool_use", id: "toolu_1", name: "submit_thesis", input: DYN.last.input },
+      ],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    return new Response(JSON.stringify(reply), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch);
+});
+afterAll(() => jest.restoreAllMocks());
 
 const CATALYST = "cmmqxola3000004lbj7c11bfn";
 const CHILD = "writer_child_dyn";
@@ -75,7 +73,7 @@ const pullOutput = {
   },
 } as never;
 
-it("DYN: the research call's first request is kept byte for byte, with the Writer's instructions, the analyst's brief and the house rules apart", async () => {
+it("DYN: the research call's first request is kept byte for byte, with the Writer's instructions, the analyst's brief, the house rules and the Market and portfolio block apart", async () => {
   (prisma.agentConfig.findUnique as jest.Mock).mockResolvedValue({
     id: CATALYST, userId: "user_1", accountId: "account_1", name: "Catalyst Event PM", setupIds: ["PRE_CATALYST"], analystPrompt: null,
     sectors: [], exclusionList: [], tradingEnvironment: "LIVE", minPositionSize: 3000, maxPositionSize: 8000, maxPositionTotal: 16000,
@@ -88,20 +86,21 @@ it("DYN: the research call's first request is kept byte for byte, with the Write
   expect(kept[0].runId).toBe(CHILD);
   const record = JSON.parse(kept[0].content) as RequestRecord;
   expect(record).toMatchObject({ call: "Research", source: "thesis-writer", model: MODES["thesis-writer"].model, of: 1 });
-  expect(record.requests.map((b) => JSON.stringify(b))).toEqual([mockSent[0]]);
+  expect(record.requests.map((b) => JSON.stringify(b))).toEqual([sent[0]]);
 
   const view = viewOfRecord(record);
   expect(view.categories.map((c) => [c.name, c.part])).toEqual([
     ["Instructions", "job"],
     ["Analyst: Catalyst Event PM", "analyst"],
     ["House rules", "house"],
+    ["Market and portfolio", "portfolio"],
     ["First message", "read"],
     ["Tool menu", "tools"],
   ]);
   // Anthropic's system is a list of text blocks: their text, every character in one part.
-  const system = (JSON.parse(mockSent[0]) as { system: Array<{ text: string }> }).system.map((b) => b.text).join("\n\n");
-  expect(view.categories.slice(0, 3).reduce((n, c) => n + c.chars, 0)).toBe(system.length);
+  const system = (JSON.parse(sent[0]) as { system: Array<{ text: string }> }).system.map((b) => b.text).join("\n\n");
+  expect(view.categories.slice(0, 4).reduce((n, c) => n + c.chars, 0)).toBe(system.length);
   expect(view.categories[2].sections.map((s) => s.text).join("")).toBe(HOUSE_RULES);
-  expect(view.categories[3].sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
-  expect(view.categories[4].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
+  expect(view.categories[4].sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
+  expect(view.categories[5].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
 });

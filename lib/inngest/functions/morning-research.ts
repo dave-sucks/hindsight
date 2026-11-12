@@ -4,7 +4,7 @@ import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
@@ -405,7 +405,7 @@ export const morningResearch = inngest.createFunction(
             // triggerInputSchema): the same request cached 71% before and
             // 97% after. Chat Completions is kept; it cached the head
             // further than Responses did in that probe.
-            model: openai.chat(MODES["research-run"].model),
+            model: createOpenAI({ fetch: sent.fetch }).chat(MODES["research-run"].model),
             system: systemPrompt,
             prompt: userPrompt,
             tools,

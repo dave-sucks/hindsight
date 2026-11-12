@@ -13,8 +13,8 @@ import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
-import { openai } from "@ai-sdk/openai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -778,17 +778,9 @@ export async function POST(
       : modeConfig.model;
     const effectiveProvider = effectiveModel.startsWith("claude") ? "anthropic" : "openai";
 
-    const resolvedModel =
-      effectiveProvider === "anthropic"
-        ? anthropic(effectiveModel as Parameters<typeof anthropic>[0])
-        : openai(effectiveModel);
-
-    // Every request of this turn, recorded on the run row in onFinish and
-    // added to the turns before it (token-usage.ts). Builder and editor
-    // chats have no run row and are not recorded.
-    const tokenUsage = emptyTokenUsage();
     // What this call started with, kept on the run for its Context panel
-    // (run-requests.ts): a run's first turn, and the newest follow-up or chat message.
+    // (run-requests.ts): a run's first turn, and the newest follow-up or chat
+    // message. The provider's fetch keeps the first request as it was sent.
     const isFirstTurn = !(messages ?? []).some((m: { role?: string }) => m?.role === "assistant");
     const sent = recordFirstRequest(
       agentMode === "research-run" || agentMode === "principal" ? runId : null,
@@ -797,8 +789,17 @@ export async function POST(
       effectiveModel,
       { replace: agentMode === "principal" || !isFirstTurn },
     );
-    // The SDK reports a stream's error before its step finishes; the record is saved in onFinish with it.
+    // The SDK reports a stream's error before its step finishes: saved then only when no step has (no onFinish follows), else in onFinish.
     let streamError: unknown;
+    const resolvedModel =
+      effectiveProvider === "anthropic"
+        ? createAnthropic({ fetch: sent.fetch })(effectiveModel)
+        : createOpenAI({ fetch: sent.fetch })(effectiveModel);
+
+    // Every request of this turn, recorded on the run row in onFinish and
+    // added to the turns before it (token-usage.ts). Builder and editor
+    // chats have no run row and are not recorded.
+    const tokenUsage = emptyTokenUsage();
     const result = streamText({
       model: resolvedModel,
       // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
@@ -912,6 +913,7 @@ export async function POST(
 
       onError({ error }) {
         streamError = error;
+        if (sent.steps === 0) waitUntil(sent.save(error));
         const elapsed = Date.now() - t0;
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`[agent/${agentMode}] ❌ STREAM ERROR elapsed=${elapsed}ms: ${msg}`);
@@ -926,7 +928,6 @@ export async function POST(
         console.log(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
-        await sent.save(streamError);
 
         // Builder/editor and unscoped principal-chat don't have a
         // ResearchRun. Scoped principal-chat does — persist messages
@@ -1021,12 +1022,14 @@ export async function POST(
 
           // Persist messages (run-thread.ts): the turns the client sent, as
           // the screen holds them, then this turn's.
-          await saveRunThread(runId!, { opening: messages ?? [], messages: response?.messages, steps }, `agent/${agentMode}`);
+          // What the call started with (run-requests.ts), beside the thread.
+          await Promise.all([saveRunThread(runId!, { opening: messages ?? [], messages: response?.messages, steps }, `agent/${agentMode}`), sent.save(streamError)]);
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // continuity now comes from the account-level PortfolioDigest read
           // by buildRunInput. updateAnalystBriefing no longer called here.
         } finally {
+          await sent.save(streamError);
           resolveOnFinish!();
         }
       },

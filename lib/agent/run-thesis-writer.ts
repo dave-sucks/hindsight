@@ -50,8 +50,8 @@ import { generateText, stepCountIs, tool } from "ai";
 import { recordFirstRequest } from "@/lib/agent/run-requests";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
+import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI, openai } from "@ai-sdk/openai";
 import { prisma } from "@/lib/prisma";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { MODES } from "@/lib/agent/modes";
@@ -930,10 +930,13 @@ ${rawDataBlock}
 Write the research note now, then call submit_thesis.`;
 
     const modeConfig = MODES["thesis-writer"];
+    // What the research call started with, kept on the child run for its
+    // Context panel (run-requests.ts): the provider's fetch keeps the first request as sent.
+    const sent = recordFirstRequest(args.childRunId, "Research", "thesis-writer", modeConfig.model);
     const model =
       modeConfig.provider === "anthropic"
-        ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
-        : openai(modeConfig.model);
+        ? createAnthropic({ fetch: sent.fetch })(modeConfig.model)
+        : createOpenAI({ fetch: sent.fetch })(modeConfig.model);
 
     let accepted: ValidatedThesisDecision | null = null;
     let acceptedRR: number | null = null;
@@ -1009,8 +1012,6 @@ Write the research note now, then call submit_thesis.`;
     // Every request this phase makes, recorded on the child run at the end
     // (token-usage.ts); the save phase's retry records its own.
     const tokenUsage = emptyTokenUsage();
-    // What the research call started with, kept on the child run for its Context panel (run-requests.ts).
-    const sent = recordFirstRequest(args.childRunId, "Research", "thesis-writer", modeConfig.model);
     try {
       await sent.around(generateText({
         model,

@@ -17,8 +17,8 @@
  */
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 
-/** Its Framework part, for its color; null for the Market and portfolio block until the swatch has one. */
-export type PromptPart = "job" | "house" | "analyst" | "read" | null;
+/** Its Framework part, for its color (components/docs/framework/swatch.ts). */
+export type PromptPart = "job" | "house" | "analyst" | "portfolio" | "read";
 
 export interface PromptBlock {
   label: string;
@@ -43,7 +43,7 @@ interface Claim {
 }
 
 const ANALYST = "## Analyst: ";
-const MARKET = "## Market and portfolio";
+export const MARKET = "## Market and portfolio";
 const SAID = "WHAT'S BEEN SAID ON $";
 const ROW_BANNER = /(?:^|\n)(═{10,}\n\$([A-Z0-9.\-]+), its row \(get_theses\)\n═{10,}\n)/;
 
@@ -93,7 +93,7 @@ function marketBlock(text: string): Claim[] {
   for (let i = lineAt(text, "### ", start); i >= 0 && i < end; i = lineAt(text, "### ", i + 4)) parts.push(i);
   // Its "### " parts are its sections; the block's own heading goes with the first.
   const sections = parts.map((p, k) => ({ label: text.slice(p + 4, text.indexOf("\n", p)).trim(), text: text.slice(k === 0 ? start : p, parts[k + 1] ?? end) }));
-  return [{ start, end, label: "Market and portfolio", part: null, ...(sections.length ? { sections } : {}) }];
+  return [{ start, end, label: "Market and portfolio", part: "portfolio", ...(sections.length ? { sections } : {}) }];
 }
 
 function stockRow(text: string): Claim[] {
