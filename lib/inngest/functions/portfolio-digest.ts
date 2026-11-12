@@ -6,7 +6,9 @@
  * Mon-Fri). For each account with trading activity (see
  * lib/portfolio/digest-pairs.ts for what qualifies):
  *   1. buildDigestFacts(accountId, date, environment) — the facts blob
- *   2. writeDigestNarrative(facts)       — cheap-model markdown narration
+ *   2. writeDigestNarrative(facts)       — cheap-model markdown narration,
+ *      saved as a read-only ResearchRun (mode PORTFOLIO_DIGEST) whose page
+ *      shows the facts, the digest and what the model was sent
  *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date)
  *
  * The unit of work is an (account, environment) PAIR — PAPER and LIVE share one
@@ -22,6 +24,7 @@ import { etTradingDayDate } from "@/lib/market-hours";
 import type { DigestFacts } from "@/lib/portfolio/digest-facts";
 import { buildDigestFacts } from "@/lib/portfolio/digest-facts-builder";
 import { writeDigestNarrative } from "@/lib/agent/digest-writer";
+import { runAccountCall } from "@/lib/runs/account-run";
 import {
   selectDigestPairs,
   TRADING_RUN_MODES,
@@ -132,12 +135,13 @@ export const portfolioDigest = inngest.createFunction(
         );
       });
 
-      const { narrative, model } = await step.run(
-        `narrate-${key}`,
-        async () => {
-          return writeDigestNarrative(facts as unknown as DigestFacts);
-        },
-      );
+      // Saved as a read-only run with its one request (lib/runs/account-run.ts), after the facts so they never list it.
+      const { narrative, model } = await step.run(`narrate-${key}`, async () => {
+        const out = await runAccountCall({ accountId, environment, mode: "PORTFOLIO_DIGEST", parameters: { date: dateStr } }, () =>
+          writeDigestNarrative(facts as unknown as DigestFacts),
+        );
+        return { narrative: out.narrative, model: out.model };
+      });
 
       await step.run(`save-${key}`, async () => {
         await prisma.portfolioDigest.upsert({

@@ -107,6 +107,8 @@ export function docForRunMode(mode: string | null | undefined): DocSlug {
       return "writer";
     case "PRINCIPAL_CHAT":
       return "chat";
+    case "PORTFOLIO_DIGEST":
+      return "architecture";
     default:
       return "morning-runs";
   }

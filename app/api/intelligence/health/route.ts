@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 
@@ -41,7 +42,8 @@ export async function GET() {
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   const recentRuns = await prisma.researchRun.findMany({
-    where: { accountId },
+    // The agents' runs, not the account's own (the Portfolio Digest), which use no tools.
+    where: { accountId, mode: { notIn: Object.keys(ACCOUNT_RUN_NAMES) } },
     orderBy: { startedAt: "desc" },
     take: 14,
     select: {

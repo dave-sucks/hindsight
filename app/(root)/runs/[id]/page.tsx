@@ -10,6 +10,8 @@ import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { getRunSourcesData } from "@/lib/actions/run-sources.actions";
 import type { UIMessage } from "ai";
 import type { TranscriptRowData } from "@/components/ui/transcript-row";
+import { ACCOUNT_RUN_NAMES, READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
+import { loadRunRequests } from "@/lib/agent/run-requests";
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -53,7 +55,7 @@ export default async function RunPage({
 
   const analystName = isPodcastSegmentRun
     ? `${run.segment?.podcast?.name ?? "Podcast"} · ${run.segment?.name ?? "Segment"}`
-    : (run.agentConfig?.name ??
+    : (run.agentConfig?.name ?? ACCOUNT_RUN_NAMES[run.mode] ??
         (run.source === "MANUAL" ? "Manual Research" : "Agent"));
 
   // Extract config snapshot from the run parameters
@@ -126,6 +128,10 @@ export default async function RunPage({
   // (a) wrong route, (b) spawn a competing agent. Replay still works
   // through the existing message-persistence path.
   const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
+  // The Portfolio Digest's run: written on the server, read only.
+  const readOnly = READ_ONLY_RUN_MODES.has(run.mode);
+  // What its model call was sent (lib/agent/run-requests.ts); none for other runs yet.
+  const requests = await loadRunRequests(run.id).catch(() => []);
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never
@@ -167,7 +173,9 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !readOnly}
+            readOnly={readOnly}
+            requests={requests}
             messages={persistedMessages ?? undefined}
             sources={isPodcastSegmentRun ? [] : sources}
             theses={isPodcastSegmentRun ? [] : theses}

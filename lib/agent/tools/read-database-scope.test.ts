@@ -24,6 +24,7 @@ jest.mock("@/lib/prisma", () => ({
     order: { findMany: mockFindMany },
     thesis: { findMany: mockFindMany },
     thesisUpdate: { findMany: mockFindMany },
+    researchRun: { findMany: mockFindMany },
   },
 }));
 
@@ -117,5 +118,28 @@ describe("read_database account scoping", () => {
     );
     expect(result.ok).toBe(false);
     expect(mockFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("read_database and a run's messages", () => {
+  // Each model call's record of what it sent is a RunMessage too (role "request"), up to a few MB a run.
+  async function argsFor(args: Record<string, unknown>) {
+    mockFindMany.mockClear();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (readDatabase(ctx) as any).execute(args, {});
+    return mockFindMany.mock.calls[0][0] as Record<string, Record<string, unknown>>;
+  }
+
+  it("an include of a run's messages leaves out the request records, at any depth", async () => {
+    const { include } = await argsFor({ model: "researchRun", include: { messages: true } });
+    expect(include.messages).toEqual({ where: { role: { not: "request" } } });
+    const nested = await argsFor({ model: "thesis", include: { researchRun: { include: { messages: { take: 1, where: { role: "thread" } } } } } });
+    expect(nested.include).toEqual({ researchRun: { include: { messages: { take: 1, where: { AND: [{ role: { not: "request" } }, { role: "thread" }] } } } } });
+  });
+
+  it("a select of them too; a where on them is left as written", async () => {
+    const { select, where } = await argsFor({ model: "researchRun", select: { id: true, messages: { select: { content: true } } }, where: { messages: { some: { role: "thread" } } } });
+    expect(select).toEqual({ id: true, messages: { select: { content: true }, where: { role: { not: "request" } } } });
+    expect(JSON.stringify(where)).toContain('{"messages":{"some":{"role":"thread"}}}');
   });
 });

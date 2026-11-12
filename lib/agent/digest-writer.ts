@@ -19,12 +19,17 @@
 
 import OpenAI from "openai";
 import type { DigestFacts } from "@/lib/portfolio/digest-facts";
+import type { RequestRecord } from "@/lib/agent/run-requests";
 
 const DIGEST_MODEL = "gpt-4o";
 
 export interface DigestWriterResult {
   narrative: string;
   model: string;
+  /** The model call as it was sent, for the digest's run page (lib/agent/run-requests.ts). */
+  request: RequestRecord;
+  /** The run's thread: the facts as the first message, then the digest. */
+  thread: unknown[];
 }
 
 function getOpenAI() {
@@ -198,26 +203,34 @@ export async function writeDigestNarrative(
   facts: DigestFacts,
 ): Promise<DigestWriterResult> {
   const prompt = buildDigestPrompt(facts);
+  // The request body, kept as it goes to OpenAI.
+  const body = {
+    model: DIGEST_MODEL,
+    messages: [
+      { role: "system" as const, content: SYSTEM_PROMPT },
+      { role: "user" as const, content: `FACTS:\n${prompt}` },
+    ],
+    temperature: 0.4,
+    max_tokens: 900,
+  };
+  const startedAt = new Date().toISOString();
+  const done = (narrative: string, model: string, error?: string): DigestWriterResult => ({
+    narrative,
+    model,
+    request: { v: 1, call: "Main", source: "portfolio-digest", model: DIGEST_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], ...(error ? { error } : {}) },
+    thread: [body.messages[1], { role: "assistant", content: [{ type: "text", text: narrative }] }],
+  });
 
   try {
-    const resp = await getOpenAI().chat.completions.create({
-      model: DIGEST_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `FACTS:\n${prompt}` },
-      ],
-      temperature: 0.4,
-      max_tokens: 900,
-    });
+    const resp = await getOpenAI().chat.completions.create(body);
     const text = resp.choices[0]?.message?.content?.trim() ?? "";
-    if (text) return { narrative: text, model: DIGEST_MODEL };
+    if (text) return done(text, DIGEST_MODEL);
+    return done(fallbackNarrative(facts), "fallback", "The model replied with no text.");
   } catch (err) {
-    console.warn(
-      `[digest-writer] model call failed: ${err instanceof Error ? err.message : err}`,
-    );
+    const why = err instanceof Error ? err.message : String(err);
+    console.warn(`[digest-writer] model call failed: ${why}`);
+    return done(fallbackNarrative(facts), "fallback", why);
   }
-
-  return { narrative: fallbackNarrative(facts), model: "fallback" };
 }
 
 /** Deterministic, no-LLM narrative used when the model call fails. */

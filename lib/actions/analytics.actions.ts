@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 
@@ -191,7 +192,8 @@ export async function getAnalyticsData(
       : Promise.resolve(null),
     accountId
       ? prisma.researchRun.findMany({
-          where: { accountId, status: "COMPLETE", environment },
+          // The analysts' runs, not the account's own (the Portfolio Digest).
+          where: { accountId, status: "COMPLETE", environment, mode: { notIn: Object.keys(ACCOUNT_RUN_NAMES) } },
           orderBy: { startedAt: "desc" },
           take: 20,
           select: {
