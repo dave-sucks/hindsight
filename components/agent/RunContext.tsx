@@ -31,7 +31,11 @@ const color = (c: SentCategory) => (c.part ? SWATCH[c.part].className : "bg-mute
 export function RunContext({ calls, open, onOpenChange }: { calls: CallView[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   const isMobile = useIsMobile();
   const call = calls[calls.length - 1] ?? null;
-  const subtitle = call ? `What the run sent ${call.model}, as it was sent.` : "";
+  const subtitle = !call
+    ? ""
+    : call.of
+      ? `What the run started with: its first request to ${call.model}, as sent. It made ${call.of} in all; every tool call and result after this one is in the conversation.`
+      : `What the run sent ${call.model}, as it was sent.`;
   if (isMobile)
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>

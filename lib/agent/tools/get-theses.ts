@@ -117,6 +117,11 @@ export const getTheses = defineTool({
   description:
     "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
+  // The Market Reviewer has the book in its first message: it reads a thesis only when a finding touches the stock.
+  schemaFor: (ctx, s) =>
+    ctx.runMode === "MARKET_REVIEWER"
+      ? z.object({ tickers: z.array(z.string()).min(1).max(3).describe("The stocks a finding touches, by ticker: 3 at most a call. The book is in your first message.") })
+      : s,
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
   // renderer's shape, with the research text a second time. 14–26% of the
@@ -160,7 +165,8 @@ export const getTheses = defineTool({
       ...result,
       data: {
         ...restWithoutGuidance,
-        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
+        // The situations' texts tell an analyst what to do; the Market Reviewer decides nothing on a stock.
+        ...(Object.keys(guidance).length > 0 && ctx.runMode !== "MARKET_REVIEWER" ? { guidance } : {}),
         theses,
         ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history

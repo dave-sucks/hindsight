@@ -1221,6 +1221,21 @@ model PortfolioDigest {
   @@index([date])
 }
 
+// The Market Reviewer's digest: one per book per weekday, written at 7:30 AM ET
+// (lib/agent/market-reviewer/run.ts). The run that wrote it shows how.
+model MarketDigest {
+  id          String   @id @default(cuid())
+  accountId   String
+  environment String // "PAPER" | "LIVE"
+  date        DateTime // the trading day it was written on (ET)
+  digest      String // markdown: its sections, each with its sources
+  model       String?
+  runId       String?
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, environment, date])
+}
+
 // ─── USER API KEYS ─────────────────────────────────────────────────────────
 // Stores encrypted third-party API credentials per user.
 // One row per (userId, provider) pair. Keys are AES-256-GCM encrypted at rest.

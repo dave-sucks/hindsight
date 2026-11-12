@@ -196,6 +196,9 @@ export function matchWhere(row: Row, where: unknown): boolean {
       if (list.some((w) => matchWhere(row, w))) return false;
     } else if (key === "some" || key === "none" || key === "every") {
       return unsupported("list-relation filter", { [key]: expected });
+    } else if (!(key in row) && isPlainObject(expected) && key.split("_").length > 1 && Object.keys(expected).every((k) => key.split("_").includes(k))) {
+      // A compound unique key, `ticker_asOf: { ticker, asOf }`: each of its fields.
+      if (!matchWhere(row, expected)) return false;
     } else if (!matchField(row[key], expected)) {
       return false;
     }
