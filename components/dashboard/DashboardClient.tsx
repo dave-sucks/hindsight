@@ -59,6 +59,7 @@ import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
+import { openingDigestTab, stripMarkdown, type DigestTab } from '@/components/dashboard/digest-preview';
 import {
   Dialog,
   DialogContent,
@@ -730,18 +731,9 @@ function PositionGroupLabel({ children }: { children: ReactNode }) {
 }
 
 // ── DigestPreviewCard ─────────────────────────────────────────────────────────
-// Compact teaser above the positions list. Shows the digest date + ~160 chars
-// of narrative (stripped of markdown) with a bottom fade, click opens dialog.
-
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // [text](url) → text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold**
-    .replace(/\*([^*]+)\*/g, '$1')            // *italic*
-    .replace(/^#+\s/gm, '')                    // headings
-    .replace(/`[^`]*`/g, '')                   // code
-    .trim();
-}
+// The right rail's digest card: Portfolio and Market tabs, the active digest's
+// stamp + opening prose (stripped of markdown) with a bottom fade, click opens
+// the dialog. Which tab it opens on: whichever digest was written last.
 
 /** "Today, 4:32 PM" / "Yesterday, 4:32 PM" / "Mon Oct 26, 4:32 PM" — the
  *  trading day the digest covers (a UTC-midnight date) against today in ET,
@@ -796,60 +788,77 @@ function WinRateTicks({ winRate }: { winRate: number | null }) {
 
 function DigestPreviewCard({
   digest,
+  marketDigest,
   winRate,
 }: {
   digest: LatestDigest | null | undefined;
+  marketDigest: LatestDigest | null | undefined;
   winRate: number | null;
 }) {
+  const [tab, setTab] = useState<DigestTab>(() => openingDigestTab(digest, marketDigest));
   const [open, setOpen] = useState(false);
-  if (digest === undefined) return null;
+  if (digest === undefined && marketDigest === undefined) return null;
 
+  const isMarket = tab === 'market';
+  const active = isMarket ? marketDigest : digest;
+  const title = isMarket ? 'Market Digest' : 'Portfolio Digest';
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
-  const preview = digest ? stripMarkdown(digest.narrative).slice(0, 700) : null;
+  const preview = active ? stripMarkdown(active.narrative).slice(0, 700) : null;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => digest && setOpen(true)}
-        className={cn(
-          // lg:h-[390px] matches the chart card so the two columns align;
-          // flex-col + overflow-hidden let the narrative fill and fade out.
-          'w-full text-left rounded-lg border bg-card p-3 mb-3 flex flex-col overflow-hidden lg:h-[390px]',
-          digest ? 'hover:brightness-[0.98] transition-all cursor-pointer' : 'cursor-default',
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
-          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-            {digest ? formatDigestStamp(digest) : 'Portfolio Digest'}
-          </p>
-          <WinRateTicks winRate={winRate} />
-        </div>
-        {digest && preview ? (
-          <div className="relative flex-1 min-h-0 overflow-hidden">
-            <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
-              {preview}
+      {/* lg:h-[390px] matches the chart card so the two columns align. The card
+          is a plain container: the tabs and the preview button are siblings,
+          never one control inside another. */}
+      <div className="w-full rounded-lg border bg-card p-3 mb-3 flex flex-col gap-2 overflow-hidden lg:h-[390px]">
+        <Tabs value={tab} onValueChange={(value) => setTab(value as DigestTab)}>
+          <TabsList width="full">
+            <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+            <TabsTrigger value="market">Market</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <button
+          type="button"
+          disabled={!active}
+          onClick={() => setOpen(true)}
+          className="w-full flex-1 min-h-0 text-left flex flex-col overflow-hidden transition-opacity enabled:cursor-pointer enabled:hover:opacity-80"
+        >
+          <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
+            <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
+              {active ? formatDigestStamp(active) : title}
             </p>
-            {/* Subtle fade so the clamped narrative trails off into the card. */}
-            <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+            <WinRateTicks winRate={winRate} />
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No digest yet — generates after close.</p>
-        )}
-      </button>
+          {active && preview ? (
+            <div className="relative flex-1 min-h-0 overflow-hidden">
+              <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
+                {preview}
+              </p>
+              {/* Subtle fade so the clamped narrative trails off into the card. */}
+              <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {isMarket
+                ? 'No market digest yet — written at 7:30 AM on weekdays.'
+                : 'No digest yet — generates after close.'}
+            </p>
+          )}
+        </button>
+      </div>
 
-      {digest && (
+      {active && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-2xl p-0">
             <DialogHeader className="px-5 pt-5 pb-3 border-b">
               <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                {formatDigestStamp(digest)}
+                {formatDigestStamp(active)}
               </p>
-              <DialogTitle className="text-base font-semibold">Portfolio Digest</DialogTitle>
+              <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
             </DialogHeader>
             <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
-              <DigestMarkdown>{digest.narrative}</DigestMarkdown>
+              <DigestMarkdown>{active.narrative}</DigestMarkdown>
             </div>
           </DialogContent>
         </Dialog>
@@ -874,6 +883,8 @@ interface DashboardClientProps {
    * the digest card.
    */
   digest?: LatestDigest | null;
+  /** The Market Reviewer's 7:30 AM digest, on the card's Market tab. */
+  marketDigest?: LatestDigest | null;
   /**
    * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). When
    * present, the Active/Watching/Passed coverage tables render inside the
@@ -890,7 +901,7 @@ interface DashboardClientProps {
   pinned?: string[];
 }
 
-export default function DashboardClient({ data, userId, digest, coverage, pinned }: DashboardClientProps) {
+export default function DashboardClient({ data, userId, digest, marketDigest, coverage, pinned }: DashboardClientProps) {
   const router = useRouter();
   const [range, setRange] = useState<Range>('1D');
   const [chartView, setChartView] = useState<ChartView>('portfolio');
@@ -1499,7 +1510,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
-            mobileDigest={<DigestPreviewCard digest={digest} winRate={portfolio.winRate} />}
+            mobileDigest={<DigestPreviewCard digest={digest} marketDigest={marketDigest} winRate={portfolio.winRate} />}
           />
           </div>
 
@@ -1514,7 +1525,7 @@ export default function DashboardClient({ data, userId, digest, coverage, pinned
             {/* Pinned shortlist — the hand-picked names you want in view.
                 Below proposals (time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            <DigestPreviewCard digest={digest} winRate={portfolio.winRate} />
+            <DigestPreviewCard digest={digest} marketDigest={marketDigest} winRate={portfolio.winRate} />
           </div>
 
         </div>
