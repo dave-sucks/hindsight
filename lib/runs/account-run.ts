@@ -19,13 +19,14 @@ export interface OneCall {
 
 /**
  * Open the run, make the call, keep what it sent and its thread, close the
- * run. With no owner on the account the call is made with no run. A call
+ * run. The call is handed the run's id (null with no run). With no owner on
+ * the account the call is made with no run. A call
  * that throws closes the run FAILED and throws on; nothing after the call
  * throws, so a step that wraps this is never retried into a second run.
  */
 export async function runAccountCall<T extends OneCall>(
   run: { accountId: string; environment: string; mode: string; parameters?: Record<string, string> },
-  call: () => Promise<T>,
+  call: (runId: string | null) => Promise<T>,
 ): Promise<T> {
   const userId = await getOwnerUserId(run.accountId);
   const runId = userId
@@ -38,7 +39,7 @@ export async function runAccountCall<T extends OneCall>(
     : null;
   let failed = true;
   try {
-    const out = await call();
+    const out = await call(runId);
     if (runId) {
       await saveRequestRecord(runId, out.request);
       await saveRunThread(runId, { opening: out.thread, messages: [], steps: [] }, out.request.source).catch((err) =>

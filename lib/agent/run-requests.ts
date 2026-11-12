@@ -46,7 +46,7 @@ export interface SentPart {
 export interface SentCategory {
   name: string;
   /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
-  part: "job" | "read" | null;
+  part: "job" | "read" | "tools" | null;
   chars: number;
   /** Its text, cut at the headings the prompt prints. */
   sections: SentPart[];
@@ -65,7 +65,7 @@ export interface CallView {
 }
 
 /** What a call's first message is, by the code that made it. */
-const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot" };
+const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot", "market-reviewer": "Portfolio, watchlist and last digest" };
 
 /** A heading as the prompts print one: a markdown heading, or a line opening with a label in capitals ("HELD POSITIONS:", "WHAT TO COVER (in roughly this order):"). */
 const HEADING = /^(?:#{1,3} +(.+)|([A-Z][A-Z0-9&/' -]*[A-Z0-9])(?= *[:(—]))/;
@@ -91,7 +91,9 @@ export function partsAtHeadings(text: string): SentPart[] {
 /** One record as the run page shows it: each message of its last request but the model's own (the thread has those). */
 export function viewOfRecord(r: RequestRecord): CallView {
   const body = r.requests[r.requests.length - 1] ?? null;
-  const sent = (body as { messages?: Array<{ role?: string; content?: unknown }> } | null)?.messages ?? [];
+  // A Chat Completions body's `messages`, or a Responses body's `input` (the Market Reviewer's).
+  const b = body as { messages?: Array<{ role?: string; content?: unknown }>; input?: Array<{ role?: string; content?: unknown }> } | null;
+  const sent = b?.messages ?? (Array.isArray(b?.input) ? b.input : []);
   let users = 0;
   const categories = sent
     .filter((m) => m.role !== "assistant")
@@ -106,7 +108,23 @@ export function viewOfRecord(r: RequestRecord): CallView {
         sections: partsAtHeadings(text),
       };
     });
-  return { call: r.call, model: r.model, error: r.error ?? null, categories, chars: categories.reduce((n, c) => n + c.chars, 0), raw: body, rawChars: JSON.stringify(body).length };
+  // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
+  // A function tool by its name, a provider's own (OpenAI's web search) by its type.
+  const tools = ((body as { tools?: Array<{ function?: { name?: string }; name?: string; type?: string }> } | null)?.tools ?? []).map((t) => ({
+    label: t.function?.name ?? t.name ?? t.type ?? "tool",
+    chars: JSON.stringify(t).length,
+    text: JSON.stringify(t, null, 2),
+  }));
+  if (tools.length) categories.push({ name: "Tool menu", part: "tools", chars: tools.reduce((n, t) => n + t.chars, 0), sections: tools });
+  return {
+    call: r.call,
+    model: r.model,
+    error: r.error ?? null,
+    categories,
+    chars: categories.reduce((n, c) => n + c.chars, 0),
+    raw: body,
+    rawChars: JSON.stringify(body).length,
+  };
 }
 
 /** A run's records, oldest first, as its page shows them. */
