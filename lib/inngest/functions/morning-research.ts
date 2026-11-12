@@ -4,7 +4,7 @@ import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
-import { openai } from "@ai-sdk/openai";
+import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
@@ -402,7 +402,7 @@ export const morningResearch = inngest.createFunction(
             // triggerInputSchema): the same request cached 71% before and
             // 97% after. Chat Completions is kept; it cached the head
             // further than Responses did in that probe.
-            model: openai.chat(MODES["research-run"].model),
+            model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Main", source: "morning-research" }),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
@@ -731,7 +731,7 @@ export const morningResearch = inngest.createFunction(
             const runRetry = async (messages: any[]): Promise<number> => {
               const retry = await generateText({
                 // Same model as the main run — switches with research-run config.
-                model: openai.chat(MODES["research-run"].model),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research" }),
                 system: systemPrompt,
                 messages,
                 tools,
@@ -1058,7 +1058,7 @@ export const morningResearch = inngest.createFunction(
             try {
               const recoveryResp = await generateText({
                 // Same model as the main run.
-                model: openai.chat(MODES["research-run"].model),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research" }),
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +

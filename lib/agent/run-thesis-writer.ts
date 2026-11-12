@@ -50,7 +50,7 @@ import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
+import { modelFor } from "@/lib/agent/model";
 import { prisma } from "@/lib/prisma";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { MODES } from "@/lib/agent/modes";
@@ -929,10 +929,7 @@ ${rawDataBlock}
 Write the research note now, then call submit_thesis.`;
 
     const modeConfig = MODES["thesis-writer"];
-    const model =
-      modeConfig.provider === "anthropic"
-        ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
-        : openai(modeConfig.model);
+    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer" });
 
     let accepted: ValidatedThesisDecision | null = null;
     let acceptedRR: number | null = null;
@@ -1666,10 +1663,7 @@ async function resubmitWithFeedback(input: {
     },
   });
   const modeConfig = MODES["thesis-writer"];
-  const model =
-    modeConfig.provider === "anthropic"
-      ? anthropic(modeConfig.model as Parameters<typeof anthropic>[0])
-      : openai(modeConfig.model);
+  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer" });
   try {
     const res = await generateText({
       model,

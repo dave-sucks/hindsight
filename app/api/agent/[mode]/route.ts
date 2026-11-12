@@ -13,8 +13,7 @@ import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
-import { openai } from "@ai-sdk/openai";
-import { anthropic } from "@ai-sdk/anthropic";
+import { modelFor } from "@/lib/agent/model";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -777,10 +776,7 @@ export async function POST(
       : modeConfig.model;
     const effectiveProvider = effectiveModel.startsWith("claude") ? "anthropic" : "openai";
 
-    const resolvedModel =
-      effectiveProvider === "anthropic"
-        ? anthropic(effectiveModel as Parameters<typeof anthropic>[0])
-        : openai(effectiveModel);
+    const resolvedModel = modelFor(effectiveModel, { runId, call: "Message", source: `agent/${agentMode}`, replace: true });
 
     // Every request of this turn, recorded on the run row in onFinish and
     // added to the turns before it (token-usage.ts). Builder and editor

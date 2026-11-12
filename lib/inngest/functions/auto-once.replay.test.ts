@@ -47,7 +47,7 @@ async function triggerRun(db: PrismaDouble, data: Record<string, unknown>) {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
     jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/agent/tools", () => ({
       createResearchTools: () => ({ manage_position: { execute: async (args: unknown) => (calls.push({ tool: "manage_position", args }), { ok: true, summary: "Partial close proposed: MU (-30%)" }) } }),
@@ -55,7 +55,7 @@ async function triggerRun(db: PrismaDouble, data: Record<string, unknown>) {
     await import("@/lib/inngest/functions/tactical-run");
     await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } });
   });
-  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { calls, modelCalls };
 }
 

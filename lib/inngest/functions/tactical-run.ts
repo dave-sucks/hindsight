@@ -25,7 +25,7 @@ import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
-import { openai } from "@ai-sdk/openai";
+import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
@@ -774,7 +774,7 @@ export const tacticalRun = inngest.createFunction(
       const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
       try {
         const { steps, response } = await generateText({
-          model: openai(MODES["tactical"].model),
+          model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Main", source: "tactical-run" }),
           system: systemPrompt,
           prompt: userPrompt,
           tools,
@@ -852,7 +852,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const retryResp = await generateText({
-              model: openai(MODES["tactical"].model),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run" }),
               system: systemPrompt,
               messages: [
                 {
@@ -947,7 +947,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const refusalResp = await generateText({
-              model: openai(MODES["tactical"].model),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run" }),
               system: systemPrompt,
               messages: [
                 { role: "user", content: [{ type: "text", text: userPrompt }] },
