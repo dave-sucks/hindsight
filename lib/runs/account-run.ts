@@ -15,6 +15,9 @@ export interface OneCall {
   request: RequestRecord;
   /** The run's thread: the model's first message, then its reply. */
   thread: unknown[];
+  /** A call of several steps (the Market Reviewer): every message after the first, and the steps they came from. */
+  messages?: unknown[];
+  steps?: Parameters<typeof saveRunThread>[1]["steps"];
 }
 
 /**
@@ -25,7 +28,7 @@ export interface OneCall {
  */
 export async function runAccountCall<T extends OneCall>(
   run: { accountId: string; environment: string; mode: string; parameters?: Record<string, string> },
-  call: () => Promise<T>,
+  call: (runId: string | null) => Promise<T>,
 ): Promise<T> {
   const userId = await getOwnerUserId(run.accountId);
   const runId = userId
@@ -38,10 +41,10 @@ export async function runAccountCall<T extends OneCall>(
     : null;
   let failed = true;
   try {
-    const out = await call();
+    const out = await call(runId);
     if (runId) {
       await saveRequestRecord(runId, out.request);
-      await saveRunThread(runId, { opening: out.thread, messages: [], steps: [] }, out.request.source).catch((err) =>
+      await saveRunThread(runId, { opening: out.thread, messages: out.messages ?? [], steps: out.steps ?? [] }, out.request.source).catch((err) =>
         console.error(`[account-run] run ${runId}'s thread couldn't be saved:`, err instanceof Error ? err.message : err),
       );
     }

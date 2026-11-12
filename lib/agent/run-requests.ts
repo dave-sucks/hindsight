@@ -23,6 +23,8 @@ export interface RequestRecord {
   endedAt: string;
   /** Each request the call sent, as the JSON body that went to the provider. */
   requests: unknown[];
+  /** A call of several steps keeps only its first request: how many it made in all. */
+  of?: number;
   /** Why the call failed, when it did. */
   error?: string;
 }
@@ -46,7 +48,7 @@ export interface SentPart {
 export interface SentCategory {
   name: string;
   /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
-  part: "job" | "read" | null;
+  part: "job" | "read" | "tools" | null;
   chars: number;
   /** Its text, cut at the headings the prompt prints. */
   sections: SentPart[];
@@ -62,10 +64,12 @@ export interface CallView {
   /** The request exactly as sent, and its size as JSON. */
   raw: unknown;
   rawChars: number;
+  /** When the record is a run's first request of several: how many it made in all. */
+  of: number | null;
 }
 
 /** What a call's first message is, by the code that made it. */
-const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot" };
+const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot", "market-reviewer": "Portfolio, watchlist and last digest" };
 
 /** A heading as the prompts print one: a markdown heading, or a line opening with a label in capitals ("HELD POSITIONS:", "WHAT TO COVER (in roughly this order):"). */
 const HEADING = /^(?:#{1,3} +(.+)|([A-Z][A-Z0-9&/' -]*[A-Z0-9])(?= *[:(—]))/;
@@ -106,7 +110,23 @@ export function viewOfRecord(r: RequestRecord): CallView {
         sections: partsAtHeadings(text),
       };
     });
-  return { call: r.call, model: r.model, error: r.error ?? null, categories, chars: categories.reduce((n, c) => n + c.chars, 0), raw: body, rawChars: JSON.stringify(body).length };
+  // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
+  const tools = ((body as { tools?: Array<{ function?: { name?: string } }> } | null)?.tools ?? []).map((t) => ({
+    label: t.function?.name ?? "tool",
+    chars: JSON.stringify(t).length,
+    text: JSON.stringify(t, null, 2),
+  }));
+  if (tools.length) categories.push({ name: "Tool menu", part: "tools", chars: tools.reduce((n, t) => n + t.chars, 0), sections: tools });
+  return {
+    call: r.call,
+    model: r.model,
+    error: r.error ?? null,
+    categories,
+    chars: categories.reduce((n, c) => n + c.chars, 0),
+    raw: body,
+    rawChars: JSON.stringify(body).length,
+    of: r.of && r.of > 1 ? r.of : null,
+  };
 }
 
 /** A run's records, oldest first, as its page shows them. */
