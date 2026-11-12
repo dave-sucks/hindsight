@@ -28,6 +28,7 @@ import {
 } from "@/lib/alpaca";
 import { type FundingEvent } from "@/lib/portfolio/contributions";
 import { assembleDigestFacts, type DigestFacts } from "@/lib/portfolio/digest-facts";
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
 
 const STARTING_CAPITAL_FALLBACK = 100_000;
 /** Days back to surface PASSED theses for the regret signal. */
@@ -76,7 +77,8 @@ export async function buildDigestFacts(
 
   // ── Runs today ────────────────────────────────────────────────────────────
   const runRows = await prisma.researchRun.findMany({
-    where: { accountId, environment, startedAt: { gte: start, lt: end } },
+    // The analysts' runs: not the digest's own (ACCOUNT_RUN_NAMES), which a rerun would otherwise list.
+    where: { accountId, environment, startedAt: { gte: start, lt: end }, mode: { notIn: Object.keys(ACCOUNT_RUN_NAMES) } },
     select: {
       id: true,
       mode: true,

@@ -24,6 +24,7 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
+import { READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -160,8 +161,10 @@ export async function POST(
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
-        select: { environment: true, agentConfigId: true },
+        select: { environment: true, agentConfigId: true, mode: true },
       });
+      // A run that takes no messages (its page has no composer).
+      if (runRow && READ_ONLY_RUN_MODES.has(runRow.mode)) return new Response("This run takes no messages", { status: 403 });
       if (runRow) {
         runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
       }

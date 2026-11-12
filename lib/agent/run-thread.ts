@@ -13,6 +13,7 @@
  */
 import type { ModelMessage } from "ai";
 import { prisma } from "@/lib/prisma";
+import { REQUEST_ROLE } from "@/lib/agent/run-requests";
 
 /** One step of a run: its tool results as execute() returned them, and its own messages. */
 export interface RunStep {
@@ -62,7 +63,8 @@ export async function saveRunThread(
     }
     const content = JSON.stringify(all);
     await prisma.$transaction([
-      prisma.runMessage.deleteMany({ where: { runId } }),
+      // Not the run's record of what it sent the model (run-requests.ts).
+      prisma.runMessage.deleteMany({ where: { runId, role: { not: REQUEST_ROLE } } }),
       prisma.runMessage.create({ data: { runId, role: "thread", content } }),
     ]);
     console.log(`[${label}] saved ${all.length} messages (${(content.length / 1024).toFixed(0)}KB) for run ${runId}`);

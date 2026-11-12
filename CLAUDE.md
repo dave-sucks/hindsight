@@ -509,7 +509,9 @@ a list here goes stale.
 - eod-evaluation.ts — end-of-day price snapshots
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
   the 8 AM morning runs did
-- portfolio-digest.ts — 8 PM ET Mon–Fri, the Daily Portfolio Digest
+- portfolio-digest.ts — 8 PM ET Mon–Fri, the Daily Portfolio Digest, saved
+  as a read-only run (mode PORTFOLIO_DIGEST) whose page shows the request
+  its model call sent (`lib/agent/run-requests.ts`, RunMessage role "request")
   (one per account per trading day)
 - accuracy-scorer.ts — Sunday 10 AM, weekly AccuracyReport
 

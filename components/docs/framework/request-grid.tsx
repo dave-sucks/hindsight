@@ -8,26 +8,15 @@
  * sizes, never the parts. Hovering a line lights its squares.
  */
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUpRight } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DOOR_COPY, MEASURED_REQUEST, type FrameworkData, type FrameworkDoorId } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { Mono } from "../primitives";
+import { SWATCH, type PartId } from "./swatch";
 
-type PartId = "job" | "house" | "analyst" | "tools" | "read" | "guidance" | "named";
-
-/** How each part's squares are drawn. Solid parts ride on every request; outlined ones are added when needed. */
-const SWATCH: Record<PartId, { className: string; style?: CSSProperties }> = {
-  job: { className: "bg-foreground/70" },
-  house: { className: "bg-sky-400" },
-  analyst: { className: "bg-violet-400" },
-  tools: { className: "bg-brand" },
-  read: { className: "bg-blue-500" },
-  guidance: { className: "border border-dashed border-muted-foreground bg-muted-foreground/35" },
-  named: { className: "border border-dashed border-muted-foreground/50 bg-muted-foreground/10" },
-};
 
 interface Part {
   id: PartId;

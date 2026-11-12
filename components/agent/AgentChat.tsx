@@ -18,6 +18,8 @@ import type { AgentMode } from "@/lib/agent/modes";
 import { MODES, RESEARCH_MODEL_OPTIONS } from "@/lib/agent/modes";
 import { ChatRuntime } from "@/components/chat/chat-runtime";
 import { Thread, type WelcomeConfig } from "@/components/assistant-ui/thread";
+import { RunContext } from "@/components/agent/RunContext";
+import type { CallView } from "@/lib/agent/run-requests";
 import type { HindsightComposerFeatures } from "@/components/assistant-ui/hindsight-composer";
 import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer";
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
@@ -31,8 +33,9 @@ import {
 } from "@/lib/actions/analyst.actions";
 import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import { Sparkles, X } from "lucide-react";
+import { PanelRight, Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { RunSourcesPanel } from "@/components/research/run-sources-panel";
 import { ThesisRow, type ThesisRowData } from "@/components/ui/thesis-row";
 import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
@@ -143,6 +146,10 @@ interface AgentChatProps {
   theses?: ThesisRowData[];
   /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
   transcript?: TranscriptRowData | null;
+  /** research-run: a run that takes no messages (READ_ONLY_RUN_MODES) shows no composer. */
+  readOnly?: boolean;
+  /** research-run: what the run's model calls were sent (lib/agent/run-requests.ts), behind the header's Context button. */
+  requests?: CallView[];
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
@@ -206,6 +213,8 @@ export function AgentChat({
   sources = [],
   theses = [],
   transcript = null,
+  readOnly = false,
+  requests = [],
   currentConfig,
   heldOrWatched,
   messages,
@@ -287,6 +296,8 @@ export function AgentChat({
         sources={sources}
         theses={theses}
         transcript={transcript}
+        readOnly={readOnly}
+        requests={requests}
         currentConfig={currentConfig}
         heldOrWatched={heldOrWatched}
         composerSlot={composerSlot}
@@ -316,6 +327,8 @@ interface InnerProps {
   sources: RunSourceItem[];
   theses: ThesisRowData[];
   transcript: TranscriptRowData | null;
+  readOnly: boolean;
+  requests: CallView[];
   currentConfig?: Record<string, unknown>;
   heldOrWatched?: string[];
   composerSlot?: ReactNode;
@@ -343,6 +356,8 @@ function AgentChatInner({
   sources,
   theses,
   transcript,
+  readOnly,
+  requests,
   currentConfig,
   heldOrWatched,
   composerSlot,
@@ -356,6 +371,8 @@ function AgentChatInner({
 }: InnerProps) {
   const router = useRouter();
   const [isMutating, startMutating] = useTransition();
+  // research-run: the Context panel (what the run's latest model call was sent).
+  const [contextOpen, setContextOpen] = useState(false);
 
   // research-run: auto-send "Run" to kick off the agent
   useAutoSend({ message: autoStart ? "Run" : initialPrompt, delay: autoStart ? 500 : 300 });
@@ -426,7 +443,7 @@ function AgentChatInner({
 
   if (mode === "research-run") {
     const isFollowupMode = !autoStart;
-    return (
+    const tabs = (
       <Tabs defaultValue={0} className="flex h-full flex-col">
         <div className="shrink-0 px-4 pt-2 flex items-center">
           <TabsList>
@@ -434,19 +451,33 @@ function AgentChatInner({
             <TabsTrigger value={1}>Sources</TabsTrigger>
             <TabsTrigger value={2}>Theses</TabsTrigger>
           </TabsList>
-          {headerAction && <div className="ml-auto">{headerAction}</div>}
+          {(headerAction || requests.length > 0) && (
+            <div className="ml-auto flex items-center gap-1">
+              {requests.length > 0 && (
+                <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+                  <PanelRight /> Context
+                </Button>
+              )}
+              {/* Its own element: the page's button is never a list's unkeyed child. */}
+              {headerAction && <div>{headerAction}</div>}
+            </div>
+          )}
         </div>
 
         <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
           <Thread
             welcomeConfig={{
               title: analystName ?? "Research Agent",
-              subtitle: isFollowupMode
-                ? "Run complete — ask follow-up questions or place trades"
-                : "Autonomous research agent",
+              subtitle: readOnly
+                ? "Read only"
+                : isFollowupMode
+                  ? "Run complete — ask follow-up questions or place trades"
+                  : "Autonomous research agent",
             }}
             composerSlot={
-              composerSlot ?? (
+              readOnly ? (
+                <p className="px-4 py-3 text-center text-sm text-muted-foreground">This run takes no messages.</p>
+              ) : composerSlot ?? (
                 <HindsightComposer
                   features={{
                     placeholder: isFollowupMode
@@ -483,6 +514,13 @@ function AgentChatInner({
           )}
         </TabsContent>
       </Tabs>
+    );
+    // The Context panel opens beside the conversation and pushes it left.
+    return (
+      <div className="flex h-full">
+        <div className="flex min-w-0 flex-1 flex-col">{tabs}</div>
+        <RunContext calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
+      </div>
     );
   }
 
