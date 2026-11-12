@@ -13,7 +13,7 @@ This folder is the guide, and this page is where to start. The /docs pages in th
 
 The folders match the sidebar:
 
-- `agents/`: the five trading agents and the analyst builder, one doc each.
+- `agents/`: the five trading agents, the Portfolio Digest and the analyst builder, one doc each.
 - `concepts/`: theses, triggers, analysts, situations, approvals and price targets.
 - `deep-dives/`: one mechanism or workflow end to end, like [saving a thesis](deep-dives/saving-a-thesis.md).
 - `reference/`: exact lists built from the code, like the [Situations library](reference/situations-library.md).

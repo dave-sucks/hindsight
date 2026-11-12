@@ -26,6 +26,7 @@ export type DocSlug =
   | "morning-runs"
   | "trigger-runs"
   | "chat"
+  | "portfolio-digest"
   | "analyst-builder"
   | "analysts"
   | "theses"
@@ -57,6 +58,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "Every weekday morning, each analyst reviews its whole book." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
+  { slug: "portfolio-digest", title: "The Portfolio Digest", group: "Agents", icon: FileText, blurb: "At 8 PM, your account's day, written from one snapshot of your portfolio." },
   { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },
@@ -108,7 +110,7 @@ export function docForRunMode(mode: string | null | undefined): DocSlug {
     case "PRINCIPAL_CHAT":
       return "chat";
     case "PORTFOLIO_DIGEST":
-      return "architecture";
+      return "portfolio-digest";
     default:
       return "morning-runs";
   }

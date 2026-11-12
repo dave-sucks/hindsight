@@ -2,8 +2,25 @@
  * The portfolio snapshot: the one set of numbers the digest and the agents
  * read. Stand-in amounts (lib/agent/__fixtures__/portfolio-snapshot-standin.ts).
  */
-import { buildSnapshot, snapshotText } from "./snapshot";
+import { buildSnapshot, snapshotText, type SnapshotTrade } from "./snapshot";
 import { STANDIN_INPUTS, STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
+
+const fill = (side: "BUY" | "SELL", ticker: string, shares: number, price: number, prevClose: number | null = 100): SnapshotTrade => ({
+  at: "2026-11-11T15:00:00.000Z",
+  side,
+  ticker,
+  shares,
+  price,
+  prevClose,
+  analyst: null,
+});
+/** One stock, its shares now and its price, with that day's fills: the day of the whole snapshot. */
+const dayOf = (sharesNow: number, price: number | null, trades: SnapshotTrade[]) =>
+  buildSnapshot({
+    ...STANDIN_INPUTS,
+    holdings: sharesNow ? [{ ticker: "XYZ", shares: sharesNow, avgCost: 90, price, prevClose: 100, analyst: null }] : [],
+    trades,
+  }).dayChange?.dollars ?? null;
 
 describe("the portfolio snapshot's numbers", () => {
   it("values the account at its prices: cash plus every holding", () => {
@@ -22,30 +39,45 @@ describe("the portfolio snapshot's numbers", () => {
     expect(STANDIN_SNAPSHOT.lifetime).toEqual({ dollars: -20_000, pct: -20, contributed: 100_000 });
     const bbb = STANDIN_SNAPSHOT.holdings.find((h) => h.ticker === "BBB")!;
     expect(bbb.sinceBought).toEqual({ dollars: -5_000, pct: -25 });
+    expect(bbb.dayDollars).toBe(-500);
+    expect(bbb.move).toBeCloseTo((-10 / 310) * 100, 6);
   });
 
-  it("a buy filled that day moves from its fill price, not the prior close", () => {
-    const s = buildSnapshot({
-      ...STANDIN_INPUTS,
-      trades: [{ at: "2026-11-11T15:00:00.000Z", side: "BUY", ticker: "AAA", shares: 100, price: 245, prevClose: 240, analyst: null }],
-    });
-    expect(s.holdings.find((h) => h.ticker === "AAA")!.day!.dollars).toBe(500);
+  // Each case from the review of #953, worked by hand: shares now × price − shares at the open × prior close − buys + sales.
+  it.each<[string, number, number | null, SnapshotTrade[], number]>([
+    ["an add to a stock held overnight: 100 held, 50 more at $110, close $112", 150, 112, [fill("BUY", "XYZ", 50, 110)], 1_300],
+    ["two buys the same day: 50 at $100 and 50 at $120, close $120", 100, 120, [fill("BUY", "XYZ", 50, 100), fill("BUY", "XYZ", 50, 120)], 1_000],
+    ["bought and sold out the same day: 100 at $110, all sold at $115", 0, null, [fill("BUY", "XYZ", 100, 110), fill("SELL", "XYZ", 100, 115)], 500],
+    ["bought, then half sold the same day: 100 at $110, 50 sold at $115, close $112", 50, 112, [fill("BUY", "XYZ", 100, 110), fill("SELL", "XYZ", 50, 115)], 350],
+    ["sold out of a stock held overnight: 20 sold at $105", 0, null, [fill("SELL", "XYZ", 20, 105)], 100],
+  ])("%s", (_case, sharesNow, price, trades, want) => {
+    expect(dayOf(sharesNow, price, trades)).toBeCloseTo(want, 6);
   });
 
-  it("a sale that day counts what the sold shares made against the prior close", () => {
-    const s = buildSnapshot({
-      ...STANDIN_INPUTS,
-      trades: [{ at: "2026-11-11T15:00:00.000Z", side: "SELL", ticker: "DDD", shares: 20, price: 105, prevClose: 100, analyst: null }],
-    });
-    expect(s.dayChange!.dollars).toBe(500 + 100);
+  it("a short's day and since bought have the dollars' sign", () => {
+    const s = buildSnapshot({ ...STANDIN_INPUTS, holdings: [{ ticker: "SHT", shares: -10, avgCost: 100, price: 95, prevClose: 100, analyst: null }] });
+    const sht = s.holdings[0];
+    expect(sht.dayDollars).toBe(50);
+    expect(sht.sinceBought).toEqual({ dollars: 50, pct: 5 });
+    expect(snapshotText(s)).toContain("- SHT: 10 shares short at $95.00");
   });
 
-  it("a holding with no price is valued at cost, named, and leaves the day unknown", () => {
-    const s = buildSnapshot({ ...STANDIN_INPUTS, holdings: [...STANDIN_INPUTS.holdings, { ticker: "EEE", shares: 10, avgCost: 50, price: null, prevClose: null, analyst: null }] });
-    expect(s.value).toBe(80_500);
+  it("a stock with no trade that day is flat, and says so", () => {
+    const s = buildSnapshot({ ...STANDIN_INPUTS, holdings: [{ ticker: "HLT", shares: 10, avgCost: 50, price: 60, prevClose: 60, noTradeThatDay: true, analyst: null }] });
+    expect(s.dayChange!.dollars).toBe(0);
+    expect(snapshotText(s)).toContain("· day no trade on Wed, Nov 11 ·");
+  });
+
+  it("a holding with no price is valued at the broker's figure, named, and leaves the day unknown", () => {
+    const s = buildSnapshot({ ...STANDIN_INPUTS, holdings: [...STANDIN_INPUTS.holdings, { ticker: "EEE", shares: 10, avgCost: 50, price: null, prevClose: null, brokerValue: 480, analyst: null }] });
+    expect(s.value).toBe(80_480);
     expect(s.dayChange).toBeNull();
     expect(s.unpriced).toEqual(["EEE"]);
-    expect(snapshotText(s)).toContain("No price for EEE: valued at what was paid.");
+    expect(snapshotText(s)).toContain("No price for EEE: valued at the broker's figure, so the value is not exact.");
+  });
+
+  it("a fill with no recorded price leaves the day unknown, never a made-up figure", () => {
+    expect(buildSnapshot({ ...STANDIN_INPUTS, unrecordedFills: ["AAA"] }).dayChange).toBeNull();
   });
 
   it("no money put in that can be read: since started says so", () => {
@@ -58,7 +90,7 @@ describe("the snapshot's text", () => {
 
   it("reads as the account, the holdings, the day's trades and the proposals waiting", () => {
     expect(text.split("\n")).toEqual([
-      "Your portfolio, Wed, Nov 11 at the 4:00 PM close",
+      "Your portfolio, Wed, Nov 11 at the close",
       "Value $80,000.00 · cash $40,000.00 (50.0% of the account)",
       "Wed, Nov 11: +0.6% (+$500) · since you started: −20.0% (−$20,000) on $100,000 put in",
       "",
@@ -72,6 +104,11 @@ describe("the snapshot's text", () => {
       '- Sell 50 shares of BBB, proposed 9 times since Tue, Oct 20 · Analyst Two. Its reason: "BBB closed under your sell line again, and I proposed selling all 50 shares. Nothing new broke at the company today."',
       '- Buy 10 shares of CCC, proposed Wed, Nov 11 · Analyst One. Its reason: "CCC crossed your buy level after a strong quarter."',
     ]);
+  });
+
+  it("a stock traded that day gives the stock's move and what the shares made, labelled", () => {
+    const s = buildSnapshot({ ...STANDIN_INPUTS, trades: [fill("BUY", "AAA", 50, 245, 240)], holdings: [{ ...STANDIN_INPUTS.holdings[0], shares: 150 }, STANDIN_INPUTS.holdings[1]] });
+    expect(snapshotText(s)).toContain("day the stock +4.2%, these shares +$1,250 with that day's buys and sales");
   });
 
   it("carries no ids, no run logs and no borrowing money", () => {

@@ -117,9 +117,15 @@ export const portfolioDigest = inngest.createFunction(
 
       // The portfolio snapshot (lib/portfolio/snapshot.ts): the one set of numbers the digest reads.
       const snapshot = await step.run(`snapshot-${key}`, () =>
-        loadPortfolioSnapshot({ accountId, environment: environment as "PAPER" | "LIVE" }),
+        loadPortfolioSnapshot({ accountId, environment: environment as "PAPER" | "LIVE" }).catch((err) => {
+          console.error(`[portfolio-digest] ${key}: the snapshot couldn't be read, no digest for this book: ${err instanceof Error ? err.message : err}`);
+          return null;
+        }),
       );
-      if (!snapshot) continue;
+      if (!snapshot) {
+        console.warn(`[portfolio-digest] ${key}: skipped, no snapshot (no owner, no broker keys, or the broker failed).`);
+        continue;
+      }
 
       // Saved as a read-only run with its one request (lib/runs/account-run.ts).
       const { narrative, model } = await step.run(`narrate-${key}`, async () => {

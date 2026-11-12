@@ -4,6 +4,14 @@
 
 It never trades. It is a run you can open on /runs, and its Context button shows exactly what the model was sent.
 
+```facts
+Model: gpt-5.4
+Starts: 8:00 PM ET, every weekday
+Steps: 1 call
+Tools: None
+Saves: The digest, and the snapshot it read
+```
+
 ## What it is given
 
 1. **Its instructions:** write 3 to 5 short paragraphs on how the account did that day and which holdings moved it, what was bought or sold, a view on each proposal waiting for you, and what stands out about the account as a whole. Every number comes from the snapshot. A proposal is not a trade until you approve it. It never names a new price level.
@@ -14,7 +22,7 @@ It never trades. It is a run you can open on /runs, and its Context button shows
 The one set of numbers about your account, as plain text. With made-up amounts, it reads:
 
 ```
-Your portfolio, Wed, Nov 11 at the 4:00 PM close
+Your portfolio, Wed, Nov 11 at the close
 Value $80,000.00 · cash $40,000.00 (50.0% of the account)
 Wed, Nov 11: +0.6% (+$500) · since you started: −20.0% (−$20,000) on $100,000 put in
 
@@ -32,8 +40,8 @@ Waiting for your approval (proposals, not trades, until you approve them):
 Where each number comes from:
 
 - **Cash, shares and what you paid:** your broker account.
-- **Prices:** the app's one price, the same as everywhere else: the latest trade while the market is open, the 4:00 PM close outside it. The broker's own after-hours marks are never used. At 10 PM on Nov 11 the broker valued CEG at an after-hours $271.81 and called its day −1.1%; it closed at $274.73, up 2.6%.
-- **The day:** each holding's move from the prior close. A stock bought that day moves from its fill price, and a stock sold that day counts what the shares made.
+- **Prices:** the app's one price, the same as everywhere else: the latest trade while the market is open, the close outside it. The broker's own after-hours marks are never used. At 10 PM on Nov 11 the broker valued CEG at an after-hours $271.81 and called its day −1.1%; it closed at $274.73, up 2.6%.
+- **The day:** for each stock, what its shares are worth now less what they were worth at the prior close, less what that day's buys cost, plus what that day's sales brought in. A stock that didn't trade that day is flat.
 - **Since you started:** the account's value less the money you put in, net of withdrawals.
 - **Bought or sold:** orders the broker filled that day. A proposal is never listed here.
 - **Waiting for your approval:** every proposal waiting for you, how many times that stock's proposal has been made (expired and declined ones count), since when, and the analyst's reason, cut at a sentence inside 280 characters.
@@ -50,7 +58,7 @@ Where each number comes from:
 `portfolio-digest` at 8:00 PM ET, Mon–Fri, one read-only run per traded book (`lib/inngest/functions/portfolio-digest.ts`, `lib/runs/account-run.ts`).
 
 #### Model
-`gpt-4o`, one call (`lib/agent/digest-writer.ts`).
+`gpt-5.4`, one call (`lib/agent/digest-writer.ts`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash.
 
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot` and `snapshotText` (`lib/portfolio/snapshot.ts`) make the numbers and the text. The digest row's `facts` column keeps the snapshot.

@@ -69,6 +69,7 @@ export async function writeDigestNarrative(
   try {
     const resp = await getOpenAI().chat.completions.create(body);
     const text = resp.choices[0]?.message?.content?.trim() ?? "";
+    if (resp.choices[0]?.finish_reason === "length") return done(fallbackNarrative(snapshot), "fallback", "The model's reply was cut off at its limit.");
     if (text) return done(text, DIGEST_MODEL);
     return done(fallbackNarrative(snapshot), "fallback", "The model replied with no text.");
   } catch (err) {
