@@ -100,7 +100,7 @@ async function trigger(db: PrismaDouble, at: string, data: Sent["data"]) {
       jest.doMock("@/lib/prisma", () => ({ prisma: db }));
       jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
       jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
-      jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+      jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
       jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: { execute: async () => ({ ok: false }) } }) }));
       await import("@/lib/inngest/functions/tactical-run");
@@ -108,7 +108,7 @@ async function trigger(db: PrismaDouble, at: string, data: Sent["data"]) {
     });
   } finally {
     jest.useRealTimers();
-    for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+    for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   }
   return { modelCalls, returned };
 }

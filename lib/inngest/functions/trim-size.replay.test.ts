@@ -39,7 +39,7 @@ async function fire(fireMode: string) {
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/agent/tools", () => ({
       createResearchTools: (ctx: Record<string, unknown>) => {
@@ -54,7 +54,7 @@ async function fire(fireMode: string) {
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
     });
   });
-  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { told: told.join("\n"), toolCalls, contexts };
 }
 

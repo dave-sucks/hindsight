@@ -103,4 +103,7 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 
 #### Route
 `app/api/agent/[mode]/route.ts`
+
+#### What was sent
+The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
 </details>

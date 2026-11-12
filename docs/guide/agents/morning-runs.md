@@ -98,4 +98,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 
 #### Close-out
 `complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`).
+
+#### What was sent
+The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
 </details>

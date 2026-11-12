@@ -92,4 +92,7 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 
 #### Saved through
 `submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save.
+
+#### What was sent
+The run page's Context shows the request the run's newest model call started with (the research call, or its save retry), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
 </details>

@@ -64,7 +64,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({
       closeOpenPosition: jest.fn(async (...a: unknown[]) => {
@@ -100,7 +100,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
     });
   });
-  for (const m of ["@/lib/agent/portfolio-block", "ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  for (const m of ["@/lib/agent/portfolio-block", "ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
   return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
 }

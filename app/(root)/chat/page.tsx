@@ -5,6 +5,7 @@ import { getAccountId } from "@/lib/auth/account";
 import { ChatPageClient } from "./ChatPageClient";
 import { loadChatThread, listRecentChats } from "@/lib/actions/chat.actions";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
+import { loadRunRequests } from "@/lib/agent/run-requests";
 import type { UIMessage } from "ai";
 
 /**
@@ -55,7 +56,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const kickoffMessage = params.kickoff?.trim() || null;
 
   // Run these in parallel — they're independent reads.
-  const [analysts, recentChats, resumed] = await Promise.all([
+  const [analysts, recentChats, resumed, requests] = await Promise.all([
     prisma.agentConfig.findMany({
       where: { accountId },
       select: { id: true, name: true, enabled: true },
@@ -63,6 +64,8 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     }),
     listRecentChats({ userId: user.id, accountId, limit: 30 }),
     resumeRunId ? loadChatThread(resumeRunId, user.id) : Promise.resolve(null),
+    // What its newest message sent the model (lib/agent/run-requests.ts), shown only for a chat that loads.
+    resumeRunId ? loadRunRequests(resumeRunId).catch(() => []) : Promise.resolve([]),
   ]);
 
   // If resume was requested but the row was missing / not owned / no
@@ -110,6 +113,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       resumedMessages={resumedMessages}
       resumedRunId={resumedRunId}
       resumedAnalystId={resumedAnalystId}
+      requests={resumedRunId ? requests : []}
       kickoffAnalystId={kickoffAnalystValid}
       kickoffMessage={initialKickoff}
     />

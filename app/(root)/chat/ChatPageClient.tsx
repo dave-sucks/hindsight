@@ -19,7 +19,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
+import { PanelRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { AgentChat } from "@/components/agent/AgentChat";
+import { RunContext } from "@/components/agent/RunContext";
+import type { CallView } from "@/lib/agent/run-requests";
 import {
   RecentChatsSidebar,
   RecentChatsTrigger,
@@ -36,6 +40,8 @@ interface Props {
   resumedRunId?: string | null;
   /** Analyst the resumed chat was scoped to — sets the initial scope. */
   resumedAnalystId?: string | null;
+  /** What the resumed chat's newest message sent the model (lib/agent/run-requests.ts), behind the Context button. */
+  requests?: CallView[];
   /**
    * Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When both
    * are set, the chat opens scoped to `kickoffAnalystId` and auto-sends
@@ -52,6 +58,7 @@ export function ChatPageClient({
   resumedMessages,
   resumedRunId,
   resumedAnalystId,
+  requests = [],
   kickoffAnalystId,
   kickoffMessage,
 }: Props) {
@@ -60,6 +67,7 @@ export function ChatPageClient({
     resumedAnalystId ?? kickoffAnalystId ?? null,
   );
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const handleChange = useCallback((analystId: string | null) => {
     setScopedAnalystId(analystId);
@@ -79,42 +87,53 @@ export function ChatPageClient({
     [scopedAnalystId, analysts, handleChange],
   );
 
+  // The Context panel opens beside the conversation and pushes it left, as on a run's page.
   return (
-    <div className="relative flex h-[calc(100dvh-3rem)] flex-col">
-      {/* Trigger button — floats top-left so it's reachable without
-          stealing chat real-estate. Opens the Recent Chats Sheet.
-          Wrapper carries the same px-4 gutter as the app header above so
-          this button lines up with the sidebar toggle. */}
-      <div className="absolute left-0 top-4 z-10 px-4">
-        <RecentChatsTrigger onClick={() => setIsHistoryOpen(true)} />
+    <div className="flex h-[calc(100dvh-3rem)]">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {/* Trigger button — floats top-left so it's reachable without
+            stealing chat real-estate. Opens the Recent Chats Sheet.
+            Wrapper carries the same px-4 gutter as the app header above so
+            this button lines up with the sidebar toggle. */}
+        <div className="absolute left-0 top-4 z-10 px-4">
+          <RecentChatsTrigger onClick={() => setIsHistoryOpen(true)} />
+        </div>
+        {requests.length > 0 && (
+          <div className="absolute right-0 top-4 z-10 px-4">
+            <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+              <PanelRight /> Context
+            </Button>
+          </div>
+        )}
+
+        <AgentChat
+          mode="principal"
+          analystId={scopedAnalystId ?? undefined}
+          principalScope={principalScope}
+          // Resume support: when these are set, AgentChat hydrates the
+          // thread and threads the runId through to every POST so the
+          // route continues writing to the same chat.
+          messages={resumedMessages}
+          runId={resumedRunId ?? undefined}
+          // Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When
+          // set on a FRESH chat (no resume), AgentChat's useAutoSend fires
+          // this as the first message. On a resumed chat the kickoff is
+          // ignored — the resumed thread is the user's intent.
+          initialPrompt={
+            !resumedMessages && kickoffMessage ? kickoffMessage : undefined
+          }
+        />
+
+        <RecentChatsSidebar
+          open={isHistoryOpen}
+          onOpenChange={setIsHistoryOpen}
+          chats={recentChats}
+          // Highlight the chat we're currently resuming so the user has
+          // a visual anchor when they reopen the sidebar.
+          currentRunId={resumedRunId ?? null}
+        />
       </div>
-
-      <AgentChat
-        mode="principal"
-        analystId={scopedAnalystId ?? undefined}
-        principalScope={principalScope}
-        // Resume support: when these are set, AgentChat hydrates the
-        // thread and threads the runId through to every POST so the
-        // route continues writing to the same chat.
-        messages={resumedMessages}
-        runId={resumedRunId ?? undefined}
-        // Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When
-        // set on a FRESH chat (no resume), AgentChat's useAutoSend fires
-        // this as the first message. On a resumed chat the kickoff is
-        // ignored — the resumed thread is the user's intent.
-        initialPrompt={
-          !resumedMessages && kickoffMessage ? kickoffMessage : undefined
-        }
-      />
-
-      <RecentChatsSidebar
-        open={isHistoryOpen}
-        onOpenChange={setIsHistoryOpen}
-        chats={recentChats}
-        // Highlight the chat we're currently resuming so the user has
-        // a visual anchor when they reopen the sidebar.
-        currentRunId={resumedRunId ?? null}
-      />
+      <RunContext calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
     </div>
   );
 }

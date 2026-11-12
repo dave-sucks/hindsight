@@ -119,7 +119,7 @@ async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise
       }),
       stepCountIs: () => () => false,
     }));
-    jest.doMock("@ai-sdk/openai", () => ({ openai: () => ({}) }));
+    jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
     jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     await import("@/lib/inngest/functions/tactical-run");
@@ -147,7 +147,7 @@ async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise
     });
   });
   // doMock outlives the isolated registry; leave nothing faked for the next test.
-  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) {
+  for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) {
     jest.dontMock(m);
   }
   if (prompts.length === 0) throw new Error("the trigger run never reached the model");
