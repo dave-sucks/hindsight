@@ -130,8 +130,8 @@ export default async function RunPage({
   const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
   // The Portfolio Digest's run: written on the server, read only.
   const readOnly = READ_ONLY_RUN_MODES.has(run.mode);
-  // What its model call was sent (lib/agent/run-requests.ts); none for other runs yet.
-  const requests = await loadRunRequests(run.id).catch(() => []);
+  // What its newest model call was sent (lib/agent/run-requests.ts); the Context panel reads it again when opened.
+  const requests = await loadRunRequests(run.id, { latest: true }).catch(() => []);
 
   // Load Sources + Theses tab data from the DB.
   // Wrapped in try/catch so a DB error (e.g. pending migration) never

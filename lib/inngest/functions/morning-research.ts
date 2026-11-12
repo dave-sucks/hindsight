@@ -11,6 +11,7 @@ import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { MODES } from "@/lib/agent/modes";
+import { recordFirstRequest } from "@/lib/agent/run-requests";
 import { addTokenUsage, emptyTokenUsage } from "@/lib/agent/token-usage";
 import { buildRunInput } from "@/lib/agent/run-input";
 import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
@@ -384,8 +385,10 @@ export const morningResearch = inngest.createFunction(
         // the lack of a human respondent explicit. V1 path deprecated.
         const userPrompt = "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.";
 
+        // What the call started with, kept on the run for its Context panel (run-requests.ts).
+        const sent = recordFirstRequest(run.id, "Main", "morning-research", MODES["research-run"].model);
         try {
-          const { text, steps, response } = await generateText({
+          const { text, steps, response } = await sent.around(generateText({
             // 2026-05-15 — model + abortSignal now read from MODES["research-run"]
             // instead of hardcoded "gpt-4o" + 240_000ms. The cron path was the
             // last spot still hardcoded; tactical + discovery already used the
@@ -435,7 +438,8 @@ export const morningResearch = inngest.createFunction(
             abortSignal: AbortSignal.timeout(
               (MODES["research-run"].maxDuration - 30) * 1000,
             ),
-            onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage }) {
+            onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, text: stepText, finishReason, usage, request }) {
+              sent.step(request);
               trackUsage(usage);
               const now = Date.now();
               const elapsed = now - t0;
@@ -490,7 +494,7 @@ export const morningResearch = inngest.createFunction(
                 }
               }
             },
-          });
+          }));
 
           let toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
           let elapsed = Date.now() - t0;

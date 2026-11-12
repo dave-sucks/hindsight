@@ -451,17 +451,13 @@ function AgentChatInner({
             <TabsTrigger value={1}>Sources</TabsTrigger>
             <TabsTrigger value={2}>Theses</TabsTrigger>
           </TabsList>
-          {(headerAction || requests.length > 0) && (
-            <div className="ml-auto flex items-center gap-1">
-              {requests.length > 0 && (
-                <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
-                  <PanelRight /> Context
-                </Button>
-              )}
-              {/* Its own element: the page's button is never a list's unkeyed child. */}
-              {headerAction && <div>{headerAction}</div>}
-            </div>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+              <PanelRight /> Context
+            </Button>
+            {/* Its own element: the page's button is never a list's unkeyed child. */}
+            {headerAction && <div>{headerAction}</div>}
+          </div>
         </div>
 
         <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
@@ -519,7 +515,7 @@ function AgentChatInner({
     return (
       <div className="flex h-full">
         <div className="flex min-w-0 flex-1 flex-col">{tabs}</div>
-        <RunContext calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
+        <RunContext runId={runId} calls={requests} open={contextOpen} onOpenChange={setContextOpen} />
       </div>
     );
   }

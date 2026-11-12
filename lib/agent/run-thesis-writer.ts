@@ -47,6 +47,7 @@ import { analystBrief, setupLines, type BriefAnalyst } from "@/lib/agent/analyst
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
+import { recordFirstRequest } from "@/lib/agent/run-requests";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -1008,8 +1009,10 @@ Write the research note now, then call submit_thesis.`;
     // Every request this phase makes, recorded on the child run at the end
     // (token-usage.ts); the save phase's retry records its own.
     const tokenUsage = emptyTokenUsage();
+    // What the research call started with, kept on the child run for its Context panel (run-requests.ts).
+    const sent = recordFirstRequest(args.childRunId, "Research", "thesis-writer", modeConfig.model);
     try {
-      await generateText({
+      await sent.around(generateText({
         model,
         system: cachedSystem(modeConfig.provider, systemPrompt),
         prompt: userPrompt,
@@ -1018,6 +1021,7 @@ Write the research note now, then call submit_thesis.`;
         stopWhen: [stepCountIs(modeConfig.maxSteps), () => accepted !== null],
         abortSignal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
         onStepFinish(step) {
+          sent.step(step.request);
           addTokenUsage(tokenUsage, step.usage);
           stepCount++;
           toolCallCount += step.toolCalls.length;
@@ -1035,7 +1039,7 @@ Write the research note now, then call submit_thesis.`;
             `[thesis-writer] STEP #${stepCount} child=${args.childRunId} ticker=${T} tools=[${step.toolCalls.map((c) => c.toolName).join(", ") || "none"}] text=${step.text?.length ?? 0}ch`,
           );
         },
-      });
+      }));
     } catch (err) {
       loopError = err instanceof Error ? err.message : String(err);
       console.error(

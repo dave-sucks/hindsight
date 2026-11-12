@@ -30,6 +30,7 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { recordFirstRequest } from "@/lib/agent/run-requests";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
@@ -786,6 +787,18 @@ export async function POST(
     // added to the turns before it (token-usage.ts). Builder and editor
     // chats have no run row and are not recorded.
     const tokenUsage = emptyTokenUsage();
+    // What this call started with, kept on the run for its Context panel
+    // (run-requests.ts): a run's first turn, and the newest follow-up or chat message.
+    const isFirstTurn = !(messages ?? []).some((m: { role?: string }) => m?.role === "assistant");
+    const sent = recordFirstRequest(
+      agentMode === "research-run" || agentMode === "principal" ? runId : null,
+      agentMode === "principal" ? "Chat message" : isFirstTurn ? "Run" : "Follow-up",
+      `agent/${agentMode}`,
+      effectiveModel,
+      { replace: agentMode === "principal" || !isFirstTurn },
+    );
+    // The SDK reports a stream's error before its step finishes; the record is saved in onFinish with it.
+    let streamError: unknown;
     const result = streamText({
       model: resolvedModel,
       // Provider-specific options. For OpenAI, strictJsonSchema forces OpenAI
@@ -847,7 +860,8 @@ export async function POST(
           : []),
       ],
 
-      onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage }) {
+      onStepFinish({ stepNumber, toolCalls, toolResults, text, finishReason, usage, request }) {
+        sent.step(request);
         addTokenUsage(tokenUsage, usage);
         const now = Date.now();
         const elapsed = now - t0;
@@ -897,6 +911,7 @@ export async function POST(
       },
 
       onError({ error }) {
+        streamError = error;
         const elapsed = Date.now() - t0;
         const msg = error instanceof Error ? error.message : String(error);
         console.error(`[agent/${agentMode}] ❌ STREAM ERROR elapsed=${elapsed}ms: ${msg}`);
@@ -911,6 +926,7 @@ export async function POST(
         console.log(
           `[agent/${agentMode}] ✅ onFinish elapsed=${elapsed}ms reason=${finishReason} tokens=${usage?.totalTokens ?? "?"}`,
         );
+        await sent.save(streamError);
 
         // Builder/editor and unscoped principal-chat don't have a
         // ResearchRun. Scoped principal-chat does — persist messages

@@ -12,7 +12,7 @@
  * desktop panel is a plain column next to the chat.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,19 +22,34 @@ import { JsonBlock } from "@/components/ai-elements/json-block";
 import { SWATCH } from "@/components/docs/framework/swatch";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { CallView, SentCategory } from "@/lib/agent/run-requests";
+import { getRunContext } from "@/lib/actions/run-context.actions";
 import { cn } from "@/lib/utils";
 
 const n = (x: number) => x.toLocaleString("en-US");
 const share = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0);
 const color = (c: SentCategory) => (c.part ? SWATCH[c.part].className : "bg-muted-foreground/35");
 
-export function RunContext({ calls, open, onOpenChange }: { calls: CallView[]; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function RunContext({ runId, calls, open, onOpenChange }: { runId?: string; calls: CallView[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   const isMobile = useIsMobile();
-  const call = calls[calls.length - 1] ?? null;
+  // Read again each time it opens: a chat keeps one record per message.
+  const [fresh, setFresh] = useState<CallView[] | null>(null);
+  useEffect(() => {
+    if (!open || !runId) return;
+    let live = true;
+    getRunContext(runId)
+      .then((c) => live && setFresh(c))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [open, runId]);
+  const list = fresh ?? calls;
+  const call = list[list.length - 1] ?? null;
+  const started = call?.call === "Chat message" || call?.call === "Follow-up" ? "What your latest message started with" : "What the run started with";
   const subtitle = !call
     ? ""
     : call.of
-      ? `What the run started with: its first request to ${call.model}, as sent. It made ${call.of} in all; every tool call and result after this one is in the conversation.`
+      ? `${started}: its first request to ${call.model}, as sent. It made ${call.of} in all; every tool call and result after this one is in the conversation.`
       : `What the run sent ${call.model}, as it was sent.`;
   if (isMobile)
     return (

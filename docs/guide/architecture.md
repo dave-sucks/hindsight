@@ -32,6 +32,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
 - **The floor rule:** `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`.
 - **Which tools each agent has:** `lib/agent/modes.ts`.
+- **What a model call was sent:** `recordFirstRequest` in `lib/agent/run-requests.ts`, one record per call on its run; its instructions cut into their parts by `lib/agent/prompt-blocks.ts`.
 
 ## Everything runs on a clock
 
@@ -87,6 +88,8 @@ Every agent is a job and a list of tools, plus the parts every agent shares: the
 <!-- asset: request-grid -->
 
 [Open the Framework →](/how-it-works/framework)
+
+Every run's page has a **Context** button. For a morning run, a trigger run (an Auto write-up too), the Writer, the two account reviews and each of your chat messages, it opens what the call started with: its first request to the model, exactly as sent. The instructions are split into the parts above, colored the same way: the agent's own instructions, the analyst's brief, the house rules, the Market and portfolio block (by its sections), and on a trigger run the stock's row, the notes pinned on it and its Activity lines. Then the first message (a chat message: the conversation so far, then your new message), the tool menu and the raw request. Every tool call and result after it is in the conversation. A chat keeps and shows its newest message's. A run from before this says it kept no record.
 
 <details>
 <summary>Technical details</summary>

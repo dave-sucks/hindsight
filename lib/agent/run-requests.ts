@@ -6,9 +6,12 @@
  * (role "thread", lib/agent/run-thread.ts): each request the call made, as
  * the JSON body that went to the provider. The run page's Context panel shows
  * each part of it, cut at the headings the prompt prints, and the raw request.
- * Only the 8 PM Portfolio Digest keeps one so far.
+ * Kept by the account runs, the morning run, the trigger run, the Writer and
+ * each chat turn; a call of several steps keeps its first request (the rest
+ * are in the conversation).
  */
 import { prisma } from "@/lib/prisma";
+import { promptBlocks, type PromptPart } from "@/lib/agent/prompt-blocks";
 
 export const REQUEST_ROLE = "request";
 
@@ -29,13 +32,57 @@ export interface RequestRecord {
   error?: string;
 }
 
-/** Keep a call's record on its run. A failed save is logged, never thrown. */
-export async function saveRequestRecord(runId: string, record: RequestRecord): Promise<void> {
+/**
+ * Keep a call's record on its run. A failed save is logged, never thrown.
+ * `replace`: the run keeps only its newest record of this call (a chat
+ * message's first request resends the whole conversation, so one per
+ * message would grow with the square of its length).
+ */
+export async function saveRequestRecord(runId: string, record: RequestRecord, opts: { replace?: boolean } = {}): Promise<void> {
   try {
-    await prisma.runMessage.create({ data: { runId, role: REQUEST_ROLE, content: JSON.stringify(record) } });
+    const content = JSON.stringify(record);
+    if (opts.replace) await prisma.runMessage.deleteMany({ where: { runId, role: REQUEST_ROLE, content: { startsWith: `{"v":1,"call":${JSON.stringify(record.call)},` } } });
+    await prisma.runMessage.create({ data: { runId, role: REQUEST_ROLE, content } });
   } catch (err) {
     console.error(`[${record.source}] couldn't keep what run ${runId} sent the model:`, err instanceof Error ? err.message : err);
   }
+}
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message || e.name : typeof e === "string" ? e : JSON.stringify(e)) || "Error";
+
+/**
+ * Record a model call's first request exactly as the AI SDK sent it (step 1's
+ * request body) and how many it made: hand each finished step's `request` to
+ * `step`, and save once when the call ends or fails (`around` does both ends).
+ * With no run id nothing is kept; `replace`: see saveRequestRecord.
+ */
+export function recordFirstRequest(runId: string | null | undefined, call: string, source: string, model: string, opts: { replace?: boolean } = {}) {
+  const startedAt = new Date().toISOString();
+  let first: unknown;
+  let steps = 0;
+  let saved = false;
+  async function save(error?: unknown): Promise<void> {
+    if (!runId || saved) return;
+    saved = true;
+    const requests = first === undefined ? [] : [first];
+    await saveRequestRecord(runId, { v: 1, call, source, model, startedAt, endedAt: new Date().toISOString(), requests, of: steps, ...(error !== undefined ? { error: errorText(error) } : {}) }, opts);
+  }
+  return {
+    step(request: { body?: unknown } | undefined): void {
+      if (++steps === 1) first = request?.body;
+    },
+    save,
+    async around<T>(call: Promise<T>): Promise<T> {
+      try {
+        const out = await call;
+        await save();
+        return out;
+      } catch (err) {
+        await save(err);
+        throw err;
+      }
+    },
+  };
 }
 
 export interface SentPart {
@@ -48,7 +95,7 @@ export interface SentPart {
 export interface SentCategory {
   name: string;
   /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
-  part: "job" | "read" | "tools" | null;
+  part: PromptPart | "tools" | null;
   chars: number;
   /** Its text, cut at the headings the prompt prints. */
   sections: SentPart[];
@@ -92,27 +139,46 @@ export function partsAtHeadings(text: string): SentPart[] {
   });
 }
 
-/** One record as the run page shows it: each message of its last request but the model's own (the thread has those). */
+type Sent = { system: boolean; text: string };
+
+/** A message's content as text: a string as is, a list of parts by their text (any other part as JSON). */
+function textOf(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(content);
+  return content.map((p) => (typeof p?.text === "string" ? p.text : JSON.stringify(p))).join("\n\n");
+}
+
+/** A request's messages in the three shapes the agents send: Chat Completions (`messages`), Responses (`input`, `instructions`), Anthropic (`system`, `messages`). */
+function messagesOf(body: Record<string, unknown>): Sent[] {
+  const out: Sent[] = [];
+  if (body.system !== undefined) out.push({ system: true, text: textOf(body.system) });
+  if (typeof body.instructions === "string") out.push({ system: true, text: body.instructions });
+  const items = [...(Array.isArray(body.messages) ? body.messages : []), ...(Array.isArray(body.input) ? body.input : [])] as Array<Record<string, unknown>>;
+  for (const m of items) out.push({ system: m.role === "system" || m.role === "developer", text: textOf(m.content ?? m.output ?? m) });
+  return out;
+}
+
+/** One record as the run page shows it: its instructions cut into the parts they are built from, its messages, its tool menu. */
 export function viewOfRecord(r: RequestRecord): CallView {
   const body = r.requests[r.requests.length - 1] ?? null;
-  const sent = (body as { messages?: Array<{ role?: string; content?: unknown }> } | null)?.messages ?? [];
-  let users = 0;
-  const categories = sent
-    .filter((m) => m.role !== "assistant")
-    .map((m): SentCategory => {
-      const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-      const system = m.role === "system" || m.role === "developer";
-      const first = !system && users++ === 0;
-      return {
-        name: system ? "Instructions" : first ? (FIRST_MESSAGE[r.source] ?? "First message") : "Added message",
-        part: system ? "job" : first ? "read" : null,
-        chars: text.length,
-        sections: partsAtHeadings(text),
-      };
-    });
-  // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
-  const tools = ((body as { tools?: Array<{ function?: { name?: string } }> } | null)?.tools ?? []).map((t) => ({
-    label: t.function?.name ?? "tool",
+  const sent = body && typeof body === "object" ? messagesOf(body as Record<string, unknown>) : [];
+  const categories: SentCategory[] = [];
+  const add = (name: string, part: SentCategory["part"], text: string, chars = text.length) => categories.push({ name, part, chars, sections: partsAtHeadings(text) });
+  for (const m of sent.filter((x) => x.system)) {
+    for (const b of promptBlocks(m.text)) {
+      if (b.sections) categories.push({ name: b.label, part: b.part, chars: b.chars, sections: b.sections.map((x) => ({ ...x, chars: x.text.length })) });
+      else add(b.label, b.part, b.text, b.chars);
+    }
+  }
+  // A chat turn resends the conversation: everything before its new message is one part.
+  const rest = sent.filter((x) => !x.system);
+  const earlier = rest.slice(0, -1);
+  if (earlier.length) add("The conversation so far", null, earlier.map((x) => x.text).join("\n\n"), earlier.reduce((n, x) => n + x.text.length, 0));
+  if (rest.length) add(earlier.length ? "This message" : (FIRST_MESSAGE[r.source] ?? "First message"), "read", rest[rest.length - 1].text);
+  // The tools it was offered, counted as sent and shown spaced out.
+  const offered = (body as { tools?: unknown } | null)?.tools;
+  const tools = (Array.isArray(offered) ? (offered as Array<{ name?: string; function?: { name?: string } }>) : []).map((t) => ({
+    label: t.function?.name ?? t.name ?? "tool",
     chars: JSON.stringify(t).length,
     text: JSON.stringify(t, null, 2),
   }));
@@ -129,9 +195,14 @@ export function viewOfRecord(r: RequestRecord): CallView {
   };
 }
 
-/** A run's records, oldest first, as its page shows them. */
-export async function loadRunRequests(runId: string): Promise<CallView[]> {
-  const rows = await prisma.runMessage.findMany({ where: { runId, role: REQUEST_ROLE }, orderBy: { createdAt: "asc" }, select: { content: true } });
+/** A run's records, oldest first, as its page shows them; `latest`: the newest only (a chat keeps one per message). */
+export async function loadRunRequests(runId: string, opts: { latest?: boolean } = {}): Promise<CallView[]> {
+  const rows = await prisma.runMessage.findMany({
+    where: { runId, role: REQUEST_ROLE },
+    orderBy: { createdAt: opts.latest ? "desc" : "asc" },
+    ...(opts.latest ? { take: 1 } : {}),
+    select: { content: true },
+  });
   return rows.flatMap((row) => {
     try {
       const r = JSON.parse(row.content) as RequestRecord;

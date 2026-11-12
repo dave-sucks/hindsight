@@ -23,6 +23,7 @@ import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rea
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
+import { recordFirstRequest } from "@/lib/agent/run-requests";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { openai } from "@ai-sdk/openai";
@@ -772,8 +773,10 @@ export const tacticalRun = inngest.createFunction(
       // since 2026-10-02 (triggers/schema.ts, triggerInputSchema), so the
       // growing conversation is read from the cache rather than re-billed.
       const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
+      // What the call started with, kept on the run for its Context panel (run-requests.ts).
+      const sent = recordFirstRequest(run.id, "Main", "tactical-run", MODES["tactical"].model);
       try {
-        const { steps, response } = await generateText({
+        const { steps, response } = await sent.around(generateText({
           model: openai(MODES["tactical"].model),
           system: systemPrompt,
           prompt: userPrompt,
@@ -785,10 +788,11 @@ export const tacticalRun = inngest.createFunction(
           abortSignal: AbortSignal.timeout(
             (MODES["tactical"].maxDuration - 30) * 1000,
           ),
-          onStepFinish({ usage }) {
+          onStepFinish({ usage, request }) {
+            sent.step(request);
             addTokenUsage(tokenUsage, usage);
           },
-        });
+        }));
 
         let toolCalls = steps.reduce(
           (sum, s) => sum + (s.toolCalls?.length ?? 0),
