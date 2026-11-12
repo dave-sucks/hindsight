@@ -76,14 +76,9 @@ export async function getMoneyContext(analyst: {
  */
 export function formatMoneyContextBlock(m: MoneyContext): string {
   if (m.floorDollars <= 0 && m.ceilingDollars == null) return "";
-  const lines: string[] = ["ACCOUNT MONEY CONTEXT (live):"];
-  if (m.equityUSD != null) {
-    lines.push(`  • Account equity ≈ $${Math.round(m.equityUSD).toLocaleString()}.`);
-  } else {
-    lines.push(
-      "  • Live equity unavailable this run — size toward the upper end of the band rather than under-sizing.",
-    );
-  }
+  // The account's value is in the Market and portfolio block's snapshot
+  // (lib/agent/portfolio-block.ts), the one set of numbers: not repeated here.
+  const lines: string[] = ["ACCOUNT MONEY CONTEXT:"];
   if (m.floorDollars > 0) {
     lines.push(
       `  • Per-entry band: $${Math.round(m.floorDollars).toLocaleString()} floor${

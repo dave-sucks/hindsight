@@ -57,3 +57,17 @@ describe("the Market and portfolio block", () => {
     expect(block).toBe("## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request.");
   });
 });
+
+describe("a slow snapshot", () => {
+  it("is given up at the caller's wait, and the block says so", async () => {
+    jest.useFakeTimers();
+    try {
+      loadPortfolioSnapshot.mockImplementation(() => new Promise(() => {}));
+      const pending = loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW, waitMs: 5_000 });
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(await pending).toContain("### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request.");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

@@ -63,6 +63,9 @@ Where each number comes from:
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot` and `snapshotText` (`lib/portfolio/snapshot.ts`) make the numbers and the text. The digest row's `facts` column keeps the snapshot.
 
+#### Every agent's block
+`loadPortfolioBlock` (`lib/agent/portfolio-block.ts`): the snapshot and the latest digest, under `## Market and portfolio`. The morning run gets it through `buildRunInput`, the trigger run in `tactical-run.ts` before the stock's row, the Writer in `run-thesis-writer.ts`, and the chat on its newest message (`withTheTime`, `lib/agent/old-lookups.ts`), so its system prompt stays cached.
+
 #### What was sent
 One `RunMessage` row with role `request` per call, shown by the Context panel (`lib/agent/run-requests.ts`, `components/agent/RunContext.tsx`).
 

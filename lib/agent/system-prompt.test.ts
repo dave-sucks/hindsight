@@ -37,8 +37,8 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
     expect(prompt).toContain("## Regime and cash");
-    expect(prompt).toContain("Your cash is in the portfolio snapshot below.");
-    expect(prompt).not.toContain("Cash is $31,000");
+    // No block in this sample: the snapshot wasn't read, so the cash is said here.
+    expect(prompt).toContain("Cash is $31,000.");
     expect(prompt).toContain("(today: IOT)");
     expect(prompt).toContain("Cautious** (SPY more than 1% under its 50-day)");
     expect(prompt).toContain("Risk-off** (SPY more than 1% under its 200-day)");
@@ -79,5 +79,21 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
     );
     expect(p).toContain("Positions: 4 of 6 — 2 free.");
     expect(p).not.toContain("**This analyst is full.**");
+  });
+});
+
+describe("buildDailyRunSystemPromptV2 — the Market and portfolio block", () => {
+  const block = "## Market and portfolio\n\n### Portfolio snapshot\nThe account, stand-in";
+  it("prints the block last, after every fixed instruction, and points the cash line to it", () => {
+    const p = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioBlock: block });
+    expect(p.endsWith(block)).toBe(true);
+    expect(p).toContain("Your cash is in the portfolio snapshot below.");
+  });
+  it("says the cash itself when the snapshot couldn't be read", () => {
+    const p = buildDailyRunSystemPromptV2(
+      { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 },
+      { ...runInput, portfolioBlock: "## Market and portfolio\n\n### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request." },
+    );
+    expect(p).toContain("Cash is $31,000.");
   });
 });

@@ -27,7 +27,7 @@ export const DIGEST_SHELF_DAYS = 4;
  * writer is gpt-5.4 (lib/agent/digest-writer.ts); no agent gets an old one.
  */
 const OLD_DIGEST_MODEL = "gpt-4o";
-/** How long a request waits for the snapshot before printing that it couldn't be read. */
+/** How long a run waits for the snapshot before printing that it couldn't be read. The chat waits less (route.ts). */
 const SNAPSHOT_WAIT_MS = 15_000;
 
 const stamp = (d: Date) =>
@@ -42,7 +42,7 @@ function withinTime<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
 }
 
 /** The block's text for one book. Never throws. */
-export async function loadPortfolioBlock(args: { accountId: string; environment: string; now?: Date }): Promise<string> {
+export async function loadPortfolioBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
   try {
     return await readBlock(args);
   } catch (err) {
@@ -51,11 +51,11 @@ export async function loadPortfolioBlock(args: { accountId: string; environment:
   }
 }
 
-async function readBlock(args: { accountId: string; environment: string; now?: Date }): Promise<string> {
+async function readBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
   const now = args.now ?? new Date();
   const environment = args.environment === "LIVE" ? "LIVE" : "PAPER";
   const [snapshot, digest] = await Promise.all([
-    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), SNAPSHOT_WAIT_MS).catch((err) => {
+    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), args.waitMs ?? SNAPSHOT_WAIT_MS).catch((err) => {
       console.warn(`[portfolio-block] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
       return null;
     }),
@@ -64,6 +64,8 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
       .catch(() => null),
   ]);
 
+  if (snapshot === "timeout") console.warn(`[portfolio-block] the snapshot took over ${args.waitMs ?? SNAPSHOT_WAIT_MS} ms for ${args.accountId} ${environment}`);
+  else if (snapshot == null) console.warn(`[portfolio-block] no snapshot for ${args.accountId} ${environment} (no owner, no broker keys, or the broker failed)`);
   const parts = [BLOCK_HEADING, "", "### Portfolio snapshot"];
   parts.push(snapshot && snapshot !== "timeout" ? snapshotText(snapshot) : "The portfolio snapshot couldn't be read for this request.");
   parts.push("");

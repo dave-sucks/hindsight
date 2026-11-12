@@ -159,6 +159,8 @@ export async function POST(
     // PAPER. Builder/editor/podcast modes don't trade and stay PAPER.
 
     let runEnvironment: "PAPER" | "LIVE" = "PAPER";
+    // The chat's Market and portfolio block, started once its book is known and read with the newest message.
+    let portfolioBlockLoad: Promise<string> | null = null;
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
@@ -471,14 +473,14 @@ export async function POST(
         }
       }
 
+      // The Market and portfolio block for this message: started now, read when the message is built. A chat waits 5 s at most.
+      portfolioBlockLoad = loadPortfolioBlock({ accountId, environment: runEnvironment, waitMs: 5_000 });
       systemPrompt = buildPrincipalSystemPrompt({
         scopedAnalyst,
         moneyBlock: scopedMoneyBlock,
         bookBlock: scopedBookBlock,
         room,
         roomLines,
-        // The Market and portfolio block: the portfolio snapshot, written for this message, and the latest digest.
-        portfolioBlock: await loadPortfolioBlock({ accountId, environment: runEnvironment }),
       });
 
     } else if (agentMode === "podcast-builder") {
@@ -763,7 +765,7 @@ export async function POST(
     const askedAt = new Date();
     const modelMessages =
       agentMode === "principal"
-        ? withTheTime(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), askedAt)
+        ? withTheTime(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), askedAt, portfolioBlockLoad ? await portfolioBlockLoad : null)
         : await historyForModel(messages, tools as ToolSet);
 
     // Allow client to override model (validated to known model IDs).

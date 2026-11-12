@@ -13,24 +13,24 @@ jest.mock("@/lib/alpaca", () => ({ getAccount: jest.fn() }));
 import { formatMoneyContextBlock } from "./context-bundle";
 
 describe("formatMoneyContextBlock", () => {
-  it("states equity, the band, and the PASS rule", () => {
+  it("states the band and the PASS rule, and no account value (the portfolio snapshot carries it)", () => {
     const block = formatMoneyContextBlock({
       equityUSD: 125_000,
       floorDollars: 7000,
       ceilingDollars: 14_000,
     });
-    expect(block).toContain("$125,000");
+    expect(block).not.toContain("$125,000");
     expect(block).toContain("$7,000 floor to $14,000 ceiling");
     expect(block).toContain("PASS");
   });
 
-  it("degrades honestly when equity is unavailable", () => {
+  it("says nothing about equity when it is unavailable", () => {
     const block = formatMoneyContextBlock({
       equityUSD: null,
       floorDollars: 7000,
       ceilingDollars: 14_000,
     });
-    expect(block).toContain("equity unavailable");
+    expect(block).not.toContain("equity");
     expect(block).toContain("$7,000 floor");
   });
 

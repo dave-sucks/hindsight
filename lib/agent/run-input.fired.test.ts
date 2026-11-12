@@ -34,7 +34,7 @@ jest.mock("@/lib/prisma", () => ({
     {},
     {
       get: (_t, name: string) => {
-        if (name === "agentConfig") return { findFirst: async () => ({ id: "analyst_1", userId: "u", name: "Test" }) };
+        if (name === "agentConfig") return { findFirst: async () => ({ id: "analyst_1", userId: "u", name: "Test", accountId: "acct_1", tradingEnvironment: "LIVE" }) };
         if (name === "thesisUpdate") return { findMany: async () => [fire] };
         return table;
       },
@@ -52,6 +52,8 @@ jest.mock("@/lib/agent/triggers/earnings", () => ({
 }));
 jest.mock("@/lib/agent/filings-on-book", () => ({ filingsOnBook: async () => [] }));
 jest.mock("@/lib/agent/gate-rejections", () => ({ listOpenRefusalsForAnalyst: async () => [] }));
+const blockArgs: unknown[] = [];
+jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: async (a: unknown) => (blockArgs.push(a), "## Market and portfolio\n\nSTAND-IN") }));
 
 import { buildRunInput } from "./run-input";
 
@@ -60,4 +62,11 @@ it("a fired trigger reaches the run as its sentence, not as a removed condition"
   expect(input.triggersFiredSinceLastRun).toEqual([
     expect.objectContaining({ ticker: "TRV", triggerId: "floor", action: "EXIT", predicateSummary: "Take the plan down if below $359.87" }),
   ]);
+});
+
+it("carries the Market and portfolio block, loaded for the analyst's own account and book", async () => {
+  blockArgs.length = 0;
+  const input = await buildRunInput("analyst_1", "u");
+  expect(blockArgs).toEqual([{ accountId: "acct_1", environment: "LIVE" }]);
+  expect(input.portfolioBlock).toBe("## Market and portfolio\n\nSTAND-IN");
 });

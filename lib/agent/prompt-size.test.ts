@@ -24,14 +24,14 @@ import { createResearchTools } from "@/lib/agent/tools";
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
-  // 2026-11-12: +199 / +186 each, the house rules' sentence on the Market and portfolio block; the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
-  daily: 9_449,
-  tactical: 14_857,
+  // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
+  daily: 9_473,
+  tactical: 14_910,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
-  writer: 16_654,
+  writer: 16_707,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
-  chat: 35_754,
+  chat: 35_807,
 };
 
 /**

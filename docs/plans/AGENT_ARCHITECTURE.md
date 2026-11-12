@@ -192,6 +192,8 @@ Examples of the last five rows:
 - Yesterday's digest covers the whole account, including other analysts'
   trades.
 
+> **2026-11-12, the owner's call:** every agent that decides on stocks now gets the whole-account digest, inside the Market and portfolio block with the portfolio snapshot written for the request (`lib/agent/portfolio-block.ts`). The snapshot keeps it current, and the house rules say the stock's row and the snapshot win over the digest. Don't undo this without the owner.
+
 The deletions PR, merged 2026-10-02, removed about 1,100 characters across
 all five texts.
 About 15,000 are removable from the morning text alone. Appendix B lists

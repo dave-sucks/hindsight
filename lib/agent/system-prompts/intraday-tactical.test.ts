@@ -248,7 +248,7 @@ describe("buildTacticalSystemPrompt — the stock's own row wins over the digest
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh');
   });
 
-  it("the run takes no digest input at all", () => {
+  it("takes no digest argument of its own: the digest comes only inside the Market and portfolio block", () => {
     // Compile time: latestDigest is not an argument of the trigger run's prompt.
     const noDigestArgument: "latestDigest" extends keyof Parameters<typeof buildTacticalSystemPrompt>[0] ? false : true = true;
     expect(noDigestArgument).toBe(true);

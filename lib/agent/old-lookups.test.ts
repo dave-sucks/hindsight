@@ -70,3 +70,19 @@ describe("the chat never reads an old lookup as today's numbers", () => {
     expect(last.content[1].text).toBe("(eight days later: what do I do with MU and PLTR?)");
   });
 });
+
+describe("the chat's Market and portfolio block", () => {
+  it("rides on the newest owner message after the time line, and nowhere else", () => {
+    const mm: ModelMessage[] = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "answer" },
+      { role: "user", content: "second" },
+    ];
+    const out = withTheTime(mm, NOV_4, "## Market and portfolio\n\nSTAND-IN");
+    expect(out[0]).toEqual(mm[0]);
+    const parts = (out[2] as { content: Array<{ type: string; text: string }> }).content.map((p) => p.text);
+    expect(parts[1]).toBe("## Market and portfolio\n\nSTAND-IN");
+    expect(parts[2]).toBe("second");
+    expect(parts[0]).toMatch(/^\[/);
+  });
+});

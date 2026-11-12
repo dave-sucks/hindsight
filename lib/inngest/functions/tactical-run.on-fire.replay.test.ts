@@ -46,7 +46,9 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   const closes: unknown[][] = [];
   const sent: Array<{ name: string; data: unknown }> = [];
   const toolCalls: Array<{ tool: string; args: unknown; ctx: Record<string, unknown> }> = [];
+  const blockArgs: unknown[] = [];
   await jest.isolateModulesAsync(async () => {
+    jest.doMock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: async (a: unknown) => (blockArgs.push(a), "## Market and portfolio\n\n### Portfolio snapshot\nSTAND-IN") }));
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({
@@ -98,12 +100,22 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
     });
   });
-  for (const m of ["ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
+  for (const m of ["@/lib/agent/portfolio-block", "ai", "@ai-sdk/openai", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
-  return { asked, closes, sent, toolCalls, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
+  return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
 }
 
 const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength.", cooldownDays: 1 };
+
+describe("the trigger run's Market and portfolio block", () => {
+  it("is loaded once for the analyst's book and printed before the stock's row", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 });
+    expect(r.blockArgs).toEqual([expect.objectContaining({ environment: "LIVE", accountId: expect.any(String) })]);
+    const system = r.asked[0].system;
+    expect(system.split("## Market and portfolio")).toHaveLength(2);
+    expect(system.indexOf("## Market and portfolio")).toBeLessThan(system.indexOf("$IOT, its row (get_theses)"));
+  });
+});
 
 describe("the trigger run, by fire mode", () => {
   it("IOT's Auto-trim with approval on: the trim waits for approval, and the write-up still lands on it (it has no decision row yet)", async () => {
