@@ -64,6 +64,8 @@ interface TacticalPromptArgs {
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
   /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The run writes it up. */
   autoTrade?: { line: string } | null;
+  /** The Market and portfolio block (lib/agent/portfolio-block.ts). Empty or null: none. */
+  portfolioBlock?: string | null;
 }
 
 /**
@@ -150,11 +152,12 @@ PATH: the predicate fired on the 5-minute check.${
   close.
 `;
 
-  // Yesterday's account digest is not printed here (step 12, part 2): a
-  // day-old narrative of the whole book, it told the trigger runs of
-  // 2026-10-07 "no pending proposals" while ASML's own row carried its sale
-  // awaiting approval. The stock's row says what waits on the stock
-  // (`proposal_waiting`).
+  // The Market and portfolio block goes in before the stock's row, so the
+  // row is read after it. On 2026-10-07 a day-old digest told the trigger
+  // runs "no pending proposals" while ASML's row carried its sale awaiting
+  // approval: the block's snapshot is written when this request is built,
+  // and the house rules say the stock's row wins where they differ.
+  const portfolioBlock = args.portfolioBlock ? `${args.portfolioBlock}\n\n` : "";
 
   return `${analystBrief(analyst, args.capacity)}
 
@@ -183,7 +186,7 @@ Forbidden assistant-turn endings (each = run failure):
   - "Now I'll decide..."
   - Any turn that ends without a tool call.
 
-═══════════════════════════════════════════════════════════════════
+${portfolioBlock}═══════════════════════════════════════════════════════════════════
 $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}

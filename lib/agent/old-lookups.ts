@@ -68,8 +68,13 @@ export function hideOldLookups<M extends Omit<UIMessage, "id">>(messages: M[], n
   });
 }
 
-/** The newest owner message, with the time in front of it. */
-export function withTheTime(messages: ModelMessage[], now: Date): ModelMessage[] {
+/**
+ * The newest owner message, with the time in front of it and, when given, the
+ * account's Market and portfolio block (lib/agent/portfolio-block.ts). Both
+ * ride on the newest message, not the system prompt, so the system prompt and
+ * the history before it stay cached between messages.
+ */
+export function withTheTime(messages: ModelMessage[], now: Date, context?: string | null): ModelMessage[] {
   const i = messages.findLastIndex((m) => m.role === "user");
   if (i < 0) return messages;
   const market = isMarketOpen(now) ? "the market is open" : "the market is closed";
@@ -77,6 +82,6 @@ export function withTheTime(messages: ModelMessage[], now: Date): ModelMessage[]
   const m = messages[i] as Extract<ModelMessage, { role: "user" }>;
   const content = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
   const out = [...messages];
-  out[i] = { ...m, content: [{ type: "text", text: line }, ...content] };
+  out[i] = { ...m, content: [{ type: "text", text: line }, ...(context ? [{ type: "text" as const, text: context }] : []), ...content] };
   return out;
 }

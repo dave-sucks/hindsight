@@ -49,7 +49,7 @@ Where each number comes from:
 ## Who reads it
 
 - You: the digest on the home page, and its run on /runs.
-- Chat, when no analyst is picked, reads the latest digest.
+- Every agent that decides on stocks (morning runs, trigger runs, chat and the Writer), on every request, in the Market and portfolio block: the snapshot, written fresh for that request, and the latest digest from the last 4 days, stamped with when it was written. The house rules tell them: where the block and a stock's own row differ, the row is right; where the digest and the snapshot differ, the snapshot is right.
 
 <details>
 <summary>Technical details</summary>
@@ -62,6 +62,9 @@ Where each number comes from:
 
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot` and `snapshotText` (`lib/portfolio/snapshot.ts`) make the numbers and the text. The digest row's `facts` column keeps the snapshot.
+
+#### Every agent's block
+`loadPortfolioBlock` (`lib/agent/portfolio-block.ts`): the snapshot and the latest digest, under `## Market and portfolio`. The morning run gets it through `buildRunInput`, the trigger run in `tactical-run.ts` before the stock's row, the Writer in `run-thesis-writer.ts`, and the chat on its newest message (`withTheTime`, `lib/agent/old-lookups.ts`), so its system prompt stays cached.
 
 #### What was sent
 One `RunMessage` row with role `request` per call, shown by the Context panel (`lib/agent/run-requests.ts`, `components/agent/RunContext.tsx`).

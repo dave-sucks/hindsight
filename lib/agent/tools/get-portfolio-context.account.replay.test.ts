@@ -83,12 +83,12 @@ describe("get_portfolio_context — the account", () => {
     expect(ceg.stopLoss).toBe(248);
   });
 
-  it("the cash, the equity and the latest digest come with it; no analyst, so no position limit", async () => {
+  it("the cash and the equity come with it, and not the digest (every request's Market and portfolio block carries it); no analyst, so no position limit", async () => {
     const r = await read({ analystId: undefined });
     expect(r.data.capitalSummary?.cash).toBeGreaterThan(0);
     expect(r.data.capitalSummary?.totalEquity).toBeGreaterThan(0);
     expect(r.data.capitalSummary?.slotsRemaining).toBeNull();
-    expect(r.data.digest).toEqual({ date: "2026-10-05", narrative: book.digest.narrative });
+    expect(r.data).not.toHaveProperty("digest");
   });
 
   it("the stop is the plan's: MU reads 1048, not the position row's 969", async () => {
@@ -96,15 +96,13 @@ describe("get_portfolio_context — the account", () => {
     expect(r.data.positions.find((p) => p.symbol === "MU")!.stopLoss).toBe(1048);
   });
 
-  it("with an analyst: only that analyst's positions, and no digest (it narrates the whole account)", async () => {
+  it("with an analyst: only that analyst's positions", async () => {
     const r = await read({ analystId: "cmnhxpjio000004jvox6kl6c7" });
     expect(r.data.positions.map((p) => p.symbol).sort()).toEqual(["MU", "NVDA"]);
-    expect(r.data.digest).toBeNull();
   });
 
   it("one book at a time: the paper book of the same account is empty", async () => {
     const r = await read({ analystId: undefined, runEnvironment: "PAPER" });
     expect(r.data.positions).toEqual([]);
-    expect(r.data.digest).toBeNull();
   });
 });

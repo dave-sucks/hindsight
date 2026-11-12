@@ -24,13 +24,14 @@ import { createResearchTools } from "@/lib/agent/tools";
 const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
-  daily: 9_250,
-  tactical: 14_671,
+  // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
+  daily: 9_473,
+  tactical: 14_910,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
-  writer: 16_468,
+  writer: 16_707,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
-  chat: 35_568,
+  chat: 35_807,
 };
 
 /**
@@ -45,10 +46,11 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-05: +136 / +136 / +450, stop_basis says what a close below the floor means for the belief, and a PASS is not a view you'd look at again (thesis-fields.ts; the chat also has dispatch's setup line).
   // 2026-11-05: +1,078 each for dispatch's research_notes and idea_source; the chat's net −493 also drops twitter_search (−1,571), which never returned anything.
   // 2026-11-06: +77 on the chat, the same clause on record_thesis's status field; +214 each, get_theses says the row's fields follow the situation.
-  "research-run": 32_042,
+  // 2026-11-12: −23 each, get_portfolio_context no longer carries the digest (the Market and portfolio block does).
+  "research-run": 32_019,
   tactical: 27_973,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
-  principal: 63_890,
+  principal: 63_867,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

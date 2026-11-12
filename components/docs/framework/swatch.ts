@@ -6,12 +6,13 @@
  */
 import type { CSSProperties } from "react";
 
-export type PartId = "job" | "house" | "analyst" | "tools" | "read" | "guidance" | "named";
+export type PartId = "job" | "house" | "analyst" | "portfolio" | "tools" | "read" | "guidance" | "named";
 
 export const SWATCH: Record<PartId, { className: string; style?: CSSProperties }> = {
   job: { className: "bg-foreground/70" },
   house: { className: "bg-sky-400" },
   analyst: { className: "bg-violet-400" },
+  portfolio: { className: "bg-amber-400" },
   tools: { className: "bg-brand" },
   read: { className: "bg-blue-500" },
   guidance: { className: "border border-dashed border-muted-foreground bg-muted-foreground/35" },

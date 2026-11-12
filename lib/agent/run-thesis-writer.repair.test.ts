@@ -31,6 +31,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({ getStockQuote: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/agent/watchlist-symbols", () => ({ getWatchlistSymbols: jest.fn().mockResolvedValue([]) }));
+jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: jest.fn().mockResolvedValue("## Market and portfolio") }));
 jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/agent/knowledge/load-setup-overrides", () => ({ loadSetupOverrides: jest.fn().mockResolvedValue({}) }));
 jest.mock("@/lib/performance/load-setup-scorecard", () => ({ loadScorecardLines: jest.fn().mockResolvedValue([]) }));

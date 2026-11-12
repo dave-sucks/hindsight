@@ -3,8 +3,9 @@
  * its live price, gain and stop, the cash, the equity, the open risk against
  * the limit and the market line. One shape for every caller: with an analyst
  * in the run it covers that analyst's positions; with none (the chat when no
- * analyst is selected) it covers the account, each position names its
- * analyst, and the latest end-of-day digest comes with it.
+ * analyst is selected) it covers the account and each position names its
+ * analyst. The latest digest is in every request's Market and portfolio
+ * block (lib/agent/portfolio-block.ts), so it isn't repeated here.
  *
  * The stop and target are the thesis's: the position row's copy can lag a
  * moved floor (MU on 2026-10-05: 969 on the position, 1048 on the plan).
@@ -71,14 +72,12 @@ type PortfolioContextData = {
    * Inputs for the run's judgment, never gates. Absent when unreadable.
    */
   book: { openRiskPct: number | null; market: string | null; lines: string[] };
-  /** The latest end-of-day portfolio digest for this book; whole-account reads only. */
-  digest: { date: string; narrative: string } | null;
 };
 
 export const getPortfolioContext = defineTool({
   description:
     "Open positions with live price, gain, days held, distance from peak, stop and target; cash, equity, open risk and the market line. " +
-    "Covers the run's analyst, or with none selected the whole account, naming each position's analyst, plus the daily digest.",
+    "Covers the run's analyst, or with none selected the whole account, naming each position's analyst.",
   schema: z.object({
     include_thesis: z
       .boolean()
@@ -239,22 +238,6 @@ export const getPortfolioContext = defineTool({
       ...(market ? [market] : []),
     ];
 
-    // The latest end-of-day digest for this book (PAPER and LIVE have one
-    // each). It narrates the whole account, other analysts' trades included,
-    // so it comes with a read of the whole account only: an analyst's own
-    // run does not get it (docs/plans/AGENT_ARCHITECTURE.md, step 3).
-    let digest: PortfolioContextData["digest"] = null;
-    if (ctx.accountId && !analystId) {
-      try {
-        const row = await prisma.portfolioDigest.findFirst({
-          where: { accountId: ctx.accountId, environment: runEnvironment },
-          orderBy: { date: "desc" },
-          select: { narrative: true, date: true },
-        });
-        if (row?.narrative) digest = { date: row.date.toISOString().slice(0, 10), narrative: row.narrative };
-      } catch { /* no digest; the rest stands */ }
-    }
-
     // Each analyst holding here or able to buy, its slots counted as place_trade counts them.
     let analystLines: string[] = [];
     if (ctx.accountId && !analystId) {
@@ -269,7 +252,6 @@ export const getPortfolioContext = defineTool({
       summaryLines: [...summaryLines, ...bookLines, ...analystLines],
       tickers,
       book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, market, lines: bookLines },
-      digest,
     };
     return {
       summary:

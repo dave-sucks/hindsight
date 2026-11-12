@@ -17,6 +17,7 @@
 // theses; if conviction breaks the agent calls update_thesis with
 // change_status="INVALIDATED" and close_position.
 
+import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { inngest } from "@/lib/inngest/client";
 import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
@@ -713,6 +714,8 @@ export const tacticalRun = inngest.createFunction(
       })();
 
       const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
+      // The Market and portfolio block: the portfolio snapshot, written now, and the latest digest. Never throws.
+      const portfolioBlock = await loadPortfolioBlock({ accountId: agentConfig.accountId, environment: agentConfig.tradingEnvironment ?? "PAPER" });
       const systemPrompt = buildTacticalSystemPrompt({
         analyst: { ...agentConfig, setupOverrides },
         stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
@@ -724,6 +727,7 @@ export const tacticalRun = inngest.createFunction(
         // sale now waiting, the read lists none.)
         situations: auto ? { codes: ["AUTO_TRADE"], guidance: guidanceFor(["AUTO_TRADE"], "INTRADAY_TACTICAL") } : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
+        portfolioBlock,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

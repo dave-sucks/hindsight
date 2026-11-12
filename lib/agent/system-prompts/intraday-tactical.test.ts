@@ -224,7 +224,7 @@ describe("buildTacticalSystemPrompt — a declined sale is asked again", () => {
   });
 });
 
-describe("buildTacticalSystemPrompt — the stock's own row, not yesterday's digest (step 12, part 2)", () => {
+describe("buildTacticalSystemPrompt — the stock's own row wins over the digest", () => {
   // ASML's real sale proposal (Order cmux0e18w000m04jhodrm7pn3): a CLOSE of 5 shares, placed 2026-10-06 18:25 UTC, expiring a
   // day later. The 10-07 digest that the trigger run printed said "no pending proposals"; the row said this.
   const asml = () =>
@@ -233,13 +233,22 @@ describe("buildTacticalSystemPrompt — the stock's own row, not yesterday's dig
       proposals: [{ side: "SELL", intent: "CLOSE", quantity: 5, createdAt: "2026-10-06T18:25:18.399Z", expiresAt: "2026-10-07T18:25:18.399Z" }],
     });
 
-  it("prints no digest, and the row's waiting sale with its times", () => {
+  it("prints the row's waiting sale with its times, and no digest without the block", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
-    expect(prompt).not.toMatch(/DIGEST/i);
+    expect(prompt).not.toContain("### Portfolio digest");
+    expect(prompt).toContain("Where it and a stock's own row differ, the row is right");
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"');
   });
 
-  it("the run takes no digest input at all", () => {
+  it("prints the Market and portfolio block once, before the stock's row, so the row is read after it", () => {
+    const block = "## Market and portfolio\n\n### Portfolio snapshot\nYour portfolio, stand-in\n\n### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nNo pending proposals.";
+    const prompt = buildTacticalSystemPrompt({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioBlock: block });
+    expect(prompt.split("## Market and portfolio")).toHaveLength(2);
+    expect(prompt.indexOf("## Market and portfolio")).toBeLessThan(prompt.indexOf("$ASML, its row (get_theses)"));
+    expect(prompt).toContain('"proposal_waiting": "sell 5 sh');
+  });
+
+  it("takes no digest argument of its own: the digest comes only inside the Market and portfolio block", () => {
     // Compile time: latestDigest is not an argument of the trigger run's prompt.
     const noDigestArgument: "latestDigest" extends keyof Parameters<typeof buildTacticalSystemPrompt>[0] ? false : true = true;
     expect(noDigestArgument).toBe(true);
