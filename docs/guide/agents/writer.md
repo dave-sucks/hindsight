@@ -43,7 +43,7 @@ When asked: by another agent with `dispatch_thesis_research`, by you with Send t
 
 ## What it reads
 
-The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
+The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
 
 Before the model starts, code pulls seven data sets at once: five years of statements, the earnings record, insider trades, peers, analyst coverage, recent filings, and the price and chart. A source that fails is named as missing, never guessed. That data is the ground truth for every number in the note.
 

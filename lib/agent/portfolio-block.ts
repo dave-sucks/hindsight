@@ -4,7 +4,10 @@
  * morning run, the trigger run, the owner's chat and the Writer each print it
  * once, from here.
  *
- * Two parts so far, each under its own heading:
+ * Three parts, each under its own heading:
+ * - **Market digest:** the 7:30 Market Reviewer's digest (the market's day,
+ *   researched, with its sources), stamped, if it is from the last 4 days.
+ *   Its own headings are moved down to ####, so they sit inside its part.
  * - **Portfolio snapshot:** the account's numbers, written by code when the
  *   request is built (lib/portfolio/snapshot.ts). The same text the 8 PM
  *   digest reads.
@@ -54,7 +57,10 @@ export async function loadPortfolioBlock(args: { accountId: string; environment:
 async function readBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
   const now = args.now ?? new Date();
   const environment = args.environment === "LIVE" ? "LIVE" : "PAPER";
-  const [snapshot, digest] = await Promise.all([
+  const [market, snapshot, digest] = await Promise.all([
+    prisma.marketDigest
+      .findFirst({ where: { accountId: args.accountId, environment }, orderBy: { date: "desc" }, select: { digest: true, createdAt: true } })
+      .catch(() => null),
     withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), args.waitMs ?? SNAPSHOT_WAIT_MS).catch((err) => {
       console.warn(`[portfolio-block] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
       return null;
@@ -66,7 +72,16 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
 
   if (snapshot === "timeout") console.warn(`[portfolio-block] the snapshot took over ${args.waitMs ?? SNAPSHOT_WAIT_MS} ms for ${args.accountId} ${environment}`);
   else if (snapshot == null) console.warn(`[portfolio-block] no snapshot for ${args.accountId} ${environment} (no owner, no broker keys, or the broker failed)`);
-  const parts = [BLOCK_HEADING, "", "### Portfolio snapshot"];
+  const parts = [BLOCK_HEADING, ""];
+  const marketFresh = market && now.getTime() - market.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
+  if (market && marketFresh) {
+    parts.push(`### Market digest (written ${stamp(market.createdAt)} ET)`);
+    // Any heading it has (#, ## or ###) goes to ####, so it sits inside this part, never beside "## Market and portfolio".
+    parts.push(market.digest.trim().replace(/^#{1,3} /gm, "#### "));
+  } else {
+    parts.push("### Market digest", `No market digest in the last ${DIGEST_SHELF_DAYS} days.`);
+  }
+  parts.push("", "### Portfolio snapshot");
   parts.push(snapshot && snapshot !== "timeout" ? snapshotText(snapshot) : "The portfolio snapshot couldn't be read for this request.");
   parts.push("");
   const fresh = digest && now.getTime() - digest.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;

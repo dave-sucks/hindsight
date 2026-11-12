@@ -46,7 +46,7 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 
 ## What it reads
 
-- **Your portfolio, on every message:** the [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) rides on your newest message: the portfolio snapshot written by code for that message, and the latest 8 PM [digest](portfolio-digest.md).
+- **Your portfolio, on every message:** the [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) rides on your newest message: the latest 7:30 [market digest](market-reviewer.md), the portfolio snapshot written by code for that message, and the latest 8 PM [digest](portfolio-digest.md).
 - **Your book:** `get_theses` and `get_portfolio_context`, the stocks, positions and cash.
 - **Your queue:** `list_proposals`, what's waiting for you, each with its reason and time left.
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
