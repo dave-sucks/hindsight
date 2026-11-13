@@ -8,13 +8,12 @@
  */
 
 import { z } from "zod";
-import { isProtectiveLine, reviewClockDays, shapeOf } from "@/lib/agent/triggers/condition";
-import { loadWorkInputs, type WorkContext } from "@/lib/agent/work-inputs";
+import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
+import { loadStockFacts, type FactsContext } from "@/lib/agent/stock-facts";
+import { listsTheStock, situationsFor, SITUATIONS } from "@/lib/agent/situations";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
-import { computeNeedsAction } from "@/lib/agent/needs-action";
-import { declinedSaleLine } from "@/lib/agent/declined-sale";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -56,6 +55,8 @@ export const completeRun = defineTool({
           userId: ctx.userId,
           runEnvironment: ctx.runEnvironment,
           alpacaCreds: ctx.alpacaCreds,
+          accountId: ctx.accountId,
+          maxOpenPositions: ctx.maxOpenPositions,
         });
         preflightFinished = true;
         if (preflightFailure) {
@@ -393,8 +394,8 @@ async function runCompleteRunPreflight(
   runId: string,
   analystId: string,
   runMode?: string,
-  /** The run's own scope for the read the checks share (work-inputs.ts). */
-  work?: Pick<WorkContext, "userId" | "runEnvironment" | "alpacaCreds">,
+  /** The run's own scope, the same get_theses reads the book with (stock-facts.ts). */
+  work?: Pick<FactsContext, "userId" | "runEnvironment" | "alpacaCreds" | "accountId" | "maxOpenPositions">,
 ): Promise<PreflightFailure | null> {
   // 1) Did the agent call record_run_summary?
   //
@@ -478,221 +479,85 @@ async function runCompleteRunPreflight(
     if (actionFailure) return actionFailure;
   }
 
-  // 4) Triggered/needsAction theses not addressed via update_thesis this run.
-  //    Uses computeNeedsAction (cooldown-aware shouldFire) — same logic
-  //    needs-action.ts uses for get_theses, so Layer 2 and Layer 1 ask the
-  //    SAME question. Bug 1 fix: no more "needsAction said null but the
-  //    gate says you missed it" inconsistency (GAPS P0-7).
-  //
-  // SCOPE BY MODE: daily-run is portfolio-walking, so all ACTIVE/WATCHING
-  // theses on the analyst are in scope. Tactical is single-thesis,
-  // single-decision — only the triggered thesis is in scope. Without this
-  // scoping, PR #290's `no_run_summary` skip exposed the gate to tactical
-  // runs for the first time and the agent started addressing every overdue
-  // thesis on the book to get past the gate. Observed 2026-05-20: WDAY
-  // (and other stale-review theses) updated as a side effect of every
-  // Tech Momentum tactical run, regardless of the actual trigger ticker.
-  type ThesisRow = { id: string; ticker: string; direction: string; status: string };
-  // Determine the in-scope thesis set based on mode. PROMOTED is included
-  // alongside ACTIVE+WATCHING because PROMOTED rows ALWAYS need resolution
-  // this run — the user explicitly graduated the analyst to live money and
-  // the paper position was force-closed; the agent must either re-enter
-  // (place_trade) or defer (update_thesis change_status: WATCHING).
-  // Without PROMOTED in scope, the first live morning run can complete
-  // without acting on any promoted rows (production-confirmed failure
-  // mode on 2026-05-26 — see GAPS.md P0-1).
-  let thesisWhereScope: object;
-  if (runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER") {
-    // Single-thesis sub-agents: only the in-scope thesis.
-    //   • INTRADAY_TACTICAL — the triggered thesis (parameters.thesisId)
-    //   • THESIS_WRITER     — the thesis just minted/refreshed (also
-    //                         persisted as parameters.thesisId by
-    //                         run-thesis-writer.ts on success)
-    // Scoping to the analyst's whole book would gate the sub-agent on
-    // unrelated needsAction work that's the daily-run's responsibility,
-    // not this sub-agent's. THESIS_WRITER added 2026-05-24 alongside the
-    // record_run_summary carve-out above. See docs/discovery-reviews/
-    // 2026-05-24-HPQ.md follow-up #4.
+  // 4) A run owes an answer on exactly the stocks its read listed as work:
+  //    get_theses' facts (loadStockFacts) and rule (listsTheStock), nothing of its own.
+  // A trigger or writer run is about one stock, so only that stock is in scope.
+  const single = runMode === "INTRADAY_TACTICAL" || runMode === "THESIS_WRITER";
+  let scopeId: string | null = null;
+  if (single) {
     const run = await prisma.researchRun.findUnique({
       where: { id: runId },
       select: { parameters: true },
     });
-    const triggeredThesisId =
-      (run?.parameters as { thesisId?: string } | null)?.thesisId ?? null;
-    if (!triggeredThesisId) {
-      // Defensive: a sub-agent run without parameters.thesisId is either
-      // malformed (tactical) or a thesis-writer mint that hasn't recorded
-      // its thesis yet (separate FAILED-no-output path catches that).
-      // Fall through to "no theses to check" rather than gate the whole
-      // book.
-      return null;
-    }
-    thesisWhereScope = {
-      id: triggeredThesisId,
-      researchRun: { agentConfigId: analystId },
-      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-      closedAt: null,
-    };
-  } else {
-    // Daily-run, principal-chat, etc.: full analyst book.
-    thesisWhereScope = {
-      researchRun: { agentConfigId: analystId },
-      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
-      closedAt: null,
-    };
+    scopeId = (run?.parameters as { thesisId?: string } | null)?.thesisId ?? null;
+    // A sub-agent run with no thesis named has nothing of its own to answer.
+    if (!scopeId) return null;
   }
-  const theses = (await prisma.thesis.findMany({
-    where: thesisWhereScope,
-    select: { id: true, ticker: true, direction: true, status: true },
-  })) as ThesisRow[];
+  // Status is the truth: a stock sold and put back on watch keeps its old closedAt.
+  const theses = await prisma.thesis.findMany({
+    where: {
+      ...(scopeId ? { id: scopeId } : {}),
+      researchRun: { agentConfigId: analystId },
+      status: { in: ["HOLDING", "WATCHING", "PROMOTED"] },
+    },
+    select: {
+      id: true,
+      ticker: true,
+      status: true,
+      direction: true,
+      entryPrice: true,
+      targetPrice: true,
+      stopLoss: true,
+      triggers: true,
+      catalystDate: true,
+      setupId: true,
+      horizon: true,
+      createdAt: true,
+      researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true } } } },
+    },
+  });
   if (theses.length === 0) return null;
 
-  // Any audit row this run except TRIGGER_FIRED answers a flag, a note-only
+  // Any audit row this run except TRIGGER_FIRED answers a stock, a note-only
   // REVIEW included: the analyst's call stands, a declined sale's too.
   const runUpdates = await prisma.thesisUpdate.findMany({
     where: {
       runId,
-      thesisId: { in: theses.map((t: ThesisRow) => t.id) },
+      thesisId: { in: theses.map((t) => t.id) },
       NOT: { type: "TRIGGER_FIRED" },
     },
     select: { thesisId: true },
   });
-  const addressedThesisIds = new Set<string>(
-    runUpdates.map((u: { thesisId: string }) => u.thesisId),
-  );
+  const answered = new Set<string>(runUpdates.map((u: { thesisId: string }) => u.thesisId));
 
-  // What the read showed, from the same loader and inputs (work-inputs.ts):
-  // the resolved ladder, the position, the activity, the declined sale on
-  // the ladder's floor. A read that could not see the activity is a failed
-  // check, not "nothing fired" (DAV-332).
-  const now = new Date();
-  const load = await loadWorkInputs(
-    theses.map((t) => t.id),
-    { ...work, analystId },
-    now,
-  );
-  if (load.activityFailed) throw new Error("complete_run preflight: the activity read failed, so the open fires could not be checked");
+  // One stock counts its analyst's slots from positions, as a read by ticker does.
+  const facts = await loadStockFacts(theses, {
+    ...work,
+    analystId,
+    slots: single ? "positions" : "rows",
+  });
+  // A read that could not see the activity is a failed check, not "nothing fired".
+  if (facts.load.activityFailed) throw new Error("complete_run preflight: the activity read failed, so the open fires could not be checked");
 
-  const unaddressed: Array<{
-    thesisId: string;
-    ticker: string;
-    direction: string;
-    kind: string;
-    detail: string;
-  }> = [];
-  for (const t of theses) {
-    const input = load.inputs.get(t.id);
-    if (!input) continue;
-    // It owes what it owed before the read and the close-out shared a feed:
-    // the first kind that it could see then. A floor too far and an
-    // unprotected gain need the position and the account, which it never
-    // read; an inherited trigger true now, or a review clock it only
-    // inherits, was never owed here. A fire on an inherited trigger was, and
-    // still is: only its words change (its real action, not REVIEW).
-    const own = input.thesis.triggers.filter((x) => ((x as { level?: string }).level ?? "THESIS") === "THESIS");
-    const ownIds = new Set(own.map((x) => x.id));
-    const ownClock = own.some((x) => {
-      const w = shapeOf(x.predicate);
-      return w != null && reviewClockDays(w) != null;
-    });
-    const needsAction =
-      computeNeedsAction(input).find(
-        (f) =>
-          f.kind !== "FLOOR_TOO_FAR" &&
-          f.kind !== "UNPROTECTED_GAIN" &&
-          !(f.kind === "TRIGGER_MATCHING_NOW" && !ownIds.has(f.triggerId)) &&
-          !(f.kind === "REVIEW_DUE" && !ownClock),
-      ) ?? null;
-    if (needsAction == null) continue;
-    if (addressedThesisIds.has(t.id)) continue;
+  const owed = theses.flatMap((t) => {
+    const sources = facts.sources.get(t.id);
+    if (!sources || !listsTheStock(sources) || answered.has(t.id)) return [];
+    const names = situationsFor(sources).map((c) => SITUATIONS[c].name);
+    return [{ id: t.id, ticker: t.ticker, status: t.status, names: names.length > 0 ? names.join(", ") : "on your work list" }];
+  });
+  if (owed.length === 0) return null;
 
-    let detail: string;
-    if (needsAction.kind === "PROMOTED_AWAITING_RESOLUTION") {
-      const ctxBits: string[] = [];
-      if (needsAction.paperTenureDays != null) {
-        ctxBits.push(`held ${needsAction.paperTenureDays}d in paper`);
-      }
-      if (needsAction.paperRealizedPnl != null) {
-        ctxBits.push(
-          `${needsAction.paperRealizedPnl >= 0 ? "+" : ""}$${needsAction.paperRealizedPnl.toFixed(2)} paper P&L`,
-        );
-      }
-      if (needsAction.paperReviewCount != null) {
-        ctxBits.push(`${needsAction.paperReviewCount} reviews`);
-      }
-      const ctx = ctxBits.length > 0 ? ` (${ctxBits.join(", ")})` : "";
-      detail = `PROMOTED — must resolve today${ctx}: call place_trade to re-enter live OR update_thesis(change_status: "WATCHING") to defer`;
-    } else if (needsAction.kind === "SALE_DECLINED") {
-      detail = declinedSaleLine({
-        declineCount: needsAction.declineCount,
-        lapseCount: needsAction.lapseCount,
-        lastDeclinedAt: needsAction.lastDeclinedAt,
-        rejectMessage: needsAction.rejectMessage,
-        floorPrice: needsAction.floorPrice,
-        recentLow: needsAction.recentLow,
-      });
-    } else if (needsAction.kind === "TRIGGER_FIRED") {
-      detail = `trigger fired: ${needsAction.action} (${needsAction.summary})`;
-    } else if (needsAction.kind === "TRIGGER_MATCHING_NOW") {
-      detail = `predicate matching now: ${needsAction.action} (${needsAction.predicateSummary}${needsAction.livePrice != null ? ` @ $${needsAction.livePrice.toFixed(2)}` : ""})`;
-    } else if (needsAction.kind === "FLOOR_TOO_FAR") {
-      // Like UNPROTECTED_GAIN below: this preflight feeds no position size
-      // or equity, so the flag cannot fire here. Handled for type-completeness.
-      detail = needsAction.line;
-    } else if (needsAction.kind === "UNPROTECTED_GAIN") {
-      // Defensive branch: this preflight does NOT feed avgCost/peakPrice
-      // into computeNeedsAction,
-      // so UNPROTECTED_GAIN cannot fire here at runtime — it's a get_theses
-      // attention flag; enforcement as a run-close gate is PR-C (warn-mode
-      // first, per THESIS_GAME_PLAN.md). Handled for type-completeness.
-      const floorTxt =
-        needsAction.flooredGainPct != null
-          ? `${needsAction.flooredGainPct >= 0 ? "+" : ""}${needsAction.flooredGainPct.toFixed(1)}%`
-          : "nothing";
-      detail = `unprotected gain (+${needsAction.unrealizedGainPct.toFixed(1)}% but floor locks ${floorTxt}): raise the floor`;
-    } else if (needsAction.kind === "RESEARCH_STALE") {
-      // Not a review-clock miss — the research behind the plan is old.
-      detail =
-        needsAction.freshness === "missing"
-          ? `no deep research on file: refresh it or say why the plan stands without it`
-          : `research is ${needsAction.daysOld}d old (threshold ${needsAction.threshold}d): refresh it or say why it still stands`;
-    } else {
-      detail = `review overdue by ${needsAction.daysOverdue}d`;
-    }
-    unaddressed.push({
-      thesisId: t.id,
-      ticker: t.ticker,
-      direction: t.direction,
-      kind: needsAction.kind,
-      detail,
-    });
-  }
-
-  if (unaddressed.length === 0) return null;
-
-  const summary = unaddressed
-    .map((u) => `${u.ticker} (${u.thesisId}): ${u.detail}`)
-    .join("; ");
-  // Distinguish PROMOTED-only refusals — they're the most common
-  // first-live-day case and the agent benefits from a clearer hint.
-  const promotedCount = unaddressed.filter(
-    (u) => u.kind === "PROMOTED_AWAITING_RESOLUTION",
-  ).length;
-  const totalCount = unaddressed.length;
-  const headline =
-    promotedCount === totalCount
-      ? `${totalCount} PROMOTED thesis${totalCount > 1 ? "es" : ""} need a status-changing decision`
-      : `${totalCount} thesis${totalCount > 1 ? "es" : ""} need action`;
+  const n = owed.length;
+  const promoted = owed.some((o) => o.status === "PROMOTED");
   return {
     kind: "unaddressed_theses",
-    shortReason: headline,
+    shortReason: `${n} listed stock${n > 1 ? "s" : ""} unanswered`,
     message:
-      `complete_run refused: ${totalCount} live thesis${totalCount > 1 ? "es" : ""} ` +
-      `${totalCount > 1 ? "are" : "is"} flagged needsAction but no status-changing tool call was made for ` +
-      `${totalCount > 1 ? "them" : "it"} in this run. ` +
-      `For PROMOTED rows: call place_trade to re-enter live, or update_thesis(change_status: "WATCHING") to defer. ` +
-      `For HOLDING/WATCHING rows: call update_thesis with the action result (or change_status="INVALIDATED" if no longer applicable, or rationale-only REVIEW). ` +
-      `Then call complete_run again. Unaddressed: ${summary}`,
+      `complete_run refused: your read listed ${n === 1 ? "this stock" : `these ${n} stocks`} as work and this run has not answered ${n === 1 ? "it" : "them"}. ` +
+      owed.map((o) => `${o.ticker} (${o.id}): ${o.names}`).join("; ") +
+      `. Answer each with update_thesis (a note-only review counts)` +
+      (promoted ? `; a promoted stock is re-entered with place_trade or deferred with change_status "WATCHING"` : "") +
+      `, then call complete_run again.`,
   };
 }
 

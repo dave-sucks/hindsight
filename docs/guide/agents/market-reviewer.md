@@ -41,12 +41,14 @@ The market's numbers, written by code, with no view: the same text opens every a
 
 Its reply is one JSON object with two parts: the digest and its notes (OpenAI's Structured Outputs, in the same call as the searches).
 
-The digest is saved as it wrote it: six sections, each a short paragraph linking the pages it rests on (market overview, sector developments, major developments, implications for your portfolio, what deserves attention, upcoming events). About 3,000 characters, the links not counted.
+The digest is saved as it wrote it: six sections (market overview, sector developments, major developments, implications for your portfolio, what deserves attention, upcoming events), each about 500 characters, two to four sentences. About 3,000 characters in all, the links not counted. Nothing in code checks the length; the prompt sets it.
 
 - Every number comes from the portfolio it was given or a page it found in this run.
-- Facts come first, each with its source; what they mean follows, starting "My interpretation is".
-- Upcoming events gives the economic calendar's dates for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report), each with its source.
+- Facts come first; what they mean follows, starting "My interpretation is".
+- Each fact's link sits right after that fact and goes to the page it came from: never a paragraph's links gathered at its end, never one page for several stories.
+- Upcoming events is a short list: the economic calendar's dates for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report), one line each with its link.
 - When nothing important changed, it says so instead of forcing a call.
+- A proposal waiting for your approval is your call: it says nothing for or against one, its timing or its size, in the digest or a note. News on that stock is still news.
 
 A reply cut off at its limit, a reply that isn't the digest and its notes, or a call that fails saves nothing; the run is marked failed and says why.
 
@@ -74,4 +76,4 @@ Its run page is read only: your first message, then one line with the searches i
 
 ## Technical details
 
-`lib/inngest/functions/market-reviewer.ts` (the 7:30 job, the books it runs for, the save into `MarketDigest`, one row per book per day, and then each note through `writeSharedNote`), `lib/agent/market-reviewer/run.ts` (its first message, built on `loadMarketNumbers` and `loadPortfolioSnapshot`, the reply's shape, which note is pinned (`notePin`), and the one call, OpenAI's Responses API with its `web_search` tool), `lib/agent/market-reviewer/prompt.ts` (its instructions), `lib/agent/shared-notes.ts` (how a note reads on a stock). The market numbers: `lib/market-data/load-market-numbers.ts` (one quotes call, SPY's snapshot row, the earnings calendar against the book) and `lib/market-data/market-numbers.ts` (the numbers and their text). The run is opened and closed by `runAccountCall` (`lib/runs/account-run.ts`), and the request is kept by `lib/agent/run-requests.ts`.
+`lib/inngest/functions/market-reviewer.ts` (the 7:30 job, the books it runs for, the save into `MarketDigest`, one row per book per day, and then each note through `writeSharedNote`), `lib/agent/market-reviewer/run.ts` (its first message, built on `loadMarketNumbers` and `loadPortfolioSnapshot`, the reply's shape, which note is pinned (`notePin`), and the one call, OpenAI's Responses API with its `web_search` tool), `lib/agent/market-reviewer/prompt.ts` (its instructions; `DIGEST_CHARS` is the digest's length, each section a sixth), `lib/agent/shared-notes.ts` (how a note reads on a stock). The market numbers: `lib/market-data/load-market-numbers.ts` (one quotes call, SPY's snapshot row, the earnings calendar against the book) and `lib/market-data/market-numbers.ts` (the numbers and their text). The run is opened and closed by `runAccountCall` (`lib/runs/account-run.ts`), and the request is kept by `lib/agent/run-requests.ts`.

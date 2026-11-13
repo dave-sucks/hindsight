@@ -73,6 +73,8 @@ The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the
 
 `record_run_summary` lists every stock the run touched, each with a one-word action. `complete_run` then checks that summary against the orders: on a stock we hold, a pick marked exit, reduce or add needs a matching sale, trim or add from this run, or the run can't finish. A summary that says "sold" when nothing was sold is the one mistake the run isn't allowed to end on.
 
+It also checks the list: every stock the read listed as work needs an answer from this run, any save on it, a note-only review included. The list is the read's own, worked out the same way from the same facts, so every stock on it is owed and nothing else is. If one has no answer, `complete_run` names it with its situations and the run goes back to it.
+
 On the live account, its proposals wait in your queue. Its new levels are triggers, and from here [trigger runs](trigger-runs.md) act on them through the day.
 
 ## Tools
@@ -97,7 +99,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 
 #### Close-out
-`complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`).
+`complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`). The stocks it owes are `listsTheStock` (`lib/agent/situations.ts`) over `loadStockFacts` (`lib/agent/stock-facts.ts`), what `get_theses` lists; any `ThesisUpdate` this run but a trigger fire answers one. A trigger run or a Writer run owes only its own stock.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

@@ -25,7 +25,6 @@ import { MockLanguageModelV3 } from "ai/test";
 import { statSync } from "fs";
 import fixture from "@/lib/agent/__fixtures__/sale-lapses-2026-10-13.json";
 import { replayTool, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_RUN_ID, REPLAY_USER_ID, type Replay, type Row } from "@/lib/replay";
-import { declinedSaleLine } from "@/lib/agent/declined-sale";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import type { NeedsAction } from "@/lib/agent/needs-action";
@@ -138,12 +137,6 @@ async function morningRead(ticker: string, e: Entry, orders: Order[] = e.orders)
   });
 }
 
-const lineOf = (row: ReadRow) => {
-  const na = row.needsAction;
-  if (na?.kind !== "SALE_DECLINED") throw new Error(`expected SALE_DECLINED, got ${na?.kind}`);
-  return declinedSaleLine(na);
-};
-
 describe("NVDA 10-13 08:01 ET: a lapse never lowers a floor", () => {
   it("the verbatim call: the loosening is refused by the ratchet with its reason, and the rest of the call lands", async () => {
     const { received, save } = await nvdaSave(fx.nvda.orders);
@@ -189,16 +182,10 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     // What the model reads of the row.
     expect((rowForModel(row, { named: true, size: "full" }) as Row).heldThroughFloor).toMatchObject({ declined: 0, lapsed: 2 });
 
-    // The replay serves no daily bars, so the recent low ($978.50 that morning) is absent here.
-    const line = lineOf(row);
-    expect(line).toBe(
-      "Proposed 2× and left to lapse: not a decline. Most recently 2026-10-09, and the price is still past the $1005.00 line, with no new plan since. Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line.",
-    );
-    expect(line).not.toMatch(/declined/i);
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale lapsed", detail: "2×, last 2026-10-09" });
   });
 
-  it("complete_run, with MU unanswered, says the same thing — the line the run copied on 10-13", async () => {
+  it("complete_run, with MU unanswered, names its situation and never calls it declined (the run copied that word on 10-13)", async () => {
     const e = fx.mu;
     const { result, crashed } = await at(e.at, () =>
       replayTool("complete-run", "completeRun", {
@@ -216,8 +203,8 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     const text = JSON.stringify(result);
     expect(result.summary).toMatch(/refused/i);
     expect(text).toContain("MU (");
-    expect(text).toContain("Proposed 2× and left to lapse: not a decline.");
-    expect(text).not.toContain("You declined");
+    expect(text).toContain("sale signal");
+    expect(text).not.toMatch(/declined/i);
   });
 
   it("variant, with MU's own real decline of 09-16 moved into the window: it reads as one decline and two lapses", async () => {
@@ -225,7 +212,7 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     const shift = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() + 21 * 86_400_000).toISOString() : null);
     const row = await morningRead("MU", fx.mu, [...fx.mu.orders, { ...d, createdAt: shift(d.createdAt)!, expiresAt: shift(d.expiresAt), updatedAt: shift(d.updatedAt)! }]);
     expect(row.needsAction).toMatchObject({ declineCount: 1, lapseCount: 2 });
-    expect(lineOf(row)).toMatch(/^You declined this sale\. Proposed 2× more and left to lapse: not a decline\./);
+    expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale declined", detail: "1 declined, 2 lapsed, last 2026-10-09" });
   });
 });
 
@@ -247,9 +234,6 @@ describe("a real decline still reads as one", () => {
 
     expect(row.needsAction).toMatchObject({ kind: "SALE_DECLINED", declineCount: 1, lapseCount: 1, floorPrice: 1835 });
     expect(row.heldThroughFloor).toMatchObject({ floorPrice: 1835, declined: 1, lapsed: 1 });
-    const line = lineOf(row);
-    expect(line).toMatch(/^You declined this sale\. Proposed once more and left to lapse: not a decline\. Most recently 2026-10-08, and the price is still past the \$1835\.00 line/);
-    expect(line).toMatch(/Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line\.$/);
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale declined", detail: "1 declined, 1 lapsed, last 2026-10-08" });
   });
 });
