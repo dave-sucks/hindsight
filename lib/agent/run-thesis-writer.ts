@@ -655,15 +655,17 @@ every field; the judgment rules:
      look again at a price or a date, the view is this, not a PASS.
    • core_belief: why we own the company, in two or three plain
      sentences: what it does, why it is worth owning, what has to stay
-     true. Never a price path, a target or "within 60 days". It is the
-     claim of record every other agent reads.
+     true. Never a stock price, a price path, a target or "within 60
+     days". It is the claim of record every other agent reads.
    • key_assumptions: two to four checkable premises with the number,
      each ending with when and where it is checked ("net new ARR stays
      above $120M, checked at the Q3 report on December 4"). A review
      grades the thesis against these, so a premise nobody can check is
      not one.
-   • invalidation_conditions: each a reading and where it is read, never
-     a price level alone: the floor carries that.
+   • invalidation_conditions: each a reading about the business and
+     where it is read (a guidance cut at the next report, a margin in the
+     10-Q, a lost customer). Never a stock price, an average, a high or
+     low, or a gap, with or without volume: the floor holds the price.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
    • You do not size the trade. place_trade sizes it by risk from your

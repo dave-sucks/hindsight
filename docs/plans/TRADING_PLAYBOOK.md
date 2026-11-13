@@ -203,7 +203,7 @@ like. "Trigger vocabulary" notes what Hindsight can express today.
   gap-day high or a hold above the gap-day midpoint on day 2). Vocabulary:
   `GAP_UP{minPct: 8, minVolRatio: 3}` then `PRICE_ABOVE(day-1 high)`.
 - **Stop.** Low of the gap day. A close below the gap's midpoint is an
-  early warning; a filled gap is invalidation.
+  early warning; a filled gap ends the setup.
 - **Manage.** Same as D2: partial at 3–5 days, trail the 10/20-day.
 - **Fits.** TRADE or TARGET horizon; the PEAD seat's aggressive cousin.
 
@@ -255,7 +255,7 @@ like. "Trigger vocabulary" notes what Hindsight can express today.
   This is the entry that buys a stock that "never dips 10%" — MSFT dipped
   to its 50-day repeatedly on the way from $418 to $497.
 - **Stop.** Under the pullback low (the swing low), checked ≥ 1 ATR from
-  entry. A close below the 50-day on volume invalidates.
+  entry. A close below the 50-day on volume ends the setup.
 - **Target.** The prior high first (partial), then the measured move.
 - **Fits.** TARGET and COMPOUNDER; the Compounder's own rule 5 names this.
 

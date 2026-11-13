@@ -39,7 +39,7 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 >   "entry_price": 280,
 >   "target_price": 360,
 >   "stop_loss": 245,
->   "core_belief": "<=30 words: outcome + timeframe + mechanism, falsifiable",
+>   "core_belief": "two or three plain sentences: what the company does, why it is worth owning, what has to stay true; never a stock price, a target or a date",
 >   "key_assumptions": ["specific checkable premise", "another", "..."],
 >   "invalidation_conditions": ["concrete thing that proves this wrong", "another", "..."],
 >   "conviction": "HIGH",

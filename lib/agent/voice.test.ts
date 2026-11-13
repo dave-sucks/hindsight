@@ -213,8 +213,18 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   it("the belief is why we own the company, never a price path", () => {
     const words = wordsOf(props("update_thesis").core_belief);
     expect(words).toMatch(/Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true/);
-    expect(words).toMatch(/never the trade: no price path, no target, no dates/);
+    expect(words).toMatch(/never the trade: no stock price, no price path, no target, no dates/);
     expect(wordsOf(submit().core_belief)).toBe(words);
+  });
+
+  // IOT, 2026-11-04: the field's own example was "a close below the 50-day average", and the Writer wrote a swing low with volume.
+  it("what would prove it wrong is the business, never a stock price, in every text the Writer reads", () => {
+    const words = wordsOf(props("update_thesis").invalidation_conditions);
+    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the floor holds the price/);
+    expect(words).not.toMatch(/a close below/i);
+    expect(wordsOf(submit().invalidation_conditions)).toBe(words);
+    expect(SAMPLE_PROMPTS.writer()).toMatch(/Never a stock price, an average, a high or\s+low, or a gap, with or without volume/);
+    expect(SAMPLE_PROMPTS.writer()).not.toMatch(/outcome \+ timeframe|price level alone/);
   });
 
   it("the writer asks for the company line and a belief about the business", () => {

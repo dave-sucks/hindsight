@@ -56,7 +56,8 @@ It also reads what the agent that sent the stock found first: its reason, its no
 First, a research note in three parts: the company in two sentences (what it does and how it makes money), the bull case and the bear case, with a bear case even on a buy. The company's numbers, its earnings history, the street's view and the chart are live data on the stock's page, not prose in the note. On a new stock the Writer's own decision note is the first line you read. Then the decision:
 
 - **A direction:** long, short or pass, decided by the research, never by the chart. A pass is a real answer: a stock the research says not to own. A stock it would look at again is a watch, not a pass.
-- **A belief:** why we own the company, in two or three plain sentences: what it does, why it's worth owning, and what has to stay true. Never a price path or a target.
+- **A belief:** why we own the company, in two or three plain sentences: what it does, why it's worth owning, and what has to stay true. Never a stock price, a price path or a target.
+- **What would prove it wrong:** two or more things in the business, each with where it's read (a guidance cut at the next report, a margin in the 10-Q). Never a stock price, an average or a gap: the floor holds the price.
 - **A setup and its plan:** once there is a view, the setup prices it. The buy, the floor and the target come from the setup's rules and the chart, never a round number. The floor's note says first what a close below it would mean for the belief, then the chart level, and the run that answers the floor reads it. There is no minimum reward: under twice the risk, the Writer says why in the note. When no setup fits the chart yet, the view is saved with no buy, no floor and no setup, and with a review that brings it back (a price to look again at, or a date).
 - **The [triggers](../concepts/triggers.md)** that carry the plan, and a wake-up if the stock isn't ready to price yet.
 

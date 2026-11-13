@@ -91,7 +91,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .string()
       .describe(
         "Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true. " +
-          "About the business, never the trade: no price path, no target, no dates, no shorthand.",
+          "About the business, never the trade: no stock price, no price path, no target, no dates, no shorthand.",
       ),
     company: z
       .string()
@@ -108,8 +108,8 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
     invalidation_conditions: z
       .array(z.string())
       .describe(
-        "Specific things you could observe that would prove the thesis wrong (a close below the 50-day average, a guidance cut), two or more on LONG or SHORT, " +
-          "never a price level: the floor carries it. Exits are graded against them; on a PASS they are what would change your mind.",
+        "Specific things you could observe in the business that would prove the thesis wrong, each a reading and where it is read (a guidance cut at the next report, gross margin under 70% in the 10-Q, the largest customer leaving), two or more on LONG or SHORT. " +
+          "Never a stock price, an average, a high or low, or a gap, with or without volume: the floor holds the price. Exits are graded against them; on a PASS they are what would change your mind.",
       ),
     conviction: z
       .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
