@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Area, Bar, BarChart, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AnalystFilter, Empty, Loading, Num, Section, SimpleTable, Tiles, chartSize, useLoad, type Tile } from "@/components/performance/parts";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { AgentWork } from "@/lib/performance/agent-work";
 import { OUTCOMES, OUTCOME_LABEL, RANGES, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
 
-const ALL = "all";
 const COLOR: Record<Outcome | "pending", string> = {
   trade: "var(--chart-3)", refused: "var(--chart-1)", plan: "var(--positive)", research: "var(--foreground)",
   note: "var(--muted-foreground)", nothing: "var(--negative)", pending: "var(--border)",
@@ -25,12 +21,8 @@ const FIRES_CHART = {
   ...Object.fromEntries(ACTIONS.map(([k, label, color]) => [k, { label, color }])),
   expired: { label: "Expired proposals", color: "var(--foreground)" },
 } satisfies ChartConfig;
-/** A chart's height; ShadCN's container is sized by its parent's call, not restyled. */
-const chartSize = (height: number) => ({ aspectRatio: "auto", height, width: "100%" });
 type Counts = Record<string, number | undefined>;
 
-const Num = ({ children }: { children: ReactNode }) => <div className="text-right tabular-nums">{children}</div>;
-const Empty = ({ children }: { children: ReactNode }) => <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
 
 function OutcomeBar({ out }: { out: Counts }) {
   const keys = [...OUTCOMES, "pending"] as const;
@@ -43,18 +35,6 @@ function OutcomeBar({ out }: { out: Counts }) {
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">{keys.filter((k) => out[k]).map((k) => `${OUTCOME_LABEL[k].toLowerCase()} ${out[k]}`).join(" · ")}</p>
     </div>
-  );
-}
-
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
   );
 }
 
@@ -74,47 +54,12 @@ function CountList({ rows }: { rows: Array<{ label: string; n: number }> }) {
   );
 }
 
-function SimpleTable({ head, rows, empty }: { head: Array<string | [string, "num"]>; rows: ReactNode[][]; empty: string }) {
-  if (!rows.length) return <Empty>{empty}</Empty>;
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>{head.map((h) => (typeof h === "string" ? <TableHead key={h}>{h}</TableHead> : <TableHead key={h[0]}><Num>{h[0]}</Num></TableHead>))}</TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((cells, i) => <TableRow key={i}>{cells.map((c, j) => <TableCell key={j}>{typeof c === "number" ? <Num>{c}</Num> : c}</TableCell>)}</TableRow>)}
-      </TableBody>
-    </Table>
-  );
-}
-
 export function AgentWorkTab() {
   const [days, setDays] = useState<RangeDays>(30);
-  const [analyst, setAnalyst] = useState<string>(ALL);
-  const [data, setData] = useState<AgentWork | null>(null);
-  // Kept across reloads: the picker must still hold the chosen analyst while the next range loads.
-  const [analysts, setAnalysts] = useState<AgentWork["analysts"]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const [analyst, setAnalyst] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{ id: string; ticker: string } | null>(null);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    setData(null);
-    setError(null);
-    const q = new URLSearchParams({ days: String(days), ...(analyst === ALL ? {} : { analyst }) });
-    fetch(`/api/performance/agent-work?${q}`, { signal: ctrl.signal })
-      .then(async (r) => {
-        if (!r.ok) return setError((await r.json().catch(() => null))?.error ?? `The server answered ${r.status}.`);
-        const w = (await r.json()) as AgentWork;
-        setAnalysts(w.analysts);
-        setData(w);
-      })
-      .catch((e) => { if (e?.name !== "AbortError") setError("Couldn't reach the server."); });
-    return () => ctrl.abort();
-  }, [days, analyst, attempt]);
-
-  const analystItems = [{ value: ALL, label: "All analysts" }, ...analysts.map((a) => ({ value: a.id, label: a.name }))];
+  const q = new URLSearchParams({ days: String(days), ...(analyst ? { analyst } : {}) });
+  const { data, error, retry } = useLoad<AgentWork>(`/api/performance/agent-work?${q}`);
   const stock = (thesisId: string, ticker: string) => (
     <Button variant="link" size="sm" onClick={() => setSheet({ id: thesisId, ticker })}>{ticker}</Button>
   );
@@ -127,27 +72,12 @@ export function AgentWorkTab() {
           <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v) as RangeDays)}>
             <TabsList size="sm">{RANGES.map((d) => <TabsTrigger key={d} value={String(d)}>{d}D</TabsTrigger>)}</TabsList>
           </Tabs>
-          <Select items={analystItems} value={analyst} onValueChange={(v) => setAnalyst(v ?? ALL)}>
-            <SelectTrigger size="sm" aria-label="Filter by analyst"><SelectValue /></SelectTrigger>
-            <SelectContent>{analystItems.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent>
-          </Select>
+          <AnalystFilter analysts={data?.analysts} value={analyst} onChange={setAnalyst} />
         </div>
       </div>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>Couldn&apos;t load the agent work numbers</AlertTitle>
-          <AlertDescription>
-            <p>{error}</p>
-            <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button>
-          </AlertDescription>
-        </Alert>
-      ) : !data ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} style={{ height: 96 }} />)}</div>
-          <Skeleton style={{ height: 256 }} />
-          <Skeleton style={{ height: 384 }} />
-        </div>
+      {!data ? (
+        <Loading error={error} what="agent work numbers" onRetry={retry} />
       ) : (
         <Body w={data} stock={stock} />
       )}
@@ -172,13 +102,13 @@ function nothingByStock(w: AgentWork) {
 
 function Body({ w, stock }: { w: AgentWork; stock: (thesisId: string, ticker: string) => ReactNode }) {
   const t = w.totals;
-  const tiles: Array<[string, string, string?]> = [
-    ["Morning runs", String(t.morningRuns)],
-    ["Trigger runs", String(t.triggerRuns)],
-    ["Trigger fires", String(t.fires), `on ${t.firedStocks} stocks`],
-    ["Proposals", String(t.proposals), `${t.expired} expired unanswered`],
-    ["Approved and filled", String(t.filled)],
-    ["Listed, nothing written", t.workRows ? `${Math.round((100 * t.nothing) / t.workRows)}%` : "—", `${t.nothing} of ${t.workRows} work-list rows`],
+  const tiles: Tile[] = [
+    { label: "Morning runs", value: String(t.morningRuns) },
+    { label: "Trigger runs", value: String(t.triggerRuns) },
+    { label: "Trigger fires", value: String(t.fires), sub: `on ${t.firedStocks} stocks` },
+    { label: "Proposals", value: String(t.proposals), sub: `${t.expired} expired unanswered` },
+    { label: "Approved and filled", value: String(t.filled) },
+    { label: "Listed, nothing written", value: t.workRows ? `${Math.round((100 * t.nothing) / t.workRows)}%` : "—", sub: `${t.nothing} of ${t.workRows} work-list rows` },
   ];
   const names = [...new Set(w.runs.byType.map((r) => r.analyst))].sort((a, b) => (a === "Account" ? 1 : b === "Account" ? -1 : a.localeCompare(b)));
   const runCols = ["Morning", "Trigger", "Writer", "Chat"];
@@ -199,17 +129,7 @@ function Body({ w, stock }: { w: AgentWork; stock: (thesisId: string, ticker: st
         </Alert>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        {tiles.map(([label, value, sub]) => (
-          <Card key={label} size="sm">
-            <CardHeader>
-              <CardDescription>{label}</CardDescription>
-              <CardTitle><span className="text-2xl font-semibold tabular-nums">{value}</span></CardTitle>
-              {sub && <CardDescription>{sub}</CardDescription>}
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
+      <Tiles tiles={tiles} />
 
       <h2 className="text-lg font-medium">Runs</h2>
       <div className="grid gap-6 lg:grid-cols-2">

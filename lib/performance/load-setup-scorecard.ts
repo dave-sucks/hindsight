@@ -1,6 +1,7 @@
 /**
- * load-setup-scorecard.ts — read closed trades and sell proposals for the
- * setup scorecard (./setup-scorecard). Server-only. DAV-248.
+ * load-setup-scorecard.ts — read closed trades for the setup scorecard
+ * (./setup-scorecard), the Trading tab (./trading) and the trade-results tool.
+ * Server-only.
  *
  * A position finds its thesis through the INITIATE TradeDecision (there is
  * no Position→Thesis key); that decision's text also carries the entry stop
@@ -11,19 +12,9 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import {
-  buildScorecard,
-  parseStopFromDecision,
-  scorecardLines,
-  type ClosedTrade,
-  type SellProposalCount,
-  type SetupRow,
-} from "@/lib/performance/setup-scorecard";
+import { parseStopFromDecision, scorecardLines, type ClosedTrade } from "@/lib/performance/setup-scorecard";
 
 export const SCORECARD_SINCE = new Date("2026-05-27T00:00:00Z");
-
-/** Order statuses that mean the principal didn't take a sell proposal. */
-const DECLINED = new Set(["REJECTED", "EXPIRED"]);
 
 async function thesisByPosition(positionIds: string[]) {
   const decisions = positionIds.length
@@ -43,7 +34,7 @@ async function thesisByPosition(positionIds: string[]) {
   return (positionId: string) => {
     const d = first.get(positionId);
     const t = d?.thesisId ? thesis.get(d.thesisId) : undefined;
-    return { setupId: t?.setupId ?? null, horizon: t?.horizon ?? null, decisionText: d?.reasoning ?? null };
+    return { thesisId: d?.thesisId ?? null, setupId: t?.setupId ?? null, horizon: t?.horizon ?? null, decisionText: d?.reasoning ?? null };
   };
 }
 
@@ -91,6 +82,7 @@ export async function loadClosedTrades(opts: {
     const t = lookup(p.id);
     return {
       symbol: p.symbol,
+      thesisId: t.thesisId,
       realizedPnl: p.realizedPnl,
       closeReason: p.closeReason,
       trimmed: trimmedIds.has(p.id),
@@ -107,47 +99,6 @@ export async function loadClosedTrades(opts: {
       closedAt: p.closedAt as Date,
     };
   });
-}
-
-export async function loadSellProposalCounts(opts: {
-  accountId: string;
-  environment?: string;
-}): Promise<SellProposalCount[]> {
-  const orders = await prisma.order.findMany({
-    where: {
-      intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
-      createdAt: { gte: SCORECARD_SINCE },
-      position: {
-        accountId: opts.accountId,
-        ...(opts.environment ? { environment: opts.environment } : {}),
-      },
-    },
-    select: {
-      status: true,
-      positionId: true,
-      position: { select: { environment: true, analyst: { select: { name: true } } } },
-    },
-  });
-  const lookup = await thesisByPosition(Array.from(new Set(orders.map((o) => o.positionId))));
-  return orders.map((o) => {
-    const t = lookup(o.positionId);
-    return {
-      setupId: t.setupId,
-      horizon: t.horizon,
-      analyst: o.position.analyst.name,
-      environment: o.position.environment,
-      proposals: 1,
-      declined: DECLINED.has(o.status) ? 1 : 0,
-    };
-  });
-}
-
-export async function getSetupScorecard(accountId: string, environment?: string): Promise<SetupRow[]> {
-  const [trades, sells] = await Promise.all([
-    loadClosedTrades({ accountId, environment }),
-    loadSellProposalCounts({ accountId, environment }),
-  ]);
-  return buildScorecard(trades, sells);
 }
 
 /** The analyst's own record by setup, as prompt data lines. Fail-open: [] on any error. */
