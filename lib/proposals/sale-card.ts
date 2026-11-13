@@ -24,7 +24,8 @@ import { prisma } from "@/lib/prisma";
 import { evaluateTrigger, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { holdKey } from "@/lib/agent/triggers/hold";
 import { loadLevelSources, parseTriggerState, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
-import { conditionSentence, levelOf, money, shapeOf } from "@/lib/agent/triggers/condition";
+import { conditionSentence, levelOf, money, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { parseIndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { trailFireLevel } from "@/lib/agent/triggers/trail";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -55,7 +56,9 @@ export function backPast(t: Trigger, ctx: EvaluationContext): string {
  * triggers holds on the close, and a held trigger that doesn't hold on the
  * close re-arms. Read with the check's own reader (`evaluateTrigger`) against
  * the day's close. A trigger behind the card that is no longer on the stock
- * can't be read, so the card waits for the owner.
+ * can't be read, so the card waits for the owner. A hold whose condition has
+ * since changed (a new line) or whose trigger is gone is cleared too: it no
+ * longer quiets anything, and must not come back if the old line does.
  */
 export async function settleOnTheClose(args: {
   thesisId: string;
@@ -64,6 +67,8 @@ export async function settleOnTheClose(args: {
   /** The close pass's context: the day's close as the price. */
   ctx: EvaluationContext;
   card: { id: string; triggerIds: string[] } | null;
+  /** The stock's `triggerState`, for holds that no longer apply. */
+  state?: unknown;
 }): Promise<{ withdrawn: string | null; rearmed: string[] }> {
   const holds = (t: Trigger) => evaluateTrigger(t.predicate, args.ctx);
   let withdrawn: string | null = null;
@@ -73,7 +78,10 @@ export async function settleOnTheClose(args: {
     await prisma.order.updateMany({ where: { id: args.card.id, status: "AWAITING_APPROVAL" }, data: { status: "WITHDRAWN", withdrawnReason: withdrawn } });
   }
   const rearmed = args.sales.filter((t) => t.heldAt && !holds(t)).map((t) => t.id);
-  if (rearmed.length) await writeHolds(args.thesisId, rearmed, null);
+  const stale = Object.entries(parseTriggerState(args.state))
+    .filter(([id, e]) => e.held && !args.sales.find((t) => t.id === id)?.heldAt)
+    .map(([id]) => id);
+  if (rearmed.length || stale.length) await writeHolds(args.thesisId, [...rearmed, ...stale], null);
   return { withdrawn, rearmed };
 }
 
@@ -108,4 +116,52 @@ async function writeHolds(thesisId: string, ids: string[], hold: ((id: string) =
     }
     await tx.thesis.update({ where: { id: thesisId }, data: { triggerState: state as unknown as object } });
   });
+}
+
+/** The line a sale card answers, as it reads now: the first of its triggers still on the stock that has one (a sell line's level, a trail's from the tracked high). */
+export function cardLine(triggers: Trigger[], triggerIds: string[], ctx: { peak: number | null; direction: string | null }): { price: number; sentence: string } | null {
+  for (const id of triggerIds) {
+    const t = triggers.find((x) => x.id === id);
+    const w = t ? shapeOf(t.predicate) : null;
+    if (!t || !w) continue;
+    const c = w as { watch?: string; variable?: string; value?: number };
+    const level = levelOf(w);
+    const price =
+      level && !c.variable ? level.value
+      : c.watch === "move" && c.variable === "peak" && c.value != null ? trailFireLevel(c.value, { peak: ctx.peak, isLong: ctx.direction !== "SHORT" })
+      : null;
+    if (price != null) return { price: Math.round(price * 100) / 100, sentence: sentenceOf(t) };
+  }
+  return null;
+}
+
+/**
+ * What the sale card shows beside the proposal: the price when it was proposed
+ * (the fire that made it), the line it answers as it reads now, and the line
+ * Hold offers in its place, the 20-day low (the high on a short) off the
+ * morning's chart numbers.
+ */
+export async function saleCardFacts(args: {
+  thesisId: string;
+  ticker: string;
+  direction: string | null;
+  order: { triggerIds: string[]; createdAt: Date };
+  triggers: Trigger[];
+  peak: number | null;
+}): Promise<{ proposedAt: number | null; line: { price: number; sentence: string } | null; suggestedLine: number | null }> {
+  const [fire, chart] = await Promise.all([
+    prisma.thesisUpdate.findFirst({
+      where: { thesisId: args.thesisId, type: "TRIGGER_FIRED", triggerId: { in: args.order.triggerIds }, timestamp: { lte: new Date(args.order.createdAt.getTime() + 60_000) } },
+      orderBy: { timestamp: "desc" },
+      select: { priceAtTime: true },
+    }),
+    prisma.tickerIndicators.findFirst({ where: { ticker: args.ticker }, orderBy: { asOf: "desc" }, select: { snapshot: true } }),
+  ]).catch(() => [null, null] as const);
+  const snap = chart ? parseIndicatorSnapshot(chart.snapshot) : null;
+  const recent = snap ? (args.direction === "SHORT" ? snap.high20 : snap.low20) : null;
+  return {
+    proposedAt: fire?.priceAtTime ?? null,
+    line: cardLine(args.triggers, args.order.triggerIds, { peak: args.peak, direction: args.direction }),
+    suggestedLine: recent != null && recent > 0 ? Math.round(recent * 100) / 100 : null,
+  };
 }

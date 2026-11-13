@@ -11,8 +11,14 @@
  * 2026-11-04 this was one black "Review" button opening a dropdown.)
  *
  * Accept fires immediately. Reject opens a dialog so the principal can
- * (optionally) type a reason the agent will read on its next run. Both
- * actions hit the existing routes:
+ * (optionally) type a reason the agent will read on its next run.
+ *
+ * A sale a trigger proposed (lib/proposals/sale-card.ts) is answered Sell or
+ * Hold instead. Sell is Accept. Hold is the decline with, in one step, a new
+ * sell line for the stock (the trigger form's own condition field, filled
+ * with the recent low) or none: either way the line it broke stays quiet
+ * until the stock closes back past it and breaks it again. Both actions hit
+ * the existing routes:
  *   POST /api/proposals/[orderId]/approve
  *   POST /api/proposals/[orderId]/reject   body: { message?: string }
  *
@@ -40,10 +46,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ConditionFields, FieldLabel } from "@/components/agent/triggers/TriggerFields";
+import { conditionProblem, money, type Condition } from "@/lib/agent/triggers/condition";
+import type { ThesisSaleCard } from "@/lib/types/thesis-sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Check, X, Loader2, MoreHorizontal, Pencil } from "lucide-react";
+import { Check, X, Loader2, MoreHorizontal, Pencil, Hand } from "lucide-react";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { ThesisTriggersSection } from "@/components/agent/sheets/ThesisTriggersSection";
 import {
@@ -71,6 +81,29 @@ export interface ProposalActionsProps {
   className?: string;
   /** Accept (and its ···) as the primary button: the page card's foot (the owner, 2026-11-05). Reject stays outline. */
   accent?: boolean;
+  /** A sale a trigger proposed: answered Sell or Hold. */
+  sale?: SaleAnswer | null;
+}
+
+/** What Hold needs to know about a trigger's sale. */
+export interface SaleAnswer extends ThesisSaleCard {
+  ticker: string | null;
+  quantity: number;
+  direction: "LONG" | "SHORT" | null;
+  /** The live price: a new line past it would sell at the next check. */
+  now: number | null;
+}
+
+/** The new line Hold starts from: the stock's own sell line at the recent low. */
+function startingLine(sale: SaleAnswer): Condition {
+  return { watch: "price", is: sale.direction === "SHORT" ? "above" : "below", ...(sale.suggestedLine != null ? { value: sale.suggestedLine } : {}) };
+}
+
+/** A new line the stock is already past would sell at the next check, which is no Hold. */
+function linePastPrice(line: Condition, sale: SaleAnswer): string | null {
+  if (sale.now == null || line.watch !== "price" || line.variable || line.value == null) return null;
+  const past = line.is === "below" ? sale.now < line.value : line.is === "above" ? sale.now > line.value : false;
+  return past ? `${sale.ticker ?? "The stock"} is at ${money(sale.now)}, already past ${money(line.value)}: it would sell at the next check.` : null;
 }
 
 /** The proposal routes return `{ error, code }` JSON for known refusals, plain text otherwise. */
@@ -92,7 +125,7 @@ async function readApiError(
 const EXPIRED_TOAST =
   "This proposal expired before a decision landed. The analyst reads the expiry and can re-propose.";
 
-export function ProposalActions({ orderId, expiresAt, align = "end", className, accent = false }: ProposalActionsProps) {
+export function ProposalActions({ orderId, expiresAt, align = "end", className, accent = false, sale = null }: ProposalActionsProps) {
   const router = useRouter();
   const [pending, setPending] = useState<"approve" | "reject" | null>(null);
   const [resolved, setResolved] = useState<
@@ -117,6 +150,10 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
   const [editTarget, setEditTarget] = useState("");
   const [editStop, setEditStop] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+  // Hold, on a trigger's sale: with a new line (the default) or none.
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdMode, setHoldMode] = useState<"line" | "none">("line");
+  const [holdLine, setHoldLine] = useState<Condition | null>(null);
 
   // One read of the proposal context, shared by Edit & Approve (reads
   // intent/quantity/target/stop) and Reject (reads thesisId/direction).
@@ -230,7 +267,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
     }
   }
 
-  async function submitReject() {
+  async function submitReject(line?: Condition | null) {
     setPending("reject");
     setRejectError(null);
     try {
@@ -238,13 +275,17 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
       const res = await fetch(`/api/proposals/${orderId}/reject`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(trimmed.length > 0 ? { message: trimmed } : {}),
+        body: JSON.stringify({ ...(trimmed.length > 0 ? { message: trimmed } : {}), ...(line ? { line } : {}) }),
       });
       if (!res.ok && res.status !== 202) {
         const { message } = await readApiError(res);
         throw new Error(message);
       }
+      // The Hold landed and the new line didn't: say so, so it can be set from the trigger list.
+      const body = (await res.json().catch(() => ({}))) as { lineError?: string };
+      if (body.lineError) toast.error(`Held. The new line wasn't saved: ${body.lineError}`);
       setRejectOpen(false);
+      setHoldOpen(false);
       setRejectMessage("");
       setResolved("rejected");
       router.refresh();
@@ -274,6 +315,20 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
     } catch {
       /* non-fatal */
     }
+  }
+
+  function openHold() {
+    if (!sale) return;
+    setHoldMode("line");
+    setHoldLine(startingLine(sale));
+    setRejectMessage("");
+    setRejectError(null);
+    setHoldOpen(true);
+  }
+
+  function closeHold(open: boolean) {
+    if (open || pending === "reject") return;
+    setHoldOpen(false);
   }
 
   function closeRejectDialog(open: boolean) {
@@ -315,7 +370,100 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
     }
     if (resolved !== "rejected") return null;
     return (
-      <span className={cn("text-xs text-muted-foreground", className)}>Rejected</span>
+      <span className={cn("text-xs text-muted-foreground", className)}>{sale ? "Held" : "Rejected"}</span>
+    );
+  }
+
+  if (sale) {
+    const line = holdMode === "line" ? holdLine : null;
+    const past = line ? linePastPrice(line, sale) : null;
+    const lineProblem = line ? (conditionProblem(line, { level: "THESIS", held: true }) ?? past) : null;
+    const shares = `${sale.quantity} ${sale.quantity === 1 ? "share" : "shares"}`;
+    const broken = sale.line
+      ? `"${sale.line.sentence}" stays quiet until ${sale.ticker ?? "the stock"} closes back ${sale.direction === "SHORT" ? "below" : "above"} ${money(sale.line.price)} and breaks it again.`
+      : "The trigger it broke stays quiet until the stock closes back past it and breaks it again.";
+    return (
+      <>
+        {/* Two answers, in the review control's place: Hold, then Sell (primary on the page card's foot). */}
+        <div
+          className={cn("flex items-center gap-1.5", className)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <Button variant="outline" size="xs" disabled={pending !== null} onClick={openHold}>
+            {pending === "reject" ? <Loader2 className="animate-spin" /> : <Hand />}
+            Hold
+          </Button>
+          <Button variant={accent ? "default" : "outline"} size="xs" disabled={pending !== null} onClick={() => void approve()}>
+            {pending === "approve" ? <Loader2 className="animate-spin" /> : <Check />}
+            Sell
+          </Button>
+        </div>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <Dialog open={holdOpen} onOpenChange={closeHold}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Hold{sale.ticker ? ` ${sale.ticker}` : ""}</DialogTitle>
+                <DialogDescription>
+                  Keep your {shares}. {broken}
+                </DialogDescription>
+              </DialogHeader>
+              <RadioGroup value={holdMode} onValueChange={(v) => setHoldMode(v === "none" ? "none" : "line")}>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="line" id="hold-line" disabled={pending === "reject"} />
+                  <Label htmlFor="hold-line">Hold with a new line</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="none" id="hold-none" disabled={pending === "reject"} />
+                  <Label htmlFor="hold-none">Hold, no new line</Label>
+                </div>
+              </RadioGroup>
+              {line ? (
+                <div className="space-y-1.5">
+                  <FieldLabel>Sell if</FieldLabel>
+                  <ConditionFields condition={line} onChange={setHoldLine} ctx={{ level: "THESIS", held: true }} disabled={pending === "reject"} />
+                  {past ? (
+                    <p className="text-xs text-muted-foreground">{past}</p>
+                  ) : lineProblem ? null : (
+                    <p className="text-xs text-muted-foreground">
+                      {sale.suggestedLine != null ? `Filled in at the 20-day ${sale.direction === "SHORT" ? "high" : "low"}. ` : ""}
+                      It becomes {sale.ticker ?? "the stock"}&apos;s sell line and asks the next time the stock breaks it.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="hold-note">Note to the analyst (optional)</Label>
+                <Textarea
+                  id="hold-note"
+                  value={rejectMessage}
+                  onChange={(e) => setRejectMessage(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  disabled={pending === "reject"}
+                />
+              </div>
+              {rejectError ? <p className="text-xs text-destructive">{rejectError}</p> : null}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => closeHold(false)} disabled={pending === "reject"}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitReject(line)} disabled={pending === "reject" || lineProblem != null}>
+                  {pending === "reject" ? <Loader2 className="size-3 animate-spin" /> : null}
+                  Hold
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </>
     );
   }
 

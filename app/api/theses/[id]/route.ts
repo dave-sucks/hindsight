@@ -24,6 +24,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
+import { saleCardFacts } from "@/lib/proposals/sale-card";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -230,6 +231,8 @@ export async function GET(
             quantity: true,
             expiresAt: true,
             rationale: true,
+            triggerIds: true,
+            createdAt: true,
           },
         },
     } satisfies Prisma.PositionSelect;
@@ -256,6 +259,11 @@ export async function GET(
       );
       const picked = pickProposalOrder(pos.orders ?? []);
       const writing = picked ? await writeupComing(picked.order.id) : false;
+      // A trigger's sale card: the price it was proposed at, its line, and the line Hold offers.
+      const sale =
+        picked && !picked.executing && picked.order.triggerIds.length > 0
+          ? await saleCardFacts({ thesisId: thesis.id, ticker: thesis.ticker, direction: thesis.direction, order: picked.order, triggers, peak: pos.peakPrice != null ? Number(pos.peakPrice) : null })
+          : null;
       const cost = Number(pos.avgCost) * Number(pos.quantity);
       position = {
         id: pos.id,
@@ -283,6 +291,7 @@ export async function GET(
               rationale: picked.order.rationale,
               executing: picked.executing,
               writing,
+              sale,
             }
           : null,
       };

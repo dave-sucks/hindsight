@@ -108,6 +108,18 @@ export interface ThesisPendingProposal {
   executing?: boolean;
   /** An Auto trade the analyst is still writing up (lib/proposals/auto-writeup.ts); the card reads the reason again until it lands. */
   writing?: boolean;
+  /** A sale or trim a trigger proposed: open while its line is broken, answered Sell or Hold (lib/proposals/sale-card.ts). */
+  sale?: ThesisSaleCard | null;
+}
+
+/** What a trigger's sale card shows: where the stock stood when it was proposed, the line, and the line Hold offers. */
+export interface ThesisSaleCard {
+  /** The price the trigger fired at; null when its line has none. */
+  proposedAt: number | null;
+  /** The line the stock broke, as it reads now ("Sell if below $236", a trail's level from the tracked high); null when its trigger is gone. */
+  line: { price: number; sentence: string } | null;
+  /** Prefilled on Hold: the 20-day low (the high on a short). */
+  suggestedLine: number | null;
 }
 
 /**

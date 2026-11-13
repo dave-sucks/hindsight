@@ -25,6 +25,8 @@ A trade made by a trigger set to Auto is written up by the analyst a minute or t
 
 ## What your answer does
 
+A sale a trigger made is its own card: it shows where the stock is now against the line ("Proposed at $220.55 · now $161.92 · 31% below your line") and takes two answers. **Sell** approves it. **Hold** declines it and, in the same step, sets the stock's own sell line to a new level (filled in at the 20-day low, in the trigger form's own price field), or leaves the lines as they are ("Hold, no new line"). Either way the line it broke stays quiet until the stock closes back past it and breaks it again; a new line is armed at once.
+
 - **Approve:** the order goes to the broker. Once the broker takes a buy, the [thesis](theses.md) turns from Watching to Holding and its sell side is armed; once it takes a sale, the thesis is retired as sold, or sent back to Watching after a sale at the target.
 - **Approve at a different size:** your size is used, and the next run reads it as caution or conviction. If the position or the analyst's room has shrunk since, the order is cut to what's left.
 - **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale a trigger made is a **Hold**: that trigger stays quiet until the stock closes back past its line and breaks it again, or until you set a new line. A declined sale an analyst proposed on its own is read by the next run, which proposes it again or says why it holds.
@@ -52,6 +54,9 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 
 #### Stored as
 `Order` with status `AWAITING_APPROVAL` and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones. A sale or trim a trigger's fire made carries the triggers it answers (`triggerIds`) and no `expiresAt`; the trigger check's 4:20 PM pass marks it `WITHDRAWN` (`withdrawnReason`) when none of them holds on the close (`lib/proposals/sale-card.ts`).
+
+#### The sale card
+The dossier route (`app/api/theses/[id]/route.ts`) adds `sale` to the waiting proposal (`saleCardFacts`, `lib/proposals/sale-card.ts`): the price the trigger fired at, the line as it reads now and the 20-day low off the morning's chart numbers. Sell and Hold are `ProposalActions` (`components/proposals/ProposalActions.tsx`); Hold with a new line is one request to the decline route, which declines first, then sets the line through `applyTriggerAdd` (`lib/actions/thesis-edit.ts`), so the new line is armed and the rest stay held.
 
 #### Declines and lapses
 `lib/agent/declined-sale.ts` counts a decline (REJECTED) and a lapse (EXPIRED) of a sale no trigger made apart; the row's `heldThroughFloor` carries both. A declined trigger sale holds its triggers instead: `Thesis.triggerState[id].held`, read by `shouldFire` and lifted on a close back past the line or a changed condition (`lib/agent/triggers/hold.ts`).

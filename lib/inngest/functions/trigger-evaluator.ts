@@ -749,7 +749,7 @@ export const triggerEvaluator = inngest.createFunction(
         // The close pass settles the stock's sale card and the owner's holds on the close.
         const waiting = posInfo ? saleWaiting.get(posInfo.id) : undefined;
         if (session === "CLOSE" && posInfo) {
-          await settleOnTheClose({ thesisId: thesis.id, sales, ctx, card: waiting?.card ?? null }).catch((e) =>
+          await settleOnTheClose({ thesisId: thesis.id, sales, ctx, card: waiting?.card ?? null, state: thesis.triggerState }).catch((e) =>
             console.error(`[trigger-evaluator] ${thesis.ticker}: the close-pass sale check failed; the card and holds wait for tomorrow's close.`, e),
           );
         }

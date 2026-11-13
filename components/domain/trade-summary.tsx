@@ -38,7 +38,7 @@
  */
 
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -56,7 +56,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { fmtQty } from "@/lib/trade-statement";
 import { EXECUTING_LABEL, EXECUTING_TOOLTIP, getTradeStatusDisplay } from "@/lib/trade-status";
 import { formatCurrency } from "@/lib/format";
-import type { ThesisPendingProposal, ThesisStatePosition } from "@/lib/types/thesis-sheet";
+import type { ThesisPendingProposal, ThesisSaleCard, ThesisStatePosition } from "@/lib/types/thesis-sheet";
 
 export type TradeSummaryPnl = {
   currentPrice: number;
@@ -132,8 +132,12 @@ export function TradeSummary(props: TradeSummaryProps) {
 //                        and the holding's own line under it — the title already says the action.
 // The card's line is the same without the parentheses: its avg cost sits in
 // the footnote beside the days held.
-function describeTrade({ position, pnl, pendingProposal, direction, look }: TradeSummaryProps) {
+function describeTrade({ position, pnl, pendingProposal, direction, look, ticker }: TradeSummaryProps) {
   const pp = pendingProposal;
+  // A sale a trigger proposed: where the stock is now against its line, and Sell or Hold.
+  const now = pnl?.currentPrice ?? null;
+  const sale = pp?.sale && !pp.executing ? { ...pp.sale, ticker: ticker ?? null, quantity: position.quantity, direction, now } : null;
+  const where = sale ? whereNow(sale, now) : null;
   const usd = (n: number) => formatCurrency(n);
   const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
@@ -164,7 +168,7 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
       </Tooltip>
     );
   } else if (pp) {
-    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align={banner ? "start" : "end"} />;
+    reviewSlot = <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align={banner ? "start" : "end"} sale={sale} />;
   }
 
   if (pp && pp.intent === "OPEN") {
@@ -194,7 +198,34 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
     gain = unrealized;
   }
 
-  return { pp, sentence, gain, title, action, value, avgCost, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing) };
+  return { pp, sentence, gain, title, action, value, avgCost, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing), sale, where };
+}
+
+/** "Proposed at $230 · now $185 · 22% below your line": where a trigger's sale stands. */
+function whereNow(sale: ThesisSaleCard, now: number | null): string[] | null {
+  const parts: string[] = [];
+  if (sale.proposedAt != null) parts.push(`Proposed at ${formatCurrency(sale.proposedAt)}`);
+  if (now != null) parts.push(`now ${formatCurrency(now)}`);
+  if (now != null && sale.line && sale.line.price > 0) {
+    const pct = ((now - sale.line.price) / sale.line.price) * 100;
+    const size = Math.abs(pct) >= 10 ? Math.round(Math.abs(pct)) : Math.round(Math.abs(pct) * 10) / 10;
+    parts.push(`${size}% ${pct < 0 ? "below" : "above"} your line`);
+  }
+  return parts.length ? parts : null;
+}
+
+/** The where-now line: each part kept whole, so a narrow card wraps between them. */
+function WhereNow({ parts, spaced }: { parts: string[]; spaced?: boolean }) {
+  return (
+    <p className={cn("text-sm text-muted-foreground tabular-nums", spaced && "mt-1")}>
+      {parts.map((part, i) => (
+        <Fragment key={part}>
+          {i > 0 ? " · " : null}
+          <span className="whitespace-nowrap">{part}</span>
+        </Fragment>
+      ))}
+    </p>
+  );
 }
 
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
@@ -266,7 +297,7 @@ function NoteClamp({ text }: { text: string }) {
 // above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
   const { ticker } = props;
-  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, where } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const body = (
     <>
@@ -280,6 +311,7 @@ function TradeBanner(props: TradeSummaryProps) {
         action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
       <p className="truncate text-base tabular-nums">{sentence}</p>
+      {where ? <WhereNow parts={where} /> : null}
       {/* The reason, muted: two lines until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
       {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
@@ -344,7 +376,7 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, sentence, gain, title, action, avgCost, dotClass, reviewSlot, proposal } = describeTrade(props);
+  const { pp, sentence, gain, title, action, avgCost, dotClass, reviewSlot, proposal, sale, where } = describeTrade(props);
   const click = onOpen;
   const closed = position.closed === true;
   const proposedBuy = pp?.intent === "OPEN";
@@ -361,6 +393,7 @@ function TradeCard(props: TradeSummaryProps) {
         <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
         {/* The footnote: what the shares cost us, how long we have held them, and how many trades the thesis had before this one. */}
         {footnote ? <p className="mt-2 text-xs text-muted-foreground tabular-nums">{footnote}</p> : null}
+        {where ? <WhereNow parts={where} spaced /> : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">
@@ -375,7 +408,7 @@ function TradeCard(props: TradeSummaryProps) {
       <div className="flex justify-end">
         {pp && !pp.executing ? (
           <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
-            <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" accent />
+            <ProposalActions orderId={pp.orderId} expiresAt={pp.expiresAt} align="end" accent sale={sale} />
           </span>
         ) : pp?.executing ? (
           <span className="flex items-center" onClick={(e) => e.stopPropagation()}>{reviewSlot}</span>

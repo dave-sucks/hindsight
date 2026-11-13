@@ -20,6 +20,7 @@
  */
 import fixture from "./__fixtures__/sale-card-2026-10.json";
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, type PrismaDouble } from "@/lib/replay";
+import { cardLine } from "@/lib/proposals/sale-card";
 
 type Ev = [kind: string, at: string, ...rest: unknown[]];
 type Stock = (typeof fixture.stocks)["NVDA"];
@@ -103,7 +104,7 @@ const handler = async (path: string) => (await import(path)) as Record<string, (
 const step = { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() };
 
 /** The month for one stock, in order; what it leaves behind. */
-async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
+async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = [], base?: Ev[]) {
   const stock = fixture.stocks[ticker] as Stock;
   const db = book(ticker, stock);
   mockState.db = db;
@@ -116,7 +117,8 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
   const { closePosition } = await import("@/lib/agent/tools/close-position");
 
   const mornings: Array<{ at: string; ok: boolean; situations: string[] | null }> = [];
-  const events: Ev[] = [...(stock.events as Ev[]), ...extra, ["trail-on", fixture.trail.from] as Ev].sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+  const answers: Array<Record<string, unknown>> = [];
+  const events: Ev[] = [...(base ?? (stock.events as Ev[])), ...extra, ["trail-on", fixture.trail.from] as Ev].sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   const thesis = () => db.store.thesis[0] as { triggers: Array<Record<string, unknown>> };
   for (const [kind, at, ...rest] of events) {
     const now = new Date(at);
@@ -133,7 +135,10 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
       const card = (db.store.order as Array<Record<string, unknown>>).find((o) => o.status === "AWAITING_APPROVAL" && o.side === "SELL");
       // The double carries a relation inline: the decline reads the order's position.
       if (card) card.position = db.store.position[0];
-      if (card) await decline(new Request(`http://x/api/proposals/${card.id}/reject`, { method: "POST", body: "{}" }), { params: Promise.resolve({ orderId: card.id }) });
+      if (card) {
+        const res = await decline(new Request(`http://x/api/proposals/${card.id}/reject`, { method: "POST", body: JSON.stringify(rest[0] ?? {}) }), { params: Promise.resolve({ orderId: card.id }) });
+        answers.push((await res.json()) as Record<string, unknown>);
+      }
     } else {
       await proposalExpiry({ step });
       if (kind === "pass" || kind === "close") {
@@ -162,6 +167,7 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
     proposals: proposals.map((o) => ({ at: (o.createdAt as Date).toISOString().slice(0, 16), status: o.status, triggerIds: o.triggerIds, expiresAt: o.expiresAt ?? null, withdrawnReason: o.withdrawnReason ?? null })),
     runs: runs.length,
     mornings,
+    answers,
   };
 }
 
@@ -240,5 +246,33 @@ describe("Hold: quiet until the line re-arms, or a new line", () => {
       ["2026-11-09T14:30", "AWAITING_APPROVAL", [FLOOR.NVDA]],
     ]);
     expect(state(r)[TRAIL]?.held?.at).toBe("2026-11-03T14:52:58.000Z");
+  });
+});
+
+// The card's second answer: Hold with a new line, one request through the decline route.
+describe("Hold with a new line (the card)", () => {
+  it("NVDA, held on 11-03 with a new line at $190: the floor becomes $190 at once, the trail stays held, and 11-09's break of $190 is a new card", async () => {
+    const line = { watch: "price", is: "below", value: 190 };
+    const events = (fixture.stocks.NVDA.events as Ev[]).filter((e) => e[0] !== "decline");
+    const r = await month("NVDA", [["decline", "2026-11-03T14:52:58Z", { line }]], events);
+    expect(r.answers[0]).toMatchObject({ ok: true, line: { id: FLOOR.NVDA, predicate: line, fireMode: "ASK_NOW", source: "PRINCIPAL" } });
+    expect(r.answers[0].lineError).toBeUndefined();
+    expect(r.proposals.map((p) => [p.at, p.status, p.triggerIds])).toEqual([
+      ["2026-10-14T18:01", "REJECTED", [FLOOR.NVDA, NVDA_TRAIL_12, TRAIL]],
+      ["2026-11-09T14:30", "AWAITING_APPROVAL", [FLOOR.NVDA]],
+    ]);
+    const state = (r.db.store.thesis[0] as { triggerState: Record<string, { held?: unknown }> }).triggerState;
+    expect(state[FLOOR.NVDA]?.held).toBeUndefined();
+    expect(state[TRAIL]?.held).toBeDefined();
+  });
+});
+
+describe("the card's line, as it reads now", () => {
+  it("a sell line is its level; a trail is its level off the tracked high; a trigger no longer on the stock is skipped", () => {
+    const floor = { id: "f", action: "EXIT", predicate: { watch: "price", is: "below", value: 236 }, rationale: "" } as never;
+    const trail = { id: "t", action: "EXIT", predicate: { watch: "move", is: "below", value: 6, variable: "peak" }, rationale: "" } as never;
+    expect(cardLine([floor, trail], ["gone", "f"], { peak: 242.505, direction: "LONG" })).toEqual({ price: 236, sentence: "Sell if below $236" });
+    expect(cardLine([floor, trail], ["t"], { peak: 210.25, direction: "LONG" })).toEqual({ price: 197.64, sentence: expect.stringContaining("6%") });
+    expect(cardLine([floor], ["gone"], { peak: null, direction: "LONG" })).toBeNull();
   });
 });
