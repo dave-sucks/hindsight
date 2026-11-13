@@ -1,7 +1,7 @@
 /**
  * The Writer gets what the chat found (2026-11-13): the chat's web searches
- * on the stock, with their links, and our trade results on it. Nothing the
- * Writer's own pull fetches (the news, filings, the calendars, the quote).
+ * on the stock, with their links. Nothing the Writer's own pull fetches (the
+ * news, filings, the calendars, the quote, our trades on the stock).
  *
  * Two real chats, each as the dispatch tool received it: the saved thread up
  * to the dispatch, converted the way the chat route converts it
@@ -55,7 +55,7 @@ describe("the rules", () => {
     expect(chatFindings("NOW", search("b", "NOW guidance raise", [{ headline: "Guidance", summary: "raised", tickers: [] }]))).toBe('### web_search "NOW guidance raise"\n- Guidance · raised');
   });
 
-  it("our trade results on the stock are carried; the pull's own tools never are", () => {
+  it("the pull's own tools are never carried, our trade results included (the Writer's data block has them)", () => {
     const m = [
       call("t", "read_trade_results", { ticker: "AAOI" }),
       result("t", "read_trade_results", { items: [{ kind: "ticker", ticker: "AAOI", text: "Sold 2026-10-02 at the stop, −8.1%" }, { kind: "ticker", ticker: "MU", text: "won" }] }),
@@ -64,7 +64,7 @@ describe("the rules", () => {
       call("c", "get_catalyst_calendar", {}),
       result("c", "get_catalyst_calendar", { events: [{ ticker: "AAOI", kind: "EARNINGS", eventDate: "2027-02-25" }] }),
     ];
-    expect(chatFindings("AAOI", m)).toBe("### read_trade_results\n- Sold 2026-10-02 at the stop, −8.1%");
+    expect(chatFindings("AAOI", m)).toBeNull();
   });
 
   it("nothing on the stock is no section; a long one is cut at the cap, newest kept", () => {

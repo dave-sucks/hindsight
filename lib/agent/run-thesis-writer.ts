@@ -48,7 +48,6 @@ import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
-import { z } from "zod";
 import { anthropic } from "@ai-sdk/anthropic";
 import { modelFor } from "@/lib/agent/model";
 import { prisma } from "@/lib/prisma";
@@ -70,15 +69,16 @@ import {
 } from "@/lib/agent/thesis-research/parse-sections";
 import {
   droppedTrigger,
-  thesisDecisionSchema,
+  submitThesisInput,
   validateThesisDecision,
   type DroppedItem,
+  type ThesisDecisionInput,
   type ValidatedThesisDecision,
 } from "@/lib/agent/thesis-research/decision";
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
 import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
-import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { parseTriggersResilient, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { describeTrigger } from "@/lib/agent/triggers/ops";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -1408,7 +1408,12 @@ export function buildWriterSaveCall(
   // A refresh the chat asked for keeps the levels the row has; it may fill an empty one (ruling 2026-10-15).
   const keptIds = new Map((existing?.keep ?? []).flatMap((t) => { const slot = levelSlotOf(t, existing?.direction ?? null); return slot && t.id ? [[t.id, slot] as const] : []; }));
   const kept = new Set(keptIds.values());
-  const slotOf = (t: unknown) => levelSlotOf(t as Trigger, existing?.direction ?? null);
+  // A decision's trigger is in the model's shape until the save converts it; its slot is read off the stored shape,
+  // where a line ({ value: "sma50" } as written) is a variable and no price level.
+  const slotOf = (t: unknown) => {
+    const asStored = triggerInputSchema.safeParse(t);
+    return levelSlotOf((asStored.success ? asStored.data : t) as Trigger, existing?.direction ?? null);
+  };
   const keeps = (t: unknown) => { const slot = slotOf(t); return slot != null && kept.has(slot); };
   const word = { ENTRY: "entry", FLOOR: "stop", TARGET: "target" } as const;
   const own = [
@@ -1647,8 +1652,9 @@ export function makeSubmitThesisTool(opts: {
     // an integer, "For 'integer' type, properties maximum, minimum are not
     // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
     // would mean moving every range into a description.)
-    inputSchema: thesisDecisionSchema,
-    execute: async (raw: z.infer<typeof thesisDecisionSchema>) => {
+    // The model's call reaches execute as it wrote it: a trigger is converted to its stored shape once, by the save.
+    inputSchema: submitThesisInput,
+    execute: async (raw: ThesisDecisionInput) => {
       const attempt = opts.onAttempt();
       const v = validateThesisDecision(raw, opts.validate);
       if (!v.ok) {

@@ -49,11 +49,13 @@ The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) com
 
 Before the model starts, code pulls seven data sets at once: five years of statements, the earnings record, insider trades, peers, analyst coverage, recent filings, and the price and chart. A source that fails is named as missing, never guessed. That data is the ground truth for every number in the note.
 
+The same pull reads our own history with the stock, and the data block opens with it: what we hold, each trade we closed on it and how it ended, the last thesis (its status, conviction and what it believed), and other analysts' coverage and trades on it. A stock we have never touched gets no such section.
+
 Then up to four web searches fill in what data can't: the call, the guidance, what changed this week. Every paragraph names its source, and a catalyst dated after today is written as expected, never as reported.
 
 It also reads what the agent that sent the stock found first: its reason, its notes (the numbers it pulled, what it read) and, when the stock came from someone's thesis, the post or article itself, with who wrote it, the link and the day. It tests that author's claims against the data and says which held. The thesis keeps the author as where it came from, shown on its first Activity line.
 
-When a chat sends the stock, code also hands over what the Writer can't pull itself: the chat's web searches on the stock, with their links, and our trade results on it. The model doesn't retype them; they arrive under "What the chat already found" in the Writer's first message (newest first, about 12,000 characters at most), and the Writer searches only for what they leave open. Everything its own pull fetches (the news, filings, the calendars, prices, the Street) comes fresh from that pull, never as a second copy. The run page's Context shows the section as sent.
+When a chat sends the stock, code also hands over what the Writer can't pull itself: the chat's web searches on the stock, with their links. The model doesn't retype them; they arrive under "What the chat already found" in the Writer's first message (newest first, about 12,000 characters at most), and the Writer searches only for what they leave open. Everything its own pull fetches (the news, filings, the calendars, prices, the Street, our trades on the stock) comes fresh from that pull, never as a second copy. The run page's Context shows the section as sent.
 
 ## What it decides
 
@@ -94,10 +96,10 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 `claude-sonnet-4-6` with Anthropic's web search, up to 4 searches (`WEB_SEARCH_MAX_USES`) and 8 steps.
 
 #### Pipeline
-`lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts`; the decision's checks in `thesis-research/decision.ts`.
+`lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts` (our history with the stock is `get_stock_data`'s `priorCoverage`, printed first by `format-data-block.ts`); the decision's checks in `thesis-research/decision.ts`.
 
 #### Saved through
-`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry (120 s at most). A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.
+`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save. Its input reaches the tool as the model wrote it (`submitThesisInput`: checked against the schema the model is sent, never converted), so each trigger is converted to its stored shape once, by the save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry (120 s at most). A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (the research call, or its save retry), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

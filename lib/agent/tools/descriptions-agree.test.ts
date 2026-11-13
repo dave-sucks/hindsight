@@ -19,7 +19,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
-import { zodSchema } from "ai";
+import { asSchema, zodSchema } from "ai";
 import { createResearchTools } from "@/lib/agent/tools";
 
 type Prop = { description?: string; anyOf?: Prop[] } | undefined;
@@ -64,7 +64,7 @@ describe("field descriptions agree with the save", () => {
 describe("the thesis fields, defined once", () => {
   it("record_thesis, update_thesis and the writer's submit_thesis say the same thing", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
-    const submit = zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, { description?: string }> };
+    const submit = asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, { description?: string }> };
     for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "conviction", "conviction_rationale", "variant_view", "stop_basis", "target_basis", "entry_on_close", "entry_price", "target_price", "stop_loss", "direction", "horizon"]) {
       const words = describe_("record_thesis", field);
       expect(words).not.toBe("");
@@ -75,14 +75,14 @@ describe("the thesis fields, defined once", () => {
 
   it("the same field under two names says the same thing", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
-    const submit = zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
+    const submit = asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
     expect(describe_("update_thesis", "price_at_time")).toBe(describe_("record_thesis", "current_price"));
     expect(wordsOf(submit.properties.prior_exit_acknowledgment)).toBe(describe_("record_thesis", "acknowledge_prior_exit"));
   });
 
   it("update_thesis and the writer word the trigger edits the same", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
-    const submit = zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
+    const submit = asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
     for (const field of ["add_triggers", "edit_triggers", "remove_trigger_ids"]) {
       expect(describe_("update_thesis", field)).not.toBe("");
       expect(wordsOf(submit.properties[field])).toBe(describe_("update_thesis", field));
@@ -133,7 +133,7 @@ describe("no oneOf in any tool an agent is sent", () => {
   }
   it("thesis-writer (submit_thesis)", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
-    expect(JSON.stringify(zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema)).not.toContain('"oneOf"');
+    expect(JSON.stringify(asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema)).not.toContain('"oneOf"');
   });
 });
 

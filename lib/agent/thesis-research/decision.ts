@@ -4,21 +4,22 @@
  *
  * The research model writes the 9-section note as plain text (parsed
  * server-side by parse-sections.ts) and finishes by calling submit_thesis
- * with THIS object — decision fields only, ~1-2k chars. The boundary
- * schema is deliberately LOOSE (everything beyond direction/horizon is
- * optional, triggers are unknown[]) so a malformed call never throws out
- * of the SDK loop; validateThesisDecision() does the real enforcement and
- * returns itemized errors the model repairs in its next step. That repair
- * loop replaces the V1 failure mode where a 25k-char record_thesis payload
- * bounced off Zod and cost ~3 minutes of full regeneration per bounce.
+ * with THIS object — decision fields only, ~1-2k chars. Everything beyond
+ * direction/horizon is optional; a trigger the schema can't read is handed
+ * back by the SDK with the schema's sentence. validateThesisDecision() does
+ * the rest and returns itemized errors the model repairs in its next step.
+ * That repair loop replaces the V1 failure mode where a 25k-char
+ * record_thesis payload bounced off Zod and cost ~3 minutes of full
+ * regeneration per bounce.
  *
  * Field names mirror record_thesis / update_thesis args 1:1 so the persist
  * phase can splat them through without a mapping layer.
  */
 
 import { z } from "zod";
-import { choiceInValue, editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
-import { MEASURES, shapeOf, type Watch } from "@/lib/agent/triggers/condition";
+import { jsonSchema, zodSchema, type Schema } from "ai";
+import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
+import { shapeOf } from "@/lib/agent/triggers/condition";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
@@ -70,7 +71,32 @@ export const thesisDecisionSchema = z.object({
   remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
 });
 
-export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;
+/** The decision as the model wrote it: each trigger in the condition shape the save reads, not yet the stored one. */
+export type ThesisDecisionInput = z.input<typeof thesisDecisionSchema>;
+
+/**
+ * submit_thesis's input as the SDK reads it. The model is sent
+ * thesisDecisionSchema's own JSON schema and its call is checked against it,
+ * but the tool gets the call as the model wrote it, not zod's output, whose
+ * triggers are already converted to their stored shape (`toStored`, a
+ * filing or a line moved from `value` to `variable`). The save converts each
+ * trigger once, on its own schema, and refuses the stored shape: from #770
+ * (2026-10-06) to 2026-11-13 the Writer handed the save its converted copy,
+ * so every filing trigger and every price against an average it wrote was
+ * refused (PRAX and AAOI lost whole theses), and its retries quoted the model
+ * a converted call it never wrote.
+ */
+export const submitThesisInput: Schema<ThesisDecisionInput> = asWritten(thesisDecisionSchema);
+
+function asWritten<S extends z.ZodType>(schema: S): Schema<z.input<S>> {
+  const checked = zodSchema(schema);
+  return jsonSchema<z.input<S>>(() => checked.jsonSchema, {
+    validate: async (value) => {
+      const result = await checked.validate!(value);
+      return result.success ? { success: true, value: value as z.input<S> } : result;
+    },
+  });
+}
 
 /** A decision that passed validation; triggers are the parsed, typed array. */
 export interface ValidatedThesisDecision
@@ -415,11 +441,9 @@ export function validateThesisDecision(
 /**
  * Read one model-authored trigger through the save's own schema
  * (`triggerInputSchema`, the one record_thesis and update_thesis parse), so
- * what the decision keeps is what the save takes. Until 2026-11-13 this read
- * the STORED shape: a filing sent as the save wants it ({value:"item:8.01"})
- * was dropped here, and one sent as stored ({variable:"item:8.01"}) passed
- * here and was refused by the save (PRAX and AAOI lost whole theses to it).
- * Returns the trigger as the save will read it, or nothing and what was
+ * what the decision keeps is what the save takes, in the model's own shape:
+ * the save converts it to the stored shape, once (`submitThesisInput` says
+ * why). Returns the trigger as the save will read it, or nothing and what was
  * dropped and why (it goes on the stock as a "Not applied" line).
  */
 export function readOneTrigger(item: unknown): { trigger: WriterTrigger | null; note: string | null; dropped?: DroppedItem } {
@@ -429,13 +453,6 @@ export function readOneTrigger(item: unknown): { trigger: WriterTrigger | null; 
   const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
   const pred = obj?.predicate && typeof obj.predicate === "object" ? (obj.predicate as Record<string, unknown>) : null;
   const kind = typeof pred?.kind === "string" ? pred.kind : typeof pred?.watch === "string" ? pred.watch : "(none)";
-
-  // The choice written where storage keeps it: a filing or a line in `variable`, `value` empty. Same meaning, moved.
-  if (pred && pred.value == null && typeof pred.variable === "string" && choiceInValue(MEASURES[pred.watch as Watch])) {
-    const { variable, ...rest } = pred;
-    const moved = { ...obj, predicate: { ...rest, value: variable } };
-    if (reads(moved)) return { trigger: moved as WriterTrigger, note: null };
-  }
 
   // An invented review kind with a day count ("REVIEW_AFTER_DAYS", IBRX
   // 2026-09-25) means "look again in N days" — the review cadence.

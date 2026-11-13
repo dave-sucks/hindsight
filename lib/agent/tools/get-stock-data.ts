@@ -91,8 +91,9 @@ export const getStockData = defineTool({
           ticker,
         })
       : null;
+    // The Writer reads this in its data block and has no get_theses to look the rest up with.
     const priorCoverageNote = priorCoverage
-      ? formatTickerHistory(priorCoverage)
+      ? formatTickerHistory(priorCoverage, { lookup: ctx.runMode !== "THESIS_WRITER" })
       : null;
     // The chat row gets a one-liner; the full paragraph goes to the model.
     const priorCoverageChip = priorCoverage

@@ -659,7 +659,7 @@ export function heldDaysOf(
  * nothing rather than assert "no prior coverage," which would be a false
  * statement in the failure case.
  */
-export function formatTickerHistory(h: TickerHistory): string | null {
+export function formatTickerHistory(h: TickerHistory, opts: { lookup?: boolean } = {}): string | null {
   if (!h.loaded) return null;
   if (
     !h.thesis &&
@@ -717,9 +717,12 @@ export function formatTickerHistory(h: TickerHistory): string | null {
     if (t.coreBelief) {
       parts.push(`What we believed: "${t.coreBelief.trim()}"`);
     }
-    parts.push(
-      `Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: ["${h.ticker}"], status: ["${t.status}"], include_history: true).`,
-    );
+    // Only for a reader that has get_theses (the Writer has not).
+    if (opts.lookup !== false) {
+      parts.push(
+        `Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: ["${h.ticker}"], status: ["${t.status}"], include_history: true).`,
+      );
+    }
   }
 
   if (h.otherSeatCoverage.length) {
