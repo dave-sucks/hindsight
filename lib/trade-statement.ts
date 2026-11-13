@@ -125,3 +125,13 @@ export function buildTradeSentence(i: TradeStatementInput): string | null {
     }
   }
 }
+
+/**
+ * When a proposal was made and at what price: "Proposed at $230.10 on Nov 13,
+ * 3:36 PM" (Eastern time). A proposal made before the price was kept
+ * (2026-11-14) reads "Proposed Nov 13, 3:36 PM".
+ */
+export function proposedLine(at: string, price: number | null | undefined): string {
+  const when = new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+  return price != null && price > 0 ? `Proposed at $${price.toFixed(2)} on ${when}` : `Proposed ${when}`;
+}

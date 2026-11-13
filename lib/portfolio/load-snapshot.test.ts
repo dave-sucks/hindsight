@@ -28,6 +28,7 @@ const getLiveQuotes = jest.fn();
 jest.mock("@/lib/market-data/live-quote", () => ({ getLiveQuotes: (...a: unknown[]) => getLiveQuotes(...a) }));
 
 import { loadPortfolioSnapshot, nyMidnight } from "./load-snapshot";
+import { PROPOSED } from "@/lib/proposals/staged";
 
 const NOW = new Date("2026-11-12T03:00:00Z"); // 10 PM ET, Nov 11
 type Where = { status?: unknown; side?: string; positionId?: string; symbol?: string; position?: { analystId?: string }; createdAt?: { gt: Date } };
@@ -78,10 +79,10 @@ describe("the snapshot at 10 PM ET", () => {
       { side: "BUY", ticker: "WST", shares: 21, firstProposed: "2026-10-29T14:35:00.000Z", times: 3, note: "WST is over its buy level.", analyst: "Analyst One" },
     ]);
     const buyQuery = order.findMany.mock.calls.map((c) => c[0]).find((a) => a.where.symbol === "WST");
-    expect(buyQuery.where).toMatchObject({ side: "BUY", expiresAt: { not: null }, position: { accountId: "acct", analystId: "a1" }, createdAt: { gt: new Date("2026-10-28T14:00:00Z") } });
-    // Broker rejections were never proposals: only orders with an expiry count.
+    expect(buyQuery.where).toMatchObject({ side: "BUY", ...PROPOSED, position: { accountId: "acct", analystId: "a1" }, createdAt: { gt: new Date("2026-10-28T14:00:00Z") } });
+    // Broker rejections were never proposals: only orders with an expiry, or a trigger's sale card, count.
     const sellQuery = order.findMany.mock.calls.map((c) => c[0]).find((a) => a.where.positionId === "p1");
-    expect(sellQuery.where).toMatchObject({ expiresAt: { not: null } });
+    expect(sellQuery.where).toMatchObject(PROPOSED);
   });
 
   it("a stock with no trade that day (its quote is older) is flat", async () => {

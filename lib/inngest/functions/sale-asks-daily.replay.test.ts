@@ -1,5 +1,8 @@
 /**
- * A stock under its sell line asks again every trading day.
+ * A sale proposal with a 24-hour deadline asks again every trading day once it
+ * lapses. Since 2026-11-14 only a sale no trigger made has one (and those made
+ * before then): a trigger's sale stays open while its line holds, tested in
+ * lib/proposals/trigger-proposals.replay.test.ts. These are the older proposals.
  *
  * ASML (Secular Compounder, LIVE): its $1835 floor (1-day wait) proposed a sale
  * 2026-10-22 13:45:42Z that expired 10-23 13:45:42Z. The 10-23 13:45:17Z pass

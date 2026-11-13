@@ -21,6 +21,7 @@ import {
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
 } from "@/lib/proposals/maybe-await-approval";
+import { answers } from "@/lib/proposals/staged";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
@@ -696,6 +697,8 @@ export const placeTrade = defineTool({
           intent: "OPEN",
           environment: positionEnvironment,
           rationale: proposalRationale,
+          triggerIds: answers(ctx.firedTrigger, ticker, "BUY"),
+          proposedPrice: args.entry_price,
         });
         if (awaiting?.state === "awaiting_approval") {
           return {

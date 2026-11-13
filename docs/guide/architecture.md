@@ -42,7 +42,7 @@ Eastern time, on trading days unless it says otherwise.
 - **7:30 AM:** The [Market Reviewer](agents/market-reviewer.md), one run per book being traded: it researches the market itself and saves the market digest, and a note on each stock its research touched (a high-impact one puts the stock on the 8 AM run's list).
 - **8:00 AM:** Morning runs, on each analyst's run days.
 - **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
-- **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty.
+- **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty (a proposal a trigger made has none: the 4:20 PM trigger pass withdraws it on a close back past its line).
 - **10:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { proposedLine } from "@/lib/trade-statement";
 import { MoreVertical, Plus } from "lucide-react";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { StockLogo } from "@/components/StockLogo";
@@ -55,6 +56,8 @@ export interface TradeRowShellProps {
   secondary?: React.ReactNode;
   /** Bottom-right content (P&L badge). */
   trailingBottom?: React.ReactNode;
+  /** A third line, very small and muted (a proposal's "Proposed at $230.10 on Nov 13, 3:36 PM"). */
+  tertiary?: React.ReactNode;
   /** Kebab-menu actions, shown on hover at the right edge. */
   menuItems?: RowMenuItem[];
   flash?: "win" | "loss";
@@ -73,6 +76,7 @@ export function TradeRowShell({
   trailingTop,
   secondary,
   trailingBottom,
+  tertiary,
   menuItems,
   flash,
   className,
@@ -101,6 +105,7 @@ export function TradeRowShell({
             )}
           </div>
         )}
+        {tertiary !== undefined && <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums truncate">{tertiary}</div>}
       </div>
     </>
   );
@@ -285,6 +290,9 @@ interface TradeRowProps {
     quantity: number;
     /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
     expiresAt?: string;
+    /** ISO — when it was proposed, and the price then (null before 2026-11-14): the row's third line. */
+    proposedAt?: string;
+    proposedPrice?: number | null;
     /**
      * Approved, sent to Alpaca, not filled yet. The row stays exactly where it
      * was and reads a shimmering "Executing" in the verb's place, so approving
@@ -457,6 +465,7 @@ export function TradeRow({
           {dateStr && <> · {dateStr}</>}
         </>
       }
+      tertiary={isAwaitingApproval && !isExecuting && pendingProposal.proposedAt ? proposedLine(pendingProposal.proposedAt, pendingProposal.proposedPrice) : undefined}
       trailingBottom={
         isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>

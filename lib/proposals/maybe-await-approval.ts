@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { sendProposalPendingEmail } from "@/lib/emails/proposal-pending";
 import { sendProposalPendingPush } from "@/lib/notify/proposal-push";
 import { emitProposalPending } from "@/lib/proposals/proposal-events";
+import { staged } from "@/lib/proposals/staged";
 
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
@@ -39,13 +40,18 @@ export interface MaybeAwaitApprovalArgs {
    * it's the manage_position / close_position `reason` arg.
    */
   rationale: string | null;
+  /** The triggers whose fire this buy or add answers: its proposal stays open while they hold (trigger-proposals.ts). */
+  triggerIds?: string[];
+  /** The live price the tool read, shown with the proposal. */
+  proposedPrice?: number | null;
 }
 
 export interface AwaitingApprovalResult {
   state: "awaiting_approval";
   orderId: string;
   positionId: string;
-  expiresAt: Date;
+  /** Null on a trigger's proposal: open while its trigger holds (lib/proposals/trigger-proposals.ts). */
+  expiresAt: Date | null;
   rationale: string | null;
 }
 
@@ -155,8 +161,11 @@ export async function approvalRequired(
       : account.requireApprovalSellsPaper;
 }
 
-/** How long a proposal waits for the principal before it expires. */
-export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a proposal waits for the principal before it expires. Not one a
+ * trigger proposed: that stays open while its trigger holds (trigger-proposals.ts).
+ */
+export { PROPOSAL_TTL_MS } from "@/lib/proposals/staged";
 
 /**
  * Tell the principal a proposal is waiting. Fire-and-forget — call it after
@@ -204,10 +213,13 @@ export async function maybeAwaitApproval(
   //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
   //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
-  // Repeat-fatigue is never cured by silence: the sale asks every day its
-  // condition holds, and only the principal lowers the line (2026-10-13).
+  // Repeat-fatigue is never cured by silence. A sale a trigger proposes stays
+  // open while the trigger holds and comes down on a close back past it
+  // (2026-11-13, trigger-proposals.ts); only the principal lowers the line.
 
-  const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MS);
+  // A trigger's buy or add stays open while the trigger holds; any other lapses in 24 hours.
+  const proposal = staged(args.triggerIds, new Date());
+  const expiresAt = proposal.expiresAt;
 
   // Flip the just-created rows to the awaiting-approval state. For an ADD the
   // Position is an existing OPEN holding — leave its status alone; only
@@ -224,8 +236,9 @@ export async function maybeAwaitApproval(
       where: { id: args.orderId },
       data: {
         status: "AWAITING_APPROVAL",
-        expiresAt,
+        ...proposal,
         rationale: args.rationale,
+        proposedPrice: args.proposedPrice ?? null,
       },
     });
   });
@@ -313,9 +326,9 @@ export function awaitingApprovalEnvelope(opts: {
     state: "awaiting_approval" as const,
     orderId: opts.awaiting.orderId,
     positionId: opts.awaiting.positionId,
-    expiresAt: opts.awaiting.expiresAt.toISOString(),
+    expiresAt: opts.awaiting.expiresAt?.toISOString() ?? null,
     rationale: opts.awaiting.rationale,
-    message: `Proposed ${human} ${opts.shares} ${opts.ticker} at ~$${opts.estimatedPrice.toFixed(2)}. Awaiting your approval (expires in 24h).`,
+    message: `Proposed ${human} ${opts.shares} ${opts.ticker} at ~$${opts.estimatedPrice.toFixed(2)}. Awaiting your approval (${opts.awaiting.expiresAt ? "expires in 24h" : "open until answered, or until the stock closes back past the line"}).`,
     items: [
       {
         kind: "proposal" as const,
@@ -326,7 +339,7 @@ export function awaitingApprovalEnvelope(opts: {
         shares: opts.shares,
         estimatedPrice: opts.estimatedPrice,
         estimatedCost: cost,
-        expiresAt: opts.awaiting.expiresAt.toISOString(),
+        expiresAt: opts.awaiting.expiresAt?.toISOString() ?? null,
         rationale: opts.awaiting.rationale,
       },
     ],

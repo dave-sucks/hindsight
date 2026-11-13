@@ -19,7 +19,9 @@ stamps them onto the thesis: a thesis rung beats every rule above it, so a
 stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 `resolved.ladderHealth` + the `UNPROTECTED_GAIN` needsAction flag nag winners
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
-Every trade a fire leads to goes through the approval switch (on: a proposal). **On fire
+Every trade a fire leads to goes through the approval switch (on: a proposal,
+which has no 24 hours: it waits while its trigger holds and the 16:20 ET close
+pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On fire
 is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
 the same trigger run then writes it up with no trade tools, and its note is the

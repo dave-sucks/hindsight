@@ -168,6 +168,7 @@ export type EventKind =
   | "approved"
   | "declined"
   | "expired"
+  | "withdrawn"
   | "proposed"
   | "unknown";
 
@@ -209,6 +210,8 @@ export function eventKind(u: TimelineUpdate): EventKind {
       return "declined";
     case "PROPOSAL_EXPIRED":
       return "expired";
+    case "PROPOSAL_WITHDRAWN":
+      return "withdrawn";
     case "PROPOSAL_PROPOSED":
       return "proposed";
     default:
@@ -243,6 +246,8 @@ const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate
   approved:           { primary: "Approved",         secondary: tradeSentence },
   declined:           { primary: "Declined",         secondary: proposalSideQty },
   expired:            { primary: "Expired",          secondary: (u) => proposalSideQty(u) ? `${proposalSideQty(u)} — no decision` : "no decision" },
+  // A trigger's sale card the close pass took down; its summary is "Withdrawn: closed at $238.10, back above $236".
+  withdrawn:          { primary: "Withdrawn",        secondary: (u) => [proposalSideQty(u), (u.summary ?? "").replace(/^Withdrawn:\s*/, "")].filter(Boolean).join(" — ") || null },
   proposed:           { primary: "Proposed",         secondary: proposedSecondary },
   unknown:            { primary: "",                 secondary: () => null },
 };
@@ -399,6 +404,7 @@ const DOTS: Record<EventKind, DotKind> = {
   closed: "sell",
   declined: "declined",
   expired: "declined",
+  withdrawn: "default",
   proposed: "open-ask",
   approved: "default",
   fired: "default",
@@ -427,7 +433,7 @@ export function dotFor(u: TimelineUpdate): DotKind {
 export function proposalOutcomeWord(u: TimelineUpdate): string | null {
   if (eventKind(u) !== "proposed" || isAwaiting(u)) return null;
   const status = (u.fieldChanges as { proposal?: { to?: { status?: unknown } } } | null)?.proposal?.to?.status;
-  return status === "EXPIRED" ? "— expired" : status === "REJECTED" ? "— declined" : typeof status === "string" ? "— approved" : null;
+  return status === "EXPIRED" ? "— expired" : status === "WITHDRAWN" ? "— withdrawn" : status === "REJECTED" ? "— declined" : typeof status === "string" ? "— approved" : null;
 }
 
 // ── Timeline assembly (grouping · clustering · spans) ────────────────────────

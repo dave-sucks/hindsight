@@ -54,7 +54,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 | Buy | **Once**, on the day the price crosses its level. Not again while the price stays past it; only a new crossing fires it again. |
 | Add | Again each time its rest period ends, while its condition holds. An Auto-add fires once. |
 | Trim | Again each time its rest period ends, while its condition holds. An Auto-trim fires once. |
-| Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; declined or left to expire, it asks again. |
+| Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; it waits until you answer it or the stock closes back past the line (4:20 PM). Declined, it asks again. |
 | Review | Again each time its rest period ends, while its condition holds. |
 
 **The rest period** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It comes with the kind of trigger:

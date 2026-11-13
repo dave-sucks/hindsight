@@ -42,7 +42,7 @@
  *
  * That filter once existed twice; this module is the one place the rule is
  * written, and `tools/get-theses.ts` and `complete_run` read it from here. The
- * rule: a CLOSE order the principal actually saw (`expiresAt` set), that
+ * rule: a CLOSE order the principal actually saw (`expiresAt` or `triggerIds` set), that
  * ended REJECTED or EXPIRED, tagged `closeReason: "STOP"` (a declined TARGET
  * exit means "let it run" — a different and benign hold), inside the window,
  * excluding systemic tombstones.
@@ -98,8 +98,9 @@ export function declinedSaleWhere(now: Date = new Date(), windowDays = DECLINED_
   return {
     intent: "CLOSE",
     status: { in: [...DECLINED_SALE_STATUSES, ...LAPSED_SALE_STATUSES] },
-    // expiresAt set = a card was actually staged in front of the principal.
-    expiresAt: { not: null },
+    // A card actually staged in front of the principal: a deadline, or (a
+    // trigger's proposal, which has none) the triggers it answers.
+    OR: [{ expiresAt: { not: null } }, { triggerIds: { isEmpty: false } }],
     // Protective only. A declined TARGET exit is "let it run".
     closeReason: "STOP",
     createdAt: { gte: new Date(now.getTime() - windowDays * 86_400_000) },
