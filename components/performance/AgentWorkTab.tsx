@@ -246,7 +246,7 @@ function Body({ w, stock }: { w: AgentWork; stock: (thesisId: string, ticker: st
             c.category, c.shown, c.stocks, c.days, c.quiet, c.triggerRuns, <OutcomeBar key="o" out={c.out} />,
           ])} />
       </Section>
-      <Section title="Listed, nothing written" description={`Stocks a morning run was shown and wrote nothing on: ${t.nothing} of ${t.workRows} work-list rows. Since #970 the close-out owes an answer on each one, so this should empty out.`}>
+      <Section title="Listed, nothing written" description={`Stocks a morning run was shown and wrote nothing on: ${t.nothing} of ${t.workRows} work-list rows. Since Nov 13 a morning run must answer each one before it can finish, so this should empty out.`}>
         <SimpleTable head={["Stock", "Analyst", ["Mornings", "num"], "Last", "Situations"]} empty="Every listed stock got an answer."
           rows={nothingByStock(w).map((x) => [stock(x.thesisId, x.ticker), x.analyst, x.n, <span key="d" className="tabular-nums">{x.last}</span>, <span key="c" className="text-xs text-muted-foreground">{x.codes.join(", ") || "—"}</span>])} />
       </Section>
@@ -299,7 +299,7 @@ function Body({ w, stock }: { w: AgentWork; stock: (thesisId: string, ticker: st
       </Section>
 
       <h2 className="text-lg font-medium">Proposals and stocks</h2>
-      <Section title="Proposals by stock" description="Every proposal waits 24 hours for you, then expires.">
+      <Section title="Proposals by stock" description="Each stock's proposals and how they ended.">
         <SimpleTable head={["Stock", ["Proposals", "num"], ["Expired", "num"], ["Filled", "num"], ["Declined", "num"], ["Waiting", "num"]]} empty="No proposals in this range."
           rows={w.proposals.map((p) => [stock(p.thesisId, p.ticker), p.total, p.status.EXPIRED ?? 0, p.status.FILLED ?? 0, p.status.REJECTED ?? 0, p.status.AWAITING_APPROVAL ?? 0])} />
       </Section>
