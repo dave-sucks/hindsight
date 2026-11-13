@@ -48,12 +48,12 @@ const ACTION_ICON_CONFIG: Record<
   TickerActionIcon,
   { Icon: React.ComponentType<{ className?: string }>; className: string }
 > = {
-  buy:           { Icon: PlusIcon,   className: "bg-emerald-500 text-white" },
-  sell:          { Icon: MinusIcon,  className: "bg-red-500 text-white" },
+  buy:           { Icon: PlusIcon,   className: "bg-positive text-white" },
+  sell:          { Icon: MinusIcon,  className: "bg-negative text-white" },
   watch:         { Icon: EyeIcon,    className: "bg-muted-foreground text-background" },
   unwatch:       { Icon: EyeOffIcon, className: "bg-muted-foreground text-background" },
-  "closed-win":  { Icon: CheckIcon,  className: "bg-emerald-500 text-white" },
-  "closed-loss": { Icon: XIcon,      className: "bg-red-500 text-white" },
+  "closed-win":  { Icon: CheckIcon,  className: "bg-positive text-white" },
+  "closed-loss": { Icon: XIcon,      className: "bg-negative text-white" },
   failed:        { Icon: BanIcon,    className: "bg-muted text-muted-foreground" },
 };
 

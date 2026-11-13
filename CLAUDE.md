@@ -583,8 +583,9 @@ it with a ticker chip as if it were a traded security.
 - NEVER create a new component if an existing one can be extended
 - ALL cards: use Card from shadcn, padding p-6, same border
 - ALL numbers: use tabular-nums class always
-- Positive P&L: text-emerald-500 ONLY
-- Negative P&L: text-red-500 ONLY
+- Positive P&L: text-positive ONLY (the `--positive` token, app/globals.css)
+- Negative P&L: text-negative ONLY (the `--negative` token)
+- The app's blue: brand-blue (the `--brand-blue` token)
 - Never hardcode hex colors, use CSS variables only
 - Page titles: text-2xl font-semibold
 - Section headers: text-lg font-medium

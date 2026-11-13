@@ -66,8 +66,8 @@ export function SituationsGrid({ situations }: { situations: readonly FrameworkS
                   title={lit ? codes.map((c) => byCode.get(c)?.name ?? c).join(", ") : "quiet: one line"}
                   className={cn(
                     "size-3 rounded-full border transition-all duration-500",
-                    lit ? "scale-125 border-blue-500 bg-blue-500" : "border-muted-foreground/40 bg-transparent",
-                    hot && "ring-4 ring-blue-500/25",
+                    lit ? "scale-125 border-brand-blue bg-brand-blue" : "border-muted-foreground/40 bg-transparent",
+                    hot && "ring-4 ring-brand-blue/25",
                   )}
                 />
               </span>
@@ -94,7 +94,7 @@ export function SituationsGrid({ situations }: { situations: readonly FrameworkS
               onMouseLeave={() => setHover(null)}
               className={cn("flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors", on ? "text-foreground" : "text-muted-foreground/60")}
             >
-              <span className={cn("size-1.5 shrink-0 rounded-full", on ? "bg-blue-500" : "bg-muted-foreground/30")} />
+              <span className={cn("size-1.5 shrink-0 rounded-full", on ? "bg-brand-blue" : "bg-muted-foreground/30")} />
               <span className="min-w-0 flex-1 truncate">{s.name}</span>
               <span className="text-xs tabular-nums">{s.chars.toLocaleString("en-US")}</span>
             </li>

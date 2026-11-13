@@ -64,10 +64,10 @@ export const TRADE_CARD_COLORS = {
   // truth: lib/utils.ts PNL_HEX. Don't drift these values — if the app
   // brand shifts, recompute via the OKLCH→sRGB script + 10% white mix and
   // update both PNL_HEX and here together.
-  positive: "#51b857",      // --positive (oklch 69.92% 0.166 144.58)
-  positiveBg: "#eef8ee",    // bg-positive/10 over white
-  negative: "#ff6d87",      // --negative (oklch 72.01% 0.178 11.8)
-  negativeBg: "#fff0f3",    // bg-negative/10 over white
+  positive: "#24AF54",      // --positive
+  positiveBg: "#e9f7ee",    // bg-positive/10 over white
+  negative: "#FC7029",      // --negative
+  negativeBg: "#fff1ea",    // bg-negative/10 over white
   // PROPOSED badge — same pattern as LIVE (light tint + saturated brand
   // text, NO border). Warm yellow at hue 85° matches the rest of the
   // warm-toned palette. Border removed per design — the tinted bg is
@@ -77,8 +77,8 @@ export const TRADE_CARD_COLORS = {
   amberBg: "#f8f3e6",       // 10% tint of amber over white
   // LIVE badge reuses the negative red so it pops the same as a loss in
   // the rest of the UI. Same tint, same brand red text — uniform pattern.
-  liveBg: "#fff0f3",
-  liveText: "#ff6d87",
+  liveBg: "#fff1ea",
+  liveText: "#FC7029",
 } as const;
 
 // ─── Types ───────────────────────────────────────────────────────────────────

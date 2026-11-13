@@ -8,8 +8,8 @@
  * badge on the axis, the 1D clock window with its off-hours dot texture, and
  * the padded value scale with the three floating labels down the left.
  *
- * SVG stroke/fill can't consume our oklch() theme vars, so the two line
- * colors are the sRGB hex of --positive / --negative. Keep in sync.
+ * The two line colors are the hex of --positive / --negative (app/globals.css).
+ * Keep in sync.
  */
 
 import type { ReactNode } from 'react';
@@ -22,8 +22,8 @@ import { INTRADAY_WINDOW_ET } from '@/lib/market-data/intraday-window';
 export const PLOT_TOP = 40;
 export const X_AXIS_HEIGHT = 30;
 
-export const LINE_GREEN = '#51b857';
-export const LINE_RED = '#ff6d87';
+export const LINE_GREEN = '#24AF54';
+export const LINE_RED = '#FC7029';
 export const AXIS_TICK = 'var(--muted-foreground)';
 /** The faint color of a reference line or a marker dot. */
 export const REF_LINE = 'var(--muted-foreground)';
