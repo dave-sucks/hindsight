@@ -11,12 +11,22 @@ import type { RequestRecord, viewOfRecord as ViewOf } from "@/lib/agent/run-requ
 type Handler = (ctx: { step: { run: (name: string, fn: () => unknown) => Promise<unknown> } }) => Promise<unknown>;
 type Row = { runId: string; role: string; content: string };
 
-async function runTheJob(reply: () => Promise<unknown>) {
+type Digest = { key: string; narrative: string; createdAt: Date };
+type Upsert = { where: unknown; create: { narrative: string }; update: Record<string, unknown> };
+
+/** `digests` is the PortfolioDigest table, kept across runs: an upsert updates the row its where matches, or adds one stamped now (the column's default). */
+async function runTheJob(reply: () => Promise<unknown>, digests: Digest[] = []) {
   const sent: unknown[] = [];
   const rows: Row[] = [];
   const runCreate = jest.fn(async () => ({ id: "run_digest" }));
   const runUpdate = jest.fn(async () => ({}));
-  const upsert = jest.fn(async () => ({}));
+  const upsert = jest.fn(async (a: Upsert) => {
+    const key = JSON.stringify(a.where);
+    const hit = digests.find((d) => d.key === key);
+    if (hit) Object.assign(hit, a.update);
+    else digests.push({ key, createdAt: new Date(), ...a.create });
+    return {};
+  });
   let handler: Handler | null = null;
   let viewOfRecord: typeof ViewOf | null = null;
   await jest.isolateModulesAsync(async () => {
@@ -102,6 +112,21 @@ describe("the 8 PM Portfolio Digest's run", () => {
     expect(view.chars).toBe(body.messages[0].content.length + body.messages[1].content.length);
     expect(view.raw).toEqual(body);
     expect(view.rawChars).toBe(JSON.stringify(body).length);
+  });
+
+  it("a second run on the same day saves its own text and its own written time", async () => {
+    const digests: Digest[] = [];
+    const reply = (text: string) => async () => ({ choices: [{ message: { content: text } }] });
+    // Thu Nov 12: by hand at 4:23 PM ET, then on schedule at 8:00 PM ET.
+    jest.useFakeTimers({ now: new Date("2026-11-12T21:23:00Z"), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask"] });
+    try {
+      await runTheJob(reply("Written by hand at 4:23."), digests);
+      jest.setSystemTime(new Date("2026-11-13T01:00:00Z"));
+      await runTheJob(reply("Written on schedule at 8."), digests);
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(digests).toEqual([expect.objectContaining({ narrative: "Written on schedule at 8.", createdAt: new Date("2026-11-13T01:00:00Z") })]);
   });
 
   it("ends FAILED when the model call fails, with the error kept; the digest is the plain facts, as before", async () => {

@@ -152,10 +152,12 @@ export const portfolioDigest = inngest.createFunction(
             facts: snapshot as unknown as object,
             model,
           },
+          // A second run on the same day replaces the text, so its written time moves with it.
           update: {
             narrative,
             facts: snapshot as unknown as object,
             model,
+            createdAt: new Date(),
           },
         });
       });
