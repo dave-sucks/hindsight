@@ -1692,15 +1692,6 @@ export function makeSubmitThesisTool(opts: {
 /** Save-time retry budget: the model sees the refusal and resubmits, once. */
 const SAVE_RETRY_TIMEOUT_MS = 120_000;
 const SAVE_RETRY_MAX_STEPS = 3;
-/** wait_for_thesis_refresh waits 300 s by default; the run ends inside it. */
-const CHAT_WAIT_MS = 280_000;
-const MIN_RETRY_MS = 30_000;
-
-/** How long the run has before the chat's wait runs out, from the run's own start. */
-async function timeLeftForChat(childRunId: string): Promise<number> {
-  const run = await prisma.researchRun.findUnique({ where: { id: childRunId }, select: { startedAt: true } });
-  return run?.startedAt ? CHAT_WAIT_MS - (Date.now() - run.startedAt.getTime()) : SAVE_RETRY_TIMEOUT_MS;
-}
 
 /**
  * What the save went without, on the run's own audit row in the shape
@@ -1743,8 +1734,6 @@ async function resubmitWithFeedback(input: {
   previous: unknown;
   /** The refusal, in the refuser's own words. */
   feedback: string;
-  /** How long it may take; never more than SAVE_RETRY_TIMEOUT_MS. */
-  timeoutMs?: number;
 }): Promise<{ decision: ValidatedThesisDecision | null; riskReward: number | null; attempts: number; messages: ModelMessage[] }> {
   const { args, pullOutput, analyst, existing } = input;
   if (!input.systemPrompt) return { decision: null, riskReward: null, attempts: 0, messages: [] };
@@ -1797,7 +1786,7 @@ async function resubmitWithFeedback(input: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: cachedTools(modeConfig.provider, { submit_thesis: submit }) as any,
       stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
-      abortSignal: AbortSignal.timeout(Math.min(SAVE_RETRY_TIMEOUT_MS, input.timeoutMs ?? SAVE_RETRY_TIMEOUT_MS)),
+      abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
     });
     await recordTokenUsage(
       args.childRunId,
@@ -1894,11 +1883,8 @@ export async function writerPersistPhase(
           outcome = await saveOnce(d);
         }
 
-        // ── One retry: hand the refusal back to the model, while the chat still waits ──
-        const leftMs = await timeLeftForChat(args.childRunId);
-        if (!outcome.thesisId && outcome.fixable && outcome.error && leftMs < MIN_RETRY_MS) {
-          outcome = { ...outcome, error: `${outcome.error} (not sent back to the Writer: under ${Math.round(MIN_RETRY_MS / 1000)} s left before the chat stops waiting)` };
-        } else if (!outcome.thesisId && outcome.fixable && outcome.error) {
+        // ── One retry: hand the refusal back to the model ───────────────
+        if (!outcome.thesisId && outcome.fixable && outcome.error) {
           await writePhaseEvent(
             args.childRunId,
             "Save refused — retrying once",
@@ -1916,7 +1902,6 @@ export async function writerPersistPhase(
             ctx,
             previous: d,
             feedback: `The save refused it: ${outcome.error}`,
-            timeoutMs: leftMs,
           });
           if (retried.decision) {
             d = retried.decision;

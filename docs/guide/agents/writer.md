@@ -94,7 +94,7 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 `lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts`; the decision's checks in `thesis-research/decision.ts`.
 
 #### Saved through
-`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry, which runs only while a chat's wait has time left. A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.
+`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry (120 s at most). A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (the research call, or its save retry), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

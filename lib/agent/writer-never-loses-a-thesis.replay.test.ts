@@ -94,7 +94,9 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
     });
     expect(refusal).toBeNull();
     expect(db.store.researchRun.at(-1)!.parameters).toMatchObject({ mode: "mint", existingThesisId: null, parentThesisId: c.passedThesis });
-    expect(result.summary).toContain("is passed, so this is new research on the stock, linked to it");
+    // In words: the ids stay in the run's parameters and the event.
+    expect(result.summary).toMatch(/Its thesis from [A-Z][a-z]{2} \d{1,2} is passed, so this is new research on the stock, linked to it\.$/);
+    expect(result.summary).not.toContain(c.passedThesis!);
   });
 
   it("with a live thesis on the stock, that one is refreshed instead", async () => {
@@ -105,6 +107,7 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
       mocks: { "@/lib/market-data/sec-filings": () => ({ fetchBookFilings: async () => ({ byTicker: new Map(), error: null }) }) },
     });
     expect(db.store.researchRun.at(-1)!.parameters).toMatchObject({ mode: "refresh", existingThesisId: "htfl_live", parentThesisId: null });
+    expect(String((db.store.researchRun.at(-1)!.parameters as { reason: string }).reason)).toMatch(/is passed, so its live thesis is refreshed instead\.$/);
   });
 
   it("its decision, sent as a mint sends triggers, saves linked to the passed thesis, which stays passed", async () => {

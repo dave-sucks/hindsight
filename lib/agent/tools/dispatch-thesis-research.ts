@@ -193,19 +193,19 @@ export const dispatchThesisResearch = defineTool({
     let parentThesisId: string | null = null;
     let sentAs: string | null = null;
     if (mode === "refresh" && existingThesisId) {
-      const last = await prisma.thesis.findUnique({ where: { id: existingThesisId }, select: { status: true } });
+      const last = await prisma.thesis.findUnique({ where: { id: existingThesisId }, select: { status: true, createdAt: true } });
       if (last && (last.status === "PASSED" || last.status === "RETIRED")) {
         const live = await prisma.thesis.findFirst({
           where: { ticker: T, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] }, researchRun: { agentConfigId: analyst.id } },
           orderBy: { createdAt: "desc" },
           select: { id: true },
         });
-        const was = last.status === "PASSED" ? "passed" : "retired";
+        const was = `Its thesis from ${last.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })} is ${last.status === "PASSED" ? "passed" : "retired"}`;
         if (live) {
-          sentAs = `Its thesis ${existingThesisId} is ${was}; the live one, ${live.id}, is refreshed instead.`;
+          sentAs = `${was}, so its live thesis is refreshed instead.`;
           existingThesisId = live.id;
         } else {
-          sentAs = `Its last thesis (${existingThesisId}) is ${was}, so this is new research on the stock, linked to it.`;
+          sentAs = `${was}, so this is new research on the stock, linked to it.`;
           mode = "mint";
           parentThesisId = existingThesisId;
           existingThesisId = undefined;
