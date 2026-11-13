@@ -29,7 +29,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   tactical: 14_910,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
-  writer: 16_884,
+  // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
+  writer: 16_983,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   chat: 35_807,
