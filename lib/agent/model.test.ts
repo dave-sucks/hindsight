@@ -105,7 +105,7 @@ describe("a trigger run", () => {
     });
     const out = (n: number) => (n === 1 ? { type: "function_call", id: "fc_1", call_id: "call_1", name: "update_thesis", arguments: JSON.stringify({ thesis_id: "v", rationale: "Held." }), status: "completed" } : { type: "message", id: "msg_2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Held.", annotations: [] }] });
     const net = network((n) => json({ id: `resp_${n}`, object: "response", created_at: 1, model: "gpt-5.4", status: "completed", output: [out(n)], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }));
-    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/agent/tools"];
+    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/agent/tools", "@/lib/market-data/load-market-numbers"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
       let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
@@ -114,6 +114,7 @@ describe("a trigger run", () => {
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
       jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn() }));
       jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
+      jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
       // The close-out writes its row, as update_thesis would.
       const review = async (a: { thesis_id: string; rationale: string }) => {
         const run = (db.store.researchRun as Array<{ id: string }>)[0];
@@ -152,7 +153,7 @@ describe("the chat", () => {
       { type: "message_stop" },
     ];
     const net = network(() => new Response(events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { status: 200, headers: { "content-type": "text/event-stream" } }));
-    const mods = ["@/lib/prisma", "@/lib/supabase/server", "@/lib/auth/account", "@/lib/actions/api-keys.actions", "@vercel/functions", "@/lib/agent/tools", "@/lib/actions/environment.actions", "@/lib/portfolio/load-snapshot"];
+    const mods = ["@/lib/prisma", "@/lib/supabase/server", "@/lib/auth/account", "@/lib/actions/api-keys.actions", "@vercel/functions", "@/lib/agent/tools", "@/lib/actions/environment.actions", "@/lib/portfolio/load-snapshot", "@/lib/market-data/load-market-numbers"];
     const user = (id: string, text: string) => ({ id, role: "user", parts: [{ type: "text", text }] });
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     const post = async (messages: unknown[]) =>
@@ -166,6 +167,7 @@ describe("the chat", () => {
         jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({}) }));
         jest.doMock("@/lib/actions/environment.actions", () => ({ getCurrentEnvironment: async () => "LIVE" }));
         jest.doMock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: async () => null }));
+        jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
         const { POST } = await import("@/app/api/agent/[mode]/route");
         const res = await POST(new Request("http://localhost/api/agent/principal", { method: "POST", body: JSON.stringify({ chatSessionId: "chat_1", messages }) }), { params: Promise.resolve({ mode: "principal" }) });
         await res.text();
@@ -189,7 +191,7 @@ describe("the chat", () => {
     const categories = view!(only.record).categories;
     expect(categories.map((c) => c.name)).toEqual(["Instructions", "First message", "The conversation so far", "Newest message", "Tool menu"]);
     // The newest message: the time, the Market and portfolio block cut at its headings, then the question.
-    expect(categories[3].sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", "Market digest", "Portfolio snapshot", "Portfolio digest"]);
+    expect(categories[3].sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", expect.stringMatching(/^Market numbers \(as of .+\)$/), "Market digest", "Portfolio snapshot", "Portfolio digest"]);
     expect(categories[3].sections.map((s) => s.text).join("")).toMatch(/Why hold it\?$/);
   });
 });
@@ -210,7 +212,7 @@ describe("the Writer", () => {
     };
     const reply = { id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-4-6", stop_reason: "tool_use", content: [{ type: "text", text: "## Company\nDyne makes a drug." }, { type: "tool_use", id: "toolu_1", name: "submit_thesis", input: DYN.last.input }], usage: { input_tokens: 1, output_tokens: 1 } };
     const net = network(() => json(reply));
-    const mods = ["@/lib/prisma", "@/lib/actions/finnhub.actions", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/performance/load-setup-scorecard"];
+    const mods = ["@/lib/prisma", "@/lib/actions/finnhub.actions", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/performance/load-setup-scorecard", "@/lib/market-data/load-market-numbers"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
       jest.doMock("@/lib/prisma", () => ({ prisma }));
@@ -219,6 +221,7 @@ describe("the Writer", () => {
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
       jest.doMock("@/lib/agent/knowledge/load-setup-overrides", () => ({ loadSetupOverrides: async () => ({}) }));
       jest.doMock("@/lib/performance/load-setup-scorecard", () => ({ loadScorecardLines: async () => [] }));
+      jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
       const { writerResearchPhase } = await import("@/lib/agent/run-thesis-writer");
       const pull = { rawDataBlock: "STRUCTURED DATA: $DYN", pullErrors: [], currentPrice: 16.51, chart: { atr14: null, pivot: null, brokenOut: null, sma20: null, sma50: null, daysSinceReport: null }, companyName: "Dyne Therapeutics", exchange: "NASDAQ", pulledAt: "2026-09-25T04:06:00.000Z", catalystOnFile: null };
       await writerResearchPhase({ childRunId: "writer_child_dyn", analystId: ANALYST, ticker: "DYN", mode: "mint", reason: "PRE_CATALYST dispatch." } as never, { ok: true, pull } as never);

@@ -68,10 +68,10 @@ export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; link
     {
       id: "portfolio",
       label: "Market and portfolio",
-      body: "The latest 7:30 market digest. Your portfolio snapshot, written by code when the request is built: the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you. Then the latest 8 PM portfolio digest.",
+      body: "The market numbers, written by code: the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY and our stocks reporting in the next 14 days. The latest 7:30 market digest. Your portfolio snapshot, written by code when the request is built: the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you. Then the latest 8 PM portfolio digest.",
       chars: null,
-      squares: 10,
-      source: "About 10,000 on the live book, Nov 12: the market digest about 4,600, the snapshot 3,000, the portfolio digest 2,000",
+      squares: 11,
+      source: "About 10,800 on the live book, Nov 12: the market numbers about 850, the market digest 5,300, the snapshot 2,600, the portfolio digest 2,000",
     },
     { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/how-it-works#tools", hrefLabel: "Catalog" },
     { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: `${linkBase}#read`, hrefLabel: "Zoom in" },

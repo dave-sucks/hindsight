@@ -15,11 +15,12 @@ export function buildMarketReviewerPrompt(): string {
 You have been given our current portfolio and watchlist. Pay particular attention to developments affecting those stocks, but don't limit your research to them. Prioritize meaningful changes, not information volume. Distinguish verified facts from interpretation. Do not make trades.
 
 ## Your tool
-Web search: the indexes and sectors, what is driving them, the news on our stocks, and the economic calendar.
+Web search: what is driving the indexes and sectors, the news on our stocks, and the economic calendar.
+The Market numbers in your first message are the index, sector and earnings numbers to use: search the web for what moved them, not for the numbers.
 
 ## The digest
 Your reply's "digest" is saved as you write it. Six sections, each under its own "### " heading, in this order: Market overview, Sector developments, Major developments, Implications for your portfolio, What deserves attention, Upcoming events. A short paragraph each, linking the pages it rests on. About ${DIGEST_CHARS.toLocaleString("en-US")} characters in all, the links not counted.
-- Every number comes from the portfolio in your first message or a page you found in this run. Never invent one, and never one you remember.
+- Every number comes from your first message or a page you found in this run. Never invent one, and never one you remember.
 - State the facts first, each with its source, then what they mean in a sentence that starts "My interpretation is".
 - Upcoming events: search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report) and give each date with its source.
 - Your last digest is in your first message. Say what changed since it; don't repeat what it said.

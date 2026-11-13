@@ -1,14 +1,18 @@
 /**
  * The Market and portfolio block every agent that decides on stocks is given:
- * the latest market digest, the portfolio snapshot, written for the request,
+ * the market numbers, written by code for the request, the latest market digest, the portfolio snapshot, written for the request,
  * and the latest portfolio digest, each digest from the last 4 days. A part
  * that can't be read says so; the block never throws.
  * Stand-in book (lib/agent/__fixtures__/portfolio-snapshot-standin.ts).
  */
 import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
 import { snapshotText } from "@/lib/portfolio/snapshot";
+import { STANDIN_MARKET_NUMBERS } from "@/lib/agent/__fixtures__/market-numbers-standin";
+import { marketNumbersText } from "@/lib/market-data/market-numbers";
 
 const loadPortfolioSnapshot = jest.fn();
+const loadMarketNumbers = jest.fn();
+jest.mock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: (...a: unknown[]) => loadMarketNumbers(...a) }));
 const findFirst = jest.fn();
 const marketFindFirst = jest.fn();
 jest.mock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: (...a: unknown[]) => loadPortfolioSnapshot(...a) }));
@@ -24,10 +28,12 @@ import { loadPortfolioBlock } from "./portfolio-block";
 const NOW = new Date("2026-11-12T13:00:00Z"); // 8 AM ET, Thu Nov 12
 const DIGEST = { narrative: "The account had a good day.", createdAt: new Date("2026-11-12T01:00:00Z") }; // 8 PM ET, Wed Nov 11
 const MARKET = { digest: "### Market overview\n\nStocks rose.\n\nSources: [Reuters](https://example.com/r)", createdAt: new Date("2026-11-11T12:40:00Z") }; // 7:40 AM ET, Wed Nov 11
+const NUMBERS_PART = `### Market numbers (as of Thu, Nov 12, 8:00 AM ET)\n${marketNumbersText(STANDIN_MARKET_NUMBERS)}`;
 const MARKET_PART = "### Market digest (written Wed, Nov 11, 7:40 AM ET)\n#### Market overview\n\nStocks rose.\n\nSources: [Reuters](https://example.com/r)";
 
 beforeEach(() => {
   loadPortfolioSnapshot.mockReset().mockResolvedValue(STANDIN_SNAPSHOT);
+  loadMarketNumbers.mockReset().mockResolvedValue(STANDIN_MARKET_NUMBERS);
   findFirst.mockReset().mockResolvedValue(DIGEST);
   marketFindFirst.mockReset().mockResolvedValue(MARKET);
   jest.spyOn(console, "warn").mockImplementation(() => {});
@@ -35,12 +41,14 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("the Market and portfolio block", () => {
-  it("is the snapshot's text, then the latest digest stamped with when it was written", async () => {
+  it("is the market numbers first, then the market digest, the snapshot's text and the latest digest stamped with when it was written", async () => {
     const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });
     expect(block).toBe(
-      ["## Market and portfolio", "", MARKET_PART, "", "### Portfolio snapshot", snapshotText(STANDIN_SNAPSHOT), "", "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)", "The account had a good day."].join("\n"),
+      ["## Market and portfolio", "", NUMBERS_PART, "", MARKET_PART, "", "### Portfolio snapshot", snapshotText(STANDIN_SNAPSHOT), "", "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)", "The account had a good day."].join("\n"),
     );
     expect(loadPortfolioSnapshot).toHaveBeenCalledWith({ accountId: "acct", environment: "LIVE", now: NOW });
+    // The numbers are read for this book: its held and watched stocks' report dates.
+    expect(loadMarketNumbers).toHaveBeenCalledWith({ now: NOW, book: { accountId: "acct", environment: "LIVE" } });
     // A digest the old writer wrote (gpt-4o, from the run-log dump) is never given to an agent.
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: "acct", environment: "LIVE", NOT: { model: "gpt-4o" } }, orderBy: { date: "desc" } }));
   });
@@ -48,7 +56,7 @@ describe("the Market and portfolio block", () => {
   it("the market digest's own section headings sit one level down, inside its part", async () => {
     const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });
     expect(block).toContain("#### Market overview");
-    expect(block.match(/^### /gm)).toEqual(["### ", "### ", "### "]);
+    expect(block.match(/^### /gm)).toEqual(["### ", "### ", "### ", "### "]);
     expect(marketFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { accountId: "acct", environment: "LIVE" }, orderBy: { date: "desc" } }));
   });
 
@@ -81,6 +89,14 @@ describe("the Market and portfolio block", () => {
     expect(block).not.toContain("The account had a good day.");
   });
 
+  it("market numbers that can't be read say so in one line; the rest of the block still prints", async () => {
+    loadMarketNumbers.mockRejectedValue(new Error("Alpaca 503"));
+    const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });
+    expect(block).toBe(
+      ["## Market and portfolio", "", "### Market numbers", "The market numbers couldn't be read for this request.", "", MARKET_PART, "", "### Portfolio snapshot", snapshotText(STANDIN_SNAPSHOT), "", "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)", "The account had a good day."].join("\n"),
+    );
+  });
+
   it("a snapshot that can't be read says so in one line; the digest still comes", async () => {
     loadPortfolioSnapshot.mockRejectedValue(new Error("broker 503"));
     const block = await loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW });
@@ -105,6 +121,20 @@ describe("a slow snapshot", () => {
       const pending = loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW, waitMs: 5_000 });
       await jest.advanceTimersByTimeAsync(5_000);
       expect(await pending).toContain("### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request.");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("slow market numbers are given up at the same wait, and the snapshot still prints", async () => {
+    jest.useFakeTimers();
+    try {
+      loadMarketNumbers.mockImplementation(() => new Promise(() => {}));
+      const pending = loadPortfolioBlock({ accountId: "acct", environment: "LIVE", now: NOW, waitMs: 5_000 });
+      await jest.advanceTimersByTimeAsync(5_000);
+      const block = await pending;
+      expect(block).toContain("### Market numbers\nThe market numbers couldn't be read for this request.");
+      expect(block).toContain(`### Portfolio snapshot\n${snapshotText(STANDIN_SNAPSHOT)}`);
     } finally {
       jest.useRealTimers();
     }
