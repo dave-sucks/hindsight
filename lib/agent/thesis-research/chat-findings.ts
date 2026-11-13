@@ -1,14 +1,17 @@
 /**
- * What the chat already found on a stock, for the Writer (2026-11-13). The
- * results of the chat's own calls on that ticker that code can't pull again,
- * read from the conversation the dispatch was made in: the AI SDK hands
- * every tool call the messages so far, each result as the chat read it.
- * Code carries them, so the model doesn't retype them into research_notes,
- * which keeps the chat's own judgment.
+ * What the chat already found on a stock, for the Writer (2026-11-13): the
+ * chat's web searches on that ticker, with their links, and our trade
+ * results on it. Those are the only results the Writer can't pull itself.
+ * Read from the conversation the dispatch was made in (the AI SDK hands
+ * every tool call the messages so far, each result as the chat read it), so
+ * the model doesn't retype them into research_notes, which keeps the chat's
+ * own judgment.
  *
- * Left out: what the Writer pulls fresh by code (the snapshot, prices,
- * earnings, the Street; thesis-research/pull-data.ts). Newest first, each
- * labeled by its tool, about 12,000 characters at most. Pure.
+ * Nothing the Writer's pull already fetches by code is carried
+ * (thesis-research/pull-data.ts: the news, filings, the catalyst and
+ * earnings calendars, the quote, the Street): a second copy of an event date
+ * beside the one on file is how EXEL's newer date nearly lost to an older one.
+ * Newest first, each labeled by its tool, about 12,000 characters at most. Pure.
  */
 import type { ModelMessage } from "ai";
 
@@ -21,29 +24,21 @@ const arr = (v: unknown): Data[] => (Array.isArray(v) ? (v.filter((x) => x && ty
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
 const join = (...parts: unknown[]) => parts.map(str).filter(Boolean).join(" · ");
 const isT = (row: Data, T: string) => str(row.ticker ?? row.symbol).toUpperCase() === T;
-const about = (text: unknown, T: string) => new RegExp(`(^|[^A-Z])\\$?${T.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Z]|$)`).test(str(text).toUpperCase());
+/** The ticker as written, $ or not, between word edges, never upper-cased: NOW, ON, IT, V and MA are words too. */
+const asWritten = (text: unknown, T: string) => new RegExp(`(?<![A-Za-z0-9])\\$?${T.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9])`).test(str(text));
 const names = (v: unknown, T: string) => Array.isArray(v) && v.some((x) => str(x).toUpperCase() === T);
 
 /** A tool's rows on the stock, as the screen lists them (`data.items`, a row per ticker). */
 const itemRows: Read = (data, _input, T) => arr(data.items).filter((i) => i.kind === "ticker" && isT(i, T)).map((i) => str(i.text)).filter(Boolean);
 
-/** Each tool whose result holds something the Writer can't pull again, and how to read the stock's part. */
+/** The two tools whose results the Writer can't pull itself, and how to read the stock's part. */
 const READERS: Record<string, Read> = {
+  // A search that asked about the stock, or a result that names it or lists it.
   web_search: (data, input, T) =>
     arr(data.results)
-      .filter((r) => about(input.query, T) || about(r.headline, T) || about(r.summary, T) || names(r.tickers, T))
+      .filter((r) => asWritten(input.query, T) || asWritten(r.headline, T) || asWritten(r.summary, T) || names(r.tickers, T))
       .map((r) => join(r.headline, r.summary, arr(r.sources).map((s) => str(s.url)).filter(Boolean).join(" "))),
-  get_catalyst_calendar: (data, _input, T) => arr(data.events).filter((e) => isT(e, T)).map((e) => join(e.kind, e.eventDate, e.announcedDate && `announced ${str(e.announcedDate)}`, e.quote, e.url)),
-  get_sec_filings: (data, input, T) => [
-    ...arr(data.filings).filter((f) => isT(f, T)).map((f) => join(f.type, f.date, f.description, Array.isArray(f.items) && f.items.length ? `items ${f.items.join(", ")}` : "", f.url)),
-    ...arr(data.rows).filter((r) => isT(r, T)).map((r) => join(JSON.stringify(r.stakes ?? r).slice(0, 600))),
-    ...itemRows(data, input, T),
-  ],
-  // The quote, the numbers and the chart the Writer pulls again; the news it read it can't.
-  get_stock_data: (data, input, T) =>
-    str(input.ticker).toUpperCase() === T ? arr(data.news).map((n) => join(n.datetime ?? n.date ?? n.publishedAt, n.headline, n.summary, n.url)) : [],
-  get_earnings_calendar: itemRows,
-  get_market_movers: itemRows,
+  // Our closed trades on the stock, as the screen lists them.
   read_trade_results: itemRows,
 };
 
