@@ -813,7 +813,7 @@ function DigestPreviewCard({
           never one control inside another. */}
       <div className="w-full rounded-lg border bg-card p-3 mb-3 flex flex-col gap-2 overflow-hidden lg:h-[390px]">
         <Tabs value={tab} onValueChange={(value) => setTab(value as DigestTab)}>
-          <TabsList width="full">
+          <TabsList size="sm">
             <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
             <TabsTrigger value="market">Market</TabsTrigger>
           </TabsList>
