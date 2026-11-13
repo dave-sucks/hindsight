@@ -1071,7 +1071,7 @@ export function ThesisBody({
           <Skeleton className="h-7 w-32 sm:h-8" />
         ) : quote?.currentPrice != null ? (
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-xl font-semibold tabular-nums sm:text-2xl">
+            <span className="text-xl font-medium tabular-nums sm:text-2xl">
               {formatCurrency(quote.currentPrice)}
             </span>
             {shownMove ? (

@@ -227,6 +227,12 @@ function describeTrade({ position, pnl, pendingProposal, direction, look, fills 
   };
 }
 
+/** The position's line and its gain alone, for a surface with no room for the card (the chat's thesis card): the page card's wording. */
+export function tradeLine(props: Omit<TradeSummaryProps, "look">) {
+  const { sentence, gain, settled } = describeTrade({ ...props, look: "card" });
+  return { sentence, gain, settled };
+}
+
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
 const PROPOSAL_DOT = "bg-foreground proposal-dot";
 /** The title row the two looks share, the same on both (the owner, 2026-11-06): one size up from a section label and regular, the dot (the accordion's chevron over it on hover, where the card is one), the word (shimmering on a proposal), the buttons at the right. */
