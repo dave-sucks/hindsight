@@ -131,7 +131,7 @@ export interface TradeCardData {
   /** Full-width body text under a "Reasoning" label. Truncated at 480 chars for email clients. */
   reasoning?: string | null;
 
-  /** Proposal expiry — shown in the CTA footer copy. */
+  /** Proposal expiry — shown in the CTA footer copy. None on a trigger's sale card, which stays open while its trigger holds. */
   expiresAt?: Date | null;
 
   /** Destination of the Open button. Required. */

@@ -44,6 +44,7 @@ import { triggerSlot } from "./condition/slot";
 import { fromPosition, reviewClockDays, shapeOf, tightness } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
+import { heldAt, type Hold } from "./hold";
 
 /** Where a resolved rung is stored — most-specific first. */
 export type TriggerLevel = "THESIS" | "ANALYST" | "ACCOUNT";
@@ -126,6 +127,8 @@ export interface LadderLevels {
    * — it is per-thesis bookkeeping whichever level the rung lives at.
    */
   rearmedAtState?: Record<string, string | undefined>;
+  /** A sale the owner held on this stock (./hold), for every rung, the same way. */
+  heldState?: Record<string, Hold | undefined>;
   /**
    * Which level the caller is rendering FROM. Everything below it is
    * inherited; rungs at this level are owned and editable.
@@ -332,6 +335,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       const firedFilings = inherited ? input.firedFilingsState?.[t.id] : t.firedFilings;
       const firedReports = inherited ? input.firedReportsState?.[t.id] : t.firedReports;
       const rearmedAt = input.rearmedAtState?.[t.id];
+      const held = heldAt(t, input.heldState?.[t.id]);
 
       out.push({
         ...t,
@@ -339,6 +343,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
         ...(firedFilings?.length ? { firedFilings } : {}),
         ...(firedReports?.length ? { firedReports } : {}),
         ...(rearmedAt ? { rearmedAt } : {}),
+        ...(held ? { heldAt: held } : {}),
         level,
         inherited,
       });

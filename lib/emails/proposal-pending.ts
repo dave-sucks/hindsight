@@ -47,7 +47,8 @@ export interface ProposalPendingData {
   /** Proposed target / stop on OPEN / ADD. */
   targetPrice?: number | null;
   stopLoss?: number | null;
-  expiresAt: Date;
+  /** Null on a trigger's sale card: open while its trigger holds (lib/proposals/sale-card.ts). */
+  expiresAt: Date | null;
   rationale: string | null;
   environment: "PAPER" | "LIVE";
   /** Position id — drives the CTA deep link. */
@@ -204,7 +205,7 @@ export async function sendProposalPendingEmail(orderId: string): Promise<void> {
       currentPrice: isClose ? liveExit : order.position.avgCost,
       exitPriceKnown: isClose ? liveExit != null : true,
       openedAt: order.position.openedAt ?? null,
-      expiresAt: order.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+      expiresAt: order.expiresAt,
       rationale: order.rationale,
       environment,
       positionId: order.position.id,

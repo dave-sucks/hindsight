@@ -116,6 +116,12 @@ export type Trigger = {
    * the trigger, never written by a model.
    */
   rearmedAt?: string;
+  /**
+   * A sale or trim the owner held (declined): the trigger is quiet until the
+   * stock closes back past it, or its condition changes (./hold). Kept in
+   * `Thesis.triggerState` and merged on at resolve time, like `rearmedAt`.
+   */
+  heldAt?: string;
   /** ENTER only, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp

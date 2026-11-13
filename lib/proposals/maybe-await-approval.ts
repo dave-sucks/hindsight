@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { sendProposalPendingEmail } from "@/lib/emails/proposal-pending";
 import { sendProposalPendingPush } from "@/lib/notify/proposal-push";
 import { emitProposalPending } from "@/lib/proposals/proposal-events";
+import { PROPOSAL_TTL_MS } from "@/lib/proposals/staged";
 
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
@@ -45,7 +46,8 @@ export interface AwaitingApprovalResult {
   state: "awaiting_approval";
   orderId: string;
   positionId: string;
-  expiresAt: Date;
+  /** Null on a trigger's sale card: open while its trigger holds (lib/proposals/sale-card.ts). */
+  expiresAt: Date | null;
   rationale: string | null;
 }
 
@@ -155,8 +157,11 @@ export async function approvalRequired(
       : account.requireApprovalSellsPaper;
 }
 
-/** How long a proposal waits for the principal before it expires. */
-export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a proposal waits for the principal before it expires. Not a sale a
+ * trigger proposed: that stays open while its trigger holds (sale-card.ts).
+ */
+export { PROPOSAL_TTL_MS } from "@/lib/proposals/staged";
 
 /**
  * Tell the principal a proposal is waiting. Fire-and-forget — call it after
@@ -204,8 +209,9 @@ export async function maybeAwaitApproval(
   //   • #381 tactical snooze (tactical-run.ts): skips re-SPAWNING a tactical run
   //     within 4h of a pending/rejected close — saves GPT cost, still ~1 alert/run.
   //
-  // Repeat-fatigue is never cured by silence: the sale asks every day its
-  // condition holds, and only the principal lowers the line (2026-10-13).
+  // Repeat-fatigue is never cured by silence. A sale a trigger proposes stays
+  // open while the trigger holds, and the owner's Hold quiets it until it
+  // re-arms (2026-11-13, sale-card.ts); only the principal lowers the line.
 
   const expiresAt = new Date(Date.now() + PROPOSAL_TTL_MS);
 
@@ -313,9 +319,9 @@ export function awaitingApprovalEnvelope(opts: {
     state: "awaiting_approval" as const,
     orderId: opts.awaiting.orderId,
     positionId: opts.awaiting.positionId,
-    expiresAt: opts.awaiting.expiresAt.toISOString(),
+    expiresAt: opts.awaiting.expiresAt?.toISOString() ?? null,
     rationale: opts.awaiting.rationale,
-    message: `Proposed ${human} ${opts.shares} ${opts.ticker} at ~$${opts.estimatedPrice.toFixed(2)}. Awaiting your approval (expires in 24h).`,
+    message: `Proposed ${human} ${opts.shares} ${opts.ticker} at ~$${opts.estimatedPrice.toFixed(2)}. Awaiting your approval (${opts.awaiting.expiresAt ? "expires in 24h" : "open until answered, or until the stock closes back past the line"}).`,
     items: [
       {
         kind: "proposal" as const,
@@ -326,7 +332,7 @@ export function awaitingApprovalEnvelope(opts: {
         shares: opts.shares,
         estimatedPrice: opts.estimatedPrice,
         estimatedCost: cost,
-        expiresAt: opts.awaiting.expiresAt.toISOString(),
+        expiresAt: opts.awaiting.expiresAt?.toISOString() ?? null,
         rationale: opts.awaiting.rationale,
       },
     ],

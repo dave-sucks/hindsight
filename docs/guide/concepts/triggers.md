@@ -47,14 +47,14 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close.
 
-> **Some triggers fire every day.** A sale on a stock we hold asks every day its condition holds, until the stock is sold, whatever its On fire. So does an add, trim or review on a price line or a day's move, for as long as it stays true. **A buy fires once,** on the day the price crosses its level, and an Auto-buy, Auto-add or Auto-trim comes off the stock once used.
+> **Some triggers fire every day.** A sale on a stock we hold fires whenever its condition holds, whatever its On fire, and the sale it proposes stays open until you answer it or the stock closes back past the line. So does an add, trim or review on a price line or a day's move, for as long as it stays true. **A buy fires once,** on the day the price crosses its level, and an Auto-buy, Auto-add or Auto-trim comes off the stock once used.
 
 | | How often it fires |
 |---|---|
 | Buy | **Once**, on the day the price crosses its level. Not again while the price stays past it; only a new crossing fires it again. |
 | Add | Again each time its rest period ends, while its condition holds. An Auto-add fires once. |
 | Trim | Again each time its rest period ends, while its condition holds. An Auto-trim fires once. |
-| Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; declined or left to expire, it asks again. |
+| Sell | **Whenever** its condition holds, in every On fire mode. Its sale waits for you, starting nothing new, until you answer it or the stock closes back past the line at 4:20 PM. Declined, it stays quiet until the stock closes back past the line and breaks it again, or you set a new line. |
 | Review | Again each time its rest period ends, while its condition holds. |
 
 **The rest period** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It comes with the kind of trigger:
@@ -81,7 +81,7 @@ Where each fire goes, and how what the agent writes comes back to the stock:
 | Buy | ✓ one-time; only you set it | ✓ default | ✓ |
 | Add | ✓ one-time; only you set it | ✓ default | ✓ |
 | Trim | ✓ one-time, sells its size; only you | ✓ default | ✓ |
-| Sell | ✓ asks again every day until sold; agents may set it | ✓ default | ✓ |
+| Sell | ✓ waits for you while the line is broken; agents may set it | ✓ default | ✓ |
 | Review | — (a review is asking) | ✓ the same day | ✓ default |
 
 What a trigger does when it comes true, the same three choices on every trigger:

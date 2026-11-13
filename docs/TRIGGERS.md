@@ -365,8 +365,16 @@ predicate matches
 
 **Two fire semantics, keyed off the action (DAV-229, 2026-09-02).** A
 protective or review rung is a **standing order** (principal ruling
-2026-08-16): it fires every day its condition is true, and a declined or
-expired proposal means "did nothing today", so it asks again tomorrow. An
+2026-08-16): it fires every day its condition is true. **A sale or trim it
+proposes stays open while its reason holds** (the owner's ruling 2026-11-13,
+replacing "a sale asks every day"): the order carries the triggers it answers
+(`Order.triggerIds`) and no `expiresAt`, a sale trigger that breaks while it
+waits joins it, and the 16:20 ET close pass withdraws it (`WITHDRAWN`, with
+`withdrawnReason`) when none of them holds on the close. Declined, it is a
+**Hold**: each trigger behind it stays quiet until the stock closes back past
+it and breaks it again, or its condition changes (`Thesis.triggerState[id].held`,
+`lib/agent/triggers/hold.ts`; `lib/proposals/sale-card.ts`). A proposal no
+trigger made still lapses after 24 hours, and a lapse means "ask me again". An
 **`ENTER` rung fires on the crossing**: the condition is true now and was
 false at the prior session's close (`latestQuote.prevClose`).
 "Buy above $35" means buy when the price gets there — not "buy now and ask
@@ -420,8 +428,8 @@ catalog entry, the floor itself is `triggers/state-cooldown.ts`, and
 the Triggers tab prints the number in force). ABT sat under its 200-day from
 2026-09-15 to 09-25 and the Secular Compounder's review, stored at 1 day, fired
 all nine trading days. Only a review slows down: a buy on the same condition
-fires on its crossing, and a sale is a standing order that asks every day its
-condition holds.
+fires on its crossing, and a sale is a standing order whose proposal stays
+open while its condition holds.
 
 ## 7. Cadence + market hours
 

@@ -36,7 +36,7 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 `reconcile-orders` runs every five minutes, 4 AM to 8 PM ET on weekdays. It finds each pending order by broker ID, or by the key if the ID was never saved. A fill sets the real price and share count. A key the broker has never seen is marked rejected.
 
-`proposal-expiry` runs every thirty minutes around the clock, weekends included, and lapses anything past its 24 hours; a Friday-afternoon proposal lapses on Saturday and the record says so within the half hour. A lapse isn't a decline. A declined sale carries your note and the next run must answer it; a lapsed one is "not now".
+`proposal-expiry` runs every thirty minutes around the clock, weekends included, and lapses anything past its 24 hours; a Friday-afternoon proposal lapses on Saturday and the record says so within the half hour. A sale or trim a trigger made has no 24 hours: it waits for you, or the trigger check's 4:20 PM pass withdraws it on a close back past the line. A lapse isn't a decline. A declined sale an analyst proposed on its own carries your note and the next run must answer it; a lapsed one is "not now". A declined trigger sale is a Hold: its triggers stay quiet until they re-arm.
 
 ## What it does to the thesis
 
@@ -64,7 +64,7 @@ A sale waiting for you takes the stock off the agents' work list: it's yours to 
 `approveProposal` in `lib/proposals/execute.ts`; locks from `lib/proposals/position-lock.ts` (`lockPositionSales`, `lockPositionBuys`, `cancelOrphanedSellProposals`). Errors are `ProposalExecutionError` codes such as `ALPACA_REJECTED`, `ALPACA_UNCERTAIN`, `SALE_UNDER_WAY`, `NO_ROOM_IN_POSITION`.
 
 #### Reconcile and expiry
-`lib/inngest/functions/reconcile-orders.ts` (`applyFillByIntent`, `restampThesisEntryOnFill`) and `lib/inngest/functions/proposal-expiry.ts`. Decline versus lapse: `lib/agent/declined-sale.ts` (`REJECTED` versus `EXPIRED`, seven-day window, protective sales only).
+`lib/inngest/functions/reconcile-orders.ts` (`applyFillByIntent`, `restampThesisEntryOnFill`) and `lib/inngest/functions/proposal-expiry.ts`. Decline versus lapse: `lib/agent/declined-sale.ts` (`REJECTED` versus `EXPIRED`, seven-day window, protective sales no trigger made). A trigger's sale: `lib/proposals/sale-card.ts` (staged with `triggerIds`, withdrawn on the close, held on a decline).
 
 #### Thesis flips
 `lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys, `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.

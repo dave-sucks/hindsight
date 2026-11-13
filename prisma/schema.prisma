@@ -994,7 +994,7 @@ model Order {
   orderType         String         @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
   quantity          Float
   // Order status
-  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED"
+  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED" | "WITHDRAWN"
   // Fill data (populated when filled — for paper trading this is immediate)
   filledPrice       Float?
   filledQty         Float?
@@ -1043,6 +1043,14 @@ model Order {
   expiresAt        DateTime? @db.Timestamptz(6)
   rejectionMessage String?
   rationale        String?
+  // A sale or trim a trigger's fire proposed: the triggers it answers (the
+  // fired one, its co-fires, and any sale trigger that broke while it waited).
+  // Set only on such a proposal, which has no expiresAt: it stays open while
+  // one of them still holds, the 16:20 ET close pass withdraws it when none
+  // does (status WITHDRAWN, `withdrawnReason` in words), and a decline holds
+  // them quiet until each re-arms. See lib/proposals/sale-card.ts.
+  triggerIds       String[]  @default([])
+  withdrawnReason  String?
   // First-class link back to the thesis this order acts on (P1-33 Activity
   // tab). Populated at order-creation time on every write path from
   // 2026-08-18 on; null on older rows — readers keep the (analyst, ticker)

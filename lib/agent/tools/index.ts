@@ -103,6 +103,8 @@ interface ToolCtx {
   protectiveExitTriggerLabel?: string;
   /** A trigger run woken by a trim — see ToolContext.firedTrim. */
   firedTrim?: { ticker: string; pct: number };
+  /** A trigger run woken by a sale or trim — see ToolContext.firedSale. */
+  firedSale?: { ticker: string; triggerIds: string[] };
   /** An Auto trigger: the account's cash — see ToolContext.payFromCash. */
   payFromCash?: number | null;
 }

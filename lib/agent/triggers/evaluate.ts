@@ -205,20 +205,22 @@ export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
   checker: Checker = SHAPE_CHECKER,
-): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
+): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" | "held" } {
   // A filing trigger reads its own fired-filing memory; nothing else does.
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
   if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
   const matched = checker.holds(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
+  // The owner held this sale: quiet until it re-arms on a close back past it (./hold).
+  if (trigger.heldAt) return { fires: false, reason: "held" };
 
   // Two fire semantics, keyed off the action (DAV-229, 2026-09-02):
   //
   //   Every rung but ENTER is a STANDING ORDER (principal ruling
-  //   2026-08-16): it fires every day its condition holds; a declined
-  //   proposal means "did nothing today", so it asks again tomorrow.
-  //   Cooldown is the only rate limit. Never latch a protective level —
-  //   that turns a declined sell into a silent one.
+  //   2026-08-16): it fires every day its condition holds. A sale it
+  //   proposes stays open while the condition holds, and a sale the owner
+  //   declines holds the trigger quiet until it re-arms (2026-11-13, ./hold);
+  //   cooldown is the only other rate limit.
   //
   //   ENTER fires on the CROSSING: true now, false at the prior close.
   //   "Buy above $35" means buy when the price gets there — under the

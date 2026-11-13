@@ -12,7 +12,7 @@ import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/li
 const PLAIN: Record<SituationCode, string> = {
   AUTO_TRADE: "A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.",
   PROMOTED_AWAITING: "A stock just moved from paper to live money and needs a decision this run.",
-  PROTECTIVE_SALE: "A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.",
+  PROTECTIVE_SALE: "A floor, a trail or a trim fired on a holding, or a sale no trigger proposed that you declined or let expire is still past its line.",
   BUY_ARRIVES: "A watched stock reached its buy level.",
   BUY_BLOCKED_FULL: "A buy fired while the analyst already holds all it may.",
   ADD_OR_WINNER: "An add level fired, or a holding is three quarters of the way to its target.",

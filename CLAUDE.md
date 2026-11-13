@@ -31,7 +31,9 @@ Agent; every stored trigger names one. Auto on a buy, add or trim is the
 owner's alone, on a stock (not an account or analyst rule), and is used once;
 an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
 semantics differ by action (DAV-229):** a protective/review rung is a standing
-order (re-fires every day its condition holds; a decline is "did nothing");
+order (re-fires every day its condition holds; since 2026-11-13 a sale or trim
+it proposes stays open while that holds and the 16:20 ET close pass withdraws
+it, and a decline is a Hold: quiet until the line re-arms, `lib/proposals/sale-card.ts`);
 an ENTER fires on the *crossing* of its level (true now, false at the prior
 close) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),

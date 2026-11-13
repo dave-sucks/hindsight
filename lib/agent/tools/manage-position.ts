@@ -43,10 +43,10 @@ import {
   maybeAwaitApproval,
   awaitingApprovalEnvelope,
   notifyProposalPending,
-  PROPOSAL_TTL_MS,
   recordProposalRunEvent,
 } from "@/lib/proposals/maybe-await-approval";
 import { lockPositionSales } from "@/lib/proposals/position-lock";
+import { staged as stagedSale } from "@/lib/proposals/staged";
 import { DEFAULT_TRIM_PCT } from "@/lib/agent/triggers/fire-mode";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -239,7 +239,9 @@ export const managePosition = defineTool({
           const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
           const idempotencyKey = randomUUID();
           const placedAt = new Date();
-          const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
+          // A trigger run woken by this stock's sale or trim: the proposal stays open while that trigger holds.
+          const proposal = stagedSale(ctx.firedSale?.ticker === ticker ? ctx.firedSale.triggerIds : undefined, placedAt);
+          const expiresAt = proposal.expiresAt;
 
           // Trade-as-Proposal: sells flow through requireApprovalSells{Live,Paper}.
           // On, the trim is created already AWAITING_APPROVAL and we return
@@ -272,7 +274,7 @@ export const managePosition = defineTool({
                 orderType: "MARKET",
                 quantity,
                 status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
-                ...(needsApproval ? { expiresAt, rationale: args.reason } : {}),
+                ...(needsApproval ? { ...proposal, rationale: args.reason } : {}),
                 alpacaOrderId: null,
                 idempotencyKey,
                 intent: "PARTIAL_CLOSE",

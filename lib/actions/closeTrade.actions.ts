@@ -17,8 +17,8 @@ import { tradeClosedHtml } from "@/lib/emails/trade-closed";
 import {
   approvalRequired,
   notifyProposalPending,
-  PROPOSAL_TTL_MS,
 } from "@/lib/proposals/maybe-await-approval";
+import { staged } from "@/lib/proposals/staged";
 import {
   cancelOrphanedSellProposals,
   lockPositionSales,
@@ -54,7 +54,8 @@ export interface ClosedPositionResult {
 export interface ProposalCreatedSummary {
   positionId: string;
   orderId: string;
-  expiresAt: Date;
+  /** Null on a trigger's sale card: open while its trigger holds (lib/proposals/sale-card.ts). */
+  expiresAt: Date | null;
   rationale: string | null;
   idempotencyKey: string;
 }
@@ -168,8 +169,11 @@ export async function closeOpenPosition(
    * promotion force-closes) leaves it undefined → terminal RETIRED, unchanged.
    */
   beliefSurvived?: boolean | null,
-  /** Always a proposal, whatever the approval switch says: a paused analyst's sale that was set to ask for judgment. */
-  opts?: { propose?: boolean },
+  /**
+   * propose: always a proposal, whatever the approval switch says (a paused analyst's sale that was set to ask for judgment).
+   * triggerIds: the sale and trim triggers whose fire this sale answers; its proposal stays open while they hold (lib/proposals/sale-card.ts).
+   */
+  opts?: { propose?: boolean; triggerIds?: string[] },
 ): Promise<CloseOpenPositionOutcome> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
@@ -219,7 +223,8 @@ export async function closeOpenPosition(
       })));
   // The caller's words or none: a sale with no reason given has none.
   const rationale = auditReason ?? null;
-  const expiresAt = new Date(placedAt.getTime() + PROPOSAL_TTL_MS);
+  // A trigger's sale stays open while the trigger holds; any other lapses in 24 hours.
+  const proposal = staged(opts?.triggerIds, placedAt);
 
   // 1. DB tx — one full close at a time per position. The position row is
   //    locked, so the "is a sale already under way" check and the create are
@@ -249,7 +254,7 @@ export async function closeOpenPosition(
         orderType: "MARKET",
         quantity,
         status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
-        ...(needsApproval ? { expiresAt, rationale } : {}),
+        ...(needsApproval ? { ...proposal, rationale } : {}),
         alpacaOrderId: null,
         idempotencyKey,
         intent: "CLOSE",
@@ -293,7 +298,7 @@ export async function closeOpenPosition(
         proposal: {
           positionId,
           orderId: existing.id,
-          expiresAt: existing.expiresAt ?? expiresAt,
+          expiresAt: existing.expiresAt,
           rationale: existing.rationale,
           idempotencyKey: existing.idempotencyKey ?? "",
         },
@@ -319,7 +324,7 @@ export async function closeOpenPosition(
     notifyProposalPending(order.id);
     return {
       kind: "proposed" as const,
-      proposal: { positionId, orderId: order.id, expiresAt, rationale, idempotencyKey },
+      proposal: { positionId, orderId: order.id, expiresAt: proposal.expiresAt, rationale, idempotencyKey },
     };
   }
 

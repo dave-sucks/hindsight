@@ -39,6 +39,7 @@ import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { PROPOSED } from "@/lib/proposals/staged";
 
 export interface WorkContext {
   userId?: string;
@@ -363,7 +364,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   // sees it. Newest first; a dozen a stock covers the window the scan does.
   try {
     const orders = await prisma.order.findMany({
-      where: { thesisId: { in: liveIds }, expiresAt: { not: null } },
+      where: { thesisId: { in: liveIds }, ...PROPOSED },
       orderBy: { createdAt: "desc" },
       take: Math.min(12 * liveIds.length, 600),
       select: { ...FEED_ORDER_SELECT, thesisId: true },

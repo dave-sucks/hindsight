@@ -26,14 +26,16 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
   daily: 9_473,
-  tactical: 14_910,
+  // 2026-11-14: +123, the sale situation says a trigger's sale stays open until answered and a hold quiets the trigger (lib/proposals/sale-card.ts).
+  tactical: 15_033,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
   writer: 16_983,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
-  chat: 35_807,
+  // 2026-11-14: +106, the approval schema: a trigger's sale stays open or is WITHDRAWN on a close back past the line, and a decline holds its triggers.
+  chat: 35_913,
 };
 
 /**

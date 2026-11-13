@@ -45,7 +45,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.
 - **On the cross:** how a buy fires: once, on the day the price reaches its level, never every day it stays there.
-- **Standing order:** how every trigger but a buy fires: again each time its rest period ends, while its condition holds. A sale asks every day until the stock is sold.
+- **Standing order:** how every trigger but a buy fires: again each time its rest period ends, while its condition holds. A sale's proposal stays open while its line is broken; a sale you hold stays quiet until the line re-arms.
 - **Review clock:** a review that repeats, like "Review every 30 days". When it comes round, the stock is due a fresh look.
 - **On fire:** what a trigger does when it comes true: Auto (the trade, no agent: Auto-sell, Auto-trim, Auto-buy, Auto-add), Send to Agent (a trigger run), or Flag for Review (the next morning run).
 - **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day: a day for a price line or the trail, a week for an add, trim or review on the move from our entry. A sale asks daily whatever it watches. A trigger's popover shows it.
@@ -72,9 +72,11 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## Trades
 
-- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason (on paper, only when approval is turned on). It expires after 24 hours. See [Approvals](concepts/approvals.md).
+- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason (on paper, only when approval is turned on). It expires after 24 hours, except a sale or trim a trigger made, which stays open while its line is broken. See [Approvals](concepts/approvals.md).
 - **Decline:** your no on a proposal. Recorded and read by every run after it.
 - **Lapse:** a proposal left to expire. It means "not now, ask me again", never a decline.
+- **Hold:** declining a sale a trigger made. The trigger stays quiet until the stock closes back past its line and breaks it again, or you set a new line.
+- **Withdrawn:** a sale a trigger made that came down on its own, because the stock closed back past the line.
 - **Fill:** the broker carrying out an order. Its price becomes the position's cost and the thesis's entry.
 - **Sized by risk:** how every buy is sized: the dollars at risk divided by the distance to the floor, scaled by conviction, kept inside the analyst's band. No agent picks a size.
 - **Band:** an analyst's smallest trade, largest trade, and most in one stock.

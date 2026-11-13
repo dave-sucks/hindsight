@@ -44,6 +44,7 @@ import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-wr
 import { guidanceFor } from "@/lib/agent/situations";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
+import { saleTriggerIds } from "@/lib/proposals/staged";
 import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
@@ -324,12 +325,10 @@ export const tacticalRun = inngest.createFunction(
         // the EME/MU activity feeds under hundreds of identical rows
         // (2026-08-26).
         //
-        // Visibility is guaranteed by the proposal lifecycle, not by logging:
-        // an unactioned proposal expires after 24h, and the next tick lands
-        // here with NO queued close and raises a fresh one — the daily nag
-        // the standing-order ruling requires, until the human sells or edits
-        // the level. (The 8/20→8/24 silent-breach failure was the re-propose
-        // path not doing that; it does now.)
+        // Visibility is the proposal itself: a sale this trigger proposed
+        // stays open until the owner answers it or the stock closes back past
+        // the line (lib/proposals/sale-card.ts, 2026-11-13); any other sale
+        // lapses in 24h and the next tick lands here with no queued close.
         return {
           skipped: "close-already-queued",
           reason: queuedClose.status,
@@ -492,9 +491,14 @@ export const tacticalRun = inngest.createFunction(
       });
     });
 
+    // A sale or trim this fire leads to answers it and its co-fires: the proposal stays open while they hold (sale-card.ts).
+    const saleIds = saleTriggerIds(trigger as Trigger, coFired);
+    const firedSale = saleIds.length > 0 ? { ticker: thesis.ticker, triggerIds: saleIds } : undefined;
+
     // The analyst's limits and keys, as every tool reads them: the same for the agent's run and an Auto trade.
     const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; firedTrim?: { ticker: string; pct: number }; payFromCash?: number | null } = {}) =>
       createResearchTools({
+        firedSale,
         runId: run.id,
         userId: agentConfig.userId,
         accountId: agentConfig.accountId,
@@ -534,7 +538,7 @@ export const tacticalRun = inngest.createFunction(
             paused ? (doIt === "SELL" ? `${line} ${PAUSED_SALE_NOTE}` : `Your "${sentenceOf(trigger as Trigger)}" came true. ${PAUSED_SALE_NOTE}`) : line,
             run.id,
             undefined,
-            { propose: ownerSale && doIt !== "SELL" },
+            { propose: ownerSale && doIt !== "SELL", triggerIds: saleIds },
           );
           return outcome.kind === "proposed"
             ? { kind: outcome.kind, reason, orderId: outcome.proposal.orderId }

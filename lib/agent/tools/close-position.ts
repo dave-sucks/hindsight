@@ -235,7 +235,10 @@ export const closePosition = defineTool({
         agentAuditReason,
         ctx.runId,
         beliefSurvived,
+        // A trigger run woken by this stock's sale: the proposal stays open while that trigger holds.
+        { triggerIds: ctx.firedSale?.ticker === ticker ? ctx.firedSale.triggerIds : undefined },
       );
+      const expiresAt = outcome.kind === "proposed" ? (outcome.proposal.expiresAt?.toISOString() ?? null) : null;
 
       // Trade-as-Proposal — when the Account requires approval for sells in this environment,
       // closeOpenPosition stages the close as Order(AWAITING_APPROVAL) and
@@ -266,11 +269,11 @@ export const closePosition = defineTool({
             entryPrice: position.avgCost,
             orderId: outcome.proposal.orderId,
             positionId: outcome.proposal.positionId,
-            expiresAt: outcome.proposal.expiresAt.toISOString(),
+            expiresAt,
             rationale: outcome.proposal.rationale,
             ...label,
             message: [
-              `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (expires in 24h).`,
+              `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (${expiresAt ? "expires in 24h" : "open until answered, or until the stock closes back past the line"}).`,
               ctx.runMode === "PRINCIPAL_CHAT" ? "" : "Your note on this stock, through update_thesis, is what the owner reads on the proposal.",
               enforced.auditNote,
             ].filter(Boolean).join(" "),
@@ -284,7 +287,7 @@ export const closePosition = defineTool({
                 shares: position.quantity,
                 estimatedPrice: position.avgCost,
                 estimatedCost: position.quantity * position.avgCost,
-                expiresAt: outcome.proposal.expiresAt.toISOString(),
+                expiresAt,
                 rationale: outcome.proposal.rationale,
               },
             ],

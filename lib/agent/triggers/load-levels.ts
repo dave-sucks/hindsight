@@ -16,6 +16,7 @@ import { resolveLadder, type ResolvedTrigger } from "./levels";
 import type { Horizon, ThesisState } from "./defaults";
 import type { Trigger } from "./types";
 import { unseededAccountFallback } from "./seed-account";
+import type { Hold } from "./hold";
 
 /** The two stored levels above a thesis, for one analyst. */
 export interface LevelSources {
@@ -174,6 +175,9 @@ export function resolveThesisLadder(
         ([id, e]) => [id, e.rearmedAt?.at(-1)] as const,
       ),
     ),
+    heldState: Object.fromEntries(
+      Object.entries(parseTriggerState(thesis.triggerState)).map(([id, e]) => [id, e.held] as const),
+    ),
   });
 }
 
@@ -201,6 +205,8 @@ export interface TriggerStateEntry {
    * only; the latest lifts the cooldown.
    */
   rearmedAt?: string[];
+  /** A sale the owner held: quiet until it re-arms or its condition changes (./hold). */
+  held?: Hold;
 }
 
 /**
@@ -223,7 +229,7 @@ export function parseTriggerState(
       continue;
     }
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown; rearmedAt?: unknown };
+      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown; rearmedAt?: unknown; held?: unknown };
       const entry: TriggerStateEntry = {};
       if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
       if (Array.isArray(e.firedFilings)) {
@@ -235,11 +241,14 @@ export function parseTriggerState(
       if (Array.isArray(e.rearmedAt)) {
         entry.rearmedAt = e.rearmedAt.filter((x): x is string => typeof x === "string");
       }
+      const held = e.held as { at?: unknown; on?: unknown } | null | undefined;
+      if (held && typeof held.at === "string" && typeof held.on === "string") entry.held = { at: held.at, on: held.on };
       if (
         entry.firedAt !== undefined ||
         entry.firedFilings !== undefined ||
         entry.firedReports !== undefined ||
-        entry.rearmedAt !== undefined
+        entry.rearmedAt !== undefined ||
+        entry.held !== undefined
       ) {
         out[k] = entry;
       }

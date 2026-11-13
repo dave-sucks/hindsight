@@ -36,6 +36,7 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { readPrice } from "@/lib/market-data/quote-age";
+import { holdSaleTriggers } from "@/lib/proposals/sale-card";
 import {
   promoteThesisOnApproval,
   closeThesisOnApproval,
@@ -598,6 +599,17 @@ export async function rejectProposal(
       },
     });
   });
+
+  // Hold: a sale a trigger proposed keeps each trigger behind it quiet on the
+  // stock until it closes back past it, or its condition changes (sale-card.ts).
+  if (order.triggerIds.length > 0) {
+    try {
+      const thesisId = order.thesisId ?? (await findRelatedThesisId(order.position.analystId, order.position.symbol));
+      await holdSaleTriggers({ thesisId, triggerIds: order.triggerIds, now: rejectedAt });
+    } catch (err) {
+      console.error(`[rejectProposal] could not hold the triggers behind order ${orderId}:`, err instanceof Error ? err.message : err);
+    }
+  }
 
   // The agent reads thesis history via get_theses(include_history: true)
   // — the rationale text below is the durable signal it sees on its next

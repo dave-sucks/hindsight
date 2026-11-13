@@ -87,6 +87,8 @@ export const DECLINED_SALE_WINDOW_DAYS = 7;
 export const DECLINED_SALE_STATUSES = ["REJECTED"] as const;
 /** The order status of a sale left to lapse: "not now, ask me again". Never a decline. */
 export const LAPSED_SALE_STATUSES = ["EXPIRED"] as const;
+// A trigger's sale never lapses (lib/proposals/sale-card.ts): only a sale the
+// analysts proposed on their own does, and only those are counted here.
 
 /**
  * The Prisma `where` for a protective sale the principal did not take on one
@@ -98,7 +100,9 @@ export function declinedSaleWhere(now: Date = new Date(), windowDays = DECLINED_
   return {
     intent: "CLOSE",
     status: { in: [...DECLINED_SALE_STATUSES, ...LAPSED_SALE_STATUSES] },
-    // expiresAt set = a card was actually staged in front of the principal.
+    // expiresAt set = a card was staged in front of the principal, and not one
+    // a trigger proposed: that has none, and its decline is a hold, quiet until
+    // the trigger re-arms (lib/proposals/sale-card.ts), never the next run's job.
     expiresAt: { not: null },
     // Protective only. A declined TARGET exit is "let it run".
     closeReason: "STOP",

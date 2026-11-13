@@ -137,6 +137,14 @@ export interface ToolContext {
   /** A trigger run woken by a trim: its stock and size, the trim a partial_close naming no size sells. */
   firedTrim?: { ticker: string; pct: number };
 
+  /**
+   * A trigger run woken by a sale or trim: its stock and the sale triggers
+   * that fired (with any co-fired). A sale or trim of that stock is staged
+   * with them, so its proposal stays open while they hold
+   * (lib/proposals/sale-card.ts).
+   */
+  firedSale?: { ticker: string; triggerIds: string[] };
+
   /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;
 

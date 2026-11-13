@@ -54,7 +54,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A thesis's whole plan is its triggers.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
 - **[Situations](concepts/situations.md):** the eighteen reasons a stock needs an answer today, each with its own instructions.
-- **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day.
+- **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day; a sale a trigger made stays open while its line is broken.
 - **[Price targets](concepts/price-targets.md):** the house sets none. A plan is the buy, the floor and an upside rule where the setup has one; Wall Street's targets are a card, and a line a rule can watch.
 
 ## Deep dives

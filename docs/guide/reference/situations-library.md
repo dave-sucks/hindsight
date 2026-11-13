@@ -89,10 +89,10 @@ Mistakes:
 
 `PROTECTIVE_SALE` · rank 3 of 18 · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
 
-A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.
+A floor, a trail or a trim fired on a holding, or a sale no trigger proposed that you declined or let expire is still past its line.
 
 ```text
-When: a sale or trim trigger fired or is true now on a stock we hold, or the principal declined that sale or let it lapse, the price still past the line.
+When: a sale or trim trigger fired or is true now on a stock we hold, or the principal declined or let lapse a sale no trigger proposed, the price still past the line.
 
 Answer, in order:
 1. Why is it down? Its own news, its sector, the market (get_stock_data, one web_search; get_market_context when the whole market fell).
@@ -106,7 +106,7 @@ What you can do:
 - Or tighten the line: update_thesis with edit_triggers on the fired trigger's id (the `triggers` lines give each id).
 - Two sales fired together: one decision covers both (all, some or none).
 
-Answered: a sale or trim, the line tightened, or a note saying why you hold. It asks again tomorrow while the price is past the line.
+Answered: a sale or trim, the line tightened, or a note saying why you hold. A sale on a trigger's fire stays open until the principal answers it or the stock closes back past the line; if they hold, that trigger stays quiet until it re-arms.
 
 The note: why the stock fell, from what you found, and whether that changes why we own it; then the sale, the trim or why you hold, in one sentence. Not which day of the drop it is, nor a recount of the line.
 
