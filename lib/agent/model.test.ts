@@ -189,7 +189,7 @@ describe("the chat", () => {
     const categories = view!(only.record).categories;
     expect(categories.map((c) => c.name)).toEqual(["Instructions", "First message", "The conversation so far", "Newest message", "Tool menu"]);
     // The newest message: the time, the Market and portfolio block cut at its headings, then the question.
-    expect(categories[3].sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", "Portfolio snapshot", "Portfolio digest"]);
+    expect(categories[3].sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", "Market digest", "Portfolio snapshot", "Portfolio digest"]);
     expect(categories[3].sections.map((s) => s.text).join("")).toMatch(/Why hold it\?$/);
   });
 });

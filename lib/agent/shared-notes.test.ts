@@ -1,6 +1,6 @@
 /**
  * shared-notes.test.ts: a note written once and read on every stock it
- * covers (the Portfolio Manager Plan, step 2), with the morning of Mon
+ * covers (lib/agent/shared-notes.ts), with the morning of Mon
  * 2026-11-02 as the case: a note pinned on the five holdings the vote hit,
  * until the day after it. The note is the one the plan page shows; the
  * Activity rows are made up.
@@ -15,7 +15,7 @@ import { wantsAnswer, isAgentAnswer } from "./stock-context";
 const NOV2 = new Date("2026-11-02T13:01:00Z");
 const note = (over: Partial<SharedNoteRow> = {}): SharedNoteRow => ({
   id: "note_vote",
-  author: "PORTFOLIO_MANAGER",
+  author: "MARKET_REVIEWER",
   runId: "run_pm",
   body: "Tomorrow's vote puts data-center opposition on the ballot. These five ride that story.",
   audience: "STOCKS",
@@ -43,11 +43,11 @@ describe("a pinned note on the five, the morning before the vote", () => {
     const ctx = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], shares: SHARES, now: NOV2 });
     const text = ctx.text ?? "";
     expect(text.startsWith("PINNED ON $MU")).toBe(true);
-    expect(text).toContain("Portfolio manager's note to MU, GEV, NVDA, PLTR, CEG, about 2026-11-03, pinned until 11-04");
+    expect(text).toContain("Market Reviewer's note to MU, GEV, NVDA, PLTR, CEG, about 2026-11-03, pinned until 11-04");
     expect(text).toContain("$MU is one of 5 holdings in this note, 41% of the account.");
     // Above the newest lines, not among them.
     expect(text.indexOf("PINNED ON")).toBeLessThan(text.indexOf("WHAT'S BEEN SAID ON $MU"));
-    expect(text.split("WHAT'S BEEN SAID")[1]).not.toContain("Portfolio manager's note");
+    expect(text.split("WHAT'S BEEN SAID")[1]).not.toContain("Market Reviewer's note");
     expect(ctx.pinnedNote).toEqual({ id: "note_vote", at: note().createdAt });
   });
 
@@ -76,7 +76,7 @@ describe("a pinned note on the five, the morning before the vote", () => {
   it("once it ends it is an ordinary Activity line, and never the owner's word or a run's answer", () => {
     const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], now: new Date("2026-11-06T13:00:00Z") });
     expect(after.text).not.toContain("PINNED");
-    expect(after.text).toContain("Portfolio manager's note to MU, GEV, NVDA, PLTR, CEG");
+    expect(after.text).toContain("Market Reviewer's note to MU, GEV, NVDA, PLTR, CEG");
     expect(after.text).toContain("Tomorrow's vote puts data-center opposition on the ballot.");
     expect(after.unansweredDecision).toBeNull();
     const line = noteLine(note()) as Parameters<typeof wantsAnswer>[0];

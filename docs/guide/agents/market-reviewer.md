@@ -1,34 +1,50 @@
 # Market Reviewer
 
-**The market, researched fresh every morning.** At 7:30 every weekday, before the analysts start, one call to the model researches the market on the web and writes the market digest.
+**The market, researched fresh every morning.** At 7:30 every weekday, before the analysts start, one call to the model researches the market on the web and writes the market digest, plus a note on each held or watched stock its research touched.
 
-It never trades and never changes a stock's plan. You read the digest, and every agent that decides on stocks is given the same text, in its [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot), stamped with when it was written.
+It never trades and never changes a stock's plan. You read the digest, and every agent that decides on stocks is given the same text, in its [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot), stamped with when it was written. Its notes go on the stocks they name, where you and their analysts read them.
 
 ```facts
 Model: gpt-5.4
 Starts: 7:30 AM ET, weekdays
 Steps: 1 call
 Tools: OpenAI's web search
-Saves: the market digest
+Saves: the market digest, and notes on stocks
 ```
 
 ## What it's given
 
 One request, with three things in it:
 - its instructions;
-- one first message: the portfolio snapshot, the one set of numbers about the account every reader gets (its value, cash, day and since the start, each holding with its price, value, share of the account and moves, the day's fills and the proposals waiting, `lib/portfolio/snapshot.ts`), then each stock held or watched with its belief in one line, then its own last digest, so it says what changed and doesn't repeat itself;
+- one first message: the portfolio snapshot, the one set of numbers about the account every reader gets (its value, cash, day and since the start, each holding with its price, value, share of the account and moves, the day's fills and the proposals waiting, `lib/portfolio/snapshot.ts`), then each stock held or watched with its belief in one line, then its own notes of the last 5 days (each in a line: the day, the stocks, the impact and effect, the first sentence) and its own last digest, so it says what changed and doesn't repeat itself. A note has no book, so a paper and a live book of the same owner are shown the same notes;
 - OpenAI's own web search. The model searches as many times as it needs inside that one call, the way ChatGPT does; the app runs no tools and makes no second call.
 
 ## What it writes
 
-Its reply is the digest, saved as it wrote it: six sections, each a short paragraph linking the pages it rests on (market overview, sector developments, major developments, implications for your portfolio, what deserves attention, upcoming events). About 3,000 characters, the links not counted.
+Its reply is one JSON object with two parts: the digest and its notes (OpenAI's Structured Outputs, in the same call as the searches).
+
+The digest is saved as it wrote it: six sections, each a short paragraph linking the pages it rests on (market overview, sector developments, major developments, implications for your portfolio, what deserves attention, upcoming events). About 3,000 characters, the links not counted.
 
 - Every number comes from the portfolio it was given or a page it found in this run.
 - Facts come first, each with its source; what they mean follows, starting "My interpretation is".
 - Upcoming events gives the economic calendar's dates for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report), each with its source.
 - When nothing important changed, it says so instead of forcing a call.
 
-A reply cut off at its limit, or a call that fails, saves nothing; the run is marked failed and says why.
+A reply cut off at its limit, a reply that isn't the digest and its notes, or a call that fails saves nothing; the run is marked failed and says why.
+
+## Its notes
+
+A note is written only when the day's research touches why we own or watch a stock; most days have few or none, and nothing caps how many. One note may name several stocks that share a story. A story it noted in the last 5 days gets a new note only when something new happened, and the note says what. Nothing in code stops a repeat: it is shown what it wrote, and decides. Each note carries:
+- the stocks it names, only from the ones it was given;
+- its text: what happened, with its source, and what it means for these stocks;
+- its **impact**: high when it could change a decision to buy, sell, add or trim; medium when it matters but changes no decision today; low when it is only worth remembering;
+- its **effect**: stronger, weaker or neutral, for the reason we own or watch the stock.
+
+Each note is saved once, as a shared note to the stocks it names (`SharedNote`, see [Theses](../concepts/theses.md)), with its run and its two fields:
+- **High** is pinned for three days. Each stock it names is in the [pinned note to answer](../concepts/situations.md) situation, so the 8 AM morning run has it on its list and must answer it on that stock, until a run writes on the stock. Its run reads the note above the stock's newest 8 Activity lines.
+- **Low and medium** are not pinned: a line in each stock's Activity, read by the next run as one of the stock's newest 8.
+
+In each stock's Activity the note is one line, titled with who wrote it and its two fields ("Market Reviewer's note to NVDA, AMD · high impact · weaker"); the paragraph under it is the model's own text. A note that fails to save never costs the digest.
 
 ## When it runs
 
@@ -36,8 +52,8 @@ At 7:30 AM ET every weekday the market trades, once for each book being traded: 
 
 The digest is on the home page, on the digest card's **Market** tab (the card opens on whichever digest was written last), and its run is in Runs.
 
-Its run page is read only: your first message, then the searches it made in one line, then the digest. **Context** shows the request exactly as it was sent: the instructions, the first message, and its one tool.
+Its run page is read only: your first message, then one line with the searches it made and the tokens the call used (in and out), then the digest, then each note under a title ("Note on NVDA, AMD · high · weaker · flagged for review"). **Context** shows the request exactly as it was sent: the instructions, the first message, and its one tool; the reply's shape is in the raw request.
 
 ## Technical details
 
-`lib/inngest/functions/market-reviewer.ts` (the 7:30 job, the books it runs for, and the save into `MarketDigest`, one row per book per day), `lib/agent/market-reviewer/run.ts` (its first message, built on `loadPortfolioSnapshot`, and the one call, OpenAI's Responses API with its `web_search` tool), `lib/agent/market-reviewer/prompt.ts` (its instructions). The run is opened and closed by `runAccountCall` (`lib/runs/account-run.ts`), and the request is kept by `lib/agent/run-requests.ts`.
+`lib/inngest/functions/market-reviewer.ts` (the 7:30 job, the books it runs for, the save into `MarketDigest`, one row per book per day, and then each note through `writeSharedNote`), `lib/agent/market-reviewer/run.ts` (its first message, built on `loadPortfolioSnapshot`, the reply's shape, which note is pinned (`notePin`), and the one call, OpenAI's Responses API with its `web_search` tool), `lib/agent/market-reviewer/prompt.ts` (its instructions), `lib/agent/shared-notes.ts` (how a note reads on a stock). The run is opened and closed by `runAccountCall` (`lib/runs/account-run.ts`), and the request is kept by `lib/agent/run-requests.ts`.

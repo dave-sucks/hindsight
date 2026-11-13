@@ -456,7 +456,7 @@ Mistakes:
   },
   PINNED_NOTE: {
     name: "pinned note to answer",
-    guidance: `When: the portfolio manager or the principal pinned a note on this stock and others with it, and no run has written on the stock since. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names something bigger than this stock: a market date, a story moving a group, how much of the account rides on it.
+    guidance: `When: the Market Reviewer or the principal pinned a note on this stock, alone or with others, and no run has written on the stock since. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it.
 
 Answer, in order:
 1. What does the note say is coming, and when?
@@ -464,7 +464,7 @@ Answer, in order:
 3. Does the stock's plan still fit what is coming: its floor and its size on a holding, its buy level and its research on a watch?
 
 What you can do (one of these):
-- Act on it. On a holding: a trim or a sale proposal, or a floor moved up with update_thesis. On a watch: a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go.
+- Act on it. On a holding: on good news, an add (manage_position add_to_position sizes it); a trim or a sale proposal, or a floor moved up with update_thesis. On a watch: on good news, a buy at today's price, which is its entry_price set at or near the current price with update_thesis; a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go.
 - Keep the plan: say in one sentence why the note doesn't change it for this stock.
 
 Answered: your one update_thesis on the stock, naming the pinned note and saying what it means here. The stock leaves this situation once you have written; the note stays pinned for the others it covers.
