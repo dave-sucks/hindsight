@@ -3,8 +3,10 @@
 /**
  * The workflow, as the code runs it. Row 1: the agents outside the loop
  * (Discovery, the Portfolio Digest, the Market Reviewer). Row 2: the Writer.
- * Row 3: a thesis, the three agents that answer it, and what they leave on
- * it (The answer), which lands back on the stock. An agent card's bar is what
+ * Row 3: a thesis, the three agents that answer it, and what they leave
+ * (run-outputs.tsx), fed through one bus since any of them can leave any of
+ * the four: notes, edits and trades land back on the stock, stale research
+ * goes back to the Writer. An agent card's bar is what
  * wakes it, its schedule is its doc's "Starts", and its chips are what it is
  * sent (lib/docs/agent-context.ts, the list its doc shows). The two digests
  * have no arrow: the amber chip each writes is the chip on the agents below.
@@ -23,13 +25,13 @@ import { AGENT_CONTEXT, CHIPS_SHOWN, MARKET_DIGEST, PORTFOLIO_DIGEST, type Conte
 import { factsOf, parseDoc } from "@/lib/docs/guide-parse";
 import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { cn } from "@/lib/utils";
-import { AnswerCard } from "./answer-card";
+import { RunOutputs, type OutputId } from "./run-outputs";
 import { Eyebrow, Mono } from "./primitives";
 import { docBySlug, type DocSlug } from "./registry";
 import { useGuideDoc } from "./tool-catalog";
 import { ExamplePill, type PillSpec } from "./trigger-bits";
 
-type NodeId = ContextAgent | "thesis" | "answer";
+type NodeId = ContextAgent | OutputId | "thesis" | "outputs";
 type Wake = "clock" | "trigger" | "asked";
 
 const WAKE: Record<Wake, { bar: string; label: string }> = {
@@ -54,9 +56,9 @@ const AGENTS: Record<ContextAgent, { name: string; wake: Wake; place: string; wr
     writes: <>Writes the <ContextChip part={MARKET_DIGEST.part}>{MARKET_DIGEST.label}</ContextChip> and notes on our stocks</>,
   },
   writer: { name: "The Writer", wake: "asked", place: "lg:col-start-1 lg:row-start-2 lg:mb-14" },
-  "trigger-runs": { name: "Trigger run", wake: "trigger", place: "lg:col-start-3 lg:row-start-3" },
-  "morning-runs": { name: "Morning run", wake: "clock", place: "lg:col-start-3 lg:row-start-4" },
-  chat: { name: "Chat", wake: "asked", place: "lg:col-start-3 lg:row-start-5" },
+  "trigger-runs": { name: "Trigger run", wake: "trigger", place: "lg:col-start-3 lg:row-start-3 lg:self-center" },
+  "morning-runs": { name: "Morning run", wake: "clock", place: "lg:col-start-3 lg:row-start-4 lg:self-center" },
+  chat: { name: "Chat", wake: "asked", place: "lg:col-start-3 lg:row-start-5 lg:self-center" },
 };
 
 /** The three that answer a thesis, and what brings each to it. */
@@ -78,7 +80,7 @@ const ACTIVITY: ReadonlyArray<{ title: string; rest: string; text: string; waiti
 interface Wire {
   key: string;
   d: string;
-  head: string;
+  head?: string;
   dashed?: boolean;
   tag?: { x: number; y: number; text: string };
 }
@@ -105,8 +107,8 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
     const right = (x: number, y: number) => `M${x - 6} ${y - 4} L${x} ${y} L${x - 6} ${y + 4}Z`;
     const down = (x: number, y: number) => `M${x - 4} ${y - 6} L${x} ${y} L${x + 4} ${y - 6}Z`;
     const up = (x: number, y: number) => `M${x - 4} ${y + 6} L${x} ${y} L${x + 4} ${y + 6}Z`;
-    const [disc, writer, thesis, answer, reviewer] = (["discovery", "writer", "thesis", "answer", "market-reviewer"] as const).map(R);
-    if (!disc || !writer || !thesis || !answer || !reviewer) return;
+    const [disc, writer, thesis, reviewer, outputs, note, edit, proposal, research] = (["discovery", "writer", "thesis", "market-reviewer", "outputs", "note", "edit", "proposal", "research"] as const).map(R);
+    if (!disc || !writer || !thesis || !reviewer || !outputs || !note || !edit || !proposal || !research) return;
     const out: Wire[] = [];
 
     out.push({ key: "d>w", d: `M${disc.cx} ${disc.b} V${writer.t - 2}`, head: down(writer.cx, writer.t - 2), tag: { x: disc.cx, y: (disc.b + writer.t) / 2, text: "sends a stock" } });
@@ -115,19 +117,27 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
     const lane = thesis.t - 18;
     const into = thesis.r - 32;
     out.push({ key: "mr>t", d: `M${reviewer.cx} ${reviewer.b} V${lane} H${into} V${thesis.t - 2}`, head: down(into, thesis.t - 2), tag: { x: (into + reviewer.cx) / 2, y: lane, text: "notes on its stocks" } });
+    // The three that answer, into one bus between them and the outputs: any of them can leave any of the four.
+    const bus = (note.l + Math.max(...ANSWERERS.map(([id]) => R(id)?.r ?? 0))) / 2;
+    const ys: number[] = [];
     for (const [id, why] of ANSWERERS) {
       const a = R(id);
       if (!a) continue;
+      ys.push(a.cy);
       out.push({ key: `t>${id}`, d: `M${thesis.r} ${a.cy} H${a.l - 2}`, head: right(a.l - 2, a.cy), tag: { x: (thesis.r + a.l) / 2, y: a.cy, text: why } });
-      out.push({ key: `${id}>a`, d: `M${a.r} ${a.cy} H${answer.l - 2}`, head: right(answer.l - 2, a.cy) });
+      out.push({ key: `${id}>bus`, d: `M${a.r} ${a.cy} H${bus}` });
     }
-    // Back to the stock along the bottom; stale research back to the Writer below that, up the left edge.
-    const bottom = Math.max(thesis.b, answer.b, R("chat")?.b ?? 0);
-    const y1 = bottom + 30;
+    const cards = [note, edit, proposal, research];
+    out.push({ key: "bus", d: `M${bus} ${Math.min(...ys, note.cy)} V${Math.max(...ys, research.cy)}` });
+    cards.forEach((o, i) => out.push({ key: `bus>${i}`, d: `M${bus} ${o.cy} H${o.l - 2}`, head: right(o.l - 2, o.cy) }));
+    // Notes, edits and trades back to the stock, down the right and along the bottom; stale research
+    // further out and below that, up the left edge to the Writer (crossing the first once, on the right).
+    const y1 = Math.max(thesis.b, outputs.b, R("chat")?.b ?? 0) + 30;
     const y2 = y1 + 34;
-    const gutter = writer.l - 18;
-    out.push({ key: "a>t", d: `M${answer.cx} ${answer.b} V${y1} H${thesis.cx} V${thesis.b + 2}`, head: up(thesis.cx, thesis.b + 2), tag: { x: (answer.cx + thesis.cx) / 2, y: y1, text: "every answer lands on the stock: its Activity, its plan, its position" } });
-    out.push({ key: "a>w", dashed: true, d: `M${answer.r - 28} ${answer.b} V${y2} H${gutter} V${writer.cy} H${writer.l - 2}`, head: right(writer.l - 2, writer.cy), tag: { x: (answer.cx + thesis.cx) / 2, y: y2, text: "stale research goes back to the Writer" } });
+    const [x1, x2, gutter] = [note.r + 12, note.r + 26, writer.l - 18];
+    [note, edit, proposal].forEach((o, i) => out.push({ key: `back${i}`, d: `M${o.r} ${o.cy} H${x1}` }));
+    out.push({ key: "back", d: `M${x1} ${note.cy} V${y1} H${thesis.cx} V${thesis.b + 2}`, head: up(thesis.cx, thesis.b + 2), tag: { x: (x1 + thesis.cx) / 2, y: y1, text: "notes, edits and trades land back on the stock" } });
+    out.push({ key: "r>w", dashed: true, d: `M${research.r} ${research.cy} H${x2} V${y2} H${gutter} V${writer.cy} H${writer.l - 2}`, head: right(writer.l - 2, writer.cy), tag: { x: (x1 + thesis.cx) / 2, y: y2, text: "stale research goes back to the Writer" } });
     setWires(out);
   }, []);
 
@@ -151,7 +161,7 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           {wires.map((w) => (
             <g key={w.key}>
               <path d={w.d} fill="none" strokeWidth={1.4} strokeDasharray={w.dashed ? "4 4" : undefined} className="stroke-foreground/30" />
-              <path d={w.head} className="fill-foreground/30" />
+              {w.head ? <path d={w.head} className="fill-foreground/30" /> : null}
               {w.tag ? (
                 <g>
                   <rect x={w.tag.x - (w.tag.text.length * 6.2 + 14) / 2} y={w.tag.y - 9} width={w.tag.text.length * 6.2 + 14} height={18} rx={9} className="fill-background stroke-border" />
@@ -179,8 +189,8 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           </span>
         </div>
 
-        {/* Three columns with the gaps as tracks: room for the arrows' words after the first, an arrowhead's before the answer. */}
-        <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)_3rem_minmax(0,1fr)] lg:gap-x-0 lg:gap-y-6">
+        {/* Three columns with the gaps as tracks: room for the arrows' words after the first, the bus before the outputs. */}
+        <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)_4rem_minmax(0,1fr)] lg:gap-x-0 lg:gap-y-6">
           {(["discovery", "portfolio-digest", "market-reviewer", "writer"] as const).map((id) => (
             <AgentCard key={id} id={id} ref={at(id)} onOpen={onOpen} />
           ))}
@@ -188,7 +198,9 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
           {ANSWERERS.map(([id]) => (
             <AgentCard key={id} id={id} ref={at(id)} onOpen={onOpen} />
           ))}
-          <AnswerCard ref={at("answer")} className="lg:col-start-5 lg:row-span-3 lg:row-start-3 lg:self-stretch lg:justify-center" />
+          <div ref={at("outputs")} className="lg:col-start-5 lg:row-span-3 lg:row-start-3">
+            <RunOutputs at={at} />
+          </div>
         </div>
       </div>
     </div>
