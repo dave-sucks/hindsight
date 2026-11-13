@@ -40,6 +40,8 @@ interface ThesisWriteRequestedPayload {
   reason: string;
   /** What the dispatcher found before sending the stock. */
   researchNotes?: string | null;
+  /** The chat's own results on the stock (chat-findings.ts). */
+  chatFound?: string | null;
   /** Whose thesis the stock came from, when it came from one. */
   ideaSource?: IdeaSource | null;
   parentRunId?: string | null;
@@ -104,6 +106,7 @@ export const thesisWriter = inngest.createFunction(
       existingThesisId: payload.existingThesisId ?? null,
       reason: payload.reason,
       researchNotes: payload.researchNotes ?? null,
+      chatFound: payload.chatFound ?? null,
       ideaSource: payload.ideaSource ?? null,
       parentRunId: payload.parentRunId ?? null,
       parentThesisId: payload.parentThesisId ?? null,

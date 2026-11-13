@@ -53,6 +53,8 @@ Then up to four web searches fill in what data can't: the call, the guidance, wh
 
 It also reads what the agent that sent the stock found first: its reason, its notes (the numbers it pulled, what it read) and, when the stock came from someone's thesis, the post or article itself, with who wrote it, the link and the day. It tests that author's claims against the data and says which held. The thesis keeps the author as where it came from, shown on its first Activity line.
 
+When a chat sends the stock, code also hands over what the chat already read on it: its web searches with their links, the catalyst calendar row, the filings, the news, our trade results. The model doesn't retype them; they arrive under "What the chat already found" in the Writer's first message (newest first, about 12,000 characters at most), and the Writer searches only for what they leave open. What code pulls fresh anyway (the numbers, prices, earnings, the Street) isn't carried over. The run page's Context shows the section as sent.
+
 ## What it decides
 
 First, a research note in three parts: the company in two sentences (what it does and how it makes money), the bull case and the bear case, with a bear case even on a buy. The company's numbers, its earnings history, the street's view and the chart are live data on the stock's page, not prose in the note. On a new stock the Writer's own decision note is the first line you read. Then the decision:

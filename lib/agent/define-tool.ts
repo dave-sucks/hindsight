@@ -22,7 +22,7 @@
  *   const tools = { get_earnings_data: getEarningsData(ctx) };
  */
 
-import { tool } from "ai";
+import { tool, type ModelMessage } from "ai";
 import type { z } from "zod";
 import type { ToolContext } from "./tool-context";
 import type { ToolUI, ToolSource, ToolResult } from "./tool-result";
@@ -84,6 +84,8 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   execute: (
     args: z.infer<TSchema>,
     ctx: ToolContext,
+    /** The conversation so far, as the AI SDK hands it to the call (each result as the model read it). */
+    call?: { messages?: ModelMessage[] },
   ) => Promise<{
     summary: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,7 +128,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             }),
           }
         : {}),
-      execute: async (args): Promise<ToolResult<TData>> => {
+      execute: async (args, callOptions?: { messages?: ModelMessage[] }): Promise<ToolResult<TData>> => {
         const t0 = Date.now();
         const resolvedGroupId = options.groupId
           ? ctx.groupId(options.groupId)
@@ -149,7 +151,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
 
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const result = await options.execute(args as any, ctx);
+          const result = await options.execute(args as any, ctx, { messages: callOptions?.messages });
           const elapsed = Date.now() - t0;
           console.log(`[tool] END "${label}" ${elapsed}ms runId=${ctx.runId}`);
 

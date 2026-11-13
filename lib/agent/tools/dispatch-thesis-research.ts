@@ -16,6 +16,7 @@
 import { z } from "zod";
 import { describeFilingEvent } from "@/lib/market-data/sec-events";
 import { defineTool } from "@/lib/agent/define-tool";
+import { chatFindings } from "@/lib/agent/thesis-research/chat-findings";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
@@ -131,8 +132,10 @@ export const dispatchThesisResearch = defineTool({
       ? `Refreshing $${ticker.toUpperCase()} thesis`
       : `Dispatching $${ticker.toUpperCase()} thesis-writer`,
 
-  execute: async (args, ctx) => {
+  execute: async (args, ctx, call) => {
     const T = args.ticker.toUpperCase();
+    // What the chat found on the stock that code can't pull again, carried by code (chat-findings.ts).
+    const chatFound = ctx.runMode === "PRINCIPAL_CHAT" ? chatFindings(T, call?.messages) : null;
 
     // Verify the analyst exists + belongs to this account before inserting
     // the child run row. The FK on ResearchRun.agentConfigId is SetNull, so
@@ -378,6 +381,7 @@ export const dispatchThesisResearch = defineTool({
           parentThesisId,
           reason,
           researchNotes: args.research_notes ?? null,
+          chatFound,
           ideaSource: args.idea_source ?? null,
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
@@ -420,6 +424,7 @@ export const dispatchThesisResearch = defineTool({
         parentThesisId,
         reason,
         researchNotes: args.research_notes ?? null,
+        chatFound,
         ideaSource: args.idea_source ?? null,
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: mode === "mint",

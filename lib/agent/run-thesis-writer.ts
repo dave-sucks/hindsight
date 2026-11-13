@@ -148,6 +148,8 @@ export interface RunThesisWriterArgs {
   reason: string;
   /** What the dispatcher found before sending the stock, in its words. */
   researchNotes?: string | null;
+  /** The results of the chat's own calls on the stock, carried by code (thesis-research/chat-findings.ts). */
+  chatFound?: string | null;
   /** Whose thesis the stock came from, when it came from one. */
   ideaSource?: IdeaSource | null;
   parentRunId?: string | null;
@@ -374,6 +376,12 @@ export interface WriterResearchPromptOpts {
  * SECTION_HEADERS in parse-sections.ts — the server parses this exact
  * template.
  */
+/** The chat's own results on the stock, as it read them (chat-findings.ts). Empty when it sent none. */
+export function chatFoundBlock(found: string | null | undefined, T: string): string {
+  if (!found?.trim()) return "";
+  return `\n\n## What the chat already found\nThe results of the chat's own calls on $${T} before it sent the stock, newest first, as it read them. Use them as sources; search only for what they leave open.\n\n${found.trim()}`;
+}
+
 /** What the dispatcher found, as it wrote it. Empty when it sent none. */
 function researchNotesBlock(notes: string | null | undefined): string {
   if (!notes?.trim()) return "";
@@ -581,7 +589,8 @@ skipped header is dropped research):
      every number, date, rating, and transaction. NEVER invent or
      contradict it. Use web search (up to ${WEB_SEARCH_MAX_USES} searches) only to fill
      narrative gaps: transcript quotes, analyst rationale, dated upcoming
-     catalysts, this week's market story.
+     catalysts, this week's market story. When the user message has "What
+     the chat already found", research only what that leaves open.
    • Every bullet carries at least one citation: [STRUCTURED:<field>]
      for ground-truth claims, [WEB:<url>] for web claims. "Recently"
      without a date is forbidden; "strong fundamentals" without a metric
@@ -930,7 +939,7 @@ export async function writerResearchPhase(
     const userPrompt = `═══════════════════════════════════════════════════════════════════
 GROUND-TRUTH DATA — use these numbers; do not invent or contradict
 ═══════════════════════════════════════════════════════════════════
-${rawDataBlock}
+${rawDataBlock}${chatFoundBlock(args.chatFound, T)}
 
 Write the research note now, then call submit_thesis.`;
 
