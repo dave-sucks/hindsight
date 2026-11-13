@@ -107,9 +107,9 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     name: "Market context",
     kind: "market",
     sources: ["alpaca", "finnhub"],
-    summary: "SPY, VIXY's day move, the 11 sector ETFs, how many companies report this week, and the regime: SPY against its averages.",
+    summary: "SPY and QQQ, VIXY's day move, the 11 sector ETFs, how many companies report this week, and the regime: SPY against its averages. The same numbers every agent's Market and portfolio block opens with.",
     resources: [
-      { source: "alpaca", title: "Index and sector quotes", description: "SPY, VIXY and 11 sector ETFs in one call. VIXY is an ETF of VIX futures; no plan we hold serves the VIX index itself.", endpoint: "/v2/stocks/snapshots?symbols=SPY,VIXY,XLK,...", example: "SPY $542.31 +0.8% · VIXY −1.7% · XLK +1.2% (leading)" },
+      { source: "alpaca", title: "Index and sector quotes", description: "SPY, QQQ, VIXY and 11 sector ETFs in one call. VIXY is an ETF of VIX futures; no plan we hold serves the VIX index itself.", endpoint: "/v2/stocks/snapshots?symbols=SPY,QQQ,VIXY,XLK,...", example: "SPY $542.31 +0.8% · QQQ $480.10 +1.1% · VIXY −1.7% · XLK +1.2% (leading)" },
       { source: "finnhub", title: "Broad market trend", description: "30 days of SPY, to place it against its averages.", endpoint: "/stock/candle?symbol=SPY&resolution=D", example: "SPY above its 20-day ($538.50) · uptrend" },
       { source: "finnhub", title: "Earnings density", description: "How many companies report in the next five days.", endpoint: "/calendar/earnings", example: "47 companies reporting · elevated" },
     ],

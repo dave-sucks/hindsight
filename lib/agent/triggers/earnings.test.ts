@@ -232,6 +232,7 @@ describe("fetchEarningsWindow", () => {
     await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
       reported: new Map(),
       upcoming: new Map(),
+      error: "Finnhub /calendar/earnings rate limited (429) after 1 retries",
     });
   });
 
@@ -242,6 +243,7 @@ describe("fetchEarningsWindow", () => {
     await expect(fetchEarningsWindow({ now: NOW })).resolves.toEqual({
       reported: new Map(),
       upcoming: new Map(),
+      error: "no data",
     });
   });
 

@@ -4,7 +4,11 @@
  * morning run, the trigger run, the owner's chat and the Writer each print it
  * once, from here.
  *
- * Three parts, each under its own heading:
+ * Four parts, each under its own heading:
+ * - **Market numbers:** the indexes, the regime, the sectors, VIXY and the
+ *   book's coming reports, written by code when the request is built
+ *   (lib/market-data/market-numbers.ts). The same numbers get_market_context
+ *   reports.
  * - **Market digest:** the 7:30 Market Reviewer's digest (the market's day,
  *   researched, with its sources), stamped, if it is from the last 4 days.
  *   Its own headings are moved down to ####, so they sit inside its part.
@@ -20,6 +24,8 @@
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText } from "@/lib/portfolio/snapshot";
+import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
+import { marketNumbersText } from "@/lib/market-data/market-numbers";
 
 export const BLOCK_HEADING = "## Market and portfolio";
 /** A digest older than this reads as none: it would describe a book that has moved on. */
@@ -30,7 +36,7 @@ export const DIGEST_SHELF_DAYS = 4;
  * writer is gpt-5.4 (lib/agent/digest-writer.ts); no agent gets an old one.
  */
 const OLD_DIGEST_MODEL = "gpt-4o";
-/** How long a run waits for the snapshot before printing that it couldn't be read. The chat waits less (route.ts). */
+/** How long a run waits for the snapshot and the market numbers before printing that they couldn't be read. The chat waits less (route.ts). */
 const SNAPSHOT_WAIT_MS = 15_000;
 
 const stamp = (d: Date) =>
@@ -57,11 +63,16 @@ export async function loadPortfolioBlock(args: { accountId: string; environment:
 async function readBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
   const now = args.now ?? new Date();
   const environment = args.environment === "LIVE" ? "LIVE" : "PAPER";
-  const [market, snapshot, digest] = await Promise.all([
+  const wait = args.waitMs ?? SNAPSHOT_WAIT_MS;
+  const [numbers, market, snapshot, digest] = await Promise.all([
+    withinTime(loadMarketNumbers({ now, book: { accountId: args.accountId, environment } }), wait).catch((err) => {
+      console.warn(`[portfolio-block] the market numbers couldn't be read: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }),
     prisma.marketDigest
       .findFirst({ where: { accountId: args.accountId, environment }, orderBy: { date: "desc" }, select: { digest: true, createdAt: true } })
       .catch(() => null),
-    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), args.waitMs ?? SNAPSHOT_WAIT_MS).catch((err) => {
+    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), wait).catch((err) => {
       console.warn(`[portfolio-block] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
       return null;
     }),
@@ -70,9 +81,12 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
       .catch(() => null),
   ]);
 
-  if (snapshot === "timeout") console.warn(`[portfolio-block] the snapshot took over ${args.waitMs ?? SNAPSHOT_WAIT_MS} ms for ${args.accountId} ${environment}`);
+  if (numbers === "timeout") console.warn(`[portfolio-block] the market numbers took over ${wait} ms`);
+  if (snapshot === "timeout") console.warn(`[portfolio-block] the snapshot took over ${wait} ms for ${args.accountId} ${environment}`);
   else if (snapshot == null) console.warn(`[portfolio-block] no snapshot for ${args.accountId} ${environment} (no owner, no broker keys, or the broker failed)`);
   const parts = [BLOCK_HEADING, ""];
+  if (numbers && numbers !== "timeout") parts.push(`### Market numbers (as of ${stamp(now)} ET)`, marketNumbersText(numbers), "");
+  else parts.push("### Market numbers", "The market numbers couldn't be read for this request.", "");
   const marketFresh = market && now.getTime() - market.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
   if (market && marketFresh) {
     parts.push(`### Market digest (written ${stamp(market.createdAt)} ET)`);

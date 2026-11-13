@@ -32,6 +32,8 @@ async function fire(orderStatus: string) {
   await jest.isolateModulesAsync(async () => {
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
+    // The block's market numbers, stood in, so the run never asks a vendor for real.
+    jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
     jest.doMock("ai", () => ({ generateText: jest.fn(async () => ((modelCalls += 1), { steps: [], response: { messages: [] }, text: "" })), stepCountIs: () => () => false }));
     jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));

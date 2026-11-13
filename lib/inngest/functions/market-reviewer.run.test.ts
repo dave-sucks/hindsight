@@ -33,6 +33,17 @@ jest.mock("@/lib/portfolio/load-snapshot", () => {
   });
   return { loadPortfolioSnapshot: async () => snapshot };
 });
+// The market's vendors, stood in: stand-in closes for the index and sector funds, and a calendar with MU reporting.
+jest.mock("@/lib/market-data/live-quote", () => {
+  const { standinMarketQuotes } = jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin");
+  const quotes = standinMarketQuotes("2026-11-10T21:00:00Z");
+  return { getLiveQuotes: async (symbols: string[]) => Object.fromEntries(symbols.map((s) => [s, quotes[s] ?? { quote: null, error: "not stood in" }])) };
+});
+jest.mock("@/lib/agent/research-helpers", () => ({
+  ...jest.requireActual("@/lib/agent/research-helpers"),
+  finnhub: async (path: string) =>
+    path.startsWith("/calendar/earnings") ? { data: jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_CALENDAR } : { data: null, error: "not stood in" },
+}));
 /** OpenAI's Responses API, stood in: the bodies it was sent, and its one reply (or a failure). */
 const mockOpenAI = { bodies: [] as unknown[], reply: null as unknown, fails: null as Error | null };
 jest.mock("openai", () => ({
@@ -56,6 +67,7 @@ import { serializeFeedItem } from "@/lib/thesis/activity-feed";
 import { titleSegments, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
+import { STANDIN_SPY_ROW } from "@/lib/agent/__fixtures__/market-numbers-standin";
 
 const ACCOUNT = "account_live";
 /** Wed Nov 11, 7:30 AM ET. */
@@ -119,6 +131,7 @@ beforeEach(() => {
       inBook({ id: "t_mu", ticker: "MU", status: "HOLDING", coreBelief: "Micron compounds for years as high-bandwidth memory stays scarce. It keeps its price." }),
       inBook({ id: "t_asml", ticker: "ASML", status: "WATCHING", coreBelief: "ASML compounds as High-NA EUV ramps." }),
     ],
+    tickerIndicators: [STANDIN_SPY_ROW],
     marketDigest: [{ id: "md_tue", accountId: ACCOUNT, environment: "LIVE", date: new Date("2026-11-10T00:00:00.000Z"), digest: "### Market overview\n\nStocks slipped on Tuesday.", createdAt: new Date("2026-11-10T12:40:00Z") }],
   });
   jest.spyOn(console, "log").mockImplementation(() => {});
@@ -150,12 +163,21 @@ describe("the 7:30 Market Reviewer", () => {
     expect(body.input.map((m) => m.role)).toEqual(["system", "user"]);
     expect(body.input[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
     expect(body.input[0].content).toContain("Do not make trades.");
+    expect(body.input[0].content).toContain("The Market numbers in your first message are the index, sector and earnings numbers to use: search the web for what moved them, not for the numbers.");
     expect(body.input[0].content).toContain("search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report)");
-    // Its first message: the portfolio snapshot's own text, each stock's belief in a line, its notes (none yet), then its last digest. Nothing else.
+    // Its first message: the market numbers, the portfolio snapshot's own text, each stock's belief in a line, its notes (none yet), then its last digest. Nothing else.
     const snapshot = (await loadPortfolioSnapshot({ accountId: ACCOUNT, environment: "LIVE" })) as PortfolioSnapshot;
     expect(body.input[1].content).toBe(
       [
         "Wed Nov 11, the LIVE book.",
+        "",
+        // The same numbers every agent's block prints: the stand-in closes, the regime from SPY's snapshot row, the book's coming report.
+        "## Market numbers",
+        "- S&P 500 (SPY) $600.00 −0.50% · Nasdaq 100 (QQQ) $500.00 −0.99%, at Tuesday's close, Nov 10.",
+        "- Market risk-on: SPY $603.00, above its 50-day ($590.00) and above its 200-day ($560.00), so full size (as of Tuesday's close, Nov 10).",
+        "- Sectors on the day, best to worst: XLU utilities +1.20%, XLE energy +0.80%, XLV health care +0.50%, XLP staples +0.30%, XLRE real estate +0.10%, XLB materials −0.10%, XLI industrials −0.30%, XLF financials −0.40%, XLC communications −0.60%, XLY discretionary −0.90%, XLK tech −1.40%.",
+        "- VIXY, a fund of VIX futures (not the VIX itself): +3.09% on the day.",
+        "- Our stocks reporting in the next 14 days: MU (held) Tue, Nov 17 after the close.",
         "",
         "## The portfolio",
         snapshotText(snapshot),
@@ -186,7 +208,9 @@ describe("the 7:30 Market Reviewer", () => {
 
     // Context shows the instructions, the first message and its one tool.
     const view = viewOfRecord(record!);
-    expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Portfolio, watchlist, notes and last digest", "read"], ["Tool menu", "tools"]]);
+    expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Market numbers, portfolio, watchlist, notes and last digest", "read"], ["Tool menu", "tools"]]);
+    // The numbers are their own section in Context.
+    expect(view.categories[1].sections.map((s) => s.label)).toEqual(["Opening", "Market numbers", "The portfolio", "Why we hold each, in a line", "What we watch, and why", "Your notes in the last 5 days", "Your last digest", "Market overview"]);
     expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.

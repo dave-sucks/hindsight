@@ -1,8 +1,11 @@
 /**
  * get_market_context — migrated to defineTool().
  *
- * Gets current market conditions: SPY, VIXY's day move, sector ETFs,
- * earnings density, and the market regime.
+ * Gets current market conditions: SPY and QQQ, VIXY's day move, sector ETFs,
+ * earnings density, and the market regime. All but the SMA-20 and the
+ * earnings density come from loadMarketNumbers
+ * (lib/market-data/load-market-numbers.ts), the numbers every agent's Market
+ * and portfolio block prints, so the tool and the block can't disagree.
  *
  * No plan we pay for serves the VIX index (DAV-339, probe 2026-09-29:
  * Finnhub "Market data subscription required for CFD indices", Alpaca has
@@ -19,10 +22,8 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { finnhub } from "@/lib/agent/research-helpers";
 import { sma } from "@/lib/market-data/price-structure";
 import { getBars } from "@/lib/alpaca";
-import { readPrice, type PriceReading } from "@/lib/market-data/quote-age";
-import { getLiveQuotes } from "@/lib/market-data/live-quote";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
-import { computeRegime } from "@/lib/agent/regime";
+import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
+import { SECTORS } from "@/lib/market-data/market-numbers";
 import type { MacroEvent } from "@/lib/discovery/types";
 
 function formatShortDate(iso: string) {
@@ -30,11 +31,11 @@ function formatShortDate(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-const SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLB", "XLRE", "XLU", "XLC"];
+const SECTOR_COUNT = Object.keys(SECTORS).length;
 
 export const getMarketContext = defineTool({
   description:
-    "Get current market conditions: S&P 500, VIXY's move today (an ETF of VIX futures — its price is not the VIX level, and no plan we have serves the VIX index), sector ETF performance, and the market regime (SPY against its 50- and 200-day averages, as of the last close — the same regime that sizes every buy). A quick snapshot for market orientation.",
+    "Get current market conditions: the S&P 500 and the Nasdaq 100 (SPY, QQQ), VIXY's move today (an ETF of VIX futures — its price is not the VIX level, and no plan we have serves the VIX index), sector ETF performance, and the market regime (SPY against its 50- and 200-day averages, as of the last close — the same regime that sizes every buy). A quick snapshot for market orientation.",
   schema: z.object({}),
   ui: "tool-ui" as const,
   groupId: "Researching",
@@ -46,18 +47,16 @@ export const getMarketContext = defineTool({
     const today = new Date().toISOString().slice(0, 10);
     const fiveDaysForward = new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
 
-    const allSymbols = ["SPY", ...SECTOR_ETFS];
-    // How old SPY's price is, in words when it isn't live (quote-age).
-    const spyQuote: { reading: PriceReading | null } = { reading: null };
     // SPY candle via Alpaca (Finnhub /stock/candle is paid-only since
     // 2024).
     const spyBarsStart = new Date(Date.now() - 30 * 86400_000)
       .toISOString()
       .slice(0, 10);
-    const [live, spyBarsResult, earningsDensityResult] =
+    const [numbers, spyBarsResult, earningsDensityResult] =
       await Promise.all([
-        // SPY, the sector ETFs and VIXY in one call.
-        getLiveQuotes([...allSymbols, "VIXY"], { caller: "other", creds: ctx.alpacaCreds }),
+        // SPY, QQQ, the regime, the sector ETFs and VIXY: the numbers every
+        // agent's Market and portfolio block prints (lib/market-data/market-numbers.ts).
+        loadMarketNumbers({ creds: ctx.alpacaCreds }),
         // Alpaca returns daily bars; convert to the {c, s} shape the
         // downstream code expects.
         (async () => {
@@ -80,32 +79,10 @@ export const getMarketContext = defineTool({
         finnhub(`/calendar/earnings?from=${today}&to=${fiveDaysForward}`, 2),
       ]);
 
-    const quoteResults = allSymbols.map((sym) => {
-      const { quote: d, error } = live[sym] ?? { quote: null };
-      if (sym === "SPY") spyQuote.reading = readPrice({ ticker: "SPY", quote: d, quoteError: error, now: new Date() });
-      if (d) {
-        return { symbol: sym, price: d.c, changesPercentage: d.dp ?? 0, dayHigh: d.h ?? d.c, dayLow: d.l ?? d.c };
-      }
-      if (error) errors.push(error);
-      return null;
-    });
-    const spyData = quoteResults[0];
-    const sectorsRaw = quoteResults.slice(1).filter(Boolean);
-
-    // VIXY, as itself, from the same batch. Its daily move tracks fear; its
-    // price does not measure it (the fund bleeds value rolling futures), so
-    // no threshold is ever read off the price.
-    const vixyQuote = live.VIXY?.quote ?? null;
-    const vixy =
-      vixyQuote && typeof vixyQuote.c === "number" && vixyQuote.c > 0
-        ? { price: vixyQuote.c, changePct: typeof vixyQuote.dp === "number" ? vixyQuote.dp : null }
-        : null;
-
-    // The regime: the playbook's, from the daily snapshot — as of the last
-    // close, the same reading sizing and the proposals use.
-    const spySnapshot = (await loadIndicatorSnapshots(["SPY"]).catch(() => new Map())).get("SPY") ?? null;
-    const regimeReading = computeRegime(spySnapshot, []);
-    const regimeAsOf = spySnapshot?.asOf ?? null;
+    errors.push(...numbers.errors);
+    const [spyData, qqqData] = numbers.indexes;
+    // VIXY as itself (never a VIX level); the regime as of the last close, the one sizing uses.
+    const { vixy, sectors, regime: regimeReading, regimeAsOf } = numbers;
 
     // SPY's short trend, for context (the regime above is the 50/200-day one).
     let spyTrend: { sma_20: number; position: "above" | "below"; pct_from_sma: number } | null = null;
@@ -144,23 +121,19 @@ export const getMarketContext = defineTool({
       }
     } catch { /* non-fatal */ }
 
-    const sectors = sectorsRaw
-      .filter((s): s is NonNullable<typeof s> => s != null)
-      .map((s) => ({ symbol: s.symbol, changePct: s.changesPercentage }))
-      .sort((a, b) => b.changePct - a.changePct);
-
     const fPct = (n: number | null | undefined) => n != null ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}%` : "";
-    const spyReading = spyQuote.reading;
+    const spyReading = spyData.reading;
     const warnings: string[] = [];
-    if (spyReading?.warning) warnings.push(spyReading.warning);
+    if (spyReading.warning) warnings.push(spyReading.warning);
     if (!regimeReading) warnings.push("The market regime is unavailable: no SPY reading in today's indicator snapshot.");
     if (!vixy) warnings.push("VIXY's quote failed — no read on today's fear gauge.");
-    if (sectors.length < SECTOR_ETFS.length) {
-      warnings.push(`Only ${sectors.length} of ${SECTOR_ETFS.length} sector ETF quotes came back — the sector ranking is partial.`);
+    if (sectors.length < SECTOR_COUNT) {
+      warnings.push(`Only ${sectors.length} of ${SECTOR_COUNT} sector ETF quotes came back — the sector ranking is partial.`);
     }
     const trendAsOf = " (daily closes)";
     const summaryParts: string[] = warnings.map((w) => `⚠ ${w}`);
-    if (spyData) summaryParts.push(`SPY $${spyData.price} (${fPct(spyData.changesPercentage)})`);
+    if (spyData.price != null) summaryParts.push(`SPY $${spyData.price} (${fPct(spyData.changePct)})`);
+    if (qqqData.price != null) summaryParts.push(`QQQ $${qqqData.price} (${fPct(qqqData.changePct)})`);
     if (vixy?.changePct != null) summaryParts.push(`VIXY ${fPct(vixy.changePct)} today (VIX futures ETF; not the VIX level)`);
     if (regimeReading) {
       summaryParts.push(`${regimeReading.line.replace(/\.$/, "")}${regimeAsOf ? ` (as of the ${regimeAsOf} close)` : ""}`);
@@ -171,9 +144,10 @@ export const getMarketContext = defineTool({
     return {
       summary: summaryParts.join(". ") + ".",
       data: {
-        spy: spyData
-          ? { price: spyData.price, changePct: spyData.changesPercentage, dayHigh: spyData.dayHigh, dayLow: spyData.dayLow, asOf: spyReading?.asOf ?? null, ageMinutes: spyReading?.ageMinutes ?? null, live: spyReading?.live ?? false }
+        spy: spyData.price != null
+          ? { price: spyData.price, changePct: spyData.changePct, dayHigh: spyData.dayHigh, dayLow: spyData.dayLow, asOf: spyReading.asOf, ageMinutes: spyReading.ageMinutes, live: spyReading.live }
           : null,
+        qqq: qqqData.price != null ? { price: qqqData.price, changePct: qqqData.changePct, live: qqqData.reading.live } : null,
         ...(warnings.length > 0 ? { warnings } : {}),
         vixy,
         regime: regimeReading?.regime ?? null,
@@ -188,15 +162,15 @@ export const getMarketContext = defineTool({
         ...(errors.length > 0 ? { apiErrors: errors } : {}),
         // Tool UI renders the summary; raw market data lives on data for downstream consumers
         tickers: [
-          ...(spyData
-            ? [{ ticker: "SPY", summary: `${spyReading?.warningShort ? `⚠ ${spyReading.warningShort} · ` : ""}$${spyData.price} (${fPct(spyData.changesPercentage)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}${trendAsOf}` : ""}` }]
-            : spyReading?.warningShort
+          ...(spyData.price != null
+            ? [{ ticker: "SPY", summary: `${spyReading.warningShort ? `⚠ ${spyReading.warningShort} · ` : ""}$${spyData.price} (${fPct(spyData.changePct)})${spyTrend ? `, ${spyTrend.position} SMA-20 by ${fPct(spyTrend.pct_from_sma)}${trendAsOf}` : ""}` }]
+            : spyReading.warningShort
               ? [{ ticker: "SPY", summary: `⚠ ${spyReading.warningShort}` }]
               : []),
         ],
       },
       sources: [
-        { provider: "Alpaca", title: "SPY Real-Time Quote", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
+        { provider: "Alpaca", title: "SPY and QQQ Real-Time Quotes", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Alpaca", title: "VIXY (ProShares VIX Short-Term Futures ETF)", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },
         { provider: "Alpaca", title: "SPY 50- and 200-day averages (daily indicator snapshot, regime)", url: "https://alpaca.markets/docs/api-references/market-data-api/stock-pricing-data/historical/" },
         { provider: "Alpaca", title: "S&P 500 Sector ETF Performance", url: "https://docs.alpaca.markets/reference/stocksnapshots-1" },

@@ -2,8 +2,9 @@
  * The Market Reviewer V1: one run per traded book at 7:30 AM ET each weekday
  * (lib/inngest/functions/market-reviewer.ts). One call to the model, like
  * the 8 PM Portfolio Digest's (lib/agent/digest-writer.ts): its instructions
- * and one first message (the portfolio snapshot, each stock's belief in a
- * line, its own last digest), with OpenAI's own web search as its one tool.
+ * and one first message (the market numbers, the portfolio snapshot, each
+ * stock's belief in a line, its own last digest), with OpenAI's own web
+ * search as its one tool.
  * The model searches inside that call; its reply is the digest and its notes
  * on the stocks its research touched (one JSON object, Structured Outputs),
  * and the job saves both. The request is kept exactly as sent, for the run
@@ -13,6 +14,8 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText } from "@/lib/portfolio/snapshot";
+import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
+import { marketNumbersText } from "@/lib/market-data/market-numbers";
 import { MODES } from "@/lib/agent/modes";
 import { buildMarketReviewerPrompt } from "@/lib/agent/market-reviewer/prompt";
 import { etDateOf } from "@/lib/market-data/intraday-window";
@@ -86,10 +89,12 @@ const firstSentence = (text: string | null) => {
 /** How far back its own notes are shown to it, so it doesn't file the same story again. */
 const NOTES_SHOWN_MS = 5 * 86_400_000;
 
-/** Its first message: the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, then its own last digest; and those stocks' tickers. */
+/** Its first message: the market numbers, the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, then its own last digest; and those stocks' tickers. */
 export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: string; tickers: string[] }> {
   const today = etDateOf(now);
-  const [theses, snapshot, last, notes] = await Promise.all([
+  const [numbers, theses, snapshot, last, notes] = await Promise.all([
+    // The same numbers every agent's Market and portfolio block prints, from the same function.
+    loadMarketNumbers({ now, book }).catch(() => null),
     prisma.thesis.findMany({
       where: { userId: book.userId, status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
       select: { ticker: true, status: true, coreBelief: true },
@@ -124,6 +129,9 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: 
   const list = (rows: typeof all) => (rows.length ? rows.map(line) : ["- none"]);
   const text = [
     `${day(today)}, the ${book.environment} book.`,
+    "",
+    "## Market numbers",
+    numbers ? marketNumbersText(numbers) : "The market numbers couldn't be read this run.",
     "",
     "## The portfolio",
     snapshot ? snapshotText(snapshot) : "The portfolio couldn't be read this run.",
