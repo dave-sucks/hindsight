@@ -69,6 +69,11 @@ function buildPredicateInputSchema() {
       const said = def ? settingRefusal(def, (input as { settings?: Record<string, unknown> }).settings?.[key]) : null;
       if (said) return said;
     }
+    // The choice sent as the stored `variable` where the measure reads it from `value` (PRAX, AAOI 11-13: "item:8.01" three times).
+    const sent = input as { value?: unknown; variable?: unknown };
+    if (issue.path[0] === "value" && sent.value == null && typeof sent.variable === "string" && choiceInValue(MEASURES[w as Watch])) {
+      return `For ${w}, ${JSON.stringify(sent.variable)} goes in \`value\`, not \`variable\`. ${MEASURES[w as Watch].shape}`;
+    }
     const field = issue.path.join(".") || "condition";
     return `For ${w}, \`${field}\` is wrong: ${issue.message}. ${MEASURES[w as Watch].shape}`;
   };
@@ -136,6 +141,11 @@ function measureBranch(m: MeasureDef) {
     shape.settings = z.object(fields).optional();
   }
   return z.object(shape);
+}
+
+/** A measure whose choice (a filing, a line) the model writes in `value` and storage keeps in `variable`. */
+export function choiceInValue(m: MeasureDef | undefined): boolean {
+  return !!m && (m.value.none === true || m.variables?.mode === "replace");
 }
 
 type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId; variable?: VariableId; settings?: Record<string, unknown> };

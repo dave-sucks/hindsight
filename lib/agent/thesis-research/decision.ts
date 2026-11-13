@@ -17,8 +17,8 @@
  */
 
 import { z } from "zod";
-import { editNumber, editTriggerOpSchema, triggerInputSchema, triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { shapeOf } from "@/lib/agent/triggers/condition";
+import { choiceInValue, editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
+import { MEASURES, shapeOf, type Watch } from "@/lib/agent/triggers/condition";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
@@ -75,8 +75,10 @@ export type ThesisDecisionInput = z.infer<typeof thesisDecisionSchema>;
 /** A decision that passed validation; triggers are the parsed, typed array. */
 export interface ValidatedThesisDecision
   extends Omit<ThesisDecisionInput, "triggers" | "add_triggers"> {
-  triggers?: z.infer<typeof triggersArraySchema>;
-  add_triggers?: z.infer<typeof triggersArraySchema>;
+  triggers?: WriterTrigger[];
+  add_triggers?: WriterTrigger[];
+  /** What the save will go without, and why: each goes on the stock as a "Not applied" line. */
+  dropped?: DroppedItem[];
   /**
    * What the app fixed on the way in, in words — a conviction stored one
    * tier down, a trigger it couldn't read. Appended to the saved rationale
@@ -350,8 +352,9 @@ export function validateThesisDecision(
   // ── Triggers (optional — omission means horizon defaults) ───────────
   // On a refresh the same checks run on `add_triggers`: an added trigger is
   // a new trigger, so the action-set rules apply to it alone.
-  let parsedTriggers: z.infer<typeof triggersArraySchema> | undefined;
-  let parsedAdds: z.infer<typeof triggersArraySchema> | undefined;
+  let parsedTriggers: WriterTrigger[] | undefined;
+  let parsedAdds: WriterTrigger[] | undefined;
+  const dropped: DroppedItem[] = [];
   const supplied = opts.mode === "refresh" ? d.add_triggers : d.triggers;
   if (supplied !== undefined) {
     // One trigger at a time. A rung the server schema can't read is fixed
@@ -360,11 +363,12 @@ export function validateThesisDecision(
     // ladder and the decision save. Under strict mode the model can't send
     // an unknown kind at all — this is the OpenAI / non-strict path and the
     // out-of-range values (a 500-day review) the grammar can't express.
-    const kept: z.infer<typeof triggersArraySchema> = [];
+    const kept: WriterTrigger[] = [];
     for (const item of supplied as unknown[]) {
-      const { trigger, note } = readOneTrigger(item);
-      if (trigger) kept.push(trigger);
-      if (note) notes.push(note);
+      const read = readOneTrigger(item);
+      if (read.trigger) kept.push(read.trigger);
+      if (read.note) notes.push(read.note);
+      if (read.dropped) dropped.push(read.dropped);
     }
     const parsed = { success: true as const, data: kept };
     {
@@ -403,34 +407,63 @@ export function validateThesisDecision(
       triggers: parsedTriggers,
       add_triggers: parsedAdds,
       notes: notes.length ? notes : undefined,
+      ...(dropped.length ? { dropped } : {}),
     },
   };
 }
 
 /**
- * Read one model-authored trigger through the server schema. Returns the
- * parsed trigger, or nothing plus a note saying what was fixed or dropped.
+ * Read one model-authored trigger through the save's own schema
+ * (`triggerInputSchema`, the one record_thesis and update_thesis parse), so
+ * what the decision keeps is what the save takes. Until 2026-11-13 this read
+ * the STORED shape: a filing sent as the save wants it ({value:"item:8.01"})
+ * was dropped here, and one sent as stored ({variable:"item:8.01"}) passed
+ * here and was refused by the save (PRAX and AAOI lost whole theses to it).
+ * Returns the trigger as the save will read it, or nothing and what was
+ * dropped and why (it goes on the stock as a "Not applied" line).
  */
-export function readOneTrigger(item: unknown): { trigger: z.infer<typeof triggerSchema> | null; note: string | null } {
-  const direct = triggerSchema.safeParse(item);
-  if (direct.success) return { trigger: direct.data, note: null };
+export function readOneTrigger(item: unknown): { trigger: WriterTrigger | null; note: string | null; dropped?: DroppedItem } {
+  const reads = (t: unknown) => triggerInputSchema.safeParse(t).success;
+  if (reads(item)) return { trigger: item as WriterTrigger, note: null };
 
   const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
   const pred = obj?.predicate && typeof obj.predicate === "object" ? (obj.predicate as Record<string, unknown>) : null;
-  const kind = typeof pred?.kind === "string" ? pred.kind : "(none)";
+  const kind = typeof pred?.kind === "string" ? pred.kind : typeof pred?.watch === "string" ? pred.watch : "(none)";
+
+  // The choice written where storage keeps it: a filing or a line in `variable`, `value` empty. Same meaning, moved.
+  if (pred && pred.value == null && typeof pred.variable === "string" && choiceInValue(MEASURES[pred.watch as Watch])) {
+    const { variable, ...rest } = pred;
+    const moved = { ...obj, predicate: { ...rest, value: variable } };
+    if (reads(moved)) return { trigger: moved as WriterTrigger, note: null };
+  }
 
   // An invented review kind with a day count ("REVIEW_AFTER_DAYS", IBRX
   // 2026-09-25) means "look again in N days" — the review cadence.
   if (pred && typeof pred.days === "number" && obj?.action === "REVIEW" && shapeOf(pred) == null) {
     const days = Math.min(Math.max(Math.round(pred.days), 1), 365);
-    const asCadence = triggerSchema.safeParse({ ...obj, predicate: { watch: "repeat", value: days } });
-    if (asCadence.success) {
-      return { trigger: asCadence.data, note: `Trigger kind "${kind}" isn't one the app evaluates; saved as a review in ${days} days.` };
+    const asCadence = { ...obj, predicate: { watch: "repeat", value: days } };
+    if (reads(asCadence)) {
+      return { trigger: asCadence as WriterTrigger, note: `Trigger kind "${kind}" isn't one the app evaluates; saved as a review in ${days} days.` };
     }
   }
 
-  const issue = direct.error.issues[0];
-  const where = issue?.path?.length ? issue.path.join(".") : "shape";
-  return { trigger: null, note: `Dropped one trigger the app couldn't read (${where}: ${issue?.message ?? "invalid"}; kind ${kind}).` };
+  const issue = triggerInputSchema.safeParse(item).error?.issues[0];
+  return { trigger: null, note: null, dropped: droppedTrigger(obj, issue?.message ?? "the app couldn't read it") };
+}
+
+/** A trigger as the save reads it: the model's own shape, checked against the save's schema. */
+export type WriterTrigger = Record<string, unknown> & { action: string; predicate: unknown; rationale: string };
+
+/** What a save went without, and why: written on the stock as a "Not applied" line (`fieldChanges.notApplied`, as update_thesis writes). */
+export interface DroppedItem {
+  field: string;
+  why: string;
+  reason: string;
+}
+
+export function droppedTrigger(t: Record<string, unknown> | null, reason: string): DroppedItem {
+  const note = typeof t?.rationale === "string" ? t.rationale.trim() : "";
+  const action = typeof t?.action === "string" ? t.action.toLowerCase() : "a";
+  return { field: "triggers", why: `the ${action} trigger${note ? ` "${note.length > 90 ? `${note.slice(0, 89)}…` : note}"` : ""}`, reason };
 }
 

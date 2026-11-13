@@ -43,6 +43,8 @@ interface ThesisWriteRequestedPayload {
   /** Whose thesis the stock came from, when it came from one. */
   ideaSource?: IdeaSource | null;
   parentRunId?: string | null;
+  /** The stock's last thesis, passed or retired, when a refresh was sent as new research on it. */
+  parentThesisId?: string | null;
   /**
    * Layer-1 clamp: when true, record_thesis downgrades any
    * LONG/SHORT/ACTIVE mint request to LONG/SHORT/WATCHING. Set by
@@ -104,6 +106,7 @@ export const thesisWriter = inngest.createFunction(
       researchNotes: payload.researchNotes ?? null,
       ideaSource: payload.ideaSource ?? null,
       parentRunId: payload.parentRunId ?? null,
+      parentThesisId: payload.parentThesisId ?? null,
       forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,
       reviewCadenceDays: payload.reviewCadenceDays ?? null,

@@ -331,18 +331,21 @@ export const waitForThesisRefresh = defineTool({
       };
     }
 
-    // Timeout — still RUNNING. Surface clearly so the agent doesn't
-    // assume freshness. The worker continues; a subsequent agent run
-    // may see the refresh land.
+    // Timeout — still RUNNING. Say where the writer is, in its own phase
+    // words, so the chat can tell the owner why there is no thesis yet.
+    const lastStep = await prisma.runEvent
+      .findFirst({ where: { runId: childRunId }, orderBy: { createdAt: "desc" }, select: { title: true, createdAt: true } })
+      .catch(() => null);
+    const doing = lastStep ? ` Its last step: "${lastStep.title}", ${Math.round((Date.now() - lastStep.createdAt.getTime()) / 1000)} s ago.` : "";
     return {
-      summary: `Refresh did not complete within ${args.timeout_seconds ?? 150}s. Worker still running.`,
+      summary: `Writer for ${ticker ?? childRunId.slice(0, 8)} still running after ${args.timeout_seconds ?? 300}s.${doing}`,
       data: {
         status: "TIMEOUT" as const,
         childRunId,
         ticker,
         thesisExcerpt,
         note:
-          `The thesis-writer worker is still RUNNING after the timeout. Research has NOT been refreshed yet. Same options as a failure: proceed on existing research with explicit acknowledgement, or defer with update_thesis(REVIEWED-only). The worker will continue in the background and the refresh may land in time for a later run.`,
+          `The thesis-writer is still RUNNING after the timeout, so there is no new thesis yet.${doing} It keeps going and saves on its own; check again with timeout_seconds: 0 before saying it landed or failed. Same options as a failure meanwhile: proceed on existing research with explicit acknowledgement, or defer with update_thesis(REVIEWED-only).`,
         items: [
           ...(ticker
             ? [
@@ -350,7 +353,7 @@ export const waitForThesisRefresh = defineTool({
                   kind: "ticker" as const,
                   ticker,
                   tag: "wait timeout",
-                  text: `Worker still RUNNING after ${args.timeout_seconds ?? 150}s.`,
+                  text: `Worker still RUNNING after ${args.timeout_seconds ?? 300}s.`,
                 },
               ]
             : []),

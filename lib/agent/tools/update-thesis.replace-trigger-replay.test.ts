@@ -23,6 +23,7 @@
  * review at any price is a wake, not a target — so the refresh saves, the
  * $146 review is a wake, and the target column stays empty.
  */
+import type { z } from "zod";
 import raw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
@@ -70,7 +71,9 @@ function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
 
 /**
  * The update_thesis args the writer builds from a decision — its real
- * builder, loaded against a stub database (it only needs the import).
+ * builder, loaded against a stub database (it only needs the import) — read
+ * through update_thesis's input schema, as the writer's executeThroughSchema
+ * reads them before the save runs.
  */
 async function writerSaveArgs(d: ValidatedThesisDecision): Promise<Record<string, unknown>> {
   let args: Record<string, unknown> = {};
@@ -91,6 +94,11 @@ async function writerSaveArgs(d: ValidatedThesisDecision): Promise<Record<string
       {},
       { direction: "LONG", status: "WATCHING" },
     ).toolArgs;
+    const { updateThesis } = await import("@/lib/agent/tools/update-thesis");
+    const door = (updateThesis({ runId: "r", userId: "u", accountId: "a", runMode: "THESIS_WRITER" } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
+    const parsed = door.safeParse(args);
+    if (!parsed.success) throw new Error(`update_thesis's schema refused the writer's args: ${JSON.stringify(parsed.error.issues.slice(0, 3))}`);
+    args = parsed.data as Record<string, unknown>;
   });
   return args;
 }

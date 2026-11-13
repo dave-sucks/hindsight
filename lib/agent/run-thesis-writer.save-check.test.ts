@@ -267,7 +267,7 @@ describe("submit_thesis runs the save check", () => {
     expect(onAccept).toHaveBeenCalledTimes(1);
   });
 
-  it("after two save refusals it lets the decision through, so the save reports rather than the loop spinning", async () => {
+  it("after two hand-backs it saves what it can: the call lands and the refused plan is written on the stock", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const { t, onAccept } = submitTool();
     expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(false);

@@ -69,8 +69,10 @@ import {
   type ParsedSections,
 } from "@/lib/agent/thesis-research/parse-sections";
 import {
+  droppedTrigger,
   thesisDecisionSchema,
   validateThesisDecision,
+  type DroppedItem,
   type ValidatedThesisDecision,
 } from "@/lib/agent/thesis-research/decision";
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
@@ -149,6 +151,8 @@ export interface RunThesisWriterArgs {
   /** Whose thesis the stock came from, when it came from one. */
   ideaSource?: IdeaSource | null;
   parentRunId?: string | null;
+  /** The stock's last thesis, passed or retired, when this mint is new research on it (dispatch_thesis_research). */
+  parentThesisId?: string | null;
   /** Keep the thesis's levels and fill only the empty ones, as a chat-started refresh does (a buy placed by hand). */
   keepLevels?: boolean;
   /**
@@ -1260,7 +1264,7 @@ async function executeThroughSchema(
   toolInstance: any,
   toolName: string,
   args: Record<string, unknown>,
-): Promise<PersistToolEnvelope | { __schemaError: string }> {
+): Promise<PersistToolEnvelope | { __schemaError: string; issues: SchemaIssue[] }> {
   const schema = toolInstance?.inputSchema as
     | { safeParse: (v: unknown) => { success: boolean; data?: unknown; error?: { issues: Array<{ path: Array<string | number>; message: string }> } } }
     | undefined;
@@ -1268,11 +1272,12 @@ async function executeThroughSchema(
   if (schema && typeof schema.safeParse === "function") {
     const parsed = schema.safeParse(args);
     if (!parsed.success) {
-      const issues = (parsed.error?.issues ?? [])
+      const all = (parsed.error?.issues ?? []).map((i) => ({ path: i.path, message: i.message }));
+      const issues = all
         .slice(0, 5)
         .map((i) => `${i.path.join(".")}: ${i.message}`)
         .join("; ");
-      return { __schemaError: `${toolName} args failed schema validation: ${issues}` };
+      return { __schemaError: `${toolName} args failed schema validation: ${issues}`, issues: all };
     }
     finalArgs = parsed.data;
   }
@@ -1281,6 +1286,8 @@ async function executeThroughSchema(
     messages: [] as never[],
   })) as PersistToolEnvelope;
 }
+
+type SchemaIssue = { path: Array<string | number>; message: string };
 
 /** The save call a decision becomes — one builder for the check and the save. */
 export interface WriterSaveCall {
@@ -1360,6 +1367,7 @@ export function buildWriterSaveCall(
         // P1-35: pass the model's engagement with a recent sale through
         // to record_thesis's recently-sold gate.
         acknowledge_prior_exit: d.prior_exit_acknowledgment,
+        parent_thesis_id: args.parentThesisId ?? undefined,
         source_kind: args.ideaSource ? "OUTSIDE_IDEA" : "WEB_SEARCH",
         source_rationale: (args.ideaSource ? ideaSourceLine(args.ideaSource) : args.reason).slice(0, 300),
         ...sections,
@@ -1447,6 +1455,10 @@ export interface WriterSaveOutcome {
   fixable: boolean;
   /** A save that landed with some fields refused by themselves, in the save's words. */
   notApplied?: string;
+  /** The schema's refusals by path (`triggers.1.predicate`), so a save can go without exactly those. */
+  issues?: SchemaIssue[];
+  /** A check that would save the rest: update_thesis lands the call and writes what it refused on the stock. */
+  partial?: boolean;
 }
 
 /**
@@ -1455,10 +1467,10 @@ export interface WriterSaveOutcome {
  */
 export function readWriterSaveResult(
   toolName: WriterSaveCall["toolName"],
-  res: PersistToolEnvelope | { __schemaError: string },
+  res: PersistToolEnvelope | { __schemaError: string; issues?: SchemaIssue[] },
 ): WriterSaveOutcome {
   if ("__schemaError" in res) {
-    return { thesisId: null, wouldSave: false, error: res.__schemaError, fixable: true };
+    return { thesisId: null, wouldSave: false, error: res.__schemaError, fixable: true, issues: res.issues };
   }
   if (res.ok === false) {
     // The tool threw (e.g. a Prisma error). defineTool's envelope carries the
@@ -1485,6 +1497,7 @@ export function readWriterSaveResult(
         thesisId: null,
         wouldSave: false,
         fixable: true,
+        partial: true,
         error: `${toolName} would save, but ${refused.length} change${refused.length === 1 ? "" : "s"} would be refused: ${refused
           .map((op) => `${op.text ?? op.id ?? "trigger"} — ${op.reason ?? "refused"}`)
           .join(" · ")}`,
@@ -1534,8 +1547,65 @@ export async function checkDecisionAgainstSave(input: {
   }
 }
 
-/** How many times the submit step hands a save refusal back before letting the save speak. */
-const SAVE_CHECK_REFUSALS_BEFORE_PASS = 2;
+/** How many times the submit step hands a save refusal back before it saves what it can. */
+const SAVE_CHECK_HAND_BACKS = 2;
+
+/** The decision fields a save can go without: none of them is the claim or the plan's levels. */
+const DROPPABLE_FIELDS = new Set(["setup_id", "stop_basis", "target_basis", "entry_on_close", "conviction_rationale", "variant_view", "catalyst_date"]);
+
+/**
+ * The decision without what the save's schema refused: a trigger by its
+ * place in the call that was sent, or one optional field. Null when a
+ * refusal names anything else (the claim, a level, a trigger code added, the
+ * call as a whole): nothing smaller can save. The call's lists hold the
+ * decision's own trigger objects (buildWriterSaveCall filters and appends,
+ * never copies), so the refused one is found in the decision by identity;
+ * without the call, the decision's own order stands (the check's call).
+ */
+export function withoutRefused(d: ValidatedThesisDecision, issues: SchemaIssue[] | undefined, sent?: Record<string, unknown>): ValidatedThesisDecision | null {
+  if (!issues?.length) return null;
+  const next: ValidatedThesisDecision = { ...d, dropped: [...(d.dropped ?? [])] };
+  const gone = new Set<unknown>();
+  for (const issue of issues) {
+    const [head, index] = issue.path;
+    const list = head === "triggers" ? d.triggers : head === "add_triggers" ? d.add_triggers : undefined;
+    const refused = typeof index === "number" ? ((sent?.[head as string] as unknown[] | undefined) ?? list)?.[index] : undefined;
+    if (list && refused !== undefined && list.includes(refused as never)) {
+      if (!gone.has(refused)) next.dropped!.push(droppedTrigger(refused as Record<string, unknown>, issue.message));
+      gone.add(refused);
+    } else if (typeof head === "string" && issue.path.length === 1 && DROPPABLE_FIELDS.has(head) && head in d) {
+      delete (next as unknown as Record<string, unknown>)[head];
+      next.dropped!.push({ field: head, why: head.replace(/_/g, " "), reason: issue.message });
+    } else return null;
+  }
+  if (d.triggers) next.triggers = d.triggers.filter((t) => !gone.has(t));
+  if (d.add_triggers) next.add_triggers = d.add_triggers.filter((t) => !gone.has(t));
+  return next;
+}
+
+/**
+ * Save what can be saved: drop what the save refused and check again, until
+ * it would save or a refusal names something it can't go without. A check
+ * that would save the rest (update_thesis lands the call and writes what it
+ * refused on the stock) counts as saving; so does a check that crashed, which
+ * is no refusal and leaves the real save to try.
+ */
+export async function saveWhatCan(
+  d: ValidatedThesisDecision,
+  first: WriterSaveOutcome,
+  check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>,
+): Promise<{ decision: ValidatedThesisDecision } | { error: string }> {
+  let current = d;
+  let outcome = first;
+  for (let round = 0; round < 4; round++) {
+    if (outcome.wouldSave || outcome.partial || !outcome.fixable || !outcome.error) return { decision: current };
+    const smaller = withoutRefused(current, outcome.issues);
+    if (!smaller) return { error: outcome.error };
+    current = smaller;
+    outcome = await check(current);
+  }
+  return outcome.wouldSave || outcome.partial ? { decision: current } : { error: outcome.error ?? "the save refused it" };
+}
 
 /**
  * The submit_thesis tool: the decision's own rules, then the save's check.
@@ -1550,7 +1620,7 @@ export function makeSubmitThesisTool(opts: {
   onReject?: (raw: unknown, errors: string[]) => void;
   ticker: string;
 }) {
-  let saveRefusals = 0;
+  let handBacks = 0;
   return tool({
     description:
       "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
@@ -1583,25 +1653,39 @@ export function makeSubmitThesisTool(opts: {
           instruction: "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note.",
         };
       }
-      if (saveRefusals < SAVE_CHECK_REFUSALS_BEFORE_PASS) {
-        const saved = await opts.check(v.decision!);
-        if (!saved.wouldSave && saved.fixable && saved.error) {
-          saveRefusals++;
-          console.log(
-            `[thesis-writer] submit_thesis attempt ${attempt} refused by the save check ticker=${opts.ticker}: ${saved.error}`,
-          );
-          opts.onReject?.(raw, [`The save refused this decision — ${saved.error}`]);
-          return {
-            accepted: false,
-            errors: [`The save refused this decision — ${saved.error}`],
-            instruction: "Fix exactly what the save refused and call submit_thesis again. Do NOT rewrite the research note.",
-          };
-        }
+      const saved = await opts.check(v.decision!);
+      const refused = !saved.wouldSave && saved.fixable && !!saved.error;
+      if (refused && handBacks < SAVE_CHECK_HAND_BACKS) {
+        handBacks++;
+        console.log(
+          `[thesis-writer] submit_thesis attempt ${attempt} refused by the save check ticker=${opts.ticker}: ${saved.error}`,
+        );
+        opts.onReject?.(raw, [`The save refused this decision — ${saved.error}`]);
+        return {
+          accepted: false,
+          errors: [`The save refused this decision — ${saved.error}`],
+          instruction: "Fix exactly what the save refused and call submit_thesis again. Do NOT rewrite the research note.",
+        };
       }
-      opts.onAccept(v.decision!, v.riskReward ?? null);
+      // Past the hand-backs, the thesis saves without what was refused: accepted
+      // only when the check says it will save (PRAX 11-13 was told "accepted" and lost).
+      const kept = await saveWhatCan(v.decision!, saved, opts.check);
+      if ("error" in kept) {
+        opts.onReject?.(raw, [`Nothing in this decision can be saved as it stands — ${kept.error}`]);
+        return {
+          accepted: false,
+          errors: [`Nothing in this decision can be saved as it stands — ${kept.error}`],
+          instruction: "This refuses the whole decision, not one field. Fix it and call submit_thesis again. Do NOT rewrite the research note.",
+        };
+      }
+      opts.onAccept(kept.decision, v.riskReward ?? null);
+      const without = kept.decision.dropped ?? [];
       return {
         accepted: true,
-        instruction: "Decision accepted and recorded. STOP — do not write anything further.",
+        ...(without.length ? { saved_without: without.map((x) => `${x.why} — ${x.reason}`) } : {}),
+        instruction: without.length
+          ? "Decision accepted and recorded without the items in saved_without; each is written on the stock. STOP — do not write anything further."
+          : "Decision accepted and recorded. STOP — do not write anything further.",
       };
     },
   });
@@ -1610,6 +1694,26 @@ export function makeSubmitThesisTool(opts: {
 /** Save-time retry budget: the model sees the refusal and resubmits, once. */
 const SAVE_RETRY_TIMEOUT_MS = 120_000;
 const SAVE_RETRY_MAX_STEPS = 3;
+
+/**
+ * What the save went without, on the run's own audit row in the shape
+ * update_thesis writes (`fieldChanges.notApplied`): the stock's Activity
+ * shows a "Not applied" line for each, as it does for a refused trigger edit.
+ */
+async function writeDropped(thesisId: string, runId: string, dropped: DroppedItem[]): Promise<void> {
+  try {
+    const row = await prisma.thesisUpdate.findFirst({ where: { thesisId, runId }, orderBy: { timestamp: "desc" }, select: { id: true, fieldChanges: true } });
+    if (!row) return;
+    const fc = (row.fieldChanges as Record<string, unknown> | null) ?? {};
+    const had = (fc.notApplied as { to?: unknown } | undefined)?.to;
+    await prisma.thesisUpdate.update({
+      where: { id: row.id },
+      data: { fieldChanges: { ...fc, notApplied: { from: null, to: [...(Array.isArray(had) ? had : []), ...dropped] } } as object },
+    });
+  } catch (err) {
+    console.warn(`[thesis-writer] could not write what the save went without on ${thesisId}:`, err instanceof Error ? err.message : err);
+  }
+}
 
 /**
  * The one retry, for both refusals a decision can meet: the writer's own
@@ -1749,14 +1853,9 @@ export async function writerPersistPhase(
       const parentMode = args.keepLevels || !args.parentRunId ? null : ((await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode ?? null);
       const fromChat = existing != null && keepsExistingLevels(args, parentMode);
 
+      const saveExisting = existing ? { direction: existing.direction, status: existing.status, keep: fromChat ? existing.triggers : undefined } : null;
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
-        const call = buildWriterSaveCall(
-          args,
-          pullOutput.pull,
-          decision,
-          sectionArgs,
-          existing ? { direction: existing.direction, status: existing.status, keep: fromChat ? existing.triggers : undefined } : null,
-        );
+        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, saveExisting);
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
         const outcome = readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));
         if (call.toolName === "update_thesis" && !outcome.error && args.existingThesisId) {
@@ -1777,6 +1876,14 @@ export async function writerPersistPhase(
       const canSave = args.mode === "mint" || !!args.existingThesisId;
       if (thesisId === null && canSave) {
         let outcome = await saveOnce(d);
+
+        // ── Go without what the save refused (a trigger, an optional field) ──
+        for (let round = 0; round < 3 && !outcome.thesisId && outcome.fixable && outcome.issues?.length; round++) {
+          const smaller = withoutRefused(d, outcome.issues, buildWriterSaveCall(args, pullOutput.pull, d, sectionArgs, saveExisting).toolArgs);
+          if (!smaller) break;
+          d = smaller;
+          outcome = await saveOnce(d);
+        }
 
         // ── One retry: hand the refusal back to the model ───────────────
         if (!outcome.thesisId && outcome.fixable && outcome.error) {
@@ -1806,13 +1913,14 @@ export async function writerPersistPhase(
         thesisId = outcome.thesisId;
         persistError = outcome.thesisId ? null : outcome.error ?? "unknown";
         notApplied = outcome.notApplied ?? null;
+        if (thesisId && d.dropped?.length) await writeDropped(thesisId, args.childRunId, d.dropped);
       }
 
       await writePhaseEvent(
         args.childRunId,
         thesisId ? "Thesis persisted" : "Persist refused",
         thesisId
-          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}`
+          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}${d.dropped?.length ? ` Saved without: ${d.dropped.map((x) => `${x.why} (${x.reason})`).join("; ")}.` : ""}`
           : persistError ?? "unknown",
         { ticker: T, thesisId, mode: args.mode },
       );

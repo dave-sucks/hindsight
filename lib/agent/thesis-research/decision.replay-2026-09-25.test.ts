@@ -64,13 +64,13 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.decision?.notes?.join(" ")).toMatch(/Conviction stored as MEDIUM: HIGH needs a variant view/);
   });
 
-  it("a trigger the app cannot read at all is dropped with a note; the decision still saves", () => {
+  it("a trigger the app cannot read at all is dropped and named for the stock's Activity; the decision still saves", () => {
     const v = validateThesisDecision(
       { ...fx.DYN.last.input, triggers: [{ predicate: { kind: "MOON_PHASE", full: true }, action: "REVIEW", rationale: "?" } as never, ...(fx.DYN.last.input.triggers ?? [])] },
       opts,
     );
     expect(v.ok).toBe(true);
     expect(v.decision?.triggers).toHaveLength(1);
-    expect(v.decision?.notes?.join(" ")).toMatch(/Dropped one trigger the app couldn't read/);
+    expect(v.decision?.dropped).toEqual([{ field: "triggers", why: 'the review trigger "?"', reason: expect.stringMatching(/condition|measure/i) }]);
   });
 });
