@@ -81,7 +81,7 @@ A neglected stock reprices on unexpected news with volume many times average; in
 
 **Buy:** A close above the gap-day high, or a day-2 hold above the gap-day midpoint.
 
-**Floor:** The gap-day low. A close below the gap's midpoint is an early warning; a filled gap is invalidation.
+**Floor:** The gap-day low. A close below the gap's midpoint is an early warning; a filled gap ends the setup.
 
 **Target:** Partial at 3–5 days of progress; the trail decides the rest.
 
@@ -144,7 +144,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Buy:** Within 2% of the rising 20- or 50-day. The buy level is the average itself; the tactical run confirms the touch held (a close above the prior day's high). This is the entry for a stock that never dips 10%.
 
-**Floor:** Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume invalidates.
+**Floor:** Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume ends the setup.
 
 **Target:** A partial at the prior high; the trail decides the rest.
 

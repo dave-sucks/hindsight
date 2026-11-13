@@ -28,7 +28,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 9_473,
   tactical: 14_910,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
-  writer: 16_707,
+  // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
+  writer: 16_884,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   chat: 35_807,
@@ -51,7 +52,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   "research-run": 32_053,
   tactical: 28_007,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
-  principal: 63_901,
+  // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
+  principal: 64_273,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

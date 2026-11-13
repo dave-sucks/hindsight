@@ -278,13 +278,13 @@ export function validateThesisDecision(
   if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
     if (!d.core_belief || d.core_belief.trim().length < 10) {
-      errors.push("core_belief: required for LONG/SHORT — ONE falsifiable sentence (outcome + timeframe + mechanism).");
+      errors.push("core_belief: required for LONG/SHORT — why we own the company, in two or three plain sentences about the business: never a stock price, a target or a date.");
     }
     if (!d.key_assumptions || d.key_assumptions.filter((a) => a.trim().length > 0).length < 2) {
       errors.push("key_assumptions: ≥2 specific falsifiable premises required for LONG/SHORT.");
     }
     if (!d.invalidation_conditions || d.invalidation_conditions.filter((c) => c.trim().length > 0).length < 2) {
-      errors.push("invalidation_conditions: ≥2 specific trip-wires required for LONG/SHORT (numbers, events, dates — not 'market volatility').");
+      errors.push("invalidation_conditions: ≥2 readings about the business, each with where it is read, required for LONG/SHORT — never a stock price, and not 'market volatility'.");
     }
 
     // ── Conviction Expression v4 ──────────────────────────────────────
