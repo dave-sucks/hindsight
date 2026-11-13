@@ -45,7 +45,7 @@ The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) com
 Two reads open the run. `get_portfolio_context` gives positions, cash, the account's open risk and the market's mood. `get_theses` gives the book, each stock at the size today needs:
 
 - **A quiet stock** is one line: the price, the buy it waits on, the next review.
-- **A stock in a situation** gets a row with the fields that situation's decision reads (the position, every trigger, the belief and the newest Activity lines on every row; the chart numbers and the Street on a buy, what would prove us wrong on a sale signal) and that situation's instructions, once.
+- **A stock in a situation** gets a row with the fields that situation's decision reads (the position, every trigger, the belief, the chart numbers and the newest Activity lines on every row; the Street and an event-driven stock's event date on a buy, what would prove us wrong on a sale signal) and that situation's instructions, once.
 - **A stock whose review clock came due** gets the whole case: the bull and bear cases, the conviction reason, the setup, the snapshot.
 
 <!-- asset: read-demo -->

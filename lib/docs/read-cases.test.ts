@@ -27,7 +27,7 @@ describe("the framework's read section follows row-for-model.ts", () => {
     expect(when.triggers).toBe("always");
     expect(when.bull_case).toBe("review");
     expect(when.history).toBe("named");
-    expect(when.chart).toBe("situations");
+    expect(when.chart).toBe("always");
     expect(grid.find((g) => g.fieldId === "would_prove_it_wrong")!.situations.map((s) => s.code)).toContain("PROTECTIVE_SALE");
   });
   it("the reads are distinct, and each one lights at least the line's fields", () => {
@@ -49,7 +49,7 @@ describe("the framework's read section follows row-for-model.ts", () => {
       for (const k of printed(samples.bySituation[code])) expect([code, k, keys.bySituation[code].includes(k)]).toEqual([code, k, true]);
     }
     expect(samples.bySituation.BUY_ARRIVES).toContain("room to the Street average");
-    expect(samples.bySituation.PROTECTIVE_SALE).not.toMatch(/^(street|bull_case|chart): /m);
+    expect(samples.bySituation.PROTECTIVE_SALE).not.toMatch(/^(street|bull_case): /m);
     expect(samples.review).toMatch(/^bull_case: /m);
     expect(samples.review).not.toMatch(/^plan: |^protection: /m);
   });

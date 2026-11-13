@@ -69,6 +69,10 @@ describe("the keys a situation's row sends", () => {
     const review = rowKeysFor(["PROTECTIVE_SALE", REVIEW_SITUATION], { size: "short", named: false });
     expect([...review].sort()).toEqual(Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] !== "named").sort());
   });
+  it("a buy and an add carry an event-driven thesis's event date (a pre-catalyst buy is never the day before it); a sale signal does not", () => {
+    for (const code of ["BUY_ARRIVES", "ADD_OR_WINNER", "EARNINGS"] as SituationCode[]) expect([code, rowKeysFor([code], { size: "short", named: false }).has("catalyst")]).toEqual([code, true]);
+    expect(rowKeysFor(["PROTECTIVE_SALE"], { size: "short", named: false }).has("catalyst")).toBe(false);
+  });
   it("no situation named: every short key, as the book read sends it; the full row by name adds the sections and the history", () => {
     expect([...rowKeysFor([], { size: "short", named: false })].sort()).toEqual(Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] !== "named").sort());
     expect([...rowKeysFor([], { size: "full", named: true })].sort()).toEqual(Object.keys(ROW_FIELDS).sort());
@@ -77,10 +81,10 @@ describe("the keys a situation's row sends", () => {
 });
 
 describe("the row a situation builds (CEG, held)", () => {
-  it("a sale signal: the standing fields, what would prove us wrong and the floor's risk; no chart, no Street, no cases", () => {
+  it("a sale signal: the standing fields with the chart, what would prove us wrong and the floor's risk; no Street, no cases", () => {
     const row = rowForModel(saved(["PROTECTIVE_SALE"]), { named: false, size: "short" }) as Row;
-    expect(Object.keys(row)).toEqual(["stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "floor_risk", "triggers", "belief", "would_prove_it_wrong", "heldThroughFloor", "research", "repeat", "note"].filter((k) => k in row));
-    for (const k of ["chart", "street", "bull_case", "bear_case", "company", "snapshot", "assumptions", "setup"]) expect([k, k in row]).toEqual([k, false]);
+    expect(Object.keys(row)).toEqual(["stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "floor_risk", "triggers", "belief", "would_prove_it_wrong", "heldThroughFloor", "chart", "research", "repeat", "note"].filter((k) => k in row));
+    for (const k of ["street", "bull_case", "bear_case", "company", "snapshot", "assumptions", "setup", "catalyst"]) expect([k, k in row]).toEqual([k, false]);
     expect(row.would_prove_it_wrong).toBeDefined();
     expect(row.triggers).toBeDefined();
   });

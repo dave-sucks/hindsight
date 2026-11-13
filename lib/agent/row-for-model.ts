@@ -4,10 +4,10 @@
  * 2026-11-06).
  *
  * A quiet stock is one line. A stock in a situation is the row, and the
- * situation decides which of its fields are sent (ROW_FIELDS): nine standing
- * fields on every row, the fields a situation's decision reads with that
- * situation (the chart numbers and the Street on a buy, what would prove us
- * wrong on a sale signal), the whole case only when the review clock came
+ * situation decides which of its fields are sent (ROW_FIELDS): the standing
+ * fields on every row (the chart numbers among them), the fields a
+ * situation's decision reads with that situation (the Street on a buy, what
+ * would prove us wrong on a sale signal), the whole case only when the review clock came
  * due, and the old research sections and the history only when the stock is
  * asked for by name. A row asked for with no situation named carries every
  * field (the "book" read). Code decides from the row's situations; nothing
@@ -63,6 +63,8 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   belief: "always",
   research: "always",
   note: "always",
+  // This morning's averages, range, RSI and strength: every decision reads a level off them.
+  chart: "always",
   // The facts a situation's text refers to, by name: each with its situation.
   plan_checks: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "PLAN_PROBLEM", "YOUR_WORD_UNANSWERED"],
   floor_risk: ["PROTECTIVE_SALE", "ADD_OR_WINNER", "PROTECTION"],
@@ -70,13 +72,12 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   heldThroughFloor: ["PROTECTIVE_SALE", "AUTO_TRADE"],
   supersededBy: ["PLAN_PROBLEM"],
   nameTheSetup: ["NO_SETUP_NAMED"],
-  chart: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PROTECTION", "PLAN_PROBLEM", "NO_SETUP_NAMED"],
   street: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PLAN_PROBLEM"],
   setup: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
   setup_lines: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
   assumptions: ["EARNINGS", "STALE_RESEARCH"],
   would_prove_it_wrong: ["PROTECTIVE_SALE", "AUTO_TRADE", "EARNINGS", "FILING", "STALE_RESEARCH", "PLAN_PROBLEM"],
-  catalyst: ["EARNINGS", "PLAN_PROBLEM"],
+  catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER", "EARNINGS", "PLAN_PROBLEM"],
   paper_record: ["PROMOTED_AWAITING"],
   // The whole case: the review clock, and a named read.
   company: "review",

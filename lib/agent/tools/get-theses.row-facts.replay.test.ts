@@ -99,8 +99,8 @@ describe("get_theses — the facts on the saved row", () => {
     // The raw facts never reach the model; three of their names are now lines of words.
     for (const k of ["proposals", "inheritedTriggers"]) expect(modelRow).not.toHaveProperty(k);
     for (const k of ["position", "price"]) expect(typeof modelRow[k]).toBe("string");
-    // The chart numbers ride only with the situations that read them (a buy, an add, a floor to fix, a plan check) and on a read by name; AAA's sale signal sends none.
-    expect(modelRow).not.toHaveProperty("chart");
+    // The chart numbers are a standing field: AAA's sale signal sends them, as a read by name does.
+    expect(modelRow.chart).toBe((await read({ tickers: ["AAA"] })).modelRow.chart);
     const named = (await read({ tickers: ["AAA"] })).modelRow;
     expect(typeof named.chart).toBe("string");
     expect(mod.ROW_FACTS).toContain("inheritedTriggers");

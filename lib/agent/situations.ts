@@ -414,7 +414,7 @@ Mistakes:
   },
   PLAN_PROBLEM: {
     name: "plan check",
-    guidance: `When: a watched stock's plan contradicts the tape or the calendar. The \`plan_checks\` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the \`catalyst\` line's date is behind us).
+    guidance: `When: a watched stock's plan contradicts the tape or the calendar. The \`plan_checks\` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the \`catalyst\` line's date is behind us).
 
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
