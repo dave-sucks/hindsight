@@ -11,7 +11,7 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { zodSchema } from "ai";
+import { asSchema, zodSchema } from "ai";
 import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { SETUP_STANDING_RULES } from "@/lib/agent/knowledge/seat-rules";
@@ -150,7 +150,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     return (zodSchema(all[tool].inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
   };
   const submit = (): Record<string, Prop> =>
-    (zodSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
+    (asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
 
   const shown = (): Array<[string, string]> => [
     ["update_thesis.rationale", wordsOf(props("update_thesis").rationale)],

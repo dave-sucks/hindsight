@@ -160,6 +160,14 @@ interface FilingsInput {
 export interface DataBlockInputs {
   ticker: string;
   pulledAt: Date;
+  /**
+   * Our history with the stock, as get_stock_data writes it for every agent
+   * (formatTickerHistory): what we hold, our closed trades on it with their
+   * result, the last thesis and what it believed, other seats' coverage and
+   * trades. Null when there is none or the lookup failed: nothing is printed,
+   * never "no history". Until 2026-11-13 the pull fetched it and dropped it.
+   */
+  history?: string | null;
   stockData: StockDataInput;
   financials: FinancialsInput | null;
   analystCoverage: AnalystCoverageInput | null;
@@ -704,6 +712,9 @@ STRUCTURED DATA: $${T} (${company})
 Pulled ${pulledStr} — use these numbers as ground truth.
 ═══════════════════════════════════════════════════════════════════`,
   );
+
+  // Our own record leads, as in get_stock_data's summary: read before the price.
+  if (inputs.history?.trim()) sections.push(`## Our history with $${T}\n\n${inputs.history.trim()}`);
 
   sections.push(`## Snapshot\n\n${buildSnapshot(stockData)}`);
 

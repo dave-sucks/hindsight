@@ -119,7 +119,7 @@ describe("the fixture is the production call", () => {
     // update_thesis's order: adds, edits, removals, then the levels. One op
     // per call reproduces what one call used to do in that order.
     const ops: TriggerOp[] = [
-      ...(fx.submit.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: { ...t, id: "" } as Trigger })),
+      ...(fx.submit.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: { ...t, id: "" } as unknown as Trigger })),
       ...(fx.submit.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
     ];
     let stored = fx.thesisBefore.triggers;

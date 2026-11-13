@@ -357,16 +357,16 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.decision?.dropped).toEqual([{ field: "triggers", why: "the a trigger", reason: expect.any(String) }]);
   });
 
-  // PRAX and AAOI 2026-11-13: the filing in `variable` passed here and the save refused it; in `value` it was dropped here.
-  it("a filing or a line written where storage keeps it is moved to `value`; written as the save wants it, it is kept", () => {
-    const filing = (predicate: Record<string, unknown>) => ({ action: "REVIEW", fireMode: "ASK_NOW", predicate, rationale: "Any 8-K other-events filing from Praxis." });
-    for (const predicate of [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", value: "item:8.01" }]) {
-      const v = validateThesisDecision({ ...validLong, triggers: [filing(predicate)] as never }, mintOpts);
-      expect(v.decision?.triggers).toEqual([filing({ watch: "filing", value: "item:8.01" })]);
+  // PRAX and AAOI 2026-11-13: the save converts a trigger to its stored shape; the Writer keeps it as the model wrote it.
+  it("a filing, a line, and two conditions holding them are kept as written, for the save to convert", () => {
+    const review = (predicate: Record<string, unknown>) => ({ action: "REVIEW", fireMode: "ASK_NOW", predicate, rationale: "Any 8-K other-events filing from Praxis." });
+    const filing = { watch: "filing", value: "item:8.01" };
+    const line = { watch: "price", is: "below", value: "sma50" };
+    for (const predicate of [filing, line, { match: "any", conditions: [filing, line] }]) {
+      const v = validateThesisDecision({ ...validLong, triggers: [review(predicate)] as never }, mintOpts);
+      expect(v.decision?.triggers).toEqual([review(predicate)]);
       expect(v.decision?.dropped).toBeUndefined();
     }
-    const line = validateThesisDecision({ ...validLong, triggers: [{ action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma50" }, rationale: "r" }] as never }, mintOpts);
-    expect(line.decision?.triggers?.[0].predicate).toEqual({ watch: "price", is: "below", value: "sma50" });
   });
 });
 

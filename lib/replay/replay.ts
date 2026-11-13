@@ -220,7 +220,7 @@ export async function replayTool(
           fetchedAt: at,
         };
       }),
-      getDailyBars: jest.fn(async () => []),
+      getDailyBars: jest.fn(async () => ({ feed: "sip", bars: [] })),
       getDailyRangePcts: jest.fn(async () => ({})),
       ...Object.fromEntries(
         // The write side, by its real export names. A replay that reaches a

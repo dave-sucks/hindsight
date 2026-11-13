@@ -2,29 +2,46 @@
  * A thesis is never lost (2026-11-13). In the 30 days to Nov 13, 3 of 20
  * Writer runs saved nothing:
  *
- * - PRAX and AAOI wrote a filing trigger with its type in `variable`, the
- *   stored shape. The Writer's own check read the stored shape and passed it;
- *   the save reads the model's shape (the type in `value`) and refused, naming
- *   `value`, which the Writer had left empty. After two refusals submit_thesis
- *   said "accepted… STOP", the save refused the same thing, and the research
- *   was thrown away. Written the save's way, the check dropped it instead.
+ * - PRAX and AAOI wrote a filing trigger as the model is told to, its type in
+ *   `value`. The SDK's parse of submit_thesis ran the trigger schema, which
+ *   converts a trigger to its stored shape (the type moved to `variable`), and
+ *   handed that copy to the tool. The Writer then sent the copy through
+ *   record_thesis's schema, which converts again and refuses the stored
+ *   shape. Every filing and every price against an average the Writer wrote
+ *   since #770 (Oct 6) was refused this way, and the retry quoted the model a
+ *   converted call it never wrote. Now submit_thesis checks the call against
+ *   the same schema and hands it over as written; the save converts it once.
  * - HTFL: the chat sent a refresh onto a thesis passed on Aug 20, which no
  *   save can update (update_thesis refuses a terminal row).
  *
- * Each run's last submit_thesis call, verbatim from its saved thread, through
+ * Each run's last submit_thesis call, from its saved thread, through what the
+ * SDK runs on a tool call (safeParseJSON with the tool's own input schema),
  * the Writer's check, the real save-call builder, the save's own input schema
  * and the real save (no model). HTFL goes through the real dispatch first.
  */
 import type { z } from "zod";
+import { asSchema, zodSchema } from "ai";
+import { safeParseJSON } from "@ai-sdk/provider-utils";
 import fixture from "@/lib/agent/__fixtures__/writer-lost-theses-2026-11.json";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
-import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
+import { thesisDecisionSchema, validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
-import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import type { buildWriterSaveCall as Build, makeSubmitThesisTool as MakeSubmit, withoutRefused as Without, RunThesisWriterArgs, WriterSaveOutcome } from "./run-thesis-writer";
 
 type Case = { run: string; price: number; passedThesis?: string; decision: Record<string, unknown> & { setup_id: string } };
 const F = fixture as unknown as Record<"PRAX" | "AAOI" | "HTFL", Case>;
+type T = { action: string; predicate: Record<string, unknown>; rationale: string };
+
+/**
+ * The call as the model wrote it. A saved thread holds each tool call as the
+ * SDK's parse returned it, so the fixture's filing has its type in
+ * `variable`. The model wrote it in `value`: the SDK runs a tool only on a
+ * call its schema accepts, and the schema reads a filing's type from `value`.
+ */
+const asWritten = (d: Record<string, unknown>) => ({
+  ...d,
+  triggers: (d.triggers as T[]).map((t) => (t.predicate.watch === "filing" ? { ...t, predicate: { watch: "filing", value: t.predicate.variable } } : t)),
+});
 
 let build: typeof Build;
 let makeSubmit: typeof MakeSubmit;
@@ -43,6 +60,16 @@ beforeAll(async () => {
 const decide = (c: Case, d: Record<string, unknown> = c.decision) =>
   validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price, existingTargetPrice: null, setups: setupsForAnalyst([c.decision.setup_id]), chart: null });
 
+/** submit_thesis as the Writer builds it; its input schema is what the SDK parses the model's call with. */
+const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) =>
+  makeSubmit({ ticker: "T", validate: { mode: "mint", currentPrice: c.price, setups: setupsForAnalyst([c.decision.setup_id]), chart: null }, check, onAttempt: () => 1, onAccept }) as unknown as {
+    inputSchema: Parameters<typeof asSchema>[0];
+    execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[]; saved_without?: string[] }>;
+  };
+
+/** What the SDK does with the model's call before the tool runs (ai's doParseToolCall). */
+const sdkParse = (c: Case, call: unknown) => safeParseJSON({ text: JSON.stringify(call), schema: asSchema(submitTool(c, async () => ({ thesisId: null, wouldSave: true, fixable: false, error: null })).inputSchema) });
+
 /** The Writer's mint, through the save's schema as executeThroughSchema runs it, then the real record_thesis. */
 async function mint(ticker: string, c: Case, d: ValidatedThesisDecision, extra: { parentThesisId?: string; seed?: Row[] } = {}) {
   const args: RunThesisWriterArgs = { childRunId: c.run, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "a replay", parentThesisId: extra.parentThesisId };
@@ -59,25 +86,59 @@ async function mint(ticker: string, c: Case, d: ValidatedThesisDecision, extra: 
 
 const stored = (db: { store: Record<string, Row[]> }, ticker: string) => db.store.thesis.find((t) => t.ticker === ticker && t.status !== "PASSED")!;
 
+/** The model's call from the SDK's parse, through the Writer's check and the real save. */
+async function submitAndSave(ticker: string, c: Case, call: Record<string, unknown>) {
+  const sdk = await sdkParse(c, call);
+  if (!sdk.success) throw new Error(`the SDK refused the call: ${sdk.error.message}`);
+  const v = decide(c, sdk.value as Record<string, unknown>);
+  expect(v.errors).toEqual([]);
+  expect(v.decision!.dropped).toBeUndefined();
+  const { refusal, crashed, db } = await mint(ticker, c, v.decision!);
+  expect([refusal, crashed]).toEqual([null, false]);
+  const row = stored(db as never, ticker);
+  expect(db.store.thesisUpdate.filter((u) => u.thesisId === row.id && u.type === "CREATED")).toHaveLength(1);
+  return (row.triggers as T[]).map((t) => t.predicate);
+}
+
+describe("the model is sent the same submit_thesis schema as before", () => {
+  it("byte for byte: the JSON schema of the decision schema itself", async () => {
+    const sent = await asSchema(submitTool(F.PRAX, async () => ({ thesisId: null, wouldSave: true, fixable: false, error: null })).inputSchema).jsonSchema;
+    expect(JSON.stringify(sent)).toBe(JSON.stringify(await zodSchema(thesisDecisionSchema).jsonSchema));
+  });
+});
+
 describe.each(["PRAX", "AAOI"] as const)("%s: the filing trigger the save refused", (ticker) => {
   const c = F[ticker];
-  const filing = (c.decision.triggers as Array<{ predicate: { watch: string; variable?: string } }>).find((t) => t.predicate.watch === "filing")!;
+  const call = asWritten(c.decision);
+  const filing = (call.triggers as T[]).find((t) => t.predicate.watch === "filing")!;
 
-  it("was written with its type in `variable`; the save's refusal now says where it goes", () => {
-    const refused = triggersInputArraySchema.safeParse([filing]);
-    expect(refused.success).toBe(false);
-    expect(refused.error!.issues[0].message).toContain(`${JSON.stringify(filing.predicate.variable)} goes in \`value\`, not \`variable\``);
+  it("the SDK hands the Writer the call as the model wrote it, the filing's type still in `value`", async () => {
+    const sdk = await sdkParse(c, call);
+    expect(sdk.success).toBe(true);
+    expect((sdk as { value: { triggers: T[] } }).value.triggers).toContainEqual(filing);
   });
 
-  it("the recorded decision saves, the filing wake with it, and the new thesis has its Activity line", async () => {
-    const v = decide(c);
-    expect(v.errors).toEqual([]);
-    expect(v.decision!.dropped).toBeUndefined();
-    const { refusal, crashed, db } = await mint(ticker, c, v.decision!);
-    expect([refusal, crashed]).toEqual([null, false]);
-    const row = stored(db as never, ticker);
-    expect((row.triggers as Array<{ predicate: Record<string, unknown> }>).map((t) => t.predicate)).toContainEqual({ watch: "filing", variable: filing.predicate.variable });
-    expect(db.store.thesisUpdate.filter((u) => u.thesisId === row.id && u.type === "CREATED")).toHaveLength(1);
+  it("a filing written as storage keeps it is handed back by the SDK, saying where its type goes", async () => {
+    const sdk = await sdkParse(c, c.decision);
+    expect(sdk.success).toBe(false);
+    expect((sdk as { error: Error }).error.message).toContain("goes in `value`, not `variable`");
+  });
+
+  it("the decision saves, the filing wake with it, converted once by the save", async () => {
+    expect(await submitAndSave(ticker, c, call)).toContainEqual({ watch: "filing", variable: filing.predicate.value });
+  });
+});
+
+describe("a trigger of two conditions holding a filing and a line", () => {
+  const c = F.PRAX;
+  const group = { match: "any", conditions: [{ watch: "filing", value: "tier:RED" }, { watch: "price", is: "below", value: "sma50" }] };
+  const call = { ...asWritten(c.decision), triggers: [...asWritten(c.decision).triggers.filter((t) => t.predicate.watch !== "filing"), { action: "REVIEW", fireMode: "ASK_NOW", predicate: group, rationale: "A red-tier filing, or a break of the 50-day: look again." }] };
+
+  it("saves whole, each condition converted once (until 2026-11-13 the Writer dropped it as not a condition)", async () => {
+    expect(await submitAndSave("PRAX", c, call)).toContainEqual({
+      match: "any",
+      conditions: [{ watch: "filing", variable: "tier:RED" }, { watch: "price", is: "below", variable: "sma50" }],
+    });
   });
 });
 
@@ -124,7 +185,7 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
 });
 
 describe("submit_thesis never says accepted unless the save will take it", () => {
-  const c = F.AAOI;
+  const c = { ...F.AAOI, decision: { ...F.AAOI.decision, ...asWritten(F.AAOI.decision) } };
   const tool = (check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) => ({
     onAccept,
     t: makeSubmit({ ticker: "AAOI", validate: { mode: "mint", currentPrice: c.price, setups: setupsForAnalyst(["PEAD"]), chart: null }, check, onAttempt: () => 1, onAccept }) as unknown as {
@@ -151,6 +212,24 @@ describe("submit_thesis never says accepted unless the save will take it", () =>
     const kept = onAccept.mock.calls[0][0] as ValidatedThesisDecision;
     expect(kept.triggers).toHaveLength(2);
     expect(kept.dropped).toEqual([expect.objectContaining({ field: "triggers", reason: "Not a condition." })]);
+  });
+});
+
+describe("a chat's rewrite keeps the row's levels, read off the stored shape", () => {
+  const floor = { id: "floor_1", action: "EXIT", predicate: { watch: "price", is: "below", value: 300 }, rationale: "The floor." };
+  const line = { action: "EXIT", predicate: { watch: "price", is: "below", value: "sma50" }, rationale: "Under the 50-day the run-up is broken." };
+  const call = () =>
+    build(
+      { childRunId: "r", analystId: REPLAY_ANALYST_ID, ticker: "PRAX", mode: "refresh", reason: "a replay", existingThesisId: "t", keepLevels: true },
+      { currentPrice: 324.76, catalystOnFile: null } as never,
+      { direction: "LONG", rationale: "A rewrite the chat asked for.", horizon: "CATALYST", add_triggers: [line] } as never,
+      {},
+      { direction: "LONG", status: "HOLDING", keep: [floor] as never },
+    ).toolArgs;
+
+  it("a sale on a line, as the model writes it, is a new trigger, not the floor the chat set", () => {
+    expect(call().add_triggers).toEqual([line]);
+    expect(String(call().rationale)).not.toContain("stop $sma50");
   });
 });
 

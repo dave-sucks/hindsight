@@ -57,6 +57,8 @@ function unwrap<T>(result: unknown): T | null {
 }
 
 interface StockDataShape {
+  /** Our history with the stock (formatTickerHistory): our trades on it, the last thesis, other seats'. Absent when there is none. */
+  priorCoverage?: string;
   quote?: {
     price: number;
     change: number;
@@ -253,6 +255,7 @@ export async function pullThesisData(
   const daysSinceReport = lastReport && "daysAgo" in lastReport ? lastReport.daysAgo : null;
 
   const rawDataBlock = formatDataBlock({
+    history: sd?.priorCoverage ?? null,
     insiderCluster: clusterLine,
     lastReport,
     catalystOnFile: catalystLookupFailed ? { failed: true } : catalystOnFile,
