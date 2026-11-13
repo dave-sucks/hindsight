@@ -88,6 +88,7 @@ export const writeNoteTool = defineTool({
       tickers,
       eventDate: args.about_date ?? null,
       pinnedUntil: endOfDay(args.pinned_until),
+      creds: ctx.alpacaCreds,
     });
     const to = audience === "STOCKS" ? tickers.map((t) => `$${t}`).join(", ") : audience === "ANALYST" ? "that analyst's runs" : "every run";
     const until = pinnedUntil ? `, until ${new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(pinnedUntil)}` : "";

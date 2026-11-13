@@ -510,7 +510,7 @@ Mistakes:
 A note pinned on this stock, alone or with others (the Market Reviewer's high-impact note, or yours), that no run has answered on this stock.
 
 ```text
-When: the Market Reviewer or the principal pinned a note on this stock, alone or with others, and no run has written on the stock since. It is in `said` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it.
+When: an Agent note (the 7:30 Market Reviewer's) or the principal's note is pinned on this stock, alone or with others, and no run has written on the stock since. It is in `said` under PINNED, above the Activity lines, with the stocks it covers and their share of the account. It names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it.
 
 Answer, in order:
 1. What does the note say is coming, and when?

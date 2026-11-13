@@ -53,7 +53,7 @@ export function stockContextFor(args: {
   const covering = (args.notes ?? []).filter((n) => coversStock(n, { ticker: args.ticker }));
   const pinned = covering.filter((n) => isPinned(n, now)).slice(0, PINNED_PER_STOCK);
   const shown = new Set(pinned.map((n) => n.id));
-  const inFeed = covering.filter((n) => !shown.has(n.id)).map(noteLine);
+  const inFeed = covering.filter((n) => !shown.has(n.id)).map((n) => noteLine(n, args.ticker));
   const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers });
   if (pinned.length === 0) return base;
   const open = unansweredPinned(pinned, args.rows);

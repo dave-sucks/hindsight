@@ -1545,6 +1545,9 @@ model SharedNote {
   /// stronger | weaker | neutral for the reason we own or watch the stock.
   impact      String?
   effect      String?
+  /// Each named stock's price when it was written ({ "NVDA": 162.26 }), read as
+  /// that stock's price-at-write on its Activity line. Null before 2026-11-13.
+  prices      Json?
 
   @@index([userId, createdAt])
 }

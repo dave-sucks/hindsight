@@ -74,7 +74,7 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
     const owner = await prisma.thesis.findUnique({ where: { id: thesis.id }, select: { userId: true } });
     if (owner) {
       const stock = { ticker: thesis.ticker, analystId: thesis.analystId, createdAt: thesis.createdAt, endedAt: terminalAt };
-      notes = (await loadNotesSince(owner.userId, thesis.createdAt)).filter((n) => inStockActivity(n, stock)).map(noteLine);
+      notes = (await loadNotesSince(owner.userId, thesis.createdAt)).filter((n) => inStockActivity(n, stock)).map((n) => noteLine(n, thesis.ticker));
     }
   } catch {
     // A note is never worth failing the tab over.
