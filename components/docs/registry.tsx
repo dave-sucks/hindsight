@@ -100,23 +100,3 @@ export const GROUPS: ReadonlyArray<{ label: string; group: DocMeta["group"] }> =
 ];
 
 export const docHref = (slug: string) => (slug === OVERVIEW ? "/docs/overview" : `/docs/${slug}`);
-
-/** The doc that explains a run, by the run's mode: the run page's "how it works" button opens it. */
-export function docForRunMode(mode: string | null | undefined): DocSlug {
-  switch (mode) {
-    case "INTRADAY_TACTICAL":
-      return "trigger-runs";
-    case "DISCOVERY":
-      return "discovery";
-    case "THESIS_WRITER":
-      return "writer";
-    case "PRINCIPAL_CHAT":
-      return "chat";
-    case "PORTFOLIO_DIGEST":
-      return "portfolio-digest";
-    case "MARKET_REVIEWER":
-      return "market-reviewer";
-    default:
-      return "morning-runs";
-  }
-}

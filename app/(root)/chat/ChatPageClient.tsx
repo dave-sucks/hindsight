@@ -19,7 +19,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
-import { PanelRight } from "lucide-react";
+import { PanelRightOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { RunContext } from "@/components/agent/RunContext";
@@ -101,7 +101,7 @@ export function ChatPageClient({
         {requests.length > 0 && (
           <div className="absolute right-0 top-4 z-10 px-4">
             <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
-              <PanelRight /> Context
+              <PanelRightOpen /> Context
             </Button>
           </div>
         )}

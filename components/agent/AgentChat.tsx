@@ -33,7 +33,7 @@ import {
 } from "@/lib/actions/analyst.actions";
 import { toApplyInput, toCreateInput } from "@/components/analysts/builder-config";
 import type { AgentConfigData } from "@/components/domain/agent-config-card";
-import { PanelRight, Sparkles, X } from "lucide-react";
+import { PanelRightOpen, Sparkles, X } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { TranscriptRow, type TranscriptRowData } from "@/components/ui/transcript-row";
@@ -138,7 +138,6 @@ interface AgentChatProps {
   /** podcast-editor — id of the podcast being edited (passed on body). */
   podcastId?: string;
   autoStart?: boolean;
-  headerAction?: ReactNode;
   /** podcast-segment-run: the single transcript this run produced (mirror of theses for analyst runs). */
   transcript?: TranscriptRowData | null;
   /** research-run: a run that takes no messages (READ_ONLY_RUN_MODES) shows no composer. */
@@ -204,7 +203,6 @@ export function AgentChat({
   analystName,
   podcastId,
   autoStart,
-  headerAction,
   transcript = null,
   readOnly = false,
   requests = [],
@@ -285,7 +283,6 @@ export function AgentChat({
         analystName={analystName}
         // A reloaded chat already has its opening message — never send it again.
         autoStart={recovered ? false : autoStart}
-        headerAction={headerAction}
         transcript={transcript}
         readOnly={readOnly}
         requests={requests}
@@ -314,7 +311,6 @@ interface InnerProps {
   analystId?: string;
   analystName?: string;
   autoStart?: boolean;
-  headerAction?: ReactNode;
   transcript: TranscriptRowData | null;
   readOnly: boolean;
   requests: CallView[];
@@ -341,7 +337,6 @@ function AgentChatInner({
   analystId,
   analystName,
   autoStart,
-  headerAction,
   transcript,
   readOnly,
   requests,
@@ -431,21 +426,17 @@ function AgentChatInner({
 
   if (mode === "research-run") {
     const isFollowupMode = !autoStart;
-    // The Context panel opens beside the conversation and pushes it left.
+    // The Context panel opens beside the conversation and pushes it left. Its
+    // button floats over the thread with no background, as on /chat, so the
+    // chat scrolls under it instead of being cut off by a row.
     return (
       <div className="flex h-full">
-        <div className="flex min-w-0 flex-1 flex-col">
-          {(headerAction || requests.length > 0) && (
-            <div className="shrink-0 px-4 pt-2 flex items-center">
-              <div className="ml-auto flex items-center gap-1">
-                {requests.length > 0 && (
-                  <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
-                    <PanelRight /> Context
-                  </Button>
-                )}
-                {/* Its own element: the page's button is never a list's unkeyed child. */}
-                {headerAction && <div>{headerAction}</div>}
-              </div>
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {requests.length > 0 && (
+            <div className="absolute right-0 top-4 z-10 px-4">
+              <Button variant={contextOpen ? "secondary" : "ghost"} size="sm" onClick={() => setContextOpen((o) => !o)}>
+                <PanelRightOpen /> Context
+              </Button>
             </div>
           )}
           <div className="flex-1 min-h-0 flex flex-col">
@@ -496,7 +487,6 @@ function AgentChatInner({
             <TabsTrigger value={0}>Chat</TabsTrigger>
             <TabsTrigger value={1}>Transcript</TabsTrigger>
           </TabsList>
-          {headerAction && <div className="ml-auto">{headerAction}</div>}
         </div>
 
         <TabsContent value={0} className="flex-1 min-h-0 flex flex-col">
