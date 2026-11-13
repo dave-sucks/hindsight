@@ -349,7 +349,7 @@ plus `get_stock_data`.
   server-side modes); COMPLETE/FAILED → replay hydrated from the
   persisted `thread` RunMessage via convertPersistedToUIMessages
 - /trades — paper trade list with live P&L
-- /performance — accuracy reports, win rate charts
+- /performance — two tabs: Trading (accuracy reports, win rate charts) and Agent work (runs by type, situations by category and what each led to, triggers fired with their outcomes and worst re-firers, proposals and a per-stock table; `lib/performance/agent-work.ts`, read-only)
 - /stocks — stock search
 - /stocks/[symbol] — TradingView chart + stock detail
 - /intelligence — read-only view of the kept signal history (Findings +

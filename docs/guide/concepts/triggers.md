@@ -69,6 +69,8 @@ A trigger's popover shows its rest ("At most once a day") and when it last fired
 
 What happens next is the trigger's **On fire**, in the next section. The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
+Which triggers fired, how often the same one fired again, and what each fire led to are on Performance, under Agent work.
+
 ## On fire
 
 Where each fire goes, and how what the agent writes comes back to the stock:
