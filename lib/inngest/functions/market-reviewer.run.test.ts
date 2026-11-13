@@ -49,6 +49,7 @@ jest.mock("openai", () => ({
 }));
 
 import "./market-reviewer";
+import { writeMarketReview } from "@/lib/agent/market-reviewer/run";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
 import { serializeFeedItem } from "@/lib/thesis/activity-feed";
@@ -150,7 +151,7 @@ describe("the 7:30 Market Reviewer", () => {
     expect(body.input[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
     expect(body.input[0].content).toContain("Do not make trades.");
     expect(body.input[0].content).toContain("search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report)");
-    // Its first message: the portfolio snapshot's own text, each stock's belief in a line, then its last digest. Nothing else.
+    // Its first message: the portfolio snapshot's own text, each stock's belief in a line, its notes (none yet), then its last digest. Nothing else.
     const snapshot = (await loadPortfolioSnapshot({ accountId: ACCOUNT, environment: "LIVE" })) as PortfolioSnapshot;
     expect(body.input[1].content).toBe(
       [
@@ -164,6 +165,9 @@ describe("the 7:30 Market Reviewer", () => {
         "",
         "## What we watch, and why",
         "- ASML · ASML compounds as High-NA EUV ramps.",
+        "",
+        "## Your notes in the last 5 days",
+        "- none",
         "",
         "## Your last digest",
         "Written for Tue Nov 10:",
@@ -182,7 +186,7 @@ describe("the 7:30 Market Reviewer", () => {
 
     // Context shows the instructions, the first message and its one tool.
     const view = viewOfRecord(record!);
-    expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Portfolio, watchlist and last digest", "read"], ["Tool menu", "tools"]]);
+    expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Portfolio, watchlist, notes and last digest", "read"], ["Tool menu", "tools"]]);
     expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
@@ -200,6 +204,31 @@ describe("the 7:30 Market Reviewer", () => {
       expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: new Date("2026-11-14T12:30:00Z") }),
       expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU"], body: NOTES[1].text, impact: "low", effect: "neutral", pinnedUntil: null }),
     ]);
+  });
+
+  it("its first message carries its own notes of the last 5 days, newest first, each in a line", async () => {
+    const reviewerNote = (id: string, daysAgo: number, over: Record<string, unknown>) => ({
+      id, userId: "user_owner", author: "MARKET_REVIEWER", runId: "run_earlier", audience: "STOCKS", analystId: null, eventDate: null, pinnedUntil: null,
+      createdAt: new Date(AT.getTime() - daysAgo * 86_400_000), ...over,
+    });
+    db.store.sharedNote = [
+      reviewerNote("n_mon", 2, { tickers: ["MU", "ASML"], impact: "high", effect: "weaker", body: `New export rules cover memory tools sold to China, ${"and the list of tools named in the rule runs long ".repeat(3)}. The rest.` }),
+      reviewerNote("n_tue", 1, { tickers: ["MU"], impact: "low", effect: "neutral", body: "A peer said memory prices held through October. More detail." }),
+      reviewerNote("n_old", 6, { tickers: ["MU"], impact: "medium", effect: "stronger", body: "Older than five days." }),
+      reviewerNote("n_owner", 1, { author: "OWNER", tickers: ["MU"], impact: null, effect: null, body: "The owner's own note." }),
+      reviewerNote("n_other", 1, { userId: "someone_else", tickers: ["MU"], impact: "high", effect: "weaker", body: "Another user's book." }),
+    ];
+    const review = await writeMarketReview({ accountId: ACCOUNT, environment: "LIVE", userId: "user_owner" }, { now: AT });
+    const first = (review.request.requests[0] as { input: Array<{ content: string }> }).input[1].content;
+    expect(first.split("## Your notes in the last 5 days\n")[1].split("\n\n## Your last digest")[0]).toBe(
+      [
+        "- Tue Nov 10 · MU · low · neutral · A peer said memory prices held through October.",
+        `- Mon Nov 9 · MU, ASML · high · weaker · ${`New export rules cover memory tools sold to China, ${"and the list of tools named in the rule runs long ".repeat(3)}`.slice(0, 160).trimEnd()}…`,
+      ].join("\n"),
+    );
+    expect((review.request.requests[0] as { input: Array<{ content: string }> }).input[0].content).toContain(
+      "Write a note on a story you already noted only when something new happened since, and say what is new.",
+    );
   });
 
   it("a high note puts its stocks on the next run's list, and every note is a titled line in each stock's Activity and in what a run reads", async () => {

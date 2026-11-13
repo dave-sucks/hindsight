@@ -77,16 +77,19 @@ const replyFormat = (tickers: string[]) => ({
 
 const day = (iso: string) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
-const belief = (text: string | null) => {
+/** A text's first sentence, cut at BELIEF_CHARS. */
+const firstSentence = (text: string | null) => {
   const t = text?.replace(/\s+/g, " ").trim();
   const first = t?.match(/^.+?[.!?](?=\s|$)/)?.[0] ?? t;
   return !first ? "no belief written" : first.length > BELIEF_CHARS ? `${first.slice(0, BELIEF_CHARS).trimEnd()}…` : first;
 };
+/** How far back its own notes are shown to it, so it doesn't file the same story again. */
+const NOTES_SHOWN_MS = 5 * 86_400_000;
 
-/** Its first message: the portfolio snapshot, each stock held or watched with its belief in a line, then its own last digest; and those stocks' tickers. */
+/** Its first message: the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, then its own last digest; and those stocks' tickers. */
 export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: string; tickers: string[] }> {
   const today = etDateOf(now);
-  const [theses, snapshot, last] = await Promise.all([
+  const [theses, snapshot, last, notes] = await Promise.all([
     prisma.thesis.findMany({
       where: { userId: book.userId, status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
       select: { ticker: true, status: true, coreBelief: true },
@@ -98,6 +101,15 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: 
     prisma.marketDigest
       .findFirst({ where: { accountId: book.accountId, environment: book.environment, date: { lt: new Date(`${today}T00:00:00.000Z`) } }, orderBy: { date: "desc" }, select: { date: true, digest: true } })
       .catch(() => null),
+    // Its own notes, so it writes on a story again only when something new happened. A note has no
+    // book (SharedNote has no environment), so the user's PAPER and LIVE books are shown the same notes.
+    prisma.sharedNote
+      .findMany({
+        where: { userId: book.userId, author: "MARKET_REVIEWER", createdAt: { gte: new Date(now.getTime() - NOTES_SHOWN_MS) } },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true, tickers: true, impact: true, effect: true, body: true },
+      })
+      .catch(() => null),
   ]);
   const held = new Set((snapshot?.holdings ?? []).map((h) => h.ticker.toUpperCase()));
   // One line a stock: its holding's thesis when two analysts cover it.
@@ -106,7 +118,7 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: 
     const k = t.ticker.toUpperCase();
     if (!rows.has(k) || (t.status === "HOLDING" && rows.get(k)!.status !== "HOLDING")) rows.set(k, t);
   }
-  const line = (t: (typeof theses)[number]) => `- ${t.ticker.toUpperCase()} · ${belief(t.coreBelief)}`;
+  const line = (t: (typeof theses)[number]) => `- ${t.ticker.toUpperCase()} · ${firstSentence(t.coreBelief)}`;
   const isHeld = (t: (typeof theses)[number]) => t.status === "HOLDING" || held.has(t.ticker.toUpperCase());
   const all = [...rows.values()];
   const list = (rows: typeof all) => (rows.length ? rows.map(line) : ["- none"]);
@@ -121,6 +133,13 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: 
     "",
     "## What we watch, and why",
     ...list(all.filter((t) => !isHeld(t))),
+    "",
+    "## Your notes in the last 5 days",
+    ...(!notes
+      ? ["Your notes couldn't be read this run."]
+      : notes.length
+        ? notes.map((n) => `- ${[day(etDateOf(n.createdAt)), n.tickers.join(", "), n.impact, n.effect, firstSentence(n.body)].filter(Boolean).join(" · ")}`)
+        : ["- none"]),
     "",
     "## Your last digest",
     last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first.",

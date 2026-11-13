@@ -16,7 +16,7 @@ Saves: the market digest, and notes on stocks
 
 One request, with three things in it:
 - its instructions;
-- one first message: the portfolio snapshot, the one set of numbers about the account every reader gets (its value, cash, day and since the start, each holding with its price, value, share of the account and moves, the day's fills and the proposals waiting, `lib/portfolio/snapshot.ts`), then each stock held or watched with its belief in one line, then its own last digest, so it says what changed and doesn't repeat itself;
+- one first message: the portfolio snapshot, the one set of numbers about the account every reader gets (its value, cash, day and since the start, each holding with its price, value, share of the account and moves, the day's fills and the proposals waiting, `lib/portfolio/snapshot.ts`), then each stock held or watched with its belief in one line, then its own notes of the last 5 days (each in a line: the day, the stocks, the impact and effect, the first sentence) and its own last digest, so it says what changed and doesn't repeat itself. A note has no book, so a paper and a live book of the same owner are shown the same notes;
 - OpenAI's own web search. The model searches as many times as it needs inside that one call, the way ChatGPT does; the app runs no tools and makes no second call.
 
 ## What it writes
@@ -34,7 +34,7 @@ A reply cut off at its limit, a reply that isn't the digest and its notes, or a 
 
 ## Its notes
 
-A note is written only when the day's research touches why we own or watch a stock; most days have few or none, and nothing caps how many. One note may name several stocks that share a story. Each note carries:
+A note is written only when the day's research touches why we own or watch a stock; most days have few or none, and nothing caps how many. One note may name several stocks that share a story. A story it noted in the last 5 days gets a new note only when something new happened, and the note says what. Nothing in code stops a repeat: it is shown what it wrote, and decides. Each note carries:
 - the stocks it names, only from the ones it was given;
 - its text: what happened, with its source, and what it means for these stocks;
 - its **impact**: high when it could change a decision to buy, sell, add or trim; medium when it matters but changes no decision today; low when it is only worth remembering;

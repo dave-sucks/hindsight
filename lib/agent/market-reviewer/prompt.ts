@@ -31,6 +31,7 @@ Your reply's "digest" is saved as you write it. Six sections, each under its own
 Your reply's "notes" are saved on the stocks they name, and each stock's analyst reads them on its next run.
 - Write a note only when today's research touches why we own or watch a stock. Nothing worth saying means no note; an empty list is a normal day.
 - One note may name several stocks that share the story.
+- Your notes of the last 5 days are in your first message. Write a note on a story you already noted only when something new happened since, and say what is new.
 - text: what happened, with its source linked, and what it means for these stocks, in plain words.
 - impact: high when it could change a decision to buy, sell, add or trim (the stock's analyst must answer it this morning); medium when it matters but changes no decision today; low when it is only worth remembering.
 - effect: stronger, weaker or neutral, for the reason we own or watch the stock.
