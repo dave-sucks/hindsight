@@ -365,8 +365,15 @@ predicate matches
 
 **Two fire semantics, keyed off the action (DAV-229, 2026-09-02).** A
 protective or review rung is a **standing order** (principal ruling
-2026-08-16): it fires every day its condition is true, and a declined or
-expired proposal means "did nothing today", so it asks again tomorrow. An
+2026-08-16): it fires every day its condition is true, and a declined
+proposal means "did nothing today", so it asks again tomorrow. **A proposal a
+fire leads to (a buy, add, trim or sale) has no 24 hours** (the owner's ruling
+2026-11-13): it carries the triggers it answers (`Order.triggerIds`) and no
+`expiresAt`, waits while they hold (the check skips the stock's sale fires
+meanwhile), and the 16:20 ET close pass withdraws it (`WITHDRAWN`, with
+`withdrawnReason`) when none holds on the close, read with `evaluateTrigger`
+(`lib/proposals/trigger-proposals.ts`). A proposal no trigger made still
+lapses after 24 hours. An
 **`ENTER` rung fires on the crossing**: the condition is true now and was
 false at the prior session's close (`latestQuote.prevClose`).
 "Buy above $35" means buy when the price gets there — not "buy now and ask

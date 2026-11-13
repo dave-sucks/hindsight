@@ -62,7 +62,8 @@ describe("a paused analyst's held stock", () => {
     expect([positionId, reason, source]).toEqual(["cmqf9avuh000604jya2yocv6z", "STOP", "price_monitor"]);
     // It was set to Send to Agent, so it never calls itself an Auto-sell.
     expect(rationale).toBe(`Your "Sell if below $256.50" came true. ${PAUSED_SALE_NOTE}`);
-    expect(opts).toEqual({ propose: true });
+    // The trigger's sale: a proposal that stays open while the floor holds (trigger-proposals.ts).
+    expect(opts).toEqual({ propose: true, triggerIds: [FLOOR.id], proposedPrice: 255.9 });
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
   });
 
@@ -71,14 +72,14 @@ describe("a paused analyst's held stock", () => {
     const r = await fire(flagged, 331.2, book([FLOOR, flagged]));
     expect(r.modelCalls).toBe(0);
     expect(r.closes[0].slice(0, 2)).toEqual(["cmqf9avuh000604jya2yocv6z", "TARGET"]);
-    expect(r.closes[0][7]).toEqual({ propose: true });
+    expect(r.closes[0][7]).toEqual({ propose: true, triggerIds: [TARGET.id], proposedPrice: 331.2 });
   });
 
   it("an Auto-sell keeps its own path: the approval switch decides", async () => {
     const auto = { ...FLOOR, fireMode: "DO_IT" };
     const r = await fire(auto, 255.9, book([auto]));
     expect(r.modelCalls).toBe(0);
-    expect(r.closes[0][7]).toEqual({ propose: false });
+    expect(r.closes[0][7]).toEqual({ propose: false, triggerIds: [FLOOR.id], proposedPrice: 255.9 });
   });
 
   it("a review on a paused analyst's stock starts nothing", async () => {

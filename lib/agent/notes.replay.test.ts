@@ -60,8 +60,8 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
     jest.useFakeTimers({ now: new Date(fx.readAt), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] });
     try {
       const { result } = await replayTool("get-theses", "getTheses", {
-        // The double has no @default(now()); the chat wrote the note at 13:05 ET, after the 12:25 approval.
-        seed: seed((written.db.store.thesisUpdate as Row[]).map((u) => ({ ...u, timestamp: u.timestamp ?? new Date("2026-09-30T17:05:00Z") }))) as never,
+        // The chat wrote the note at 13:05 ET, after the 12:25 approval (the double stamped it with today).
+        seed: seed((written.db.store.thesisUpdate as Row[]).map((u) => ({ ...u, timestamp: u.type === "NOTE" ? new Date("2026-09-30T17:05:00Z") : u.timestamp }))) as never,
         args: { detail: "actionable" },
         ctx: { runMode: "MORNING_PLAN" },
         quotes: { DOCU: fx.price },

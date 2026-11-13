@@ -204,5 +204,38 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     expect(order.rationale).toBe(fx.placeTrade.entry_rationale);
     expect(order.rationale as string).toContain("I am buying $CORT here because the pre-FDA setup is still intact");
     expect(fx.proposal.rationale.startsWith(order.rationale as string)).toBe(true);
+    // Not a trigger's buy here (no fired trigger in the context): it keeps its 24 hours.
+    expect(order).toMatchObject({ triggerIds: [], proposedPrice: 113.71 });
+    expect(order.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it("the trigger run's buy answers the trigger that woke it: no 24 hours, open while the buy holds (lib/proposals/trigger-proposals.ts)", async () => {
+    const { refused, db } = await at(fx.proposal.createdAt, () =>
+      replayTool("place-trade", "placeTrade", {
+        seed: seed(),
+        ctx: {
+          runMode: "INTRADAY_TACTICAL",
+          runEnvironment: "LIVE",
+          accountId: REPLAY_ACCOUNT_ID,
+          userId: REPLAY_USER_ID,
+          minPositionSize: fx.analyst.minPositionSize,
+          maxPositionSize: fx.analyst.maxPositionSize,
+          maxOpenPositions: fx.analyst.maxOpenPositions,
+          // What the trigger run hands its tools (tactical-run.ts): the buy that fired, on CORT.
+          firedTrigger: { ticker: "CORT", side: "BUY", triggerIds: [fx.run.parameters.triggerId] },
+        },
+        args: fx.placeTrade,
+        quotes: { CORT: 113.71 },
+        mocks: {
+          "@/lib/agent/research-helpers": () => ({
+            ...jest.requireActual("@/lib/agent/research-helpers"),
+            finnhub: async () => ({ data: null, error: "replay" }),
+          }),
+        },
+      }),
+    );
+    expect(refused).toBe(false);
+    const order = (db.store.order as Array<Record<string, unknown>>)[0];
+    expect(order).toMatchObject({ status: "AWAITING_APPROVAL", triggerIds: [fx.run.parameters.triggerId], expiresAt: null, proposedPrice: 113.71 });
   });
 });

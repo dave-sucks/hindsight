@@ -29,7 +29,8 @@
 // pivot" is not an intraday poke. A watched stock's floor is one of them
 // whatever it stores: its plan comes down on a close below it, never an
 // intraday dip (watchedFloorOnClose, DAV-337). Cooldown makes the three
-// close ticks fire at most once.
+// close ticks fire at most once. It also takes down a proposal a trigger made
+// when none of its triggers holds on the close (lib/proposals/trigger-proposals.ts).
 //
 // Each intraday pass first brings every held position's high since the buy
 // up to date from its quote (lib/trading/water-mark), so the trails read it;
@@ -75,6 +76,7 @@ import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { raiseMarksFromDayBars, raiseWaterMarks } from "@/lib/trading/water-mark";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
+import { withdrawOnTheClose, type TriggerProposal } from "@/lib/proposals/trigger-proposals";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import { describeChartFire, describeStreetFire } from "@/lib/agent/triggers/condition/facts";
@@ -495,6 +497,16 @@ export const triggerEvaluator = inngest.createFunction(
         theses.map((t) => t.researchRun.agentConfigId).filter((id): id is string => !!id),
       );
 
+      // The close pass reads every proposal a trigger made that still waits, by its stock.
+      const waitingByThesis = new Map<string, TriggerProposal[]>();
+      if (session === "CLOSE") {
+        const waiting = await prisma.order.findMany({
+          where: { status: "AWAITING_APPROVAL", triggerIds: { isEmpty: false }, thesisId: { in: theses.map((t) => t.id) } },
+          select: { id: true, intent: true, positionId: true, triggerIds: true, thesisId: true },
+        });
+        for (const o of waiting) waitingByThesis.set(o.thesisId!, [...(waitingByThesis.get(o.thesisId!) ?? []), o]);
+      }
+
       // Resolve BEFORE picking tickers to quote. Dropping the
       // `triggers: { not: [] }` DB filter widened the candidate set, and
       // a thesis whose resolved ladder is empty would consume one of the
@@ -518,17 +530,20 @@ export const triggerEvaluator = inngest.createFunction(
             : c,
         )
         // Whether the stock has a buy, read before the close pass narrows the
-        // ladder: with none, a review at a price is a wake (DAV-335).
-        .map((c) => ({ ...c, hasBuy: c.ladder.some((t) => t.action === "ENTER") }))
+        // ladder: with none, a review at a price is a wake (DAV-335). The whole
+        // ladder too: a trigger's proposal is read against it on the close.
+        .map((c) => ({ ...c, hasBuy: c.ladder.some((t) => t.action === "ENTER"), all: c.ladder, waiting: waitingByThesis.get(c.thesis.id) ?? [] }))
         // The close pass only looks at rungs that wait for the close.
         .map((c) =>
           session === "CLOSE"
             ? { ...c, ladder: c.ladder.filter((t) => hasCloseBasis(t.predicate)) }
             : c,
         )
-        // No analyst owner ⇒ tactical-run can't dispatch; no rungs ⇒
-        // nothing to evaluate.
-        .filter((c) => c.analystId && c.ladder.length > 0);
+        // No analyst owner ⇒ tactical-run can't dispatch; no rungs and no
+        // trigger's proposal waiting ⇒ nothing to evaluate.
+        .filter((c) => c.analystId && (c.ladder.length > 0 || c.waiting.length > 0));
+      // What a stock's checks read: on the close pass, the triggers behind its waiting proposals too.
+      const checked = (c: (typeof candidates)[number]) => [...c.ladder, ...c.all.filter((t) => c.waiting.some((p) => p.triggerIds.includes(t.id)))];
       if (candidates.length === 0) return [] as FiringEvent[];
 
       // Cap unique tickers per tick. Theses past the cap defer to the next
@@ -597,7 +612,7 @@ export const triggerEvaluator = inngest.createFunction(
       const chartTickers = Array.from(
         new Set(
           candidates
-            .filter((c) => c.ladder.some((t) => needsIndicators(t.predicate)))
+            .filter((c) => checked(c).some((t) => needsIndicators(t.predicate)))
             .map((c) => c.thesis.ticker),
         ),
       ).filter((t) => uniqueTickers.includes(t));
@@ -612,7 +627,7 @@ export const triggerEvaluator = inngest.createFunction(
       // with a rung on a Street variable. No row (none stored, too old, the
       // 06:30 pull down): the rung reads false and says so when it is read.
       const streetTickers = Array.from(
-        new Set(candidates.filter((c) => c.ladder.some((t) => needsStreet(t.predicate))).map((c) => c.thesis.ticker)),
+        new Set(candidates.filter((c) => checked(c).some((t) => needsStreet(t.predicate))).map((c) => c.thesis.ticker)),
       ).filter((t) => uniqueTickers.includes(t));
       const street = streetTickers.length
         ? await newestStreetRows(streetTickers, now).catch((err) => {
@@ -625,7 +640,7 @@ export const triggerEvaluator = inngest.createFunction(
       // the close pass the day's close itself.
       const wantsTodayBar =
         session === "CLOSE" ||
-        candidates.some((c) => c.ladder.some((t) => needsTodayVolume(t.predicate)));
+        candidates.some((c) => checked(c).some((t) => needsTodayVolume(t.predicate)));
       const todayBars = wantsTodayBar ? await getTodaySessionBars(uniqueTickers, undefined, now, "trigger-check") : {};
 
       // Reported earnings for the whole firm in ONE call, only when some
@@ -635,12 +650,12 @@ export const triggerEvaluator = inngest.createFunction(
       // stays cheap as the book grows. A failure returns an empty map and
       // logs — price triggers still evaluate. See ./earnings.
       const wantsEarnings = candidates.some((c) =>
-        c.ladder.some((t) => needsEarningsData(t.predicate)),
+        checked(c).some((t) => needsEarningsData(t.predicate)),
       );
       // The forward half (scheduled reports) only when a before-earnings
       // is armed somewhere — it triples the payload for nothing otherwise.
       const wantsUpcoming = candidates.some((c) =>
-        c.ladder.some((t) => needsUpcomingEarnings(t.predicate)),
+        checked(c).some((t) => needsUpcomingEarnings(t.predicate)),
       );
       const earnings: EarningsWindow = wantsEarnings
         ? await fetchEarningsWindow({
@@ -656,7 +671,7 @@ export const triggerEvaluator = inngest.createFunction(
       const filingTickers = Array.from(
         new Set(
           candidates
-            .filter((c) => c.ladder.some((t) => needsFilings(t.predicate)))
+            .filter((c) => checked(c).some((t) => needsFilings(t.predicate)))
             .map((c) => c.thesis.ticker),
         ),
       );
@@ -670,7 +685,7 @@ export const triggerEvaluator = inngest.createFunction(
       }
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers, hasBuy } of candidates) {
+      for (const { thesis, analystId, ladder: triggers, hasBuy, all, waiting } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -737,6 +752,13 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
+        // The close pass takes down a trigger's proposal whose triggers no longer hold on the close.
+        if (session === "CLOSE" && waiting.length > 0) {
+          await withdrawOnTheClose({ ladder: all, ctx, proposals: waiting }).catch((e) =>
+            console.error(`[trigger-evaluator] ${thesis.ticker}: the close-pass proposal check failed; it waits for tomorrow's close.`, e),
+          );
+        }
+
         const { fires: matched } = evaluateThesisTriggers({
           thesisId: thesis.id,
           ticker: thesis.ticker,
@@ -761,7 +783,7 @@ export const triggerEvaluator = inngest.createFunction(
           const f = filingsByTrigger.get(t.id);
           return paused || (f != null && filingNeedsSameDayLook(f, thesis.status));
         };
-        // A sale fire while a sale already waits is dropped unstamped, so it asks again the first pass after that proposal expires.
+        // A sale fire while a sale already waits is dropped unstamped, so it asks again once that proposal is answered, withdrawn or expired.
         const sale = (t: Trigger) => (t.action === "EXIT" || t.action === "TRIM") && !waitsForMorning(t, sameDayLook(t));
         const fires = posInfo && saleWaiting.has(posInfo.id) ? matched.filter((t) => !sale(t)) : matched;
         if (fires.length === 0) continue;

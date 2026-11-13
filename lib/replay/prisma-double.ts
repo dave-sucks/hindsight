@@ -65,6 +65,44 @@ function schemaModels(): string[] {
 
 const MODELS: ModelName[] = schemaModels();
 
+/**
+ * What the database fills in, per model, read from the schema: a scalar list
+ * (`String[]`) is empty, and a `@default(now())` or `@updatedAt` time is the
+ * time of the write (`@updatedAt` again on every update). A row seeded or
+ * written without them reads as it would in production.
+ */
+function schemaFills(): Record<string, { lists: string[]; now: string[]; updatedAt: string[] }> {
+  const schema = readFileSync(join(process.cwd(), "prisma", "schema.prisma"), "utf8");
+  const out: Record<string, { lists: string[]; now: string[]; updatedAt: string[] }> = {};
+  for (const m of schema.matchAll(/^model\s+(\w+)\s*\{([^}]*)\}/gm)) {
+    const fields = (re: RegExp) => [...m[2].matchAll(re)].map((f) => f[1]);
+    out[m[1].charAt(0).toLowerCase() + m[1].slice(1)] = {
+      lists: fields(/^\s+(\w+)\s+(?:String|Int|Float|Boolean|DateTime)\[\]/gm),
+      now: fields(/^\s+(\w+)\s+DateTime\b[^\n]*@default\(now\(\)\)/gm),
+      updatedAt: fields(/^\s+(\w+)\s+DateTime\b[^\n]*@updatedAt/gm),
+    };
+  }
+  return out;
+}
+const FILLS = schemaFills();
+const withLists = (name: string, r: Row): Row => {
+  const out = { ...r };
+  for (const f of FILLS[name]?.lists ?? []) if (out[f] === undefined) out[f] = [];
+  return out;
+};
+/** A created row: its lists, and the times the database stamps. */
+const created = (name: string, r: Row): Row => {
+  const out = withLists(name, r);
+  for (const f of [...(FILLS[name]?.now ?? []), ...(FILLS[name]?.updatedAt ?? [])]) if (out[f] === undefined) out[f] = new Date();
+  return out;
+};
+/** An update's data, with `@updatedAt` stamped unless the write sets it. */
+const updated = (name: string, data: Row): Row => {
+  const out = { ...data };
+  for (const f of FILLS[name]?.updatedAt ?? []) if (out[f] === undefined) out[f] = new Date();
+  return out;
+};
+
 function unsupported(what: string, value: unknown): never {
   throw new Error(
     `[prisma-double] unsupported ${what}: ${JSON.stringify(value)}\n` +
@@ -120,7 +158,7 @@ function matchField(actual: unknown, expected: unknown): boolean {
   }
 
   // A nested relation filter — rows carry relations inline, so recurse.
-  const opKeys = ["equals", "in", "notIn", "not", "gt", "gte", "lt", "lte", "contains", "startsWith", "mode", "array_contains"];
+  const opKeys = ["equals", "in", "notIn", "not", "gt", "gte", "lt", "lte", "contains", "startsWith", "mode", "array_contains", "isEmpty"];
   const keys = Object.keys(expected);
   // `mode` is Prisma's case-insensitivity flag only beside a string filter
   // ("insensitive" / "default"); on a relation it is a field (a run's mode).
@@ -172,6 +210,9 @@ function matchField(actual: unknown, expected: unknown): boolean {
         break;
       case "array_contains":
         if (!Array.isArray(actual) || !jsonContains(actual, Array.isArray(v) ? v : [v])) return false;
+        break;
+      case "isEmpty": // a scalar list (String[])
+        if (((Array.isArray(actual) ? actual.length : 0) === 0) !== v) return false;
         break;
       default:
         return unsupported("where operator", { [op]: v });
@@ -290,7 +331,7 @@ export function prismaDouble(seed: StoreSeed = {}): PrismaDouble {
     }
   }
   const store = Object.fromEntries(
-    MODELS.map((m) => [m, (seed[m] ?? []).map((r) => ({ ...r }))]),
+    MODELS.map((m) => [m, (seed[m] ?? []).map((r) => withLists(m, r))]),
   ) as Record<ModelName, Row[]>;
   const calls: string[] = [];
 
@@ -339,7 +380,7 @@ export function prismaDouble(seed: StoreSeed = {}): PrismaDouble {
       },
       create: async (a: Record<string, unknown> = {}) => {
         note("create");
-        const data = { ...(a.data as Row) };
+        const data = created(name, a.data as Row);
         if (data.id == null) data.id = `${name}_${rows().length + 1}`;
         rows().push(data);
         return project(data, a.select, a.include);
@@ -348,13 +389,13 @@ export function prismaDouble(seed: StoreSeed = {}): PrismaDouble {
         note("update");
         const hit = rows().find((r) => matchWhere(r, a.where));
         if (!hit) throw new Error(`[prisma-double] ${name}.update matched no row: ${JSON.stringify(a.where)}`);
-        Object.assign(hit, a.data as Row);
+        Object.assign(hit, updated(name, a.data as Row));
         return project(hit, a.select, a.include);
       },
       updateMany: async (a: Record<string, unknown> = {}) => {
         note("updateMany");
         const hits = rows().filter((r) => matchWhere(r, a.where));
-        for (const h of hits) Object.assign(h, a.data as Row);
+        for (const h of hits) Object.assign(h, updated(name, a.data as Row));
         return { count: hits.length };
       },
       delete: async (a: Record<string, unknown> = {}) => {

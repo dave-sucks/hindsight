@@ -77,7 +77,7 @@ export interface StoredLine {
   answers?: { timestamp: Date } | null;
 }
 
-/** An order that went through the approval seam (`expiresAt` set), as the loaders select it. */
+/** An order that went through the approval seam (`expiresAt` set, or a trigger's sale card), as the loaders select it. */
 export interface ProposalOrder {
   id: string;
   status: string;
@@ -88,6 +88,8 @@ export interface ProposalOrder {
   rationale: string | null;
   rejectionMessage: string | null;
   expiresAt: Date | null;
+  /** A trigger's proposal the close pass took down: why, in words (lib/proposals/trigger-proposals.ts). Absent on older loaders' rows. */
+  withdrawnReason?: string | null;
   alpacaConfirmedAt: Date | null;
   filledPrice: number | null;
   createdAt: Date;
@@ -129,6 +131,9 @@ export function proposalSteps(o: ProposalOrder): FeedItem[] {
     steps.push({ ...base, id: `order:${o.id}:rejected`, timestamp: o.alpacaConfirmedAt ?? o.updatedAt, type: "PROPOSAL_REJECTED", summary: `Rejected ${intent} proposal on ${o.symbol}${qty}`, rationale: o.rejectionMessage ?? null });
   } else if (o.status === "EXPIRED") {
     steps.push({ ...base, id: `order:${o.id}:expired`, timestamp: o.expiresAt ?? o.updatedAt, type: "PROPOSAL_EXPIRED", summary: `${intent} proposal on ${o.symbol} expired without decision`, rationale: null });
+  } else if (o.status === "WITHDRAWN") {
+    // A trigger's sale card the close pass took down: the stock closed back past the line.
+    steps.push({ ...base, id: `order:${o.id}:withdrawn`, timestamp: o.updatedAt, type: "PROPOSAL_WITHDRAWN", summary: `Withdrawn: ${o.withdrawnReason ?? "the stock closed back past the line"}`, rationale: null });
   } else if (o.status !== "AWAITING_APPROVAL") {
     // PENDING / FILLED / CANCELLED after approval: the approve moment, with the real fill price when known.
     steps.push({ ...base, id: `order:${o.id}:approved`, timestamp: o.alpacaConfirmedAt ?? o.updatedAt, type: "PROPOSAL_APPROVED", summary: `Approved ${intent} on ${o.symbol}${qty}`, rationale: null, priceAtTime: o.filledPrice ?? null });

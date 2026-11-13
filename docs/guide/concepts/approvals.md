@@ -19,7 +19,7 @@ A buy or an add is sized by risk inside the [analyst](analysts.md)'s band; no ag
 
 ## What a proposal carries
 
-It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the analyst's note, what caused it (the trigger that fired or the run that decided it), and when it expires. One paragraph per trade: the note the run writes on the stock is the proposal's reason, on the card, in the email, on the trade page and in Activity, where the proposal and its note are one line. Until the run writes it the card says the analyst is writing it up, and the email waits for it.
+It lands in your queue, your inbox and on your phone at the same moment, with the trade (the stock, the side, the shares and the price it expects), the analyst's note, what caused it (the trigger that fired or the run that decided it), when it was proposed and at what price ("Proposed at $220.55 on Oct 14, 2:01 PM"), and when it expires: a proposal a trigger made doesn't. One paragraph per trade: the note the run writes on the stock is the proposal's reason, on the card, in the email, on the trade page and in Activity, where the proposal and its note are one line. Until the run writes it the card says the analyst is writing it up, and the email waits for it.
 
 A trade made by a trigger set to Auto is written up by the analyst a minute or two after it's made: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees, and if not, what it would do instead. Until the note lands the card says the analyst is writing it up, and the email waits for it. Activity calls it an Auto-sell (or Auto-buy, Auto-add, Auto-trim).
 
@@ -28,7 +28,8 @@ A trade made by a trigger set to Auto is written up by the analyst a minute or t
 - **Approve:** the order goes to the broker. Once the broker takes a buy, the [thesis](theses.md) turns from Watching to Holding and its sell side is armed; once it takes a sale, the thesis is retired as sold, or sent back to Watching after a sale at the target.
 - **Approve at a different size:** your size is used, and the next run reads it as caution or conviction. If the position or the analyst's room has shrunk since, the order is cut to what's left.
 - **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line its trigger asks the analyst again every day, because [floors only go up](triggers.md), and the analyst proposes the sale again or says why it holds. A sale you want proposed every day, whatever the analyst thinks, is an Auto-sell.
-- **Let it expire:** after 24 hours a proposal lapses (one that runs out overnight is marked at the next market-day check). A lapse means "not now, ask me again", never a decline.
+- **Let it expire:** after 24 hours a proposal lapses (one that runs out overnight is marked at the next market-day check). A lapse means "not now, ask me again", never a decline. A buy, add, trim or sale a trigger made never lapses: it waits for you while its trigger holds.
+- **Withdrawn:** a proposal a trigger made comes down on its own at 4:20 PM on a day the stock closes back past the trigger's line ("Withdrawn: closed back above $236 at $238.10"). On the close only, so a stock bouncing around the line doesn't open and close it all day.
 
 ## Live and paper
 
@@ -50,7 +51,7 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 `approvalRequired` in `lib/proposals/maybe-await-approval.ts` reads the account's four settings for every trade path. Buys and adds are staged by `maybeAwaitApproval` (`place_trade`, `manage_position`); a sale is staged by `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`) under the position lock. A close you make by hand skips the gate.
 
 #### Stored as
-`Order` with status `AWAITING_APPROVAL` and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones.
+`Order` with status `AWAITING_APPROVAL`, the price the run read (`proposedPrice`) and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones. A proposal a trigger's fire made carries the triggers it answers (`triggerIds`) and no `expiresAt`; the trigger check's 4:20 PM pass marks it `WITHDRAWN` (`withdrawnReason`) when none of them holds on the close (`lib/proposals/trigger-proposals.ts`).
 
 #### Declines and lapses
 `lib/agent/declined-sale.ts` counts a decline (REJECTED) and a lapse (EXPIRED) apart; the row's `heldThroughFloor` carries both.

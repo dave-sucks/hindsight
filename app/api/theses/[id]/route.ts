@@ -230,6 +230,8 @@ export async function GET(
             quantity: true,
             expiresAt: true,
             rationale: true,
+            createdAt: true,
+            proposedPrice: true,
           },
         },
     } satisfies Prisma.PositionSelect;
@@ -283,6 +285,8 @@ export async function GET(
               rationale: picked.order.rationale,
               executing: picked.executing,
               writing,
+              proposedAt: picked.order.createdAt.toISOString(),
+              proposedPrice: picked.order.proposedPrice ?? null,
             }
           : null,
       };

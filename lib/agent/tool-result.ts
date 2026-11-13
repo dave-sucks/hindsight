@@ -101,8 +101,8 @@ export type ToolUIItem =
       shares?: number;
       estimatedPrice?: number;
       estimatedCost?: number;
-      /** ISO 8601 — when the proposal auto-expires if no decision lands */
-      expiresAt: string;
+      /** ISO 8601 — when the proposal auto-expires if no decision lands; null on a trigger's sale card (open while its trigger holds) */
+      expiresAt: string | null;
       /** Agent's reasoning for this specific proposal (often the thesis snapshot) */
       rationale?: string | null;
     };
