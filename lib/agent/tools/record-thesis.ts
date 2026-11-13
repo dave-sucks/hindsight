@@ -1281,8 +1281,13 @@ export const recordThesis = defineTool({
           : (args.entry_price ?? null),
       });
 
-      // Transition parent thesis lifecycle.
-      if (resolvedParentId) {
+      // Transition parent thesis lifecycle. A parent already passed or retired
+      // keeps its status: the link is the history (a refresh sent as new
+      // research on a passed stock, dispatch_thesis_research 11-13).
+      const parentDone = resolvedParentId
+        ? ["PASSED", "RETIRED"].includes((await prisma.thesis.findUnique({ where: { id: resolvedParentId }, select: { status: true } }))?.status ?? "")
+        : false;
+      if (resolvedParentId && !parentDone) {
         try {
           if (args.direction === "PASS") {
             const invalidReason =

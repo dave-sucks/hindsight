@@ -184,9 +184,37 @@ export const dispatchThesisResearch = defineTool({
     let effectivePromotionContext:
       | { paperTenureDays: number | null; paperRealizedPnl: number | null; paperReviewCount: number | null; promotedAt: string | null }
       | undefined;
-    if (args.mode === "refresh" && args.existing_thesis_id) {
+    // A passed or retired thesis takes no refresh (update_thesis refuses a
+    // terminal row): HTFL 11-13 spent 248K tokens on one passed in August.
+    // The analyst's live thesis on the stock is refreshed instead; with none,
+    // it is new research linked to the old one (code decides, not the chat).
+    let mode = args.mode;
+    let existingThesisId = args.existing_thesis_id;
+    let parentThesisId: string | null = null;
+    let sentAs: string | null = null;
+    if (mode === "refresh" && existingThesisId) {
+      const last = await prisma.thesis.findUnique({ where: { id: existingThesisId }, select: { status: true } });
+      if (last && (last.status === "PASSED" || last.status === "RETIRED")) {
+        const live = await prisma.thesis.findFirst({
+          where: { ticker: T, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] }, researchRun: { agentConfigId: analyst.id } },
+          orderBy: { createdAt: "desc" },
+          select: { id: true },
+        });
+        const was = last.status === "PASSED" ? "passed" : "retired";
+        if (live) {
+          sentAs = `Its thesis ${existingThesisId} is ${was}; the live one, ${live.id}, is refreshed instead.`;
+          existingThesisId = live.id;
+        } else {
+          sentAs = `Its last thesis (${existingThesisId}) is ${was}, so this is new research on the stock, linked to it.`;
+          mode = "mint";
+          parentThesisId = existingThesisId;
+          existingThesisId = undefined;
+        }
+      }
+    }
+    if (mode === "refresh" && existingThesisId) {
       const existing = await prisma.thesis.findUnique({
-        where: { id: args.existing_thesis_id },
+        where: { id: existingThesisId },
         select: {
           status: true,
           paperTenureDays: true,
@@ -314,6 +342,7 @@ export const dispatchThesisResearch = defineTool({
     })();
     const reason = [
       args.reason,
+      sentAs,
       args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another, or keep the view unpriced with a review if none fits.` : null,
       args.screen_row ? `Numbers: ${args.screen_row}` : null,
       redFlag,
@@ -344,8 +373,9 @@ export const dispatchThesisResearch = defineTool({
         ...(resolvedParentRunId ? { parentRunId: resolvedParentRunId } : {}),
         parameters: {
           ticker: T,
-          mode: args.mode,
-          existingThesisId: args.existing_thesis_id ?? null,
+          mode,
+          existingThesisId: existingThesisId ?? null,
+          parentThesisId,
           reason,
           researchNotes: args.research_notes ?? null,
           ideaSource: args.idea_source ?? null,
@@ -385,23 +415,25 @@ export const dispatchThesisResearch = defineTool({
         childRunId: childRun.id,
         ticker: T,
         analystId: analyst.id,
-        mode: args.mode,
-        existingThesisId: args.existing_thesis_id ?? null,
+        mode,
+        existingThesisId: existingThesisId ?? null,
+        parentThesisId,
         reason,
         researchNotes: args.research_notes ?? null,
         ideaSource: args.idea_source ?? null,
         parentRunId: resolvedParentRunId ?? null,
-        forceWatchingMint: args.mode === "mint",
+        forceWatchingMint: mode === "mint",
         promotionContext: effectivePromotionContext ?? null,
       },
     });
 
     return {
-      summary: `Dispatched thesis-writer for $${T} (${args.mode}) — child run ${childRun.id}`,
+      summary: `Dispatched thesis-writer for $${T} (${mode}) — child run ${childRun.id}${sentAs ? `. ${sentAs}` : ""}`,
       data: {
         childRunId: childRun.id,
         ticker: T,
-        mode: args.mode,
+        mode,
+        ...(sentAs ? { sentAs } : {}),
         // V2 writer typical wall time (~200-250s observed target; see
         // docs/plans/THESIS_WRITER_V2.md). The old 90_000 was copied from
         // the V1 synthesis sub-call's budget and was fiction for the

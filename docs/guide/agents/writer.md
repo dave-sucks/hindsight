@@ -41,6 +41,8 @@ When asked: by another agent with `dispatch_thesis_research`, by you with Send t
 - **[A morning run](morning-runs.md)** sends one when the stock's [situation](../concepts/situations.md) calls for it: a stock you added that's due its first research, research older than its horizon allows, or a watch whose wake-up fired.
 - **[A trigger run](trigger-runs.md)** sends one when the research is too old to act on.
 
+A rewrite asked for on a passed or retired thesis can't save, so the request decides for itself: the analyst's live thesis on the stock is rewritten instead, or, with none, it is new research linked to the old one, which stays as it was.
+
 ## What it reads
 
 The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
@@ -62,12 +64,13 @@ First, a research note in three parts: the company in two sentences (what it doe
 
 It never picks a size. The buy is sized later by the risk to its floor, so an honest, tight floor is what earns size.
 
-The decision goes through the same checks as every other save: prices in the right order, triggers that fit a stock we only watch. A problem goes back to the Writer in the same run, and nothing is saved until it passes.
+The decision goes through the same checks as every other save: prices in the right order, triggers that fit a stock we only watch. A problem goes back to the Writer in the same run, twice at most. After that the thesis saves without the trigger or optional field the save still refuses, and the stock's Activity names each one as "Not applied". The research is never thrown away over one trigger: only a decision the save refuses as a whole (the claim, a level) goes unsaved, and the run says why.
 
 ## What happens next
 
 - **A new stock** lands as Watching, with its buy, floor and target, and a review clock only if the agent that asked set one. The trigger check starts watching the buy that day. A view with no setup yet lands as Watching with only its review.
 - **A pass** on a new stock is saved as Passed, with what would change the verdict, so it isn't pitched again without a reason.
+- **No thesis** when the save refused the decision as a whole: the asking agent, and chat, get the Writer's reason. A chat waits up to five minutes; a Writer still going after that is named with the step it's on, and saves on its own.
 - **A rewrite** replaces the research and the claim. It never changes a stock's direction or status: a different verdict is flagged for the agent that asked, which re-reads the stock and moves its levels if the view changed. A rewrite you asked for in chat keeps the levels you set, fills only an empty one, and notes its own.
 
 From there, [morning runs](morning-runs.md) review the stock and a [trigger run](trigger-runs.md) acts when its buy fires. The research stays the Writer's: other agents adjust the plan around it, and the belief changes only with a new write-up or when you change it in chat.
@@ -91,7 +94,7 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 `lib/agent/run-thesis-writer.ts`; the seven pulls in `thesis-research/pull-data.ts`; the decision's checks in `thesis-research/decision.ts`.
 
 #### Saved through
-`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save.
+`submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry, which runs only while a chat's wait has time left. A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (the research call, or its save retry), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
