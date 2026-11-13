@@ -722,8 +722,16 @@ export interface TimelineRow {
   orderId: string | null;
   /** Fold row (×N roll-up): the row itself is the control. */
   fold: boolean;
+  /** An agent note's impact and effect, drawn as its flame and Bullish / Bearish / Neutral in place of their words. */
+  signal?: { impact: string | null; effect: string | null } | null;
 }
 
+/** An agent note's two fields, off its line (lib/agent/shared-notes.ts noteLine); null on any other line. */
+function noteSignalOf(u: TimelineUpdate): TimelineRow["signal"] {
+  if (u.type !== "SHARED_NOTE") return null;
+  const to = (u.fieldChanges as { sharedNote?: { to?: { impact?: string | null; effect?: string | null } } } | null)?.sharedNote?.to;
+  return to?.impact || to?.effect ? { impact: to.impact ?? null, effect: to.effect ?? null } : null;
+}
 
 /** An edit you made by hand: the trigger popover marks it in fieldChanges; older rows carry a [USER] tag on the note. */
 export function isYourEdit(u: { rationale?: string | null; fieldChanges?: unknown }): boolean {
@@ -746,11 +754,15 @@ export function toRow(item: TimelineItem): TimelineRow {
   if (item.kind === "event") {
     const u = item.row;
     const { text, quoted } = describe(u);
+    const title = titleSegments(u);
+    // An agent note's title ends with its fields in words ("· high impact · weaker", what a run reads); here they are the signal.
+    const signal = noteSignalOf(u);
     return {
       key: u.id,
       type: u.type,
       dot: dotFor(u),
-      title: titleSegments(u),
+      title: signal ? { ...title, secondary: title.secondary?.split(" · ")[0] ?? null } : title,
+      signal,
       chips: [...ladderChangeLines(u), ...notAppliedLines(u)],
       // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
       price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,

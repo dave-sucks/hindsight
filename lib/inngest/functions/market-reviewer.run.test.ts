@@ -66,7 +66,7 @@ import { writeMarketReview } from "@/lib/agent/market-reviewer/run";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
 import { serializeFeedItem } from "@/lib/thesis/activity-feed";
-import { titleSegments, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
+import { titleSegments, toRow, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 import { STANDIN_SPY_ROW } from "@/lib/agent/__fixtures__/market-numbers-standin";
@@ -272,6 +272,11 @@ describe("the 7:30 Market Reviewer", () => {
     // On ASML's Activity the same note carries ASML's price.
     const asml = await loadActivityFeed({ id: "t_asml", ticker: "ASML", createdAt: new Date("2026-10-01T00:00:00Z"), closedAt: null, invalidatedAt: null, analystId: "analyst_1" }, 40);
     expect(asml.filter((i) => i.type === "SHARED_NOTE").map((i) => i.priceAtTime)).toEqual([1000]);
+    // As the tab draws them: the stocks in the title, the two fields as the signal (flame on high, then Bullish / Bearish / Neutral).
+    expect(lines.map((i) => toRow({ kind: "event", row: serializeFeedItem(i) as unknown as TimelineUpdate })).map((r) => [r.title.secondary, r.signal])).toEqual([
+      ["to MU", { impact: "low", effect: "neutral" }],
+      ["to MU, ASML", { impact: "high", effect: "weaker" }],
+    ]);
 
     // The next run's read (get_theses), on the same two stocks as quiet watches.
     jest.useFakeTimers({ now: new Date(AT.getTime() + 60_000), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] });

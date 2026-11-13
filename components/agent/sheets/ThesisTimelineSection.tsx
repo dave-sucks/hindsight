@@ -37,6 +37,7 @@ import { AiEditingIcon } from "@hugeicons/core-free-icons";
 import { NOTED_ITEMS, RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
+import { NoteSignal } from "@/components/domain/note-signal";
 import { citedSegments, isSourceLink } from "@/lib/citations";
 import {
   buildTimeline,
@@ -496,6 +497,12 @@ function Row({
               <span className="font-semibold">{row.title.primary} </span>
             ) : null}
             {row.title.secondary}
+            {row.signal ? (
+              <>
+                {" · "}
+                <NoteSignal impact={row.signal.impact} effect={row.signal.effect} className="align-baseline" />
+              </>
+            ) : null}
             {row.title.outcome ? (
               <span className="font-semibold"> {row.title.outcome}</span>
             ) : null}

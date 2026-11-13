@@ -155,7 +155,10 @@ export function noteLine(n: SharedNoteRow, ticker: string): StoredLine {
     fieldChanges: {
       sharedNote: {
         from: null,
-        to: { noteId: n.id, author: n.author, audience: n.audience, tickers: n.tickers, eventDate: n.eventDate, pinnedUntil: n.pinnedUntil?.toISOString() ?? null, runId: n.runId },
+        to: {
+          noteId: n.id, author: n.author, audience: n.audience, tickers: n.tickers, eventDate: n.eventDate,
+          pinnedUntil: n.pinnedUntil?.toISOString() ?? null, runId: n.runId, impact: n.impact ?? null, effect: n.effect ?? null,
+        },
       },
     },
     runId: null,
