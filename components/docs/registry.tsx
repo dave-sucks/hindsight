@@ -57,7 +57,7 @@ export interface DocMeta {
 export const DOCS: readonly DocMeta[] = [
   { slug: "discovery", title: "Discovery", group: "Agents", icon: Search, blurb: "Screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer." },
   { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, blurb: "Researches one stock in depth and writes its thesis, plan and all." },
-  { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "Every weekday morning, each analyst reviews its whole book." },
+  { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "On its run days, each analyst reads its whole book and answers every stock in a situation." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "market-reviewer", title: "Market Reviewer", group: "Agents", icon: Newspaper, blurb: "Every weekday at 7:30, researches the market itself and writes the market digest and notes on the stocks it touches." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },

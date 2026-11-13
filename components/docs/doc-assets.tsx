@@ -20,6 +20,8 @@ import { ConceptHero } from "./concept-cards";
 import { ReadDemo } from "./framework/read-demo";
 import { RequestGrid } from "./framework/request-grid";
 import { AgentTools, useFrameworkData } from "./tool-catalog";
+import { ContextChip } from "@/components/domain/context-chip";
+import { AGENT_CONTEXT, type ContextAgent } from "@/lib/docs/agent-context";
 
 export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   /** A concept's card from the docs home, as its doc's opening picture. `card theses` */
@@ -38,7 +40,24 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   "situation-flow": SituationFlow,
   /** A thesis's triggers to the agents their On fire reaches, what comes out, and the notes coming back. */
   "fire-loop": () => <FireCanvas />,
+  /** Everything one agent is sent, part by part: the list its workflow card's chips come from. `context morning-runs` */
+  context: ({ arg }) => <AgentContext agent={arg as ContextAgent} />,
 };
+
+function AgentContext({ agent }: { agent: ContextAgent }) {
+  return (
+    <ul className="flex flex-col divide-y border-y">
+      {(AGENT_CONTEXT[agent] ?? []).map((c) => (
+        <li key={c.label} className="flex flex-col items-start gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
+          <span className="shrink-0 sm:w-44">
+            <ContextChip part={c.part}>{c.label}</ContextChip>
+          </span>
+          <span className="text-sm text-muted-foreground">{c.about}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function AgentRequests() {
   const data = useFrameworkData();

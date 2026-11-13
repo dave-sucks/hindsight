@@ -6,13 +6,15 @@ It never trades and never changes a stock's plan. You read the digest, and every
 
 ```facts
 Model: gpt-5.4
-Starts: 7:30 AM ET, weekdays
+Starts: Weekdays · 7:30 AM ET
 Steps: 1 call
 Tools: OpenAI's web search
 Saves: the market digest, and notes on stocks
 ```
 
 ## What it's given
+
+<!-- asset: context market-reviewer -->
 
 One request, with three things in it:
 - its instructions;

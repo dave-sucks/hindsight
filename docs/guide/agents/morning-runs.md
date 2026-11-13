@@ -6,7 +6,7 @@ It acts on what changed and leaves the quiet stocks alone. Every trade it wants 
 
 ```facts
 Model: gpt-5.4
-Starts: 8:00 AM ET, run days
+Starts: Run days · 8:00 AM ET
 Steps: Up to 65
 Tools: 15
 Saves: 21 fields: plan, verdict, note
@@ -39,6 +39,8 @@ Its buys, sales, adds and trims are [proposals](../concepts/approvals.md). On th
 At 8 AM Eastern on the analyst's run days, Monday to Friday by default. Market holidays are skipped. The Run button on an analyst's page starts one on any day, and you can watch it stream in.
 
 ## What it reads
+
+<!-- asset: context morning-runs -->
 
 The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right.
 

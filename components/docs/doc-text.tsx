@@ -15,10 +15,11 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, CheckCircle2, FileText, Flag, Layers, MessageCircle, PenLine, Search, Sun, Target, UserRound, Zap, type LucideIcon } from "lucide-react";
+import { BookOpen, CheckCircle2, FileText, Flag, Layers, MessageCircle, Newspaper, PenLine, Search, Sun, Target, UserRound, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMock, type ChatStep } from "./chat-mock";
 import { Mono } from "./primitives";
+import type { DocSlug } from "./registry";
 import { SourceMark, ToolDialog, useDocsTools } from "./tool-catalog";
 
 export function H2({ id, children }: { id?: string; children: ReactNode }) {
@@ -82,12 +83,15 @@ export function ToolRef({ name }: { name: string }) {
   );
 }
 
-const REFS: Record<string, { title: string; icon: LucideIcon }> = {
+/** Every page a sentence can link, by slug: keyed by DocSlug, so a page missing here fails the typecheck. */
+const REFS: Record<DocSlug, { title: string; icon: LucideIcon }> = {
   discovery: { title: "Discovery", icon: Search },
   writer: { title: "the Writer", icon: PenLine },
   "morning-runs": { title: "the morning run", icon: Sun },
   "trigger-runs": { title: "the trigger run", icon: Zap },
   chat: { title: "chat", icon: MessageCircle },
+  "market-reviewer": { title: "the Market Reviewer", icon: Newspaper },
+  "portfolio-digest": { title: "the Portfolio Digest", icon: FileText },
   "analyst-builder": { title: "the analyst builder", icon: UserRound },
   theses: { title: "theses", icon: FileText },
   triggers: { title: "triggers", icon: Zap },
