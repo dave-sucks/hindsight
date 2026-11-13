@@ -29,6 +29,7 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - A [morning run](../agents/morning-runs.md) gets the situations across its whole book; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for; [chat](../agents/chat.md) sees them on any stock it reads; you see them on the thesis sheet.
 - One save on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to [the Writer](../agents/writer.md).
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
+- How often each one comes up, and what the runs did with it, is on Performance, under Agent work.
 
 ## The eighteen
 
@@ -54,4 +55,7 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 
 #### Sent by
 `get_theses`, once per read and only for the codes on today's list; a trigger run reads its stock the same way.
+
+#### Counted by
+`lib/performance/agent-work.ts` reads each morning run's codes back from its saved thread (the first `get_theses` result) for the Agent work tab (`components/performance/AgentWorkTab.tsx`); a trigger run's situation is worked out from what fired.
 </details>

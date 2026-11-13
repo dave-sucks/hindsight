@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { TrendingUp, Trophy, Target, BarChart3 } from 'lucide-react';
 import { SystemHealthSection } from "@/components/performance/SystemHealthSection";
+import { AgentWorkTab } from "@/components/performance/AgentWorkTab";
 
 // ─── Recharts dark theme constants ────────────────────────────────────────────
 const GRID_COLOR = 'var(--border)';
@@ -383,6 +384,13 @@ export default function PerformancePage({ data, scorecard = [] }: Props) {
     <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold text-foreground">Performance</h1>
 
+      <Tabs defaultValue="trading">
+      <TabsList>
+        <TabsTrigger value="trading">Trading</TabsTrigger>
+        <TabsTrigger value="agent-work">Agent work</TabsTrigger>
+      </TabsList>
+      <TabsContent value="trading">
+      <div className="space-y-6">
       {/* ── Top stats bar ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
@@ -676,6 +684,12 @@ export default function PerformancePage({ data, scorecard = [] }: Props) {
 
       {/* Moved here when /intelligence was folded into /market. */}
       <SystemHealthSection />
+      </div>
+      </TabsContent>
+      <TabsContent value="agent-work">
+        <AgentWorkTab />
+      </TabsContent>
+      </Tabs>
     </div>
   );
 }
