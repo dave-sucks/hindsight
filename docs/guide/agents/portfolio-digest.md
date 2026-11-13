@@ -6,13 +6,15 @@ It never trades. It is a run you can open on /runs, and its Context button shows
 
 ```facts
 Model: gpt-5.4
-Starts: 8:00 PM ET, every weekday
+Starts: Weekdays · 8:00 PM ET
 Steps: 1 call
 Tools: None
 Saves: The digest, and the snapshot it read
 ```
 
 ## What it is given
+
+<!-- asset: context portfolio-digest -->
 
 1. **Its instructions:** write 3 to 5 short paragraphs on how the account did that day and which holdings moved it, what was bought or sold, a view on each proposal waiting for you, and what stands out about the account as a whole. Every number comes from the snapshot. A proposal is not a trade until you approve it. It never names a new price level.
 2. **The portfolio snapshot,** written by code. Nothing else: no run logs, no ids, no buying power.

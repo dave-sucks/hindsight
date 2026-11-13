@@ -64,7 +64,7 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
         <section className="flex flex-col gap-8" aria-labelledby="flow-h">
           <div className="flex flex-col gap-2.5">
             <Eyebrow>The workflow</Eyebrow>
-            <TwoTone id="flow-h" lead="How the pieces connect." rest="Discovery and the Writer fill the book with theses. Three agents read them, and what they decide comes out as buys, sales and holds." />
+            <TwoTone id="flow-h" lead="How the pieces connect." rest="Discovery and the Writer fill the book, and the two digests set the scene every agent is given. Three agents answer each thesis, and what they leave lands back on the stock or sends it back to the Writer." />
           </div>
           <LoopCanvas onOpen={setDoc} />
         </section>

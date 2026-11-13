@@ -20,6 +20,7 @@ export const GUIDE_ASSETS = [
   "request-grid",
   "situation-flow",
   "fire-loop",
+  "context",
 ] as const;
 export type GuideAsset = (typeof GUIDE_ASSETS)[number];
 
@@ -129,6 +130,12 @@ export function parseDoc(source: string): ParsedDoc {
   }
   closeSection();
   return { title, lead, rest, description, parts };
+}
+
+/** A doc's facts strip as label → value ("Starts" → "Weekdays · 7:30 AM ET"); empty when it has none. */
+export function factsOf(doc: ParsedDoc): Record<string, string> {
+  const strip = doc.parts.flatMap((p) => (p.kind === "section" ? p.blocks : [])).find((b) => b.kind === "facts");
+  return strip?.kind === "facts" ? Object.fromEntries(strip.facts) : {};
 }
 
 /**

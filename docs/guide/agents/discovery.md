@@ -5,8 +5,7 @@
 It's where a stock's life starts. It screens wide, scores fast and hands off. It never writes a plan and never buys.
 
 ```facts
-Runs in: Chat
-Starts: When you ask
+Starts: In chat · when you ask
 Saves: A pass or a watch
 ```
 
@@ -40,6 +39,8 @@ When you ask in [chat](chat.md). "Find drift names off this week's reports" is a
 > Any FDA decisions in the next 60 days that fit?
 
 ## What it reads
+
+<!-- asset: context discovery -->
 
 First, the analyst's brief: its strategy, universe, rules and record by setup. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
 

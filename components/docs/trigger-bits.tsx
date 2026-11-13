@@ -7,6 +7,7 @@
 
 import { TriggerPill } from "@/components/agent/triggers/TriggerPill";
 import { rowLabel, type When } from "@/lib/agent/triggers/condition";
+import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 
@@ -15,6 +16,8 @@ export interface PillSpec {
   when: When;
   why: string;
   level?: "THESIS" | "ANALYST" | "ACCOUNT";
+  /** Its On fire; unset reads as the action's default. */
+  fireMode?: FireMode;
 }
 
 function asTrigger(p: PillSpec, i: number): Trigger {
@@ -26,6 +29,7 @@ function asTrigger(p: PillSpec, i: number): Trigger {
     rationale: p.why,
     level,
     inherited: level !== "THESIS",
+    fireMode: p.fireMode,
   };
 }
 
