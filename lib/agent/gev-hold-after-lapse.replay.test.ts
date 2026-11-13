@@ -79,14 +79,15 @@ describe("GEV 10-28 09:40 ET: the hold note after two lapsed sales", () => {
     expect(db.store.researchRun[0].status).toBe("COMPLETE");
   });
 
-  it("without the note, it still refuses with the line production wrote, now saying a hold answers it", async () => {
+  it("without the note, it still refuses, naming the stock's situations and saying a note answers it", async () => {
     const { result, crashed } = await completeRun(fx.runRows.filter((u) => u.type !== "REVIEWED"));
     expect(crashed).toBe(false);
     expect(result.summary).toMatch(/refused/i);
     const text = JSON.stringify(result);
-    // The replay serves no daily bars, so the recent low ($796.41 that morning) is absent here.
-    expect(text).toContain(fx.refusedWith.split(" Recent low")[0]);
-    expect(text).toContain("Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line.");
+    // Production named the lapsed sale in its own words; the refusal now names the situation.
+    expect(fx.refusedWith).toMatch(/left to lapse/);
+    expect(text).toMatch(/GEV \([a-z0-9]+\): sale signal/);
+    expect(text).toContain("a note-only review counts");
     expect(text).not.toContain("does not answer it");
   });
 });

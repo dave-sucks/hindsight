@@ -6,7 +6,7 @@
  * at 2026-10-07 19:40 UTC (the expiry cron flipped it at 20:00). The line the
  * run and the owner read said "most recently 2026-10-06".
  */
-import { declinedSaleLine, declinedSaleWork, foldDeclines } from "./declined-sale";
+import { declinedSaleWork, foldDeclines } from "./declined-sale";
 
 const mu = [
   { createdAt: new Date("2026-10-01T18:06:06.880Z"), status: "EXPIRED", expiresAt: new Date("2026-10-02T14:06:06.880Z"), updatedAt: new Date("2026-10-02T14:30:12.741Z"), rejectionMessage: null },
@@ -17,8 +17,9 @@ it("MU: the expiry's time, not the proposal's", () => {
   const folded = foldDeclines(mu)!;
   expect(folded.lastDeclinedAt.toISOString()).toBe("2026-10-07T19:40:25.054Z");
   const work = declinedSaleWork({ status: "HOLDING", direction: "LONG", decline: folded, floorPrice: 1060, currentPrice: 1040, recentLow: null, now: new Date("2026-10-08T14:00:00Z") })!;
-  // Both expired: lapses, so the line says so (2026-10-13), dated by the expiry.
-  expect(declinedSaleLine(work)).toContain("Most recently 2026-10-07");
+  // Both expired: lapses (2026-10-13), dated by the expiry.
+  expect(work).toMatchObject({ declineCount: 0, lapseCount: 2 });
+  expect(work.lastDeclinedAt.slice(0, 10)).toBe("2026-10-07");
 });
 
 it("a decline dates from the order's change; a row without the dates keeps the proposal's", () => {

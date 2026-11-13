@@ -1,9 +1,7 @@
 /**
  * work-inputs.replay.test.ts — one feed: get_theses and complete_run read
- * the same seed through the same loader, so the close-out judges what the
- * read showed. It owes only what it owed before: the stock's own triggers
- * and its own review clock, never an inherited one, a floor too far, or an
- * unprotected gain.
+ * the same seed through the same loader, so the close-out owes exactly the
+ * stocks the read listed: an inherited clock and an unprotected gain too.
  *
  * Four stocks, one analyst whose rule is a 7-day review:
  *   AAA — held, its floor fired this morning and nothing answered it.
@@ -48,15 +46,15 @@ describe("one feed: the read and the close-out", () => {
     expect(lead).toEqual({ AAA: "TRIGGER_FIRED", BBB: "REVIEW_DUE", CCC: "REVIEW_DUE", DDD: "UNPROTECTED_GAIN" });
   });
 
-  it("complete_run owes the fire and the stock's own clock, not the inherited clock or the gain", async () => {
+  it("complete_run owes every stock the read listed: the fire, both clocks and the gain", async () => {
+    const read = await replayTool("get-theses", "getTheses", { seed: seed(), args: {}, quotes: QUOTES });
+    const listed = ((read.result.data?.theses ?? []) as Array<{ ticker: string }>).map((r) => r.ticker).sort();
     const { result, crashed, db } = await replayTool("complete-run", "completeRun", { seed: seed(), args: {}, quotes: QUOTES });
     expect(crashed).toBe(false);
     expect(result.summary).toMatch(/refused/i);
-    const said = JSON.stringify(result);
-    expect(said).toContain("AAA");
-    expect(said).toContain("BBB");
-    expect(said).not.toContain("CCC");
-    expect(said).not.toContain("DDD");
+    const owed = Array.from(String(result.data?.error ?? "").matchAll(/\b([A-Z]{3}) \(t_/g), (m) => m[1]).sort();
+    expect(owed).toEqual(listed);
+    expect(owed).toEqual(["AAA", "BBB", "CCC", "DDD"]);
     expect(db.store.researchRun[0].status).toBe("RUNNING");
   });
 });

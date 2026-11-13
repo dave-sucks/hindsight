@@ -217,30 +217,3 @@ export function declinedSaleWork(input: {
   };
 }
 
-/**
- * The sentence a run reads on a sale the principal did not take: what
- * complete_run says when the stock is unanswered. One sentence per fact — a
- * decline is "You declined", a lapse is "left to lapse: not a decline".
- */
-export function declinedSaleLine(w: DeclinedSaleWork): string {
-  const when = w.lastDeclinedAt.slice(0, 10);
-  const lapses = w.lapseCount ?? 0;
-  const line = w.floorPrice != null ? `the $${w.floorPrice.toFixed(2)} line` : "the line";
-  const parts: string[] = [];
-  if (w.declineCount > 0) {
-    const asks = w.declineCount === 1 ? "You declined this sale" : `You declined this sale ${w.declineCount}×`;
-    if (lapses === 0) parts.push(`${asks} — most recently ${when} — and the price is still past ${line}, with no new plan since.`);
-    else parts.push(`${asks}.`);
-  }
-  if (lapses > 0) {
-    parts.push(`Proposed ${lapses === 1 ? "once" : `${lapses}×`}${w.declineCount > 0 ? " more" : ""} and left to lapse: not a decline.`);
-    parts.push(`Most recently ${when}, and the price is still past ${line}, with no new plan since.`);
-  }
-  if (w.rejectMessage) parts.push(`Your note: "${w.rejectMessage.slice(0, 240)}".`);
-  if (w.recentLow != null && w.recentLow > 0) {
-    parts.push(`Recent low $${w.recentLow.toFixed(2)}.`);
-  }
-  parts.push("Answer it: propose the sale again with today's reasons, or say why you hold; it asks again tomorrow while the price is past the line.");
-  return parts.join(" ");
-}
-
