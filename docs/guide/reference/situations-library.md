@@ -9,7 +9,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it
 - **On the row.** Every stock in the read lists its situations by code, the most urgent first.
 - **In `guidance`, once.** The read carries one `guidance` entry per code on the day's list, keyed by code, however many stocks share it. A quiet stock brings none.
 - **In a trigger run,** the stock's own codes and their texts come with the fire. Three situations are never sent to a trigger run, and where a text tells a run to change a stock's status, the trigger run reads a line that takes the plan down instead (its save has no status change).
-- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).
+- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written, the chart numbers). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).
 
 ## Auto trade made
 
@@ -118,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 4 of 18 · the row adds `plan_checks`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
+`BUY_ARRIVES` · rank 4 of 18 · the row adds `plan_checks`, `street`, `setup`, `setup_lines`, `catalyst`, `variant_view` · sent to every run
 
 A watched stock reached its buy level.
 
@@ -150,7 +150,7 @@ Mistakes:
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 5 of 18 · the row adds `plan_checks`, `buyBlockedByFull`, `chart`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 18 · the row adds `plan_checks`, `buyBlockedByFull`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -177,7 +177,7 @@ Mistakes:
 
 ## Add or near target
 
-`ADD_OR_WINNER` · rank 6 of 18 · the row adds `floor_risk`, `chart`, `street` · sent to every run
+`ADD_OR_WINNER` · rank 6 of 18 · the row adds `floor_risk`, `street`, `catalyst` · sent to every run
 
 An add level fired, or a holding is three quarters of the way to its target.
 
@@ -314,7 +314,7 @@ Mistakes:
 
 ## Floor to fix
 
-`PROTECTION` · rank 10 of 18 · the row adds `floor_risk`, `chart` · sent to every run
+`PROTECTION` · rank 10 of 18 · the row adds `floor_risk` · sent to every run
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -366,7 +366,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 12 of 18 · the row adds `plan_checks`, `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `nameTheSetup`, `chart`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
+`REVIEW_DUE` · rank 12 of 18 · the row adds `plan_checks`, `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `nameTheSetup`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
 
 The review clock came round, or a review fired, and nothing else covers it.
 
@@ -451,12 +451,12 @@ Mistakes:
 
 ## Plan check
 
-`PLAN_PROBLEM` · rank 14 of 18 · the row adds `plan_checks`, `supersededBy`, `chart`, `street`, `would_prove_it_wrong`, `catalyst`, `conviction_rationale`, `snapshot` · sent to every run
+`PLAN_PROBLEM` · rank 14 of 18 · the row adds `plan_checks`, `supersededBy`, `street`, `would_prove_it_wrong`, `catalyst`, `conviction_rationale`, `snapshot` · sent to every run
 
 The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
 
 ```text
-When: a watched stock's plan contradicts the tape or the calendar. The `plan_checks` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, a score under the analyst's minimum, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the `catalyst` line's date is behind us).
+When: a watched stock's plan contradicts the tape or the calendar. The `plan_checks` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the `catalyst` line's date is behind us).
 
 Answer, in order:
 1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
@@ -560,7 +560,7 @@ Mistakes:
 
 ## No setup named
 
-`NO_SETUP_NAMED` · rank 18 of 18 · the row adds `nameTheSetup`, `chart`, `setup`, `setup_lines` · not sent to a trigger run
+`NO_SETUP_NAMED` · rank 18 of 18 · the row adds `nameTheSetup`, `setup`, `setup_lines` · not sent to a trigger run
 
 A researched stock has no setup named, so nothing says how to trade it.
 

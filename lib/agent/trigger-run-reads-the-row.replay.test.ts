@@ -125,8 +125,8 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
     expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET", "decision"));
-    // A sale signal reads the position and what would prove us wrong, not the chart or the Street.
-    shortRow(row, saved, ["position", "would_prove_it_wrong"], ["chart", "street", "snapshot", "conviction_rationale", "variant_view"]);
+    // A sale signal reads the position and what would prove us wrong, not the Street or the writer's dated read.
+    shortRow(row, saved, ["position", "would_prove_it_wrong"], ["street", "snapshot", "conviction_rationale", "variant_view"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);

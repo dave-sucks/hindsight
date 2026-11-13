@@ -46,7 +46,7 @@ export function situationsLibraryMarkdown(): string {
     "- **On the row.** Every stock in the read lists its situations by code, the most urgent first.",
     "- **In `guidance`, once.** The read carries one `guidance` entry per code on the day's list, keyed by code, however many stocks share it. A quiet stock brings none.",
     "- **In a trigger run,** the stock's own codes and their texts come with the fire. Three situations are never sent to a trigger run, and where a text tells a run to change a stock's status, the trigger run reads a line that takes the plan down instead (its save has no status change).",
-    "- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).",
+    "- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written, the chart numbers). A situation adds the fields its decision reads, listed under each one below; the review clock reads the whole case; the old research sections and the history come only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).",
     "",
   ];
   codes.forEach((code, i) => {
