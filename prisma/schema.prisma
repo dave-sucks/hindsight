@@ -1513,11 +1513,11 @@ model StreetConsensus {
 
 /// A note written once and read on every stock in its audience: the whole
 /// account, one analyst, or a list of stocks (lib/agent/shared-notes.ts).
-/// A note on one stock is a NOTE line in its Activity instead.
+/// The owner's note on one stock is a NOTE line in its Activity instead.
 model SharedNote {
   id          String    @id @default(cuid())
   userId      String
-  /// OWNER or PORTFOLIO_MANAGER
+  /// OWNER or MARKET_REVIEWER
   author      String
   /// The run that wrote it, when a run did.
   runId       String?
@@ -1531,6 +1531,10 @@ model SharedNote {
   /// Read above every covered stock's Activity lines until then; null when not pinned.
   pinnedUntil DateTime?
   createdAt   DateTime  @default(now())
+  /// The Market Reviewer's notes: low | medium | high (high pins it), and
+  /// stronger | weaker | neutral for the reason we own or watch the stock.
+  impact      String?
+  effect      String?
 
   @@index([userId, createdAt])
 }

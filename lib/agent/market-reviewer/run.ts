@@ -4,8 +4,10 @@
  * the 8 PM Portfolio Digest's (lib/agent/digest-writer.ts): its instructions
  * and one first message (the portfolio snapshot, each stock's belief in a
  * line, its own last digest), with OpenAI's own web search as its one tool.
- * The model searches inside that call; its reply is the digest, and the job
- * saves it. The request is kept exactly as sent, for the run page's Context.
+ * The model searches inside that call; its reply is the digest and its notes
+ * on the stocks its research touched (one JSON object, Structured Outputs),
+ * and the job saves both. The request is kept exactly as sent, for the run
+ * page's Context.
  */
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
@@ -31,6 +33,48 @@ export interface ReviewBook {
   userId: string;
 }
 
+/** A note on stocks its first message named: what happened and what it means, how much it could matter, and which way it moves why we own or watch them. */
+export interface ReviewNote {
+  tickers: string[];
+  text: string;
+  impact: "low" | "medium" | "high";
+  effect: "stronger" | "weaker" | "neutral";
+}
+
+/** How long a high note stays pinned: its stocks are on the next run's list until a run writes on them. */
+const PIN_MS = 3 * 86_400_000;
+/** A high note is pinned; a low or medium one is a line in each stock's Activity. */
+export const notePin = (n: Pick<ReviewNote, "impact">, now: Date): Date | null => (n.impact === "high" ? new Date(now.getTime() + PIN_MS) : null);
+
+/** The reply's shape: the digest and the notes. A note names only stocks from its first message. */
+const replyFormat = (tickers: string[]) => ({
+  type: "json_schema" as const,
+  name: "market_review",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["digest", "notes"],
+    properties: {
+      digest: { type: "string" },
+      notes: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["tickers", "text", "impact", "effect"],
+          properties: {
+            tickers: { type: "array", minItems: 1, items: tickers.length ? { type: "string", enum: tickers } : { type: "string" } },
+            text: { type: "string" },
+            impact: { type: "string", enum: ["low", "medium", "high"] },
+            effect: { type: "string", enum: ["stronger", "weaker", "neutral"] },
+          },
+        },
+      },
+    },
+  },
+});
+
 const day = (iso: string) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
 const belief = (text: string | null) => {
@@ -39,8 +83,8 @@ const belief = (text: string | null) => {
   return !first ? "no belief written" : first.length > BELIEF_CHARS ? `${first.slice(0, BELIEF_CHARS).trimEnd()}…` : first;
 };
 
-/** Its first message: the portfolio snapshot, each stock held or watched with its belief in a line, then its own last digest. */
-export async function bookMessage(book: ReviewBook, now: Date): Promise<string> {
+/** Its first message: the portfolio snapshot, each stock held or watched with its belief in a line, then its own last digest; and those stocks' tickers. */
+export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: string; tickers: string[] }> {
   const today = etDateOf(now);
   const [theses, snapshot, last] = await Promise.all([
     prisma.thesis.findMany({
@@ -66,7 +110,7 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<string> 
   const isHeld = (t: (typeof theses)[number]) => t.status === "HOLDING" || held.has(t.ticker.toUpperCase());
   const all = [...rows.values()];
   const list = (rows: typeof all) => (rows.length ? rows.map(line) : ["- none"]);
-  return [
+  const text = [
     `${day(today)}, the ${book.environment} book.`,
     "",
     "## The portfolio",
@@ -81,51 +125,83 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<string> 
     "## Your last digest",
     last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first.",
   ].join("\n");
+  return { text, tickers: all.map((t) => t.ticker.toUpperCase()) };
 }
 
-/** What the call searched, in one line for the run page. */
-const searchedLine = (searches: string[]) => `Searched the web ${searches.length} time${searches.length === 1 ? "" : "s"}: ${searches.map((q) => `“${q}”`).join(" · ")}`;
+/** The tokens the call used, from OpenAI's own count. */
+export interface ReviewUsage {
+  in: number;
+  out: number;
+}
+
+const n = (x: number) => x.toLocaleString("en-US");
+/** What the call searched and the tokens it used, in one line for the run page. */
+const searchedLine = (searches: string[], usage: ReviewUsage | null) =>
+  [
+    `Searched the web ${searches.length} time${searches.length === 1 ? "" : "s"}${searches.length ? `: ${searches.map((q) => `“${q}”`).join(" · ")}` : ""}.`,
+    usage ? `Tokens: ${n(usage.in)} in, ${n(usage.out)} out.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+/** A note on the run page: a title the code writes, then the model's own text. */
+const noteText = (note: ReviewNote, now: Date) =>
+  `**Note on ${note.tickers.join(", ")} · ${note.impact} · ${note.effect}${notePin(note, now) ? " · flagged for review" : ""}**\n\n${note.text}`;
 
 /**
- * The run's one call. Its reply is the digest (`digest`), or null when the
- * call failed or was cut off; the record names why. Never throws.
+ * The run's one call. Its reply is the digest (`digest`) and its notes, or a
+ * null digest and no notes when the call failed, was cut off, or wasn't the
+ * shape asked for; the record names why. Never throws.
  */
-export async function writeMarketReview(book: ReviewBook, opts: { now?: Date } = {}): Promise<OneCall & { digest: string | null; searches: string[] }> {
+export async function writeMarketReview(
+  book: ReviewBook,
+  opts: { now?: Date } = {},
+): Promise<OneCall & { digest: string | null; notes: ReviewNote[]; searches: string[]; usage: ReviewUsage | null }> {
   const startedAt = new Date().toISOString();
-  const first = await bookMessage(book, opts.now ?? new Date());
+  const now = opts.now ?? new Date();
+  const first = await bookMessage(book, now);
   // The request body, kept as it goes to OpenAI.
   const body = {
     model: REVIEWER_MODEL,
     input: [
       { role: "system" as const, content: buildMarketReviewerPrompt() },
-      { role: "user" as const, content: first },
+      { role: "user" as const, content: first.text },
     ],
     tools: [{ type: "web_search" as const }],
+    text: { format: replyFormat(first.tickers) },
     max_output_tokens: REPLY_TOKENS,
   };
-  const done = (digest: string | null, searches: string[], error?: string) => ({
-    request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], ...(error ? { error } : {}) },
-    thread: [
-      body.input[1],
-      ...(searches.length || digest
-        ? [{ role: "assistant", content: [...(searches.length ? [searchedLine(searches)] : []), ...(digest ? [digest] : [])].map((text) => ({ type: "text", text })) }]
-        : []),
-    ],
-    digest,
-    searches,
-  });
+  const done = (digest: string | null, notes: ReviewNote[], searches: string[], usage: ReviewUsage | null, error?: string) => {
+    const said = [...(usage || searches.length ? [searchedLine(searches, usage)] : []), ...(digest ? [digest] : []), ...notes.map((note) => noteText(note, now))];
+    return {
+      request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], ...(error ? { error } : {}) },
+      thread: [body.input[1], ...(said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [])],
+      digest,
+      notes,
+      searches,
+      usage,
+    };
+  };
   try {
     const resp = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" }).responses.create(body, { timeout: CALL_MS });
     const searches = resp.output.flatMap((o) =>
       o.type === "web_search_call" && o.action?.type === "search" ? (o.action.queries?.length ? o.action.queries : o.action.query ? [o.action.query] : []) : [],
     );
+    const usage = resp.usage ? { in: resp.usage.input_tokens, out: resp.usage.output_tokens } : null;
     const text = resp.output_text?.trim() ?? "";
-    if (resp.status === "incomplete") return done(null, searches, `The reply was cut off: ${resp.incomplete_details?.reason ?? "incomplete"}.`);
-    if (!text) return done(null, searches, "The model replied with no text.");
-    return done(text, searches);
+    if (resp.status === "incomplete") return done(null, [], searches, usage, `The reply was cut off: ${resp.incomplete_details?.reason ?? "incomplete"}.`);
+    if (!text) return done(null, [], searches, usage, "The model replied with no text.");
+    // The format is strict, so a reply that parses is the shape asked for.
+    let reply: { digest: string; notes: ReviewNote[] } | null = null;
+    try {
+      reply = JSON.parse(text);
+    } catch {
+      /* answered below */
+    }
+    if (!reply?.digest?.trim()) return done(null, [], searches, usage, "The reply wasn't the digest and its notes.");
+    return done(reply.digest.trim(), reply.notes ?? [], searches, usage);
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
     console.warn(`[market-reviewer] model call failed: ${why}`);
-    return done(null, [], why);
+    return done(null, [], [], null, why);
   }
 }

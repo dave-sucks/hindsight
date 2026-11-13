@@ -1,10 +1,11 @@
 /**
  * shared-notes.ts: a note written once and read on every stock in its
- * audience (the Portfolio Manager Plan, step 2).
+ * audience.
  *
- * The rule in one sentence: a note on one stock is the NOTE line in its
- * Activity (lib/agent/notes.ts); a note on more than one stock is one
- * SharedNote row with its audience, and each covered stock reads it.
+ * The rule in one sentence: the owner's note on one stock is the NOTE line in
+ * its Activity (lib/agent/notes.ts); the owner's note on more than one stock,
+ * and every note the Market Reviewer writes (on one stock or several, with
+ * its impact and effect), is one SharedNote row, and each covered stock reads it.
  *
  * Audiences:
  * - STOCKS: the stocks it names. A note in each one's Activity.
@@ -31,7 +32,7 @@ import { RECENT_ITEMS, type StoredLine } from "@/lib/thesis/activity-feed";
 import { etStamp, isAgentAnswer, type ActivityRow } from "@/lib/agent/stock-context";
 
 export type NoteAudience = "ACCOUNT" | "ANALYST" | "STOCKS";
-export type NoteAuthor = "OWNER" | "PORTFOLIO_MANAGER";
+export type NoteAuthor = "OWNER" | "MARKET_REVIEWER";
 
 export interface SharedNoteRow {
   id: string;
@@ -44,6 +45,9 @@ export interface SharedNoteRow {
   eventDate: string | null;
   pinnedUntil: Date | null;
   createdAt: Date;
+  /** The Market Reviewer's two fields (low | medium | high; stronger | weaker | neutral). Null on the owner's notes. */
+  impact?: string | null;
+  effect?: string | null;
 }
 
 /** The longest a note stays pinned. */
@@ -115,7 +119,12 @@ export function runNotes(notes: readonly SharedNoteRow[], analystId: string | nu
 }
 
 export function authorWords(author: string): string {
-  return author === "OWNER" ? "Your note" : "Portfolio manager's note";
+  return author === "OWNER" ? "Your note" : "Market Reviewer's note";
+}
+
+/** Who wrote it, to whom, and the Market Reviewer's two fields: "Market Reviewer's note to NVDA, AMD · high impact · weaker". */
+export function noteTitle(n: Pick<SharedNoteRow, "author" | "audience" | "tickers" | "impact" | "effect">, analystName?: string | null): string {
+  return [`${authorWords(n.author)} to ${audienceWords(n, analystName)}`, n.impact ? `${n.impact} impact` : null, n.effect].filter(Boolean).join(" · ");
 }
 
 export function audienceWords(n: Pick<SharedNoteRow, "audience" | "tickers">, analystName?: string | null): string {
@@ -133,7 +142,7 @@ export function noteLine(n: SharedNoteRow): StoredLine {
     id: `note:${n.id}`,
     timestamp: n.createdAt,
     type: "SHARED_NOTE",
-    summary: `${authorWords(n.author)} to ${audienceWords(n)}`,
+    summary: noteTitle(n),
     rationale: n.body,
     fieldChanges: {
       sharedNote: {
@@ -165,7 +174,7 @@ export function pinnedBlock(ticker: string, pinned: readonly SharedNoteRow[], sh
   const lines = pinned.map((n) => {
     const about = n.eventDate ? `, about ${n.eventDate}` : "";
     const until = n.pinnedUntil ? `, pinned until ${dayOf(n.pinnedUntil)}` : "";
-    let line = `  ${etStamp(n.createdAt)} · ${authorWords(n.author)} to ${audienceWords(n)}${about}${until} — "${oneLine(n.body)}" [note ${n.id}]`;
+    let line = `  ${etStamp(n.createdAt)} · ${noteTitle(n)}${about}${until} — "${oneLine(n.body)}" [note ${n.id}]`;
     const s = shares.get(n.id);
     if (s && s.holdings.length > 0) {
       const pct = `${Math.round(s.share * 100)}% of the account`;
@@ -175,12 +184,12 @@ export function pinnedBlock(ticker: string, pinned: readonly SharedNoteRow[], sh
     }
     return line;
   });
-  return [`PINNED ON $${T}: notes to more than this stock, read before its Activity lines:`, ...lines].join("\n");
+  return [`PINNED ON $${T}: notes read before its Activity lines:`, ...lines].join("\n");
 }
 
 /** One line per note read at the top of a run. */
 export function runNoteLine(n: SharedNoteRow, analystName?: string | null): string {
   const about = n.eventDate ? `, about ${n.eventDate}` : "";
   const until = n.pinnedUntil ? `, until ${dayOf(n.pinnedUntil)}` : "";
-  return `${etStamp(n.createdAt)} · ${authorWords(n.author)} to ${audienceWords(n, analystName)}${about}${until}: "${oneLine(n.body)}" [note ${n.id}]`;
+  return `${etStamp(n.createdAt)} · ${noteTitle(n, analystName)}${about}${until}: "${oneLine(n.body)}" [note ${n.id}]`;
 }

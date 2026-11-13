@@ -101,6 +101,9 @@ export interface SharedNoteInput {
   /** YYYY-MM-DD; anything else is dropped. */
   eventDate?: string | null;
   pinnedUntil?: Date | null;
+  /** The Market Reviewer's two fields, kept as it gave them. */
+  impact?: string | null;
+  effect?: string | null;
   now?: Date;
 }
 
@@ -138,6 +141,8 @@ export async function writeSharedNote(input: SharedNoteInput): Promise<{ id: str
       tickers: input.audience === "STOCKS" ? [...new Set((input.tickers ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean))] : [],
       eventDate,
       pinnedUntil,
+      impact: input.impact ?? null,
+      effect: input.effect ?? null,
     },
     select: { id: true },
   });

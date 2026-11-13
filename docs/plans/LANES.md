@@ -27,13 +27,13 @@ these. There is no other path (no inbox, no routed "signal" rows — that
 was the machinery deleted in September), with one exception added on
 purpose on 2026-11-07, below.
 
-**The exception: a note with an audience.** The owner or the portfolio
-manager writes a note once and addresses it to the account, one analyst or
+**The exception: a note with an audience.** The owner or the Market
+Reviewer writes a note once and addresses it to the account, one analyst or
 a list of stocks it names (`SharedNote`, `lib/agent/shared-notes.ts`).
 Every stock it reaches shows it in its Activity; a pinned one reads above
 the newest 8 until a run answers it. This is not the router, and four rules
-keep it from becoming one: one author picks every audience by hand; nothing
-matches by tag; every note shows in Activity, where you read it; a pinned
+keep it from becoming one: the author picks every audience (the Market
+Reviewer only from the stocks on the book); nothing matches by tag; every note shows in Activity, where you read it; a pinned
 note ends within two weeks. A Signals-lane fact still comes in through the
 three doors. A note is someone's read of what those facts mean.
 

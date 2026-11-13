@@ -1,11 +1,13 @@
 /**
  * The Market Reviewer V1 is one model call with web search, a run Dave can
  * open: given its instructions, the book and its last digest, its reply is
- * the digest, and the job saves it. Through the job's own handler, with the
- * real run and the doubled database; OpenAI's Responses API is stood in.
- * Made-up book, stand-in amounts.
+ * the digest and its notes on the book's stocks, and the job saves both.
+ * Through the job's own handler, with the real run and the doubled database;
+ * OpenAI's Responses API is stood in. The notes it saves are then read by the
+ * real readers: get_theses (a run's list and what it reads) and the Activity
+ * tab's loader. Made-up book, stand-in amounts.
  */
-import { prismaDouble, thesisRow, type PrismaDouble } from "@/lib/replay";
+import { prismaDouble, replayTool, thesisRow, REPLAY_USER_ID, type PrismaDouble } from "@/lib/replay";
 
 let db: PrismaDouble;
 jest.mock("@/lib/prisma", () => ({
@@ -48,6 +50,9 @@ jest.mock("openai", () => ({
 
 import "./market-reviewer";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
+import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
+import { serializeFeedItem } from "@/lib/thesis/activity-feed";
+import { titleSegments, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 
@@ -60,15 +65,27 @@ const DIGEST = [
   "### Upcoming events",
   "The producer price index is due Friday at 8:30 AM ET ([BLS](https://www.bls.gov/schedule/)).",
 ].join("\n\n");
-/** A finished reply: two searches, then the digest. */
+/** Its notes: a high one on two stocks, a low one on one. */
+const NOTES = [
+  {
+    tickers: ["MU", "ASML"],
+    text: "New export rules cover memory tools sold to China ([Reuters](https://www.reuters.com/technology/example-export-rules/)). That cuts into the demand both stories rest on.",
+    impact: "high",
+    effect: "weaker",
+  },
+  { tickers: ["MU"], text: "A peer said memory prices held through October ([Bloomberg](https://www.bloomberg.com/news/example-memory-prices/)).", impact: "low", effect: "neutral" },
+];
+const REPLY = JSON.stringify({ digest: DIGEST, notes: NOTES });
+/** A finished reply: two searches, then the digest and its notes as one JSON object. */
 const reply = (over: Record<string, unknown> = {}) => ({
   status: "completed",
   output: [
     { type: "web_search_call", id: "ws_1", status: "completed", action: { type: "search", query: "stock market today", queries: ["why stocks rose Nov 11 2026"] } },
     { type: "web_search_call", id: "ws_2", status: "completed", action: { type: "search", query: "economic calendar November 2026 CPI PPI" } },
-    { type: "message", id: "m_1", role: "assistant", status: "completed", content: [{ type: "output_text", text: DIGEST, annotations: [] }] },
+    { type: "message", id: "m_1", role: "assistant", status: "completed", content: [{ type: "output_text", text: REPLY, annotations: [] }] },
   ],
-  output_text: DIGEST,
+  output_text: REPLY,
+  usage: { input_tokens: 41_230, output_tokens: 3_118 },
   ...over,
 });
 const inBook = (over: Record<string, unknown>) =>
@@ -81,7 +98,13 @@ async function runTheJob(at = AT) {
   const requestRow = rows.find((r) => r.role === "request");
   const record = requestRow ? (JSON.parse(requestRow.content) as RequestRecord) : null;
   const threadRow = rows.find((r) => r.role === "thread");
-  return { record, thread: threadRow ? String(threadRow.content) : "", runs: (db.store.researchRun ?? []) as Array<Record<string, unknown>>, digests: (db.store.marketDigest ?? []) as Array<Record<string, unknown>> };
+  return {
+    record,
+    thread: threadRow ? String(threadRow.content) : "",
+    runs: (db.store.researchRun ?? []) as Array<Record<string, unknown>>,
+    digests: (db.store.marketDigest ?? []) as Array<Record<string, unknown>>,
+    notes: (db.store.sharedNote ?? []) as Array<Record<string, unknown>>,
+  };
 }
 
 beforeEach(() => {
@@ -107,13 +130,22 @@ afterEach(() => {
 
 describe("the 7:30 Market Reviewer", () => {
   it("sends one request (its instructions, the book and its last digest, web search) and saves the reply as today's digest", async () => {
-    const { record, thread, runs, digests } = await runTheJob();
+    const { record, thread, runs, digests, notes } = await runTheJob();
 
     // One call, nothing else.
     expect(mockOpenAI.bodies).toHaveLength(1);
-    const body = mockOpenAI.bodies[0] as { model: string; input: Array<{ role: string; content: string }>; tools: unknown[] };
+    const body = mockOpenAI.bodies[0] as {
+      model: string;
+      input: Array<{ role: string; content: string }>;
+      tools: unknown[];
+      text: { format: { type: string; strict: boolean; schema: { properties: { notes: { items: { properties: { tickers: { items: { enum: string[] } } } } } } } } };
+    };
     expect(body.model).toBe("gpt-5.4");
     expect(body.tools).toEqual([{ type: "web_search" }]);
+    // Its reply is one JSON object, and a note may name only the stocks in its first message.
+    expect(body.text.format).toMatchObject({ type: "json_schema", name: "market_review", strict: true });
+    expect([...body.text.format.schema.properties.notes.items.properties.tickers.items.enum].sort()).toEqual(["ASML", "MU"]);
+    expect(body.input[0].content).toContain("## Notes\nYour reply's \"notes\" are saved on the stocks they name");
     expect(body.input.map((m) => m.role)).toEqual(["system", "user"]);
     expect(body.input[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
     expect(body.input[0].content).toContain("Do not make trades.");
@@ -153,13 +185,81 @@ describe("the 7:30 Market Reviewer", () => {
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Portfolio, watchlist and last digest", "read"], ["Tool menu", "tools"]]);
     expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search"]);
 
-    // The run page: the first message, then what it searched and the digest.
-    expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”");
+    // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
+    expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");
     expect(thread).toContain("Stocks rebounded, led by technology");
+    expect(thread).toContain("**Note on MU, ASML · high · weaker · flagged for review**");
+    expect(thread).toContain("**Note on MU · low · neutral**");
 
-    // Today's digest is the reply, as written, linked to its run.
+    // Today's digest is the digest, as written, linked to its run.
     const today = digests.find((d) => (d.date as Date).toISOString() === "2026-11-11T00:00:00.000Z")!;
     expect(today).toMatchObject({ accountId: ACCOUNT, environment: "LIVE", model: "gpt-5.4", runId: runs[0].id, digest: DIGEST });
+
+    // Each note is saved on its stocks by the Market Reviewer, with its run and its two fields; the high one pinned three days.
+    expect(notes).toEqual([
+      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: new Date("2026-11-14T12:30:00Z") }),
+      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU"], body: NOTES[1].text, impact: "low", effect: "neutral", pinnedUntil: null }),
+    ]);
+  });
+
+  it("a high note puts its stocks on the next run's list, and every note is a titled line in each stock's Activity and in what a run reads", async () => {
+    const { notes } = await runTheJob();
+    // The database stamps createdAt on insert; the double doesn't, so the save time is set here, a second apart.
+    notes.forEach((n, i) => (n.createdAt = new Date(AT.getTime() + i * 1000)));
+
+    // The Activity tab's loader, titled by the tab's own grammar: newest first, the paragraph the model's text.
+    const feed = await loadActivityFeed({ id: "t_mu", ticker: "MU", createdAt: new Date("2026-10-01T00:00:00Z"), closedAt: null, invalidatedAt: null, analystId: "analyst_1" }, 40);
+    const lines = feed.filter((i) => i.type === "SHARED_NOTE");
+    expect(lines.map((i) => [titleSegments(serializeFeedItem(i) as unknown as TimelineUpdate), i.rationale])).toEqual([
+      [expect.objectContaining({ primary: "Market Reviewer's note", secondary: "to MU · low impact · neutral" }), NOTES[1].text],
+      [expect.objectContaining({ primary: "Market Reviewer's note", secondary: "to MU, ASML · high impact · weaker" }), NOTES[0].text],
+    ]);
+
+    // The next run's read (get_theses), on the same two stocks as quiet watches.
+    jest.useFakeTimers({ now: new Date(AT.getTime() + 60_000), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] });
+    const watch = (id: string, ticker: string) =>
+      thesisRow({
+        id, ticker, status: "WATCHING", direction: null, horizon: "COMPOUNDER", setupId: null,
+        coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
+        entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, createdAt: new Date("2026-10-01T00:00:00Z"), lastReviewedAt: null,
+        triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r", cooldownDays: 7 }],
+      });
+    const seed = { thesis: [watch("t_mu", "MU"), watch("t_asml", "ASML")], sharedNote: notes.map((n) => ({ ...n, userId: REPLAY_USER_ID })) };
+    // This file's own database mock (for the job) answers before the replay's, so it holds the replay's seed.
+    db = prismaDouble(seed as never);
+    const { result, crashed } = await replayTool("get-theses", "getTheses", { seed: seed as never, args: { limit: 50 }, ctx: { runMode: "MORNING_PLAN" }, quotes: { MU: 650, ASML: 1000 } });
+    expect(crashed).toBe(false);
+    const rows = (result as unknown as { data: { theses: Array<{ id: string; situations: string[]; context: string }> } }).data.theses;
+    const mu = rows.find((t) => t.id === "t_mu")!;
+    // Both stocks the high note names are on the list, in PINNED_NOTE.
+    expect(mu.situations).toContain("PINNED_NOTE");
+    expect(rows.find((t) => t.id === "t_asml")?.situations).toContain("PINNED_NOTE");
+    // The high note reads pinned above the stock's lines; the low one is one of its newest 8, in `said`.
+    const [pinned, said] = mu.context.split("WHAT'S BEEN SAID ON $MU");
+    expect(pinned).toContain(`PINNED ON $MU: notes read before its Activity lines:\n  11-11 07:30 · Market Reviewer's note to MU, ASML · high impact · weaker, pinned until 11-14 — "${NOTES[0].text}"`);
+    expect(said).toContain(`11-11 07:30 · Market Reviewer's note to MU · low impact · neutral — "${NOTES[1].text}"`);
+  });
+
+  it("a note that doesn't save leaves the digest saved and the run COMPLETE", async () => {
+    const notesTable = db.sharedNote as { create: (a: Record<string, unknown>) => Promise<unknown> };
+    const create = notesTable.create;
+    notesTable.create = async (a) => {
+      if ((a.data as { impact?: string }).impact === "high") throw new Error("connection reset");
+      return create(a);
+    };
+    const { runs, digests, notes } = await runTheJob();
+    expect(runs[0].status).toBe("COMPLETE");
+    expect(digests.map((d) => d.digest)).toContain(DIGEST);
+    expect(notes.map((n) => n.impact)).toEqual(["low"]);
+  });
+
+  it("a reply that isn't the digest and its notes saves nothing, and says so", async () => {
+    mockOpenAI.reply = reply({ output_text: DIGEST });
+    const { record, runs, digests, notes } = await runTheJob();
+    expect(runs[0].status).toBe("FAILED");
+    expect(record!.error).toBe("The reply wasn't the digest and its notes.");
+    expect(digests).toHaveLength(1);
+    expect(notes).toEqual([]);
   });
 
   it("a reply cut off at its limit saves nothing, and the run closes FAILED saying why", async () => {

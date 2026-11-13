@@ -36,7 +36,7 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - **Act on the plan:** sale signal, buy level reached, buy blocked (full), add or near target, promoted to live.
 - **Keep the plan honest:** floor to fix, plan check, review due, no setup named.
 - **Back to the Writer:** first research due, research stale, watch woke up.
-- **Answer what happened:** earnings, new filing, your word unanswered, pinned note to answer, sold (one look). A pinned note is one the portfolio manager or you wrote to several stocks at once, about something bigger than any one of them (lib/agent/shared-notes.ts).
+- **Answer what happened:** earnings, new filing, your word unanswered, pinned note to answer, sold (one look). A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
 
 Each one's code, what it means and the exact text an agent is sent are in the [Situations library](../reference/situations-library.md).
 
