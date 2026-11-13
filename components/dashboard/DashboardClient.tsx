@@ -22,7 +22,6 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Card, CardContent } from '@/components/ui/card';
-import { TickBar, type Tick } from '@/components/ui/gauge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -759,41 +758,32 @@ function formatDigestStamp(digest: LatestDigest): string {
   return `${dayLabel}, ${time}`;
 }
 
-/** Win rate as ten ticks; the tooltip trigger is the ticks alone so hovering
- *  beside them does nothing. */
-function WinRateTicks({ winRate }: { winRate: number | null }) {
+/** The Portfolio / Market chips, on the card and in its dialog. */
+function DigestTabs({
+  tab,
+  onTab,
+  suffix = '',
+}: {
+  tab: DigestTab;
+  onTab: (tab: DigestTab) => void;
+  suffix?: string;
+}) {
   return (
-    <UITooltipProvider>
-      <UITooltip>
-        <UITooltipTrigger render={<span className="inline-flex cursor-default" />}>
-          <TickBar
-            height={12}
-            ticks={Array.from({ length: 10 }, (_, i): Tick => ({
-              color: winRate != null && i < Math.round(winRate * 10)
-                ? 'bg-foreground'
-                : 'bg-muted-foreground/25',
-            }))}
-            className="w-12"
-          />
-        </UITooltipTrigger>
-        <UITooltipContent side="bottom" align="end">
-          <div className="text-xs">
-            {winRate != null ? `${Math.round(winRate * 100)}% win rate` : 'No closed trades yet'}
-          </div>
-        </UITooltipContent>
-      </UITooltip>
-    </UITooltipProvider>
+    <Tabs value={tab} onValueChange={(value) => onTab(value as DigestTab)}>
+      <TabsList size="sm">
+        <TabsTrigger value="portfolio">Portfolio{suffix}</TabsTrigger>
+        <TabsTrigger value="market">Market{suffix}</TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 }
 
 function DigestPreviewCard({
   digest,
   marketDigest,
-  winRate,
 }: {
   digest: LatestDigest | null | undefined;
   marketDigest: LatestDigest | null | undefined;
-  winRate: number | null;
 }) {
   const [tab, setTab] = useState<DigestTab>(() => openingDigestTab(digest, marketDigest));
   const [open, setOpen] = useState(false);
@@ -801,7 +791,10 @@ function DigestPreviewCard({
 
   const isMarket = tab === 'market';
   const active = isMarket ? marketDigest : digest;
-  const title = isMarket ? 'Market Digest' : 'Portfolio Digest';
+  const stamp = active ? formatDigestStamp(active) : null;
+  const emptyLine = isMarket
+    ? 'No market digest yet — written at 7:30 AM on weekdays.'
+    : 'No digest yet — generates after close.';
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
   const preview = active ? stripMarkdown(active.narrative).slice(0, 700) : null;
@@ -809,27 +802,19 @@ function DigestPreviewCard({
   return (
     <>
       {/* lg:h-[390px] matches the chart card so the two columns align. The card
-          is a plain container: the tabs and the preview button are siblings,
-          never one control inside another. */}
+          is a plain container: the header row (stamp, tabs) and the preview
+          button are siblings, never one control inside another. */}
       <div className="w-full rounded-lg border bg-card p-3 mb-3 flex flex-col gap-2 overflow-hidden lg:h-[390px]">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as DigestTab)}>
-          <TabsList width="full">
-            <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
-            <TabsTrigger value="market">Market</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center justify-between gap-2 shrink-0">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{stamp}</p>
+          <DigestTabs tab={tab} onTab={setTab} />
+        </div>
         <button
           type="button"
           disabled={!active}
           onClick={() => setOpen(true)}
           className="w-full flex-1 min-h-0 text-left flex flex-col overflow-hidden transition-opacity enabled:cursor-pointer enabled:hover:opacity-80"
         >
-          <div className="flex items-center justify-between gap-2 mb-1 shrink-0">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-              {active ? formatDigestStamp(active) : title}
-            </p>
-            <WinRateTicks winRate={winRate} />
-          </div>
           {active && preview ? (
             <div className="relative flex-1 min-h-0 overflow-hidden">
               <p className="text-base font-medium leading-relaxed line-clamp-6 lg:line-clamp-none">
@@ -839,30 +824,30 @@ function DigestPreviewCard({
               <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-card to-transparent pointer-events-none" />
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              {isMarket
-                ? 'No market digest yet — written at 7:30 AM on weekdays.'
-                : 'No digest yet — generates after close.'}
-            </p>
+            <p className="text-xs text-muted-foreground">{emptyLine}</p>
           )}
         </button>
       </div>
 
-      {active && (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-2xl p-0">
-            <DialogHeader className="px-5 pt-5 pb-3 border-b">
-              <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">
-                {formatDigestStamp(active)}
-              </p>
-              <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl p-0">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b">
+            {stamp && (
+              <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{stamp}</p>
+            )}
+            <DialogTitle render={<div />}>
+              <DigestTabs tab={tab} onTab={setTab} suffix=" Digest" />
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+            {active ? (
               <DigestMarkdown>{active.narrative}</DigestMarkdown>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            ) : (
+              <p className="text-sm text-muted-foreground">{emptyLine}</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1510,7 +1495,7 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
             activity={data?.activityFeed ?? []}
             loading={loading}
             coverage={coverage}
-            mobileDigest={<DigestPreviewCard digest={digest} marketDigest={marketDigest} winRate={portfolio.winRate} />}
+            mobileDigest={<DigestPreviewCard digest={digest} marketDigest={marketDigest} />}
           />
           </div>
 
@@ -1525,7 +1510,7 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
             {/* Pinned shortlist — the hand-picked names you want in view.
                 Below proposals (time-sensitive), above the digest. */}
             <PinnedPanel pinned={pinned ?? []} coverage={coverage} />
-            <DigestPreviewCard digest={digest} marketDigest={marketDigest} winRate={portfolio.winRate} />
+            <DigestPreviewCard digest={digest} marketDigest={marketDigest} />
           </div>
 
         </div>
