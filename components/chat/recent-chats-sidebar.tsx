@@ -12,7 +12,9 @@
  */
 
 import Link from "next/link";
-import { History, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Undo02Icon } from "@hugeicons/core-free-icons";
 import {
   Sheet,
   SheetContent,
@@ -40,7 +42,7 @@ export function RecentChatsTrigger({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="Open recent chats"
     >
-      <History />
+      <HugeiconsIcon icon={Undo02Icon} />
       Recent
     </Button>
   );
