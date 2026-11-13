@@ -33,10 +33,12 @@ jest.mock("@/lib/portfolio/load-snapshot", () => {
   });
   return { loadPortfolioSnapshot: async () => snapshot };
 });
-// The market's vendors, stood in: stand-in closes for the index and sector funds, and a calendar with MU reporting.
+// The market's vendors, stood in: stand-in closes for the index and sector funds and the book's two stocks, and a calendar with MU reporting.
 jest.mock("@/lib/market-data/live-quote", () => {
   const { standinMarketQuotes } = jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin");
-  const quotes = standinMarketQuotes("2026-11-10T21:00:00Z");
+  const funds = standinMarketQuotes("2026-11-10T21:00:00Z");
+  const close = (c: number) => ({ quote: { ...funds.SPY.quote, c, pc: c, d: 0, dp: 0, o: c, h: c, l: c } });
+  const quotes = { ...funds, MU: close(650), ASML: close(1000) };
   return { getLiveQuotes: async (symbols: string[]) => Object.fromEntries(symbols.map((s) => [s, quotes[s] ?? { quote: null, error: "not stood in" }])) };
 });
 jest.mock("@/lib/agent/research-helpers", () => ({
@@ -223,10 +225,10 @@ describe("the 7:30 Market Reviewer", () => {
     const today = digests.find((d) => (d.date as Date).toISOString() === "2026-11-11T00:00:00.000Z")!;
     expect(today).toMatchObject({ accountId: ACCOUNT, environment: "LIVE", model: "gpt-5.4", runId: runs[0].id, digest: DIGEST });
 
-    // Each note is saved on its stocks by the Market Reviewer, with its run and its two fields; the high one pinned three days.
+    // Each note is saved on its stocks by the Market Reviewer, with its run, its two fields and each stock's price then; the high one pinned three days.
     expect(notes).toEqual([
-      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: new Date("2026-11-14T12:30:00Z") }),
-      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU"], body: NOTES[1].text, impact: "low", effect: "neutral", pinnedUntil: null }),
+      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: new Date("2026-11-14T12:30:00Z"), prices: { MU: 650, ASML: 1000 } }),
+      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU"], body: NOTES[1].text, impact: "low", effect: "neutral", pinnedUntil: null, prices: { MU: 650 } }),
     ]);
   });
 
@@ -260,13 +262,16 @@ describe("the 7:30 Market Reviewer", () => {
     // The database stamps createdAt on insert; the double doesn't, so the save time is set here, a second apart.
     notes.forEach((n, i) => (n.createdAt = new Date(AT.getTime() + i * 1000)));
 
-    // The Activity tab's loader, titled by the tab's own grammar: newest first, the paragraph the model's text.
+    // The Activity tab's loader, titled by the tab's own grammar: newest first, the paragraph the model's text, the price MU's when written.
     const feed = await loadActivityFeed({ id: "t_mu", ticker: "MU", createdAt: new Date("2026-10-01T00:00:00Z"), closedAt: null, invalidatedAt: null, analystId: "analyst_1" }, 40);
     const lines = feed.filter((i) => i.type === "SHARED_NOTE");
-    expect(lines.map((i) => [titleSegments(serializeFeedItem(i) as unknown as TimelineUpdate), i.rationale])).toEqual([
-      [expect.objectContaining({ primary: "Market Reviewer's note", secondary: "to MU · low impact · neutral" }), NOTES[1].text],
-      [expect.objectContaining({ primary: "Market Reviewer's note", secondary: "to MU, ASML · high impact · weaker" }), NOTES[0].text],
+    expect(lines.map((i) => [titleSegments(serializeFeedItem(i) as unknown as TimelineUpdate), i.rationale, i.priceAtTime])).toEqual([
+      [expect.objectContaining({ primary: "Agent note", secondary: "to MU · low impact · neutral" }), NOTES[1].text, 650],
+      [expect.objectContaining({ primary: "Agent note", secondary: "to MU, ASML · high impact · weaker" }), NOTES[0].text, 650],
     ]);
+    // On ASML's Activity the same note carries ASML's price.
+    const asml = await loadActivityFeed({ id: "t_asml", ticker: "ASML", createdAt: new Date("2026-10-01T00:00:00Z"), closedAt: null, invalidatedAt: null, analystId: "analyst_1" }, 40);
+    expect(asml.filter((i) => i.type === "SHARED_NOTE").map((i) => i.priceAtTime)).toEqual([1000]);
 
     // The next run's read (get_theses), on the same two stocks as quiet watches.
     jest.useFakeTimers({ now: new Date(AT.getTime() + 60_000), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] });
@@ -289,8 +294,8 @@ describe("the 7:30 Market Reviewer", () => {
     expect(rows.find((t) => t.id === "t_asml")?.situations).toContain("PINNED_NOTE");
     // The high note reads pinned above the stock's lines; the low one is one of its newest 8, in `said`.
     const [pinned, said] = mu.context.split("WHAT'S BEEN SAID ON $MU");
-    expect(pinned).toContain(`PINNED ON $MU: notes read before its Activity lines:\n  11-11 07:30 · Market Reviewer's note to MU, ASML · high impact · weaker, pinned until 11-14 — "${NOTES[0].text}"`);
-    expect(said).toContain(`11-11 07:30 · Market Reviewer's note to MU · low impact · neutral — "${NOTES[1].text}"`);
+    expect(pinned).toContain(`PINNED ON $MU: notes read before its Activity lines:\n  11-11 07:30 · Agent note to MU, ASML · high impact · weaker, pinned until 11-14 — "${NOTES[0].text}"`);
+    expect(said).toContain(`11-11 07:30 · $650.00 · Agent note to MU · low impact · neutral — "${NOTES[1].text}"`);
   });
 
   it("a note that doesn't save leaves the digest saved and the run COMPLETE", async () => {

@@ -48,6 +48,8 @@ export interface SharedNoteRow {
   /** The Market Reviewer's two fields (low | medium | high; stronger | weaker | neutral). Null on the owner's notes. */
   impact?: string | null;
   effect?: string | null;
+  /** Each named stock's price when it was written ({ "NVDA": 162.26 }); null before 2026-11-13. */
+  prices?: unknown;
 }
 
 /** The longest a note stays pinned. */
@@ -118,11 +120,12 @@ export function runNotes(notes: readonly SharedNoteRow[], analystId: string | nu
   );
 }
 
+/** Who wrote it: you, or an agent (the 7:30 Market Reviewer). */
 export function authorWords(author: string): string {
-  return author === "OWNER" ? "Your note" : "Market Reviewer's note";
+  return author === "OWNER" ? "Your note" : "Agent note";
 }
 
-/** Who wrote it, to whom, and the Market Reviewer's two fields: "Market Reviewer's note to NVDA, AMD · high impact · weaker". */
+/** Who wrote it, to whom, and the Market Reviewer's two fields: "Agent note to NVDA, AMD · high impact · weaker". */
 export function noteTitle(n: Pick<SharedNoteRow, "author" | "audience" | "tickers" | "impact" | "effect">, analystName?: string | null): string {
   return [`${authorWords(n.author)} to ${audienceWords(n, analystName)}`, n.impact ? `${n.impact} impact` : null, n.effect].filter(Boolean).join(" · ");
 }
@@ -136,14 +139,19 @@ export function audienceWords(n: Pick<SharedNoteRow, "audience" | "tickers">, an
 /** "11-04": the day, as the Activity lines write it. */
 const dayOf = (d: Date) => etStamp(d).split(" ")[0];
 
-/** A note to stocks as a line in a covered stock's Activity. Never a run's answer on that stock, so it carries no run. */
-export function noteLine(n: SharedNoteRow): StoredLine {
+/**
+ * A note as a line in one covered stock's Activity, with that stock's price
+ * when it was written. Never a run's answer on that stock, so it carries no run.
+ */
+export function noteLine(n: SharedNoteRow, ticker: string): StoredLine {
+  const price = n.prices && typeof n.prices === "object" ? (n.prices as Record<string, unknown>)[ticker.toUpperCase()] : null;
   return {
     id: `note:${n.id}`,
     timestamp: n.createdAt,
     type: "SHARED_NOTE",
     summary: noteTitle(n),
     rationale: n.body,
+    priceAtTime: typeof price === "number" ? price : null,
     fieldChanges: {
       sharedNote: {
         from: null,

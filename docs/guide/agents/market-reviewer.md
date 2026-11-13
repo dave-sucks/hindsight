@@ -66,7 +66,7 @@ Each note is saved once, as a shared note to the stocks it names (`SharedNote`, 
 - **High** is pinned for three days. Each stock it names is in the [pinned note to answer](../concepts/situations.md) situation, so the 8 AM morning run has it on its list and must answer it on that stock, until a run writes on the stock. Its run reads the note above the stock's newest 8 Activity lines.
 - **Low and medium** are not pinned: a line in each stock's Activity, read by the next run as one of the stock's newest 8.
 
-In each stock's Activity the note is one line, titled with who wrote it and its two fields ("Market Reviewer's note to NVDA, AMD · high impact · weaker"); the paragraph under it is the model's own text. A note that fails to save never costs the digest.
+In each stock's Activity the note is one line, titled with who wrote it and its two fields ("Agent note to NVDA, AMD · high impact · weaker"), with that stock's price when the note was saved (kept per stock in `SharedNote.prices`; at 7:30 that is the last close). The paragraph under it is the model's own text, its sources drawn as the citation pill. A note that fails to save never costs the digest.
 
 ## When it runs
 

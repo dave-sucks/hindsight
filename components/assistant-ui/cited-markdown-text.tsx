@@ -25,6 +25,7 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { cn } from "@/lib/utils";
 import { useSources } from "@/components/assistant-ui/message-sources-context";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
+import { isSourceLink, unwrapSourceLinks } from "@/lib/citations";
 import type { SourceChipData } from "@/components/chat/SourceChip";
 import { TickerChip, parseTickerMentions } from "@/components/chat/TickerChip";
 
@@ -390,15 +391,19 @@ const citedComponents = memoizeMarkdownComponents({
   strong: ({ className, ...props }) => (
     <strong className={cn("aui-md-strong font-semibold", className)} {...props} />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  // A link whose text is a site's name is a source citation (lib/citations.ts); any other stays a link.
+  a: ({ className, ...props }) =>
+    isSourceLink(extractText(props.children), props.href) ? (
+      <SourceCitation sources={[{ url: props.href }]} />
+    ) : (
+      <a
+        className={cn(
+          "aui-md-a text-primary underline underline-offset-2 hover:text-primary/80",
+          className,
+        )}
+        {...props}
+      />
+    ),
   ul: ({ className, ...props }) => (
     <ul
       className={cn(
@@ -487,6 +492,7 @@ const CitedMarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm]}
+      preprocess={unwrapSourceLinks}
       className="aui-md"
       components={citedComponents}
     />

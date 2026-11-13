@@ -43,11 +43,11 @@ describe("a pinned note on the five, the morning before the vote", () => {
     const ctx = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], shares: SHARES, now: NOV2 });
     const text = ctx.text ?? "";
     expect(text.startsWith("PINNED ON $MU")).toBe(true);
-    expect(text).toContain("Market Reviewer's note to MU, GEV, NVDA, PLTR, CEG, about 2026-11-03, pinned until 11-04");
+    expect(text).toContain("Agent note to MU, GEV, NVDA, PLTR, CEG, about 2026-11-03, pinned until 11-04");
     expect(text).toContain("$MU is one of 5 holdings in this note, 41% of the account.");
     // Above the newest lines, not among them.
     expect(text.indexOf("PINNED ON")).toBeLessThan(text.indexOf("WHAT'S BEEN SAID ON $MU"));
-    expect(text.split("WHAT'S BEEN SAID")[1]).not.toContain("Market Reviewer's note");
+    expect(text.split("WHAT'S BEEN SAID")[1]).not.toContain("Agent note");
     expect(ctx.pinnedNote).toEqual({ id: "note_vote", at: note().createdAt });
   });
 
@@ -76,10 +76,10 @@ describe("a pinned note on the five, the morning before the vote", () => {
   it("once it ends it is an ordinary Activity line, and never the owner's word or a run's answer", () => {
     const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], now: new Date("2026-11-06T13:00:00Z") });
     expect(after.text).not.toContain("PINNED");
-    expect(after.text).toContain("Market Reviewer's note to MU, GEV, NVDA, PLTR, CEG");
+    expect(after.text).toContain("Agent note to MU, GEV, NVDA, PLTR, CEG");
     expect(after.text).toContain("Tomorrow's vote puts data-center opposition on the ballot.");
     expect(after.unansweredDecision).toBeNull();
-    const line = noteLine(note()) as Parameters<typeof wantsAnswer>[0];
+    const line = noteLine(note(), "MU") as Parameters<typeof wantsAnswer>[0];
     expect(wantsAnswer(line)).toBe(false);
     expect(isAgentAnswer(line)).toBe(false);
   });
@@ -127,17 +127,17 @@ describe("the Activity tab", () => {
   });
 
   it("reads as who wrote it and to whom", () => {
-    const line = activityFeed({ updates: [noteLine(note({ audience: "ACCOUNT", author: "OWNER", tickers: [] }))], orders: [] })[0];
+    const line = activityFeed({ updates: [noteLine(note({ audience: "ACCOUNT", author: "OWNER", tickers: [] }), "MU")], orders: [] })[0];
     expect(titleSegments(line as never)).toMatchObject({ primary: "Your note", secondary: "to the whole account" });
   });
 
   it("the newest 8 mark skips the notes a run reads elsewhere: the account's, and the stock's two newest pinned", () => {
     const lines = [
-      noteLine(note({ id: "acct", audience: "ACCOUNT", tickers: [], createdAt: new Date("2026-11-02T12:50:00Z") })),
-      noteLine(note({ id: "pin1", createdAt: new Date("2026-11-02T12:40:00Z") })),
-      noteLine(note({ id: "pin2", createdAt: new Date("2026-11-02T12:35:00Z") })),
-      noteLine(note({ id: "pin3", createdAt: new Date("2026-11-02T12:32:00Z") })),
-      noteLine(note({ id: "old", pinnedUntil: new Date("2026-10-20T00:00:00Z"), createdAt: new Date("2026-10-15T12:00:00Z") })),
+      noteLine(note({ id: "acct", audience: "ACCOUNT", tickers: [], createdAt: new Date("2026-11-02T12:50:00Z") }), "MU"),
+      noteLine(note({ id: "pin1", createdAt: new Date("2026-11-02T12:40:00Z") }), "MU"),
+      noteLine(note({ id: "pin2", createdAt: new Date("2026-11-02T12:35:00Z") }), "MU"),
+      noteLine(note({ id: "pin3", createdAt: new Date("2026-11-02T12:32:00Z") }), "MU"),
+      noteLine(note({ id: "old", pinnedUntil: new Date("2026-10-20T00:00:00Z"), createdAt: new Date("2026-10-15T12:00:00Z") }), "MU"),
       ...Array.from({ length: 10 }, (_, i) => row(`2026-11-0${1}T1${i}:00:00Z`)),
     ];
     const feed = activityFeed({ updates: lines as never, orders: [] });

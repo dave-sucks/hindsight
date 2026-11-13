@@ -104,7 +104,20 @@ export interface SharedNoteInput {
   /** The Market Reviewer's two fields, kept as it gave them. */
   impact?: string | null;
   effect?: string | null;
+  /** The keys its stocks' prices are read with; the app's own keys when absent. */
+  creds?: AlpacaCredentials;
   now?: Date;
+}
+
+/** Each stock's price now, the note's price-at-write on that stock's line. A stock with no quote is left out; null when none has one. */
+async function pricesNow(tickers: string[], creds?: AlpacaCredentials): Promise<Record<string, number> | null> {
+  try {
+    const quotes = await getLiveQuotes(tickers, { caller: "other", creds });
+    const prices = Object.fromEntries(tickers.flatMap((t) => (quotes[t]?.quote?.c ? [[t, quotes[t]!.quote!.c]] : [])));
+    return Object.keys(prices).length ? prices : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -130,6 +143,8 @@ export async function writeSharedNote(input: SharedNoteInput): Promise<{ id: str
   }
   const eventDate = input.eventDate && /^\d{4}-\d{2}-\d{2}$/.test(input.eventDate.trim()) ? input.eventDate.trim() : null;
   if (input.eventDate && !eventDate) adjusted.push(`the date "${input.eventDate}" was dropped (YYYY-MM-DD only)`);
+  const tickers = input.audience === "STOCKS" ? [...new Set((input.tickers ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean))] : [];
+  const prices = tickers.length ? await pricesNow(tickers, input.creds) : null;
   const row = await prisma.sharedNote.create({
     data: {
       userId: input.userId,
@@ -138,11 +153,12 @@ export async function writeSharedNote(input: SharedNoteInput): Promise<{ id: str
       body,
       audience: input.audience,
       analystId: input.audience === "ANALYST" ? (input.analystId ?? null) : null,
-      tickers: input.audience === "STOCKS" ? [...new Set((input.tickers ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean))] : [],
+      tickers,
       eventDate,
       pinnedUntil,
       impact: input.impact ?? null,
       effect: input.effect ?? null,
+      ...(prices ? { prices } : {}),
     },
     select: { id: true },
   });
