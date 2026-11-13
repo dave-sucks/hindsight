@@ -2,35 +2,24 @@
  * The Agent work tab on /performance: what the morning run was shown (its
  * situations), what each run did with a stock, which triggers fired and what
  * they led to, and the proposals they made. Read-only; nothing here reaches an
- * agent. The situation query, the outcome rules and the category map live here
- * and nowhere else, so the tab and the 2026-11-13 audit count the same way.
+ * agent. The situation query and the outcome rules live here, and the category
+ * map in ./agent-work-terms, nowhere else, so the tab and the 2026-11-13 audit
+ * count the same way.
  *
  * Situations are not stored. They are read back from each morning run's saved
  * thread: the first get_theses result, the run's default read (THREAD_SHAPE).
  * A trigger run saves no codes; its situation is worked out from what fired.
+ * The words both sides use (ranges, categories, outcomes) are in
+ * ./agent-work-terms, which the browser can import.
  */
 import { prisma } from "@/lib/prisma";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { CATEGORIES, MODE_LABEL, SITUATION_CATEGORY, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
 import { conditionsOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import { marketHolidays } from "@/lib/market-hours";
 
-export const RANGES = [7, 30, 90] as const;
-export type RangeDays = (typeof RANGES)[number];
-
-export const CATEGORIES = ["Selling and protection", "Buying and adding", "Events", "Upkeep", "Your word", "Auto"] as const;
-export type Category = (typeof CATEGORIES)[number];
-
-/** Every situation's category: the one map to change when codes are cut or merged. */
-export const SITUATION_CATEGORY: Record<SituationCode, Category> = {
-  PROTECTIVE_SALE: "Selling and protection", PROTECTION: "Selling and protection",
-  BUY_ARRIVES: "Buying and adding", BUY_BLOCKED_FULL: "Buying and adding", ADD_OR_WINNER: "Buying and adding",
-  EARNINGS: "Events", FILING: "Events",
-  REVIEW_DUE: "Upkeep", FIRST_RESEARCH: "Upkeep", QUIET_WATCH_WOKE: "Upkeep", STALE_RESEARCH: "Upkeep",
-  PLAN_PROBLEM: "Upkeep", SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep", NO_SETUP_NAMED: "Upkeep",
-  YOUR_WORD_UNANSWERED: "Your word", PINNED_NOTE: "Your word",
-  AUTO_TRADE: "Auto",
-};
+export * from "@/lib/performance/agent-work-terms";
 
 /** Where a saved morning thread keeps the read's codes: tool-result → output.value.data.<list>[].situations. */
 export const THREAD_SHAPE = {
@@ -40,18 +29,6 @@ export const THREAD_SHAPE = {
   lists: { work: "theses", quiet: "quiet_theses", sold: "sold_to_review" },
   codes: "situations",
 } as const;
-
-export const OUTCOMES = ["trade", "refused", "plan", "research", "note", "nothing"] as const;
-export type Outcome = (typeof OUTCOMES)[number];
-export const OUTCOME_LABEL: Record<Outcome | "pending", string> = {
-  trade: "Proposal or trade", refused: "Trade refused", plan: "Level or trigger change",
-  research: "Research rewrite", note: "Note only", nothing: "Nothing", pending: "Not answered yet",
-};
-
-export const MODE_LABEL: Record<string, string> = {
-  MORNING_PLAN: "Morning", INTRADAY_TACTICAL: "Trigger", THESIS_WRITER: "Writer", PRINCIPAL_CHAT: "Chat",
-  PORTFOLIO_DIGEST: "Portfolio Digest", MARKET_REVIEWER: "Market Reviewer",
-};
 
 export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Plan taken down";
 const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
