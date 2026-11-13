@@ -34,6 +34,8 @@ A reply cut off at its limit, or a call that fails, saves nothing; the run is ma
 
 At 7:30 AM ET every weekday the market trades, once for each book being traded: an account and environment (paper or live) with an enabled analyst trading in it or a stock held in it. Each is listed in Runs as **Market Reviewer**.
 
+The digest is on the home page, on the digest card's **Market** tab (the card opens on whichever digest was written last), and its run is in Runs.
+
 Its run page is read only: your first message, then the searches it made in one line, then the digest. **Context** shows the request exactly as it was sent: the instructions, the first message, and its one tool.
 
 ## Technical details

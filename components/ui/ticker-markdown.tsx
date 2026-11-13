@@ -207,13 +207,21 @@ function parseRefHref(href: string): { scheme: string; id: string } | null {
   return { scheme, id };
 }
 
-/** Underlined inline link used for analyst/run/fallback reference tokens. */
+/** Underlined inline link used for analyst/run/fallback reference tokens. A
+ *  web address (a source citation) opens in its own tab, so reading one never
+ *  takes you out of the app. */
 function RefLink({ href, children }: { href: string; children: ReactNode }) {
+  const className =
+    "underline underline-offset-2 decoration-muted-foreground/40 hover:decoration-foreground";
+  if (/^https?:\/\//i.test(href)) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+        {children}
+      </a>
+    );
+  }
   return (
-    <Link
-      href={href}
-      className="underline underline-offset-2 decoration-muted-foreground/40 hover:decoration-foreground"
-    >
+    <Link href={href} className={className}>
       {children}
     </Link>
   );

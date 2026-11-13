@@ -48,7 +48,7 @@ Where each number comes from:
 
 ## Who reads it
 
-- You: the digest on the home page, and its run on /runs.
+- You: the digest on the home page, on the digest card's **Portfolio** tab (the Market tab beside it holds the 7:30 [market digest](market-reviewer.md); the card opens on whichever was written last), and its run on /runs.
 - Every agent that decides on stocks (morning runs, trigger runs, chat and the Writer), on every request, in the Market and portfolio block: the latest 7:30 [market digest](market-reviewer.md), the snapshot, written fresh for that request, and the latest portfolio digest, each digest from the last 4 days and stamped with when it was written. The house rules tell them: where the block and a stock's own row differ, the row is right; where the portfolio digest and the snapshot differ, the snapshot is right.
 
 <details>
