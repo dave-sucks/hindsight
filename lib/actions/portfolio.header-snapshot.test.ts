@@ -28,11 +28,10 @@ jest.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: {
 jest.mock("@/lib/auth/account", () => ({ getAccountId: async () => "acct", getOwnerUserId: async () => "user_owner" }));
 jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => ({ keyId: "k", secretKey: "s", baseUrl: "https://broker.test" }) }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({ getStockProfile: async () => null, getStockCandles: async () => [] }));
-jest.mock("@/lib/market-data/live-quote", () => {
-  const n = jest.requireActual("@/lib/actions/__fixtures__/header-after-hours-2026-11-11.json");
-  // The app's one price: outside the session, the close stamped at the bell.
-  return { getLiveQuotes: async () => ({ CEG: { quote: { c: n.close.price, pc: n.close.prevClose, t: Date.parse(n.close.at) / 1000, source: "alpaca" } } }) };
-});
+/** The app's one price: outside the session, the close stamped at the bell. */
+const closeQuotes = async () => ({ CEG: { quote: { c: night.close.price, pc: night.close.prevClose, t: Date.parse(night.close.at) / 1000, source: "alpaca" } } });
+const mockLiveQuotes = jest.fn();
+jest.mock("@/lib/market-data/live-quote", () => ({ getLiveQuotes: (...a: unknown[]) => mockLiveQuotes(...a) }));
 jest.mock("@/lib/alpaca", () => {
   const n = jest.requireActual("@/lib/actions/__fixtures__/header-after-hours-2026-11-11.json");
   const { shares: q, avgCost: cost, cash: c, contributed: put, depositedOn: on } = n.standIn;
@@ -64,6 +63,7 @@ jest.mock("@/lib/alpaca", () => {
 import { getDashboardData } from "./portfolio.actions";
 
 beforeEach(() => {
+  mockLiveQuotes.mockReset().mockImplementation(closeQuotes);
   jest.useFakeTimers({ now: NOW, doNotFake: ["setTimeout", "clearTimeout", "setImmediate", "nextTick", "queueMicrotask"] });
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -106,5 +106,20 @@ describe("the homepage header at 10 PM ET on Nov 11", () => {
     // Only the last point moves: the rest of the history is the broker's.
     expect(equityCurve.map((p) => p.date)).toEqual([depositedOn, "2026-11-10", "2026-11-11"]);
     expect(equityCurve[1].value).toBeCloseTo(at(night.close.prevClose), 6);
+  });
+});
+
+describe("when the snapshot can't be read and the broker can", () => {
+  beforeEach(() => mockLiveQuotes.mockRejectedValue(new Error("quotes down")));
+
+  it("Balance, cash, invested and the day are the broker's, not the database's estimate", async () => {
+    const { portfolio } = await getDashboardData("LIVE");
+    // The broker's equity, at its after-hours mark: better than the database's sum of open trades (here none, so the money put in).
+    expect(portfolio.totalValue).toBeCloseTo(at(night.brokerMark), 6);
+    expect(portfolio.totalValue).not.toBeCloseTo(contributed, 2);
+    expect(portfolio.cash).toBe(cash);
+    expect(portfolio.netPositionValue).toBeCloseTo(shares * night.brokerMark, 6);
+    expect(portfolio.dayPnl).toBeCloseTo(at(night.brokerMark) - at(night.close.prevClose), 6);
+    expect(portfolio.totalPnl).toBeCloseTo(at(night.brokerMark) - contributed, 6);
   });
 });

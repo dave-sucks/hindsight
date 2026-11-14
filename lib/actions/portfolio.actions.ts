@@ -34,8 +34,9 @@ const STARTING_CAPITAL = 100_000;
 export interface PortfolioStats {
   /**
    * The account's value: the portfolio snapshot's (cash plus every holding at
-   * the app's price), the number every agent is given. Not the broker's
-   * `equity`, which marks holdings at after-hours trades.
+   * the app's price), the number every agent is given. The broker's `equity`,
+   * which marks holdings at after-hours trades, only when the snapshot can't
+   * be read.
    */
   totalValue: number;
   unrealizedPnl: number;
@@ -84,7 +85,7 @@ export interface PortfolioStats {
    * deposit from reading as a gain.
    */
   netContributed: number;
-  /** The day's P&L: the snapshot's, every stock held or traded that day against its prior close. Null when it can't be worked out. */
+  /** The day's P&L: the snapshot's, every stock held or traded that day against its prior close; without a snapshot, the broker's `equity − last_equity` less any deposit posted today. Null when it can't be worked out. */
   dayPnl: number | null;
   /** The day's P&L as % of the account at the prior close. */
   dayPnlPct: number | null;
@@ -882,20 +883,37 @@ export async function getDashboardData(
   // plus every holding at the app's price, the numbers every agent is given.
   // The broker's own equity marks holdings at after-hours trades: at 10 PM on
   // Nov 11 it had CEG at $271.81 against its $274.73 close, so the header and
-  // every agent disagreed every night. The lifetime is the account identity:
+  // every agent disagreed every night. When the snapshot can't be read and
+  // the broker can, the broker's equity stands in. Only with neither is the
+  // value the database's estimate, summed from the open trades: that sum is
+  // 0 for a position whose price didn't fetch, so it under-counts. The
+  // lifetime is the account identity:
   //   value = net_contributed + realized + unrealized
   //   ⇒ unrealized = value − net_contributed − realized
-  // Without a snapshot (no broker keys, or the broker failed) the value is
-  // the database's estimate, summed from the open trades.
   const totalValue = snapshot
     ? snapshot.value
-    : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const unrealizedPnl = snapshot
+    : alpacaAccount
+      ? parseFloat(alpacaAccount.equity)
+      : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const unrealizedPnl = snapshot || alpacaAccount
     ? totalValue - netContributed - realizedPnl
     : openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalPnl = realizedPnl + unrealizedPnl;
-  const dayPnl = snapshot?.dayChange?.dollars ?? null;
-  const dayPnlPct = snapshot?.dayChange?.pct ?? null;
+
+  // The day: the snapshot's, or null when a price it needs is missing. With
+  // no snapshot, the broker's: equity vs the prior trading day's close, minus
+  // any deposit that posted today (so funding the account today isn't a
+  // "gain" either). With neither, null, and the header reads the curve.
+  const lastEquity = !snapshot && alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const depositsToday = fundingEvents
+    .filter((e) => e.date === todayIso)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const brokerDay = lastEquity != null && Number.isFinite(lastEquity) ? totalValue - lastEquity - depositsToday : null;
+  const dayPnl = snapshot ? snapshot.dayChange?.dollars ?? null : brokerDay;
+  const dayPnlPct = snapshot
+    ? snapshot.dayChange?.pct ?? null
+    : brokerDay != null && lastEquity != null && lastEquity > 0 ? (brokerDay / lastEquity) * 100 : null;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
