@@ -8,6 +8,8 @@ import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PortfolioHistoryPoint, type PriceLookup } from "@/lib/alpaca";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
+import { oneDayWindow } from "@/lib/portfolio/one-day-window";
+import { etDateOf } from "@/lib/market-data/intraday-window";
 import {
   netContributedTotal,
   depositAdjustedPnlCurve,
@@ -303,6 +305,23 @@ function buildEquityCurve(
 function endingAt(history: PortfolioHistoryPoint[], value: number | undefined): PortfolioHistoryPoint[] {
   if (value == null || history.length === 0) return history;
   return [...history.slice(0, -1), { ...history[history.length - 1], equity: value }];
+}
+
+/**
+ * The 1D chart's "Prev": the point it measures the day from (oneDayWindow's
+ * first, the prior session's close), set to the curve's last point less the
+ * snapshot's day. So Prev is the account at the prior close at the app's
+ * prices, not the broker's mark, and the line moves by exactly the header's
+ * 1D: a deposit or withdrawal posted today is in the last point and not in
+ * the day, so it never shows as a move. Only when the curve's newest day is
+ * the snapshot's day and the day is known.
+ */
+function prevAtTheClose(curve: { date: string; value: number }[], day: string | undefined, change: number | null | undefined) {
+  if (day == null || change == null || curve.length < 2) return curve;
+  const [prior] = oneDayWindow(curve);
+  const last = curve[curve.length - 1];
+  if (etDateOf(last.date) !== day || etDateOf(prior.date) === day) return curve;
+  return curve.map((p) => (p === prior ? { ...p, value: last.value - change } : p));
 }
 
 // ─── Main data loader ─────────────────────────────────────────────────────────
@@ -997,17 +1016,24 @@ export async function getDashboardData(
   // falls back to the daily series, which is what it used to do always.
   // `depositAdjustedPnlCurve` reads the DATE out of each key, so an ISO
   // timestamp works unchanged: a deposit still lands on its day.
-  const intradayEquityCurve: { date: string; value: number }[] =
+  // Each measured from the prior close at the app's prices (prevAtTheClose).
+  const intradayEquityCurve: { date: string; value: number }[] = prevAtTheClose(
     intradayHistory.length >= 2
       ? intradayHistory.map((p) => ({ date: p.date, value: p.equity }))
-      : [];
-  const intradayPnlCurve: { date: string; value: number }[] =
+      : [],
+    snapshot?.day,
+    snapshot?.dayChange?.dollars,
+  );
+  const intradayPnlCurve: { date: string; value: number }[] = prevAtTheClose(
     intradayHistory.length >= 2
       ? depositAdjustedPnlCurve(
           intradayHistory.map((p) => ({ date: p.date, equity: p.equity })),
           fundingEvents,
         )
-      : [];
+      : [],
+    snapshot?.day,
+    snapshot?.dayChange?.dollars,
+  );
 
   // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
   const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
