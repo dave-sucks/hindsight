@@ -60,6 +60,7 @@ describe("the snapshot at 10 PM ET", () => {
     expect(s.live).toBe(false);
     const ceg = s.holdings[0];
     expect(ceg.price).toBe(274.73);
+    expect(ceg.priceAt).toBe("2026-11-11T21:00:00.000Z");
     expect(ceg.move).toBeCloseTo(2.6031, 3);
     expect(s.value).toBeCloseTo(10_000 + 10 * 274.73, 6);
     expect(s.lifetime!.contributed).toBe(15_000);
