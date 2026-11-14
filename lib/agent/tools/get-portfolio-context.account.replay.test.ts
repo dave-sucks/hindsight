@@ -16,6 +16,7 @@
  */
 import { replayTool, positionRow, thesisRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 import book from "@/lib/agent/__fixtures__/portfolio-unscoped-chat-2026-10-05.json";
+import { buildSnapshot } from "@/lib/portfolio/snapshot";
 
 const seed = () => ({
   position: book.positions.map((p) =>
@@ -52,6 +53,17 @@ const seed = () => ({
   ],
 });
 const quotes = Object.fromEntries(book.positions.map((p) => [p.symbol, p.price]));
+/** The account's snapshot that evening: the broker holds what the positions say, at those prices. */
+const snapshot = buildSnapshot({
+  day: "2026-10-05",
+  live: false,
+  at: "2026-10-05T22:00:00.000Z",
+  cash: 40_000,
+  contributed: null,
+  holdings: book.positions.map((p) => ({ ticker: p.symbol, shares: 10, avgCost: p.avgCost, price: p.price, prevClose: p.price, analyst: p.analyst })),
+  trades: [],
+  waiting: [],
+});
 
 type Read = {
   summary?: string;
@@ -68,6 +80,7 @@ async function read(ctx: Record<string, unknown>): Promise<Read> {
     ctx: { runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE", ...ctx },
     args: { include_thesis: true },
     quotes,
+    mocks: { "@/lib/portfolio/load-snapshot": () => ({ loadPortfolioSnapshot: async () => snapshot }) },
   });
   return result as unknown as Read;
 }

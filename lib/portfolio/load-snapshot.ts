@@ -117,6 +117,7 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
         shares: p.side === "short" ? -size : size,
         avgCost: parseFloat(p.avg_entry_price),
         price,
+        priceAt: price != null && q!.t > 0 ? new Date(q!.t * 1000).toISOString() : null,
         prevClose: stale ? price : q?.pc ?? null,
         noTradeThatDay: stale || undefined,
         brokerValue: Number.isFinite(parseFloat(p.market_value)) ? parseFloat(p.market_value) : null,

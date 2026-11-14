@@ -51,11 +51,13 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-06: +77 on the chat, the same clause on record_thesis's status field; +214 each, get_theses says the row's fields follow the situation.
   // 2026-11-12: −23 each, get_portfolio_context no longer carries the digest (the Market and portfolio block does).
   // 2026-11-12: +34 each, get_market_context names the Nasdaq 100 (QQQ) beside the S&P 500 (lib/market-data/market-numbers.ts).
-  "research-run": 32_053,
+  // 2026-11-14: +87 each, get_portfolio_context names the day's move, the value, day and lifetime, and that they are the portfolio snapshot's.
+  "research-run": 32_140,
   tactical: 28_007,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
-  principal: 64_273,
+  // 2026-11-14: +87, the same get_portfolio_context description.
+  principal: 64_360,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

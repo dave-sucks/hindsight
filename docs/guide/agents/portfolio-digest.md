@@ -52,6 +52,7 @@ Where each number comes from:
 
 - You: the digest on the home page, on the digest card's **Portfolio** tab (the Market tab beside it holds the 7:30 [market digest](market-reviewer.md); the card opens on whichever was written last), and its run on /runs.
 - Every agent that decides on stocks (morning runs, trigger runs, chat and the Writer), on every request, in the Market and portfolio block: the [market numbers](market-reviewer.md#the-market-numbers), the latest 7:30 [market digest](market-reviewer.md), the snapshot, written fresh for that request, and the latest portfolio digest, each digest from the last 4 days and stamped with when it was written. The house rules tell them: where the block and a stock's own row differ, the row is right; where the portfolio digest and the snapshot differ, the snapshot is right.
+- `get_portfolio_context`, the read morning runs and the chat call for the book: its value, cash, day and since-started figures, and each holding's price, value, share, day and gain since bought, are the snapshot's, so they match the block to the cent. It adds what the snapshot doesn't carry: the floor and target, days held, the distance from the high, buying power and the open risk, all at the snapshot's prices.
 
 <details>
 <summary>Technical details</summary>
@@ -67,6 +68,9 @@ Where each number comes from:
 
 #### Every agent's block
 `loadPortfolioBlock` (`lib/agent/portfolio-block.ts`): the market numbers (`loadMarketNumbers`, `lib/market-data/load-market-numbers.ts`), the latest market digest, the snapshot and the latest digest, under `## Market and portfolio`. The numbers and the snapshot are read in parallel, each given up after 15 seconds (5 in the chat) with one line saying it couldn't be read. The morning run gets it through `buildRunInput`, the trigger run in `tactical-run.ts` before the stock's row, the Writer in `run-thesis-writer.ts`, and the chat on its newest message (`withTheTime`, `lib/agent/old-lookups.ts`), so its system prompt stays cached.
+
+#### get_portfolio_context
+`lib/agent/tools/get-portfolio-context.ts` calls `loadPortfolioSnapshot` and matches each open position to the snapshot's holding by ticker. The open risk is `loadAccountRisk` given the snapshot, so its equity is the snapshot's value. Buying power is read from the broker (`getAccount`): the snapshot doesn't carry it.
 
 #### What was sent
 One `RunMessage` row with role `request` per call, shown by the Context panel (`lib/agent/run-requests.ts`, `components/agent/RunContext.tsx`).

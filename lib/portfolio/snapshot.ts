@@ -21,6 +21,8 @@ export interface SnapshotHolding {
   avgCost: number;
   /** The app's price, or null when no vendor priced it. */
   price: number | null;
+  /** When that price printed (ISO): get_portfolio_context says in words when it isn't current. */
+  priceAt?: string | null;
   /** The close before the price's session. Equal to the price when the stock didn't trade that day. */
   prevClose: number | null;
   /** The stock had no trade on the snapshot's day (a halt, or before its first print): its day is flat. */
@@ -220,10 +222,14 @@ function holdingLine(h: HoldingLine, dayName: string): string {
   );
 }
 
+/** When the snapshot's prices are from: "Wed, Nov 11 at the close", or the time while the market is open. */
+export function snapshotWhen(s: Pick<PortfolioSnapshot, "day" | "live" | "at">): string {
+  return s.live ? `${dayLabel(s.day)}, ${etTime(new Date(s.at))} ET (market open, latest prices)` : `${dayLabel(s.day)} at the close`;
+}
+
 /** The snapshot as every reader gets it: plain lines, no ids. */
 export function snapshotText(s: PortfolioSnapshot): string {
-  const when = s.live ? `${dayLabel(s.day)}, ${etTime(new Date(s.at))} ET (market open, latest prices)` : `${dayLabel(s.day)} at the close`;
-  const out: string[] = [`The account, ${when}`];
+  const out: string[] = [`The account, ${snapshotWhen(s)}`];
   out.push(`Value ${usd(s.value, true)} · cash ${usd(s.cash, true)} (${ratio(s.cash, s.value).toFixed(1)}% of the account)`);
   const dayName = s.live ? "today" : dayLabel(s.day);
   out.push(

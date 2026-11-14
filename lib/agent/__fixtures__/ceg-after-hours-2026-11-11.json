@@ -1,0 +1,17 @@
+{
+  "about": "10 PM ET, Wed Nov 11. The broker marked CEG at an after-hours $271.81; it closed at $274.73, after $267.76 on Nov 10 (TickerIndicators closes). The analyst, opened date, peak and the thesis's floor are the stored rows. The shares, the cost, the cash and the money put in are stand-ins: the repo is public.",
+  "now": "2026-11-12T03:00:00.000Z",
+  "close": { "at": "2026-11-11T21:00:00.000Z", "price": 274.73, "prevClose": 267.76 },
+  "brokerMark": 271.81,
+  "position": {
+    "symbol": "CEG",
+    "analystId": "analyst_secular",
+    "analyst": "Secular Compounder",
+    "direction": "LONG",
+    "openedAt": "2026-08-13T14:26:27.706Z",
+    "peakPrice": 308.075,
+    "thesisStop": 280,
+    "exitStrategy": "MANUAL"
+  },
+  "standIn": { "shares": 10, "avgCost": 250, "cash": 10000, "contributed": 12000 }
+}
