@@ -1087,21 +1087,28 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
     pnlData,
     data?.pnlCurve?.length ? data.pnlCurve : rawPnlCurve,
   );
+  // 1D is the portfolio snapshot's day, every stock against its prior close
+  // at the app's prices: the day every agent is told. The broker's curve marks
+  // holdings at after-hours trades, so after the close it moved the day.
+  const snapshotDay =
+    range === '1D' && portfolio.dayPnl != null && portfolio.dayPnlPct != null ? { pnl: portfolio.dayPnl, pct: portfolio.dayPnlPct } : null;
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
-  const rangePnl = includesInception
-    ? portfolio.totalPnl
-    : pnlData.length >= 2
-      ? pnlData[pnlData.length - 1].value - pnlData[0].value
-      : portfolio.totalPnl;
+  const rangePnl = snapshotDay
+    ? snapshotDay.pnl
+    : includesInception
+      ? portfolio.totalPnl
+      : pnlData.length >= 2
+        ? pnlData[pnlData.length - 1].value - pnlData[0].value
+        : portfolio.totalPnl;
   // % base: capital at the start of the window. Whole-account windows divide
   // by net contributed capital so "total return" = gain ÷ money-you-put-in;
   // shorter ranges divide by the equity at the range start.
   const rangePnlBase = includesInception || range === 'Max'
     ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
     : (equityRange[0]?.value ?? portfolio.netContributed);
-  const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
+  const rangePnlPct = snapshotDay ? snapshotDay.pct : rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
 
   // The split BEHIND that number, over the SAME window. The header used to put
   // the range's total next to ALL-TIME unrealized — two different clocks — so a

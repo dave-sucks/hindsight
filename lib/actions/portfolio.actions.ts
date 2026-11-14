@@ -6,7 +6,8 @@ import { describeRefusalTool } from "@/lib/agent/gate-rejections";
 import { attemptOutcomes, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
-import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PortfolioHistoryPoint, type PriceLookup } from "@/lib/alpaca";
+import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import {
   netContributedTotal,
   depositAdjustedPnlCurve,
@@ -31,7 +32,12 @@ const STARTING_CAPITAL = 100_000;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PortfolioStats {
-  /** Total account equity — what you'd have if everything closed and margin was paid. Alpaca `equity`. */
+  /**
+   * The account's value: the portfolio snapshot's (cash plus every holding at
+   * the app's price), the number every agent is given. The broker's `equity`,
+   * which marks holdings at after-hours trades, only when the snapshot can't
+   * be read.
+   */
   totalValue: number;
   unrealizedPnl: number;
   realizedPnl: number;
@@ -79,10 +85,10 @@ export interface PortfolioStats {
    * deposit from reading as a gain.
    */
   netContributed: number;
-  /** Today's P&L: `equity − last_equity` minus any deposit posted today. */
-  dayPnl: number;
-  /** Today's P&L as % of the prior close. */
-  dayPnlPct: number;
+  /** The day's P&L: the snapshot's, every stock held or traded that day against its prior close; without a snapshot, the broker's `equity − last_equity` less any deposit posted today. Null when it can't be worked out. */
+  dayPnl: number | null;
+  /** The day's P&L as % of the account at the prior close. */
+  dayPnlPct: number | null;
 }
 
 export interface AgentConfigSummary {
@@ -291,6 +297,12 @@ function buildEquityCurve(
   }
 
   return points;
+}
+
+/** The broker's history with its newest point at the snapshot's value, so the chart ends at the header's Balance. */
+function endingAt(history: PortfolioHistoryPoint[], value: number | undefined): PortfolioHistoryPoint[] {
+  if (value == null || history.length === 0) return history;
+  return [...history.slice(0, -1), { ...history[history.length - 1], equity: value }];
 }
 
 // ─── Main data loader ─────────────────────────────────────────────────────────
@@ -617,7 +629,7 @@ export async function getDashboardData(
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory, intradayHistory, alpacaAccount, fundingEvents] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, brokerHistory, brokerIntraday, alpacaAccount, fundingEvents, snapshot] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -690,8 +702,18 @@ export async function getDashboardData(
           return [] as FundingEvent[];
         })
       : Promise.resolve([] as FundingEvent[]),
+    // The portfolio snapshot: the header's value, day and lifetime, the same
+    // numbers every agent is given (lib/portfolio/load-snapshot.ts).
+    alpacaCreds
+      ? loadPortfolioSnapshot({ accountId, environment }).catch((err) => {
+          console.warn(`[portfolio] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const priceMap = priceLookup.prices;
+  const portfolioHistory = endingAt(brokerHistory, snapshot?.value);
+  const intradayHistory = endingAt(brokerIntraday, snapshot?.value);
 
   // Order reconciliation now runs centrally in the reconcile-orders Inngest
   // cron (every 5 min) and the sync-heartbeat (every 1 min during RTH). The
@@ -853,38 +875,45 @@ export async function getDashboardData(
   // Σ withdrawals from Alpaca CSD/CSW activities. Paper / no-creds / failed
   // fetch: fall back to the STARTING_CAPITAL seed (paper math unchanged).
   // This is the number that stops a cash deposit from reading as a gain.
+  // The snapshot's, when it has one: the same deposits, read by the same function.
   const netContributed =
-    fundingEvents.length > 0 ? netContributedTotal(fundingEvents) : STARTING_CAPITAL;
+    snapshot?.lifetime?.contributed ?? (fundingEvents.length > 0 ? netContributedTotal(fundingEvents) : STARTING_CAPITAL);
 
-  // Alpaca's equity is always correct — it includes every open position's
-  // live mark-to-market. Derive unrealized from the account identity:
-  //   equity = net_contributed + realized + unrealized
-  //   ⇒ unrealized = equity − net_contributed − realized
-  // The old path summed openTrades[].pnl, but per-position pnl is 0 when
-  // the live-price fetch silently misses a ticker — so a 10-position
-  // portfolio where 3 prices didn't fetch would under-count by those 3.
-  // Falls back to the DB-summed path only when Alpaca creds are absent.
-  const totalValue = alpacaAccount
-    ? parseFloat(alpacaAccount.equity)
-    : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const unrealizedPnl = alpacaAccount
+  // The value, the day and the lifetime are the portfolio snapshot's: cash
+  // plus every holding at the app's price, the numbers every agent is given.
+  // The broker's own equity marks holdings at after-hours trades: at 10 PM on
+  // Nov 11 it had CEG at $271.81 against its $274.73 close, so the header and
+  // every agent disagreed every night. When the snapshot can't be read and
+  // the broker can, the broker's equity stands in. Only with neither is the
+  // value the database's estimate, summed from the open trades: that sum is
+  // 0 for a position whose price didn't fetch, so it under-counts. The
+  // lifetime is the account identity:
+  //   value = net_contributed + realized + unrealized
+  //   ⇒ unrealized = value − net_contributed − realized
+  const totalValue = snapshot
+    ? snapshot.value
+    : alpacaAccount
+      ? parseFloat(alpacaAccount.equity)
+      : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const unrealizedPnl = snapshot || alpacaAccount
     ? totalValue - netContributed - realizedPnl
     : openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalPnl = realizedPnl + unrealizedPnl;
 
-  // Day's P&L — equity vs the prior trading day's close, minus any deposit
-  // that posted today (so funding the account today isn't a "gain" either).
-  const lastEquity = alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
+  // The day: the snapshot's, or null when a price it needs is missing. With
+  // no snapshot, the broker's: equity vs the prior trading day's close, minus
+  // any deposit that posted today (so funding the account today isn't a
+  // "gain" either). With neither, null, and the header reads the curve.
+  const lastEquity = !snapshot && alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const depositsToday = fundingEvents
     .filter((e) => e.date === todayIso)
     .reduce((sum, e) => sum + e.amount, 0);
-  const dayPnl =
-    lastEquity != null && Number.isFinite(lastEquity)
-      ? totalValue - lastEquity - depositsToday
-      : 0;
-  const dayPnlPct =
-    lastEquity != null && lastEquity > 0 ? (dayPnl / lastEquity) * 100 : 0;
+  const brokerDay = lastEquity != null && Number.isFinite(lastEquity) ? totalValue - lastEquity - depositsToday : null;
+  const dayPnl = snapshot ? snapshot.dayChange?.dollars ?? null : brokerDay;
+  const dayPnlPct = snapshot
+    ? snapshot.dayChange?.pct ?? null
+    : brokerDay != null && lastEquity != null && lastEquity > 0 ? (brokerDay / lastEquity) * 100 : null;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
@@ -914,7 +943,8 @@ export async function getDashboardData(
   // Net position = long − shorts. Accounting identity: cash + netPositionValue
   // = equity. Used for the "Position Value" dashboard tile so the visible math
   // reconciles: Available Cash + Position Value = Total Account Value.
-  const netPositionValue = longMarketValue + shortMarketValueRaw; // signed sum
+  // With a snapshot, its holdings: so the cash and the positions add up to its value.
+  const netPositionValue = snapshot ? snapshot.value - snapshot.cash : longMarketValue + shortMarketValueRaw; // signed sum
   // DB-only fallback (no Alpaca creds): approximate cash as starting capital
   // + realized proceeds − capital currently tied up in open positions at
   // entry cost. Under-counts unrealized appreciation on open positions, but
@@ -924,9 +954,11 @@ export async function getDashboardData(
     (s, p) => s + p.avgCost * p.quantity,
     0,
   );
-  const cash = alpacaAccount
-    ? parseFloat(alpacaAccount.cash)
-    : netContributed + realizedPnl - dbOpenCostBasis;
+  const cash = snapshot
+    ? snapshot.cash
+    : alpacaAccount
+      ? parseFloat(alpacaAccount.cash)
+      : netContributed + realizedPnl - dbOpenCostBasis;
   const buyingPower = alpacaAccount
     ? parseFloat(alpacaAccount.buying_power)
     : Math.max(0, totalValue);
