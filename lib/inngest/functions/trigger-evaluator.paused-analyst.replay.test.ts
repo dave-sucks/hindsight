@@ -9,7 +9,8 @@ import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLA
 const AT = new Date("2026-10-22T15:00:00Z"); // 11:00 ET, a Thursday
 const MOMENTUM = "cmmofy6t3000004l7858o1xma";
 const FLOOR = { id: "22efb89a-f05c-4b5a-97ab-ec40a4abc244", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256.5 }, rationale: "Tight stop at $256.5. Trade-horizon — get out fast on invalidation.", cooldownDays: 0 };
-const LOOK = { id: "look-260", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 260 }, rationale: "A look under $260.", cooldownDays: 1 };
+// The quote closed at $256 and trades $255.90, so a look under $256 crosses today.
+const LOOK = { id: "look-256", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256 }, rationale: "A look under $256.", cooldownDays: 1 };
 
 async function pass(opts: { enabled: boolean; held: Record<string, unknown>[]; watched?: Record<string, unknown>[] }, price: number) {
   const run = { agentConfigId: MOMENTUM, agentConfig: { name: "Momentum Breakout", setupIds: [], enabled: opts.enabled } };

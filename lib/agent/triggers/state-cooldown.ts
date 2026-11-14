@@ -14,9 +14,8 @@ import type { FireMode } from "./fire-mode";
  * Predicates that describe a STATE rather than a moment.
  *
  * "Below the 200-day" is not something that happens — it is somewhere the
- * stock IS, for weeks at a time. A price line is crossed in an instant and
- * is worth re-asking daily while it is breached; a state that has held for
- * a fortnight is not news on its fourteenth morning.
+ * stock IS, for weeks at a time. A price line is crossed in an instant; a
+ * state that has held for a fortnight is not news on its fourteenth morning.
  *
  * A composite counts only when every child does, so a state ANDed with a
  * price line keeps the faster clock.

@@ -34,7 +34,7 @@ Why a run and not an automatic order? A level is a call made days ago. The run c
 
 Every five minutes while the market is open, plus a pass at 4:20 PM for levels read on the close, every trigger on every stock is checked. When a trigger set to **Send to Agent** comes true (every trigger but a review, unless you chose otherwise), the fire is written into Activity and a trigger run starts on that stock.
 
-- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. A sale keeps asking every day its condition holds, until the stock is sold. An add or a trim asks again each time its rest period ends: a day on a price line, a week on the move from our entry.
+- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. So does a review that watches the price. A sale keeps asking every day its condition holds, until the stock is sold. An add or a trim asks again each time its rest period ends: a day on a price line, a week on the move from our entry.
 - **Reviews are flagged for the morning, unless sent to the agent.** A review is a question, not an order, so by default (**Flag for Review**) it goes on the stock's list for the next [morning run](morning-runs.md). Set to **Send to Agent**, it starts a trigger run the same day, which answers it with the review's guidance (each one is a run, about 6–18 cents). A worrying new filing on a stock we hold always gets a look the same day.
 - **A trim names its size.** The run is told "Trim 30% if above $150", and a partial sale it makes without naming a size sells that 30%.
 - **An Auto trade is made first, then written up.** An Auto-sell, Auto-trim, Auto-buy or Auto-add happens with no agent deciding: the trigger run makes the trade the agent would have made, with the same tool, sizing and checks, and it goes through the same [approval](../concepts/approvals.md) as any trade. Then the same run reads the stock and writes the note, with no trade tools: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees. That note is the trade's reason on the card and in the email. A refused trade is written up the same way. An Auto buy, add or trim is used once and comes off the stock; an Auto-sell keeps asking.
@@ -84,7 +84,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `lib/agent/system-prompts/intraday-tactical.ts`, with the analyst brief, the house rules and the stock's row from `row-for-model.ts`.
 
 #### Fire rules
-`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on its crossing, a protective rule every day it holds.
+`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy, or a review that reads the price, fires on its crossing; a protective rule every day it holds.
 
 #### Floors
 `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.

@@ -47,7 +47,7 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close.
 
-> **Some triggers fire every day.** A sale on a stock we hold asks every day its condition holds, until the stock is sold, whatever its On fire. So does an add, trim or review on a price line or a day's move, for as long as it stays true. **A buy fires once,** on the day the price crosses its level, and an Auto-buy, Auto-add or Auto-trim comes off the stock once used.
+> **Some triggers fire every day.** A sale on a stock we hold asks every day its condition holds, until the stock is sold, whatever its On fire. So does an add or trim on a price line or a day's move, for as long as it stays true. **A buy fires once,** on the day the price crosses its level, and so does a review that watches the price. An Auto-buy, Auto-add or Auto-trim comes off the stock once used.
 
 | | How often it fires |
 |---|---|
@@ -55,7 +55,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 | Add | Again each time its rest period ends, while its condition holds. An Auto-add fires once. |
 | Trim | Again each time its rest period ends, while its condition holds. An Auto-trim fires once. |
 | Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; it waits until you answer it or the stock closes back past the line (4:20 PM). Declined, it asks again. |
-| Review | Again each time its rest period ends, while its condition holds. |
+| Review | **Once** when it watches the price (a level, an average, RSI, the 5- or 20-day move), on the day the price crosses it; only a new crossing fires it again. Any other review (a clock, a report, a filing, a day's move, the move from our entry, the trail): again each time its rest period ends, while its condition holds. |
 
 **The rest period** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It comes with the kind of trigger:
 
@@ -121,7 +121,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `trigger-evaluator.ts`: every 5 minutes in market hours, plus a close pass 16:20–16:34 ET. Chart measures read the 06:30 `TickerIndicators` snapshot.
 
 #### Fire semantics
-`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on the crossing; every other action fires again while true, once its rest is over. A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
+`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy, and a review that reads the price, fires on the crossing; everything else fires again while true, once its rest is over. A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
 
 #### On fire
 `fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).

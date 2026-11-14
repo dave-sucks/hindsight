@@ -13,8 +13,8 @@
 // A match emits `app/thesis.trigger.fired`, unless its fire mode leaves it
 // for the next morning run (triggers/fire-mode.ts). The `lastFiredAt`
 // cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
-// rungs additionally fire only on the CROSSING of their level (price past
-// it now, not at the prior close) — see shouldFire, DAV-229.
+// and REVIEW rungs additionally fire only on the CROSSING of their level
+// (price past it now, not at the prior close) — see shouldFire, DAV-229.
 //
 // Chart kinds (DAV-247): vs-average, near-average, volume, new-high,
 // from-52-week-high, strength-vs-S&P, gap, RSI and the 5D/20D move read the
@@ -593,7 +593,7 @@ export const triggerEvaluator = inngest.createFunction(
         // (live-quote never invents one); only then 0, because we genuinely
         // can't tell.
         const changePct = q.dp ?? 0;
-        // Prior close: an ENTER fires on the crossing of its level
+        // Prior close: an ENTER or REVIEW fires on the crossing of its level
         // (DAV-229), and "crossed since the last close" is the cheapest
         // honest definition the cron can afford.
         const prevClose = q.pc ?? undefined;

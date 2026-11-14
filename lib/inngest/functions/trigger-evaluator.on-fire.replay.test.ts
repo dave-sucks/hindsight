@@ -30,7 +30,8 @@ async function pass(trigger: Record<string, unknown>, price: number) {
       jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
       jest.doMock("@/lib/agent/research-helpers", () => ({
         finnhub: async (path: string) =>
-          path.startsWith("/quote?symbol=") ? { data: { c: price, pc: price + 0.1, o: price + 0.1, dp: -0.2, t: Math.floor(AT.getTime() / 1000) } } : { data: null },
+          // Closed 50 cents lower: the review above $52 crosses today.
+          path.startsWith("/quote?symbol=") ? { data: { c: price, pc: price - 0.5, o: price - 0.5, dp: 1, t: Math.floor(AT.getTime() / 1000) } } : { data: null },
       }));
       jest.doMock("@/lib/alpaca", () => ({ getTodaySessionBars: async () => ({ IOT: { close: price, high: price, low: price, volume: 1_000_000 } }) }));
       jest.doMock("@/lib/market-data/ensure-snapshots", () => ({ ensureIndicatorSnapshots: async () => new Map() }));
