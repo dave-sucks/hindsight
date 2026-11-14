@@ -64,7 +64,6 @@ export const CRWD_ROW: Row = {
   streetMonthAgo: { targetAvg: 432 },
   resolved: {
     currentPrice: 418.2,
-    planSanity: [{ kind: "BUY_FIRED_UNANSWERED", text: "The buy fired 3 days ago, unanswered." }],
     floorRisk: { line: "At the $384 floor, 14 shares lose $281 — 0.3% of the account." },
   },
   triggers: [

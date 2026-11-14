@@ -36,7 +36,7 @@ import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import type { StreetFacts } from "@/lib/market-data/street-consensus";
-import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
+import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
   getThesisBearCaseBullets,
@@ -328,10 +328,8 @@ export const getTheses = defineTool({
         // heavy section blobs below stay gated.
         researchUpdatedAt: true,
         setupId: true,
-        // The analyst's own setups are what a row with none may choose from
-        // (DAV-285, DAV-280) — read off the row, not a second query.
         // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
-        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, name: true } } } },
+        researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -581,9 +579,6 @@ export const getTheses = defineTool({
         // horizon's manage rule, the time limit — instead of the horizon
         // glossary. Null on rows written before setups were named.
         setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
-        // No setup named yet (DAV-285): the ask and the seat's choices, so
-        // the next review names one instead of never.
-        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null, setupOverrides),
         // Its buy fired (or is live) and the analyst is full: the portfolio
         // decision, on the row (DAV-286). Null otherwise.
         buyBlockedByFull: blockedByThesisId.get(t.id)?.text ?? null,

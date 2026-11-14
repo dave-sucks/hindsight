@@ -187,10 +187,7 @@ function WorkFlagLine({
   quoteFailed: boolean;
 }) {
 
-  // ONE flag line. `planSanity` used to stack under it — a second, unrelated
-  // system (is this PLAN coherent?) painting the same amber as the work flag
-  // (why will a run pick this up?), in prose written for the agent to read.
-  // It renders beside the triggers now, where its numbers live.
+  // ONE flag line.
   const flag = needsAction ? needsActionFlag(needsAction) : null;
   const also = situations.filter((x) => !x.lead).map((x) => x.name);
   const view = latestNoteView({

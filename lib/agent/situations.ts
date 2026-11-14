@@ -12,8 +12,8 @@ import { isGroup, measureOf, shapeOf, type MeasureDef, type When } from "@/lib/a
 export type SituationCode =
   | "AUTO_TRADE" | "PROMOTED_AWAITING" | "PROTECTIVE_SALE" | "BUY_ARRIVES" | "BUY_BLOCKED_FULL"
   | "ADD_OR_WINNER" | "EARNINGS" | "FILING" | "QUIET_WATCH_WOKE"
-  | "PROTECTION" | "FIRST_RESEARCH" | "REVIEW_DUE" | "STALE_RESEARCH"
-  | "PLAN_PROBLEM" | "YOUR_WORD_UNANSWERED" | "PINNED_NOTE" | "SOLD_ONE_REVIEW" | "NO_SETUP_NAMED";
+  | "PROTECTION" | "FIRST_RESEARCH" | "REVIEW_DUE"
+  | "YOUR_WORD_UNANSWERED" | "PINNED_NOTE" | "SOLD_ONE_REVIEW";
 
 /** What a stock's situations are read from: the work-flag list and the row's other fields. */
 export interface SituationSources {
@@ -23,12 +23,10 @@ export interface SituationSources {
   triggers: Trigger[];
   status: string;
   direction: string | null;
-  planSanity: ReadonlyArray<{ kind: string }> | null;
-  /** The resolver's label (ENTER_NOW, STALE_PAST_CATALYST, PROMOTED_DECIDE_TODAY …). */
+  /** The resolver's label (ENTER_NOW, PROMOTED_DECIDE_TODAY …). */
   actionability: string | null;
   progressToTarget: number | null;
   buyBlockedByFull: boolean;
-  nameTheSetup: boolean;
   unansweredDecision: boolean;
   /** A note pinned on the stock and a group it belongs to, that no run has written after (lib/agent/shared-notes.ts). */
   pinnedNote?: boolean;
@@ -92,8 +90,6 @@ function flagCodes(s: SituationSources, f: NeedsAction): SituationCode[] {
       return ["PROTECTION"];
     case "REVIEW_DUE":
       return [f.pendingFirstReview ? "FIRST_RESEARCH" : "REVIEW_DUE"];
-    case "RESEARCH_STALE":
-      return ["STALE_RESEARCH"];
   }
 }
 
@@ -105,11 +101,9 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   if (s.buyBlockedByFull) codes.push("BUY_BLOCKED_FULL");
   else if (s.actionability === "ENTER_NOW") codes.push("BUY_ARRIVES");
   if (s.status === "HOLDING" && (s.progressToTarget ?? 0) >= 0.75) codes.push("ADD_OR_WINNER");
-  if ((s.planSanity?.length ?? 0) > 0 || s.actionability === "STALE_PAST_CATALYST") codes.push("PLAN_PROBLEM");
   if (s.unansweredDecision) codes.push("YOUR_WORD_UNANSWERED");
   if (s.pinnedNote) codes.push("PINNED_NOTE");
   if (s.soldReview) codes.push("SOLD_ONE_REVIEW");
-  if (s.nameTheSetup) codes.push("NO_SETUP_NAMED");
   return [...new Set(codes)];
 }
 
@@ -196,23 +190,22 @@ Answer, in order:
 1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (\`street\`).
 2. Does the price still hold the level? If it touched and slipped back, say so.
 3. Did the setup confirm? By the setup (the row's \`setup\` line, or its \`setup_lines\`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-4. Is it chased? An unanswered buy shows in \`plan_checks\`, with the chase limit and how far past it the stock is.
-5. Did the principal decline this buy (\`said\`), with nothing they named changed since? Then say so and pass.
-6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (\`variant_view\`).
+4. Did the principal decline this buy (\`said\`), with nothing they named changed since? Then say so and pass.
+5. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (\`variant_view\`).
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis.
 - Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review.
 
-Answered: one of those. A buy left as a note comes back on the next morning run as a plan check or a live match; a note does answer a buy whose price slipped back.
+Answered: one of those. A note does answer a buy whose price slipped back.
 
 The note: what is going on with the company and why now is the time to buy or not; then the buy, the new buy price or the plan set down, in one sentence.
 
 Mistakes:
 - place_trade after a check failed.
 - Volume as the reason on a pullback, a compounder or a pre-catalyst buy, or before mid-session.
-- Moving the buy above the price to dodge it: it comes back as a plan check.`,
+- Moving the buy above the price to dodge it.`,
   },
   BUY_BLOCKED_FULL: {
     name: "buy blocked, full",
@@ -393,46 +386,6 @@ Mistakes:
 - The same answer to a review that fired again (the \`repeat\` line says how often): change the plan, or say what differs from last time.
 - Deleting a level you still believe in to look at the name less.`,
   },
-  STALE_RESEARCH: {
-    name: "research stale",
-    guidance: `When: the research behind a committed view is older than its horizon allows, or missing (the \`research\` line says when it was written). On a watched stock the next thing to happen could be a buy on it.
-
-Answer, in order:
-1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it: do its \`assumptions\` hold, and has anything in \`would_prove_it_wrong\` happened?
-
-What you can do:
-- Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or tier if the new work changed your view.
-- Re-affirm it: update_thesis saying in one concrete sentence why it still stands ("the backlog case is unchanged; Q2 confirmed it").
-- Stop paying for it: drop the review clock, and the plan's triggers too if the plan is dead.
-
-Answered: a refresh, or one of the other two. A held stock owes the same, with more at stake.
-
-The note: what is new with the company since the research was written, and whether the case still stands; then refreshed, re-affirmed or set down, in one sentence.
-
-Mistakes:
-- "Looks fine", or a line you could have written without opening the stock.`,
-  },
-  PLAN_PROBLEM: {
-    name: "plan check",
-    guidance: `When: a watched stock's plan contradicts the tape or the calendar. The \`plan_checks\` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the \`catalyst\` line's date is behind us).
-
-Answer, in order:
-1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
-2. What does each check say? Read its numbers, and the \`street\` line: where the Street's targets sit against the plan's levels.
-3. Does the case still earn a plan? The writer's own read of where it stands (\`snapshot\`, \`conviction_rationale\`), and whether anything in \`would_prove_it_wrong\` has happened. A case the writer already calls failed is let go, not re-priced.
-
-What you can do, for each check:
-- Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.
-- Or say in one sentence why the level is parked where it is on purpose ("I'm keeping the buy at $58: I only want it on a sharp drop, and I'll look again after earnings").
-- Or set the plan down: update_thesis with remove_trigger_ids naming the buy, target and floor triggers, and the review clock too if the stock no longer earns one. It stays on the watchlist costing nothing, with whatever wakes you keep.
-
-Answered: one of the three for every check. A review that does not mention a check leaves it there tomorrow, and every day after.
-
-The note: why the stock is where it is now, and whether the plan still fits it; then, in plain words, each price you moved and why, the one you kept on purpose, or the plan set down.
-
-Mistakes:
-- Re-anchoring to a round number instead of structure.`,
-  },
   YOUR_WORD_UNANSWERED: {
     name: "your word unanswered",
     guidance: `When: the principal made a decision on this stock that no run has answered, or left a note since your last answer. Their words are in \`said\`, with the price then and now.
@@ -497,33 +450,15 @@ The note: what the stock has done since the sale, and whether the reason we owne
 Mistakes:
 - Never looking at it again: a sold stock you never look at again is a thesis you already paid for and threw away.`,
   },
-  NO_SETUP_NAMED: {
-    name: "no setup named",
-    guidance: `When: a stock we hold, or one we watch with a buy price, has no setup named. Everything setup-aware skips it: the trigger run's confirmation, the exits a buy writes, the held review's checklist.
-
-Answer, in order:
-1. Which setup was it bought on, or is its buy price written on? Read the chart and the thesis; \`nameTheSetup.choose\` lists this analyst's setups.
-
-What you can do:
-- Name it on this review, in the same update_thesis call: setup_id from those choices. On a held stock that also writes the setup's own exits onto the stock, so do not add those yourself.
-- If no setup fits: setup_id "NONE", with the reason in the rationale.
-
-Answered: setup_id on an update_thesis. Named (or NONE), the stock stops asking.
-
-The note: inside the stock's review, one plain sentence on what kind of trade it is ("a pullback to its 50-day average", "a long-term hold"), never the setup's name.
-
-Mistakes:
-- Adding the setup's exits by hand on a held stock after naming it: naming it writes them.`,
-  },
 };
 
 /**
  * Situations whose answer needs fields the trigger run's save lacks, so the
- * morning run answers them: a setup's exits, a full commitment, and putting a
- * sold stock back on watch (change_status, which the trigger run's save has
- * not had since #825; a sold stock is never a trigger run's stock anyway).
+ * morning run answers them: a full commitment, and putting a sold stock back
+ * on watch (change_status, which the trigger run's save has not had since
+ * #825; a sold stock is never a trigger run's stock anyway).
  */
-const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["NO_SETUP_NAMED", "FIRST_RESEARCH", "SOLD_ONE_REVIEW"]);
+const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["FIRST_RESEARCH", "SOLD_ONE_REVIEW"]);
 
 /**
  * The trigger run's words where a text names a status change (step 12, part
@@ -585,24 +520,19 @@ export function situationLabels(s: SituationSources): Array<{ code: SituationCod
   return situationsFor(s).map((code) => ({ code, name: SITUATIONS[code].name, lead: lead.has(code) }));
 }
 
-/** Plan checks list a stock by themselves, except these two (decision 4, docs/plans/AGENT_ARCHITECTURE.md). */
-const CHECKS_THAT_DO_NOT_LIST = new Set(["NO_BUY_LEVEL", "COMPOSITE_BELOW_MINIMUM"]);
-const LABELS_THAT_LIST = new Set(["ENTER_NOW", "STALE_PAST_CATALYST", "PROMOTED_DECIDE_TODAY"]);
+const LABELS_THAT_LIST = new Set(["ENTER_NOW", "PROMOTED_DECIDE_TODAY"]);
 
 /**
  * Whether a stock gets a full row on the morning read, as get_theses decided
  * it before: any work flag (a floor too far is one, even under a fired sale),
- * a plan check that lists, a buy into a full analyst, a setup to name, the
- * principal's word unanswered, a reached buy level or past catalyst, or a
- * promoted stock; never one with a sale waiting. The read adds book mode and
- * failed prices itself.
+ * a buy into a full analyst, the principal's word unanswered, a pinned note, a
+ * reached buy level, or a promoted stock; never one with a sale waiting. The
+ * read adds book mode and failed prices itself.
  */
 export function listsTheStock(s: SituationSources): boolean {
   return !s.saleWaiting && (
     s.needs.length > 0 ||
-    (s.planSanity ?? []).some((f) => !CHECKS_THAT_DO_NOT_LIST.has(f.kind)) ||
     s.buyBlockedByFull ||
-    s.nameTheSetup ||
     s.unansweredDecision ||
     !!s.pinnedNote ||
     LABELS_THAT_LIST.has(s.actionability ?? "") ||

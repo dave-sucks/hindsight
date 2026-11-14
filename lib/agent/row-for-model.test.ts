@@ -49,10 +49,9 @@ const held = (): Row => ({
   resolved: {
     currentPrice: 40.51, unrealizedGainPct: 3.7, progressToTarget: 0.18,
     ladderHealth: { gainPct: 3.7, floor: { triggerId: "t_floor", price: 40.8, flooredGainPct: 4.45, isTrail: false, label: "below $40.80" }, flooredGainPct: 4.45, hasTrail: false, nearestRung: { triggerId: "t_target", action: "REVIEW", price: 47, distancePct: 16.0, label: "above $47" }, daysSinceLadderEdit: 1, isUnprotectedGain: false, summary: "+3.7% from entry ($39.06 → $40.51); floor locks +4.4% — below $40.80; no trail; next rung REVIEW above $47 @ $47.00 (+16.0% away); ladder last edited 1d ago" },
-    planSanity: null, floorRisk: null, triggerState: "EXIT_FIRED", triggerDetail: "below $40.80 (now $40.51)", actionability: "ACTIVE_HOLD", supersededBy: null, staleness: "FRESH", resolvedAt: "2026-10-07T20:30:00.000Z", quoteAgeMs: 0,
+    floorRisk: null, triggerState: "EXIT_FIRED", triggerDetail: "below $40.80 (now $40.51)", actionability: "ACTIVE_HOLD", supersededBy: null, staleness: "FRESH", resolvedAt: "2026-10-07T20:30:00.000Z", quoteAgeMs: 0,
   },
   setup: { id: "PEAD", name: "Post-earnings drift", failureSigns: ["The gap-day low breaks", "Revisions don't follow"], manage: "After +10%: 3 ATR under the high.", time: "Hold 30–60 days.", partialAtR: 2, beatAndFadeReview: true },
-  nameTheSetup: null,
   buyBlockedByFull: null,
   heldThroughFloor: null,
   unapprovedExitCount: 0,
@@ -74,7 +73,7 @@ describe("the size a row gets", () => {
   it("is the full row for a named read, the row otherwise; no situation sends the full row by rule any more (2026-11-06)", () => {
     expect(sizeFor(held(), true)).toBe("full");
     expect(sizeFor(held(), false)).toBe("short");
-    for (const code of ["QUIET_WATCH_WOKE", "NO_SETUP_NAMED"]) expect(sizeFor({ ...held(), situations: ["REVIEW_DUE", code] }, false)).toBe("short");
+    expect(sizeFor({ ...held(), situations: ["REVIEW_DUE", "QUIET_WATCH_WOKE"] }, false)).toBe("short");
   });
 });
 
@@ -176,7 +175,7 @@ describe("the short row", () => {
     expect(JSON.stringify(row)).not.toContain("**");
   });
 
-  it("notes the conviction rule on a LOW holding, the paper record on a promoted stock, a plan check and a floor risk when they exist", () => {
+  it("notes the conviction rule on a LOW holding, the paper record on a promoted stock and a floor risk when they exist; no plan checks", () => {
     const low = rowForModel({ ...held(), conviction: "LOW" }, { named: false, size: "short" }) as Row;
     expect(low.note).toBe("Conviction is LOW: tighten the floor on this review.");
     expect(row).not.toHaveProperty("note");
@@ -187,7 +186,8 @@ describe("the short row", () => {
       { ...held(), status: "WATCHING", position: null, resolved: { ...(held().resolved as Row), planSanity: [{ kind: "ENTRY_STALE", text: "The buy level $39.55 was set 30 days ago and hasn't filled." }], floorRisk: { line: "At the $40.80 floor, 300 shares lose $1,200 — 1.8% of the account." } } },
       { named: false, size: "short" },
     ) as Row;
-    expect(checked.plan_checks).toEqual(["The buy level $39.55 was set 30 days ago and hasn't filled."]);
+    // A row saved before plan checks were deleted (2026-11-13) still carries them; the model never reads one.
+    expect(checked).not.toHaveProperty("plan_checks");
     expect(checked.floor_risk).toBe("At the $40.80 floor, 300 shares lose $1,200 — 1.8% of the account.");
     expect(checked).not.toHaveProperty("plan");
     expect(checked).not.toHaveProperty("protection");
@@ -207,9 +207,8 @@ describe("the full row", () => {
     expect(Object.keys(row).indexOf("bull_case")).toBeLessThan(Object.keys(row).indexOf("chart"));
   });
   it("without a named read, carries no history", () => {
-    const row = rowForModel({ ...held(), situations: ["NO_SETUP_NAMED"], nameTheSetup: { choose: [{ id: "PEAD", name: "Post-earnings drift", when: "after a beat" }] } }, { named: false, size: "full" }) as Row;
+    const row = rowForModel({ ...held(), situations: ["REVIEW_DUE"] }, { named: false, size: "full" }) as Row;
     expect(row).not.toHaveProperty("history");
-    expect(row.nameTheSetup).toEqual({ choose: [{ id: "PEAD", name: "Post-earnings drift", when: "after a beat" }] });
     expect(row.bull_case).toBeDefined();
   });
 });

@@ -16,8 +16,8 @@ export const SITUATION_CATEGORY: Record<SituationCode, Category> = {
   PROTECTIVE_SALE: "Selling and protection", PROTECTION: "Selling and protection",
   BUY_ARRIVES: "Buying and adding", BUY_BLOCKED_FULL: "Buying and adding", ADD_OR_WINNER: "Buying and adding",
   EARNINGS: "Events", FILING: "Events",
-  REVIEW_DUE: "Upkeep", FIRST_RESEARCH: "Upkeep", QUIET_WATCH_WOKE: "Upkeep", STALE_RESEARCH: "Upkeep",
-  PLAN_PROBLEM: "Upkeep", SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep", NO_SETUP_NAMED: "Upkeep",
+  REVIEW_DUE: "Upkeep", FIRST_RESEARCH: "Upkeep", QUIET_WATCH_WOKE: "Upkeep",
+  SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep",
   YOUR_WORD_UNANSWERED: "Your word", PINNED_NOTE: "Your word",
   AUTO_TRADE: "Auto",
 };

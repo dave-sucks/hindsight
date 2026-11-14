@@ -21,7 +21,7 @@ text: $SHOP (−3.4%) closed through its $96 floor on no company news. The drift
 tools: Closing $SHOP position (+2 more)
 - SHOP [sell] {Proposal}: Sell 120 shares at about $95.12
 - AVGO: Earnings review · held, floor raised to $1,610 to keep most of the gain
-- ADBE: Plan check · buy moved to $402, under the 20-day
+- ADBE: Review due · buy moved to $402, under the 20-day
 tools: Recording the run summary
 - 1 proposal waiting for you · 2 plans changed · 7 stocks left alone
 ```
@@ -30,7 +30,7 @@ tools: Recording the run summary
 
 The morning run keeps an analyst's book honest. Once a day it reads every stock the analyst holds or watches, takes one action on each stock that's in a [situation](../concepts/situations.md), and leaves the rest alone.
 
-[Triggers](../concepts/triggers.md) watch prices all day, but a price can't tell you that research went stale, a review came due, a gain has no floor under it, or you left a note nobody answered. The morning run catches all of that, once a day, across the whole book.
+[Triggers](../concepts/triggers.md) watch prices all day, but a price can't tell you that a review came due, a gain has no floor under it, or you left a note nobody answered. The morning run catches all of that, once a day, across the whole book.
 
 Its buys, sales, adds and trims are [proposals](../concepts/approvals.md). On the live account each one waits in your queue for a yes; on paper, approval is off by default and they go straight to the broker. Every change to a [thesis](../concepts/theses.md) lands in Activity the moment it's made.
 

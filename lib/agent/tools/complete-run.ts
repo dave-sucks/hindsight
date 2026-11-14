@@ -505,15 +505,11 @@ async function runCompleteRunPreflight(
       ticker: true,
       status: true,
       direction: true,
-      entryPrice: true,
       targetPrice: true,
-      stopLoss: true,
       triggers: true,
       catalystDate: true,
-      setupId: true,
-      horizon: true,
       createdAt: true,
-      researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true } } } },
+      researchRun: { select: { agentConfigId: true } },
     },
   });
   if (theses.length === 0) return null;

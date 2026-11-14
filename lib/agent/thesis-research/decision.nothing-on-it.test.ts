@@ -13,7 +13,6 @@
  */
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 import { setupsFor } from "./decision.test-helpers";
-import { computePlanSanity } from "@/lib/agent/plan-sanity";
 
 /** The writer's submit_thesis input, verbatim from the run's messages. */
 const LUXE_SUBMIT = {
@@ -90,19 +89,5 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
   it("a PASS needs nothing on it", () => {
     const r = check({ direction: "PASS", rationale: "The gap used up the edge and nothing clears 2:1 from here." } as ThesisDecisionInput);
     expect(r.errors.filter((e) => e.startsWith("levels:"))).toEqual([]);
-  });
-});
-
-describe("the six already on the book — get_theses puts them on the work list", () => {
-  it("a LONG watch with no entry and no trigger of its own is flagged, with no live price needed", () => {
-    const flags = computePlanSanity({ status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null, ownTriggerCount: 0 });
-    expect(flags.map((f) => f.kind)).toEqual(["NOTHING_CAN_WAKE"]);
-  });
-  it("one wake of its own is enough; so is a buy price; a seed and a held stock are never flagged", () => {
-    const base = { status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null } as const;
-    expect(computePlanSanity({ ...base, ownTriggerCount: 1 })).toEqual([]);
-    expect(computePlanSanity({ ...base, entryPrice: 7.91, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, direction: null, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, status: "HOLDING", ownTriggerCount: 0 })).toEqual([]);
   });
 });

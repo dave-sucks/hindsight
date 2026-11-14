@@ -1,24 +1,19 @@
 /**
  * A stock's facts, for one stock or the whole book: the work-flag list and
  * what's been said on it, the resolved envelope (the price-dependent plan
- * facts and checks), a buy into a full analyst, and the situation sources.
+ * facts), a buy into a full analyst, and the situation sources.
  * get_theses and the thesis sheet's quote route both call it, so the sheet
  * shows what the read shows. Moved from get_theses, which assembled it this
  * way; the price and the work-flag inputs come from work-inputs.ts.
  */
 import { prisma } from "@/lib/prisma";
 import { analystOf } from "@/lib/agent/analyst-scope";
-import { getDailyRangePcts } from "@/lib/alpaca";
 import { computeNeedsAction, type NeedsAction } from "@/lib/agent/needs-action";
 import { loadWorkInputs, type WorkContext, type WorkLoad } from "@/lib/agent/work-inputs";
 import type { StockContext } from "@/lib/agent/stock-context";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
 import { buildResolvedEnvelope, buildSupersessionMap, type ResolvedEnvelope } from "@/lib/agent/resolved-thesis";
-import { entryRaisesAway, type EntryRaiseAway } from "@/lib/agent/entry-raises";
-import { nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
-import { buyBlockedByFull, isFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
-import { spentBuyCrossing, type SpentBuyCrossing } from "@/lib/agent/buy-crossing";
-import { getSetup } from "@/lib/agent/knowledge/setups";
+import { buyBlockedByFull, type AnalystCapacity, type BuyBlockedByFull } from "@/lib/agent/capacity";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import type { SituationSources } from "@/lib/agent/situations";
@@ -32,21 +27,17 @@ export interface FactsRow {
   ticker: string;
   status: string;
   direction: string | null;
-  entryPrice: number | null;
   targetPrice: number | null;
-  stopLoss: number | null;
   triggers: unknown;
   catalystDate: Date | null;
-  setupId: string | null;
-  horizon: string | null;
   createdAt: Date;
-  /** The stock's analyst: its own setups, which a row with none may choose from. */
-  researchRun: { agentConfigId?: string | null; agentConfig: { setupIds: string[] } | null } | null;
+  /** The stock's analyst. */
+  researchRun: { agentConfigId?: string | null } | null;
 }
 
 export interface FactsContext extends WorkContext {
   accountId?: string | null;
-  /** The owning analyst's minimum confidence, for the plan check. */
+  /** The owning analyst's slot cap, for a buy into a full analyst. */
   maxOpenPositions?: number | null;
   /**
    * Where the analyst's slot count comes from: these rows (the whole book
@@ -153,17 +144,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     needs.set(t.id, computeNeedsAction(input));
   }
 
-  // The buy level's moves away from the price, no structure cited
-  // (DAV-253, the MSFT shape) — off the ladder-edit rows the loader read.
-  const entryRaises = new Map<string, EntryRaiseAway[]>();
-  for (const t of theses) {
-    if (t.status !== "WATCHING") continue;
-    const rows = load.ladderEditRows.get(t.id);
-    if (!rows?.length) continue;
-    const raises = entryRaisesAway({ direction: t.direction, updates: rows, now: new Date() });
-    if (raises.length) entryRaises.set(t.id, raises);
-  }
-
   // Supersession (Conviction Expression v4 §6): the newest terminal or
   // passed sibling on the same analyst, per ticker, so the resolver can flag
   // an older live row a newer sister thesis killed (the two-ZS case).
@@ -188,54 +168,12 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
     supersessionByAnalyst.set(id, buildSupersessionMap(terminal.filter((r) => !id || (ctx.analystId ?? r.researchRun?.agentConfigId) === id)));
   }
 
-  // Daily ranges for the plan check's noise test (DAV-188): one batched
-  // snapshot call, only for watched rows with a stop and an entry to compare.
-  // Fail-open — absence just skips that one check.
-  const rangeTickers = Array.from(
-    new Set(
-      theses
-        .filter((t) => t.status === "WATCHING" && (t.direction === "LONG" || t.direction === "SHORT") && t.stopLoss != null && t.entryPrice != null)
-        .map((t) => t.ticker.toUpperCase()),
-    ),
-  );
-  let dayRangePct: Record<string, number> = {};
-  if (rangeTickers.length > 0) {
-    try {
-      dayRangePct = await getDailyRangePcts(rangeTickers, ctx.alpacaCreds);
-    } catch {
-      /* fail-open — noise check silently skipped */
-    }
-  }
-
   const capacity = await slotCount(theses, ctx);
   const setupOverrides = await loadSetupOverrides(ctx.accountId);
 
-  // A fired buy the price has left behind (DAV-303), off the audit rows the
-  // loader read. Suppressed while the analyst is full: `buyBlockedByFull`
-  // owns the row on those days.
   const now = new Date();
-  const spent = new Map<string, SpentBuyCrossing>();
-  if (!isFull(capacity)) {
-    for (const t of theses) {
-      if (t.status !== "WATCHING") continue;
-      // The stock's OWN buy trigger: an inherited rule is not its buy plan.
-      const enter =
-        (load.ladders.get(t.id) ?? []).find((x) => x.action === "ENTER" && ((x as { level?: string }).level ?? "THESIS") === "THESIS") ?? null;
-      const cur = load.livePrice[t.ticker];
-      const crossing = spentBuyCrossing({
-        status: t.status,
-        direction: t.direction,
-        currentPrice: typeof cur === "number" && cur > 0 ? cur : null,
-        enter: enter ? { predicate: enter.predicate, lastFiredAt: enter.lastFiredAt ?? null } : null,
-        chaseLimitPct: t.setupId ? (getSetup(t.setupId, setupOverrides)?.entry.chaseLimitPct ?? null) : null,
-        updates: load.ladderEditRows.get(t.id) ?? [],
-        now,
-      });
-      if (crossing) spent.set(t.id, crossing);
-    }
-  }
 
-  // The resolved envelope per stock: the plan facts and checks against the price.
+  // The resolved envelope per stock: the plan facts against the price.
   const resolved = new Map<string, ResolvedEnvelope>();
   for (const t of theses) {
     const w = load.inputs.get(t.id)?.thesis;
@@ -248,22 +186,15 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           ticker: t.ticker,
           status: t.status,
           direction: t.direction,
-          entryPrice: t.entryPrice,
           targetPrice: t.targetPrice ?? null,
-          stopLoss: t.stopLoss ?? null,
-          dayRangePct: dayRangePct[t.ticker.toUpperCase()] ?? null,
           avgCost: w?.avgCost ?? null,
           quantity: w?.quantity ?? null,
           equity: load.equity,
           structure: w?.structure ?? null,
           peakPrice: w?.peakPrice ?? null,
           lastLadderEditAt: load.lastLadderEditAt.get(t.id) ?? null,
-          entryRaisesAway: entryRaises.get(t.id) ?? null,
-          spentBuyCrossing: spent.get(t.id) ?? null,
           triggers: t.triggers,
           catalystDate: t.catalystDate,
-          setupId: t.setupId ?? null,
-          horizon: t.horizon ?? null,
           createdAt: t.createdAt,
           parsedTriggers: load.ladders.get(t.id) ?? [],
           positionOpenedAt: w?.positionOpenedAt ?? null,
@@ -302,11 +233,9 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       triggers: load.ladders.get(t.id) ?? [],
       status: t.status,
       direction: t.direction,
-      planSanity: r?.planSanity ?? null,
       actionability: r?.actionability ?? null,
       progressToTarget: r?.progressToTarget ?? null,
       buyBlockedByFull: blocked.has(t.id),
-      nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null) !== null,
       unansweredDecision: context.get(t.id)?.unansweredDecision != null,
       pinnedNote: context.get(t.id)?.pinnedNote != null,
       saleWaiting: load.inputs.get(t.id)?.hasPendingSaleProposal ?? false,

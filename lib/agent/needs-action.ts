@@ -87,11 +87,9 @@ import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
-import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
-import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 import type { When } from "@/lib/agent/triggers/condition";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -213,29 +211,6 @@ export type NeedsAction =
       floorSummary: string | null;
     }
   | {
-      /**
-       * The deep research behind this thesis is older than its threshold.
-       *
-       * Why this is a work-list flag and not just a label: `researchAge`
-       * has ridden along on every thesis row since P1-1, but only the
-       * REVIEW_DUE branch of the prompt ever consulted it — so a name whose
-       * review clock wasn't due carried "stale" silently. GD, GEV and VST
-       * sat at 80 days with a 30-day clock last reviewed 2026-08-28: the
-       * label said stale, and nothing was going to look until 2026-09-27.
-       *
-       * Same shape as UNPROTECTED_GAIN: computed, not a trigger. Neither
-       * one needs to be a trigger to earn the agent's attention — a flag on
-       * a row nobody opens is decoration.
-       */
-      kind: "RESEARCH_STALE";
-      /** Whole days since the research was last written. Null = never written. */
-      daysOld: number | null;
-      /** The threshold it broke, in days. */
-      threshold: number | null;
-      /** "stale" (past the threshold) or "missing" (no deep research at all). */
-      freshness: "stale" | "missing";
-    }
-  | {
       kind: "REVIEW_DUE";
       daysOverdue: number;
       /**
@@ -287,15 +262,6 @@ export interface NeedsActionInput {
     createdAt: Date;
     /** When an analyst last actually looked. Drives the review cadence. */
     lastReviewedAt?: Date | null;
-    /**
-     * When the deep research behind this thesis was last WRITTEN — not when
-     * someone last glanced at it. Drives RESEARCH_STALE. Omit and the flag
-     * simply never fires (callers that can't select the column keep their
-     * old behavior).
-     */
-    researchUpdatedAt?: Date | null;
-    /** Horizon picks the staleness threshold. Null falls back to the conservative default. */
-    horizon?: string | null;
     /**
      * Paired open Position's openedAt, for held rows only. Null when not
      * held or the caller didn't resolve a position.
@@ -407,7 +373,7 @@ export function reviewDue(
  * screen and complete_run show, by the precedence below, unchanged. The rest
  * follow in a fixed rank (SALE_DECLINED, PROMOTED_AWAITING_RESOLUTION,
  * TRIGGER_FIRED, TRIGGER_MATCHING_NOW, FLOOR_TOO_FAR, UNPROTECTED_GAIN,
- * REVIEW_DUE, RESEARCH_STALE), one entry per kind, except one
+ * REVIEW_DUE), one entry per kind, except one
  * TRIGGER_MATCHING_NOW per trigger true now, in ladder order. Fires beyond
  * the lead fire ride inside it (`alsoFired`). Empty when nothing is true.
  */
@@ -670,54 +636,11 @@ export function computeNeedsAction(
     due = result;
   }
 
-  // 5) RESEARCH_STALE — the thesis is not due for review, but the work
-  //    behind it is old enough that acting on it would mean acting on
-  //    stale reasoning.
-  //
-  //    Lowest precedence deliberately: it runs only after REVIEW_DUE has
-  //    declined, because a due review already carries the staleness
-  //    instruction in the prompt. This branch catches the gap that used to
-  //    swallow it — a long clock (a compounder's 30 days) outliving the
-  //    research threshold, so "stale" was true for weeks with nothing
-  //    scheduled to look. Terminal rows are history and never flagged.
-  //    Two exclusions, both load-bearing:
-  //      • direction null — an unresearched seed or a quiet watch. Neither
-  //        has a committed view whose research could have gone stale: the
-  //        seed is ASKING for first research (it surfaces via REVIEW_DUE
-  //        with pendingFirstReview, which routes to "commit a direction",
-  //        not "refresh"), and a quiet watch deliberately has no clock, so
-  //        flagging it would put a name the principal asked to leave alone
-  //        into every single morning's work list, forever, with nothing
-  //        that could ever satisfy it.
-  //      • `researchUpdatedAt === undefined` — the caller didn't select the
-  //        column; absent data is not evidence of staleness.
-  let stale: NeedsAction | null = null;
-  if (
-    thesis.researchUpdatedAt !== undefined &&
-    !isUnresearchedSeed(thesis.direction) &&
-    thesis.direction != null &&
-    (thesis.status === "WATCHING" || thesis.status === "HOLDING")
-  ) {
-    const age = classifyResearchAge(
-      thesis.researchUpdatedAt,
-      (thesis.horizon ?? null) as StalenessHorizon | null,
-      thesis.status,
-    );
-    if (age.freshness === "stale" || age.freshness === "missing") {
-      stale = {
-        kind: "RESEARCH_STALE",
-        daysOld: age.daysOld,
-        threshold: age.horizonThreshold,
-        freshness: age.freshness,
-      };
-    }
-  }
-
   // The lead, by the precedence above: a promoted stock; a declined sale; a
   // fire (a floor too far outranks a fired REVIEW); the first trigger true
   // now (a floor too far outranks it when it is a REVIEW); a floor too far;
-  // an unprotected gain; a review due; stale research. With none, nothing to
-  // act on: yesterday's thesis stands.
+  // an unprotected gain; a review due. With none, nothing to act on:
+  // yesterday's thesis stands.
   const firstMatch = matches[0] ?? null;
   const lead =
     promoted ??
@@ -726,10 +649,9 @@ export function computeNeedsAction(
     (firstMatch ? (floorWork && firstMatch.kind === "TRIGGER_MATCHING_NOW" && firstMatch.action === "REVIEW" ? floorWork : firstMatch) : null) ??
     floorWork ??
     unprotected ??
-    due ??
-    stale;
+    due;
   if (!lead) return [];
-  const rest = [declined, promoted, firedEntry, ...matches, floorWork, unprotected, due, stale].filter(
+  const rest = [declined, promoted, firedEntry, ...matches, floorWork, unprotected, due].filter(
     (x): x is NeedsAction => x != null && x !== lead,
   );
   return [lead, ...rest];

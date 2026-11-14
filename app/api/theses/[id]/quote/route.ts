@@ -42,7 +42,7 @@ export async function GET(
   if (!accountId) return NextResponse.json({ error: "No account" }, { status: 403 });
 
   // The thesis columns the stock's facts read (stock-facts.ts `FactsRow`),
-  // and its analyst's settings for the plan check and the slot count.
+  // and its analyst's slot count.
   const thesis = await prisma.thesis.findFirst({
     where: { id, accountId },
     select: {
@@ -50,18 +50,14 @@ export async function GET(
       ticker: true,
       status: true,
       direction: true,
-      entryPrice: true,
       targetPrice: true,
-      stopLoss: true,
       triggers: true,
-      horizon: true,
       catalystDate: true,
-      setupId: true,
       createdAt: true,
       researchRun: {
         select: {
           agentConfigId: true,
-          agentConfig: { select: { maxOpenPositions: true, setupIds: true } },
+          agentConfig: { select: { maxOpenPositions: true } },
         },
       },
     },

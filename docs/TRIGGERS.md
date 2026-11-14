@@ -388,8 +388,8 @@ was written at** (`writtenPrice`/`writtenAt`, server-stamped by
 until the next close: otherwise "buy above $100.05" set at $100 on a day the
 stock closed $103 yesterday is already true at that close and never fires that
 day. There is no buy-now option — buying now is an entry price at or near the
-current price, and this is what makes that work on a down day. A plan the price has left behind is `planSanity`'s job to surface to
-the daily run, not the cron's job to propose. Read-side snapshots (the daily
+current price, and this is what makes that work on a down day. A plan the price has left behind is not the cron's job to propose; the
+stock's review deals with it. Read-side snapshots (the daily
 run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right
 question for a snapshot.

@@ -264,8 +264,8 @@ export function isBinaryBet(row: BinaryRow, asOf: Date = new Date()): boolean {
  * never a gate: a buy that fires outside the window still goes to the run,
  * which decides.
  *
- * The window is the setup's own two numbers, the ones plan-sanity and the
- * setup's confirmation already use: it opens CATALYST_WINDOW_DAYS[1] days
+ * The window is the setup's own two numbers, the ones the setup's
+ * confirmation already uses: it opens CATALYST_WINDOW_DAYS[1] days
  * before the event, and a buy stops being one inside the last
  * PRE_CATALYST_ENTRY_CUTOFF_DAYS. CORT, 2026-09-29, the FDA date Dec 17:
  * "79 days to the event date (Dec 17), 9 days before this setup's window

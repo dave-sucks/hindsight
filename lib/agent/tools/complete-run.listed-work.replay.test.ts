@@ -12,9 +12,15 @@
  * The rows are production's as they stood at the opening read (08:03 ET),
  * read-only, in lib/agent/__fixtures__/closeout-secular-2026-11-13.json: the
  * 12 listed stocks and FTNT, quiet though in a situation. Review dates, fire
- * stamps and trigger state are the read's own; AAPL's buy is its level before
- * the 09:30 move. Lines before the read: since each stock's last answer, plus
- * its last plan edit. No note text, no quantities; a rule's words are dropped.
+ * stamps and trigger state are the read's own; AAPL's and WST's buys are their
+ * levels before the 09:30 move. Lines before the read: since each stock's last
+ * answer, plus its last plan edit. No note text, no quantities; a rule's words
+ * are dropped.
+ *
+ * Plan checks, stale research and "no setup named" were deleted on
+ * 2026-11-13: six of the 12 were listed by those alone (AAPL, BWXT, CRWD, TRV
+ * and WST by stale research; ISRG by stale research and a plan check), so the
+ * same read lists six now.
  */
 import { statSync } from "fs";
 import fixture from "@/lib/agent/__fixtures__/closeout-secular-2026-11-13.json";
@@ -32,9 +38,11 @@ import {
 } from "@/lib/replay";
 
 const FIXTURE = "lib/agent/__fixtures__/closeout-secular-2026-11-13.json";
-/** The opening read: 08:03 ET, and the 12 stocks it listed as work. */
+/** The opening read: 08:03 ET, and the 12 stocks it listed as work in production. */
 const READ_AT = "2026-11-13T13:03:30.000Z";
 const LISTED = ["AAPL", "ASML", "BWXT", "CEG", "CRWD", "EME", "ETN", "GEV", "ISRG", "NOW", "TRV", "WST"];
+/** The six that stay listed with the three situations gone. */
+const LISTED_NOW = ["ASML", "CEG", "EME", "ETN", "GEV", "NOW"];
 type Fx = {
   theses: Array<Row & { id: string; ticker: string; price: number }>;
   analyst: { triggers: Row[]; setupIds: string[]; maxOpenPositions: number };
@@ -126,23 +134,24 @@ async function closeOut(answered: boolean): Promise<{ message: string; owed: str
 }
 
 describe("Secular Compounder, 2026-11-13: the close-out owes what the read listed", () => {
-  it("the run's second complete_run, every answer it wrote on the record: refused, naming CEG, AAPL, EME and ASML with their situations", async () => {
+  it("the run's second complete_run, every answer it wrote on the record: refused, naming CEG, EME and ASML with their situations", async () => {
     const { message, owed, status } = await closeOut(true);
-    // In production this call completed the run with all four unanswered.
-    expect(owed).toEqual(["AAPL", "ASML", "CEG", "EME"]);
+    // In production this call completed the run with these three and AAPL unanswered; AAPL was owed for stale research alone.
+    expect(owed).toEqual(["ASML", "CEG", "EME"]);
     expect(status).toBe("RUNNING");
     expect(message).toMatch(/CEG \(t_CEG\): your word unanswered/);
-    expect(message).toMatch(/AAPL \(t_AAPL\): research stale/);
+    expect(message).not.toMatch(/AAPL/);
     expect(message).toMatch(/EME \(t_EME\): review due/);
     expect(message).toMatch(/ASML \(t_ASML\): review due/);
   });
 
-  it("the close-out's owed set is the read's listed set, and both are the 12 the run's read listed", async () => {
+  it("the close-out's owed set is the read's listed set: the 12 the run's read listed, less the six the deleted situations alone listed", async () => {
     const listed = await listedByTheRead();
     const { owed } = await closeOut(false);
     expect(owed).toEqual(listed);
-    expect(listed).toEqual(LISTED);
-    // FTNT is in a situation (a plan check that does not list) and is not owed.
+    expect(listed).toEqual(LISTED_NOW);
+    expect(LISTED.filter((t) => !LISTED_NOW.includes(t))).toEqual(["AAPL", "BWXT", "CRWD", "ISRG", "TRV", "WST"]);
+    // FTNT was in a situation only by a plan check that did not list; it is quiet and not owed.
     expect(owed).not.toContain("FTNT");
   });
 

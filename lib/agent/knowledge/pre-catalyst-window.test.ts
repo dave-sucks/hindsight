@@ -4,7 +4,7 @@
  * CORT's FDA date is Dec 17. On 2026-09-29 its buy fired 79 days out and
  * the trigger run proposed a buy, told nothing about the window. The
  * setup's own numbers (open 70 days out, no buy inside the last 21) are
- * what plan-sanity and the setup's confirmation already use.
+ * what the setup's confirmation already uses.
  */
 import { getSetup, preCatalystWindowLine } from "./setups";
 

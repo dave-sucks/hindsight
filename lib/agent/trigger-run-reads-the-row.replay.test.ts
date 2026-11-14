@@ -105,9 +105,9 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
     expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET", "decision"));
-    // A buy reads the plan checks, the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
-    // A plan problem reads the writer's own read of the case: the snapshot, the conviction reason, what would prove it wrong.
-    shortRow(row, saved, ["plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"], ["position"]);
+    // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
+    // Plan checks were deleted (2026-11-13): no plan_checks line, and the writer's own read of the case waits for the review clock.
+    shortRow(row, saved, [], ["position", "plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);

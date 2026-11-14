@@ -46,10 +46,9 @@ function cut(n: NeedsActionInput, idOf: (id: string | null | undefined) => strin
   const t = n.thesis;
   return {
     thesis: {
-      ...pick(t as unknown as Record<string, unknown>, ["direction", "status", "horizon", "avgCost", "peakPrice", "atr14", "quantity", "structure"]),
+      ...pick(t as unknown as Record<string, unknown>, ["direction", "status", "avgCost", "peakPrice", "atr14", "quantity", "structure"]),
       createdAt: iso(t.createdAt),
       lastReviewedAt: iso(t.lastReviewedAt),
-      researchUpdatedAt: t.researchUpdatedAt === undefined ? undefined : iso(t.researchUpdatedAt),
       triggers: t.triggers.map((x) => {
         const kept = pick(x as unknown as Record<string, unknown>, TRIGGER_FIELDS);
         if (kept.level === "THESIS") delete kept.level;
@@ -133,7 +132,7 @@ async function main() {
         lead: lead ? [lead[0], lead[1], idOf(lead[2] as string | null)] : null,
         codes,
         in: kept,
-        src: { ...rest, planSanity: (rest.planSanity ?? []).map((f) => ({ kind: f.kind })) },
+        src: rest,
       });
       (isListed ? listed : quiet).push(line);
     }
