@@ -30,7 +30,15 @@
    {"at": "2026-11-11T14:35:03.023Z", "price": 768.995},
    {"at": "2026-11-12T14:35:03.051Z", "price": 784.59},
    {"at": "2026-11-13T14:35:03.853Z", "price": 788.74}
-  ]
+  ],
+  "nov2": {
+   "about": "MU's Activity around the Nov 2 crossing: the morning run's line, the review's fire, a trigger run's line after it.",
+   "rows": [
+    {"id": "cmvz9vhsy001208i7i337417q", "type": "REVIEWED", "timestamp": "2026-11-02T13:06:04.642Z", "triggerId": "bd941c67-a53a-41b8-918f-d303ec3b5e66", "summary": "Reviewed MU thesis — no changes", "runId": "cmvz9scrw000n08i7h1ehuy0v", "runMode": "MORNING_PLAN", "priceAtTime": 884.74},
+    {"id": "cmvzdlhz7000008l2fcr52jiv", "type": "TRIGGER_FIRED", "timestamp": "2026-11-02T14:50:16.771Z", "triggerId": "d9b6bc8d-017f-4355-8e8c-fe315084db87", "summary": "Review if below $878", "runId": null, "runMode": null, "priceAtTime": 876.96},
+    {"id": "cmvzk1hct000208iia4y8lmq8", "type": "REVIEWED", "timestamp": "2026-11-02T17:50:40.157Z", "triggerId": "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "summary": "Reviewed MU thesis — no changes", "runId": "cmvzk0x4e000008k15uhs31pl", "runMode": "INTRADAY_TACTICAL", "priceAtTime": 850.06}
+   ]
+  }
  },
  "asml": {
   "thesis": {"id": "cmqooyvy8000004l5a9njg6n5", "ticker": "ASML", "direction": "LONG", "createdAt": "2026-06-22T04:04:37.568Z"},

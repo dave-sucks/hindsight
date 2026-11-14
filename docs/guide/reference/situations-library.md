@@ -282,7 +282,7 @@ What you can do (one of these):
 - Re-arm it: update_thesis with edit_triggers moving the wakes to the levels that matter now. Add a review clock (add_triggers watching "repeat") only if the stock has earned one, and say why.
 - Let it go: update_thesis with change_status ARCHIVED.
 
-Answered: one of the three. A note that changes nothing lets the same wake fire again tomorrow.
+Answered: one of the three. A note that changes nothing leaves the wake as it was: one on the price comes back the next time the price crosses it, any other the next time it fires.
 
 The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.
 
@@ -303,7 +303,7 @@ What you can do (one of these):
 - Re-arm it: update_thesis with edit_triggers moving the wakes to the levels that matter now. Add a review clock (add_triggers watching "repeat") only if the stock has earned one, and say why.
 - Let it go: update_thesis with remove_trigger_ids naming its wakes, and say in the note that it can go. It stays on the watchlist with nothing to wake it; dropping it for good is the morning run's call.
 
-Answered: one of the three. A note that changes nothing lets the same wake fire again tomorrow.
+Answered: one of the three. A note that changes nothing leaves the wake as it was: one on the price comes back the next time the price crosses it, any other the next time it fires.
 
 The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.
 

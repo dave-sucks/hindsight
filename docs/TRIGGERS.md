@@ -395,8 +395,10 @@ current price, and this is what makes that work on a down day. A plan the price 
 stock's review deals with it. Read-side snapshots (the daily
 run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right
-question for a snapshot. So a review on a fixed price that stays past its line
-is listed by the morning read as true now once its cooldown is over.
+question for a snapshot. A review that reads the price is left off the morning
+read's true-now list (`computeNeedsAction`), since the read can't see its
+crossing: it reaches the morning run only through its crossing's
+`TRIGGER_FIRED` row.
 
 **Reviews wait for the morning by default:** a `REVIEW` fire means
 "re-evaluate," not "act now" — it converts to a trade rarely, so unset it is
