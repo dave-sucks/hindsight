@@ -116,7 +116,7 @@ export type Trigger = {
    * the trigger, never written by a model.
    */
   rearmedAt?: string;
-  /** ENTER only, server-stamped: the live price when written (./written-price). */
+  /** ENTER and REVIEW, server-stamped: the live price when written (./written-price). */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
   /** On fire: DO_IT, ASK_NOW or NEXT_MORNING (./fire-mode). Every stored trigger names one. */

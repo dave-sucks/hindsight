@@ -29,7 +29,8 @@
  *                         the fresh quote says one of the thesis's
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
- *                         delivered yet.
+ *                         delivered yet. A review on the price is left to
+ *                         its crossing's fire row (TRIGGER_FIRED).
  *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
  *                         above what its tightest protective EXIT rung locks
  *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
@@ -81,6 +82,7 @@
  */
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
 import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
@@ -539,6 +541,8 @@ export function computeNeedsAction(
   const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
     if (!isPriceOrTimePredicate(trigger.predicate)) continue;
+    // A review on the price fires on its crossing, and this read has no prior close to see one.
+    if (trigger.action === "REVIEW" && SHAPE_CHECKER.readsPrice(trigger.predicate)) continue;
     const result = shouldFire(trigger, {
       latestQuote: latestQuote ?? undefined,
       // During the session a "closes above $X" level is not true yet — it

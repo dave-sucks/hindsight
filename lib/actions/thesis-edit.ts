@@ -23,6 +23,7 @@ import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
+import { firesOnTheCrossing } from "@/lib/agent/triggers/written-price";
 import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
@@ -233,17 +234,17 @@ async function runPrincipalOp(
 ): Promise<OpOutcome> {
   const thesis = await loadEditableThesis(thesisId, ctx);
   const op = buildOp(thesis);
-  // A buy edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
-  const touchesBuy =
+  // A buy or review edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
+  const stampsPrice =
     op.op === "level"
       ? op.slot === "ENTRY"
       : op.op === "add"
-        ? op.trigger.action === "ENTER"
-        : thesis.triggers.some((t) => t.id === op.id && t.action === "ENTER") ||
-          (op.op === "edit" && op.action === "ENTER") ||
-          (op.op === "replace" && op.trigger.action === "ENTER");
+        ? firesOnTheCrossing(op.trigger.action)
+        : thesis.triggers.some((t) => t.id === op.id && firesOnTheCrossing(t.action)) ||
+          (op.op === "edit" && op.action != null && firesOnTheCrossing(op.action)) ||
+          (op.op === "replace" && firesOnTheCrossing(op.trigger.action));
   let writtenPrice: number | null = null;
-  if (touchesBuy) {
+  if (stampsPrice) {
     writtenPrice = freshQuotePrice(await getStockQuote(thesis.ticker).catch(() => null), new Date());
   }
   const applied = applyTriggerOps({
