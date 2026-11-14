@@ -1,0 +1,121 @@
+{
+ "about": "Production rows, read 2026-11-14 (read-only): each thesis and its triggers verbatim, and the account's standing sale rule. Production stores no sale or trim set to NEXT_MORNING at any level.",
+ "nvda": {
+  "thesis": {
+   "id": "cmtg9nbdy000204jpc6cwawgg",
+   "ticker": "NVDA",
+   "status": "HOLDING",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "entryPrice": 218.2259,
+   "targetPrice": null,
+   "stopLoss": 236,
+   "createdAt": "2026-08-30T20:32:41.062Z",
+   "triggers": [
+    {
+     "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "fireMode": "NEXT_MORNING",
+     "predicate": {"value": 7, "watch": "repeat"},
+     "rationale": "Look at this every 7 days, counting from the last real review.",
+     "cooldownDays": 7
+    },
+    {
+     "id": "6306936b-bb02-4298-9ca0-90f586772512",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {"is": "below", "value": 236, "watch": "price"},
+     "rationale": "A close below the hand-set $236 floor after the run from the $218.23 entry showed the move had failed, and the stock is now far below the $200.15 level that was supposed to prove the post-earnings move wrong.",
+     "lastFiredAt": "2026-11-13T14:50:06.520Z",
+     "cooldownDays": 1
+    },
+    {
+     "id": "1f2454ae-1a4d-4123-8502-fdcb85006401",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "fireMode": "NEXT_MORNING",
+     "predicate": {"is": "after", "value": 60, "watch": "from_date", "variable": "buy"},
+     "rationale": "60 days after the buy — Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
+     "lastFiredAt": "2026-10-30T13:55:10.456Z",
+     "cooldownDays": 60
+    },
+    {
+     "id": "ce4de003-2bc2-438d-a3cf-1b786d72f88f",
+     "action": "REVIEW",
+     "source": "DEFAULT",
+     "fireMode": "NEXT_MORNING",
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {"is": "beat", "value": 0, "watch": "surprise"},
+       {"is": "below", "value": 3, "watch": "move", "variable": "prev_close"}
+      ]
+     },
+     "rationale": "A beat the market sold — the stock is down 3%+ on the day it beat. The market wanted more; read the call before trusting the number, and tighten the floor.",
+     "cooldownDays": 7
+    }
+   ]
+  },
+  "position": {"avgCost": 218.2259, "peakPrice": 242.505, "openedAt": "2026-08-31T13:53:39.975Z"},
+  "floorId": "6306936b-bb02-4298-9ca0-90f586772512"
+ },
+ "isrg": {
+  "thesis": {
+   "id": "cmsplh2ow000m04l74ho8iti0",
+   "ticker": "ISRG",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "horizon": "COMPOUNDER",
+   "entryPrice": 459,
+   "targetPrice": 528.63,
+   "stopLoss": 431,
+   "createdAt": "2026-08-12T04:33:58.496Z",
+   "triggers": [
+    {
+     "id": "199fdf48-8b17-4757-80f2-5320df9446e8",
+     "action": "ENTER",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "above",
+      "value": 459,
+      "watch": "price",
+      "settings": {"close": true}
+     },
+     "rationale": "I buy when it breaks above $459.00.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "0d3c82d4-0a08-4e3c-bd73-b926967e1d18",
+     "action": "EXIT",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {"is": "below", "value": 431, "watch": "price"},
+     "rationale": "A close under roughly $431, just below the recent swing low and around the 200-day support area, would mean this repair failed.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "dbf8a099-6f8f-42ac-8765-521dc14cc6b2",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "NEXT_MORNING",
+     "predicate": {"is": "above", "value": 528.63, "watch": "price"},
+     "rationale": "About $528.63 is the next extension from the July-to-November recovery and sits near the lower end of the longer upside case.",
+     "cooldownDays": 1
+    }
+   ]
+  },
+  "floorId": "0d3c82d4-0a08-4e3c-bd73-b926967e1d18"
+ },
+ "accountRule": {
+  "id": "bd941c67-a53a-41b8-918f-d303ec3b5e66",
+  "action": "EXIT",
+  "source": "PRINCIPAL",
+  "fireMode": "ASK_NOW",
+  "predicate": {"is": "below", "value": 6, "watch": "move", "variable": "peak"},
+  "rationale": "below 6% from the high since we bought — standing rule set by the principal.",
+  "cooldownDays": 1
+ }
+}

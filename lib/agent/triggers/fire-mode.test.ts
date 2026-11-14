@@ -80,11 +80,19 @@ describe("what each mode does", () => {
     expect(fireModeProblem("REVIEW", "DO_IT")).toBe("A review asks the agent, so it can't be Auto. Choose Send to Agent or Flag for Review.");
     for (const a of ["ENTER", "ADD", "TRIM", "EXIT"]) expect(fireModeProblem(a, "DO_IT")).toBeNull();
     for (const a of ["ENTER", "ADD", "TRIM"]) {
-      expect(fireModeProblem(a, "DO_IT", { agent: true })).toBe("Only the owner can make a buy, add or trim Auto. Use Send to Agent or Flag for Review.");
+      expect(fireModeProblem(a, "DO_IT", { agent: true })).toBe("Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add.");
       expect(fireModeProblem(a, "DO_IT", { standing: true })).toBe("Account and analyst rules can be Auto only for a sale. Set Auto on the stock's own trigger.");
       expect(fireModeProblem(a, "ASK_NOW", { agent: true, standing: true })).toBeNull();
     }
     expect(fireModeProblem("EXIT", "DO_IT", { agent: true, standing: true })).toBeNull();
+  });
+
+  it("who may set Flag for Review: never on a sale or a trim, whoever sets it; any other action, anyone", () => {
+    for (const who of [{}, { agent: true }, { standing: true }]) {
+      expect(fireModeProblem("EXIT", "NEXT_MORNING", who)).toBe("A sale can't wait for the morning. Choose Auto-sell or Send to Agent.");
+      expect(fireModeProblem("TRIM", "NEXT_MORNING", who)).toBe("A trim can't wait for the morning. Choose Send to Agent.");
+      for (const a of ["ENTER", "ADD", "REVIEW"]) expect(fireModeProblem(a, "NEXT_MORNING", who)).toBeNull();
+    }
   });
 
   it("Auto trades only where there is something to trade; otherwise the agent is asked", () => {
@@ -149,7 +157,7 @@ describe("an agent's trigger ops (TRV, watched, 2026-10-22)", () => {
   it("an agent can't make TRV's buy Auto, unless it acts on the owner's word (his chat)", () => {
     const buy: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 };
     const edit = (ownersWord: boolean) => applyTriggerOps({ stored: [floor, buy], ops: [{ op: "edit", id: buy.id, fireMode: "DO_IT" }], direction: "LONG", status: "WATCHING", actor: "AGENT", ownersWord, mintId: () => "new" });
-    expect(edit(false).results[0]).toMatchObject({ ok: false, reason: "Only the owner can make a buy, add or trim Auto. Use Send to Agent or Flag for Review." });
+    expect(edit(false).results[0]).toMatchObject({ ok: false, reason: "Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add." });
     expect(edit(true).results[0]).toMatchObject({ ok: true });
     // The owner's Auto-buy: an agent may still move its level, and it stays Auto.
     const owners = { ...buy, fireMode: "DO_IT" as const };

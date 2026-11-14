@@ -22,13 +22,14 @@ whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Every trade a fire leads to goes through the approval switch (on: a proposal,
 which has no 24 hours: it waits while its trigger holds and the 16:20 ET close
 pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On fire
-is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
+is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
 the same trigger run then writes it up with no trade tools, and its note is the
 trade's reason (`lib/proposals/auto-writeup.ts`, situation `AUTO_TRADE`);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
-run answers it). Unset, a review is Flag for Review and everything else Send to
+run answers it; never a sell or trim, since a sale can't wait for the morning).
+Unset, a review is Flag for Review and everything else Send to
 Agent; every stored trigger names one. Auto on a buy, add or trim is the
 owner's alone, on a stock (not an account or analyst rule), and is used once;
 an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire

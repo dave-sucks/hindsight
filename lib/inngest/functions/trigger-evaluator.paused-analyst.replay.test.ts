@@ -1,8 +1,7 @@
 /**
  * The five-minute check on a paused analyst's stocks. Production rows: Momentum Breakout (paused) held MRVL
  * 13 @ $293.98 with a $256.50 floor (now Send to Agent). Before this, the check skipped every stock of a
- * paused analyst, so that floor would never fire. Now a held stock's sales are checked and nothing else is,
- * and a sale flagged for the morning run goes out now, since a paused analyst has no morning run.
+ * paused analyst, so that floor would never fire. Now a held stock's sales are checked and nothing else is.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 
@@ -60,13 +59,7 @@ describe("the five-minute check, paused analyst", () => {
     expect(await pass({ enabled: false, held: [FLOOR, LOOK], watched: [{ ...LOOK, id: "panw-look" }] }, 255.9)).toEqual({ events: [FLOOR.id], firedRows: [] });
   });
 
-  it("a sale flagged for the morning run goes out now: there is no morning run", async () => {
-    const flagged = { ...FLOOR, fireMode: "NEXT_MORNING" };
-    expect(await pass({ enabled: false, held: [flagged] }, 255.9)).toEqual({ events: [FLOOR.id], firedRows: [] });
-  });
-
-  it("under an active analyst the same flagged sale still waits for the morning run, and the review fires", async () => {
-    const flagged = { ...FLOOR, fireMode: "NEXT_MORNING" };
-    expect(await pass({ enabled: true, held: [flagged, LOOK] }, 255.9)).toEqual({ events: [LOOK.id], firedRows: [FLOOR.id] });
+  it("under an active analyst the review is checked too, and both go to the trigger run", async () => {
+    expect(await pass({ enabled: true, held: [FLOOR, LOOK] }, 255.9)).toEqual({ events: [FLOOR.id, LOOK.id].sort(), firedRows: [] });
   });
 });

@@ -26,7 +26,7 @@ async function setAuto(runMode: string, triggerId: string) {
 describe("who may make a trigger Auto", () => {
   it.each(["MORNING_PLAN", "THESIS_WRITER", "INTRADAY_TACTICAL"])("%s: an Auto-add is refused by id, and the add keeps asking the agent", async (runMode) => {
     const { op, stored } = await setAuto(runMode, ADD.id);
-    expect(op).toMatchObject({ ok: false, reason: "Only the owner can make a buy, add or trim Auto. Use Send to Agent or Flag for Review." });
+    expect(op).toMatchObject({ ok: false, reason: "Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add." });
     expect(stored?.fireMode).toBe("ASK_NOW");
   });
 
