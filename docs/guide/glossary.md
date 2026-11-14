@@ -72,9 +72,10 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## Trades
 
-- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason (on paper, only when approval is turned on). It expires after 24 hours. See [Approvals](concepts/approvals.md).
+- **Proposal:** a buy, sale, add or trim waiting for your approval, with its reason (on paper, only when approval is turned on). It expires after 24 hours, except one a trigger made, which waits while its trigger holds. See [Approvals](concepts/approvals.md).
 - **Decline:** your no on a proposal. Recorded and read by every run after it.
 - **Lapse:** a proposal left to expire. It means "not now, ask me again", never a decline.
+- **Withdrawn:** a proposal a trigger made that came down on its own, because the stock closed back past the trigger's line.
 - **Fill:** the broker carrying out an order. Its price becomes the position's cost and the thesis's entry.
 - **Sized by risk:** how every buy is sized: the dollars at risk divided by the distance to the floor, scaled by conviction, kept inside the analyst's band. No agent picks a size.
 - **Band:** an analyst's smallest trade, largest trade, and most in one stock.

@@ -56,8 +56,11 @@ import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
-import type { LatestDigest } from '@/lib/actions/digest.actions';
+import type { DigestNote, LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
+import { TickerChip } from '@/components/chat/TickerChip';
+import { NoteSignal } from '@/components/domain/note-signal';
+import { SectionLabel } from '@/components/domain/section-label';
 import { openingDigestTab, stripMarkdown, type DigestTab } from '@/components/dashboard/digest-preview';
 import {
   Dialog,
@@ -778,6 +781,20 @@ function DigestTabs({
   );
 }
 
+/** One note the market digest's run wrote: its stocks' chips, each opening the stock, then its flame and Bullish / Bearish / Neutral. */
+function DigestNoteRow({ note }: { note: DigestNote }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {note.tickers.map((t) => (
+        <Link key={t} href={`/stocks/${t}`} prefetch={false} className="no-underline shrink-0">
+          <TickerChip symbol={t} />
+        </Link>
+      ))}
+      <NoteSignal impact={note.impact} effect={note.effect} className="text-xs text-muted-foreground" />
+    </div>
+  );
+}
+
 function DigestPreviewCard({
   digest,
   marketDigest,
@@ -798,6 +815,8 @@ function DigestPreviewCard({
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
   const preview = active ? stripMarkdown(active.narrative).slice(0, 700) : null;
+  // The market digest's notes on our stocks, under the preview and the digest.
+  const notes = isMarket ? (active?.notes ?? []) : [];
 
   return (
     <>
@@ -827,6 +846,13 @@ function DigestPreviewCard({
             <p className="text-xs text-muted-foreground">{emptyLine}</p>
           )}
         </button>
+        {notes.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 text-xs">
+            {notes.map((n) => (
+              <DigestNoteRow key={n.id} note={n} />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -845,6 +871,14 @@ function DigestPreviewCard({
             ) : (
               <p className="text-sm text-muted-foreground">{emptyLine}</p>
             )}
+            {notes.length > 0 ? (
+              <div className="mt-4 pt-4 border-t flex flex-col gap-2">
+                <SectionLabel>Agent notes</SectionLabel>
+                {notes.map((n) => (
+                  <DigestNoteRow key={n.id} note={n} />
+                ))}
+              </div>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

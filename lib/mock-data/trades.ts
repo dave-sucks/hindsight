@@ -60,6 +60,9 @@ export interface MockTrade {
     quantity: number;
     /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
     expiresAt?: string;
+    /** ISO — when it was proposed, and the price the run read then (null before 2026-11-14). */
+    proposedAt?: string;
+    proposedPrice?: number | null;
     /**
      * True once you've approved it and the order is at Alpaca waiting to fill
      * (Order.status PENDING). The row keeps its place and reads "Executing"

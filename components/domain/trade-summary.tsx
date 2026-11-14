@@ -56,7 +56,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { tradeLegs, type TradeLegs } from "@/lib/stocks/trade-legs";
 import type { FillFacts } from "@/lib/stocks/stock-history";
-import { fmtQty } from "@/lib/trade-statement";
+import { fmtQty, proposedLine } from "@/lib/trade-statement";
 import { EXECUTING_LABEL, EXECUTING_TOOLTIP, getTradeStatusDisplay } from "@/lib/trade-status";
 import { formatCurrency } from "@/lib/format";
 import type { ThesisPendingProposal, ThesisStatePosition } from "@/lib/types/thesis-sheet";
@@ -210,6 +210,8 @@ function describeTrade({ position, pnl, pendingProposal, direction, look, fills 
     gain = unrealized;
   }
 
+  // "Proposed at $230.10 on Nov 13, 3:36 PM": very small and muted, beside or under the answer buttons.
+  const proposed = pp && !pp.executing && pp.proposedAt ? proposedLine(pp.proposedAt, pp.proposedPrice) : null;
   return {
     pp,
     sentence,
@@ -221,6 +223,7 @@ function describeTrade({ position, pnl, pendingProposal, direction, look, fills 
     dotClass,
     reviewSlot,
     proposal: Boolean(pp && !pp.executing),
+    proposed,
     legs,
     /** The gain is final (a closed trade's), not moving with the price: the looks dim it. */
     settled: position.closed === true && !pp,
@@ -343,7 +346,7 @@ function NoteClamp({ text }: { text: string }) {
 // above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
   const { ticker, position } = props;
-  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, legs, settled } = describeTrade(props);
+  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, proposed, legs, settled } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
   const proposedBuy = pp?.intent === "OPEN";
   const body = (
@@ -381,8 +384,9 @@ function TradeBanner(props: TradeSummaryProps) {
       ) : null}
       {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}
       {reviewSlot ? (
-        <div className="flex pt-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
           {reviewSlot}
+          {proposed ? <span className="text-right text-[10px] text-muted-foreground tabular-nums">{proposed}</span> : null}
         </div>
       ) : null}
     </>
@@ -436,7 +440,7 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, legs, settled } = describeTrade(props);
+  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, proposed, legs, settled } = describeTrade(props);
   const click = onOpen;
   const closed = position.closed === true;
   const proposedBuy = pp?.intent === "OPEN";
@@ -495,6 +499,7 @@ function TradeCard(props: TradeSummaryProps) {
           <BuySell ticker={ticker} analystId={analystId ?? null} tradeId={position.id ?? null} canSell={!closed} />
         ) : null}
       </div>
+      {proposed ? <p className="-mt-2 text-right text-[10px] text-muted-foreground tabular-nums">{proposed}</p> : null}
     </Card>
   );
 }

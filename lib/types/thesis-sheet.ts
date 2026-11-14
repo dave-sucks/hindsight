@@ -108,6 +108,9 @@ export interface ThesisPendingProposal {
   executing?: boolean;
   /** An Auto trade the analyst is still writing up (lib/proposals/auto-writeup.ts); the card reads the reason again until it lands. */
   writing?: boolean;
+  /** ISO — when it was proposed, and the price the run read then (null before 2026-11-14). */
+  proposedAt?: string;
+  proposedPrice?: number | null;
 }
 
 /**

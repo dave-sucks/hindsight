@@ -24,7 +24,7 @@
  */
 
 import { SectionLabel } from "@/components/domain/section-label";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Ban, ChevronsUpDown, Plus, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,6 +36,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { AiEditingIcon } from "@hugeicons/core-free-icons";
 import { NOTED_ITEMS, RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
+import { NoteSignal } from "@/components/domain/note-signal";
+import { citedSegments, isSourceLink } from "@/lib/citations";
 import {
   buildTimeline,
   itemTimestamp,
@@ -419,6 +422,20 @@ export function ThesisTimelineSection({ thesisId, provenance, recentIds, trigger
   );
 }
 
+/** A paragraph's text with each web link it carries drawn as the one source citation (lib/citations.ts). */
+function withCitations(text: string): ReactNode {
+  return citedSegments(text).map((s, i) =>
+    s.kind === "text" ? (
+      <Fragment key={i}>{s.text}</Fragment>
+    ) : (
+      <Fragment key={i}>
+        {isSourceLink(s.text, s.url) ? null : `${s.text} `}
+        <SourceCitation sources={[{ url: s.url }]} />
+      </Fragment>
+    ),
+  );
+}
+
 /**
  * One row, drawn one way (the owner's design, 2026-10-30):
  *   - line one, always a title: what happened (a fire, a proposal, a trade,
@@ -480,6 +497,12 @@ function Row({
               <span className="font-semibold">{row.title.primary} </span>
             ) : null}
             {row.title.secondary}
+            {row.signal ? (
+              <>
+                {" · "}
+                <NoteSignal impact={row.signal.impact} effect={row.signal.effect} className="align-baseline" />
+              </>
+            ) : null}
             {row.title.outcome ? (
               <span className="font-semibold"> {row.title.outcome}</span>
             ) : null}
@@ -535,7 +558,9 @@ function Row({
             )}
             onClick={onToggle}
           >
-            {row.quoted ? `“${row.description}”` : row.description}
+            {row.quoted ? "“" : null}
+            {withCitations(row.description!)}
+            {row.quoted ? "”" : null}
           </p>
         ) : null}
 

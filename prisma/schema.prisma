@@ -994,7 +994,7 @@ model Order {
   orderType         String         @default("MARKET") // "MARKET" | "LIMIT" | "STOP"
   quantity          Float
   // Order status
-  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED"
+  status            String // "AWAITING_APPROVAL" | "PENDING" | "FILLED" | "CANCELLED" | "REJECTED" | "EXPIRED" | "WITHDRAWN"
   // Fill data (populated when filled — for paper trading this is immediate)
   filledPrice       Float?
   filledQty         Float?
@@ -1043,6 +1043,16 @@ model Order {
   expiresAt        DateTime? @db.Timestamptz(6)
   rejectionMessage String?
   rationale        String?
+  // A buy, add, trim or sale a trigger's fire proposed: the triggers it
+  // answers (the fired one and its co-fires). Set only on such a proposal,
+  // which has no expiresAt: it stays open while one of them still holds, and
+  // the 16:20 ET close pass withdraws it when none does (status WITHDRAWN,
+  // `withdrawnReason` in words). See lib/proposals/trigger-proposals.ts.
+  triggerIds       String[]  @default([])
+  withdrawnReason  String?
+  // The live price the run read when it proposed this trade; null on a
+  // proposal made before 2026-11-14, and on an order that was never one.
+  proposedPrice    Float?
   // First-class link back to the thesis this order acts on (P1-33 Activity
   // tab). Populated at order-creation time on every write path from
   // 2026-08-18 on; null on older rows — readers keep the (analyst, ticker)
@@ -1535,6 +1545,9 @@ model SharedNote {
   /// stronger | weaker | neutral for the reason we own or watch the stock.
   impact      String?
   effect      String?
+  /// Each named stock's price when it was written ({ "NVDA": 162.26 }), read as
+  /// that stock's price-at-write on its Activity line. Null before 2026-11-13.
+  prices      Json?
 
   @@index([userId, createdAt])
 }

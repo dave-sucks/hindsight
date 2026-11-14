@@ -33,7 +33,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   writer: 16_983,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
-  chat: 35_807,
+  // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
+  chat: 35_963,
 };
 
 /**

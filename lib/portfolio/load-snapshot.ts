@@ -13,6 +13,7 @@ import { netContributedTotal } from "@/lib/portfolio/contributions";
 import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
 import { isMarketOpen } from "@/lib/market-hours";
 import { buildSnapshot, type PortfolioSnapshot, type SnapshotProposal } from "@/lib/portfolio/snapshot";
+import { PROPOSED } from "@/lib/proposals/staged";
 
 /** Paper accounts start at this and have no transfers. */
 const PAPER_SEED = 100_000;
@@ -163,13 +164,13 @@ async function proposalHistory(w: Waiting, book: { accountId: string; environmen
   const history = await prisma.order.findMany({
     where:
       w.side === "SELL"
-        ? { positionId: w.positionId, side: "SELL", status: { in: PROPOSAL_STATUSES }, expiresAt: { not: null } }
+        ? { positionId: w.positionId, side: "SELL", status: { in: PROPOSAL_STATUSES }, ...PROPOSED }
         : {
             environment: book.environment,
             symbol: w.symbol,
             side: w.side,
             status: { in: PROPOSAL_STATUSES },
-            expiresAt: { not: null },
+            ...PROPOSED,
             position: { accountId: book.accountId, analystId: w.position.analystId },
             ...(since ? { createdAt: { gt: since } } : {}),
           },

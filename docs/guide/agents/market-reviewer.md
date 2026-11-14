@@ -66,13 +66,13 @@ Each note is saved once, as a shared note to the stocks it names (`SharedNote`, 
 - **High** is pinned for three days. Each stock it names is in the [pinned note to answer](../concepts/situations.md) situation, so the 8 AM morning run has it on its list and must answer it on that stock, until a run writes on the stock. Its run reads the note above the stock's newest 8 Activity lines.
 - **Low and medium** are not pinned: a line in each stock's Activity, read by the next run as one of the stock's newest 8.
 
-In each stock's Activity the note is one line, titled with who wrote it and its two fields ("Market Reviewer's note to NVDA, AMD · high impact · weaker"); the paragraph under it is the model's own text. A note that fails to save never costs the digest.
+In each stock's Activity the note is one line: "Agent note to NVDA, AMD", then its two fields as one signal, the conviction chip's flame only on a high-impact note and Bullish, Bearish or Neutral for stronger, weaker or neutral (`components/domain/note-signal.tsx`). A run reads the same line with the words ("· high impact · weaker"). The line carries that stock's price when the note was saved (kept per stock in `SharedNote.prices`; at 7:30 that is the last close). The paragraph under it is the model's own text, its sources drawn as the citation pill. A note that fails to save never costs the digest.
 
 ## When it runs
 
 At 7:30 AM ET every weekday the market trades, once for each book being traded: an account and environment (paper or live) with an enabled analyst trading in it or a stock held in it. Each is listed in Runs as **Market Reviewer**.
 
-The digest is on the home page, on the digest card's **Market** tab (the card opens on whichever digest was written last), and its run is in Runs.
+The digest is on the home page, on the digest card's **Market** tab (the card opens on whichever digest was written last), and its run is in Runs. The notes its run wrote are listed under it, on the card and under **Agent notes** in its dialog: one row per note, its stocks' chips (each opens the stock) and its signal, high first.
 
 Its run page is read only: your first message, then one line with the searches it made and the tokens the call used (in and out), then the digest, then each note under a title ("Note on NVDA, AMD · high · weaker · flagged for review"). **Context** shows the request exactly as it was sent: the instructions, the first message (the market numbers its own section), and its one tool; the reply's shape is in the raw request.
 

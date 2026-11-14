@@ -168,6 +168,7 @@ export type EventKind =
   | "approved"
   | "declined"
   | "expired"
+  | "withdrawn"
   | "proposed"
   | "unknown";
 
@@ -209,6 +210,8 @@ export function eventKind(u: TimelineUpdate): EventKind {
       return "declined";
     case "PROPOSAL_EXPIRED":
       return "expired";
+    case "PROPOSAL_WITHDRAWN":
+      return "withdrawn";
     case "PROPOSAL_PROPOSED":
       return "proposed";
     default:
@@ -243,6 +246,8 @@ const TITLES: Record<EventKind, { primary: string; secondary: (u: TimelineUpdate
   approved:           { primary: "Approved",         secondary: tradeSentence },
   declined:           { primary: "Declined",         secondary: proposalSideQty },
   expired:            { primary: "Expired",          secondary: (u) => proposalSideQty(u) ? `${proposalSideQty(u)} — no decision` : "no decision" },
+  // A trigger's sale card the close pass took down; its summary is "Withdrawn: closed at $238.10, back above $236".
+  withdrawn:          { primary: "Withdrawn",        secondary: (u) => [proposalSideQty(u), (u.summary ?? "").replace(/^Withdrawn:\s*/, "")].filter(Boolean).join(" — ") || null },
   proposed:           { primary: "Proposed",         secondary: proposedSecondary },
   unknown:            { primary: "",                 secondary: () => null },
 };
@@ -399,6 +404,7 @@ const DOTS: Record<EventKind, DotKind> = {
   closed: "sell",
   declined: "declined",
   expired: "declined",
+  withdrawn: "default",
   proposed: "open-ask",
   approved: "default",
   fired: "default",
@@ -427,7 +433,7 @@ export function dotFor(u: TimelineUpdate): DotKind {
 export function proposalOutcomeWord(u: TimelineUpdate): string | null {
   if (eventKind(u) !== "proposed" || isAwaiting(u)) return null;
   const status = (u.fieldChanges as { proposal?: { to?: { status?: unknown } } } | null)?.proposal?.to?.status;
-  return status === "EXPIRED" ? "— expired" : status === "REJECTED" ? "— declined" : typeof status === "string" ? "— approved" : null;
+  return status === "EXPIRED" ? "— expired" : status === "WITHDRAWN" ? "— withdrawn" : status === "REJECTED" ? "— declined" : typeof status === "string" ? "— approved" : null;
 }
 
 // ── Timeline assembly (grouping · clustering · spans) ────────────────────────
@@ -716,8 +722,16 @@ export interface TimelineRow {
   orderId: string | null;
   /** Fold row (×N roll-up): the row itself is the control. */
   fold: boolean;
+  /** An agent note's impact and effect, drawn as its flame and Bullish / Bearish / Neutral in place of their words. */
+  signal?: { impact: string | null; effect: string | null } | null;
 }
 
+/** An agent note's two fields, off its line (lib/agent/shared-notes.ts noteLine); null on any other line. */
+function noteSignalOf(u: TimelineUpdate): TimelineRow["signal"] {
+  if (u.type !== "SHARED_NOTE") return null;
+  const to = (u.fieldChanges as { sharedNote?: { to?: { impact?: string | null; effect?: string | null } } } | null)?.sharedNote?.to;
+  return to?.impact || to?.effect ? { impact: to.impact ?? null, effect: to.effect ?? null } : null;
+}
 
 /** An edit you made by hand: the trigger popover marks it in fieldChanges; older rows carry a [USER] tag on the note. */
 export function isYourEdit(u: { rationale?: string | null; fieldChanges?: unknown }): boolean {
@@ -740,11 +754,15 @@ export function toRow(item: TimelineItem): TimelineRow {
   if (item.kind === "event") {
     const u = item.row;
     const { text, quoted } = describe(u);
+    const title = titleSegments(u);
+    // An agent note's title ends with its fields in words ("· high impact · weaker", what a run reads); here they are the signal.
+    const signal = noteSignalOf(u);
     return {
       key: u.id,
       type: u.type,
       dot: dotFor(u),
-      title: titleSegments(u),
+      title: signal ? { ...title, secondary: title.secondary?.split(" · ")[0] ?? null } : title,
+      signal,
       chips: [...ladderChangeLines(u), ...notAppliedLines(u)],
       // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
       price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,

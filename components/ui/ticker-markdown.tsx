@@ -18,6 +18,8 @@ import {
   parseTickerMentions,
   usePrefetchTickers,
 } from "@/components/chat/TickerChip";
+import { SourceCitation } from "@/components/ai-elements/inline-citation";
+import { isSourceLink, unwrapSourceLinks } from "@/lib/citations";
 import { Fragment, type ReactNode, Children, isValidElement, cloneElement, useMemo } from "react";
 
 // ── Ticker processing ─────────────────────────────────────────────────────────
@@ -259,6 +261,8 @@ function DigestAnchor({
   href?: string;
   children?: ReactNode;
 }) {
+  // A web link whose text is a site's name is a source citation (lib/citations.ts).
+  if (isSourceLink(childrenToText(children), href)) return <SourceCitation sources={[{ url: href }]} />;
   const parsed = href ? parseRefHref(href) : null;
 
   // No typed scheme → ordinary link (or just text if no href at all).
@@ -316,7 +320,7 @@ export function DigestMarkdown({ children, className }: TickerMarkdownProps) {
         components={digestProseComponents}
         urlTransform={digestUrlTransform}
       >
-        {children}
+        {unwrapSourceLinks(children)}
       </ReactMarkdown>
     </div>
   );

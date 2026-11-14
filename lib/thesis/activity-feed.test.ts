@@ -253,3 +253,16 @@ describe("the rule kept on a line (2026-11-03)", () => {
     expect([step.triggerAction, step.triggerCondition]).toEqual([null, null]);
   });
 });
+
+describe("a trigger's proposal the close pass took down (lib/proposals/trigger-proposals.ts)", () => {
+  // PLTR 10-23, as the 30-day replay leaves it: the Auto-sell at $196, withdrawn on the $196.75 close.
+  const card: ProposalOrder = { id: "card-pltr", status: "WITHDRAWN", intent: "CLOSE", side: "SELL", quantity: 38, symbol: "PLTR", rationale: null, rejectionMessage: null, expiresAt: null, withdrawnReason: "closed back above $196 at $196.75", alpacaConfirmedAt: null, filledPrice: null, createdAt: at("2026-10-23T18:40:20Z"), updatedAt: at("2026-10-23T20:20:05Z"), positionId: "pos-pltr" };
+
+  it("is its own step, titled with why, at the close: the owner sees it and so does the next run", () => {
+    const [withdrawn, proposed] = activityFeed({ updates: [], orders: [card] });
+    expect([withdrawn.type, withdrawn.summary, withdrawn.timestamp, withdrawn.rationale]).toEqual(["PROPOSAL_WITHDRAWN", "Withdrawn: closed back above $196 at $196.75", at("2026-10-23T20:20:05Z"), null]);
+    expect(proposed.type).toBe("PROPOSAL_PROPOSED");
+    expect(titleSegments(withdrawn as unknown as TimelineUpdate)).toMatchObject({ primary: "Withdrawn", secondary: "sell 38 shares — closed back above $196 at $196.75" });
+    expect(saidBlock("PLTR", [withdrawn, proposed])).toContain("10-23 16:20 · Withdrawn sell 38 shares — closed back above $196 at $196.75");
+  });
+});

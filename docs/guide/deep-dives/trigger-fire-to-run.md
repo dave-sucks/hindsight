@@ -36,7 +36,7 @@ Where it goes is the trigger's On fire, the same three choices on every trigger:
 Several rules stop one move from waking the desk twice:
 
 - **Together:** a stop and a trail firing in one pass fold into one run, which sees both. Each still gets its own Activity line. Buys, adds and reviews never fold.
-- **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't start its cooldown, so it asks again on the first check after that proposal expires: every day, not every other day. A proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined in the last four hours also starts nothing; that fire does start its cooldown.
+- **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't start its cooldown, so it asks again on the first check after that proposal is answered, withdrawn or expired. A proposal a trigger made has no 24 hours: it waits, or the 4:20 PM pass withdraws it on a close back past the line. Any other proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined in the last four hours also starts nothing; that fire does start its cooldown.
 - **A buy already waiting,** or checked in the last four hours by a completed run, starts nothing.
 - **A buy that slipped back:** if the run passed because the price had fallen back under the level, without trying to buy, the buy stays armed and can fire again that day, up to three times.
 

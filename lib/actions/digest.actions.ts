@@ -27,7 +27,19 @@ export interface LatestDigest {
   model: string | null;
   /** When it was written, ISO string. */
   createdAt: string;
+  /** The market digest's notes: the ones its run wrote on our stocks, high first. Absent on the portfolio digest. */
+  notes?: DigestNote[];
 }
+
+/** One note the Market Reviewer's run wrote beside its digest (lib/agent/shared-notes.ts). */
+export interface DigestNote {
+  id: string;
+  tickers: string[];
+  impact: string | null;
+  effect: string | null;
+}
+
+const IMPACT_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 /** The signed-in user's account, or null with no user or no account. */
 async function currentAccountId(): Promise<string | null> {
@@ -86,9 +98,16 @@ export async function getLatestMarketDigest(
   const row = await prisma.marketDigest.findFirst({
     where: { accountId, environment },
     orderBy: { date: "desc" },
-    select: { id: true, date: true, digest: true, model: true, createdAt: true },
+    select: { id: true, date: true, digest: true, model: true, createdAt: true, runId: true },
   });
   if (!row) return null;
+
+  // The notes the same run wrote: one call writes the digest and its notes, and each note keeps the run's id.
+  const notes = row.runId
+    ? await prisma.sharedNote
+        .findMany({ where: { runId: row.runId, author: "MARKET_REVIEWER" }, orderBy: { createdAt: "asc" }, select: { id: true, tickers: true, impact: true, effect: true } })
+        .catch(() => [])
+    : [];
 
   return {
     id: row.id,
@@ -96,5 +115,6 @@ export async function getLatestMarketDigest(
     narrative: row.digest,
     model: row.model,
     createdAt: row.createdAt.toISOString(),
+    notes: notes.sort((a, b) => (IMPACT_ORDER[a.impact ?? ""] ?? 3) - (IMPACT_ORDER[b.impact ?? ""] ?? 3)),
   };
 }

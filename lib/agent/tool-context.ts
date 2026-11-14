@@ -5,6 +5,7 @@
  * Now exported so defineTool() and the unified route can share the type.
  */
 
+import type { FiredTrigger } from "@/lib/proposals/staged";
 import type { AlpacaCredentials } from "@/lib/alpaca";
 
 export interface ToolContext {
@@ -136,6 +137,14 @@ export interface ToolContext {
 
   /** A trigger run woken by a trim: its stock and size, the trim a partial_close naming no size sells. */
   firedTrim?: { ticker: string; pct: number };
+
+  /**
+   * A trigger run woken by a sale, trim, buy or add: its stock, the side and
+   * the triggers that fired (with any co-fired). A proposal of that trade on
+   * that stock is staged with them, so it stays open while they hold
+   * (lib/proposals/trigger-proposals.ts).
+   */
+  firedTrigger?: FiredTrigger;
 
   /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;

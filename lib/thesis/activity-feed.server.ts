@@ -14,10 +14,11 @@ import { prisma } from "@/lib/prisma";
 import { activityFeed, type FeedItem, type ProposalOrder } from "@/lib/thesis/activity-feed";
 import { inStockActivity, noteLine } from "@/lib/agent/shared-notes";
 import { loadNotesSince } from "@/lib/agent/shared-notes.server";
+import { PROPOSED } from "@/lib/proposals/staged";
 
 export const FEED_ORDER_SELECT = {
   id: true, status: true, intent: true, side: true, quantity: true, symbol: true, rationale: true, rejectionMessage: true,
-  expiresAt: true, alpacaConfirmedAt: true, filledPrice: true, createdAt: true, updatedAt: true, positionId: true,
+  expiresAt: true, withdrawnReason: true, alpacaConfirmedAt: true, filledPrice: true, createdAt: true, updatedAt: true, positionId: true,
 } as const;
 
 export interface FeedThesis {
@@ -50,7 +51,7 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
     : null;
   const orders = await prisma.order.findMany({
     where: {
-      expiresAt: { not: null },
+      AND: [PROPOSED],
       OR: [
         { thesisId: thesis.id },
         ...(fallbackBase ? [{ ...fallbackBase, createdAt: { gte: thesis.createdAt, ...(terminalAt ? { lte: terminalAt } : {}) } }] : []),
@@ -73,7 +74,7 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
     const owner = await prisma.thesis.findUnique({ where: { id: thesis.id }, select: { userId: true } });
     if (owner) {
       const stock = { ticker: thesis.ticker, analystId: thesis.analystId, createdAt: thesis.createdAt, endedAt: terminalAt };
-      notes = (await loadNotesSince(owner.userId, thesis.createdAt)).filter((n) => inStockActivity(n, stock)).map(noteLine);
+      notes = (await loadNotesSince(owner.userId, thesis.createdAt)).filter((n) => inStockActivity(n, stock)).map((n) => noteLine(n, thesis.ticker));
     }
   } catch {
     // A note is never worth failing the tab over.

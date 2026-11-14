@@ -436,6 +436,7 @@ export async function getDashboardData(
             quantity: true,
             intent: true,
             expiresAt: true,
+            proposedPrice: true,
           },
         },
         decisions: {
@@ -759,6 +760,8 @@ export async function getDashboardData(
           // stays the position size — it feeds value + P&L for the held row.
           quantity: rowOrder.order.quantity ?? p.quantity,
           expiresAt: rowOrder.order.expiresAt?.toISOString(),
+          proposedAt: rowOrder.order.createdAt.toISOString(),
+          proposedPrice: rowOrder.order.proposedPrice ?? null,
           executing: rowOrder.executing,
         }
       : undefined;
