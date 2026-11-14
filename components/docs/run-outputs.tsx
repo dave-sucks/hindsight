@@ -30,13 +30,13 @@ const OUTPUTS: ReadonlyArray<{ id: OutputId; what: string; when: string; text: s
 /** The stack, under its caption. `at` hands each card's element to a diagram that draws wires to it. */
 export function RunOutputs({ at, className }: { at?: (id: OutputId) => (el: HTMLElement | null) => void; className?: string }) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3", className)}>
+    <div className={cn("flex min-w-0 flex-col gap-2", className)}>
       <div className="flex flex-col gap-1">
         <Eyebrow>What a run leaves</Eyebrow>
         <p className="text-xs text-muted-foreground">One or more of these. The call itself, hold, buy, trim or sell, comes out as one of them.</p>
       </div>
       {OUTPUTS.map((o) => (
-        <div key={o.id} ref={at?.(o.id)} className={cn("flex flex-col gap-1.5 rounded-xl border bg-background p-3.5 shadow-sm", o.id === "research" && "border-dashed")}>
+        <div key={o.id} ref={at?.(o.id)} className={cn("flex flex-col gap-1 rounded-xl border bg-background p-2.5 shadow-sm", o.id === "research" && "border-dashed")}>
           <div className="flex items-baseline justify-between gap-3">
             <Mono className="text-xs uppercase tracking-wide text-foreground">{o.what}</Mono>
             <span className="text-xs text-muted-foreground">{o.when}</span>
