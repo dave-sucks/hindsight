@@ -1,6 +1,7 @@
 /**
  * On fire, the same three choices on every trigger (docs/TRIGGERS.md §4): DO_IT "Auto" (the trade with no
- * agent), ASK_NOW "Send to Agent" (a trigger run now), NEXT_MORNING "Flag for Review" (the morning run). Pure.
+ * agent), ASK_NOW "Send to Agent" (a trigger run now), NEXT_MORNING "Flag for Review" (the morning run, never
+ * on a sale or trim). Pure.
  */
 
 import { sentenceOf } from "./condition/describe";
@@ -27,14 +28,18 @@ export function withFireMode<T extends { action: string; fireMode?: FireMode | n
 }
 
 export const AUTO_REVIEW = "A review asks the agent, so it can't be Auto. Choose Send to Agent or Flag for Review.";
-export const AUTO_OWNER_ONLY = "Only the owner can make a buy, add or trim Auto. Use Send to Agent or Flag for Review.";
+export const AUTO_OWNER_ONLY = "Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add.";
 export const AUTO_STANDING_SALE_ONLY = "Account and analyst rules can be Auto only for a sale. Set Auto on the stock's own trigger.";
+export const SALE_CANT_WAIT = "A sale can't wait for the morning. Choose Auto-sell or Send to Agent.";
+export const TRIM_CANT_WAIT = "A trim can't wait for the morning. Choose Send to Agent.";
 
 /**
  * Why a trigger can't take this mode, or null. `standing`: an account or analyst rule. `agent`: an agent sets
  * it, outside the owner's chat. Auto on a buy, add or trim is a one-time order only the owner places on a stock.
+ * A sale or trim is never Flag for Review: a stop that waits until tomorrow morning isn't a stop.
  */
 export function fireModeProblem(action: string, mode: FireMode | null | undefined, who: { standing?: boolean; agent?: boolean } = {}): string | null {
+  if (mode === "NEXT_MORNING") return action === "EXIT" ? SALE_CANT_WAIT : action === "TRIM" ? TRIM_CANT_WAIT : null;
   if (mode !== "DO_IT") return null;
   if (action === "REVIEW") return AUTO_REVIEW;
   if (action === "EXIT") return null;

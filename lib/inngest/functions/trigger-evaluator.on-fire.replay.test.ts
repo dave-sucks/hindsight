@@ -65,8 +65,7 @@ describe("where a fire goes", () => {
     expect(await pass({ ...TARGET, fireMode: "ASK_NOW" }, 52.4)).toEqual({ events: [TARGET.id], firedRows: [], firedRules: [] });
   });
 
-  it("the floor set to Auto-sell goes to the trigger run's no-agent sale; left for the morning, it waits", async () => {
+  it("the floor set to Auto-sell goes to the trigger run's no-agent sale", async () => {
     expect((await pass({ ...FLOOR, fireMode: "DO_IT" }, 41.3)).events).toEqual([FLOOR.id]);
-    expect(await pass({ ...FLOOR, fireMode: "NEXT_MORNING" }, 41.3)).toEqual({ events: [], firedRows: [FLOOR.id], firedRules: [{ action: "EXIT", condition: FLOOR.predicate }] });
   });
 });

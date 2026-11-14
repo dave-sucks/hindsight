@@ -82,15 +82,15 @@ Where each fire goes, and how what the agent writes comes back to the stock:
 | What happens | The trade, with no agent deciding, then the analyst's write-up of it. With your approval switch on, it comes to you as a proposal right away | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
 | Buy | ✓ one-time; only you set it | ✓ default | ✓ |
 | Add | ✓ one-time; only you set it | ✓ default | ✓ |
-| Trim | ✓ one-time, sells its size; only you | ✓ default | ✓ |
-| Sell | ✓ asks again every day until sold; agents may set it | ✓ default | ✓ |
+| Trim | ✓ one-time, sells its size; only you | ✓ default | — (a trim can't wait for the morning) |
+| Sell | ✓ asks again every day until sold; agents may set it | ✓ default | — (a sale can't wait for the morning) |
 | Review | — (a review is asking) | ✓ the same day | ✓ default |
 
-What a trigger does when it comes true, the same three choices on every trigger:
+What a trigger does when it comes true, the same three choices on every trigger but a sale or a trim, which has two:
 
 - **Auto** (Auto-sell, Auto-buy, Auto-add, Auto-trim): the trade, with no agent deciding; the analyst then writes it up, and says so if it would have done something else. It's sized and checked exactly as an agent's would be: a buy needs a floor and a target and is paid from cash, never margin; a trim sells its size. With nothing to trade (a buy on a stock we already hold), the agent is asked instead. A review can't be Auto; it is asking.
 - **Send to Agent:** a [trigger run](../agents/trigger-runs.md) starts within minutes to look at that one stock and decide.
-- **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day.
+- **Flag for Review:** the fire goes on the stock's list and the next [morning run](../agents/morning-runs.md) answers it. A worrying new filing on a stock we hold still gets a look the same day. Not offered on a sale or a trim: a sale that waits until tomorrow morning isn't a stop.
 
 **A trim's size** is its own field, shown whenever the action is Trim: the share of the position it sells (50% filled in). It means the same thing in every mode, and the trigger says it everywhere: "Trim 30% if above $150". Auto sells that share. A trigger run woken by the trim sells it too unless the analyst names another size, and the morning run reads it in the same sentence.
 
@@ -106,7 +106,7 @@ Otherwise the stock is now in a [situation](situations.md), which tells the agen
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent, or from Send to Agent to Flag for Review); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, the floor is free to change. A sale you decline or let expire asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, the floor is free to change. A sale you decline or let expire asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -124,7 +124,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on the crossing; every other action fires again while true, once its rest is over. A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
 
 #### On fire
-`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).
+`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review, refused on an `EXIT` or `TRIM` by `fireModeProblem`), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).
 
 #### Write path
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`).
