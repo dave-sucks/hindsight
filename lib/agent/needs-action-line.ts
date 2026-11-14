@@ -17,9 +17,9 @@ import type { NeedsAction } from "@/lib/agent/needs-action";
  * different fields, every kind said something differently shaped.
  *
  * So: ONE table. The name is the kind, in plain words. The detail is at most
- * one fact that kind actually has — which trigger, how overdue, how stale —
+ * one fact that kind actually has — which trigger, how overdue —
  * and the kinds with nothing worth adding say nothing. No model text ever
- * reaches either half; the flag vocabulary is eight cases and this says which
+ * reaches either half; the flag vocabulary is seven cases and this says which
  * one fired, nothing more.
  *
  * Everything else the flag carries (the other rungs that fired, your own words
@@ -47,11 +47,6 @@ export function needsActionFlag(na: NeedsAction): NeedsActionFlag {
           : na.daysOverdue > 0
             ? `${na.daysOverdue} day${na.daysOverdue === 1 ? "" : "s"} overdue`
             : null,
-      };
-    case "RESEARCH_STALE":
-      return {
-        name: "Research stale",
-        detail: na.freshness === "missing" ? "never written" : `${na.daysOld ?? "?"} days old`,
       };
     case "SALE_DECLINED": {
       // A lapse is not a decline (2026-10-13): a sale only left to lapse says so.

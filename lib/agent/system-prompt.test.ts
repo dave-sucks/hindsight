@@ -25,14 +25,14 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a plan check, not refused", () => {
+  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a mistake, not refused", () => {
     expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Set the plan down:");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("A buy left as a note comes back on the next morning run");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it: it comes back as a plan check.");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it.");
+    // Plan checks were deleted (2026-11-13): no text points at one.
+    expect(SITUATIONS.BUY_ARRIVES.guidance).not.toMatch(/plan.check/);
     expect(prompt).not.toContain("a fired buy is a decision with two answers");
   });
-  it("a plan check is answered by PLAN_PROBLEM's guidance; the prompt no longer restates the checks", () => {
-    expect(SITUATIONS.PLAN_PROBLEM.guidance).toContain("nothing that can bring it back");
+  it("the prompt does not restate the deleted plan checks", () => {
     expect(prompt).not.toContain("give it a wake, or let it go");
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {

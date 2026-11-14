@@ -33,12 +33,9 @@ export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
   PROTECTION: "flag",
   FIRST_RESEARCH: "trigger",
   REVIEW_DUE: "trigger",
-  STALE_RESEARCH: "flag",
-  PLAN_PROBLEM: "flag",
   YOUR_WORD_UNANSWERED: "flag",
   PINNED_NOTE: "flag",
   SOLD_ONE_REVIEW: "flag",
-  NO_SETUP_NAMED: "flag",
 };
 
 /** The keys each read sends. */

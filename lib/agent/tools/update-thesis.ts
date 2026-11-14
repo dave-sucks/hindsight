@@ -73,7 +73,6 @@ import {
   needsPairedCloseCheck,
 } from "@/lib/agent/thesis-transitions";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
-import { computePlanSanity } from "@/lib/agent/plan-sanity";
 import { isYourEdit } from "@/components/agent/sheets/thesis-timeline-utils";
 import { claimNamesOldLevel } from "@/lib/agent/tools/claim-names-level";
 import { ruleOnTheLine } from "@/lib/agent/thesis-updates";
@@ -1669,7 +1668,7 @@ export const updateThesis = defineTool({
         priceAtTime: resolvedPriceAtTime,
         ...review,
       });
-      const reviewedMeans = [...whatThisMeans(existing, resolvedPriceAtTime), ...catalystDateMissing(existing)];
+      const reviewedMeans = catalystDateMissing(existing);
       return {
         summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
         data: {
@@ -1904,9 +1903,8 @@ export const updateThesis = defineTool({
       priceAtTime: resolvedPriceAtTime,
       ...review,
     });
-    const flags = whatThisMeans({ ...existing, ...patch }, resolvedPriceAtTime);
     const catalystNotes = catalystDateMissing({ ...existing, ...patch });
-    const means = [...flags, ...claimNotes, ...catalystNotes];
+    const means = [...claimNotes, ...catalystNotes];
     // Back on watch with no plan (step 12, part 3): the status landed and
     // every plan level the call sent was refused, so the stock is watched
     // with nothing to buy on. Said first, with the refusal's reason. DOCU
@@ -1922,7 +1920,7 @@ export const updateThesis = defineTool({
         : null;
 
     return {
-      summary: [backOnWatchNoPlan, summary, flags.length ? `⚠ ${flags[0]}` : null, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
+      summary: [backOnWatchNoPlan, summary, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
       data: {
         ok: true,
         thesis_id: existing.id,
@@ -1943,22 +1941,9 @@ export const updateThesis = defineTool({
 
 
 /**
- * The save's reply (docs/plans/AGENT_CONTEXT.md §3.6): what the saved plan
- * means, in the sheet's words (plan-sanity.ts). Words, never a refusal.
- */
-function whatThisMeans(row: Record<string, unknown>, price: number | null): string[] {
-  const n = (v: unknown) => (v == null ? null : Number(v));
-  const flags = computePlanSanity({
-    status: String(row.status), direction: (row.direction as string | null) ?? null, currentPrice: price,
-    entryPrice: n(row.entryPrice), targetPrice: n(row.targetPrice), stopLoss: n(row.stopLoss),
-  });
-  return flags.map((f) => `${row.ticker}: ${f.text}`);
-}
-
-/**
  * A dated event with no date (step 12, part 3): information, never a refusal.
  * A CATALYST row with no catalyst date can't be scheduled around: the
- * pre-catalyst check (plan-sanity) has no day to count to. No row on the book
+ * pre-catalyst window line (setups.ts) has no day to count to. No row on the book
  * was in this state in the 90 days to 2026-10-09; the line is for the save
  * that would put one there.
  */

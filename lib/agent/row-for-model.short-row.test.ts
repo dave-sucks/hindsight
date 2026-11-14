@@ -11,10 +11,10 @@ const saved = (): Row => ({ ...fixture }) as Row;
 it("the short row prints these keys, in this order", () => {
   const row = rowForModel(saved(), { named: false, size: "short" }) as Row;
   expect(Object.keys(row)).toEqual([
-    "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price", "plan_checks",
+    "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price",
     "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
     "bull_case", "bear_case", "conviction_rationale", "variant_view",
-    "setup", "nameTheSetup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
+    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
     "research", "catalyst", "repeat", "note",
   ]);
 });

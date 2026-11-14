@@ -16,7 +16,6 @@ function baseThesis(overrides: Partial<Parameters<typeof buildResolvedEnvelope>[
     ticker: "TEST",
     status: "WATCHING",
     direction: "LONG",
-    entryPrice: 100,
     triggers: [],
     catalystDate: null,
     createdAt: new Date("2026-05-30T00:00:00Z"),
@@ -116,7 +115,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
         status: "PROMOTED",
         parsedTriggers: [enterTrigger],
         catalystDate: new Date("2026-06-15T20:30:00Z"), // future
-        entryPrice: 100,
       }),
       currentPrice: 94, // ENTER trigger fires; would otherwise be ENTER_NOW
       now: NOW,
@@ -208,7 +206,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis({
         parsedTriggers: [], // no ENTER trigger
-        entryPrice: 100,
       }),
       currentPrice: 100.5, // within 1%
       now: NOW,
@@ -220,7 +217,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
     const r = buildResolvedEnvelope({
       thesis: baseThesis({
         parsedTriggers: [],
-        entryPrice: 100,
       }),
       currentPrice: 110, // 10% away
       now: NOW,

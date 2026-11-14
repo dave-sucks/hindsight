@@ -83,8 +83,8 @@ function makeCtx(runMode?: string): ToolContext {
  *
  * That is exactly what happened: `researchUpdatedAt` was pinned to
  * 2026-08-10, the TARGET horizon calls research stale after 30 days, and on
- * 2026-09-09 the quiet row started reporting RESEARCH_STALE and stopped
- * being quiet.
+ * 2026-09-09 the quiet row started reporting stale research (a flag deleted
+ * on 2026-11-13) and stopped being quiet.
  *
  * If you add a threshold-sensitive field here, express it in days-ago.
  */
@@ -113,8 +113,7 @@ function thesisRow(over: Record<string, unknown>) {
     setupId: "BASE_BREAKOUT",
     // A buy trigger and nothing else: no cadence rung, so nothing fires and
     // no review is due → needsAction stays null → quiet row under
-    // "actionable". The buy matters since DAV-321 — a watched LONG with a
-    // price and no way to buy it is NO_BUY_LEVEL, i.e. not quiet at all.
+    // "actionable".
     triggers: [
       {
         id: "trig-buy",
@@ -257,11 +256,9 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.quiet_theses).toHaveLength(0);
   });
 
-  it("a buy level on the live price is not flagged for being there — a 40-day-old one is flagged stale", async () => {
-    // Until 2026-09-14 this row was flagged ENTRY_AT_PRICE. A buy at or near
-    // the price is how buying now is written (no buy-now option), so that
-    // flag is gone. The fixture's plan is 40 days old, so the stale-entry
-    // flag is what arrives — proving watches now get their last edit date.
+  it("a 40-day-old buy level on the live price is not work by itself: one quiet line", async () => {
+    // It was listed for a stale buy level until plan checks were deleted
+    // (2026-11-13); its buy trigger and review clock bring it back.
     mockGetLatestPrices.mockResolvedValue({ BUYNOW: 100 });
     mockThesisFindMany.mockResolvedValue([
       thesisRow({ id: "t_buynow", ticker: "BUYNOW", entryPrice: 100 }),
@@ -269,11 +266,9 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
 
     const res = await run(makeCtx("MORNING_PLAN"));
 
-    expect(res.data.theses).toHaveLength(1);
-    expect(res.data.theses[0].ticker).toBe("BUYNOW");
-    expect(res.data.theses[0].resolved?.actionability).toBe("WAIT_FOR_TRIGGER");
-    expect(res.data.theses[0].resolved?.planSanity?.map((f: { kind: string }) => f.kind)).toEqual(["ENTRY_STALE"]);
-    expect(res.data.quiet_theses).toHaveLength(0);
+    expect(res.data.theses).toHaveLength(0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((res.data.quiet_theses as any[]).map((t) => t.ticker)).toEqual(["BUYNOW"]);
   });
 
   it("held-through-floor CONTEXT rides on the full row; it never becomes a needsAction (P1-39 ruling)", async () => {
@@ -461,22 +456,16 @@ describe("get_theses detail split — the same default at every door (step 8)", 
 
 // ── DAV-292 / DAV-286 — two inputs the run wasn't getting ──────────────────
 describe("get_theses — a stock with no setup named, and a buy that fired into a full analyst", () => {
-  it("PEAD 2026-09-18: MU, IOT and NVDA (held, no setup) arrive as full rows with the ask; FIVE (setup named) stays quiet", async () => {
-    // That morning the PEAD run saw its held names as index rows and wrote
-    // "the held names are all quiet, so I'm not going to manufacture work
-    // there." The ask only rode on full rows, so nobody was asked.
+  it("PEAD 2026-09-18's held names with no setup named are quiet, with no ask (\"no setup named\" deleted 2026-11-13)", async () => {
     const held = (ticker: string, setupId: string | null) =>
       thesisRow({ id: `t_${ticker}`, ticker, status: "HOLDING", setupId, researchRun: { agentConfig: { setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"] } } });
     mockThesisFindMany.mockResolvedValue([held("MU", null), held("IOT", null), held("NVDA", null), held("FIVE", "PEAD")]);
     const res = await run(makeCtx("MORNING_PLAN"));
+    expect(res.data.theses).toHaveLength(0);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const full = res.data.theses as any[];
-    expect(full.map((t) => t.ticker).sort()).toEqual(["IOT", "MU", "NVDA"]);
-    for (const t of full) {
-      expect(t.nameTheSetup?.choose.map((c: { id: string }) => c.id)).toEqual(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((res.data.quiet_theses as any[]).map((t) => t.ticker)).toEqual(["FIVE"]);
+    const quiet = res.data.quiet_theses as any[];
+    expect(quiet.map((t) => t.ticker).sort()).toEqual(["FIVE", "IOT", "MU", "NVDA"]);
+    for (const t of quiet) expect(t).not.toHaveProperty("nameTheSetup");
   });
 
   it("Secular Compounder 2026-09-18: ETN's buy fired into 4 of 4 — the row carries the portfolio decision", async () => {

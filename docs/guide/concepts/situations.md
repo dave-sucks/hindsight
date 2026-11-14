@@ -1,6 +1,6 @@
 # Situations
 
-**It knows what needs attention.** A situation is a reason a stock needs an answer today: a sale fired, earnings are close, the research is stale, you left a note.
+**It knows what needs attention.** A situation is a reason a stock needs an answer today: a sale fired, earnings are close, a review came due, you left a note.
 
 Situations are how the agents spend their attention. On a given morning a few stocks on a book of forty are in one; those get the work, and the rest are one quiet line each.
 
@@ -11,8 +11,8 @@ Situations are how the agents spend their attention. On a given morning a few st
 Each time a stock is read, its facts are turned into its list of situations. The facts come from one place, so the read, the thesis sheet and a run's close-out can't disagree:
 
 - **Its [triggers](triggers.md):** one that fired, or one whose condition is true now.
-- **Its clocks:** the review clock came round, or the research is older than its horizon allows (sooner on a stock we don't hold yet).
-- **Its plan against the price:** a buy level left behind, a target passed, a floor too tight or too far, a gain with no floor under it.
+- **Its review clock:** it came round.
+- **A holding's floor:** too far below what we paid, or a gain with no floor under it.
 - **Your words:** a note, a decline or a resized approval no run has answered yet.
 - **A recent sale:** a stock sold in the last two weeks is owed one look back.
 
@@ -31,12 +31,12 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
 - How often each one comes up, and what the runs did with it, is on Performance, under Agent work.
 
-## The eighteen
+## The fifteen
 
 - **Write up a trade:** auto trade made. A trigger set to Auto made its trade, and the trigger run that made it writes it up. This one comes from the trade, not from the stock's facts.
 - **Act on the plan:** sale signal, buy level reached, buy blocked (full), add or near target, promoted to live.
-- **Keep the plan honest:** floor to fix, plan check, review due, no setup named.
-- **Back to the Writer:** first research due, research stale, watch woke up.
+- **Keep the plan honest:** floor to fix, review due.
+- **Back to the Writer:** first research due, watch woke up.
 - **Answer what happened:** earnings, new filing, your word unanswered, pinned note to answer, sold (one look). A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
 
 Each one's code, what it means and the exact text an agent is sent are in the [Situations library](../reference/situations-library.md).

@@ -159,8 +159,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Refresh stale research before acting. Phase 2 of THESIS_LIFECYCLE_FIX:
       // when the daily agent is about to trade a thesis whose research is
       // missing or > STALE_DAYS, it dispatches a refresh, waits for the
-      // worker, then proceeds. Without this, the place_trade staleness
-      // gate refuses and the agent has no recovery path.
+      // worker, then proceeds. Nothing refuses a trade on old research:
+      // the run's own read of the research line decides.
       "dispatch_thesis_research",
       "wait_for_thesis_refresh",
       // Terminal
@@ -263,8 +263,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Refresh stale research before acting. Phase 2 of
       // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
       // research > STALE_DAYS old can dispatch + wait for a refresh
-      // before executing the declared action. Without this, the
-      // place_trade staleness gate refuses and the agent is stuck.
+      // before executing the declared action. Nothing refuses a trade on
+      // old research: the run's own read of the research line decides.
       "dispatch_thesis_research",
       "wait_for_thesis_refresh",
       // Thesis (REQUIRED close-out)

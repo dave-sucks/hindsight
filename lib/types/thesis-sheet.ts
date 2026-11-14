@@ -271,13 +271,6 @@ export interface ResolvedEnvelope {
     | "DEAD";
   supersededBy: string | null;
   staleness: "FRESH" | "STALE";
-  /**
-   * The plan-sanity flags (DAV-188) — the arithmetic saying this plan
-   * contradicts the live tape. The server has always sent these; this type
-   * dropped them on the floor, which is why no screen has ever shown one
-   * (DAV-304).
-   */
-  planSanity?: { kind: string; text: string }[] | null;
   resolvedAt: string;
   quoteAgeMs: number | null;
 }

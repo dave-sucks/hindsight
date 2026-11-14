@@ -1,6 +1,6 @@
 # Situations library
 
-**Every situation, and exactly what the agent is sent.** The eighteen codes in rank order, each with what it means and the text an agent reads.
+**Every situation, and exactly what the agent is sent.** The fifteen codes in rank order, each with what it means and the text an agent reads.
 
 This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).
 
@@ -13,7 +13,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`; don't edit it
 
 ## Auto trade made
 
-`AUTO_TRADE` · rank 1 of 18 · the row adds `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
+`AUTO_TRADE` · rank 1 of 15 · the row adds `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
 
 A trigger set to Auto just made a trade, and the analyst writes it up: what's going on with the company, and whether it agrees.
 
@@ -41,7 +41,7 @@ Mistakes:
 
 ## Promoted to live
 
-`PROMOTED_AWAITING` · rank 2 of 18 · the row adds `paper_record` · sent to every run
+`PROMOTED_AWAITING` · rank 2 of 15 · the row adds `paper_record` · sent to every run
 
 A stock just moved from paper to live money and needs a decision this run.
 
@@ -87,7 +87,7 @@ Mistakes:
 
 ## Sale signal
 
-`PROTECTIVE_SALE` · rank 3 of 18 · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
+`PROTECTIVE_SALE` · rank 3 of 15 · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to every run
 
 A floor, a trail or a trim fired on a holding, or a sale you declined or let expire is still past its line.
 
@@ -118,7 +118,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 4 of 18 · the row adds `plan_checks`, `street`, `setup`, `setup_lines`, `catalyst`, `variant_view` · sent to every run
+`BUY_ARRIVES` · rank 4 of 15 · the row adds `street`, `setup`, `setup_lines`, `catalyst`, `variant_view` · sent to every run
 
 A watched stock reached its buy level.
 
@@ -129,28 +129,27 @@ Answer, in order:
 1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (`street`).
 2. Does the price still hold the level? If it touched and slipped back, say so.
 3. Did the setup confirm? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
-4. Is it chased? An unanswered buy shows in `plan_checks`, with the chase limit and how far past it the stock is.
-5. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
-6. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (`variant_view`).
+4. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
+5. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (`variant_view`).
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy), then one update_thesis.
 - Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Set the plan down: update_thesis with remove_trigger_ids naming the buy, floor and target, keeping a review.
 
-Answered: one of those. A buy left as a note comes back on the next morning run as a plan check or a live match; a note does answer a buy whose price slipped back.
+Answered: one of those. A note does answer a buy whose price slipped back.
 
 The note: what is going on with the company and why now is the time to buy or not; then the buy, the new buy price or the plan set down, in one sentence.
 
 Mistakes:
 - place_trade after a check failed.
 - Volume as the reason on a pullback, a compounder or a pre-catalyst buy, or before mid-session.
-- Moving the buy above the price to dodge it: it comes back as a plan check.
+- Moving the buy above the price to dodge it.
 ```
 
 ## Buy blocked, full
 
-`BUY_BLOCKED_FULL` · rank 5 of 18 · the row adds `plan_checks`, `buyBlockedByFull`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
+`BUY_BLOCKED_FULL` · rank 5 of 15 · the row adds `buyBlockedByFull`, `street`, `setup`, `setup_lines`, `variant_view` · sent to every run
 
 A buy fired while the analyst already holds all it may.
 
@@ -177,7 +176,7 @@ Mistakes:
 
 ## Add or near target
 
-`ADD_OR_WINNER` · rank 6 of 18 · the row adds `floor_risk`, `street`, `catalyst` · sent to every run
+`ADD_OR_WINNER` · rank 6 of 15 · the row adds `floor_risk`, `street`, `catalyst` · sent to every run
 
 An add level fired, or a holding is three quarters of the way to its target.
 
@@ -207,7 +206,7 @@ Mistakes:
 
 ## Earnings
 
-`EARNINGS` · rank 7 of 18 · the row adds `assumptions`, `would_prove_it_wrong`, `catalyst` · sent to every run
+`EARNINGS` · rank 7 of 15 · the row adds `assumptions`, `would_prove_it_wrong`, `catalyst` · sent to every run
 
 A report is close, or just landed with a beat or a miss.
 
@@ -238,7 +237,7 @@ Mistakes:
 
 ## New filing
 
-`FILING` · rank 8 of 18 · the row adds `would_prove_it_wrong` · sent to every run
+`FILING` · rank 8 of 15 · the row adds `would_prove_it_wrong` · sent to every run
 
 The company filed something that matters with the SEC.
 
@@ -268,7 +267,7 @@ Mistakes:
 
 ## Watch woke up
 
-`QUIET_WATCH_WOKE` · rank 9 of 18 · the standing fields only · sent to every run
+`QUIET_WATCH_WOKE` · rank 9 of 15 · the standing fields only · sent to every run
 
 A watch with no plan hit one of its wakes and needs a fresh look.
 
@@ -314,7 +313,7 @@ Mistakes:
 
 ## Floor to fix
 
-`PROTECTION` · rank 10 of 18 · the row adds `floor_risk` · sent to every run
+`PROTECTION` · rank 10 of 15 · the row adds `floor_risk` · sent to every run
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -341,7 +340,7 @@ Mistakes:
 
 ## First research due
 
-`FIRST_RESEARCH` · rank 11 of 18 · the standing fields only · not sent to a trigger run
+`FIRST_RESEARCH` · rank 11 of 15 · the standing fields only · not sent to a trigger run
 
 A stock on the watchlist with no view yet is due its first research.
 
@@ -366,7 +365,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 12 of 18 · the row adds `plan_checks`, `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `nameTheSetup`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
+`REVIEW_DUE` · rank 12 of 15 · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
 
 The review clock came round, or a review fired, and nothing else covers it.
 
@@ -424,61 +423,9 @@ Mistakes:
 - Deleting a level you still believe in to look at the name less.
 ```
 
-## Research stale
-
-`STALE_RESEARCH` · rank 13 of 18 · the row adds `assumptions`, `would_prove_it_wrong` · sent to every run
-
-The research is older than the analyst's limit.
-
-```text
-When: the research behind a committed view is older than its horizon allows, or missing (the `research` line says when it was written). On a watched stock the next thing to happen could be a buy on it.
-
-Answer, in order:
-1. What has happened with the company since the research was written: results, guidance, news (get_stock_data, web_search)? Does the old work still stand against it: do its `assumptions` hold, and has anything in `would_prove_it_wrong` happened?
-
-What you can do:
-- Refresh it (the default): dispatch_thesis_research with mode "refresh", then wait_for_thesis_refresh, then re-read the stock and change its levels or tier if the new work changed your view.
-- Re-affirm it: update_thesis saying in one concrete sentence why it still stands ("the backlog case is unchanged; Q2 confirmed it").
-- Stop paying for it: drop the review clock, and the plan's triggers too if the plan is dead.
-
-Answered: a refresh, or one of the other two. A held stock owes the same, with more at stake.
-
-The note: what is new with the company since the research was written, and whether the case still stands; then refreshed, re-affirmed or set down, in one sentence.
-
-Mistakes:
-- "Looks fine", or a line you could have written without opening the stock.
-```
-
-## Plan check
-
-`PLAN_PROBLEM` · rank 14 of 18 · the row adds `plan_checks`, `supersededBy`, `street`, `would_prove_it_wrong`, `catalyst`, `conviction_rationale`, `snapshot` · sent to every run
-
-The plan contradicts the price or the calendar: a buy level left behind, a target passed, a floor too tight.
-
-```text
-When: a watched stock's plan contradicts the tape or the calendar. The `plan_checks` lines list each check with its arithmetic: the buy level on the price or far from it, a buy already spent, a target passed, a floor breached or inside the stock's ordinary daily move, no buy level, nothing that can bring it back. Or a dated event passed with nothing resolved (the `catalyst` line's date is behind us).
-
-Answer, in order:
-1. Why is the stock where it is: its news, its sector, the market (get_stock_data)?
-2. What does each check say? Read its numbers, and the `street` line: where the Street's targets sit against the plan's levels.
-3. Does the case still earn a plan? The writer's own read of where it stands (`snapshot`, `conviction_rationale`), and whether anything in `would_prove_it_wrong` has happened. A case the writer already calls failed is let go, not re-priced.
-
-What you can do, for each check:
-- Fix the number: update_thesis with the re-anchored level (edit_triggers on its id) and a rationale.
-- Or say in one sentence why the level is parked where it is on purpose ("I'm keeping the buy at $58: I only want it on a sharp drop, and I'll look again after earnings").
-- Or set the plan down: update_thesis with remove_trigger_ids naming the buy, target and floor triggers, and the review clock too if the stock no longer earns one. It stays on the watchlist costing nothing, with whatever wakes you keep.
-
-Answered: one of the three for every check. A review that does not mention a check leaves it there tomorrow, and every day after.
-
-The note: why the stock is where it is now, and whether the plan still fits it; then, in plain words, each price you moved and why, the one you kept on purpose, or the plan set down.
-
-Mistakes:
-- Re-anchoring to a round number instead of structure.
-```
-
 ## Your word unanswered
 
-`YOUR_WORD_UNANSWERED` · rank 15 of 18 · the row adds `plan_checks` · sent to every run
+`YOUR_WORD_UNANSWERED` · rank 13 of 15 · the standing fields only · sent to every run
 
 You left a note or made a decision since the analyst's last answer.
 
@@ -505,7 +452,7 @@ Mistakes:
 
 ## Pinned note to answer
 
-`PINNED_NOTE` · rank 16 of 18 · the standing fields only · sent to every run
+`PINNED_NOTE` · rank 14 of 15 · the standing fields only · sent to every run
 
 A note pinned on this stock, alone or with others (the Market Reviewer's high-impact note, or yours), that no run has answered on this stock.
 
@@ -532,7 +479,7 @@ Mistakes:
 
 ## Sold, one look
 
-`SOLD_ONE_REVIEW` · rank 17 of 18 · the standing fields only · not sent to a trigger run
+`SOLD_ONE_REVIEW` · rank 15 of 15 · the standing fields only · not sent to a trigger run
 
 A stock sold in the last two weeks is owed one look back.
 
@@ -556,28 +503,4 @@ The note: what the stock has done since the sale, and whether the reason we owne
 
 Mistakes:
 - Never looking at it again: a sold stock you never look at again is a thesis you already paid for and threw away.
-```
-
-## No setup named
-
-`NO_SETUP_NAMED` · rank 18 of 18 · the row adds `nameTheSetup`, `setup`, `setup_lines` · not sent to a trigger run
-
-A researched stock has no setup named, so nothing says how to trade it.
-
-```text
-When: a stock we hold, or one we watch with a buy price, has no setup named. Everything setup-aware skips it: the trigger run's confirmation, the exits a buy writes, the held review's checklist.
-
-Answer, in order:
-1. Which setup was it bought on, or is its buy price written on? Read the chart and the thesis; `nameTheSetup.choose` lists this analyst's setups.
-
-What you can do:
-- Name it on this review, in the same update_thesis call: setup_id from those choices. On a held stock that also writes the setup's own exits onto the stock, so do not add those yourself.
-- If no setup fits: setup_id "NONE", with the reason in the rationale.
-
-Answered: setup_id on an update_thesis. Named (or NONE), the stock stops asking.
-
-The note: inside the stock's review, one plain sentence on what kind of trade it is ("a pullback to its 50-day average", "a long-term hold"), never the setup's name.
-
-Mistakes:
-- Adding the setup's exits by hand on a held stock after naming it: naming it writes them.
 ```

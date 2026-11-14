@@ -25,7 +25,7 @@ The folders match the sidebar:
 2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and a plan made of [triggers](concepts/triggers.md). The stock goes on the watchlist as Watching.
 3. **The trigger check** watches the plan every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
 4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, and its floor, trail and target guard it.
-5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, stale research, your notes.
+5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, your notes.
 6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it asks the analyst again each day the price stays past the line: the analyst proposes the sale again or says why it holds. Only you can lower the floor.
 7. **The sale goes through** and the thesis is retired as sold, or goes back to Watching after a sale at the target. A retired stock gets one look back within two weeks: watch it again, or let it go.
 
@@ -53,7 +53,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Theses](concepts/theses.md):** a belief we can be wrong about, and the plan that acts on it. Every stock on the book has one.
 - **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A thesis's whole plan is its triggers.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
-- **[Situations](concepts/situations.md):** the eighteen reasons a stock needs an answer today, each with its own instructions.
+- **[Situations](concepts/situations.md):** the fifteen reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day, except one a trigger made, which waits while its trigger holds.
 - **[Price targets](concepts/price-targets.md):** the house sets none. A plan is the buy, the floor and an upside rule where the setup has one; Wall Street's targets are a card, and a line a rule can watch.
 

@@ -39,7 +39,6 @@ describe("the keys a situation's row sends", () => {
     [/\bbear case\b/i, "bear_case"],
     [/company line/i, "company"],
     [/paper record/i, "paper_record"],
-    [/plan checks?\b/i, "plan_checks"],
   ];
   // First research describes what the Writer will write (the belief, the assumptions, what would prove it wrong); a seed has none of them to send.
   const WRITES_NOT_READS = new Set<SituationCode>(["FIRST_RESEARCH"]);
@@ -88,9 +87,9 @@ describe("the row a situation builds (CEG, held)", () => {
     expect(row.would_prove_it_wrong).toBeDefined();
     expect(row.triggers).toBeDefined();
   });
-  it("a buy level reached: the chart numbers, the Street, the setup and the plan checks come with it", () => {
+  it("a buy level reached: the chart numbers, the Street and the setup come with it", () => {
     const row = rowForModel(saved(["BUY_ARRIVES"]), { named: false, size: "short" }) as Row;
-    for (const k of ["chart", "street", "setup", "plan_checks"]) expect([k, k in row || k === "plan_checks"]).toEqual([k, true]);
+    for (const k of ["chart", "street", "setup"]) expect([k, k in row]).toEqual([k, true]);
     for (const k of ["bull_case", "would_prove_it_wrong", "company"]) expect([k, k in row]).toEqual([k, false]);
   });
   it("the review clock: the whole case", () => {

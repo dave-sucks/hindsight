@@ -28,9 +28,10 @@ describe("the saved morning thread (one real run, 2026-11-13, rows cut to id, ti
     expect(data[THREAD_SHAPE.lists.sold].every((r) => typeof r.thesis_id === "string")).toBe(true);
   });
 
-  it("names only codes the app knows, and stays small", () => {
+  it("names only codes the app knows, or one deleted since the read was saved, and stays small", () => {
+    const deleted = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED"]); // 2026-11-13
     const all = Object.values(data).flat().flatMap((r) => r[THREAD_SHAPE.codes] as string[]);
-    expect(all.every((c) => c in SITUATIONS)).toBe(true);
+    expect(all.every((c) => c in SITUATIONS || deleted.has(c))).toBe(true);
     expect(readFileSync(FIXTURE).length).toBeLessThan(20_000);
   });
 });
@@ -125,7 +126,7 @@ describe("the tab's numbers", () => {
       orders: [{ id: "o1", thesisId: "t1", symbol: "CEG", intent: "CLOSE", status: "EXPIRED", createdAt: at("2026-11-11T15:01:00Z") }],
       reads: [
         { runId: "m0", list: "read", thesisId: null, ticker: null, codes: [] },
-        { runId: "m0", list: "work", thesisId: "t1", ticker: "CEG", codes: ["PROTECTIVE_SALE", "STALE_RESEARCH"] },
+        { runId: "m0", list: "work", thesisId: "t1", ticker: "CEG", codes: ["PROTECTIVE_SALE", "REVIEW_DUE"] },
         { runId: "m1", list: "read", thesisId: null, ticker: null, codes: [] },
         { runId: "m1", list: "quiet", thesisId: "t9", ticker: "GD", codes: ["PLAN_PROBLEM"] },
       ],
@@ -145,7 +146,8 @@ describe("the tab's numbers", () => {
   it("counts situations on the work list with what the run did, and quiet rows apart", () => {
     const sale = w.situations.codes.find((c) => c.code === "PROTECTIVE_SALE");
     expect(sale).toMatchObject({ shown: 1, quiet: 0, triggerRuns: 1, out: { nothing: 1 } });
-    expect(w.situations.codes.find((c) => c.code === "PLAN_PROBLEM")).toMatchObject({ shown: 0, quiet: 1 });
+    // A code deleted since the read was saved (plan check, 2026-11-13) is not counted.
+    expect(w.situations.codes.find((c) => (c.code as string) === "PLAN_PROBLEM")).toBeUndefined();
     expect(w.situations.categories.find((c) => c.category === "Selling and protection")?.shown).toBe(1);
     expect(w.situations.nothing.map((x) => x.ticker)).toEqual(["CEG"]);
     expect(w.reads).toEqual({ morningRuns: 2, read: 2 });

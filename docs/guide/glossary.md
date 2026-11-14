@@ -65,7 +65,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 ## What an agent reads
 
 - **The read:** an agent's view of its book from `get_theses`. Each stock is sent at the size today needs: a **line** for a quiet stock, a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
-- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eighteen. See [Situations](concepts/situations.md).
+- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are fifteen. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and setups, written once and given to every agent.
 - **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.

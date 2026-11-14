@@ -20,7 +20,7 @@
  *
  * **Double the edges, never the logic.** The database, the vendors and the
  * clock are doubled. `checkStatusTransition`, `resolveThesisLadder`,
- * `applyTriggerOps`, `writeThesisUpdate`, plan-sanity — every one of those
+ * `applyTriggerOps`, `writeThesisUpdate` — every one of those
  * runs for real against this store. Mock one of them and you are back to
  * proving a stub.
  *
