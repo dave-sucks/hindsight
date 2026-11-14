@@ -13,6 +13,7 @@
  * shares, cash and deposits; the prices are public).
  */
 import night from "@/lib/actions/__fixtures__/header-after-hours-2026-11-11.json";
+import { oneDayWindow } from "@/lib/portfolio/one-day-window";
 
 const NOW = new Date(night.now);
 const { shares, cash, contributed, depositedOn } = night.standIn;
@@ -31,29 +32,32 @@ jest.mock("@/lib/actions/finnhub.actions", () => ({ getStockProfile: async () =>
 /** The app's one price: outside the session, the close stamped at the bell. */
 const closeQuotes = async () => ({ CEG: { quote: { c: night.close.price, pc: night.close.prevClose, t: Date.parse(night.close.at) / 1000, source: "alpaca" } } });
 const mockLiveQuotes = jest.fn();
+/** A deposit posted on the day, in the broker's cash and its history from then: none unless a test sets one. */
+const mockToday = { deposit: 0 };
 jest.mock("@/lib/market-data/live-quote", () => ({ getLiveQuotes: (...a: unknown[]) => mockLiveQuotes(...a) }));
 jest.mock("@/lib/alpaca", () => {
   const n = jest.requireActual("@/lib/actions/__fixtures__/header-after-hours-2026-11-11.json");
   const { shares: q, avgCost: cost, cash: c, contributed: put, depositedOn: on } = n.standIn;
   const v = (price: number) => c + q * price;
+  const d = () => mockToday.deposit;
   return {
     // The broker's figures at 10 PM: its equity and its history's last point count the after-hours mark.
-    getAccount: async () => ({ equity: String(v(n.brokerMark)), last_equity: String(v(n.close.prevClose)), cash: String(c), buying_power: String(c), long_market_value: String(q * n.brokerMark), short_market_value: "0" }),
+    getAccount: async () => ({ equity: String(v(n.brokerMark) + d()), last_equity: String(v(n.close.prevClose)), cash: String(c + d()), buying_power: String(c + d()), long_market_value: String(q * n.brokerMark), short_market_value: "0" }),
     getAllPositions: async () => [
       { symbol: "CEG", qty: String(q), side: "long", avg_entry_price: String(cost), current_price: String(n.brokerMark), market_value: String(q * n.brokerMark), cost_basis: String(q * cost), unrealized_pl: "0", unrealized_plpc: "0" },
     ],
-    getFundingActivities: async () => [{ date: on, amount: put }],
+    getFundingActivities: async () => [{ date: on, amount: put }, ...(d() ? [{ date: "2026-11-11", amount: d() }] : [])],
     getPortfolioHistory: async (opts: { timeframe?: string } = {}) =>
       opts.timeframe === "15Min"
         ? [
-            { date: "2026-11-10T21:00:00.000Z", equity: v(n.close.prevClose), profitLoss: 0 },
-            { date: "2026-11-11T21:00:00.000Z", equity: v(n.close.price), profitLoss: 0 },
-            { date: "2026-11-12T00:45:00.000Z", equity: v(n.brokerMark), profitLoss: 0 },
+            { date: "2026-11-10T21:00:00.000Z", equity: v(n.brokerPriorMark), profitLoss: 0 },
+            { date: "2026-11-11T21:00:00.000Z", equity: v(n.close.price) + d(), profitLoss: 0 },
+            { date: "2026-11-12T00:45:00.000Z", equity: v(n.brokerMark) + d(), profitLoss: 0 },
           ]
         : [
             { date: on, equity: put, profitLoss: 0 },
             { date: "2026-11-10", equity: v(n.close.prevClose), profitLoss: 0 },
-            { date: "2026-11-11", equity: v(n.brokerMark), profitLoss: 0 },
+            { date: "2026-11-11", equity: v(n.brokerMark) + d(), profitLoss: 0 },
           ],
     getLatestPricesWithMeta: async () => ({ prices: {}, sources: {}, asOf: {}, fetchedAt: n.now }),
     getLatestPrices: async () => ({}),
@@ -63,6 +67,7 @@ jest.mock("@/lib/alpaca", () => {
 import { getDashboardData } from "./portfolio.actions";
 
 beforeEach(() => {
+  mockToday.deposit = 0;
   mockLiveQuotes.mockReset().mockImplementation(closeQuotes);
   jest.useFakeTimers({ now: NOW, doNotFake: ["setTimeout", "clearTimeout", "setImmediate", "nextTick", "queueMicrotask"] });
   jest.spyOn(console, "warn").mockImplementation(() => {});
@@ -121,5 +126,37 @@ describe("when the snapshot can't be read and the broker can", () => {
     expect(portfolio.netPositionValue).toBeCloseTo(shares * night.brokerMark, 6);
     expect(portfolio.dayPnl).toBeCloseTo(at(night.brokerMark) - at(night.close.prevClose), 6);
     expect(portfolio.totalPnl).toBeCloseTo(at(night.brokerMark) - contributed, 6);
+  });
+});
+
+describe("the 1D chart's Prev, the point the day is measured from", () => {
+  it("is the Balance less the 1D, the account at Nov 10's close at the app's prices, not the broker's after-hours mark", async () => {
+    const { portfolio, intradayEquityCurve, intradayPnlCurve } = await getDashboardData("LIVE");
+    // The chart's 1D window is oneDayWindow, as DashboardClient filters it.
+    const line = oneDayWindow(intradayEquityCurve);
+    expect(line[0].date).toBe("2026-11-10T21:00:00.000Z");
+    expect(line[0].value).toBeCloseTo(portfolio.totalValue - portfolio.dayPnl!, 6);
+    expect(line[0].value).toBeCloseTo(at(night.close.prevClose), 6);
+    expect(line[0].value).not.toBeCloseTo(at(night.brokerPriorMark), 2);
+    // The P&L line moves by the same day.
+    const pnl = oneDayWindow(intradayPnlCurve);
+    expect(pnl.at(-1)!.value - pnl[0].value).toBeCloseTo(portfolio.dayPnl!, 6);
+  });
+
+  it("a deposit posted that day never shows as a move, on the value line or the P&L line", async () => {
+    mockToday.deposit = 1_000;
+    const { portfolio, intradayEquityCurve, intradayPnlCurve } = await getDashboardData("LIVE");
+    expect(portfolio.totalValue).toBeCloseTo(at(night.close.price) + 1_000, 6);
+    expect(portfolio.dayPnl).toBeCloseTo(shares * (night.close.price - night.close.prevClose), 6);
+    for (const curve of [intradayEquityCurve, intradayPnlCurve]) {
+      const line = oneDayWindow(curve);
+      expect(line.at(-1)!.value - line[0].value).toBeCloseTo(portfolio.dayPnl!, 6);
+    }
+  });
+
+  it("with no day from the snapshot, Prev is the broker's point as before", async () => {
+    mockLiveQuotes.mockRejectedValue(new Error("quotes down"));
+    const { intradayEquityCurve } = await getDashboardData("LIVE");
+    expect(oneDayWindow(intradayEquityCurve)[0].value).toBeCloseTo(at(night.brokerPriorMark), 6);
   });
 });
