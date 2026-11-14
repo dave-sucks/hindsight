@@ -325,7 +325,7 @@ const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; 
   REDUCE:   { label: 'Reduce',        dotClass: 'bg-amber-500',               tooltip: 'Trimmed position size' },
   EXIT:     { label: 'Sold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Position closed' },
   HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/40',     tooltip: 'Monitoring — no action taken' },
-  WATCH:    { label: 'Watch',         dotClass: 'bg-blue-500',                tooltip: 'Added to watchlist' },
+  WATCH:    { label: 'Watch',         dotClass: 'bg-brand-blue',                tooltip: 'Added to watchlist' },
   STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
   NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
   NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
@@ -1275,7 +1275,7 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
               className="lg:h-[390px]"
               controls={
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-                  <TabsList size="sm" variant="outline">
+                  <TabsList size="sm">
                     {RANGES.map((r) => (
                       <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
                     ))}

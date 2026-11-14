@@ -10,7 +10,7 @@
  * a quarter of an hour (a morning run's length).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 8_000;
@@ -27,6 +27,7 @@ export function ProposalNote({
   expanded,
   clamp = 2,
   muted = false,
+  tail,
 }: {
   orderId: string;
   reason: string | null;
@@ -37,6 +38,8 @@ export function ProposalNote({
   clamp?: 1 | 2 | 4 | 5;
   /** The banner's note is muted, so it reads apart from the position line above it. */
   muted?: boolean;
+  /** A last line of the opened note, after a line break in its final paragraph (the banner's days held). */
+  tail?: ReactNode;
 }) {
   const [text, setText] = useState(reason);
   const [busy, setBusy] = useState(writing);
@@ -84,7 +87,17 @@ export function ProposalNote({
       }
       title={expanded === undefined ? (open ? "Collapse" : "Expand") : undefined}
     >
-      {(expanded ?? open) ? paragraphs.map((p, i) => <p key={i}>{p}</p>) : <p className={CLAMP[clamp]}>{paragraphs.join(" ")}</p>}
+      {(expanded ?? open) ? paragraphs.map((p, i) => (
+            <p key={i}>
+              {p}
+              {tail && i === paragraphs.length - 1 ? (
+                <>
+                  <br />
+                  {tail}
+                </>
+              ) : null}
+            </p>
+          )) : <p className={CLAMP[clamp]}>{paragraphs.join(" ")}</p>}
     </div>
   );
 }

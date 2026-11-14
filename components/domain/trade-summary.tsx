@@ -38,7 +38,7 @@
  */
 
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -53,6 +53,9 @@ import { Button } from "@/components/ui/button";
 import { TradeButton } from "@/components/trade/TradeButton";
 import { CloseTradeDialog } from "@/components/trades/TradeActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { tradeLegs, type TradeLegs } from "@/lib/stocks/trade-legs";
+import type { FillFacts } from "@/lib/stocks/stock-history";
 import { fmtQty, proposedLine } from "@/lib/trade-statement";
 import { EXECUTING_LABEL, EXECUTING_TOOLTIP, getTradeStatusDisplay } from "@/lib/trade-status";
 import { formatCurrency } from "@/lib/format";
@@ -81,6 +84,8 @@ export type TradeSummaryProps = {
   ticker?: string;
   /** The analyst the Buy starts on the side of. */
   analystId?: string | null;
+  /** The fills at hand (the thesis's, or the stock's): the trade's own are read out of them for its entry and exit. */
+  fills?: FillFacts[];
 };
 
 /** Compact "Jun 2" date for the meta line. */
@@ -125,17 +130,20 @@ export function TradeSummary(props: TradeSummaryProps) {
 //   • holding          → the foreground dot, breathing · "Position"
 //                        "Holding 11 shares, $7,590.00 value (avg cost $911.42)"
 //   • closed           → green or red dot by the result · "Closed position"
-//                        "Sold 20 shares, $8,078.78 value (avg cost $355.28)"
+//                        "Sold 20 shares for $8,078.78 (avg cost $355.28)", every sale of the trade, its trims included
 //   • proposed buy     → white breathing dot · "Proposal · Buy"
 //                        "Buy 14 shares, $749.70 cost"  (no avg cost: the price is the stock's price now)
 //   • proposed sell / trim / add → "Proposal · Sell 11 shares" / "Proposal · Trim 4 shares" / "Proposal · Add 4 shares"
 //                        and the holding's own line under it — the title already says the action.
-// The card's line is the same without the parentheses: its avg cost sits in
-// the footnote beside the days held.
-function describeTrade({ position, pnl, pendingProposal, direction, look }: TradeSummaryProps) {
+// The card's line is the same without the parentheses: its avg cost is the
+// price on its Entry row. Only the gain is green or red, and a closed trade's
+// gain is dimmed: it is final, where a holding's moves with the price.
+const usd = (n: number) => formatCurrency(n);
+const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
+
+function describeTrade({ position, pnl, pendingProposal, direction, look, fills }: TradeSummaryProps) {
   const pp = pendingProposal;
-  const usd = (n: number) => formatCurrency(n);
-  const shares = (n: number) => `${fmtQty(n)} ${n === 1 ? "share" : "shares"}`;
+  const legs = tradeLegs(position, fills ?? []);
   const unrealized: TradeStatementGain | null = pnl ? { dollar: pnl.unrealizedPnl, pct: pnl.unrealizedPnlPct } : null;
   // The dollars: what the shares are worth now, what the sale brought once closed, what a proposed buy would cost.
   const value = pnl?.marketValue ?? (position.closed && position.closePrice != null ? position.closePrice * position.quantity : position.avgCost * position.quantity);
@@ -183,10 +191,18 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
     dotClass = pp.executing ? getTradeStatusDisplay("OPEN").dotClass : PROPOSAL_DOT;
     gain = unrealized;
   } else if (position.closed) {
-    sentence = line("Sold", position.quantity, `${usd(value)} value`, avgCost);
-    if (position.realizedPnl != null) gain = { dollar: position.realizedPnl, pct: position.realizedPnlPct ?? 0 };
+    // Every sale of the trade, its trims with its close: the shares that went and what they brought in.
+    const sold = legs.exit?.shares ?? position.quantity;
+    const proceeds = legs.exit?.total ?? value;
+    sentence = `Sold ${shares(sold)} for ${usd(proceeds)}` + (banner ? ` (${avgCost})` : "");
+    const realized = legs.realized ?? position.realizedPnl ?? null;
+    if (realized != null) {
+      // What the sold shares cost: the proceeds less the gain (plus it, on a short).
+      const basis = direction === "SHORT" ? proceeds + realized : proceeds - realized;
+      gain = { dollar: realized, pct: legs.exit && basis > 0 ? (realized / basis) * 100 : (position.realizedPnlPct ?? null) };
+    }
     title = "Closed position";
-    dotClass = getTradeStatusDisplay((position.realizedPnl ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
+    dotClass = getTradeStatusDisplay((realized ?? 0) >= 0 ? "CLOSED_WIN" : "CLOSED_LOSS").dotClass;
   } else {
     sentence = line("Holding", position.quantity, `${usd(value)} value`, avgCost);
     title = "Position";
@@ -196,7 +212,28 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
 
   // "Proposed at $230.10 on Nov 13, 3:36 PM": very small and muted, beside or under the answer buttons.
   const proposed = pp && !pp.executing && pp.proposedAt ? proposedLine(pp.proposedAt, pp.proposedPrice) : null;
-  return { pp, sentence, gain, title, action, value, avgCost, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing), proposed };
+  return {
+    pp,
+    sentence,
+    gain,
+    title,
+    action,
+    value,
+    avgCost,
+    dotClass,
+    reviewSlot,
+    proposal: Boolean(pp && !pp.executing),
+    proposed,
+    legs,
+    /** The gain is final (a closed trade's), not moving with the price: the looks dim it. */
+    settled: position.closed === true && !pp,
+  };
+}
+
+/** The position's line and its gain alone, for a surface with no room for the card (the chat's thesis card): the page card's wording. */
+export function tradeLine(props: Omit<TradeSummaryProps, "look">) {
+  const { sentence, gain, settled } = describeTrade({ ...props, look: "card" });
+  return { sentence, gain, settled };
 }
 
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
@@ -239,6 +276,47 @@ function TradeTitle({
   );
 }
 
+/** The trade's two sides, a row each: when, the shares at their price, and what they came to. A trade still open shows its trims as the second row. */
+function LegRows({ legs, closed }: { legs: TradeLegs; closed: boolean }) {
+  const rows = [
+    ...(legs.entry ? [{ label: "Entry", leg: legs.entry, many: "buys" }] : []),
+    ...(legs.exit ? [{ label: closed ? "Exit" : "Trimmed", leg: legs.exit, many: "sales" }] : []),
+  ];
+  if (rows.length === 0) return null;
+  return (
+    <div className="grid grid-cols-[auto_auto_1fr_auto] gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+      {rows.map(({ label, leg, many }) => (
+        <Fragment key={label}>
+          <span>{label}</span>
+          <span>{leg.count > 1 ? `${leg.count} ${many}` : fmtTradeDate(leg.at)}</span>
+          <span className="truncate">
+            {shares(leg.shares)} at {usd(leg.price)}
+          </span>
+          <span className="text-right text-foreground">{usd(leg.total)}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** "Held 37 days", and on hover when: the day and time the shares were bought, and sold once they are. */
+function HeldFor({ position }: { position: ThesisStatePosition }) {
+  const stamp = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const when =
+    position.closed && position.closedAt
+      ? `${stamp(position.openedAt)} to ${stamp(position.closedAt)}`
+      : `Since ${stamp(position.openedAt)}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="pointer-events-auto cursor-default tabular-nums" />}>
+        Held {position.daysHeld} day{position.daysHeld === 1 ? "" : "s"}
+      </TooltipTrigger>
+      <TooltipContent>{when}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The newest analyst note at the foot of the page card: five lines, a click for the rest. */
 function NoteClamp({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -267,9 +345,10 @@ function NoteClamp({ text }: { text: string }) {
 // buttons are a row of their own at the foot, the reason's first two lines sit
 // above them, and a click anywhere else opens or closes the rest of it.
 function TradeBanner(props: TradeSummaryProps) {
-  const { ticker } = props;
-  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, proposed } = describeTrade(props);
+  const { ticker, position } = props;
+  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, proposed, legs, settled } = describeTrade(props);
   const [expanded, setExpanded] = useState(false);
+  const proposedBuy = pp?.intent === "OPEN";
   const body = (
     <>
       {/* The title row: the state at the left, the gain at the right at the title's own size (the owner, 2026-11-08). */}
@@ -279,13 +358,28 @@ function TradeBanner(props: TradeSummaryProps) {
         proposal={proposal}
         accordion={proposal}
         expanded={expanded}
-        action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
+        action={gain ? <span className={cn("text-sm tabular-nums", settled && "opacity-60")}><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
-      <p className="truncate text-base tabular-nums">{sentence}</p>
-      {/* The reason, muted: two lines until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
+      {/* The line; hovering it shows the trade's entry and exit, the rows the page card carries in the open. */}
+      {proposedBuy ? (
+        <p className="truncate text-base tabular-nums">{sentence}</p>
+      ) : (
+        <HoverCard>
+          <HoverCardTrigger render={<p className="truncate text-base tabular-nums" />}>{sentence}</HoverCardTrigger>
+          <HoverCardContent side="bottom" align="start" className="w-fit">
+            <div className="space-y-1.5">
+              <LegRows legs={legs} closed={position.closed === true} />
+              <p className="text-xs text-muted-foreground">
+                <HeldFor position={position} />
+              </p>
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      )}
+      {/* The reason, muted: two lines until the card is clicked, then all of it with the days held as its last line (or the "Writing" line while the note is on its way). */}
       {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
-          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} muted />
+          <ProposalNote orderId={pp.orderId} reason={pp.rationale} writing={pp.writing ?? false} expanded={expanded} muted tail={proposedBuy ? undefined : <HeldFor position={position} />} />
         </div>
       ) : null}
       {/* A proposal's answer, or "Executing" once answered, as a third row at the left. */}
@@ -337,33 +431,52 @@ function BuySell({ ticker, analystId, tradeId, canSell }: { ticker: string; anal
 // The same position in the sidebar's shape, in every state (the owner's
 // order, 2026-11-05): the title row, the state and on a proposal its action
 // ("Position", "Proposal · Sell", "Proposal · Add 4 shares"), nothing at its
-// right; the gain large; the sentence large ("Bought 27 shares at $369.25",
-// "Buy 14 shares at $53.55") in the gain's own color at a light weight, so
-// the whole block reads green or red with the gain the heavier of the two
-// (the owner, 2026-11-06); a muted footnote with the value and the days
-// held, a little apart; a rule the card's full width; then the words — a
+// right; the gain large, the only green or red on the card; the sentence large at a
+// light weight in the text's own color; the trade's Entry and Exit rows (the
+// date, the shares at their price, the dollars), small and muted, then the
+// days held; a rule the card's full width; then the words — a
 // proposal's reason, else the newest analyst note — five lines, a click on
 // them for the rest; then the buttons at the foot's right. The click
 // elsewhere opens the Transactions tab.
 function TradeCard(props: TradeSummaryProps) {
   const { position, onOpen, trades, note, ticker, analystId } = props;
-  const { pp, sentence, gain, title, action, avgCost, dotClass, reviewSlot, proposal, proposed } = describeTrade(props);
+  const { pp, sentence, gain, title, action, dotClass, reviewSlot, proposal, proposed, legs, settled } = describeTrade(props);
   const click = onOpen;
   const closed = position.closed === true;
   const proposedBuy = pp?.intent === "OPEN";
   const pastTrades = trades ? Math.max(0, trades.count - 1) : 0;
-  const footnote = [
-    ...(!proposedBuy ? [avgCost, `Held ${position.daysHeld} day${position.daysHeld === 1 ? "" : "s"}`] : []),
+  const footnote: ReactNode[] = [
+    ...(!proposedBuy ? [<HeldFor key="held" position={position} />] : []),
     ...(pastTrades > 0 ? [`${pastTrades} past trade${pastTrades === 1 ? "" : "s"}`] : []),
-  ].join(" · ");
+  ];
   return (
     <Card className={cn("group/banner relative bg-muted/40 p-3 gap-3", click && "cursor-pointer")} onClick={click}>
       <TradeTitle title={action ? `${title} · ${action}` : title} dotClass={dotClass} proposal={proposal} accordion={false} expanded={false} action={null} />
       <div className="pointer-events-none">
-        {gain ? <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" /> : null}
-        <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
-        {/* The footnote: what the shares cost us, how long we have held them, and how many trades the thesis had before this one. */}
-        {footnote ? <p className="mt-2 text-xs text-muted-foreground tabular-nums">{footnote}</p> : null}
+        {/* Only the gain is green or red; a closed trade's is final, so it is dimmed. */}
+        {gain ? (
+          <div className={settled ? "opacity-60" : undefined}>
+            <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="xl" />
+          </div>
+        ) : null}
+        <p className="text-xl font-light tabular-nums text-foreground">{sentence}</p>
+        {/* The trade's entry and exit: the date, the shares at their price, the dollars. */}
+        {!proposedBuy ? (
+          <div className="mt-2">
+            <LegRows legs={legs} closed={closed} />
+          </div>
+        ) : null}
+        {/* The footnote: how long we have held them (the dates on hover), and how many trades the thesis had before this one. */}
+        {footnote.length > 0 ? (
+          <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">
+            {footnote.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 ? " · " : null}
+                {part}
+              </Fragment>
+            ))}
+          </p>
+        ) : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">

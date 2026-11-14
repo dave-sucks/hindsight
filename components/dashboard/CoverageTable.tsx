@@ -84,7 +84,7 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
   }
   const since = new Date(row.anchorAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   if (row.verdict != null) return { className: "bg-muted-foreground/40", label: `Passed ${since}` };
-  return { className: "bg-sky-500", label: `Watching since ${since}` };
+  return { className: "bg-brand-blue", label: `Watching since ${since}` };
 }
 
 // ── 1D/5D/30D cell ───────────────────────────────────────────────────────────

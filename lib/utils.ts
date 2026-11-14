@@ -25,7 +25,7 @@ export function pnlBadgeClasses(value: number): string {
 
 /** Returns the hex value for charts/SVGs where CSS classes won't work */
 export const PNL_HEX = {
-  positive: "#51b857",
-  negative: "#ff6d87",
+  positive: "#24AF54",
+  negative: "#FC7029",
 } as const;
 

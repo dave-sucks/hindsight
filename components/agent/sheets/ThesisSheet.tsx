@@ -898,6 +898,8 @@ export function ThesisBody({
   // 2026-11-05): the banner under the price on the sheet, the card at the top
   // of a page's sidebar, each in every state. On a page its click opens the
   // Transactions tab; on the sheet it opens the trade's page.
+  // The Transactions tab's fills: the stock page hands in the stock's; the sheet and the trade page have the thesis's.
+  const fills: FillFacts[] = transactions ?? state.fills ?? [];
   const tradeProps = position
     ? {
         position,
@@ -910,13 +912,11 @@ export function ThesisBody({
         note: (state.noted ?? [])[0]?.rationale ?? null,
         ticker,
         analystId: state.analystId,
+        fills,
       }
     : null;
   const tradeBanner = tradeProps && surface === "sheet" ? <TradeSummary look="banner" {...tradeProps} /> : null;
   const tradeCard = tradeProps && surface === "page" ? <TradeSummary look="card" {...tradeProps} /> : null;
-  // The Transactions tab's fills: the stock page hands in the stock's; the sheet and the trade page have the thesis's.
-  const fills: FillFacts[] = transactions ?? state.fills ?? [];
-
   // The stock cards — the plan's levels, Wall Street, the earnings record —
   // built once. With a sidebar (the page) they go there; without one (the
   // sheet) they close the Overview.
@@ -1071,7 +1071,7 @@ export function ThesisBody({
           <Skeleton className="h-7 w-32 sm:h-8" />
         ) : quote?.currentPrice != null ? (
           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-xl font-semibold tabular-nums sm:text-2xl">
+            <span className="text-xl font-medium tabular-nums sm:text-2xl">
               {formatCurrency(quote.currentPrice)}
             </span>
             {shownMove ? (

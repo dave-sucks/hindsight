@@ -42,7 +42,7 @@ export function teamInviteHtml(d: TeamInviteData): string {
         ${roleBlurb}
       </p>
       <a href="${d.acceptUrl}"
-         style="display:inline-block;background:#51b857;color:#0f172a;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:6px;">
+         style="display:inline-block;background:#24AF54;color:#0f172a;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:6px;">
         Accept invite
       </a>
     </div>
