@@ -669,7 +669,7 @@ function ProposalsPanel({
       <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1 lg:absolute lg:bottom-full lg:left-0">
         Proposals
       </p>
-      {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
+      {/* Plain bordered container — TradeRowShell supplies its own
           padding + border-b dividers, so rows sit flush (matches the coverage
           table + the prod trade list). No Card p-1/gap wrapper. */}
       <div className="rounded-lg border overflow-hidden bg-card">

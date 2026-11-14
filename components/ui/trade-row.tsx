@@ -96,7 +96,7 @@ export function TradeRowShell({
           {trailingTop}
         </div>
         {(secondary !== undefined || trailingBottom !== undefined) && (
-          <div className="flex items-center justify-between mt-0.5">
+          <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground tabular-nums truncate">
               {secondary}
             </span>
@@ -105,12 +105,13 @@ export function TradeRowShell({
             )}
           </div>
         )}
-        {tertiary !== undefined && <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums truncate">{tertiary}</div>}
+        {tertiary !== undefined && <div className="-mt-0.5 text-[10px] leading-tight text-muted-foreground/70 tabular-nums truncate">{tertiary}</div>}
       </div>
     </>
   );
 
-  const actionClasses = "flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left";
+  // Tight on purpose (the owner, 2026-11-14): less padding around the row and less between the logo and the text.
+  const actionClasses = "flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left";
 
   // prefetch={false}: rows come in lists, and Next fetches every link as it
   // scrolls into view — the dashboard's pinned and movers rows asked for their
@@ -149,7 +150,7 @@ export function TradeRowShell({
 
 function RowMenu({ items }: { items: RowMenuItem[] }) {
   return (
-    <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
