@@ -139,7 +139,7 @@ describe("Secular Compounder, 2026-11-13: the close-out owes what the read liste
     // In production this call completed the run with these three and AAPL unanswered; AAPL was owed for stale research alone.
     expect(owed).toEqual(["ASML", "CEG", "EME"]);
     expect(status).toBe("RUNNING");
-    expect(message).toMatch(/CEG \(t_CEG\): your word unanswered/);
+    expect(message).toMatch(/CEG \(t_CEG\): a note to answer/);
     expect(message).not.toMatch(/AAPL/);
     expect(message).toMatch(/EME \(t_EME\): review due/);
     expect(message).toMatch(/ASML \(t_ASML\): review due/);

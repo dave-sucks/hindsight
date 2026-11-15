@@ -48,7 +48,7 @@ const READ: Record<(typeof AGENTS)[number]["id"], { chars: number | null; square
 };
 
 /** An example day: three flags up somewhere on the book. Their texts' real lengths. */
-const EXAMPLE_FLAGS = ["PROTECTION", "REVIEW_DUE", "EARNINGS"];
+const EXAMPLE_FLAGS = ["PROTECTION", "REVIEW_DUE", "PROTECTIVE_SALE"];
 
 /** `linkBase` puts the page in front of the in-page links when the picture sits outside the Framework page. */
 export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; linkBase?: string }) {

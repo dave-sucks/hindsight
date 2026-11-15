@@ -136,13 +136,13 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
       makeArgs({
         trigger: stop,
         stock: { ticker: "MU", direction: "LONG", row: row({ ticker: "MU" }) },
-        situations: { codes: ["PROTECTIVE_SALE", "YOUR_WORD_UNANSWERED"], guidance: guidanceFor(["PROTECTIVE_SALE", "YOUR_WORD_UNANSWERED"]) },
+        situations: { codes: ["PROTECTIVE_SALE", "NOTE_TO_ANSWER"], guidance: guidanceFor(["PROTECTIVE_SALE", "NOTE_TO_ANSWER"]) },
       }),
     );
-    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, YOUR_WORD_UNANSWERED), and what each asks:");
+    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NOTE_TO_ANSWER), and what each asks:");
     expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
     expect(prompt).toContain("Two sales fired together: one decision covers both");
-    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("YOUR_WORD_UNANSWERED — "));
+    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NOTE_TO_ANSWER — "));
     expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If it no longer holds"));
   });
 
@@ -181,18 +181,19 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
 // researches. Replay: ETN, Secular Compounder, 2026-09-18 09:45 ET — the run
 // confirmed the buy by its setup, called place_trade, and only then learned
 // the analyst held 4 of 4. Since step 10 the room is a line of the analyst's
-// brief, and what a buy into a full analyst should do is BUY_BLOCKED_FULL's.
+// brief, and what a buy into a full analyst should do is the buy's paragraph on it.
 describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () => {
   const stock = { ticker: "ETN", direction: "LONG", row: row({ ticker: "ETN", status: "WATCHING", setupId: "COMPOUNDER_ACCUMULATION", position: null }) };
   it("a full analyst: the brief says so before the stock; the answer is the situation's", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({
       stock,
       capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] },
-      situations: { codes: ["BUY_BLOCKED_FULL"], guidance: guidanceFor(["BUY_BLOCKED_FULL"]) },
+      situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"]) },
     }));
     expect(prompt).toContain("- Positions: 4 of 4 — this analyst is FULL. place_trade will refuse any new buy until one closes. It holds $ABT, $ASML, $CEG, $WST.");
     expect(prompt.indexOf("this analyst is FULL")).toBeLessThan(prompt.indexOf("$ETN, its row (get_theses)"));
-    expect(prompt).toContain(SITUATIONS.BUY_BLOCKED_FULL.guidance);
+    expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
+    expect(prompt).toContain("If the analyst is full: every slot is held or awaiting approval");
     expect(prompt).not.toContain("THE ANALYST'S ROOM");
     expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH");
   });

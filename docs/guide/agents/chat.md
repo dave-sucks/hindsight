@@ -72,7 +72,7 @@ It never approves or declines a proposal. That's always your click.
 The analysts never see this conversation. What reaches them is a note on the stock's thesis, in your words: why you like it or doubt it, what you're waiting for.
 
 - **Chat asks first.** When research reaches a conclusion, it drafts the note on a question card and saves it only on your yes.
-- **A note gets answered.** One no run has answered puts the stock in the "your word unanswered" [situation](../concepts/situations.md), so the next [morning run](morning-runs.md) answers it first, quoting you.
+- **A note gets answered.** One no run has answered puts the stock in the "a note to answer" [situation](../concepts/situations.md), so the next [morning run](morning-runs.md) answers it first, quoting you.
 - **A note is information, not an order.** A run weighs it, and says so when it decides against it.
 - **A price is never just words.** "Sell under $62" becomes a trigger, and the note says why.
 

@@ -391,11 +391,11 @@ function ApprovalCard() {
 /** Situations: the morning's work list, each stock with the reason it needs an answer today. */
 const WORK = [
   { s: "CRWD", tag: "sale signal", l: "Closed under the $384 floor." },
-  { s: "AMD", tag: "earnings", l: "Reports Thursday after the close." },
+  { s: "AMD", tag: "review due", l: "Reports Thursday after the close." },
   { s: "NVDA", tag: "floor to fix", l: "Up 31%, with the floor still at our entry." },
   { s: "SNOW", tag: "review due", l: "Thirty days since the last look." },
   { s: "ANET", tag: "buy level reached", l: "Pulled back to the 20-day average." },
-  { s: "LLY", tag: "your word unanswered", l: "Your note on Monday asked about the 50-day." },
+  { s: "LLY", tag: "a note to answer", l: "Your note on Monday asked about the 50-day." },
 ];
 
 function WorkList() {
@@ -442,7 +442,7 @@ const CELLS: ReadonlyArray<{ slug: DocSlug; title: string; line: string; art: Re
   { slug: "analysts", title: "Analysts", line: "A trading style with its own universe, sizing and sell rules. Every thesis belongs to one.", art: <AnalystDesk />, big: true, fit: "fill" },
   { slug: "triggers", title: "Triggers", line: "One sentence each, checked every five minutes. The one that comes true goes to the analyst.", art: <TriggerLog />, fit: "inset" },
   { slug: "approvals", title: "Approvals", line: "Analysts propose. You approve. A proposal expires after a day.", art: <ApprovalCard />, fit: "center" },
-  { slug: "situations", title: "Situations", line: "The seventeen reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
+  { slug: "situations", title: "Situations", line: "The eight reasons a stock needs an answer today.", art: <WorkList />, fit: "bleed" },
 ];
 
 export function ConceptCards({ onOpen }: { onOpen: (slug: DocSlug) => void }) {

@@ -90,7 +90,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.
 
 #### Auto
-`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`); the write-up has no trade tools (`NOT_IN_A_WRITEUP`) and is sent the `AUTO_TRADE` situation.
+`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`); the write-up has no trade tools (`NOT_IN_A_WRITEUP`) and reads its own text (`AUTO_WRITEUP`, `lib/agent/system-prompts/intraday-tactical.ts`), not a situation.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

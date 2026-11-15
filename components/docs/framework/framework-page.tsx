@@ -48,7 +48,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
         id="situations"
         eyebrow="Situations"
         lead="Instructions travel with the stock they're about."
-        rest="Seventeen situations a stock can be in, worked out from its facts on every read (one, an Auto trade to write up, comes from the trade). What an agent should do in each lives in one table, and only the ones that are up get sent."
+        rest="Eight situations a stock can be in, one per trigger action and four the code finds, worked out from its facts on every read. What an agent should do in each lives in one table, and only the ones that are up get sent."
       >
         <SituationsGrid situations={data.situations} />
       </Block>
