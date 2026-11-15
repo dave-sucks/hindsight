@@ -70,7 +70,7 @@ One mechanism or one workflow, end to end, for when the concept doc isn't enough
 
 Exact lists built from the code, with a test that fails when they drift. Regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
 
-- **[Situations library](reference/situations-library.md):** all sixteen situations, each with its code, what it means and the exact text an agent is sent.
+- **[Situations library](reference/situations-library.md):** all fifteen situations, each with its code, what it means and the exact text an agent is sent.
 - **[Trigger measures](reference/trigger-measures.md):** every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in.
 - **[Setups](reference/setups.md):** every setup in the playbook: what must be true first, where the buy, floor and target go, and when it has failed.
 
