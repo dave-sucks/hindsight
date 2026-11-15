@@ -8,13 +8,9 @@ Situations are how the agents spend their attention. On a given morning a few st
 
 ## Where they come from
 
-Each time a stock is read, its facts are turned into its list of situations. The facts come from one place, so the read, the thesis sheet and a run's close-out can't disagree:
+Two causes, one result. Either a **trigger** fires, or a **check in the code** finds something on its own, and the stock is left with a situation: a to-do for the next run that reads it, with the instructions for answering it.
 
-- **Its [triggers](triggers.md):** one that fired, or one whose condition is true now.
-- **Its review clock:** it came round.
-- **A holding's floor:** too far below what we paid, or a gain with no floor under it.
-- **Your words:** a note, a decline or a resized approval no run has answered yet.
-- **A recent sale:** a stock sold in the last two weeks is owed one look back.
+Each time a stock is read, its facts are turned into its list of situations. The facts come from one place, so the read, the thesis sheet and a run's close-out can't disagree.
 
 <!-- asset: situation-flow -->
 
@@ -35,8 +31,16 @@ The note is the write-up of what the situation sent the agent to find out. Every
 
 One per trigger action, and four the code finds with no trigger.
 
-- **From a trigger:** sale signal (a sell or trim trigger fired on a holding, or a sale you declined is still past its line), buy level reached (a buy trigger fired on a watch), add or near target (an add trigger fired, or a holding is three quarters of the way to its target), review due (a review trigger fired or the review clock came round).
-- **From the code alone:** floor to fix, a note to answer (yours, or one pinned on the stock), just sold, promoted to live.
+| Cause | Situation | When |
+|---|---|---|
+| A sell or trim trigger | **Sale signal** | It fired on a holding, or a sale you declined is still past its line. |
+| A buy trigger | **Buy level reached** | It fired on a watch, or its condition is still true when the morning run reads the stock. |
+| An add trigger, or the code | **Add or near target** | An add trigger fired, or a holding is three quarters of the way to its target. |
+| A review trigger | **Review due** | It fired, or the review clock came round. A trigger on a report or a filing is a review too. |
+| The code | **Floor to fix** | A holding's floor locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
+| The code | **A note to answer** | You left a note, a decline or a resized approval that no run has answered, or a note is pinned on the stock. |
+| The code | **Just sold** | Sold in the last two weeks, and no run has looked at it since. |
+| The code | **Promoted to live** | A paper analyst was promoted to live money, and its holdings need a decision. |
 
 A case inside a situation is a paragraph of its text, not a situation of its own: a buy into a full analyst, a review on a report or a filing, a watch with no view yet, a pinned note. The row carries the fact that picks it. A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
 
