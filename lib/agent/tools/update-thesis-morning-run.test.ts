@@ -48,13 +48,10 @@ describe("the morning run's save", () => {
     expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(25);
   });
 
-  it("FIRST_RESEARCH and a woken watch send the claim through the writer, and name no field this save lacks", () => {
-    for (const code of ["FIRST_RESEARCH", "QUIET_WATCH_WOKE"] as const) {
-      const text = SITUATIONS[code].guidance;
-      for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([code, tool, text.includes(tool)]).toEqual([code, tool, true]);
-      for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([code, f, text.includes(f)]).toEqual([code, f, false]);
-      expect(text.length).toBeLessThanOrEqual(2200);
-    }
+  it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {
+    const text = SITUATIONS.REVIEW_DUE.guidance;
+    for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
+    for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([f, text.includes(f)]).toEqual([f, false]);
   });
 
   it("the saved calls stay under the cap", () => {

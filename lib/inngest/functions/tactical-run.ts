@@ -41,7 +41,6 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade, trimPctOf } from "@/lib/agent/triggers/fire-mode";
 import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
-import { guidanceFor } from "@/lib/agent/situations";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { answers, firedTrigger } from "@/lib/proposals/staged";
@@ -726,9 +725,8 @@ export const tacticalRun = inngest.createFunction(
         position,
         fired: { price: fired.firedPrice ?? null },
         capacity: ctx.capacity ?? null,
-        // A write-up is in one situation: the Auto trade it writes up. (With a
-        // sale now waiting, the read lists none.)
-        situations: auto ? { codes: ["AUTO_TRADE"], guidance: guidanceFor(["AUTO_TRADE"], "INTRADAY_TACTICAL") } : read?.situations ?? null,
+        // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
+        situations: auto ? null : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
         portfolioBlock,
       });

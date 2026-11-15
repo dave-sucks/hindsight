@@ -36,7 +36,7 @@ The market is an input, never a gate. Every buy tells the agent the reading, and
 
 ## Slots
 
-Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity, and the stock enters the "buy blocked, full" [situation](../concepts/situations.md). There the agent weighs the stock against the weakest holding and names which one it would replace. Replacing a holding is your decision.
+Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity, and the stock's "buy level reached" [situation](../concepts/situations.md) reads its paragraph on a full analyst. There the agent weighs the stock against the weakest holding and names which one it would replace. Replacing a holding is your decision.
 
 ## Account-wide lines
 
@@ -55,7 +55,7 @@ Two numbers watch the whole account. Open risk is what we'd lose if every floor 
 `computeRegime` in `lib/agent/regime.ts`, from the daily `TickerIndicators` snapshot; `REGIME_BUFFER_PCT` is 1.
 
 #### Slots
-`maxOpenPositions` on `AgentConfig` (default 5). `place_trade` counts `OPEN` and `PENDING_APPROVAL` positions. `lib/agent/capacity.ts` holds `isFull` and `buyBlockedByFull`; `recordBuyBlockedByFull` writes the Activity line; `BUY_BLOCKED_FULL` is in `lib/agent/situations.ts`.
+`maxOpenPositions` on `AgentConfig` (default 5). `place_trade` counts `OPEN` and `PENDING_APPROVAL` positions. `lib/agent/capacity.ts` holds `isFull` and `buyBlockedByFull`; `recordBuyBlockedByFull` writes the Activity line; what a run does with a buy into a full analyst is a paragraph of `BUY_ARRIVES` in `lib/agent/situations.ts`.
 
 #### Account lines
 `openRisk`, `heatLine` and `industryLine` in `lib/agent/portfolio-risk.ts`, with `PORTFOLIO_HEAT_PCT` and `MAX_NAMES_PER_INDUSTRY`. `place_trade` adds them to its sizing notes: the reply's `sizing` and the `trade_placed` run event, never the proposal's reason.

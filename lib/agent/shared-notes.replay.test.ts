@@ -87,7 +87,7 @@ describe("get_theses reads the notes", () => {
     const d = await read({ sharedNote: [sharedNote({})] });
     for (const id of ["t_mu", "t_gev"]) {
       const row = listed(d, id);
-      expect(row?.situations).toEqual(["PINNED_NOTE"]);
+      expect(row?.situations).toEqual(["NOTE_TO_ANSWER"]);
       expect(String(row?.context)).toContain("Agent note to MU, GEV, about 2026-11-03");
     }
     expect(listed(d, "t_v")).toBeUndefined();
@@ -98,7 +98,7 @@ describe("get_theses reads the notes", () => {
     const answer = { id: "u_mu", thesisId: "t_mu", type: "REVIEWED", timestamp: ago(0.01), runId: "run_morning", summary: "Review", rationale: "Checked the vote against MU's case.", fieldChanges: {}, signalIds: [] };
     const d = await read({ sharedNote: [sharedNote({})], thesisUpdate: [answer] });
     expect(listed(d, "t_mu")).toBeUndefined();
-    expect(listed(d, "t_gev")?.situations).toEqual(["PINNED_NOTE"]);
+    expect(listed(d, "t_gev")?.situations).toEqual(["NOTE_TO_ANSWER"]);
   });
 
   it("a note to the account is read once, at the top of the read", async () => {

@@ -232,7 +232,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       needs: needs.get(t.id) ?? [],
       triggers: load.ladders.get(t.id) ?? [],
       status: t.status,
-      direction: t.direction,
       actionability: r?.actionability ?? null,
       progressToTarget: r?.progressToTarget ?? null,
       buyBlockedByFull: blocked.has(t.id),

@@ -6,7 +6,7 @@
  *
  * Through the real get_theses execute against the doubled database, then the
  * one row builder, as the research-line test does. A seed whose clock is due
- * is a row in `theses` (FIRST_RESEARCH); one that is not due is one line in
+ * is a row in `theses` (REVIEW_DUE); one that is not due is one line in
  * `quiet_theses`; the fact rides on both.
  */
 import { replayTool, thesisRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
@@ -72,7 +72,7 @@ describe("the newest writer run on a stock, on its row", () => {
   it("a seed due its first research: a row, its research line says the write-up failed and when", async () => {
     const { row, listed } = await read(50, failedNewer());
     expect(listed).toBe(true);
-    expect(row.situations).toEqual(["FIRST_RESEARCH"]);
+    expect(row.situations).toEqual(["REVIEW_DUE"]);
     expect(row.writerRun).toEqual({ status: "FAILED", startedAt: ago(2).toISOString() });
     const short = (await rowForModel(row, "short")) as Record<string, unknown>;
     expect(short.stock).toBe("MA · watch · no view · COMPOUNDER");

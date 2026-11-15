@@ -48,7 +48,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     // The setup's checklist and the filing's reading are guidance now.
     expect(SITUATIONS.REVIEW_DUE.guidance).toContain("The `setup` line: its failure signs, the manage rule, the time limit.");
-    expect(SITUATIONS.FILING.guidance).toContain("Read it first");
+    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("If it watches a filing: read the document first");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
   });
 });
@@ -61,7 +61,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
   const withBook = (symbols: string[]) =>
     ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
 
-  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is BUY_BLOCKED_FULL's", () => {
+  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is the buy's paragraph on a full analyst", () => {
     const p = buildDailyRunSystemPromptV2(
       { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
@@ -69,7 +69,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
     expect(p).not.toContain("**This analyst is full.**");
-    expect(SITUATIONS.BUY_BLOCKED_FULL.guidance).toContain("Or say it waits for a free slot, and why.");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("or say it waits for a free slot, and why.");
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {

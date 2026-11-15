@@ -53,7 +53,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Theses](concepts/theses.md):** a belief we can be wrong about, and the plan that acts on it. Every stock on the book has one.
 - **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A thesis's whole plan is its triggers.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
-- **[Situations](concepts/situations.md):** the fifteen reasons a stock needs an answer today, each with its own instructions.
+- **[Situations](concepts/situations.md):** the eight reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day, except one a trigger made, which waits while its trigger holds.
 - **[Price targets](concepts/price-targets.md):** the house sets none. A plan is the buy, the floor and an upside rule where the setup has one; Wall Street's targets are a card, and a line a rule can watch.
 
@@ -70,7 +70,7 @@ One mechanism or one workflow, end to end, for when the concept doc isn't enough
 
 Exact lists built from the code, with a test that fails when they drift. Regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
 
-- **[Situations library](reference/situations-library.md):** all fifteen situations, each with its code, what it means and the exact text an agent is sent.
+- **[Situations library](reference/situations-library.md):** all eight situations, each with its code, what it means and the exact text an agent is sent.
 - **[Trigger measures](reference/trigger-measures.md):** every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in.
 - **[Setups](reference/setups.md):** every setup in the playbook: what must be true first, where the buy, floor and target go, and when it has failed.
 

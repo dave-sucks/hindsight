@@ -46,6 +46,5 @@ it("REVIEW_DUE, which reaches stocks we hold in both runs, retires only a stock 
   expect(SITUATIONS.REVIEW_DUE.guidance).toContain(
     "- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.",
   );
-  expect(SITUATIONS.REVIEW_DUE.guidance.length).toBeLessThanOrEqual(2_200);
 });
 

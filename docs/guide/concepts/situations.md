@@ -1,6 +1,6 @@
 # Situations
 
-**It knows what needs attention.** A situation is a reason a stock needs an answer today: a sale fired, earnings are close, a review came due, you left a note.
+**It knows what needs attention.** A situation is a reason a stock needs an answer today: a sale fired, a buy level came, a review came due, you left a note.
 
 Situations are how the agents spend their attention. On a given morning a few stocks on a book of forty are in one; those get the work, and the rest are one quiet line each.
 
@@ -31,13 +31,16 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
 - How often each one comes up, and what the runs did with it, is on Performance, under Agent work.
 
-## The fifteen
+## The eight
 
-- **Write up a trade:** auto trade made. A trigger set to Auto made its trade, and the trigger run that made it writes it up. This one comes from the trade, not from the stock's facts.
-- **Act on the plan:** sale signal, buy level reached, buy blocked (full), add or near target, promoted to live.
-- **Keep the plan honest:** floor to fix, review due.
-- **Back to the Writer:** first research due, watch woke up.
-- **Answer what happened:** earnings, new filing, your word unanswered, pinned note to answer, sold (one look). A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
+One per trigger action, and four the code finds with no trigger.
+
+- **From a trigger:** sale signal (a sell or trim trigger fired on a holding, or a sale you declined is still past its line), buy level reached (a buy trigger fired on a watch), add or near target (an add trigger fired, or a holding is three quarters of the way to its target), review due (a review trigger fired or the review clock came round).
+- **From the code alone:** floor to fix, a note to answer (yours, or one pinned on the stock), just sold, promoted to live.
+
+A case inside a situation is a paragraph of its text, not a situation of its own: a buy into a full analyst, a review on a report or a filing, a watch with no view yet, a pinned note. The row carries the fact that picks it. A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
+
+A trade a trigger set to Auto made is written up by the trigger run that made it, from that run's own instructions; it is not a situation.
 
 Each one's code, what it means and the exact text an agent is sent are in the [Situations library](../reference/situations-library.md).
 
@@ -45,10 +48,10 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 <summary>Technical details</summary>
 
 #### The list
-`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by its action and measures (`fireCodes`).
+`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by its action (`fireCodes`); one on a report or a filing is a review too.
 
 #### The texts
-`SITUATIONS`, the one table of what an agent is told per situation; each text is held under 2,200 characters by test.
+`SITUATIONS`, the one table of what an agent is told per situation; each text is held under 2,200 characters by test, and the three that end in a paragraph per case (the buy, the review, the note) just above their length. The Auto write-up's text is `AUTO_WRITEUP` in `lib/agent/system-prompts/intraday-tactical.ts`.
 
 #### One feed
 `loadWorkInputs` and `loadStockFacts`, shared by the read, the thesis sheet, the quote route and the run close-out.
@@ -57,5 +60,5 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 `get_theses`, once per read and only for the codes on today's list; a trigger run reads its stock the same way.
 
 #### Counted by
-`lib/performance/agent-work.ts` reads each morning run's codes back from its saved thread (the first `get_theses` result) for the Agent work tab (`components/performance/AgentWorkTab.tsx`); a trigger run's situation is worked out from what fired.
+`lib/performance/agent-work.ts` reads each morning run's codes back from its saved thread (the first `get_theses` result) for the Agent work tab (`components/performance/AgentWorkTab.tsx`); a code saved before the 2026-11-15 merge counts as the one it is now (`MERGED_CODE`), and a trigger run's situation is its trigger's action's.
 </details>

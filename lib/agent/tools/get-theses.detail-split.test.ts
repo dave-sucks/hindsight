@@ -491,8 +491,8 @@ describe("get_theses — a stock with no setup named, and a buy that fired into 
     expect(row).toBeDefined();
     expect(row.buyBlockedByFull).toMatch(/this analyst is full \(4 of 4: \$ABT, \$ASML, \$CEG, \$WST\)/);
     // The portfolio decision is the situation's guidance, once on the read.
-    expect(row.situations).toContain("BUY_BLOCKED_FULL");
-    expect(res.data.guidance.BUY_BLOCKED_FULL).toMatch(/which held stock it would replace/);
+    expect(row.situations).toContain("BUY_ARRIVES");
+    expect(res.data.guidance.BUY_ARRIVES).toMatch(/If the analyst is full: .*which holding it would replace/);
     // A watched stock whose buy never fired is not the question.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((res.data.quiet_theses as any[]).map((t) => t.ticker)).toContain("EME");

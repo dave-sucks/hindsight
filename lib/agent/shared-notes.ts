@@ -14,7 +14,7 @@
  *
  * A note to stocks can be pinned until a date at most two weeks out. Pinned,
  * it reads in its own block above the stock's newest 8 Activity lines and
- * doesn't count against them, and the stock is in the PINNED_NOTE situation
+ * doesn't count against them, and the stock is in the NOTE_TO_ANSWER situation
  * until a run writes on the stock after it. A note to the account or an
  * analyst always has an end date (a week unless it says otherwise): a market
  * note with no end goes stale.

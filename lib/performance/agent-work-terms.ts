@@ -1,6 +1,6 @@
 /**
  * The Agent work tab's vocabulary, safe to import in the browser: the ranges,
- * the six categories with every situation's place in them, what a run can do
+ * the four categories with every situation's place in them, what a run can do
  * with a stock, and the run types' names. ./agent-work counts with these.
  */
 import type { SituationCode } from "@/lib/agent/situations";
@@ -8,18 +8,22 @@ import type { SituationCode } from "@/lib/agent/situations";
 export const RANGES = [7, 30, 90] as const;
 export type RangeDays = (typeof RANGES)[number];
 
-export const CATEGORIES = ["Selling and protection", "Buying and adding", "Events", "Upkeep", "Your word", "Auto"] as const;
+export const CATEGORIES = ["Selling and protection", "Buying and adding", "Upkeep", "Your word"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 /** Every situation's category: the one map to change when codes are cut or merged. */
 export const SITUATION_CATEGORY: Record<SituationCode, Category> = {
   PROTECTIVE_SALE: "Selling and protection", PROTECTION: "Selling and protection",
-  BUY_ARRIVES: "Buying and adding", BUY_BLOCKED_FULL: "Buying and adding", ADD_OR_WINNER: "Buying and adding",
-  EARNINGS: "Events", FILING: "Events",
-  REVIEW_DUE: "Upkeep", FIRST_RESEARCH: "Upkeep", QUIET_WATCH_WOKE: "Upkeep",
-  SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep",
-  YOUR_WORD_UNANSWERED: "Your word", PINNED_NOTE: "Your word",
-  AUTO_TRADE: "Auto",
+  BUY_ARRIVES: "Buying and adding", ADD_OR_WINNER: "Buying and adding",
+  REVIEW_DUE: "Upkeep", SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep",
+  NOTE_TO_ANSWER: "Your word",
+};
+
+/** A code saved by a morning read before situations were merged (2026-11-15), as the one it is now. */
+export const MERGED_CODE: Readonly<Record<string, SituationCode>> = {
+  BUY_BLOCKED_FULL: "BUY_ARRIVES",
+  EARNINGS: "REVIEW_DUE", FILING: "REVIEW_DUE", QUIET_WATCH_WOKE: "REVIEW_DUE", FIRST_RESEARCH: "REVIEW_DUE",
+  YOUR_WORD_UNANSWERED: "NOTE_TO_ANSWER", PINNED_NOTE: "NOTE_TO_ANSWER",
 };
 
 export const OUTCOMES = ["trade", "refused", "plan", "research", "note", "nothing"] as const;

@@ -68,7 +68,7 @@ For each stock that survives, the chat says in a sentence or two what is changin
 
 The Writer researches each stock it was sent and puts it on the watchlist with a buy, a floor and a target. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and a [trigger run](trigger-runs.md) agrees, with your [approval](../concepts/approvals.md) on the live account.
 
-A watch sleeps until its wake-up comes true. Then the stock is in the "watch woke up" [situation](../concepts/situations.md), and the next morning run decides whether to bring it back.
+A watch sleeps until its wake-up comes true. Then the stock is in the "review due" [situation](../concepts/situations.md), whose paragraph on a watch with no view asks the next morning run whether to bring it back.
 
 The Writer runs it started land on their own; `wait_for_thesis_refresh` brings them back into the conversation.
 
