@@ -273,12 +273,12 @@ export const recordThesis = defineTool({
         };
       }
 
-      // A review can't be Auto; a buy, add or trim is Auto only on the owner's word (his chat).
+      // A review can't be Auto, a sale or trim can't wait for the morning, and a buy, add or trim is Auto only on the owner's word (his chat).
       const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode, { agent: ctx.runMode !== "PRINCIPAL_CHAT" })).find(Boolean);
       if (modeProblem) {
         return {
           summary: `Thesis rejected for ${args.ticker}: a trigger's fireMode.`,
-          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with fireMode ASK_NOW or NEXT_MORNING, or none.` },
+          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with one of those, or with no fireMode.` },
           sources: [],
         };
       }

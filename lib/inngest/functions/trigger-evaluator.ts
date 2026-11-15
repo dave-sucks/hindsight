@@ -776,15 +776,13 @@ export const triggerEvaluator = inngest.createFunction(
             .map((t) => [t.id, filingsBehindFire(t, tickerFilings)] as const)
             .filter(([, f]) => f.length > 0),
         );
-        // A paused analyst has no morning run: its sale goes to the owner now.
-        const paused = thesis.researchRun.agentConfig?.enabled === false;
         // A red filing on a stock we own is looked at today (2026-09-15).
         const sameDayLook = (t: Trigger) => {
           const f = filingsByTrigger.get(t.id);
-          return paused || (f != null && filingNeedsSameDayLook(f, thesis.status));
+          return f != null && filingNeedsSameDayLook(f, thesis.status);
         };
         // A sale fire while a sale already waits is dropped unstamped, so it asks again once that proposal is answered, withdrawn or expired.
-        const sale = (t: Trigger) => (t.action === "EXIT" || t.action === "TRIM") && !waitsForMorning(t, sameDayLook(t));
+        const sale = (t: Trigger) => t.action === "EXIT" || t.action === "TRIM";
         const fires = posInfo && saleWaiting.has(posInfo.id) ? matched.filter((t) => !sale(t)) : matched;
         if (fires.length === 0) continue;
         await stampLastFiredAt({

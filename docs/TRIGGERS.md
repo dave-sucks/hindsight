@@ -249,7 +249,7 @@ the stock and the thesis (`CHECK FAILED on …`), that trigger is skipped this
 pass, and every other trigger on that stock and the rest of the book is still
 checked.
 
-## 4. On fire — the same three choices on every trigger
+## 4. On fire — three choices, two on a sale or trim
 
 One field, `fireMode`, the same for every action, condition and author
 (`lib/agent/triggers/fire-mode.ts`). The stored values are never shown; the
@@ -259,7 +259,7 @@ names are:
 |---|---|---|
 | **`DO_IT`** | Auto-sell / Auto-buy / Auto-add / Auto-trim | The trade, with no agent deciding; the same trigger run then writes it up with no trade tools, and its note becomes the trade's reason (`lib/proposals/auto-writeup.ts`). A sale closes the position (`closeOpenPosition`); a trim sells its `trimPct` (default 50) through `manage_position`; a buy goes through `place_trade` on a watched stock, an add through `manage_position` on a held one. Not offered on a review. |
 | **`ASK_NOW`** | Send to Agent | `app/thesis.trigger.fired` → a trigger run (the tactical run) starts now and decides. |
-| **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. |
+| **`NEXT_MORNING`** | Flag for Review | The `TRIGGER_FIRED` row is written and no run starts; the next morning run answers it. Not offered on a sale or a trim: a sale that waits until tomorrow morning isn't a stop. |
 
 **One default.** Unset (a template, an agent that names none), a review is
 Flag for Review and everything else is Send to Agent. Auto is only ever chosen:
@@ -268,6 +268,11 @@ on purpose. The write paths stamp the mode (`applyTriggerDefaults`), so every
 stored trigger names one; the migration `20261022130000_on_fire_every_trigger`
 wrote each existing trigger with the mode it already behaved as. A value a read
 doesn't know is read as the default (Send to Agent for a sale).
+
+**Never Flag for Review on a sale or a trim** (`fireModeProblem`, run by every
+write path, for every author): "A sale can't wait for the morning. Choose
+Auto-sell or Send to Agent." (a trim: "Choose Send to Agent."). None was stored
+when this shipped (2026-11-14), so nothing was migrated.
 
 **Who may set Auto** (`fireModeProblem`, run by every write path):
 
@@ -338,8 +343,8 @@ never the *approval* step. The dialog says "Waits for your approval." under On
 fire when the switch for that side is on.
 
 **Only the owner slows a protective sale.** On a held stock an agent may not
-move a protective sale down the order Auto-sell → Send to Agent → Flag for
-Review (`FIRE_MODE_SPEED`, `ratchet.ts`), the same as it may not lower the line.
+move a protective sale from Auto-sell to Send to Agent (`FIRE_MODE_SPEED`,
+`ratchet.ts`), the same as it may not lower the line.
 
 **A trade asks at most once a day, whatever its On fire.** A buy, add, trim
 or sale has a one-day floor on its cooldown (`flooredCooldownDays`); a wait
