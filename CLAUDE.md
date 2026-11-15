@@ -25,7 +25,7 @@ pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On f
 is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
 the same trigger run then writes it up with no trade tools, and its note is the
-trade's reason (`lib/proposals/auto-writeup.ts`, situation `AUTO_TRADE`);
+trade's reason (`lib/proposals/auto-writeup.ts`; its text is `AUTO_WRITEUP`);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
 run answers it; never a sell or trim, since a sale can't wait for the morning).
@@ -75,10 +75,13 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 ## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
 `computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
 stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
-list plus the row's facts to its situation codes (fifteen in all; `AUTO_TRADE`
-is set by the Auto write-up itself), and `SITUATIONS` in the
-same file is the ONE table of the text an agent gets for each (under 2,200
-characters each). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
+list plus the row's facts to its situation codes (eight in all, 2026-11-15:
+one per trigger action, a sale or trim, a buy, an add, a review, and four the
+code finds with no trigger: floor to fix, a note to answer, just sold,
+promoted to live), and `SITUATIONS` in the same file is the ONE table of the
+text an agent gets for each (under 2,200 characters each; the buy, the
+review and the note end in one paragraph per case they took in, and are
+capped just above their length in `situations.test.ts`). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
 for the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set
 of facts; `get_theses`, the thesis sheet, the quote route and `complete_run`'s
 close-out all go through them, so no two surfaces can disagree about a stock.
