@@ -22,7 +22,7 @@ import { num } from "./words";
 
 interface Reader {
   holds(c: Condition, ctx: EvaluationContext): boolean;
-  /** Compares the live price to a level, so a buy on it fires on the crossing. */
+  /** Compares the live price to a level, so a buy or a review on it fires on the crossing. */
   readsPrice?(c: Condition): boolean;
   /** Reads the next scheduled report: a heads-up fires once per report. */
   readsReport?(c: Condition): boolean;

@@ -32,10 +32,11 @@ run answers it). Unset, a review is Flag for Review and everything else Send to
 Agent; every stored trigger names one. Auto on a buy, add or trim is the
 owner's alone, on a stock (not an account or analyst rule), and is used once;
 an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
-semantics differ by action (DAV-229):** a protective/review rung is a standing
+semantics differ by action (DAV-229):** a sale, trim or add rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
-an ENTER fires on the *crossing* of its level (true now, false at the prior
-close) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
+an ENTER or a REVIEW fires on the *crossing* of its level (true now, false at
+the prior close; a review that doesn't read the price, like a clock or a
+report, fires while true) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).

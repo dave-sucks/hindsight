@@ -142,7 +142,7 @@ export interface ApplyTriggerOpsInput {
   ownersWord?: boolean;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
-  /** Stamped on buy triggers this call writes (./written-price). Defaults to `currentPrice`. */
+  /** Stamped on buy and review triggers this call writes (./written-price). Defaults to `currentPrice`. */
   writtenPrice?: number | null;
   /** The write time stamped with it. Defaults to now. */
   now?: Date;

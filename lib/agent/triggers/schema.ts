@@ -229,7 +229,7 @@ export const triggerSchema = z.object({
     .number()
     .positive()
     .optional()
-    .describe("Server-stamped on a buy trigger when it is written. Do not set — any supplied value is overwritten."),
+    .describe("Server-stamped on a buy or review trigger when it is written. Do not set — any supplied value is overwritten."),
   writtenAt: z
     .string()
     .datetime()

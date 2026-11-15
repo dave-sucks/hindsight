@@ -364,7 +364,7 @@ predicate matches
 ```
 
 **Two fire semantics, keyed off the action (DAV-229, 2026-09-02).** A
-protective or review rung is a **standing order** (principal ruling
+sale, trim or add rung is a **standing order** (principal ruling
 2026-08-16): it fires every day its condition is true, and a declined
 proposal means "did nothing today", so it asks again tomorrow. **A proposal a
 fire leads to (a buy, add, trim or sale) has no 24 hours** (the owner's ruling
@@ -374,15 +374,18 @@ meanwhile), and the 16:20 ET close pass withdraws it (`WITHDRAWN`, with
 `withdrawnReason`) when none holds on the close, read with `evaluateTrigger`
 (`lib/proposals/trigger-proposals.ts`). A proposal no trigger made still
 lapses after 24 hours. An
-**`ENTER` rung fires on the crossing**: the condition is true now and was
+**`ENTER` or `REVIEW` rung fires on the crossing**: the condition is true now and was
 false at the prior session's close (`latestQuote.prevClose`).
 "Buy above $35" means buy when the price gets there — not "buy now and ask
 every day it is higher", which is what the standing-order reading made of a
 level the price was already past (TOST $35.15 against a $35.16 tape; PLTR,
-16 buy fires in 30 days). The same predicate evaluated at the prior close
-decides the crossing, so two conditions and "above the 50-day" get it for free; entries
-that don't read the price (time, daily move) can't cross and keep firing on
-match. **A buy written after the prior close is measured from the price it
+16 buy fires in 30 days). A review asks the same question once: MU's "review
+if below $878" fired on 14 of the 21 sessions from 2026-10-16 to 11-13 and
+crossed on 4 of them (2026-11-14). The same predicate evaluated at the prior close
+decides the crossing, so two conditions and "above the 50-day" get it for free; ones
+that don't read the price (time, a report, a filing, the daily move, the move
+from our entry, the trail) can't cross and keep firing on match. **A buy or a
+review written after the prior close is measured from the price it
 was written at** (`writtenPrice`/`writtenAt`, server-stamped by
 `applyTriggerOps` and `record_thesis`; `lib/agent/triggers/written-price.ts`)
 until the next close: otherwise "buy above $100.05" set at $100 on a day the
@@ -392,7 +395,10 @@ current price, and this is what makes that work on a down day. A plan the price 
 stock's review deals with it. Read-side snapshots (the daily
 run's `TRIGGER_MATCHING_NOW`, the resolver's `ENTER_FIRED`) carry no prior
 close and keep level semantics — "is the condition true now" is the right
-question for a snapshot.
+question for a snapshot. A review that reads the price is left off the morning
+read's true-now list (`computeNeedsAction`), since the read can't see its
+crossing: it reaches the morning run only through its crossing's
+`TRIGGER_FIRED` row.
 
 **Reviews wait for the morning by default:** a `REVIEW` fire means
 "re-evaluate," not "act now" — it converts to a trade rarely, so unset it is

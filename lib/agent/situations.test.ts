@@ -13,6 +13,7 @@ const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
 const trig = (id: string, action: string, predicate: unknown): Trigger =>
   ({ id, action, predicate, rationale: "r", cooldownDays: 0 }) as unknown as Trigger;
 const below = (v: number) => ({ watch: "price", is: "below", value: v });
+const dayDrop = (v: number) => ({ watch: "move", is: "below", value: v, variable: "prev_close" });
 const fire = (triggerId: string, hoursAgo = 2) => ({ type: "TRIGGER_FIRED", timestamp: new Date(NOW.getTime() - hoursAgo * 3_600_000), triggerId, runId: null });
 
 function input(thesis: Partial<NeedsActionInput["thesis"]>, over: Partial<NeedsActionInput> = {}): NeedsActionInput {
@@ -47,7 +48,8 @@ describe("the work-flag list", () => {
   });
 
   it("every trigger true now is on the list in ladder order; the first leads", () => {
-    const i = input({ triggers: [trig("rev", "REVIEW", below(90)), trig("floor", "EXIT", below(80))] }, { latestQuote: { price: 75, changePct: 0 } });
+    // A review on the day's move: one on the price waits for its crossing's fire row.
+    const i = input({ triggers: [trig("rev", "REVIEW", dayDrop(3)), trig("floor", "EXIT", below(80))] }, { latestQuote: { price: 75, changePct: -5 } });
     const list = computeNeedsAction(i);
     expect(list.map((f) => (f.kind === "TRIGGER_MATCHING_NOW" ? `${f.kind}:${f.action}` : f.kind))).toEqual([
       "TRIGGER_MATCHING_NOW:REVIEW",
@@ -86,7 +88,7 @@ describe("the situations a stock is in", () => {
   });
 
   it("a sale true now behind a review true now is on the list, second", () => {
-    const i = input({ triggers: [trig("rev", "REVIEW", below(90)), trig("floor", "EXIT", below(80))] }, { latestQuote: { price: 75, changePct: 0 } });
+    const i = input({ triggers: [trig("rev", "REVIEW", dayDrop(3)), trig("floor", "EXIT", below(80))] }, { latestQuote: { price: 75, changePct: -5 } });
     expect(situationsFor(sources(i))).toEqual(["REVIEW_DUE", "PROTECTIVE_SALE"]);
   });
 
