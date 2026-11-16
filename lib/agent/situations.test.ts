@@ -155,7 +155,7 @@ describe("the situations for a person: the sheet's flag line", () => {
 });
 
 // The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15).
-const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 2_850, REVIEW_DUE: 6_950, NOTE_TO_ANSWER: 3_050 };
+const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 2_850, REVIEW_DUE: 7_130, NOTE_TO_ANSWER: 3_240 };
 const capOf = (code: string) => CAP[code as SituationCode] ?? 2_200;
 
 describe("the guidance: each situation's text, once", () => {
@@ -175,6 +175,13 @@ describe("the guidance: each situation's text, once", () => {
       expect([code, guidance.match(/which day of the breach|name the rule|what you checked and why|say for each whether|full — waiting/g)]).toEqual([code, null]);
     }
   });
+  it("each text that can end in a sale says a waiting card is the principal's; the others don't", () => {
+    const SAYS = "`proposal_waiting` already shows a sell or trim";
+    const withIt = Object.entries(SITUATIONS).filter(([, { guidance }]) => guidance.includes(SAYS)).map(([code]) => code);
+    expect(withIt).toEqual(["ADD_OR_WINNER", "PROTECTION", "REVIEW_DUE", "NOTE_TO_ANSWER"]);
+    // Once in each, and the trigger run reads it too: its row carries the same line.
+    for (const code of withIt) expect(guidanceFor([code as SituationCode], "INTRADAY_TACTICAL")[code as SituationCode]!.split(SAYS)).toHaveLength(2);
+  });
   it("comes in rank order, each text once, whatever order the codes arrive in", () => {
     const codes: SituationCode[] = ["NOTE_TO_ANSWER", "PROTECTIVE_SALE", "NOTE_TO_ANSWER", "REVIEW_DUE"];
     expect(Object.keys(guidanceFor(codes))).toEqual(["PROTECTIVE_SALE", "REVIEW_DUE", "NOTE_TO_ANSWER"]);
@@ -193,6 +200,36 @@ describe("the guidance: each situation's text, once", () => {
     expect(theirs).toContain("due its first research on that clock, and the morning run answers it");
     expect(theirs).not.toContain("wait_for_thesis_refresh on the child run");
     expect(guidanceFor(["REVIEW_DUE"], "MORNING_PLAN").REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
+  });
+});
+
+describe("a sale card waiting for the principal silences only that sale", () => {
+  const sale = trig("sale", "EXIT", below(120));
+  const waiting = { hasPendingSaleProposal: true };
+  it("a stock with only the fired sale is quiet while its card waits, and leads with the sale without it", () => {
+    const i = input({ triggers: [sale] }, { activity: [fire("sale")] });
+    expect(situationsFor(sources(i))).toEqual(["PROTECTIVE_SALE"]);
+    const card = sources({ ...i, ...waiting });
+    expect(situationsFor(card)).toEqual([]);
+    expect(listsTheStock(card)).toBe(false);
+  });
+  it("a pinned note, the principal's word, a review or an add still list it, and the sale is not among its situations", () => {
+    const i = input({ triggers: [sale, trig("add", "ADD", { watch: "price", is: "above", value: 80 }), trig("rev", "REVIEW", { watch: "repeat", value: 7 })], lastReviewedAt: new Date(NOW.getTime() - 9 * 86_400_000) }, { activity: [fire("sale")] });
+    const card = (over: Partial<SituationSources>) => sources({ ...i, ...waiting }, over);
+
+    expect(situationsFor(card({ pinnedNote: true }))).toEqual(expect.arrayContaining(["NOTE_TO_ANSWER", "ADD_OR_WINNER", "REVIEW_DUE"]));
+    expect(situationsFor(card({ pinnedNote: true }))).not.toContain("PROTECTIVE_SALE");
+    expect(listsTheStock(card({ pinnedNote: true }))).toBe(true);
+    expect(listsTheStock(card({ unansweredDecision: true }))).toBe(true);
+    // With no note, the add and the review are the work.
+    expect(situationsFor(card({}))).toEqual(["ADD_OR_WINNER", "REVIEW_DUE"]);
+    expect(listsTheStock(card({}))).toBe(true);
+  });
+  it("the pinned note alone lists a stock whose only other flag is the card's sale", () => {
+    const i = input({ triggers: [sale] }, { activity: [fire("sale")], ...waiting });
+    expect(situationsFor(sources(i, { pinnedNote: true }))).toEqual(["NOTE_TO_ANSWER"]);
+    expect(listsTheStock(sources(i, { pinnedNote: true }))).toBe(true);
+    expect(listsTheStock(sources(i))).toBe(false);
   });
 });
 
