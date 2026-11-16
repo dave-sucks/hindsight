@@ -1,6 +1,6 @@
 # Playbook triggers (roadmap 9.0)
 
-**Status: a draft for the owner to approve. Nothing here is built; roadmap 9.5 builds it.**
+**Status: Approved by the owner, 2026-11-16. Roadmap 9.5 builds it.**
 
 **The rule.** Every trigger on a stock was written by the owner, by an agent, or by a playbook template listed in Settings → Playbook. What fires is exactly what is saved. Nothing changes a trigger's meaning or timing when it is checked. Where code does that today, this spec deletes it.
 
@@ -49,7 +49,7 @@ The stock needs its event date on the thesis.
 | On a holding | How the level is picked | From |
 |---|---|---|
 | Sell if below $S | S: the last swing low that day, at least 1 ATR under the buy | Proposal |
-| Sell 7 days before the event date | The run-up sells before the decision (question 2) | Template |
+| Sell 7 days before the event date | The run-up sells before the decision (decided 2) | Template |
 | Trim 50% if above $H, only if the analyst believes it | H: the prior high | Proposal |
 | Review every 7 days | | Kept |
 
@@ -68,7 +68,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | On a holding | How the level is picked | From |
 |---|---|---|
 | Sell if below $S | S: under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8% | Proposal |
-| Trim 50% if above $H | H: the prior high above the buy, else twice (buy − S) above the buy (question 1) | Proposal |
+| Trim 50% if above $H | H: the prior high above the buy, else twice (buy − S) above the buy (decided 1) | Proposal |
 | Review 20 sessions after the buy | No progress in 10–20 sessions is a failed breakout | Template |
 | Review if above N% from our entry | N: (buy − S) ÷ buy. Once it is up one risk, the run raises "Sell if below" to the buy price | Proposal |
 | Review every 7 days | | Kept |
@@ -93,7 +93,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 |---|---|---|
 | Sell if below $S | S: the pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy | Proposal |
 | Sell if below the 50-day average and at least 1.5× normal volume | The setup is over | Template |
-| Trim 50% if above $H | H: the prior high the pullback came from (question 1) | Proposal |
+| Trim 50% if above $H | H: the prior high the pullback came from (decided 1) | Proposal |
 | Review 10 sessions after the buy | Ten sessions to reclaim the prior high | Template |
 | Review every 7 days | | Kept |
 
@@ -111,7 +111,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | On a holding | How the level is picked | From |
 |---|---|---|
 | Sell if below $S | S: the gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy | Proposal |
-| Trim 50% if above $H | H: the prior high above the buy, else twice (buy − S) above the buy (question 1) | Proposal |
+| Trim 50% if above $H | H: the prior high above the buy, else twice (buy − S) above the buy (decided 1) | Proposal |
 | Review 60 days after the buy | Hold 30–60 days | Template |
 | Review every 7 days | | Kept |
 
@@ -178,6 +178,7 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
    - Delete `watchedFloorOnClose` (`types.ts`, the trigger evaluator, `live-evaluate.ts`, `TriggerPill.tsx`). A Stop watching line saves its own "only on the close" setting, the same setting any typed price has, and the pill and the dialog show it.
    - Stop watching becomes its own stored action. Delete the "sells" label switch in `describe.ts`, the evaluator's sale-on-a-watch branch (`stop-watching.ts`), and the schema's DEMOTE → EXIT mapping. A "Sell if" line exists only on a holding.
    - One data update, so nothing fires differently: the 8 watch sale lines on the live account get the Stop watching action and their "only on the close" setting, and the one stored DEMOTE becomes Stop watching.
+   - **The sell price moves onto the proposal.** `place_trade` takes `sell_if_below` with its reason from the agent. Until PR 3 makes it a template, the agent reads it from the setup's sell rule. `place_trade` stops reading it off the stock's triggers (`planOfRow`). The fill writes the approved price as "Sell if below $S", as it already does for the proposal's price, and removes the Stop watching lines. So a watch line never becomes a sale, even for one PR.
 2. **A playbook is a list of trigger templates.**
    - **The shape.** Each playbook stores its triggers in the shape the analyst's Triggers tab uses, plus one field: when the trigger is written (on a watch, with the buy proposal, or at the fill). The pre-catalyst's in-window lines are watch templates that the run answering its 70-day review writes.
    - **Prices.** A price in a template is a named chart level (`{pivot}`, `{swingLow}`, `{priorHigh}`, `{gapDayLow}`, …), the same `{placeholder}` mechanism the buy template already uses. A number that depends on the buy (the breakout's one-risk percent) is named the same way. The agent fills it, with its reason, when it writes the trigger.
@@ -187,16 +188,16 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
    - **One reader.** The Writer, the trigger run, the fill and `update_thesis` all read the one list. `update_thesis` is included because it writes the exits when a review names the setup on a stock we hold (`heldSetupExitOps`). Nothing else writes a playbook trigger.
 3. **The writers use the list.**
    - The Writer writes the watch templates.
-   - The trigger run fills the proposal templates when it proposes the buy. `place_trade` takes each price with its reason, and the proposal and Edit & Approve show them.
-   - The fill removes the watch-only lines (buy, Stop watching, buying-window reviews), writes the approved proposal lines with their template's action ("Trim 50% if above", where today a new upper price lands as a review), and writes the fill templates.
+   - The trigger run fills the proposal templates when it proposes the buy: "Sell if below $S", now read from the playbook's template, plus the take-profit and the breakout's one-risk review. `place_trade` takes each price with its reason, and the proposal and Edit & Approve show them.
+   - The fill removes the buying-window reviews. It writes the approved take-profit with its template's action ("Trim 50% if above", where today a new upper price lands as a review), and writes the fill templates.
    - A sale back to watch removes the Sell lines and writes the watch templates.
-4. **Question 3, if yes:** delete "stop when buying" (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
+4. **Delete "stop when buying"** (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
 
 **Rough size, in net app code:**
 
 | PR | Size | Lines |
 |---|---|---|
-| 1 | Small | About +200 / −150, plus a one-time data update for 9 lines |
+| 1 | Small | About +260 / −180, plus a one-time data update for 9 lines |
 | 2 | Large, the bulk | About +700 / −900. Adds a column, the seed and the form reuse; deletes `setup-exits.ts`, about 300 lines of `setups.ts` prose and manage fields, the overrides a template now carries, and the horizon clock |
 | 3 | Medium | About +350 / −200 |
 | 4 | Small, a deletion | About −300 |
@@ -209,8 +210,8 @@ These lines were replayed on real daily prices against the last five sales, thre
 - **A falling 50-day isn't a pullback.** "Within 2% of the 50-day" on a falling average would have bought a watched stock that is down more than 40% since.
 - **A reclaim written once goes stale.** Moved weekly to the 20-day high, one pre-catalyst watch would have bought its run-up, about 12% higher today.
 
-## Questions for the owner
+## Decided
 
-1. **The take-profit for the breakout, PEAD and the pullback:** the prior high above the buy, else twice the risk above the buy? *Recommended:* yes.
-2. **The pre-catalyst exit: "Sell 7 days before the event date"?** At 7 days, the analyst's 10-day review comes first and can remove it to hold through. *Recommended:* 7 days.
-3. **Delete "stop when buying"?** Every buy now brings a "Sell if below" that you approve on the proposal. "Stop when buying" is the rule that rewrites it at the fill: it sets a 6% Auto-sell and turns the stock's own line into a review. *Recommended:* yes.
+1. **The take-profit for the breakout, PEAD and the pullback** is at the prior high above the buy, or twice the risk above the buy when there is no prior high.
+2. **A pre-catalyst trade sells 7 days before the event date.**
+3. **"Stop when buying" is deleted.** The "Sell if below" approved on the proposal is the one sell line a buy brings.
