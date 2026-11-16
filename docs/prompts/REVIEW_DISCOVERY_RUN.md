@@ -15,8 +15,9 @@ a signal pool, or a DISCOVERY cron. The live model is **manual + operator-curate
 
 ```
 /discovery-prep → Grok/Perplexity prompts → operator fires them → operator pastes the results
-into the app's Discovery mode → the app triages against the analyst mandate (DISPATCH_CAP=5) and
-dispatches dispatch_thesis_research(mode='mint') → the thesis-writer writes each minted thesis.
+into the analyst's chat (a PRINCIPAL_CHAT run; there is no separate Discovery run) → the chat
+triages against the analyst mandate (dispatch cap = free slots, at most 5) and dispatches
+dispatch_thesis_research(mode='mint') → the thesis-writer writes each minted thesis.
 ```
 
 You grade that output: the minted WATCHING theses + the PASS-records + the writer quality. You do
@@ -43,7 +44,7 @@ Read these in order:
 ## Naming convention
 
 `YYYY-MM-DD-<ANALYST>.md` — discovery now runs per-analyst, so anchor on the analyst, not a
-single ticker (a run dispatches up to 5). Example: `2026-06-22-Momentum-Breakout.md`.
+single ticker (a run dispatches up to 5). Example: `2026-09-25-CATALYST.md`.
 
 ## Source of truth
 
@@ -80,13 +81,16 @@ ORDER BY child."startedAt";
 
 1. **Triage soundness.** Did the *good* names dispatch and the *junk* PASS? For each DISPATCHED
    name: on-archetype? in-fence (sector/marketCap/direction)? not already covered (no existing
-   WATCHING/HOLDING/PROMOTED)? clears the per-archetype filter (e.g. Momentum: early-stage <5%
-   from pivot, not extended; Catalyst: dated event 2–4wk out)? For each PASS: was the reason real?
+   WATCHING/HOLDING/PROMOTED)? clears the per-archetype filter (e.g. PEAD: a clean
+   beat-and-raise within its buying window; Catalyst: dated event 70–21 days out)? Names its
+   setup and carries a full plan (buy trigger, floor, target, review clock)? Its one-line source
+   says where it came from (screen, calendar, or X account)? For each PASS: was the reason real?
 2. **Convergence honesty.** The prep flagged triple-sourced names (3+ trusted scouts). Did those
    get priority / dispatch? A triple-sourced name that PASSed needs a clear reason.
-3. **Did it fill the gap?** Cross-check against the `/review-analysts` "Feed to Discovery" item.
-   "Momentum needed early breakouts outside semis" + the run dispatched 3 extended semis = the
-   sourcing didn't change. That's the headline finding when it happens.
+3. **Did it fill the gap?** Cross-check against the account read the prep started from (the
+   Portfolio Reviewer digest, or the weekly review's "what the account needs" lines once
+   roadmap 5.4 ships). "The account needed names outside AI and power" + the session dispatched
+   3 more chip stocks = the sourcing didn't change. That's the headline finding when it happens.
 4. **Writer quality (per dispatched thesis).** Apply the Section-A bar from the daily-run rubric:
    `conviction` set; `variantView` present + substantive for STRONG/HIGH; `convictionRationale`
    is judgment not math-restatement; bull/bear bullets specific + adversarial; `keyAssumptions`
