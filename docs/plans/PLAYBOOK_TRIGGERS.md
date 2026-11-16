@@ -6,13 +6,17 @@ A stock has triggers and nothing else. Its playbook (one of the 12 setups in `li
 
 ## Rules every playbook follows
 
+- **Every holding has a floor** (the owner's rule, 2026-11-16). The buy writes "Sell if below $X" on every holding, whatever the playbook: a typed price from the chart, at least the playbook's ATR distance under the buy. A playbook that calls a price drop a question still gets one; its reviews sit above the floor, never instead of it. The buy is sized on it: the risk for the trade divided by the distance to the floor.
 - **The words.** On a watch: Buy if · Review if · Stop watching if. On a holding: Sell if · Trim N% if · Add if · Review if. "Stop watching if" is a sale line on a stock we don't own. When it comes true, no agent wakes and the watch ends (question 1).
 - **Levels come from the chart**, read when the line is written: the base's pivot and low, the last swing high and low, the 20-day and 52-week highs and lows, the recent gaps' high, middle and low, and the ATR (the `chart.` fields from `get_stock_data`). They are never round numbers. We set no price target of our own: "target" only ever means Wall Street's (`street_avg`, `street_high`). There is no minimum reward for the risk. The numbers below are the catalog's, with any change the account made in Settings → Playbook applied on top.
 - **On fire.** Every buy, add, trim and sale is Send to Agent. A review is Flag for Review unless the table says Send to Agent; it does for a price line on a holding and for an event that can't wait for the next morning run, since morning runs are Monday, Wednesday and Friday. This spec never sets Auto. Auto is the owner's alone.
 - **One of each kind per stock.** A stock's own trigger replaces an inherited one of the same kind for that stock: same measure, same direction, same variable, same action. The number doesn't count. "Review 60 days after the buy" and "Review 20 days after the buy" are the same kind, so a stock carries only one of them, and a stock's "Review every 30 days" replaces the account's 7. The tables avoid the kinds the analyst and the account already fill, unless a row says it replaces one on purpose.
-- **What the buy does.** It removes every buy line and every line that only makes sense on a watch: a date the watch ends, a review that opens a buying window, a wake for the report. It writes the holding rows below. A watch line that also means "the setup is over" stays and becomes the holding's downside line. Nothing from the analyst or the account is copied onto the stock.
+- **What the buy does.** It removes every buy line and every line that only makes sense on a watch: a date the watch ends, a review that opens a buying window, a wake for the report. It writes the holding rows below. A watch line that also means "the setup is over" stays and becomes a holding line. Nothing from the analyst or the account is copied onto the stock, at the buy or later. A copy freezes the rule. A near-copy of a different kind (a single filing item the analyst's filing review already covers) starts two runs on one event.
+- **Moving lines stay moving.** A line on something that moves (an average, the high since we bought) is written with its variable, never typed as the day's number: "Review if below the 50-day average", not the 50-day's value on the day it was written. A typed price is only for a level the chart fixed: a pivot, a swing low, a gap.
+- **Dates count from the event date.** An FDA date, or a report date a playbook counts from, is saved as the stock's event date, and its lines count from that ("Review 14 days before the event date"). The earnings trigger only knows report dates and never stands in for another event.
+- **After a sale.** A stock sold and kept on watch gets its playbook's way in again, at a chart level. A buy at today's price is written once, and only when the playbook's condition is already true. A run never raises a buy line to follow the price up.
 - **Sessions.** Where a playbook counts sessions, the line counts calendar days, converted on the market calendar when it is written (the buy already does this for the time limit). "20 sessions after the buy" is saved as about 28 days.
-- **Stop when buying.** It is on for the live account at 6%. At the buy it turns a playbook's "Sell if below $X" into "Review if below $X" when X is tighter than 6% under the buy, and replaces it when X is wider. Either way the sale becomes its own Auto-sell 6% under the buy, set as the owner's. A stock has one "Review if below $X" line, and when two compete the higher one is kept. So on this account, every "Sell if below $X" below ends up as one of those two (question 2).
+- **Stop when buying.** It is on for the live account at 6%. At the buy it turns a playbook's "Sell if below $X" into "Review if below $X" when X is tighter than 6% under the buy, and replaces it when X is wider. Either way the sale becomes its own Auto-sell 6% under the buy, set as the owner's. A stock has one "Review if below $X" line, and when two compete the higher one is kept. So on this account, every floor below ends up as one of those two, and a playbook floor wider than 6% is lost (question 2).
 - **Three conditions.** An agent's save takes up to eight conditions. The trigger form builds at most two, so a three-part buy written by an agent can't be rebuilt in the form as it is.
 
 ## What every stock already inherits
@@ -46,7 +50,7 @@ The stock needs its event date on the thesis, because every date line here count
 | Way in, inside the window (the first the chart offers) | Buy if above $P on the close, at least 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%. C: 5% past P. Only when the stock passes the breakout's own checks | Send to Agent |
 | | Buy if within 2% of the 50-day average (or the 20-day) | The average its pullbacks held. Only when it passes the pullback's checks | Send to Agent |
 | | Buy if above $H on the close | H: the highest high of the last 20 sessions, above today's price (the reclaim) | Send to Agent |
-| Clock, inside the window | Review every 7 days | | Flag for Review |
+| Clock, inside the window | Review every 7 days | Re-sets H to the latest 20-day high. Written once, an old high can sit far above a stock that is basing, and the run-up starts without us | Flag for Review |
 | Stop watching | Stop watching 21 days before the event date | The window closed and the run-up never started | — |
 | Stop watching | Stop watching if below $S on the close | S: the last swing low | — |
 
@@ -59,16 +63,16 @@ The run that answers the 70-day review writes the buy and the clock, and removes
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Review if below $S | S: the last swing low, which is the watch's line kept as a review | Send to Agent |
+| Floor | Sell if below $S | S: the last swing low (the watch's line, kept), at least 1 ATR under the buy | Send to Agent |
 | Clock | None written: the account's 7 days | | |
 | Exit | Sell 7 days before the event date | The run-up sells one to two weeks before the decision | Send to Agent |
 | Take profit | None by default. The analyst may add "Trim 50% if above $H" | H: the prior high | Send to Agent |
 | Add · Trail | None. The event is the exit | | |
 
-Size is the stop: the buy is half the normal risk, and a 50% gap may cost at most 0.5% of the account, because a gap skips any line. To hold through the event, the run answering the analyst's 10-day review removes the 7-day sale and says why. An agent may remove a date sale. The analyst's 30-days-after review then asks again.
+The floor is a sale, and the size backs it up: the buy is half the normal risk, and a 50% gap may cost at most 0.5% of the account, because a gap skips any floor. To hold through the event, the run answering the analyst's 10-day review removes the 7-day sale and says why. An agent may remove a date sale, but never the floor. The analyst's 30-days-after review then asks again.
 
 - *Can't be written:* nothing beyond the watch's list.
-- *Inherited:* the analyst's 10-day and 30-day reviews and its filing review. The account's 7%-day add and its 6% trailing sale also reach the stock, though the playbook has neither (question 2).
+- *Inherited:* the analyst's 10-day and 30-day reviews and its filing review. The account's 7%-day add and its 6% trailing sale also reach the stock, though the playbook has neither.
 
 ### Base breakout (`BASE_BREAKOUT`): Catalyst Event PM, Secular Compounder
 
@@ -87,7 +91,7 @@ Size is the stop: the buy is half the normal risk, and a 50% gap may cost at mos
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Sell if below $S | S: under the last contraction's low, or the base's low if that is within 8%. At least 1 ATR under the buy, never more than 8% under it | Send to Agent |
+| Floor | Sell if below $S | S: under the last contraction's low, or the base's low if that is within 8%. At least 1 ATR under the buy, never more than 8% under it | Send to Agent |
 | Failed breakout | Review if below $P on the close and at least 1.5× normal volume | P: the pivot it broke out of | Send to Agent |
 | Clock | None written: the account's 7 days | | |
 | Time limit | Review 20 sessions after the buy | No progress in 10–20 sessions is a failed breakout: sell or re-set | Flag for Review |
@@ -116,7 +120,7 @@ Size is the stop: the buy is half the normal risk, and a 50% gap may cost at mos
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Sell if below $S | S: the pullback's swing low once it has printed; until then 1 ATR under the average bought. At least 1 ATR under the buy | Send to Agent |
+| Floor | Sell if below $S | S: the pullback's swing low once it has printed; until then 1 ATR under the average bought. At least 1 ATR under the buy | Send to Agent |
 | Setup over | Sell if below the 50-day average and at least 1.5× normal volume | The watch's line, kept | Send to Agent |
 | Clock | None written: the account's 7 days | | |
 | Time limit | Review 10 sessions after the buy | Ten sessions to reclaim the prior high | Flag for Review |
@@ -146,7 +150,7 @@ The report date is saved as the stock's event date, so the window can count from
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Sell if below $S | S: the gap day's low or 8% under the buy, whichever is higher, and at least 1 ATR under the buy. The watch's line, moved | Send to Agent |
+| Floor | Sell if below $S | S: the gap day's low or 8% under the buy, whichever is higher, and at least 1 ATR under the buy. The watch's line, moved | Send to Agent |
 | Clock | None written: the account's 7 days | | |
 | Time limit | Review 60 days after the buy | Hold 30–60 days; out before the next print | Flag for Review |
 | Take profit | Trim 50% if above $H | H: the prior high above the buy. With none, twice the distance from the buy to the floor (question 4) | Send to Agent |
@@ -174,7 +178,7 @@ The run the gap wakes reads the news, which must be a real catalyst on a stock t
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Sell if below $L | L: the gap day's low | Send to Agent |
+| Floor | Sell if below $L | L: the gap day's low | Send to Agent |
 | Early warning | Review if below $M on the close | M: the gap day's middle | Send to Agent |
 | Clock | None written: the account's 7 days | | |
 | Time limit and partial | Review 5 sessions after the buy | A partial after 3–5 sessions of progress: the run trims if it has moved | Flag for Review |
@@ -188,42 +192,42 @@ The run the gap wakes reads the news, which must be a real catalyst on a stock t
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Way in, whichever comes first (one trigger) | Buy if above $P on the close and at least 1.5× normal volume, or within 2% of the 50-day average, or above the 50-day average | P: the base's pivot. When one is already true, the Writer writes "Buy if above $X" at today's price instead | Send to Agent |
+| Way in, whichever comes first (one trigger) | Buy if above $P on the close and at least 1.5× normal volume, or within 2% of the 50-day average, or above the 50-day average | P: the base's pivot. The two 50-day ways in only while the 50-day is rising; on a falling one, only the breakout. When one is already true, the Writer writes "Buy if above $X" at today's price instead | Send to Agent |
 | Clock | Review every 30 days | | Flag for Review |
 | Stop watching | Stop watching if below $L on the close | L: the 52-week low (question 6) | — |
 
-- *Can't be written:* the quality tests (returns on capital, margins, cash flow), which are research. "With no pullback in 30 days of uptrend, take the breakout": no trigger counts days without a pullback, so the 30-day clock is where the analyst does it. The form can't build this buy (three ways in, one of them two conditions), though an agent can save it.
+- *Can't be written:* the quality tests (returns on capital, margins, cash flow), which are research. That the 50-day is rising: the Writer checks it, and the clock re-checks it. "With no pullback in 30 days of uptrend, take the breakout": no trigger counts days without a pullback, so the 30-day clock is where the analyst does it. The form can't build this buy (three ways in, one of them two conditions), though an agent can save it.
 - *Inherited:* the analyst's 200-day review, and the account's earnings and filing reviews.
 
 **On a holding**
 
 | | Trigger | How the level is picked | On fire |
 |---|---|---|---|
-| Downside | Review if below $X | X: the structure the case shouldn't lose (the last base's low or swing low), at most 25% under the buy and at least the playbook's ATR distance under it | Send to Agent |
+| Floor | Sell if below $X | X: the structure the case shouldn't lose (the last base's low or swing low), at most 25% under the buy and at least the playbook's ATR distance under it | Send to Agent |
 | Clock | Review every 30 days | Replaces the account's 7 | Flag for Review |
 | Time limit | Review 60 days after the buy | The business checkpoint: is what we said would happen starting to happen? | Flag for Review |
 | Take profit | None | Trims only at valuation extremes, and no measure reads a valuation | |
 | Add (the second half) | Add if above 7% from our entry | "+7% from the first fill" | Send to Agent |
-| Add (the second half) | Add if within 2% of the 50-day average | A held 50-day pullback in a market-wide dip. The run checks the dip is the market's, not the company's | Send to Agent |
-| Trail | None: the playbook sells only when the story breaks | | |
+| Add (the second half) | Add if within 2% of the 50-day average | A held 50-day pullback in a market-wide dip. The run checks the dip is the market's, not the company's. Not written at the buy, where it would already be true on a 50-day way in and ask for the second half the same day; the first review after the stock is more than 2% above the 50-day writes it | Send to Agent |
+| Trail | The analyst's (question 2) | | |
 
-The first buy is half of full size. The run that buys the second half removes both add lines, or they keep asking every week. There is no sale line, so the buy is sized on the distance to X. Today the sizing reads only a sale floor, so 9.5 has to give it this review line.
+The first buy is half of full size, sized on the distance to the floor. The run that buys the second half removes both add lines, or they keep asking every week. Replayed on recent holdings, the +7% add worked once and bought the top once; the run checks the business before it adds.
 
 - *Can't be written:* the named invalidation (guidance cut twice, a margin break, a capital-allocation failure). These are facts about the business; the account's miss and filing reviews and the analyst's reviews are where they get read. "A new high after a pause": "Add if above the 52-week high" can say the new high but not the pause. "Never add into company-specific bad news" is the run's check.
-- *Inherited:* the analyst's four reviews. Its "Review if above 15% from our entry" also says it may be time for the second half; the playbook's add comes at 7%. The account's 6% trailing sale and stop when buying also reach the stock, against the playbook (question 2).
+- *Inherited:* the analyst's four reviews; under question 2, its "15% off the high" review becomes a sale. Its "Review if above 15% from our entry" also says it may be time for the second half, though the playbook's add comes at 7%. The account's 6% trailing sale and its stop when buying also reach the stock (question 2).
 
 ## The other six (no analyst uses these today)
 
 ### Momentum-leader flag (`MOMENTUM_FLAG`): no analyst uses this today
 
 - **Watch:** Buy if above $F on the close and at least 1.5× normal volume (F: the flag's high, the 20-day high) · Review every 7 days · Stop watching if below $L on the close (L: the flag's low).
-- **Holding:** Sell if below $D (D: the buy day's low, never wider than one ADR) · Sell if below $F on the close, the stock back inside the flag · Review 5 sessions after the buy (no follow-through in 3–5 sessions means out, and a third to a half comes off after 3–5 days of progress) · trail: the account's.
+- **Holding:** Sell if below $D (D: the buy day's low, never wider than one ADR) · Review if below $F on the close, the stock back inside the flag (Send to Agent; a second typed sale would be the same kind as the floor, so only one could stand) · Review 5 sessions after the buy (no follow-through in 3–5 sessions means out, and a third to a half comes off after 3–5 days of progress) · trail: the account's.
 - *Can't be written:* "already up 30–100% in 1–3 months" fits only partly ("above N% from the close 20 days ago"). The ADR is on the chart, not a measure. There is no 10-day average.
 
 ### Mean-reversion bounce, RSI-2 (`RSI2_BOUNCE`): no analyst uses this today
 
 - **Watch:** Buy if above the 200-day average and below RSI 10 (2-day RSI) · Stop watching if below the 200-day average · no clock.
-- **Holding:** there is no price floor under the buy; time and the 200-day are the stops. Sell if below the 200-day average · Review 5 sessions after the buy (it snaps back in 1–5 sessions or it's out) · Sell if above RSI 65 (2-day RSI). The buy is sized on the distance to the 200-day.
+- **Holding:** Sell if below $L (L: the low of the flush, at least 1 ATR under the buy). The prose sets no fixed stop, but every holding has a floor · Sell if below the 200-day average · Review 5 sessions after the buy (it snaps back in 1–5 sessions or it's out) · Sell if above RSI 65 (2-day RSI). The buy is sized on the distance to the floor.
 - *Can't be written:* "buy the close". RSI is read from the morning's chart numbers, so the buy fires the next session. "A close above the 5-day average": there is no 5-day average. The prose calls it best as a scale-in on a held compounder; that would read "Add if above the 200-day average and below RSI 10 (2-day RSI)", and it is not in the Compounder's playbook unless the owner adds it.
 
 ### 52-week-high momentum (`RS_52W_HIGH`), a screen: no analyst uses this today
@@ -248,24 +252,49 @@ No triggers. No measure reads a group's rank, so "the group turns Lagging" can't
 
 **For every playbook:**
 
-- The horizon template goes (roadmap 14.1). Today the buy writes a review clock from the horizon (Catalyst and Trade daily, Target weekly, Compounder monthly), a sale at the stock's stop column, a review or sale at our own target price, and on a compounder a review 8% under the buy. After this, the clock is the playbook's or the account's, the downside line is the playbook's, and there is no target of ours.
+- The horizon template goes (roadmap 14.1). Today the buy writes a review clock from the horizon (Catalyst and Trade daily, Target weekly, Compounder monthly), a sale at the stock's stop column, a review or sale at our own target price, and on a compounder a review 8% under the buy. After this, the clock is the playbook's or the account's, the floor is the playbook's chart level, and there is no target of ours.
+- Every holding gets a floor. Today a compounder's and a pre-catalyst stock's downside could be reviews alone; it no longer can.
+- After a sale, the way back in is the playbook's chart level. Today the re-entry buy is reset to the day's price each day while each proposal expires, so it climbs with the stock.
+- No stock carries its own copy of an inherited rule, a moving line typed as a number, or an event date written with the earnings trigger. All three are on stocks today.
 - The buy removes the watch-only lines too. Today it removes only the buy lines.
 - The "beat the market sold" review is no longer written at the buy (question 5).
 - Every watch gets its way in, its stop-watching line and, where the table says so, its clock from the playbook. Today a watch gets a buy, a floor and our own target price, and a clock only if the agent that asked for it set one.
 
 **By playbook:**
 
-- **Pre-catalyst:** the parked 70-day review and the 21-day end of the window become triggers. The downside becomes a review at the swing low instead of a sale. The daily clock becomes the account's weekly one (question 8). It gains a new sale 7 days before the event (question 7).
+- **Pre-catalyst:** the parked 70-day review and the 21-day end of the window become triggers, and the weekly clock re-sets the reclaim level. The floor is a sale at the swing low, from the chart. The daily clock becomes the account's weekly one (question 8). It gains a new sale 7 days before the event (question 7).
 - **Base breakout:** the watch gains its stop-watching line at the base's low and a 7-day clock. The holding gains the failed-breakout review and the breakeven review; the review or sale at our own target price goes.
 - **Pullback:** the watch gains its stop-watching line, and on the holding that line becomes a sale. It gains a trim at the prior high (today this playbook writes no partial), and the review or sale at our own target price goes.
 - **PEAD:** the watch gets its own beat wake at 5%, a buy at today's price on the close, a stop-watching line at the gap day's low and a window review. The trim moves from twice the floor's distance to the prior high (question 4).
 - **Episodic pivot:** the watch gets the gap wake and a buy at the gap day's high. The holding gains the early warning at the gap's middle.
-- **Compounder:** the watch gets the one three-way buy, a 30-day clock and a 52-week-low line. On the holding, the review 8% under the buy and the copied stop give way to a review at the structure; the two adds are new; the 30-day clock and the 60-day checkpoint stay.
+- **Compounder:** the watch gets the one three-way buy (its 50-day ways in only on a rising 50-day), a 30-day clock and a 52-week-low line. On the holding, the review 8% under the buy and the copied stop give way to a floor at the structure. The +7% add is new, and the 50-day add is written by the first review, not the buy. The 30-day clock and the 60-day checkpoint stay, and the analyst's 15% give-back becomes a trailing sale (question 2).
+- **RSI-2 bounce:** gains a floor at the flush's low.
+
+## Checked against recent trades
+
+Before this draft went to the owner, its lines were replayed on real daily prices against the last five sales, three passed stocks and five watched ones. These findings changed the spec:
+
+- **Reviews alone don't sell.** On compounder holdings, the reviews fired on the way down and nothing sold until a sale line did. Summed over five recent compounder holdings, reviews alone came to about −40 points. That is why every holding has a floor, and why question 2 asks for a trailing sale.
+- **A pre-catalyst floor has to be a sale.** One holding's floor fired, and the stock was sold by hand three days before a 20% gap down; it is about 40% under the buy today. Under a review-only floor nothing would have forced the sale.
+- **A falling 50-day isn't a pullback.** The Compounder's "within 2% of the 50-day" would have bought a watched stock on a falling average in June; it is down more than 40% since.
+- **A reclaim level written once goes stale.** A pre-catalyst watch inside its window had no buy at all. Re-set weekly to the 20-day high, the reclaim would have bought the run-up, which is about 12% higher today.
+- **Re-entry buys chased.** After two sales the buy was reset to the day's price four times in a row, about 2–3% higher in all, and every proposal expired.
+- **The breakout rule would have waited.** One Compounder buy came under its base's top. The breakout rule would have bought the real breakout a month later instead.
+- **Passes held up.** Two passed stocks fell 28% and 42% since, and the spec passes the first too. One rose 74%, and the spec would have missed it as well (it never pulled back, and its breakout ran past the chase limit).
 
 ## Questions for the owner
 
 1. **Should a "Stop watching if" line end the watch?** Today a sale line on a stock we watch takes down the buy and keeps the stock on watch. Once roadmap 14.1 deletes those levels there is nothing to take down. *Recommended:* it ends the watch (dropped), with one Activity line naming the line that did it.
-2. **Should the account's 6% trailing sale and 6% stop when buying reach the Compounder's holdings?** Its playbook sells only on the business, and its own "15% off the high" review can never fire, because the 6% trailing sale asks first. *Recommended:* give the Secular Compounder its own settings: stop when buying off, and a trailing sale 25% off the high, the playbook's widest floor. Leave the Catalyst Event PM on the account's, since its run-up trade is short and half-size. Only you can widen these.
+2. **The Compounder's trail: turn its "15% off the high" review into a sale?** Every holding now has a floor; the open question is the trail. The analyst's 15% give-back is a review today and can never fire first, because the account's 6% trailing sale asks sooner. Replayed over five recent compounder holdings:
+
+   | Rule | Summed result |
+   |---|---|
+   | Reviews alone | about −40 points |
+   | 25% trailing sale | about −19 points |
+   | 6% trailing sale | about +2 points |
+   | 15% trailing sale | about +2 points |
+
+   The 15% trail kept the two winners longer. On this account the 6% stop when buying also replaces any compounder floor wider than 6% at the buy. *Recommended:* make the analyst's 15% review a 15% trailing sale, which then stands in for the account's 6% on the Compounder's holdings. Give the Compounder its own stop when buying no tighter than its floor, so the floor the playbook sets survives the buy. Leave the Catalyst Event PM on the account's settings. Only you can widen these.
 3. **When the Compounder buys on a breakout or a pullback, which playbook manages the holding?** *Recommended:* it writes its stocks on Compounder accumulation, whose way in already is a breakout, a 50-day reclaim or a 50-day pullback. A stock written on Base breakout or Pullback is a trade, with that playbook's trims and time limits. Taking those two off its list is optional.
 4. **PEAD's partial: the prior high, as the prose says, or twice the floor's distance, as the code writes today?** *Recommended:* the prior high when there is one above the buy, else twice the distance.
 5. **Stop writing the "beat the market sold" review at the buy?** The account's beat review fires on the same report, and two reviews on one stock start two runs. *Recommended:* drop it; the run the beat starts reads the reaction.
