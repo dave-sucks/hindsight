@@ -171,13 +171,13 @@ function measuresOffPosition(t: Trigger): boolean {
   return w != null && fromPosition(w);
 }
 // Actions that operate on a position. A rung with one of these on a thesis
-// we don't hold is not a plan, it is a spawn: the account's ±7% scale-in
+// we don't hold is not a decision, it is a spawn: the account's ±7% scale-in
 // rules are move-from-a-close, so the predicate gate above let them through
 // onto WATCHING rows, and on 2026-09-03 five of eight tactical runs were
 // "scale in" on names with no position (HPE, RARE, PLTR, NOW; two of them
 // were then retired by an agent that had been asked to add). EXIT is not
-// here — an un-held floor resolves to DEMOTE (effectiveTriggerAction), which
-// is a real verdict, not a position action.
+// here — a sale line on a stock we don't hold stops watching it
+// (stop-watching.ts), which is a real verdict, not a position action.
 const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM"]);
 
 /**

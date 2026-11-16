@@ -58,7 +58,7 @@ describe("the shapes a refresh can leave behind", () => {
       plan: { entryPrice: null, targetPrice: null, stopLoss: null },
     });
     expect(h.planLine).toBe(
-      "The refresh left no priced plan on $CYTK — no buy level, target or floor.",
+      "The refresh left $CYTK with no buy and no floor.",
     );
     expect(writerHandoffLine(h)).toContain("research refreshed");
   });

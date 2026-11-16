@@ -1,10 +1,10 @@
 # Setups
 
-**Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, where the buy, the floor and the target go, and when it has failed.
+**Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.
 
 This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account can change a setup's numbers in Settings → Playbook (`lib/agent/knowledge/setup-overrides.ts`). How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
 
-A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names. Every plan needs a reward of at least twice its risk.
+A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.
 
 ## Base breakout (VCP / cup-with-handle / flat base)
 
@@ -53,7 +53,7 @@ A leader that already ran pulls back in an orderly way and surfs its rising shor
 
 **Floor:** The entry day's low, never wider than one ADR. If the structure forces a wider stop, the position is smaller.
 
-**Target:** No fixed target: sell a third to a half after 3–5 days of progress, stop to breakeven, trail the rest.
+**Take profit:** No fixed target: sell a third to a half after 3–5 days of progress, stop to breakeven, trail the rest.
 
 **Trail:**
 
@@ -83,7 +83,7 @@ A neglected stock reprices on unexpected news with volume many times average; in
 
 **Floor:** The gap-day low. A close below the gap's midpoint is an early warning; a filled gap ends the setup.
 
-**Target:** Partial at 3–5 days of progress; the trail decides the rest.
+**Take profit:** Partial at 3–5 days of progress; the trail decides the rest.
 
 **Trail:**
 
@@ -116,7 +116,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Floor:** The gap-day low or −8% from entry, whichever is tighter — but not inside 1 ATR.
 
-**Target:** A partial at the prior high; the trail decides the rest.
+**Take profit:** A partial at the prior high; the trail decides the rest.
 
 **Trail:**
 
@@ -146,7 +146,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Floor:** Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume ends the setup.
 
-**Target:** A partial at the prior high; the trail decides the rest.
+**Take profit:** A partial at the prior high; the trail decides the rest.
 
 **Trail:**
 
@@ -174,7 +174,7 @@ A stock above its 200-day that flushes hard for a few days tends to snap back wi
 
 **Floor:** No fixed stop in the original; time and the 200-day are the stops.
 
-**Target:** Exit on a close above the 5-day average or RSI(2) > 65.
+**Take profit:** Exit on a close above the 5-day average or RSI(2) > 65.
 
 **Trail:**
 
@@ -226,7 +226,7 @@ A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, n
 
 **Floor:** Structural but advisory: gaps skip stops. Size is the stop.
 
-**Target:** Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.
+**Take profit:** Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.
 
 **Trail:**
 
@@ -255,7 +255,7 @@ Three or more insiders buying within a month predicts positive returns over 6–
 
 **Floor:** Below the lowest insider purchase price or −12%, whichever is tighter.
 
-**Target:** The effect runs 6–12 months; the entry setup's exits apply.
+**Take profit:** The effect runs 6–12 months; the entry setup's exits apply.
 
 **Time limit:** 6–12 months for the effect; the entry setup's clock for the trade.
 
@@ -300,7 +300,7 @@ A business bought at conviction size and held through volatility, entered on con
 
 **Floor:** Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a 15% give-back are reviews.
 
-**Target:** A 3–5 year valuation case; trims only at valuation extremes.
+**Take profit:** A 3–5 year valuation case; trims only at valuation extremes.
 
 **Time limit:** A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.
 

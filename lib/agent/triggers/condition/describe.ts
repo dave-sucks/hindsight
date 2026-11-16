@@ -23,9 +23,9 @@ export { money } from "./words";
 
 const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if" };
 
-/** "Sell if", "Review if". A sale on a stock we don't own takes the plan down. */
+/** "Sell if", "Review if". A sale on a stock we don't own stops watching it. */
 export function actionLabel(action: string, sells = true): string {
-  if (action === "EXIT" && !sells) return "Take the plan down if";
+  if (action === "EXIT" && !sells) return "Stop watching if";
   return ACTION_LABEL[action] ?? "Review if";
 }
 
@@ -113,7 +113,7 @@ export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } 
 /**
  * A stored trigger in words, the way the pill and every agent read it: "Sell
  * if below $868", "Trim 30% if above $150". `sells` is false on a stock we
- * don't own (a sale there takes the plan down). A removed condition reads as one, never as a blank.
+ * don't own (a sale there stops watching it). A removed condition reads as one, never as a blank.
  */
 export function sentenceOf(t: { action: string; predicate: unknown; trimPct?: number | null }, sells = true): string {
   const w = shapeOf(t.predicate);

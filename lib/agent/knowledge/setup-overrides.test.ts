@@ -28,15 +28,18 @@ describe("applySetupOverride", () => {
     const decision = {
       direction: "LONG" as const, horizon: "TRADE" as const, setup_id: "PEAD" as const,
       rationale: "A drift trade with a 10% stop under the gap-day low.",
-      entry_price: 100, stop_loss: 90, target_price: 125,
-      stop_basis: "under the gap-day low $90.10, 1.8 ATR", target_basis: "prior high $125, 2.5R",
+      triggers: [
+        { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "The buy at $100." },
+        { predicate: { watch: "price", is: "below", value: 90 }, action: "EXIT", rationale: "under the gap-day low $90.10, 1.8 ATR" },
+        { predicate: { watch: "price", is: "above", value: 125 }, action: "REVIEW", rationale: "prior high $125, 2.5R" },
+      ] as never,
       core_belief: "Drift to $125 in 30 days on the guide raise.", key_assumptions: ["a", "b"], invalidation_conditions: ["c", "d"],
       scoring: { trendStrength: { score: 2, note: "x" }, relativeStrength: { score: 2, note: "x" }, entryQuality: { score: 2, note: "x" }, catalystFreshness: { score: 2, note: "x" } },
       conviction: "MEDIUM" as const, conviction_rationale: "Honest middle; the guide raise is real and the stop is under structure.",
     };
     const chart = { atr14: 5.5, pivot: null, brokenOut: null, daysSinceReport: 2 };
     const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), chart });
-    expect(asWritten.errors.some((e) => e.includes("caps the stop at 8%"))).toBe(true);
+    expect(asWritten.errors.some((e) => e.includes("caps it at 8%"))).toBe(true);
     const widened = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"], { PEAD: { stopMaxPct: 12 } }), chart });
     expect(widened.errors).toEqual([]);
   });

@@ -61,7 +61,7 @@ function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
     mode: "refresh",
     existingStatus: "WATCHING",
     currentPrice: fx.currentPrice,
-    existingTargetPrice: fx.thesisBefore.targetPrice,
+    existingTriggers: fx.thesisBefore.triggers as never,
     setups: setupsForAnalyst(fx.analyst.setupIds),
     chart: null,
   });
@@ -145,14 +145,14 @@ describe("the fixture is the production call", () => {
       "Removed: review every 30 days": "Removed: Review every 30 days",
       "Removed: buy above $146": "Removed: Buy if above $146 · only on the close",
       "Removed: Price below $132 → review": "Removed: Review if below $132",
-      "Removed: sell below $132": "Removed: Take the plan down if below $132",
+      "Removed: sell below $132": "Removed: Stop watching if below $132",
       "Removed: review above $146": "Removed: Review if above $146",
     };
     // Two of its adds asked for "only on the close" and landed on a trigger
     // already there; the save dropped the setting then and carries it now
     // (2026-10-09), so these four lines say so.
     const ON_THE_CLOSE: Record<string, string> = {
-      "Target $210 → $146": "Target $210 → $146; Target: fires on the close",
+      "Target $210 → $146": "Upside $210 → $146; Upside: fires on the close",
       "Review if below $132: wording updated": "Review if below $132: fires on the close",
       "Removed: Review if below $132": "Removed: Review if below $132 · only on the close",
       "Removed: Review if above $146": "Removed: Review if above $146 · only on the close",

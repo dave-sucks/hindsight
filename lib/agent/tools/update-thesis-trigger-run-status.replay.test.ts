@@ -11,7 +11,8 @@
  * door's schema as the SDK hands them over, through the real save.
  */
 import fixture from "@/lib/agent/__fixtures__/trigger-run-status-2026-10.json";
-import { replayTool, thesisRow, positionRow, thesisUpdateRow, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, thesisUpdateRow, type Replay, type Row } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 type Case = (typeof fixture)["nvda"] | (typeof fixture)["docu"];
@@ -28,7 +29,9 @@ async function triggerRunSchema(): Promise<z.ZodTypeAny> {
 }
 
 async function closeOut(c: Case, position?: Row): Promise<{ args: Record<string, unknown>; r: Replay }> {
-  const args = (await triggerRunSchema()).parse(c.call) as Record<string, unknown>;
+  // The call's levels as the edits of their triggers (the fields went 2026-11-16).
+  const call = oldLevelFieldsAsTriggerOps(c.call, c.thesis.triggers as unknown as Trigger[], String(c.thesis.direction ?? "LONG"), { held: c.thesis.status === "HOLDING" });
+  const args = (await triggerRunSchema()).parse(call) as Record<string, unknown>;
   const r = await replayTool("update-thesis", "updateThesis", {
     seed: {
       thesis: [thesisRow({ ...c.thesis, triggers: c.thesis.triggers as Row[] })],
@@ -53,7 +56,7 @@ describe("the trigger run's save takes no status change", () => {
     expect(r.result.data?.refused_fields).toBeUndefined();
     expect(r.db.store.thesis[0]).toMatchObject({ status: "HOLDING", retiredReason: null });
     expect(args).not.toHaveProperty("change_status");
-    expect(r.result.data?.trigger_ops).toEqual([expect.objectContaining({ id: "8f58e347-64c5-41bf-90f3-b17ac4466ae7", ok: true, text: "Target: wording updated" })]);
+    expect(r.result.data?.trigger_ops).toEqual([expect.objectContaining({ id: "8f58e347-64c5-41bf-90f3-b17ac4466ae7", ok: true, text: "Upside: wording updated" })]);
     expect(written(r)).toEqual([expect.objectContaining({ rationale: c.call.rationale })]);
   });
 

@@ -108,14 +108,14 @@ beforeEach(() => {
 
 describe("update_thesis — a plan under 2:1 lands (the ratio is not a rule, 2026-11-04)", () => {
   it("MSFT 09-14: the stop to $450 with the target at $600 (1.21:1) lands; nothing is refused", async () => {
-    const saved = await run({ stop_loss: 450 });
+    const saved = await run({ edit_triggers: [{ id: FLOOR, value: 450, rationale: "Under the post-print low at $450." }] });
     expect(saved.data?.ok).toBe(true);
     expect(((saved.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
     expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.stopLoss === 450)).toBe(true);
     expect(JSON.stringify(saved)).not.toMatch(/\d:1\b|R\/R floor/);
   });
 
-  it("following the named set-down lands", async () => {
+  it("following the named removal lands", async () => {
     const followed = await run({ remove_trigger_ids: [BUY, FLOOR, TARGET] });
     expect(followed.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();

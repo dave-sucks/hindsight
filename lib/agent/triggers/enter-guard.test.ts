@@ -60,7 +60,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "WATCHING",
         triggers: [ENTER_LONG, REVIEW_EARNINGS],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -71,7 +70,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "SHORT",
         status: "WATCHING",
         triggers: [ENTER_SHORT, REVIEW_EARNINGS],
-        targetPrice: 50,
       }),
     ).toEqual({ ok: true });
   });
@@ -89,7 +87,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "WATCHING",
         triggers: [ENTER_LONG, eventEnter, REVIEW_HYGIENE],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -97,8 +94,8 @@ describe("validateEnterTriggerRequired", () => {
   // ── A floor on a watch item is legal now (DAV-195 L5) ─────────────────
   // The guard used to reject EXIT/TRIM/ADD on a WATCHING thesis,
   // because a price level firing on something we don't own had no meaning
-  // and would spawn an orphan tactical run. `effectiveTriggerAction` gives
-  // it one — DEMOTE, inline, no spawn — so the rule is gone and the write
+  // and would spawn an orphan tactical run. Stop-watching (stop-watching.ts) gives
+  // it one — retire the watch, inline, no spawn — so the rule is gone and the write
   // is allowed. See the deleted-gate note in enter-guard.ts.
 
   it("allows a floor on a WATCHING thesis alongside the buy level", () => {
@@ -108,7 +105,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(true);
   });
@@ -118,7 +114,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "SHORT",
       status: "WATCHING",
       triggers: [ENTER_SHORT, EXIT_STOP],
-      targetPrice: 50,
     });
     expect(result.ok).toBe(true);
   });
@@ -131,7 +126,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [REVIEW_EARNINGS, EXIT_STOP],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -155,7 +149,6 @@ describe("validateEnterTriggerRequired", () => {
           rationale: "Trim at +50%",
         },
       ],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(true);
   });
@@ -170,7 +163,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(true);
   });
@@ -183,7 +175,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(true);
   });
@@ -200,7 +191,6 @@ describe("validateEnterTriggerRequired", () => {
           rationale: "Squeeze risk — look again above $120.",
         },
       ],
-      targetPrice: null,
     });
     // price above on a SHORT is the losing side — a wake, not a plan level.
     expect(result.ok).toBe(true);
@@ -222,7 +212,6 @@ describe("validateEnterTriggerRequired", () => {
           rationale: "Reassess at $150.",
         },
       ],
-      targetPrice: null,
     });
     expect(result.ok).toBe(true);
   });
@@ -239,7 +228,6 @@ describe("validateEnterTriggerRequired", () => {
           rationale: "Sell at $150.",
         },
       ],
-      targetPrice: 150,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -253,12 +241,11 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [EXIT_STOP],
-      targetPrice: null,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("missing-enter-trigger");
-    expect(result.note).toMatch(/no buy level to reach it from/);
+    expect(result.note).toMatch(/no buy to reach it from/);
     expect(result.note).not.toMatch(/displaced/);
   });
 
@@ -270,11 +257,10 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "WATCHING",
       triggers: [REVIEW_EARNINGS, EXIT_STOP],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.note).toMatch(/no buy level to reach it from/);
+    expect(result.note).toMatch(/no buy to reach it from/);
   });
 
   // ── ACTIVE-side symmetric checks ────────────────────────────────────────
@@ -288,7 +274,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "HOLDING",
         triggers: [EXIT_STOP, REVIEW_EARNINGS],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -306,7 +291,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "SHORT",
         status: "HOLDING",
         triggers: [exitShort, REVIEW_EARNINGS],
-        targetPrice: 50,
       }),
     ).toEqual({ ok: true });
   });
@@ -320,7 +304,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "HOLDING",
       triggers: [ENTER_LONG, REVIEW_EARNINGS],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -335,7 +318,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "HOLDING",
       triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -351,7 +333,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "HOLDING",
       triggers: [REVIEW_EARNINGS, REVIEW_HYGIENE],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -364,7 +345,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "HOLDING",
       triggers: [],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -384,7 +364,6 @@ describe("validateEnterTriggerRequired", () => {
       direction: "LONG",
       status: "HOLDING",
       triggers: [trim, REVIEW_EARNINGS],
-      targetPrice: 100,
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -409,7 +388,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "HOLDING",
         triggers: [EXIT_STOP, trim, add, REVIEW_EARNINGS],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -422,7 +400,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "RETIRED",
         triggers: [],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -433,7 +410,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "RETIRED",
         triggers: [],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -444,7 +420,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "RETIRED",
         triggers: [],
-        targetPrice: null,
       }),
     ).toEqual({ ok: true });
   });
@@ -455,7 +430,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "LONG",
         status: "PROMOTED",
         triggers: [],
-        targetPrice: 100,
       }),
     ).toEqual({ ok: true });
   });
@@ -471,7 +445,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: "PASS",
         status: "PASSED",
         triggers: [],
-        targetPrice: null,
       }),
     ).toEqual({ ok: true });
   });
@@ -482,7 +455,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: null,
         status: "WATCHING",
         triggers: [],
-        targetPrice: null,
       }),
     ).toEqual({ ok: true });
   });
@@ -496,7 +468,6 @@ describe("validateEnterTriggerRequired", () => {
         direction: null,
         status: "WATCHING",
         triggers: [],
-        targetPrice: null,
       }),
     ).toEqual({ ok: true });
   });
@@ -507,7 +478,7 @@ describe("the held-name notes name the ops that exist (DAV-262)", () => {
   // agent to "pass that array" — the whole-list argument DAV-242 deleted — and
   // called the holding "ACTIVE", a status P1-24 deleted.
   const held = (triggers: Trigger[]) =>
-    validateEnterTriggerRequired({ direction: "LONG", status: "HOLDING", triggers, targetPrice: 300 });
+    validateEnterTriggerRequired({ direction: "LONG", status: "HOLDING", triggers });
 
   it("a buy trigger on a stock we own: remove it by id with remove_trigger_ids", () => {
     const r = held([

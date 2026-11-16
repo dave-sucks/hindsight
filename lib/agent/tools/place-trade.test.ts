@@ -159,7 +159,7 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     expect(result.data.success).toBe(false);
     expect(result.data.tickers[0].tag).not.toBe("Stale");
     expect(String(result.summary)).not.toMatch(/research is/i);
-    expect(String(result.summary)).toMatch(/invalid target\/stop/i);
+    expect(String(result.summary)).toMatch(/levels out of order/i);
   });
 
   it("succeeds (uncertain Alpaca submit → success:true, PENDING) on what would have been a stale-research refusal", async () => {
@@ -323,7 +323,7 @@ describe("place_trade — Guardrail 0: unresearched-seed direction gate (P1-24 B
     expect(String(result.data.message ?? "")).not.toMatch(
       /not committed to LONG\/SHORT/i,
     );
-    expect(String(result.summary)).toMatch(/invalid target\/stop/i);
+    expect(String(result.summary)).toMatch(/levels out of order/i);
   });
 });
 

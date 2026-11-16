@@ -4,9 +4,8 @@
  *
  * A trigger list is edited one trigger at a time: add a trigger, edit a
  * trigger by id, remove a trigger by id. The agent's `update_thesis`, the
- * principal's trigger popover, a buy fill and a plan set-down all send ops
- * through `applyTriggerOps`; nothing hands a thesis a whole new list any
- * more. Two consequences the old replace-all contract could never give:
+ * principal's trigger popover and a buy fill all send ops through
+ * `applyTriggerOps`; nothing hands a thesis a whole new list any more. Two consequences the old replace-all contract could never give:
  *
  *   - an edited trigger keeps its id, so its fired / cooldown state carries
  *     by construction (no reconciliation, no id re-adoption, no handoff);
@@ -16,18 +15,18 @@
  *
  * Rules run per op on the resulting list, and a refused op does not sink
  * the call: the caller gets every result back by id and the rest lands.
- *   - what a call deletes (a removal, a level sent as null) applies before
- *     what it writes, so a removal and its replacement in one call is a
+ *   - what a call deletes (a removal) applies before what it writes, so a
+ *     removal and its replacement in one call is a
  *     replace; an edit of a trigger the same call deletes comes back by id,
  *     neither applied — say which;
- *   - one trigger per bucket (and one per plan slot — one buy level, one
- *     floor, one target): adding into an occupied bucket EDITS the trigger
+ *   - one trigger per bucket (and one per price slot — one buy, one floor,
+ *     one upside rule): adding into an occupied bucket EDITS the trigger
  *     that is there;
  *   - an agent's level / pct / days edit carries a rationale, so the
  *     sentence can never disagree with the number again;
  *   - on a stock we own, an agent may only tighten a protective sell level
  *     (the ratchet, DAV-185) — the principal is exempt, as before;
- *   - after all ops the plan is checked once (`checkLadder`): ordering
+ *   - after all ops the list is checked once (`checkLadder`): ordering
  *     everywhere. That one check replaces the argument-path gate and the
  *     derived-tuple gate. (The 2:1 floor it also ran went 2026-11-04.)
  *
@@ -99,13 +98,16 @@ export type TriggerOp =
    * cooldown; moved to another slot, it is a new trigger with a new id.
    */
   | { op: "replace"; id: string; trigger: Trigger }
-  /** A plan level as an op — resolves to add / edit / remove on the slot's trigger. */
+  /**
+   * The buy fill's stop and upside level (the approved order's numbers, which
+   * the Trade ticket and Edit & Approve can change): an edit of the slot's
+   * trigger, or a new one. No agent tool sends it; agents edit triggers by id.
+   */
   | {
       op: "level";
       slot: LevelSlot;
-      /** Always a number: an empty level is no change, and a level is removed by its trigger's id. */
       price: number;
-      /** Why the level is where it is ("under the base low, 1.8 ATR") — becomes the trigger's sentence. */
+      /** Becomes the trigger's sentence. */
       rationale?: string;
       /** "close" = fires only on the day's close (a buy that wants the close to confirm). */
       basis?: "intraday" | "close";
@@ -135,7 +137,7 @@ export interface ApplyTriggerOpsInput {
   status: string | null;
   /**
    * Who is editing. The ratchet and the rationale rule apply to agents
-   * only. SYSTEM is a buy fill or a plan set-down: no gate, and a template
+   * only. SYSTEM is a buy fill: no gate, and a template
    * trigger keeps its DEFAULT stamp.
    */
   actor: "AGENT" | "PRINCIPAL" | "SYSTEM";
@@ -158,12 +160,12 @@ export interface ApplyTriggerOpsOutput {
 const SLOT_LABEL: Record<LevelSlot, string> = {
   ENTRY: "Entry",
   FLOOR: "Stop",
-  TARGET: "Target",
+  TARGET: "Upside",
 };
 
 const money = (n: number) => `$${n % 1 === 0 ? n : n.toFixed(2)}`;
 
-/** "Entry", "Stop", "Target", "Review cadence", or the condition in words. */
+/** "Entry", "Stop", "Upside", "Review cadence", or the condition in words. */
 function nameOf(t: Trigger, direction: string | null, sells: boolean): string {
   const slot = levelSlotOf(t, direction);
   if (slot) return SLOT_LABEL[slot];
@@ -198,11 +200,25 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
   return field === "level" ? money(v) : field === "pct" ? `${v}%` : `${v} days`;
 }
 
-// moveNumberInText lives in ./price-levels now, so the level path (entry /
-// target / stop columns written through applyLevelArgs) rewrites a moved
-// sentence the same way an edit op does.
+/**
+ * A new buy whose price is already true where it is written never crosses, so it never fires until the
+ * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). In an "any" group one
+ * true price part makes the buy true; an "all" group is true only when every part is a price level
+ * true at the price (SMMT 10-02: "above $17.10 and above the 20-day" can still cross). A group inside
+ * a group is never refused. Null when the price is unknown or the buy can still cross.
+ */
+export function buyAlreadyTrue(t: Pick<Trigger, "action" | "predicate">, price: number | null | undefined): string | null {
+  const w = t.action === "ENTER" && price != null && price > 0 ? shapeOf(t.predicate) : null;
+  const parts = !w ? [] : isGroup(w) ? w.conditions : [w];
+  if (parts.some(isGroup)) return null;
+  const levels = parts.map((c) => levelOf(c));
+  const holds = (l: ReturnType<typeof levelOf>) => !!l && (l.above ? price! > l.value : price! < l.value);
+  const level = w && isGroup(w) && w.match === "all" ? (levels.every(holds) ? levels[0] : null) : levels.find(holds);
+  if (!level) return null;
+  return `A buy ${level.above ? "above" : "below"} ${money(level.value)} is already true at ${money(price!)}, so it never crosses and never fires. To buy now, set it at or a few cents past ${money(price!)} (is: above); for a pullback, write is: below at a level under ${money(price!)}.`;
+}
 
-/** The trigger an add would collide with: same plan slot, else same bucket. */
+/** The trigger an add would collide with: same price slot, else same bucket. */
 export function collision(
   stored: Trigger[],
   t: Trigger,
@@ -245,15 +261,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, extra: Pick<TriggerOpResult, "unchanged" | "to"> = {}) =>
     results.push({ op, id, ok: false, text, reason, ...extra });
 
-  // A plan level beats another number for its trigger in the same call, which comes back by id; that trigger's
-  // reason changes only if its number moves (PLTR 10-15: a $191 edit, stop_loss $196; MU 10-15: $982 added, entry $906).
-  const levelSet = new Map<string, number>();
-  for (const o of input.ops) {
-    if (o.op !== "level" || (o.slot === "ENTRY" && held)) continue;
-    for (const t of input.stored) if (levelSlotOf(t, direction) === o.slot) levelSet.set(t.id, o.price);
-  }
-  const outvoted = new Set<string>();
-
   /** The one gate an agent's edit runs on a stock we own. */
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT" || !held) return null;
@@ -274,17 +281,15 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   };
 
   /**
-   * `meta.viaLevel`: the edit came from a plan-level argument (entry / target /
-   * stop) rather than an explicit trigger edit — the sentence is moved with
-   * the number, so no rationale is demanded. `meta.above`: the side the
-   * caller wrote on an added price trigger, used when there is no tape to
-   * read it from. `meta.close`: the caller says whether it waits for the close.
+   * `meta.slotForText`: the slot a fill's level op names, for its line.
+   * `meta.above`: the side the caller wrote on an added price trigger, used
+   * when there is no tape to read it from. `meta.close`: the caller says
+   * whether it waits for the close.
    */
   const doEdit = (
     op: Extract<TriggerOp, { op: "edit" }>,
     meta: {
       slotForText?: LevelSlot;
-      viaLevel?: boolean;
       above?: boolean;
       close?: boolean;
     } = {},
@@ -306,11 +311,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const wanted = op.value !== undefined && subject ? { field: fieldOf(subject), value: op.value } : op.value !== undefined ? { field: "pct" as const, value: op.value } : null;
     const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction, held);
 
-    const setBy = meta.viaLevel ? undefined : levelSet.get(op.id);
-    if (wanted && setBy !== undefined && wanted.value !== setBy) {
-      outvoted.add(op.id);
-      return refuse("edit", op.id, `${name} ${fmtValue(wanted.field, wanted.value)}`, `The ${name.toLowerCase()} level in the same call sets this trigger to ${fmtValue(wanted.field, setBy)}, and it wins: this number is not applied.`, { to: wanted.value });
-    }
     const moves = !!(wanted && current && wanted.value !== current.value);
     if (wanted) {
       if (!current || (op.unit && op.unit !== current.field)) {
@@ -320,7 +320,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       if (!(wanted.value > 0) || !Number.isFinite(wanted.value)) {
         return refuse("edit", op.id, `Edit ${name}`, "The number must be positive.");
       }
-      if (actor === "AGENT" && !meta.viaLevel && !op.rationale?.trim() && wanted.value !== current.value) {
+      if (actor === "AGENT" && !op.rationale?.trim() && wanted.value !== current.value) {
         return refuse(
           "edit",
           op.id,
@@ -355,7 +355,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = group ? { ...group, conditions: group.conditions.map((c: When, i: number) => (i === op.part ? next : c)) } : next;
     }
     // ...unless the caller says when it fires: the edit's own `close`, or
-    // the plan level's basis. It applies to a price level only.
+    // the fill level's basis. It applies to a price level only.
     const close = op.close ?? meta.close;
     const closeNotApplied = close !== undefined && (isGroup(predicate) || !isLevel(predicate));
     if (close !== undefined && !closeNotApplied) {
@@ -366,7 +366,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
-    let rationale = (!outvoted.has(op.id) || moves ? op.rationale?.trim() : undefined) || target.rationale;
+    let rationale = op.rationale?.trim() || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
     const level = levelOf(predicate);
     if (!op.rationale?.trim() && wanted && current && wanted.value !== current.value) {
@@ -374,8 +374,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         moveNumberInText(target.rationale, wanted.field, current.value, wanted.value) ??
         (slot && level ? rationaleFor(slot, wanted.value, direction, held, level.above) : target.rationale);
     } else if (actor === "SYSTEM" && slot && level && target.source === "DEFAULT") {
-      // A buy fill re-reads a template floor / target for a stock we now own
-      // ("the plan comes down" → "sell if the price drops to").
+      // A buy fill re-reads a template floor / upside level for a stock we now
+      // own ("I stop watching it" → "I sell at").
       rationale = rationaleFor(slot, level.value, direction, held, level.above);
     }
     const edited: Trigger = {
@@ -466,6 +466,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const text = `Added: ${describeTrigger(trigger, held)}`;
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
+    // An agent's new buy has to be able to cross; the owner's is the owner's.
+    const dead = actor === "AGENT" ? buyAlreadyTrue(trigger, currentPrice) : null;
+    if (dead) return refuse("add", id, text, dead);
     const above = inheritedByBucket.get(triggerSlot(trigger));
     if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
       return refuse(
@@ -552,7 +555,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     // A buy level on a stock we own would re-arm a purchase (the 2026-05-19
     // shape: 35 of 36 buy tactical runs were on names already held).
     if (slot === "ENTRY" && held) {
-      return refuse("edit", "", "Entry", "On a held stock the entry is the fill — it is not a plan level and cannot be edited.");
+      return refuse("edit", "", "Entry", "On a held stock the entry is the fill — it is not a trigger and cannot be edited.");
     }
     const occupants = stored.filter((t) => levelSlotOf(t, direction) === slot);
     if (!(price > 0) || !Number.isFinite(price)) {
@@ -568,7 +571,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       });
       return doEdit(
         { op: "edit", id: keep.id, value: price, ...(extra.rationale?.trim() ? { rationale: extra.rationale.trim() } : {}) },
-        { slotForText: slot, viaLevel: true, close: extra.basis === undefined ? undefined : extra.basis === "close" },
+        { slotForText: slot, close: extra.basis === undefined ? undefined : extra.basis === "close" },
       );
     }
     const sided = predicateFor(slot, price, direction, currentPrice);
@@ -641,8 +644,8 @@ export type LadderCheck =
   | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger"; message: string };
 
 /**
- * Derive the plan from the list and check it once: ordering everywhere and
- * the buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`.
+ * Read the price levels off the list and check it once: ordering everywhere
+ * and the buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`.
  * No reward/risk floor (gone 2026-11-04): the house sets no target of its
  * own. Held: `entryPrice` is the fill.
  */
@@ -682,7 +685,6 @@ export function checkLadder(input: {
     direction: direction as "LONG" | "SHORT" | "PASS" | null,
     status: (status ?? "WATCHING") as "WATCHING" | "HOLDING" | "PROMOTED" | "PASSED" | "RETIRED",
     triggers: [...triggers, ...inherited],
-    targetPrice: columns.targetPrice,
   });
   if (!guard.ok) return { ok: false, error: "missing_enter_trigger", message: guard.note };
   return { ok: true, columns };

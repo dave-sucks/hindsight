@@ -22,14 +22,14 @@ The folders match the sidebar:
 ## The loop, on one stock
 
 1. **[Discovery](agents/discovery.md)** finds a stock that fits an [analyst](concepts/analysts.md): CRWD beat, raised its year and held the gap. Or you ask for research in [chat](agents/chat.md), or add the stock to the watchlist yourself.
-2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and a plan made of [triggers](concepts/triggers.md). The stock goes on the watchlist as Watching.
-3. **The trigger check** watches the plan every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
-4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, and its floor, trail and target guard it.
+2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and its [triggers](concepts/triggers.md): a buy and a floor. The stock goes on the watchlist as Watching.
+3. **The trigger check** watches its triggers every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
+4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, and its floor and trail guard it.
 5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, your notes.
 6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it asks the analyst again each day the price stays past the line: the analyst proposes the sale again or says why it holds. Only you can lower the floor.
-7. **The sale goes through** and the thesis is retired as sold, or goes back to Watching after a sale at the target. A retired stock gets one look back within two weeks: watch it again, or let it go.
+7. **The sale goes through** and the thesis is retired as sold, or goes back to Watching after a profit-take. A retired stock gets one look back within two weeks: watch it again, or let it go.
 
-[Chat](agents/chat.md) is where you ask about any of it, change a plan, or start research yourself, at any step.
+[Chat](agents/chat.md) is where you ask about any of it, change a stock's triggers, or start research yourself, at any step.
 
 ## The whole system
 
@@ -41,7 +41,7 @@ The folders match the sidebar:
 Every agent doc has the same five sections, in the same order: **What it does** (the job, and why it works that way), **When it runs**, **What it reads**, **What it decides** and **What happens next** (where the stock goes from there). Read them in that order and you can follow a stock from one agent to the next.
 
 - **[Discovery](agents/discovery.md):** screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer.
-- **[The Writer](agents/writer.md):** researches one stock in depth and writes its thesis, plan and all.
+- **[The Writer](agents/writer.md):** researches one stock in depth and writes its thesis and its first triggers.
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
@@ -50,12 +50,12 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 
 ## The concepts
 
-- **[Theses](concepts/theses.md):** a belief we can be wrong about, and the plan that acts on it. Every stock on the book has one.
-- **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A thesis's whole plan is its triggers.
+- **[Theses](concepts/theses.md):** a belief we can be wrong about, and the triggers that act on it. Every stock on the book has one.
+- **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A stock has its triggers and nothing else: no plan, no price target of our own.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
 - **[Situations](concepts/situations.md):** the eight reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day, except one a trigger made, which waits while its trigger holds.
-- **[Price targets](concepts/price-targets.md):** the house sets none. A plan is the buy, the floor and an upside rule where the setup has one; Wall Street's targets are a card, and a line a rule can watch.
+- **[Price targets](concepts/price-targets.md):** the house sets none, and there is no plan. A stock has its triggers (the buy, the floor, and a take-profit where the setup has one); Wall Street's targets are a card, and a line a rule can watch.
 
 ## Deep dives
 
@@ -72,7 +72,7 @@ Exact lists built from the code, with a test that fails when they drift. Regener
 
 - **[Situations library](reference/situations-library.md):** all eight situations, each with its code, what it means and the exact text an agent is sent.
 - **[Trigger measures](reference/trigger-measures.md):** every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in.
-- **[Setups](reference/setups.md):** every setup in the playbook: what must be true first, where the buy, floor and target go, and when it has failed.
+- **[Setups](reference/setups.md):** every setup in the playbook: what must be true first, where the buy, floor and any take-profit go, and when it has failed.
 
 ## Reading these docs
 

@@ -1,6 +1,6 @@
 /**
- * Thesis shape validation — relative ordering of entry / target / stop
- * given the trade direction.
+ * Thesis shape validation — relative ordering of a stock's buy, floor and
+ * upside line (read off its triggers) given the trade direction.
  *
  * Used by `record_thesis` and `update_thesis` as the upstream cure for
  * the inverted-target class of bugs that PR #227 catches downstream at
@@ -19,8 +19,7 @@
  * Rules per direction (when the relevant prices are all non-null):
  *   LONG  — target > entry > stop
  *   SHORT — target < entry < stop
- *   PASS  — no shape rule (the prices are reference levels, not a plan
- *           to trade)
+ *   PASS  — no shape rule (the prices are reference levels, not a trade)
  *
  * Partial sets (one of the three null) check only the pairs that ARE
  * present:
@@ -32,10 +31,10 @@
  * Equal values fail — a target equal to entry has zero R/R and is
  * functionally the same bug as target < entry.
  *
- * The reward/risk ratio is reported on a legal plan, never enforced: the
- * house sets no target of its own (the plan is the triggers; "target" is
- * Wall Street's number), so a reward/risk floor had nothing of ours to
- * measure. The refusal that lived here from 2026-09-02 to 2026-11-04 is
+ * The reward/risk ratio is reported on legal levels, never enforced: the
+ * house sets no target of its own (a stock has triggers and nothing else;
+ * "target" is Wall Street's number), so a reward/risk floor had nothing of
+ * ours to measure. The refusal that lived here from 2026-09-02 to 2026-11-04 is
  * gone; under twice the floor's distance the agent says why in its note.
  */
 
@@ -61,7 +60,7 @@ export type ThesisShapeResult =
   | { ok: true; riskReward?: number }
   | { ok: false; reason: string; note: string };
 
-/** Reward per unit of risk for a priced plan, or null when either side is ≤ 0. */
+/** Reward per unit of risk for a priced buy, or null when either side is ≤ 0. */
 export function riskReward(
   direction: "LONG" | "SHORT",
   entry: number,
@@ -94,78 +93,20 @@ export function validateThesisShape(
   const isLong = args.direction === "LONG";
 
   // Pair-by-pair checks. Each check runs only when both members are
-  // non-null. The fail messages name the specific inverted pair so
-  // the agent's retry can fix it without guessing.
+  // non-null. The fail messages name the inverted pair and the fix in
+  // trigger words, so the agent's retry can fix it without guessing.
+  const fail = (reason: string, note: string): ThesisShapeResult => ({ ok: false, reason, note: `${note} Move one of them with edit_triggers, by its id.` });
   if (entry != null && target != null) {
-    if (isLong && target <= entry) {
-      return {
-        ok: false,
-        reason: "LONG-target-not-above-entry",
-        note:
-          `LONG thesis requires target_price > entry_price. ` +
-          `You passed entry=$${entry}, target=$${target}. ` +
-          `Set a NEW target_price ABOVE entry_price. ` +
-          `If this is a WATCHING thesis where price has crossed the old target, ` +
-          `the OLD target was the ENTER trigger level — it's no longer valid as a take-profit. ` +
-          `Recompute target relative to current price.`,
-      };
-    }
-    if (!isLong && target >= entry) {
-      return {
-        ok: false,
-        reason: "SHORT-target-not-below-entry",
-        note:
-          `SHORT thesis requires target_price < entry_price. ` +
-          `You passed entry=$${entry}, target=$${target}. ` +
-          `Set a NEW target_price BELOW entry_price.`,
-      };
-    }
+    if (isLong && target <= entry) return fail("LONG-target-not-above-entry", `On a LONG the upside line sits above the buy: the buy is $${entry}, the upside line $${target}.`);
+    if (!isLong && target >= entry) return fail("SHORT-target-not-below-entry", `On a SHORT the upside line sits below the entry: the entry is $${entry}, the upside line $${target}.`);
   }
-
   if (entry != null && stop != null && !args.held) {
-    if (isLong && stop >= entry) {
-      return {
-        ok: false,
-        reason: "LONG-stop-not-below-entry",
-        note:
-          `LONG thesis requires stop_loss < entry_price. ` +
-          `You passed entry=$${entry}, stop=$${stop}. ` +
-          `Set a NEW stop_loss BELOW entry_price (typically 5-10% below for swing, tighter for TRADE horizon).`,
-      };
-    }
-    if (!isLong && stop <= entry) {
-      return {
-        ok: false,
-        reason: "SHORT-stop-not-above-entry",
-        note:
-          `SHORT thesis requires stop_loss > entry_price. ` +
-          `You passed entry=$${entry}, stop=$${stop}. ` +
-          `Set a NEW stop_loss ABOVE entry_price.`,
-      };
-    }
+    if (isLong && stop >= entry) return fail("LONG-stop-not-below-entry", `On a LONG the floor sits below the buy: the buy is $${entry}, the floor $${stop}.`);
+    if (!isLong && stop <= entry) return fail("SHORT-stop-not-above-entry", `On a SHORT the stop sits above the entry: the entry is $${entry}, the stop $${stop}.`);
   }
-
   if (target != null && stop != null) {
-    if (isLong && target <= stop) {
-      return {
-        ok: false,
-        reason: "LONG-target-not-above-stop",
-        note:
-          `LONG thesis requires target_price > stop_loss. ` +
-          `You passed target=$${target}, stop=$${stop}. ` +
-          `Either lower stop_loss or raise target_price so target > stop.`,
-      };
-    }
-    if (!isLong && target >= stop) {
-      return {
-        ok: false,
-        reason: "SHORT-target-not-below-stop",
-        note:
-          `SHORT thesis requires target_price < stop_loss. ` +
-          `You passed target=$${target}, stop=$${stop}. ` +
-          `Either raise stop_loss or lower target_price so target < stop.`,
-      };
-    }
+    if (isLong && target <= stop) return fail("LONG-target-not-above-stop", `On a LONG the upside line sits above the floor: the floor is $${stop}, the upside line $${target}.`);
+    if (!isLong && target >= stop) return fail("SHORT-target-not-below-stop", `On a SHORT the upside line sits below the stop: the stop is $${stop}, the upside line $${target}.`);
   }
 
   if (entry == null || target == null || stop == null) return { ok: true };

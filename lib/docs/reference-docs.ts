@@ -114,7 +114,7 @@ function setupSection(s: Setup): string[] {
   out.push(`**Buy:** ${s.entry.text}`);
   if (s.entry.entryVia?.length) out.push(` Entry through ${s.entry.entryVia.map((id) => `\`${id}\``).join(", ")}.`);
   out.push("", `**Floor:** ${s.stop.text}`, "");
-  if (s.target) out.push(`**Target:** ${s.target.text}`, "");
+  if (s.target) out.push(`**Take profit:** ${s.target.text}`, "");
   const trails = Object.entries(s.trail);
   if (trails.length) out.push("**Trail:**", "", ...trails.map(([h, text]) => `- ${h.toLowerCase()}: ${text}`), "");
   out.push(`**Time limit:** ${s.time.text}`, "");
@@ -126,11 +126,11 @@ export function setupsMarkdown(): string {
   const out: string[] = [
     "# Setups",
     "",
-    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and the target go, and when it has failed.`,
+    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.`,
     "",
     "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account can change a setup's numbers in Settings → Playbook (`lib/agent/knowledge/setup-overrides.ts`). How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",
-    "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names. Every plan needs a reward of at least twice its risk.",
+    "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.",
     "",
   ];
   for (const s of SETUPS) out.push(...setupSection(s));

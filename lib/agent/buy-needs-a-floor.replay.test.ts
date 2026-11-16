@@ -14,7 +14,7 @@ import { rowForModel } from "@/lib/agent/row-for-model";
 import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { checkLadder } from "@/lib/agent/triggers/ops";
-import { planTriggers, replayTool, thesisRow } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, planTriggers, replayTool, thesisRow } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "@/lib/agent/run-thesis-writer";
 
@@ -51,7 +51,8 @@ describe("the room to the Street average, on the real rows", () => {
 describe("COGT 09-28, the target taken out of the writer's real decision", () => {
   type Fixture = { run: { existingThesisId: string; ticker: string; price: number }; decision: Record<string, unknown>; thesis: Row };
   const fx = cogt as unknown as Fixture;
-  const decision = { ...(fx.decision as unknown as ValidatedThesisDecision), target_price: undefined, target_basis: undefined };
+  // The decision as the writer writes it now: its buy and floor are triggers (the level fields went 2026-11-16).
+  const decision = oldLevelFieldsAsTriggerOps({ ...fx.decision, target_price: undefined, target_basis: undefined }, [], "LONG") as unknown as ValidatedThesisDecision;
   const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: "COGT", mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
   let build: typeof BuildWriterSaveCall;
   const doors: Record<string, z.ZodTypeAny> = {};
@@ -75,14 +76,13 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
 
   it.each(["THESIS_WRITER", "PRINCIPAL_CHAT"])("through the %s door: the seed commits LONG with a buy and a floor trigger and no target", async (mode) => {
     const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, decision, {}, { direction: null, status: "WATCHING" });
-    expect(call.toolArgs.target_price).toBeUndefined();
     const parsed = doors[mode].safeParse(call.toolArgs);
     if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues.slice(0, 3)));
     const r = await replayTool("update-thesis", "updateThesis", { seed: { thesis: [thesisRow({ ...fx.thesis })] }, args: parsed.data as Row, ctx: { runMode: mode }, quotes: { COGT: fx.run.price } });
     expect(r.crashed).toBe(false);
     expect(r.refused).toBe(false);
     expect(r.result.data?.error).toBeUndefined();
-    expect(String(r.result.summary)).not.toMatch(/target_price|missing|Target set/);
+    expect(String(r.result.summary)).not.toMatch(/missing|Upside set/);
     const row = r.db.store.thesis[0];
     expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", entryPrice: 36.95, stopLoss: 34.91, targetPrice: null });
     const actions = (row.triggers as Trigger[]).map((t) => t.action);

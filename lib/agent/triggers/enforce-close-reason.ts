@@ -126,11 +126,11 @@ function levelClaimFailure(
   if (price == null) return null;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
   if (declared === "TARGET") {
-    if (targetPrice == null) return `the plan carries no target to have reached (price ${fmt(price)})`;
+    if (targetPrice == null) return `the stock carries no upside level to have reached (price ${fmt(price)})`;
     const reached = direction === "LONG" ? price >= targetPrice : price <= targetPrice;
     return reached ? null : `the price (${fmt(price)}) never reached the ${fmt(targetPrice)} target`;
   }
-  if (stopLoss == null) return `the plan carries no stop to have broken (price ${fmt(price)})`;
+  if (stopLoss == null) return `the stock carries no floor to have broken (price ${fmt(price)})`;
   const broken = direction === "LONG" ? price <= stopLoss : price >= stopLoss;
   return broken ? null : `the price (${fmt(price)}) is on the safe side of the ${fmt(stopLoss)} stop`;
 }

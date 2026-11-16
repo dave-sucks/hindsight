@@ -9,9 +9,10 @@ const good = {
   ticker: "AVGO",
   direction: "LONG",
   horizon: "COMPOUNDER",
-  entry_price: 280,
-  target_price: 360,
-  stop_loss: 245,
+  triggers: [
+    { predicate: { watch: "price", is: "below", value: 280 }, action: "ENTER", rationale: "I buy the pullback to $280." },
+    { predicate: { watch: "price", is: "below", value: 245 }, action: "EXIT", rationale: "Below $245 the custom-silicon ramp is not showing up." },
+  ],
   core_belief: "Custom-silicon plus networking compounds datacenter revenue past 2028.",
   key_assumptions: ["Hyperscaler AI capex stays high", "VMware margin holds near 90%"],
   invalidation_conditions: ["A flagship hyperscaler drops Broadcom", "AI-semi growth below 20% two quarters"],

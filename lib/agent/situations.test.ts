@@ -136,7 +136,7 @@ describe("the situations for a person: the sheet's flag line", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
     expect(situationLabels(sources(i, { progressToTarget: 0.8 }))).toEqual([
       { code: "REVIEW_DUE", name: "review due", lead: true },
-      { code: "ADD_OR_WINNER", name: "add or near target", lead: false },
+      { code: "ADD_OR_WINNER", name: "add or near upside", lead: false },
     ]);
   });
   it("a sale on an earnings trigger: both codes are the lead's", () => {
@@ -349,14 +349,14 @@ describe("the words per run (step 12, part 2)", () => {
       for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
     }
   });
-  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the plan down by id and the morning run decides", () => {
+  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and floor off by id and the morning run decides", () => {
     const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) {
       expect([word, text.includes(word)]).toEqual([word, false]);
       expect([word, promoted.includes(word)]).toEqual([word, false]);
     }
-    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy, floor and target down by id (remove_trigger_ids) and say so in the note; the morning run decides");
+    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and floor off by id (remove_trigger_ids) and say so in the note; the morning run decides");
     expect(guidanceFor(["PROMOTED_AWAITING"], "INTRADAY_TACTICAL").PROMOTED_AWAITING).toContain("the stock stays promoted and the morning run decides");
   });
   it("the morning run and the chat keep the verbs", () => {

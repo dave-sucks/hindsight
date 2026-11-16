@@ -147,7 +147,7 @@ function validateOpts(fx: Fx, ticker: keyof typeof livePrice) {
     mode: "refresh" as const,
     existingStatus: fx.thesis.status,
     currentPrice: livePrice[ticker],
-    existingTargetPrice: fx.thesis.targetPrice,
+    existingTriggers: fx.thesis.triggers as never,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   };
@@ -216,7 +216,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/no buy level/);
+    expect(outcome.error).toMatch(/no buy to reach it from/);
     expect(mockThesisUpdate).not.toHaveBeenCalled();
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
@@ -339,15 +339,16 @@ describe("a check writes nothing anyone reads later", () => {
 describe("a new thesis (mint) is checked the same way", () => {
   const fx = fixtures.DOCU;
   const mintArgs = { ...writerArgs(fx, "DOCU"), mode: "mint" as const, existingThesisId: null };
-  const mintOpts = { ...validateOpts(fx, "DOCU"), mode: "mint" as const, existingStatus: null, existingTargetPrice: null };
+  const mintOpts = { ...validateOpts(fx, "DOCU"), mode: "mint" as const, existingStatus: null, existingTriggers: undefined };
   // DOCU's decision as a mint: levels priced, no trigger-edit ops.
   const mintDecision = {
     ...fx.submit,
-    entry_price: 67.28,
-    stop_loss: 64.16,
-    target_price: 78.3,
-    stop_basis: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry.",
-    target_basis: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk.",
+    // The buy, the floor and the take-profit, as the writer writes them now: triggers.
+    triggers: [
+      { predicate: { watch: "price", is: "below", value: 67.28 }, action: "ENTER", rationale: "I buy the pullback to the gap-day midpoint, $67.28." },
+      { predicate: { watch: "price", is: "below", value: 64.16 }, action: "EXIT", rationale: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry." },
+      { predicate: { watch: "price", is: "above", value: 78.3 }, action: "REVIEW", rationale: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk." },
+    ] as never,
     add_triggers: undefined,
     edit_triggers: undefined,
     remove_trigger_ids: undefined,

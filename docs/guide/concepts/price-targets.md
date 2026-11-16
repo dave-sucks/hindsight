@@ -1,12 +1,22 @@
 # Price targets
 
-**Hindsight has no price target of its own.** A stock's plan is its triggers: the buy, the floor, and whatever upside rule the setup gives it. "Target" means Wall Street's number, shown as a card and watchable by a rule, never a level we set.
+**Hindsight has no price target of its own, and no plan.** A stock has its [triggers](triggers.md) and nothing else. "Target" only ever means Wall Street's number, shown as a card and watchable by a rule, never a level we set.
 
-## The three things that look like a target
+## What a stock carries instead
 
-- **The buy.** The price the analyst wants to pay, as a trigger: "Buy if above $401". On a stock we hold it is the fill.
-- **The floor.** The sale that caps the loss, as a trigger: "Sell if below $384". A buy needs a floor; it sizes the trade. There is no minimum reward for taking a trade: under twice the floor's distance, the analyst says why in its note.
-- **An upside rule, only where the setup has one.** "Review if above the Street's average target", "Trim 30% if above the prior high". A review, not a sale, is the usual shape: reaching it is a decision point, not an exit. Four of the twelve [setups](../reference/setups.md) carry none, and that is a complete plan.
+Each of these is an ordinary trigger, written one at a time by an analyst or by you, and named for its kind:
+
+- **The buy.** The price the analyst wants to pay: "Buy if above $401". On a stock we hold it is gone; what we paid is the fill.
+- **The floor.** The sale that caps the loss: "Sell if below $384". A buy needs one; it sizes the trade. There is no minimum reward for taking a trade: under twice the floor's distance to the Street's average, the analyst says why in its note.
+- **A take-profit, only where the setup has one.** "Review if above the Street's average target", "Trim 30% if above the prior high". A review, not a sale, is the usual shape: reaching it is a decision point, not an exit. Four of the twelve [setups](../reference/setups.md) carry none, and that is complete.
+
+There is no separate field for any of them, no second way to write them and no template that stamps them. An agent changes one by its id, the way it changes any trigger.
+
+## Stop watching if
+
+On a stock we only watch, the floor reads **"Stop watching if below $384"**. When the stock closes below it (the 4:20 PM pass, never an intraday dip), the watch ends: the thesis retires as dropped, with one line in its Activity naming the trigger. No agent wakes and nothing waits for your approval, because no money moves.
+
+Once the stock is bought, the same trigger reads "Sell if below $384" and is the holding's sale: a fire proposes the sale, which waits for you.
 
 ## Wall Street's targets
 
@@ -16,8 +26,8 @@ A rule can watch them. The Street's average, high and low are [trigger](triggers
 
 ## Why
 
-A target the house computed to clear a ratio was a number nobody believed, and it was quoted three times on every row an agent read. The buy and the floor are the analyst's conviction in two numbers; the Street is evidence; the upside, where there is one, is a rule to look again.
+A target the house computed to clear a ratio was a number nobody believed, and it was quoted three times on every row an agent read. A plan written in three boxes beside the triggers was a second copy that could disagree with them: on 2026-11-16 a blank box deleted a stock's buy, floor and review. The buy and the floor are the analyst's conviction in two triggers; the Street is evidence; the upside, where there is one, is a rule to look again.
 
 ## Technical details
 
-The levels are triggers (`lib/agent/triggers/`); the `entryPrice`, `targetPrice` and `stopLoss` columns on a thesis are a cache computed from the trigger list on every write (`canonicalLevels`): the buy is the ENTER rule, the floor the tightest protective sale under the price, the target the first upside rule. A buy needs the floor only (`lib/agent/tools/place-trade.ts`). The Street rows are `StreetConsensus`, one per stock per day (`lib/market-data/street-consensus-store.ts`); the Street variables are `street_avg`, `street_high` and `street_low` in `lib/agent/triggers/condition/variables.ts`, and the room line is `roomWords` in `lib/market-data/street-consensus.ts`.
+The levels are triggers (`lib/agent/triggers/`), edited by `add_triggers`, `edit_triggers` and `remove_trigger_ids` on `update_thesis` and by `triggers` on a new thesis (`record_thesis`, the Writer's `submit_thesis`). The `entryPrice`, `targetPrice` and `stopLoss` columns on a thesis are a cache computed from the trigger list on every write (`canonicalLevels` in `lib/agent/triggers/price-levels.ts`): the buy is the ENTER rule, the floor the tightest protective sale under the price, the upside level the furthest upside rule. A buy needs the floor only (`planOfRow` in `lib/agent/tools/place-trade.ts`). A sale line on a watch retires it through `stopWatching` (`lib/agent/triggers/stop-watching.ts`), called by the trigger evaluator. The Street rows are `StreetConsensus`, one per stock per day (`lib/market-data/street-consensus-store.ts`); the Street variables are `street_avg`, `street_high` and `street_low` in `lib/agent/triggers/condition/variables.ts`, and the room line is `roomWords` in `lib/market-data/street-consensus.ts`.

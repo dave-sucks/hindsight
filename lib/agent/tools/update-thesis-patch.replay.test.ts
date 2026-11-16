@@ -154,16 +154,17 @@ describe("refuse the field, land the call", () => {
     ["MORNING_PLAN", "Leave the buy as it is; the next run can move it."],
     // The chat's save has no price field since step 12, part 2: its words never name one.
     ["PRINCIPAL_CHAT", "Leave the buy as it is and send it again once get_stock_data has a live price."],
-  ])("no live price on a watch (%s): the buy level is refused by name in that door's words, the note lands", async (runMode, words) => {
-    const watch = asml({ status: "WATCHING", triggers: [] });
-    const r = await replay(closeOut({ price_at_time: undefined, entry_price: 1700, trigger_id: undefined }), { thesis: watch, quotes: {}, ctx: { runMode } });
+  ])("no live price on a watch (%s): the buy's move is refused by id in that door's words, the note lands", async (runMode, words) => {
+    const buy = { id: "buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: "below", value: 1750 }, rationale: "Buy the pullback to $1,750." };
+    const watch = asml({ status: "WATCHING", triggers: [buy] });
+    const r = await replay(closeOut({ price_at_time: undefined, entry_price: undefined, trigger_id: undefined, edit_triggers: [{ id: "buy", value: 1700, rationale: "Lower, at the base." }] }), { thesis: watch, quotes: {}, ctx: { runMode } });
     expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "entry_price", reason: expect.stringContaining(words) })]);
-    expect(refusedOf(r)[0].reason).not.toContain("price_at_time");
+    expect(opsOf(r)).toEqual([expect.objectContaining({ id: "buy", ok: false, reason: expect.stringContaining(words) })]);
+    expect(String(opsOf(r)[0].reason)).not.toContain("price_at_time");
     expect(written(r.db)).toHaveLength(1);
   });
 
-  it("a target raised past the price on a watch is refused alone; the floor raised in the same call lands", async () => {
+  it("an upside line raised past the price on a watch lands with the floor raised beside it (there is no target of ours to guard)", async () => {
     const watch = thesisRow({
       id: "t_watch", ticker: "AAA", status: "WATCHING", direction: "LONG", entryPrice: 100, targetPrice: 130, stopLoss: 90,
       triggers: [
@@ -174,13 +175,20 @@ describe("refuse the field, land the call", () => {
     });
     const r = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [watch] },
-      args: { thesis_id: "t_watch", rationale: "Raising the target and the floor after the run-up.", target_price: 150, stop_loss: 95, stop_basis: "Under the new base at $95." },
+      args: {
+        thesis_id: "t_watch",
+        rationale: "Raising the upside line and the floor after the run-up.",
+        edit_triggers: [
+          { id: "tgt", value: 150, rationale: "The next extension at $150." },
+          { id: "flr", value: 95, rationale: "Under the new base at $95." },
+        ],
+      },
       ctx: { runMode: "MORNING_PLAN" },
       quotes: { AAA: 135 },
     });
     expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "target_price", reason: expect.stringContaining("PROMOTE") })]);
-    expect(r.db.store.thesis[0]).toMatchObject({ targetPrice: 130, stopLoss: 95 });
+    expect(refusedOf(r)).toEqual([]);
+    expect(r.db.store.thesis[0]).toMatchObject({ targetPrice: 150, stopLoss: 95 });
   });
 
   it("a promoted stock given only a note writes the REVIEWED row and says it is still promoted", async () => {
@@ -194,13 +202,17 @@ describe("refuse the field, land the call", () => {
 });
 
 describe("a call where nothing can land is still refused whole", () => {
-  it("a seed's commitment missing stop_loss: refused, nothing written", async () => {
+  it("a seed's commitment missing its floor: refused, nothing written", async () => {
     const s = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, entryPrice: null, targetPrice: null, stopLoss: null, triggers: [] });
     const r = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [s] },
       args: {
         thesis_id: "t_seed", rationale: "Committing to a long after the first read.", direction: "LONG", horizon: "TARGET",
-        entry_price: 100, target_price: 130, core_belief: "It drifts up.", key_assumptions: ["a", "b"], invalidation_conditions: ["c", "d"],
+        add_triggers: [
+          { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "The breakout above $100." },
+          { predicate: { watch: "price", is: "above", value: 130 }, action: "REVIEW", rationale: "At $130, take profit or let it run." },
+        ],
+        core_belief: "It drifts up.", key_assumptions: ["a", "b"], invalidation_conditions: ["c", "d"],
         conviction: "MEDIUM", conviction_rationale: "Probably works.",
       },
       ctx: { runMode: "MORNING_PLAN" },

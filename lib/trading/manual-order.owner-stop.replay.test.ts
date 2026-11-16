@@ -86,8 +86,8 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
     expect(below(db, "EXIT")).toEqual([
       expect.objectContaining({ id: FLOOR.id, predicate: { is: "below", value: 390, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $390. You set this." }),
     ]);
-    // The only review below is the template's own 8% one, not one at the analyst's $382.40.
-    expect(below(db, "REVIEW").map((t) => (t.predicate as { value: number }).value)).toEqual([367.03]);
+    // No review line below: none at the analyst's $382.40, and no template's 8%-below-entry line (deleted 2026-11-16).
+    expect(below(db, "REVIEW")).toEqual([]);
   });
 
   it("a typed $360 stop, looser than the line: raised to $367.03 in place, sold right away, his", async () => {

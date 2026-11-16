@@ -4,7 +4,8 @@
  * (read from the run's RunMessage thread), saved as a REVIEWED row; here it
  * also sends a verdict, its line, and the 10-30 note it speaks of.
  */
-import { replayTool, thesisRow } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import fixture from "@/lib/agent/__fixtures__/mu-review-verdict-2026-11-02.json";
 
 const LINE = "The HBM pricing assumption is intact but the 38.2% retracement at $878 broke, so the stock is weaker than the business.";
@@ -17,7 +18,8 @@ const replay = (extra: Record<string, unknown>) =>
       thesisUpdate: [{ ...fixture.answered, thesisId: fixture.thesis.id, timestamp: new Date(fixture.answered.timestamp) }],
     },
     ctx: { runMode: "MORNING_PLAN", runId: fixture.runId, analystId: fixture.analystId, runEnvironment: fixture.runEnvironment },
-    args: { ...fixture.call, ...extra },
+    // A level in the call is the edit of its trigger (the fields went 2026-11-16).
+    args: oldLevelFieldsAsTriggerOps({ ...fixture.call, ...extra }, fixture.thesis.triggers as unknown as Trigger[], "LONG"),
     quotes: { MU: fixture.price },
   });
 const savedRow = (db: { store: Record<string, unknown[]> }) => (db.store.thesisUpdate as Saved[]).find((u) => u.thesisId === fixture.thesis.id && u.id !== fixture.answered.id)!;

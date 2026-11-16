@@ -30,7 +30,7 @@ export const THREAD_SHAPE = {
   codes: "situations",
 } as const;
 
-export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Plan taken down";
+export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Stopped watching";
 const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
 const PLAN_KEYS = ["entryPrice", "stopLoss", "targetPrice", "status", "direction", "retiredReason", "catalystDate"];
 const RESEARCH_KEYS = ["researchData", "bullCase", "bearCase", "fundamentals", "coreBelief", "keyAssumptions", "invalidationConds", "variantView", "snapshot", "scoring"];
@@ -123,7 +123,7 @@ const ACTION_WORDS: Record<string, string> = { EXIT: "Sell", TRIM: "Trim", ADD: 
 export function fireAction(u: Pick<UpdateRow, "triggerAction" | "summary">): string {
   if (u.triggerAction) return u.triggerAction;
   const s = u.summary ?? "";
-  if (s.startsWith("Sell") || s.includes("plan set down")) return "EXIT";
+  if (s.startsWith("Sell") || s.startsWith("Stop watching") || s.includes("plan set down")) return "EXIT";
   const hit = Object.entries(ACTION_WORDS).find(([, w]) => s.startsWith(w));
   return hit?.[0] ?? "REVIEW";
 }
@@ -156,7 +156,9 @@ export function levelOf(u: Pick<UpdateRow, "triggerId">, t: ThesisRow | undefine
 }
 
 export function fireModeOf(u: Pick<UpdateRow, "runId" | "summary">, run: RunRow | undefined): FireMode {
-  if ((u.summary ?? "").includes("plan set down")) return "Plan taken down";
+  // A sale line on a watch retires it with no run (before 2026-11-16 it took the buy off: "plan set down").
+  const s = u.summary ?? "";
+  if (!u.runId && (s.startsWith("Stop watching") || s.includes("plan set down"))) return "Stopped watching";
   if (!u.runId) return "Flag for Review";
   return run?.auto ? "Auto" : "Send to Agent";
 }

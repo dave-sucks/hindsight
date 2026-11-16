@@ -118,13 +118,13 @@ describe("applyTriggerOps — edits", () => {
     expect(out.triggers).toEqual([buy, target, floor, clock]);
   });
 
-  it("the sentence moves with the number (MU's $969 floor said $935 — DAV-231)", () => {
+  it("the sentence moves with the number on a fill's level op (MU's $969 floor said $935 — DAV-231)", () => {
     const out = applyTriggerOps({
       stored: [{ ...floor, predicate: { watch: "price", is: "below", value: 935 }, rationale: "Exit below $935 — the protective line raised on 8/24." }],
       ops: [{ op: "level", slot: "FLOOR", price: 969 }],
       direction: "LONG",
       status: "HOLDING",
-      actor: "AGENT",
+      actor: "SYSTEM",
       mintId,
     });
     expect(out.results[0]).toEqual({ op: "edit", id: "floor", ok: true, text: "Stop $935 → $969 (tightened)" });
@@ -177,7 +177,7 @@ describe("applyTriggerOps — the ratchet, per op", () => {
 
   it("a loosened held stop is refused by itself while the rest lands (SMMT, #612)", () => {
     const out = held([
-      { op: "level", slot: "FLOOR", price: 140 },
+      { op: "edit", id: "floor", value: 140, rationale: "Wider, under the base." },
       { op: "edit", id: "clock", value: 1, rationale: "Daily into the catalyst." },
     ]);
     expect(out.results).toEqual([
@@ -250,7 +250,7 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
     );
     expect(out.results).toEqual([
       { op: "remove", id: "eb59bfe1", ok: true, text: "Removed: Buy if above $58.50" },
-      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Take the plan down if below $54.90" },
+      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Stop watching if below $54.90" },
       { op: "remove", id: "d5dc23fd", ok: true, text: "Removed: Review if above $66.50" },
       { op: "add", id: "new-1", ok: true, text: "Added: Buy if above $57.25" },
     ]);
@@ -273,7 +273,7 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
         text: "Edit and remove: Review every 7 days",
         reason: "Edited and removed in the same call — say which: send the edit or the removal, not both.",
       },
-      { op: "remove", id: "floor", ok: true, text: "Removed: Take the plan down if below $150" },
+      { op: "remove", id: "floor", ok: true, text: "Removed: Stop watching if below $150" },
     ]);
     expect(out.triggers.find((t) => t.id === "clock")).toEqual(expect.objectContaining({ predicate: { watch: "repeat", value: 7 } }));
   });
@@ -352,7 +352,7 @@ describe("describeTrigger", () => {
   it("says a trigger the way the pill does", () => {
     expect(describeTrigger(buy)).toBe("Buy if above $183");
     expect(describeTrigger(floor)).toBe("Sell if below $150");
-    expect(describeTrigger(floor, false)).toBe("Take the plan down if below $150");
+    expect(describeTrigger(floor, false)).toBe("Stop watching if below $150");
     expect(describeTrigger(clock)).toBe("Review every 7 days");
     expect(describeTrigger({ ...clock, predicate: { watch: "surprise", is: "beat", value: 0 } })).toBe("Review if earnings beat any amount");
   });

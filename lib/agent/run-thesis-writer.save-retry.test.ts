@@ -120,7 +120,7 @@ function research(): WriterResearchPhaseOutput {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
-    existingTargetPrice: fx.thesis.targetPrice,
+    existingTriggers: fx.thesis.triggers as never,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });
@@ -162,5 +162,5 @@ it("DOCU: the save keeps the research, refuses the half plan by name, and the st
   expect(mockThesisUpdate.mock.calls[0][0].data.triggers).toBeUndefined();
   const events = mockRunEventCreate.mock.calls.map((c) => c[0].data as { title: string; message: string });
   expect(events.map((e) => e.title)).not.toContain("Save refused — retrying once");
-  expect(events.find((e) => e.title === "Thesis persisted")?.message).toMatch(/Not applied: triggers — .*no buy level/);
+  expect(events.find((e) => e.title === "Thesis persisted")?.message).toMatch(/Not applied: triggers — .*no buy to reach it from/);
 });

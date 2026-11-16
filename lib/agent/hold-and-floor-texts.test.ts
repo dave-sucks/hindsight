@@ -23,9 +23,9 @@ const tool = (runMode: string) =>
 const statusText = (runMode: string) =>
   (zodSchema(tool(runMode).inputSchema as never).jsonSchema as { properties: { change_status: { description: string } } }).properties.change_status.description;
 
-it("the trigger run retires nothing: it takes a watched stock's plan down by id, and sells a stock we hold", () => {
+it("the trigger run retires nothing: it takes a watched stock's buy and floor off by id, and sells a stock we hold", () => {
   const prompt = SAMPLE_PROMPTS.tactical();
-  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch take its buy, floor and target down by id (remove_trigger_ids)");
+  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch take its buy and floor off by id (remove_trigger_ids)");
   expect(prompt).not.toMatch(/change_status|INVALIDATED|ARCHIVED/);
   expect(prompt.replace(/\s+/g, " ")).toContain(HELD);
   // Its save has no change_status; the other runs' still take all three values.

@@ -24,7 +24,8 @@ import { generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { statSync } from "fs";
 import fixture from "@/lib/agent/__fixtures__/sale-lapses-2026-10-13.json";
-import { replayTool, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_RUN_ID, REPLAY_USER_ID, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, REPLAY_ACCOUNT_ID, REPLAY_RUN_ID, REPLAY_USER_ID, type Replay, type Row } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import type { NeedsAction } from "@/lib/agent/needs-action";
@@ -76,6 +77,9 @@ async function morningRunSchema(): Promise<z.ZodTypeAny> {
   return schema!;
 }
 
+/** NVDA's 08:01 ET call, its stop_loss written as the edit of the floor it stood for (the field went 2026-11-16). */
+const nvdaCallNow = () => oldLevelFieldsAsTriggerOps(fx.nvda.call, fx.nvda.thesis.triggers as Trigger[], "LONG");
+
 /** NVDA's 08:01 ET call as the model sent it, through the SDK's loop, to the real save. */
 async function nvdaSave(orders: Order[]): Promise<{ received: Record<string, unknown>; save: Replay }> {
   const schema = await morningRunSchema();
@@ -85,7 +89,7 @@ async function nvdaSave(orders: Order[]): Promise<{ received: Record<string, unk
     const model = new MockLanguageModelV3({
       doGenerate: async () =>
         ++turn === 1
-          ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(fx.nvda.call) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
+          ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(nvdaCallNow()) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
           : { content: [{ type: "text", text: "done" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] },
     } as never);
     const out: { received?: Record<string, unknown>; save?: Replay } = {};
@@ -142,7 +146,7 @@ describe("NVDA 10-13 08:01 ET: a lapse never lowers a floor", () => {
     const { received, save } = await nvdaSave(fx.nvda.orders);
     // The orders as they stood: two lapsed in the window, one still waiting, two real declines a month old.
     expect(fx.nvda.orders.map((o) => o.status)).toEqual(["EXPIRED", "REJECTED", "REJECTED", "EXPIRED", "EXPIRED", "AWAITING_APPROVAL"]);
-    expect(received.stop_loss).toBe(217);
+    expect(received.edit_triggers).toEqual([expect.objectContaining({ id: NVDA_FLOOR_ID, value: 217 })]);
     expect(save.crashed).toBe(false);
 
     expect(floorOp(save)?.ok).toBe(false);

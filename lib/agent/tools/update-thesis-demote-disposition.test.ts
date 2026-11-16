@@ -206,7 +206,9 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       thesis_id: "thesis_demote_1",
       rationale: "Re-anchored the buy level; still not reviewing weekly.",
       remove_trigger_ids: ["clock-1"],
-      entry_price: 180,
+      add_triggers: [
+        { predicate: { watch: "price", is: "above", value: 180 }, action: "ENTER", rationale: "The buy at $180." },
+      ],
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
@@ -255,9 +257,11 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       thesis_id: "thesis_demote_1",
       direction: "LONG",
       horizon: "TARGET",
-      entry_price: 165,
-      target_price: 210,
-      stop_loss: 150,
+      add_triggers: [
+        { predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "The buy at $165." },
+        { predicate: { watch: "price", is: "below", value: 150 }, action: "EXIT", rationale: "Below $150 the setup is wrong." },
+        { predicate: { watch: "price", is: "above", value: 210 }, action: "REVIEW", rationale: "At $210, take profit or let it run." },
+      ],
       core_belief: "Aerospace cycle demand outruns supply through 2027.",
       key_assumptions: [
         "Build rates keep rising into 2027.",

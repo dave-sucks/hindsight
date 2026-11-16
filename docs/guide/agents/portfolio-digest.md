@@ -52,7 +52,7 @@ Where each number comes from:
 
 - You: the digest on the home page, on the digest card's **Portfolio** tab (the Market tab beside it holds the 7:30 [market digest](market-reviewer.md); the card opens on whichever was written last), and its run on /runs.
 - Every agent that decides on stocks (morning runs, trigger runs, chat and the Writer), on every request, in the Market and portfolio block: the [market numbers](market-reviewer.md#the-market-numbers), the latest 7:30 [market digest](market-reviewer.md), the snapshot, written fresh for that request, and the latest portfolio digest, each digest from the last 4 days and stamped with when it was written. The house rules tell them: where the block and a stock's own row differ, the row is right; where the portfolio digest and the snapshot differ, the snapshot is right.
-- `get_portfolio_context`, the read morning runs and the chat call for the book: its value, cash, day and since-started figures, and each holding's price, value, share, day and gain since bought, are the snapshot's, so they match the block to the cent. It adds what the snapshot doesn't carry: the floor and target, days held, the distance from the high, buying power and the open risk, all at the snapshot's prices.
+- `get_portfolio_context`, the read morning runs and the chat call for the book: its value, cash, day and since-started figures, and each holding's price, value, share, day and gain since bought, are the snapshot's, so they match the block to the cent. It adds what the snapshot doesn't carry: the floor and upside level, days held, the distance from the high, buying power and the open risk, all at the snapshot's prices.
 
 <details>
 <summary>Technical details</summary>

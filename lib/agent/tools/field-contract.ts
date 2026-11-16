@@ -57,7 +57,7 @@ export interface Rule {
 
 const RULE_DEFS = {
   UNDER_2X_SAY_WHY: {
-    says: "Reward against risk is reported, never a floor (2026-11-04): the house sets no target of its own. Under twice the floor's distance the writer says why in the note; the row's Street line says how much room there is to the Street's average.",
+    says: "Reward against risk is reported, never a floor (2026-11-04): the house sets no target of its own. Under twice the floor's distance to the Street's average, the writer says why in the note; the row's Street line says how much room there is.",
     refusal: "none — nothing refuses on the ratio.",
     markers: { writer: "UNDER 2×" },
   },
@@ -69,11 +69,11 @@ const RULE_DEFS = {
     markers: { chat: "only tighten" },
   },
   LEVEL_ORDER: {
-    says: "Entry, target and stop sit in order against each other and the live price (long: stop < entry < target).",
-    refusal: "invalid_thesis_shape — names the three levels and which is out of order.",
+    says: "A stock's buy, floor and upside line sit in order against each other and the live price (long: floor < buy < upside line).",
+    refusal: "invalid_thesis_shape — names the levels and which is out of order.",
     // The trigger run reads the reward-to-risk check in ADD_OR_WINNER's
     // guidance (lib/agent/situations.ts), and the order in the refusal.
-    markers: { daily: "target/stop", chat: "target/stop", writer: "R/R" },
+    markers: { daily: "buy, floor and upside level", chat: "buy, floor and upside level", writer: "R/R" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",
@@ -81,8 +81,8 @@ const RULE_DEFS = {
     markers: {},
   },
   TRIGGER_SHAPE: {
-    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a plan level without a buy level is refused with the fix.",
-    refusal: "missing_enter_trigger — names the missing buy level and the two answers.",
+    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a sale on a watch with no buy is refused with the fix.",
+    refusal: "missing_enter_trigger — names the missing buy and the two answers.",
     markers: {},
   },
 } as const satisfies Record<string, Rule>;
@@ -109,12 +109,6 @@ const RESEARCH_BLOCKS: FieldContract[] = [
   "bull_case", "bear_case", "analyst_consensus", "insider_technical",
 ].map((k) => f(k, "CARRIED", { note: "A research section, copied from the writer's note." }));
 
-const PLAN_LEVELS: FieldContract[] = [
-  f("entry_price", "JUDGED", { rule: "LEVEL_ORDER" }),
-  f("target_price", "JUDGED", { rule: "UNDER_2X_SAY_WHY" }),
-  f("stop_loss", "JUDGED", { rule: "UNDER_2X_SAY_WHY" }),
-];
-
 const BELIEF: FieldContract[] = [
   f("core_belief", "TEXT"),
   f("key_assumptions", "TEXT"),
@@ -124,9 +118,6 @@ const BELIEF: FieldContract[] = [
   f("variant_view", "TEXT", { note: "STRONG/HIGH without one is stored MEDIUM with the reason, never refused." }),
   f("horizon", "CHOSEN"),
   f("setup_id", "CHOSEN"),
-  f("stop_basis", "TEXT"),
-  f("target_basis", "TEXT"),
-  f("entry_on_close", "CHOSEN"),
   f("catalyst_date", "JUDGED", { rule: "EVENT_DATE" }),
 ];
 
@@ -136,7 +127,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("company_name", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("exchange", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("direction", "CHOSEN"),
-    // The target and floor are the thesis row's own (step 12, part 3); the buy carries no copy.
+    // The floor is the stock's own sell trigger (step 12, part 3); the buy carries no copy.
     f("entry_price", "JUDGED", { rule: "LEVEL_ORDER", note: "The market order's expected price; it sizes the buy." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
@@ -165,7 +156,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("reasoning_summary", "TEXT"),
     f("thesis_bullets", "TEXT"),
     f("risk_flags", "TEXT"),
-    ...PLAN_LEVELS,
     ...BELIEF,
     f("current_price", "CARRIED", { note: "The price the research was done at; the writer passes it. Candidate for COMPUTED." }),
     f("stock_fundamentals", "CARRIED"),
@@ -190,7 +180,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("reasoning_summary", "TEXT"),
     f("thesis_bullets", "TEXT"),
     f("risk_flags", "TEXT"),
-    ...PLAN_LEVELS,
     ...BELIEF,
     f("direction", "CHOSEN"),
     f("add_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
@@ -225,7 +214,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   submit_thesis: [
     f("direction", "CHOSEN"),
     f("rationale", "TEXT"),
-    ...PLAN_LEVELS,
     ...BELIEF,
     f("prior_exit_acknowledgment", "TEXT", { note: "A phrase that satisfies a gate. Deletion candidate." }),
     f("triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),

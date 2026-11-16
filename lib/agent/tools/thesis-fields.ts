@@ -11,8 +11,7 @@
  * A description says what the field is and what the save does with it. How
  * to choose a value is not here: when a value is wrong, the tool's reply says
  * why (thesis-belief.ts for the belief fields, record_thesis and
- * update_thesis for conviction, thesis-shape.ts for a priced plan, the
- * trigger ops for a refused trigger edit).
+ * update_thesis for conviction, the trigger ops for a refused trigger edit).
  *
  * `writer` is the writer's form: its score parts carry no number range in the
  * schema, as the writer's fields never did. The range is in the words, and the
@@ -42,8 +41,8 @@ const sectionBullets = z
 
 /** The trigger edits, worded once for update_thesis and the writer's submit_thesis (their shapes come from lib/agent/triggers/schema.ts). */
 export const TRIGGER_EDITS = {
-  ladder: "The trigger ladder for a new thesis. Omit it for the horizon's defaults.",
-  add: "Triggers to add. Where the stock already has one of the same kind (a buy, a target, a floor, a review schedule), adding edits that one.",
+  ladder: "The new thesis's triggers: its buy, its floor and anything else it should act on, one trigger each. A watch gets nothing it is not given here.",
+  add: "Triggers to add. Where the stock already has one of the same kind (a buy, a floor, an upside line, a review schedule), adding edits that one.",
   edit: "Triggers to edit, by the id shown on the thesis: the number, the action, the fire mode or the wording. A number change needs a rationale.",
   remove: "Triggers to remove, by id.",
 } as const;
@@ -58,33 +57,20 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
   return {
     direction: z
       .enum(["LONG", "SHORT", "PASS"])
-      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade. A view you would look again at is LONG or SHORT with no levels and a review, not a PASS."),
+      .describe("LONG, SHORT, or PASS: a stock you researched and won't trade. A view you would look again at is LONG or SHORT with no buy and a review, not a PASS."),
     horizon: z
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(
-        "How the trade ends, and which default triggers a new thesis gets: CATALYST (a dated event; needs catalyst_date), TARGET (a price objective, weeks to months), " +
-          "TRADE (a short setup, days to weeks), COMPOUNDER (business quality, months to years). Changing it later leaves the stock's triggers as they are.",
+        "How the trade ends, and how often a holding is reviewed: CATALYST (a dated event; needs catalyst_date; daily), TARGET (a move over weeks to months; weekly), " +
+          "TRADE (a short setup, days to weeks; daily), COMPOUNDER (business quality, months to years; monthly). Changing it later leaves the stock's triggers as they are.",
       ),
-    setup_id: z.enum(SETUP_IDS).describe("The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it."),
+    setup_id: z.enum(SETUP_IDS).describe("The setup the triggers are written on. The trigger run confirms a buy by it and results are grouped by it."),
     setup_id_or_none: z
       .enum([...SETUP_IDS, NO_SETUP_FITS])
       .describe(
-        "The setup the plan is written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no setup fits; say why in the rationale. " +
+        "The setup the triggers are written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no setup fits; say why in the rationale. " +
           "On a stock we hold, naming a setup writes that setup's exit triggers, one Activity line each.",
       ),
-    entry_price: z
-      .number()
-      .describe(
-        "Where you'd buy: the buy trigger's level. Below the price it is a pullback you wait for, above it a breakout you want confirmed, at or just past it a buy now. " +
-          "A plan has entry, target and stop, or none of them.",
-      ),
-    entry_on_close: z.boolean().describe("true: the buy fires only on a close past entry_price, not an intraday cross."),
-    target_price: z.number().describe("Where you'd take profit: the target trigger's level, from the setup's rule. The Street's average and high are on the row; they inform the level and never set it, and your note says where yours sits against them."),
-    target_basis: z.string().describe("Why the target is there, in plain words with the number (\"the July high of $236.54\"). It becomes the target trigger's note."),
-    stop_loss: z.number().describe("Where the thesis breaks: the floor trigger's level."),
-    stop_basis: z
-      .string()
-      .describe("Why the stop is there: first what a close below it would say about the belief, then the number it sits under (\"a close under the August low of $207.25 would mean the margin recovery has stalled\"). It becomes the floor trigger's note, which the run that answers the floor reads."),
     catalyst_date: z.string().datetime().describe("When the dated event lands, as the company announced it (ISO timestamp). Required when horizon is CATALYST."),
     catalyst_day: z.string().describe("When the dated event lands, as the company announced it (YYYY-MM-DD). Required when horizon is CATALYST."),
     core_belief: z
@@ -123,11 +109,11 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
     live_price: z
       .number()
       .describe(
-        "The live price you read (get_stock_data's quote). It decides which side of the price a buy level sits on when the server's own quote fails; with neither, a change that sets a buy level is refused.",
+        "The live price you read (get_stock_data's quote); the save uses it when its own quote fails. On an edit of a buy's number it decides which side of the price the buy sits on; with neither price that edit is refused.",
       ),
     prior_exit: z
       .string()
-      .describe("One line on how this plan differs from this analyst's sale of the stock in the last 14 days. Needed only when the buy is at or above that sale's price."),
+      .describe("One line on how this buy differs from this analyst's sale of the stock in the last 14 days. Needed only when the buy is at or above that sale's price."),
 
     // A review's verdict, and the earlier line a note answers (update_thesis only; a string, so a wrong word comes back by name).
     verdict: z.string().describe("Your verdict on the thesis after this review: STRONGER, UNCHANGED, WEAKER or BROKEN. Comes with verdict_line."),

@@ -400,7 +400,7 @@ describe("resolveLadder — position actions never reach an un-held thesis (2026
       }).map((t) => t.id);
       expect(ids).not.toContain("acct-scale-in");
       expect(ids).not.toContain("acct-trim");
-      // A floor stays: on an un-held thesis it resolves to DEMOTE, a verdict.
+      // A floor stays: on an un-held thesis it stops watching the stock, a verdict.
       expect(ids).toContain("acct-floor");
     }
   });

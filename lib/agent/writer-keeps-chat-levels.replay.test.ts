@@ -23,7 +23,7 @@ const row = [
   t("bb928325-0cde-4168-a03c-aca52371fc8f", "REVIEW", { watch: "price", is: "above", value: 1500 }),
 ];
 const decision = {
-  direction: "LONG", entry_price: 906, stop_loss: 850, target_price: 1500, setup_id: "MA_PULLBACK", entry_on_close: false, horizon: "COMPOUNDER", conviction: "HIGH", rationale: "(the writer's rationale)",
+  direction: "LONG", setup_id: "MA_PULLBACK", horizon: "COMPOUNDER", conviction: "HIGH", rationale: "(the writer's rationale)",
   add_triggers: [
     { action: "ENTER", predicate: { watch: "price", is: "above", value: 982 }, rationale: "(the writer's)" },
     { action: "REVIEW", predicate: { watch: "report", is: "before", value: 14 }, rationale: "(the writer's)" },
@@ -59,13 +59,12 @@ const opsOn = (result: unknown, id: string) => ((result as { data?: { trigger_op
 describe("MU 10:56:57 — the writer's refresh for the chat", () => {
   it("keeps the chat's buy, stop and target, and says its own levels as information", async () => {
     const args = await save(row as unknown as Trigger[]);
-    expect([args.entry_price, args.stop_loss, args.target_price]).toEqual([undefined, undefined, undefined]);
     const { result, db } = await replay(args);
     expect(opsOn(result, BUY)).toEqual([]);
     const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate?: { value?: number }; condition?: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;
     expect((buy.condition ?? buy.predicate)!.value).toBe(906);
     expect(JSON.stringify(db.store.thesis[0])).not.toMatch(/"value":982/);
-    expect(String(args.rationale)).toMatch(/This refresh's own: entry \$906, stop \$850, target \$1500, entry \$982\.\]$/);
+    expect(String(args.rationale)).toMatch(/This refresh's own: buy \$982\.\]$/);
   }, LOAD_MS);
 
   it("a refresh after a buy placed by hand keeps the levels as the chat's does; a morning run's does not", async () => {
@@ -81,8 +80,10 @@ describe("MU 10:56:57 — the writer's refresh for the chat", () => {
     expect(keeps({}, null)).toBe(false);
   }, LOAD_MS);
 
-  it("a refresh the chat did not ask for (a morning run's) sends its levels: entry_price wins, the $982 comes back refused", async () => {
-    const { result } = await replay(await save());
-    expect(opsOn(result, BUY)).toEqual([expect.objectContaining({ text: "Entry $982", ok: false, to: 982 })]);
+  it("a refresh the chat did not ask for (a morning run's) sends its edits as written: the $982 add lands on the buy, and its own edit puts $906 back", async () => {
+    const { result, db } = await replay(await save());
+    expect(opsOn(result, BUY).map((o) => o.text)).toEqual(["Entry $906 → $982", "Entry $982 → $906"]);
+    const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;
+    expect(buy.predicate.value).toBe(906);
   }, LOAD_MS);
 });

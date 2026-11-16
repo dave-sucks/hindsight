@@ -169,7 +169,7 @@ document. So the first move is always the same: **read it**
 
 | Event | Held stock | Watched stock |
 |---|---|---|
-| **Past financials unreliable** (`4.02`) | The numbers under the thesis may be false. Exit, unless the restatement is clearly small and the story doesn't rest on the restated line. Say which. | Set the plan down until the corrected numbers are filed. |
+| **Past financials unreliable** (`4.02`) | The numbers under the thesis may be false. Exit, unless the restatement is clearly small and the story doesn't rest on the restated line. Say which. | Take the buy off until the corrected numbers are filed. |
 | **Bankruptcy / delisting notice** | Exit. | Stop watching. |
 | **Late report** (`NT 10-K/Q`) | Find the stated reason. Tighten the floor. Don't add until it's filed. | Don't buy until it's filed. |
 | **Auditor change** | Read why. Alongside a `4.02`, treat as a red flag. | Note it; don't buy on it. |

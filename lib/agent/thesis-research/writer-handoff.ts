@@ -69,11 +69,11 @@ export function writerHandoff(input: {
     changed,
     planLine: parts.length
       ? `The plan the refresh left: ${parts.join(", ")}.`
-      : `The refresh left no priced plan on $${ticker} — no buy level, target or floor.`,
+      : `The refresh left $${ticker} with no buy and no floor.`,
     instruction:
       `You commissioned this refresh: read what it wrote before you change it. ` +
       `If you are about to move or remove any of these levels, say in your rationale why, against these numbers. ` +
-      `Removing a level the refresh just priced without naming it is how $CYTK ended up with its plan written and deleted seventeen seconds apart on 2026-09-21.`,
+      `Removing a level the refresh just priced without naming it is how $CYTK ended up with its levels written and deleted seventeen seconds apart on 2026-09-21.`,
   };
 }
 

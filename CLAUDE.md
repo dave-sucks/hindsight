@@ -42,9 +42,16 @@ docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
 Triggers are edited one at a time (DAV-242): `update_thesis` takes
-`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`, and
-`entry_price` / `target_price` / `stop_loss` are the same edit on the buy /
-target / floor trigger. Every op is one line in the Activity feed; a refused
+`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`; that is the
+only way a trigger changes. **A stock has triggers and nothing else
+(2026-11-16):** no plan, no price target of our own ("target" is Wall
+Street's number, the StreetConsensus card), no level fields on any save, and
+no template that stamps a buy, floor or target (`defaultTriggersForHorizon`
+writes only a held stock's review clock). "The buy" and "the floor" are names
+for kinds of trigger. On a stock we watch a sale trigger reads "Stop watching
+if below $X"; fired on the close it retires the thesis as DROPPED with one
+Activity line, no run and no approval (`lib/agent/triggers/stop-watching.ts`).
+Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
 **A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
@@ -63,9 +70,9 @@ volume, RSI, strength vs the S&P, a gap, the 5- and 20-day move, insiders)
 read the daily indicator snapshot
 (`TickerIndicators`, written 06:30 ET from `lib/market-data/price-structure.ts`);
 a price level read on the close (`settings.close`) fires only on the 16:20 ET close pass, and so
-does the floor of a stock we only watch: its plan comes down on a close below
-it, never an intraday dip (`watchedFloorOnClose`, DAV-337). There is
-no buy-now option: buying now is an entry price at or near the current price
+does the sale line of a stock we only watch: we stop watching it on a close
+below it, never an intraday dip (`watchedFloorOnClose`, DAV-337). There is
+no buy-now option: buying now is a buy trigger at or near the current price
 (a buy written after the prior close measures its crossing from the price it
 was written at — `lib/agent/triggers/written-price.ts` — so a level set on a
 down day isn't dead on arrival). The
@@ -776,11 +783,12 @@ When you spot something new, file it there — not here.)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
 
 ### Triggers (the living ladder)
-- lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
+- lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id; a buy fill's level op writes the approved order's stop and upside level) + checkLadder (the one post-op check). update_thesis, the UI popover and a buy fill all go through it (DAV-242)
+- lib/agent/triggers/stop-watching.ts — a sale line on a watched stock, fired on the close: the thesis retires as DROPPED, one Activity line
 - lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
 - lib/agent/triggers/types.ts — the Trigger type + watchedFloorOnClose
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
-- lib/agent/triggers/defaults.ts — horizon templates + accountStandingRules() (the account's add prompts) + cooldown defaults
+- lib/agent/triggers/defaults.ts — a held stock's horizon review clock (`defaultTriggersForHorizon`) + accountStandingRules() (the account's add prompts) + cooldown defaults
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer

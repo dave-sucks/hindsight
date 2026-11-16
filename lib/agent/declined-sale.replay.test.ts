@@ -153,7 +153,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       },
       args: {
         thesis_id: "t_iot",
-        stop_loss: 40.5,
+        edit_triggers: [{ id: "trg_floor", value: 40.5, rationale: "Just under the gap-day close." }],
         rationale:
           "You declined the $41.40 sale to give it room. Re-drawn to $40.50, just under the gap-day close.",
       },
@@ -174,7 +174,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       },
       args: {
         thesis_id: "t_iot",
-        stop_loss: 40.5,
+        edit_triggers: [{ id: "trg_floor", value: 40.5, rationale: "Giving it room." }],
         rationale: "Giving it room.",
       },
       quotes: { IOT: PRICE_NEXT_DAY },

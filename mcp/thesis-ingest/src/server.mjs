@@ -89,17 +89,20 @@ const saveThesisInput = {
   direction: z
     .enum(["LONG", "SHORT", "PASS"])
     .describe(
-      "LONG/SHORT need the full trade plan below. PASS = researched, decided not to trade (documents the decline); only ticker + reasoning_summary needed.",
+      "LONG/SHORT need the belief, conviction and triggers below. PASS = researched, decided not to trade (documents the decline); only ticker + reasoning_summary needed.",
     ),
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
     .optional()
     .describe(
-      "Required for LONG/SHORT. CATALYST (dated binary event — also send catalyst_date) · TARGET (open-ended swing to a price target) · TRADE (bounded momentum setup — also send max_hold_days) · COMPOUNDER (multi-year hold).",
+      "Required for LONG/SHORT. CATALYST (dated binary event — also send catalyst_date) · TARGET (a move over weeks to months) · TRADE (bounded momentum setup — also send max_hold_days) · COMPOUNDER (multi-year hold).",
     ),
-  entry_price: z.number().optional().describe("Where you'd initiate. LONG: target>entry>stop. Required for LONG/SHORT."),
-  target_price: z.number().optional().describe("Price target. Required for LONG/SHORT. R/R vs entry & stop must be ≥2:1."),
-  stop_loss: z.number().optional().describe("Stop level. Required for LONG/SHORT."),
+  triggers: z
+    .array(z.object({ predicate: z.record(z.string(), z.unknown()), action: z.enum(["ENTER", "EXIT", "REVIEW"]), rationale: z.string() }))
+    .optional()
+    .describe(
+      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. The floor: { predicate: { watch: 'price', is: 'below', value }, action: 'EXIT', rationale } — on a watch it stops watching on a close below. A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
+    ),
   core_belief: z
     .string()
     .optional()

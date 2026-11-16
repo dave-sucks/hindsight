@@ -53,7 +53,7 @@ const cleanup = line((u) => u.summary.startsWith("Removed a copied rule from ABT
 describe("the fixture is the production case", () => {
   it("the predicates rebuilt from the reads say what the reads said", () => {
     for (const t of [...fx.at.morning1007.triggers, ...fx.at.morning1008.triggers, fx.removedBuy]) {
-      expect(sentenceOf(t as never, false)).toBe(t.says); // ABT was watched
+      expect(sentenceOf(t as never, false)).toBe(t.says.replace("Take the plan down if", "Stop watching if")); // ABT was watched; its sale line read "Take the plan down" until 2026-11-16
     }
     expect(fx.removedBuy.says).toBe(REMOVED_BUY);
   });

@@ -8,7 +8,8 @@
 import { generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import fixture from "@/lib/agent/__fixtures__/morning-save-2026-10.json";
-import { replayTool, thesisRow, positionRow, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, type Replay, type Row } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 const morning = { runMode: "MORNING_PLAN" };
@@ -33,6 +34,12 @@ const seedFor = (t: Ticker) => {
   return { thesis: [thesisRow({ ...fx.thesis })], position: fx.position ? [positionRow({ symbol: t, ...fx.position })] : [] };
 };
 
+/** The recorded call with its level fields as the edits of their triggers (the fields went 2026-11-16). */
+const callNow = (t: Ticker) => {
+  const fx = entry(t);
+  return oldLevelFieldsAsTriggerOps(fx.call, (fx.thesis.triggers ?? []) as unknown as Trigger[], String(fx.thesis.direction ?? "LONG"), { held: fx.thesis.status === "HOLDING" });
+};
+
 /**
  * The call as the model sent it, through the SDK's loop: the SDK parses it
  * with this door's schema and hands what it parsed to the real save.
@@ -43,7 +50,7 @@ async function sentVerbatim(t: Ticker): Promise<{ received: Record<string, unkno
   const model = new MockLanguageModelV3({
     doGenerate: async () =>
       ++turn === 1
-        ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(entry(t).call) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
+        ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(callNow(t)) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
         : { content: [{ type: "text", text: "done" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] },
   } as never);
   const out: { received?: Record<string, unknown>; save?: Replay } = {};
@@ -132,9 +139,11 @@ describe("a seed's first research at HIGH through the morning run's save", () =>
         rationale: "First research: the pullback to the 50-day is the entry, the prior high the target.",
         direction: "LONG",
         horizon: "TARGET",
-        entry_price: 95,
-        target_price: 130,
-        stop_loss: 88,
+        add_triggers: [
+          { predicate: { watch: "price", is: "below", value: 95 }, action: "ENTER", rationale: "The buy at $95." },
+          { predicate: { watch: "price", is: "below", value: 88 }, action: "EXIT", rationale: "Below $88 the setup is wrong." },
+          { predicate: { watch: "price", is: "above", value: 130 }, action: "REVIEW", rationale: "At $130, take profit or let it run." },
+        ],
         core_belief: "Orders re-accelerate into the second half and the stock re-rates to the prior high.",
         key_assumptions: ["Orders grow again next quarter.", "Margins hold above 20%."],
         invalidation_conditions: ["Orders fall again next quarter.", "A close under $88."],

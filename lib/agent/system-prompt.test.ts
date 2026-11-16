@@ -26,7 +26,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("Retune the buy trigger");
   });
   it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a mistake, not refused", () => {
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Set the plan down:");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Take the buy off:");
     expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it.");
     // Plan checks were deleted (2026-11-13): no text points at one.
     expect(SITUATIONS.BUY_ARRIVES.guidance).not.toMatch(/plan.check/);

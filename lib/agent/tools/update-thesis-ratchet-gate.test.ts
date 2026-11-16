@@ -188,7 +188,7 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Widening the stop for volatility.",
-      stop_loss: 730,
+      edit_triggers: [{ id: "trig_floor", value: 730, rationale: "Wider for volatility." }],
       core_belief: "The belief moved with the market.",
     });
 
@@ -214,19 +214,16 @@ describe("update_thesis — protective-level ratchet gate (DAV-185)", () => {
     expect(data.triggers.find((t) => t.id === "trig_floor")?.predicate.value).toBe(980);
   });
 
-  it("allows raising the stop_loss column (the legal direction)", async () => {
+  it("allows raising the floor from $730 (the legal direction)", async () => {
     // 730 → 814, the legal half of the actual MU edit (shape gate caps a
     // LONG stop below entry, so a raise stays under entryPrice 895.94).
-    // The floor TRIGGER starts at 730 too: since L3 `stop_loss` writes the
-    // trigger, so a fixture whose column and trigger disagree isn't testing a
-    // raise at all — it's testing a drop from whatever the trigger says.
     mockThesisFindUnique.mockResolvedValueOnce(
       makeHeldRow({ stopLoss: 730, triggers: [floorAt(730)] }),
     );
     const result = await makeTool().execute({
       thesis_id: "thesis_held_1",
       rationale: "Tightening the stop after the gain.",
-      stop_loss: 814,
+      edit_triggers: [{ id: "trig_floor", value: 814, rationale: "Protecting the gain." }],
       structural_unchanged_reason: "Belief intact; protecting the gain.",
     });
 

@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
 Tools: 14
-Saves: 14 fields: plan, verdict, note
+Saves: 9 fields: triggers, verdict, note
 ```
 
 ```chat
@@ -26,7 +26,7 @@ tools: Closing $SHOP position
 
 ## What it does
 
-A trigger run is an analyst's short look at one stock, started when one of its [thesis](../concepts/theses.md)'s [triggers](../concepts/triggers.md) comes true. The plan said "buy here" and "sell there"; this is where the plan meets the live price. One stock, one decision, fifteen steps at most. Deep research goes to [the Writer](writer.md) instead.
+A trigger run is an analyst's short look at one stock, started when one of its [thesis](../concepts/theses.md)'s [triggers](../concepts/triggers.md) comes true. Its triggers said "buy here" and "sell there"; this is where they meet the live price. One stock, one decision, fifteen steps at most. Deep research goes to [the Writer](writer.md) instead.
 
 Why a run and not an automatic order? A level is a call made days ago. The run checks it against today (the news, the volume, the market) before anything reaches you, and says what it saw either way.
 
@@ -45,7 +45,7 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right. It is printed before the stock's row, so the row is read after it.
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
+The stock's row, the same one `get_theses` gives every agent: the position, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
@@ -62,8 +62,8 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
-- **A buy goes through:** the stock becomes a holding. Its floor and target are set to the levels the trade went in with, and its sell side takes over.
-- **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a sale at the target), and a later [morning run](morning-runs.md) gives it one look back.
+- **A buy goes through:** the stock becomes a holding. Its buy comes off, its floor becomes the holding's sale, and its sell side takes over.
+- **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.
 
 ## Tools
 
