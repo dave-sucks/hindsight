@@ -220,7 +220,7 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
+    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noBuy(row) ? "no buy" : null,
     // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
     proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
@@ -312,7 +312,7 @@ function priceLine(row: Row): string | null {
 }
 
 /** A watched stock with a view and no buy level: nothing to buy on (step 12, part 3). */
-const noPlan = (row: Row) => row.status === "WATCHING" && str(row.direction) != null && num(row.entryPrice) == null;
+const noBuy = (row: Row) => row.status === "WATCHING" && str(row.direction) != null && num(row.entryPrice) == null;
 /** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 

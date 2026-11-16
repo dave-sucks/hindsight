@@ -160,7 +160,7 @@ describe("the actions a trigger can take", () => {
   // No stored trigger ever carried MOVE_STOP (production, 2026-10-06: 0 of 943
   // theses, every analyst, every account). A stop moves by editing the floor.
   it("are buy, add, trim, sell and review; there is no stop-move action", () => {
-    expect(triggerActionSchema.options.filter((a) => a !== "DEMOTE")).toEqual(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM"]);
+    expect(triggerActionSchema.options).toEqual(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM"]);
     expect(triggerActionSchema.safeParse("MOVE_STOP").success).toBe(false);
   });
 });

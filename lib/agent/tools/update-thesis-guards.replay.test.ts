@@ -81,14 +81,6 @@ describe("the principal's hand edit wins", () => {
       quotes: { ASML: 1800 },
     });
 
-  it("the run's older target is refused by name; the note lands and the hand edit stands", async () => {
-    const r = await replay({ target_price: 2400 });
-    expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([{ field: "target_price", reason: expect.stringMatching(/^You set this by hand at \d{1,2}:\d{2} [AP]M ET; not changed\.$/) }]);
-    expect(r.db.store.thesis[0].targetPrice).toBe(2600);
-    expect(notAppliedOf(written(r.db)[0])).toEqual([expect.objectContaining({ field: "target_price", to: 2400, why: expect.stringMatching(/^you set it by hand at /) })]);
-  });
-
   it("a trigger edit by id on the hand-edited trigger is refused by id", async () => {
     const r = await replay({ edit_triggers: [{ id: TGT, level: 2500, rationale: "Trim the target to the prior high." }] });
     expect(opsOf(r)).toEqual([expect.objectContaining({ op: "edit", id: TGT, ok: false, reason: expect.stringMatching(/^You set this by hand/) })]);
@@ -96,13 +88,13 @@ describe("the principal's hand edit wins", () => {
   });
 
   it("a hand edit made before the run began is not protected", async () => {
-    const r = await replay({ target_price: 2400 }, { editedAt: minutesAgo(45) });
+    const r = await replay({ edit_triggers: [{ id: TGT, value: 2400, rationale: "Back to the prior high at $2400." }] }, { editedAt: minutesAgo(45) });
     expect(refusedOf(r)).toEqual([]);
     expect(r.db.store.thesis[0].targetPrice).toBe(2400);
   });
 
   it("the chat is the principal's own door and is not checked", async () => {
-    const r = await replay({ target_price: 2400 }, { runMode: "PRINCIPAL_CHAT" });
+    const r = await replay({ edit_triggers: [{ id: TGT, value: 2400, rationale: "Back to the prior high at $2400." }] }, { runMode: "PRINCIPAL_CHAT" });
     expect(refusedOf(r)).toEqual([]);
     expect(r.db.store.thesis[0].targetPrice).toBe(2400);
   });
@@ -128,8 +120,8 @@ describe("the plan check refuses a call's trigger changes together", () => {
   const review = { predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Look at this every 14 days." };
 
   it("a stop above the buy and a review added with it: both refused, the plan unchanged, the note lands", async () => {
-    const r = await replay({ stop_loss: 105, stop_basis: "Under the new shelf at $105.", add_triggers: [review] });
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
+    const r = await replay({ edit_triggers: [{ id: "flr", value: 105, rationale: "Under the new shelf at $105." }], add_triggers: [review] });
+    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To take them all off") })]);
     expect(opsOf(r).every((o) => !o.ok)).toBe(true);
     expect(r.db.store.thesis[0].stopLoss).toBe(90);
     expect((r.db.store.thesis[0].triggers as Array<{ predicate: { watch: string } }>).some((t) => t.predicate.watch === "repeat")).toBe(false);

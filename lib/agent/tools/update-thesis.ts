@@ -55,7 +55,7 @@ import {
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
-import { canonicalLevels, isPlanLevelOnList, levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
+import { canonicalLevels, isPlanLevelOnList, levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import {
   writeThesisUpdate,
@@ -86,7 +86,7 @@ const F = thesisFields();
 /** What change_status does, worded once. */
 const STATUS_RETIRE =
   "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
-  "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock or shelve a plan, keep it WATCHING and remove its buy, floor and target by id instead, when it has them. ";
+  "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock and keep watching it, keep it WATCHING and remove its buy and floor by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
 
@@ -108,13 +108,7 @@ const updateSchema = z.object({
   core_belief: F.core_belief.optional(),
   key_assumptions: F.key_assumptions.optional(),
   invalidation_conditions: F.invalidation_conditions.optional(),
-  target_price: F.target_price.nullable().optional(),
-  stop_loss: F.stop_loss.nullable().optional(),
   setup_id: F.setup_id_or_none.optional(),
-  stop_basis: F.stop_basis.optional(),
-  target_basis: F.target_basis.optional(),
-  entry_on_close: F.entry_on_close.optional(),
-  entry_price: F.entry_price.nullable().optional(),
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
   variant_view: F.variant_view.optional(),
@@ -220,18 +214,19 @@ export function notApplied(results: TriggerOpResult[], error: string): TriggerOp
 }
 
 /**
- * The exact call that sets a plan down. VST 09-11: the analyst removed only
- * the buy, the half-plan rule refused it, and the message said "remove the
- * floor and target triggers" without saying which — so it guessed. Every plan
- * level on the stored list, by id, removed together, is a call that lands.
+ * The exact call that takes a stock's price lines off. VST 09-11: the analyst
+ * removed only the buy, the half-buy rule refused it, and the message said
+ * "remove the floor and target triggers" without saying which — so it
+ * guessed. Every buy, sale and upside review at a price on the stored list,
+ * by id, removed together, is a call that lands.
  */
 export function setDownInstruction(stored: Trigger[], direction: string | null): string {
-  // A wake (a review with no buy behind it) is not part of a plan to set down.
+  // A wake (a review with no buy behind it) stays.
   const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
   const words = levels.map((t) => describeTrigger(t, false)).join(", ");
-  return `To set the plan down, remove all of them in one call: remove_trigger_ids: [${ids}] (${words}).`;
+  return `To take them all off, remove them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
 /**
@@ -273,8 +268,8 @@ const WRITER_ONLY_UPDATE_FIELDS = {
  * 2026-10-08 its 63 close-outs sent the form whole (NVDA all 22 fields); what
  * changed was the note, a trigger, a stop, a target, a buy price. Direction,
  * belief, scores, horizon and the research snapshot are the morning run's and
- * the writer's; the price is the server's. The level fields stay because the
- * situation texts every run shares name them. No change_status: the run
+ * the writer's; the price is the server's. A level is a trigger edit, by id
+ * (the entry / target / stop fields went 2026-11-16). No change_status: the run
  * fills every field it is given, and filled it on every call (WATCHING in
  * the four runs that failed, ASML 10-07 and NVDA, CEG, MU 10-08; INVALIDATED
  * on NVDA 10-09 once WATCHING was gone), which on a stock we watch retires
@@ -284,7 +279,6 @@ const WRITER_ONLY_UPDATE_FIELDS = {
 const triggerRunSchema = updateSchema.pick({
   thesis_id: true, trigger_id: true, rationale: true,
   add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
-  stop_loss: true, stop_basis: true, target_price: true, target_basis: true, entry_price: true,
   ...THE_REVIEW,
 });
 
@@ -294,7 +288,7 @@ const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TA
 /**
  * The morning run's save: the same update_thesis, with what a morning review
  * changes. In the 30 days to 2026-10-08 its 45 runs made 285 saves: the note
- * on every one, the levels and their reasons, the trigger edits, a status
+ * on every one, the trigger edits, a status
  * change, a setup named, a conviction tier with its reason. Horizon and the
  * catalyst date stay. Four left first: price_at_time (224 calls, each a copy
  * of the price the row showed; the save reads the quote itself), snapshot (25
@@ -336,7 +330,7 @@ const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLA
  * it inherits. The morning run's save with none named links the note to
  * what asked for it: the one fire open on the stock, or the review clock
  * when the review was due; several open fires leave it blank rather than
- * guess, and a terminal save (a plan set down, a pass) names nothing.
+ * guess, and a terminal save (a retirement, a pass) names nothing.
  * (2026-11-03: 86 of 371 fires in 45 days were answered by a line with no
  * id, nearly all the morning run's, and every clock review was.) A lookup
  * that fails links nothing, as before.
@@ -387,7 +381,7 @@ async function ruleAnswered(
 const NOT_THE_CHATS = { trigger_id: true } as const;
 
 /**
- * The owner's chat's save: the claim, the view, the plan, the verdict and the
+ * The owner's chat's save: the claim, the view, the triggers, the verdict and the
  * note. The write-up is the writer's (step 12, part 2): twenty-one fields, and the review's three.
  */
 const chatSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_WRITE_UPS_REST, ...NOT_THE_CHATS });
@@ -421,12 +415,8 @@ const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
   ["catalysts_and_events", "catalystsAndEvents"], ["analyst_consensus", "analystConsensus"],
   ["insider_technical", "insiderTechnical"], ["research_data", "researchData"],
 ];
-const LEVEL_SLOT: Record<string, LevelSlot> = { entry_price: "ENTRY", target_price: "TARGET", stop_loss: "FLOOR" };
-/** Every field a hand edit can have set, with its column (the levels and the fields compared above). */
-const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [
-  ...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"],
-  ["entry_price", "entryPrice"], ["target_price", "targetPrice"], ["stop_loss", "stopLoss"],
-];
+/** Every field a hand edit can have set, with its column (the fields compared above). */
+const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"]];
 
 /**
  * The principal's edit wins. A field or trigger the principal set by hand
@@ -486,17 +476,16 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 /**
  * A save is a patch. An agent shown the thesis often sends parts of it back:
- * ASML 2026-10-07 copied entry_price, direction and horizon from the trigger
+ * ASML 2026-10-07 copied the entry, direction and horizon from the trigger
  * prompt's THESIS block into its close-out, each was read as a change, and
  * the run was refused eleven times. A field equal to what is stored changes
  * nothing, so it is dropped here, before any rule reads it, and the audit
- * row records only what moved. A level is unchanged when it matches the
- * column the THESIS block prints and its sentence is not reworded. A seed's
- * commitment states the whole plan and is checked as sent.
+ * row records only what moved. A seed's commitment states its whole view and
+ * is checked as sent.
  */
 export function dropUnchanged(
   args: UpdateArgs,
-  row: Record<string, unknown> & { direction: string | null; status: string; triggers: unknown },
+  row: Record<string, unknown> & { direction: string | null },
 ): UpdateArgs {
   if (isUnresearchedSeed(row.direction) && args.direction) return args;
   const out: Record<string, unknown> = { ...args };
@@ -505,44 +494,13 @@ export function dropUnchanged(
   if (out.catalyst_date !== undefined && sameValue(out.catalyst_date ? new Date(String(out.catalyst_date)) : null, row.catalystDate ?? null)) {
     out.catalyst_date = undefined;
   }
-  const triggers = parseTriggersResilient(row.triggers).triggers as Trigger[];
-  const column = { entry_price: row.entryPrice, target_price: row.targetPrice, stop_loss: row.stopLoss };
-  const level = (arg: keyof typeof column, slot: LevelSlot, basis?: "target_basis" | "stop_basis") => {
-    if (out[arg] === undefined || !sameValue(out[arg], column[arg])) return;
-    const own = triggers.find((t) => levelSlotOf(t, row.direction) === slot);
-    // A new sentence for the same number is a wording edit, not an echo.
-    if (own && basis && out[basis] !== undefined && !sameValue(out[basis], own.rationale)) return;
-    // Another op in the call numbers the same trigger: the level is kept, so it wins (MU 10-15).
-    const numbered = (args.edit_triggers ?? []).some((e) => e.id === own?.id && editNumber(e).value != null);
-    if (own && (numbered || (args.add_triggers ?? []).some((t) => levelSlotOf(t as Trigger, row.direction) === slot))) return;
-    const w = own ? shapeOf(own.predicate) : null;
-    if (slot === "ENTRY" && row.status !== "HOLDING" && w && out.entry_on_close !== undefined && out.entry_on_close !== (levelOf(w)?.close ?? false)) return;
-    out[arg] = undefined;
-    if (basis) out[basis] = undefined;
-    if (slot === "ENTRY") out.entry_on_close = undefined;
-  };
-  level("entry_price", "ENTRY");
-  level("target_price", "TARGET", "target_basis");
-  level("stop_loss", "FLOOR", "stop_basis");
   return out as UpdateArgs;
-}
-
-/**
- * An empty level is no change; a level is removed by its trigger's id. The
- * trigger run's model fills every field it is offered (OpenAI's Responses API
- * decodes a tool call strictly when the tool sends no `strict`), so a level
- * it keeps comes back null. Read as "remove", 16 saves in the 30 days to
- * 2026-11-16 took down a level their own note kept: PRAX lost its buy, floor
- * and target at 09:30 while its note said the plan was unchanged.
- */
-function emptyLevelsUnchanged(args: UpdateArgs): UpdateArgs {
-  return { ...args, entry_price: args.entry_price ?? undefined, target_price: args.target_price ?? undefined, stop_loss: args.stop_loss ?? undefined };
 }
 
 export const updateThesis = defineTool({
   description:
     "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
-    "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers; left empty, a level stays as it is. To remove one, name its trigger in remove_trigger_ids. " +
+    "A stock's buy, floor and every other rule are its triggers: change one with edit_triggers by its id, add one with add_triggers, take one off with remove_trigger_ids. " +
     "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
     "On a stock we hold, only the principal moves a safety line down. " +
     "If you think one is wrong, keep it and give the number you'd suggest in the rationale.",
@@ -653,7 +611,7 @@ export const updateThesis = defineTool({
     // 2026-10-07 and 10-08 two trigger runs restated fields of a LONG
     // holding in every close-out call; each was refused until the run ran out.
     const sent = args;
-    args = dropUnchanged(emptyLevelsUnchanged(args), existing);
+    args = dropUnchanged(args, existing);
     const refusedFields: RefusedField[] = [];
     const refuseField = (field: keyof UpdateArgs, reason: string, why: string) => {
       const to = args[field];
@@ -693,9 +651,8 @@ export const updateThesis = defineTool({
       const why = `you set it by hand at ${at}`;
       const stored = parseTriggersResilient(existing.triggers).triggers as Trigger[];
       const touched = (id?: string) => !!id && hand.triggerIds.has(id);
-      const slotId = (slot?: LevelSlot) => (slot ? stored.find((t) => levelSlotOf(t, existing.direction) === slot)?.id : undefined);
       for (const [k, col] of HAND_FIELDS) {
-        if (args[k] !== undefined && (hand.keys.has(col) || touched(slotId(LEVEL_SLOT[k])))) refuseField(k, reason, why);
+        if (args[k] !== undefined && hand.keys.has(col)) refuseField(k, reason, why);
       }
       const hit = (t: unknown) => touched(collision(stored, t as Trigger, existing.direction)?.id);
       const refusedOps = [
@@ -766,8 +723,6 @@ export const updateThesis = defineTool({
               `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is and send it again once get_stock_data has a live price.`
             : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
               `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
-      // On a stock we hold the entry is the fill, refused as its own op below.
-      if (args.entry_price != null && existing.status !== "HOLDING") refuseField("entry_price", noPrice, "no live price");
       for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
         opResults.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: noPrice });
       }
@@ -929,11 +884,11 @@ export const updateThesis = defineTool({
       // dispatch, and the refusal says so instead of listing fields it lacks.
       const message = isMorningRun(ctx)
         ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
-          `then wait_for_thesis_refresh on the child run. The writer writes the belief, prices the plan and commits the view (LONG, SHORT or PASS); ` +
+          `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
           `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + entry_price (or one buy trigger in add_triggers) + stop_loss (and target_price only when the setup has an upside rule) + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + triggers + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and a floor (action EXIT) in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
           `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
           `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
           `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
@@ -984,17 +939,15 @@ export const updateThesis = defineTool({
       if (args.direction === "LONG" || args.direction === "SHORT") {
         const missing: string[] = [];
         if (!args.horizon) missing.push("horizon");
-        if (args.stop_loss == null) missing.push("stop_loss");
-        // The buy may already be on the stock as a chart condition, or come
-        // in this call as one. SMMT 2026-10-02: the buy was "closes above
-        // $17.10 and above the 20-day" (an AND trigger); this rule demanded
-        // entry_price anyway, the chat sent $17.10 to satisfy it, and the
-        // stock got an accidental copy of the buy it already had.
-        const hasBuy =
-          args.entry_price != null ||
-          existingRowTriggers.some((t) => t.action === "ENTER") ||
-          (args.add_triggers ?? []).some((t) => t.action === "ENTER");
-        if (!hasBuy) missing.push("entry_price (or one buy trigger, action ENTER, in add_triggers)");
+        // The buy and the floor may already be on the stock, or come in this
+        // call; the buy may be a chart condition. SMMT 2026-10-02: the buy was
+        // "closes above $17.10 and above the 20-day" (an AND trigger); this
+        // rule demanded a buy price anyway, the chat sent $17.10 to satisfy
+        // it, and the stock got an accidental copy of the buy it already had.
+        const has = (action: string) =>
+          existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
+        if (!has("EXIT")) missing.push("a floor (one sell trigger, action EXIT, in add_triggers)");
+        if (!has("ENTER")) missing.push("a buy (one buy trigger, action ENTER, in add_triggers)");
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
         if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
@@ -1084,7 +1037,7 @@ export const updateThesis = defineTool({
       // Conviction is the writer's view; it is not derived from any score.
     }
 
-    // A terminal flip clears the plan, so the price-shape rules below don't
+    // A terminal flip clears the triggers, so the price-shape rules below don't
     // apply to it. (PASS on a seed is terminal too — it lands PASSED.)
     const isTerminalTransition =
       args.change_status === "INVALIDATED" ||
@@ -1095,10 +1048,9 @@ export const updateThesis = defineTool({
     const answered = await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition);
 
     // ── Trigger ops (DAV-242) ────────────────────────────────────────────
-    // Every trigger change is an op: add, edit by id, remove by id — and
-    // the entry / target / stop arguments are the same ops on the buy /
-    // target / floor trigger. Zero triggers is a legal state (DAV-209): a
-    // review-only update on a bare thesis goes through untouched.
+    // Every trigger change is an op: add, edit by id, remove by id. Zero
+    // triggers is a legal state (DAV-209): a review-only update on a bare
+    // thesis goes through untouched.
     const triggerOps: TriggerOp[] = [
       ...(args.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: t as Trigger })),
       ...(args.edit_triggers ?? []).map((e) => ({
@@ -1111,11 +1063,6 @@ export const updateThesis = defineTool({
         close: e.close,
       })),
       ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-      ...(args.entry_price != null
-        ? [{ op: "level" as const, slot: "ENTRY" as const, price: args.entry_price, ...(args.entry_on_close !== undefined ? { basis: args.entry_on_close ? ("close" as const) : ("intraday" as const) } : {}) }]
-        : []),
-      ...(args.stop_loss != null ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss, rationale: args.stop_basis }] : []),
-      ...(args.target_price != null ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price, rationale: args.target_basis }] : []),
     ];
 
     // The levels above this thesis, resolved against an EMPTY thesis array
@@ -1185,9 +1132,9 @@ export const updateThesis = defineTool({
       patch.keyAssumptions = args.key_assumptions;
     if (args.invalidation_conditions !== undefined)
       patch.invalidationConds = args.invalidation_conditions;
-    // target_price / stop_loss / entry_price are NOT written here. A level
-    // change is a trigger op; the columns are recomputed from the resulting
-    // trigger list in the ops block below. Writing the column directly is
+    // The entry / target / stop columns are NOT written here. A level change
+    // is a trigger op; the columns are recomputed from the resulting trigger
+    // list in the ops block below. Writing the column directly is
     // how SNOW ended up showing a $256 stop that nothing would ever have
     // sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
     // PENDING-promotion direction flip (guarded above so this only runs on
@@ -1261,7 +1208,7 @@ export const updateThesis = defineTool({
     // Rules run per op on the resulting list (one trigger per bucket, the
     // ratchet on a held stock, a rationale on an agent's level change); a
     // refused op is reported by id and the rest lands. Then ONE check on the
-    // derived plan — ordering — replaces the argument gate and the
+    // resulting levels — ordering — replaces the argument gate and the
     // derived-tuple gate that used to run here.
     if (triggerOps.length > 0) {
       if (isTerminalTransition) {
@@ -1344,66 +1291,33 @@ export const updateThesis = defineTool({
             avgCost,
           });
         };
-        let liveOps = triggerOps;
-        let applied = apply(liveOps);
-        let check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
-
-        // ── Goalpost-moving guard (audit Root Cause #3) ──────────────────
-        // Raising the target on a WATCHING thesis whose price has already
-        // crossed the OLD target is moving the bar instead of acting (the
-        // MRVL pattern). A raise while price is still below the old target
-        // is a legitimate refinement. Only the target is refused: the ops
-        // run again without it, so a floor raised in the same call lands.
-        if (
-          check?.ok &&
-          levelStatus === "WATCHING" &&
-          check.columns.targetPrice != null &&
-          existing.targetPrice != null &&
-          check.columns.targetPrice > Number(existing.targetPrice) &&
-          resolvedPriceAtTime != null &&
-          resolvedPriceAtTime >= Number(existing.targetPrice)
-        ) {
-          refusedFields.push({
-            field: "target_price",
-            why: "the price is past the old target",
-            to: check.columns.targetPrice,
-            reason: `${existing.ticker} is at $${resolvedPriceAtTime.toFixed(2)} and the existing target is $${Number(existing.targetPrice).toFixed(2)}. The entry condition is MET — your action is to PROMOTE (place_trade, which flips WATCHING → HOLDING), not raise the target to $${check.columns.targetPrice.toFixed(2)} and walk away. If you genuinely think the setup has changed, leave the target untouched and give the concrete reason in your rationale (volume too low, regime change, fresh negative news, the reward no longer worth the risk). Or close the thesis with change_status: "INVALIDATED".`,
-          });
-          const onTarget = (o: TriggerOp) =>
-            o.op === "level"
-              ? o.slot === "TARGET"
-              : o.op === "add"
-                ? levelSlotOf(o.trigger, levelDirection) === "TARGET"
-                : existingTriggers.some((t) => t.id === o.id && levelSlotOf(t, levelDirection) === "TARGET");
-          liveOps = liveOps.filter((o) => !onTarget(o));
-          applied = apply(liveOps);
-          check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
-        }
+        const applied = apply(triggerOps);
+        const check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
         // An op that changes nothing is a no-op here, not a refusal.
         opResults.push(...applied.results.filter((r) => !r.unchanged));
 
         if (check && !check.ok) {
-          // The refusal offers "set the plan down" as an exit; name the
+          // The refusal offers taking the price lines off as an exit; name the
           // exact ids so the agent doesn't guess (MSFT 2026-09-14 was told
           // to send the whole list again, an argument that no longer exists).
           const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
-          // A seed's commitment is its plan: without a valid one nothing lands.
+          // A seed's commitment is its triggers: without a valid set nothing lands.
           if (isUnresearchedSeed(existing.direction)) {
             return {
-              summary: `Refused update on $${existing.ticker} — the resulting plan is invalid (${check.error}).`,
+              summary: `Refused update on $${existing.ticker} — the triggers it leaves are invalid (${check.error}).`,
               data: { ok: false, error: check.error, message, trigger_ops: notApplied(opResults, check.error) },
               sources: [],
             };
           }
           // On a thesis with a view the trigger changes are refused together
           // and the rest of the call lands.
-          refusedFields.push({ field: "triggers", reason: message, why: "the plan they leave is invalid" });
+          refusedFields.push({ field: "triggers", reason: message, why: "the triggers they leave are invalid" });
           const error = check.error;
           opResults.splice(
             0,
             opResults.length,
             ...opResults.map((r) =>
-              r.ok ? { ...r, ok: false, reason: `Not applied — refused with this call's other trigger changes: the plan they leave is invalid (${error}).` } : r,
+              r.ok ? { ...r, ok: false, reason: `Not applied — refused with this call's other trigger changes: the triggers they leave are invalid (${error}).` } : r,
             ),
           );
         } else if (check?.ok) {
@@ -1432,8 +1346,8 @@ export const updateThesis = defineTool({
     // (DAV-285). Only a fill wrote them, and 8 of the 9 held stocks were
     // bought before setups were named. Same triggers the fill would have
     // written, through the same ops core, after the agent's own ops so a
-    // bucket it just filled is left alone. They are not plan levels, so the
-    // columns and the plan check above are untouched — nothing is refused.
+    // bucket it just filled is left alone. They are not price levels, so the
+    // columns and the check above are untouched — nothing is refused.
     if (
       args.setup_id !== undefined &&
       args.setup_id !== existing.setupId &&
@@ -1727,7 +1641,7 @@ export const updateThesis = defineTool({
       "conviction",
       "convictionRationale",
       "variantView",
-      // Trade plan
+      // The levels (a cache of the triggers)
       "direction",
       "entryPrice",
       "targetPrice",
@@ -1773,7 +1687,7 @@ export const updateThesis = defineTool({
     // The structural-belief gate that lived here (P0-1) is gone. It refused
     // any change to the target or the floor unless a belief field changed or
     // `structural_unchanged_reason` was sent — and because levels are
-    // triggers, "setting the plan down" tripped it too: GD 2026-09-25 and
+    // triggers, taking the price lines off tripped it too: GD 2026-09-25 and
     // ISRG 2026-09-23 were refused for removing their floor and target
     // triggers, and each run got past it by copying its rationale into
     // `structural_unchanged_reason`. A gate satisfied by repeating the
@@ -1917,22 +1831,21 @@ export const updateThesis = defineTool({
     });
     const catalystNotes = catalystDateMissing({ ...existing, ...patch });
     const means = [...claimNotes, ...catalystNotes];
-    // Back on watch with no plan (step 12, part 3): the status landed and
-    // every plan level the call sent was refused, so the stock is watched
+    // Back on watch with no buy (step 12, part 3): the status landed and
+    // every price trigger the call sent was refused, so the stock is watched
     // with nothing to buy on. Said first, with the refusal's reason. DOCU
-    // 2026-10-07: put back on watch, its 1.71:1 plan refused, and the reply
-    // led with "Updated DOCU: WATCHING" as if the plan had come with it.
+    // 2026-10-07: put back on watch, its 1.71:1 levels refused, and the reply
+    // led with "Updated DOCU: WATCHING" as if the buy had come with it.
     const after = { ...existing, ...patch } as Record<string, unknown>;
-    const sentPlan = triggerOps.some((o) => o.op === "level" || (o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null));
-    // A watched stock's plan is its buy: none left means nothing to buy on.
-    const noPlanLeft = after.entryPrice == null;
-    const backOnWatchNoPlan =
-      fieldChanges.status?.to === "WATCHING" && sentPlan && noPlanLeft
-        ? `Back on watch with no plan: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the plan's levels were not applied."}`
+    const sentLevels = triggerOps.some((o) => o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null);
+    const noBuyLeft = after.entryPrice == null;
+    const backOnWatchNoBuy =
+      fieldChanges.status?.to === "WATCHING" && sentLevels && noBuyLeft
+        ? `Back on watch with no buy: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the price triggers were not applied."}`
         : null;
 
     return {
-      summary: [backOnWatchNoPlan, summary, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
+      summary: [backOnWatchNoBuy, summary, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
       data: {
         ok: true,
         thesis_id: existing.id,

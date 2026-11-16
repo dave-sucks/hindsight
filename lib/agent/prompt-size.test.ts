@@ -25,16 +25,19 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
-  daily: 9_473,
-  tactical: 14_910,
+  // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
+  daily: 9_483,
+  tactical: 14_902,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
-  writer: 16_983,
+  // 2026-11-16: +90, the writer writes the buy and the floor as triggers (no entry / target / stop fields), and a watch's floor stops watching it.
+  writer: 17_073,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
-  chat: 35_963,
+  // 2026-11-16: +1, the same situation texts.
+  chat: 35_964,
 };
 
 /**
@@ -53,13 +56,15 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-12: +34 each, get_market_context names the Nasdaq 100 (QQQ) beside the S&P 500 (lib/market-data/market-numbers.ts).
   // 2026-11-14: +87 each, get_portfolio_context names the day's move, the value, day and lifetime, and that they are the portfolio snapshot's.
   // 2026-11-16: +69 each, update_thesis says an empty level stays as it is and a level is removed by id in remove_trigger_ids.
-  "research-run": 32_209,
-  tactical: 28_076,
+  // 2026-11-16: −1,332 / −1,219, the entry / target / stop fields and their reasons leave update_thesis; a level is a trigger edit by id.
+  "research-run": 30_877,
+  tactical: 26_857,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
   // 2026-11-16: +69, the same update_thesis description.
-  principal: 64_429,
+  // 2026-11-16: −2,509, the same fields leave update_thesis and record_thesis.
+  principal: 61_920,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

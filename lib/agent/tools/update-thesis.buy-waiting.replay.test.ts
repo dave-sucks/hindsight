@@ -28,7 +28,7 @@ const save = (orders: Row[]) =>
 const refusalOf = (data: Row) => ((data.refused_fields as Array<{ field: string; reason: string }>) ?? []).find((f) => f.field === "triggers")?.reason ?? "";
 
 it("the seed is the plan the run saw: floor, target and buy, in the order its refusal listed them", () => {
-  expect(fx.thesis.triggers.map((t) => sentenceOf(t as Trigger, false))).toEqual(["Take the plan down if below $39.80", "Review if above $47 · only on the close", "Buy if above $42.15"]);
+  expect(fx.thesis.triggers.map((t) => sentenceOf(t as Trigger, false))).toEqual(["Stop watching if below $39.80", "Review if above $47 · only on the close", "Buy if above $42.15"]);
 });
 
 it.each([["waiting", "AWAITING_APPROVAL"], ["filled", "FILLED"]])("IOT 10-15, the buy %s: the move to $42.21 lands at 1.99:1 and nothing advises a set-down", async (_w, status) => {

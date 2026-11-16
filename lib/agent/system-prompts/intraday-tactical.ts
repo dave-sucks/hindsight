@@ -274,9 +274,9 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    - If the check reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
-     tracking): say so in the note, and on a stock we watch take its buy,
-     floor and target down by id (remove_trigger_ids) so nothing fires on
-     it; the morning run decides whether it stays on the book. A stock we
+     tracking): say so in the note, and on a stock we watch take its buy
+     and floor off by id (remove_trigger_ids) so nothing fires on it; the
+     morning run decides whether it stays on the book. A stock we
      hold is sold first with close_position, which retires the thesis itself.
 
 4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the

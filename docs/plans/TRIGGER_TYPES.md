@@ -426,7 +426,7 @@ the "needs" helpers in `trigger-evaluator.ts`, `live-evaluate.ts`,
 `chart-context.ts`, the cooldown defaults in `defaults.ts` and
 `state-cooldown.ts`, `isDirectEligiblePredicate` and
 `protectiveExitCloseReason` in `types.ts`, `ratchet.ts`, `price-levels.ts`,
-`rearm.ts`, `demote.ts`, `frozen-copy.ts`, `schema.ts`, `model-schema.ts`,
+`rearm.ts`, `stop-watching.ts`, `frozen-copy.ts`, `schema.ts`, `model-schema.ts`,
 `dialog-condition.ts`, and `predicateKindValue` / `predicateDescription` in
 `ThesisTriggersSection.tsx`.
 
@@ -466,7 +466,7 @@ is keyed on anything the new shape loses.
 | A buy passed because the price slipped back is not used up | `rearm.ts` | The same rule, on a fixed-price buy | Same |
 | "Only on the close" waits for the 16:20 pass | `basis` on fixed prices | `params.onClose` on price and volume | Same, and now also available on a % move |
 | A watched stock's floor is read on the close, never on an intraday dip | `watchedFloorOnClose` | The same rule, on a fixed-price sell | Same |
-| A sell on a stock we don't own sets the plan down, and so does a target reached before we bought | `effectiveTriggerAction` | The same rule, keyed on a fixed-price condition | Same |
+| A sell on a stock we don't own stops watching it (2026-11-16: it retires the thesis; a review above a price is an ordinary review) | `stopWatching` in the evaluator | The same rule, keyed on the action | Same |
 | Propose the sale right away, with no analyst | `isDirectEligiblePredicate` | Catalog: price, $ at a typed price, or % from a prior close, our entry or the high | Same set |
 | A protective sale is labelled stop or target | `protectiveExitCloseReason` | The same rule, by side and variable | Same |
 | Agents may tighten a protective level, never lower, widen or remove one | `ratchet.ts` | The same comparison, within a slot. Swapping the variable is a different slot, so it counts as removing the old protection. | Same, and stricter on a variable swap, which no kind could express |

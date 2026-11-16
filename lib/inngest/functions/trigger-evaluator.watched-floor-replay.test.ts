@@ -1,6 +1,7 @@
 /**
- * trigger-evaluator.watched-floor-replay.test.ts — a watched stock's plan
- * comes down on a close below its floor, never a morning dip (DAV-337).
+ * trigger-evaluator.watched-floor-replay.test.ts — a watched stock's sale
+ * line ("Stop watching if below $359.87") ends the watch on a close below
+ * it, never a morning dip (DAV-337), and retires the thesis as dropped.
  *
  * TRV, Secular Compounder. Plan written 23:02 ET on 2026-09-28: buy $372.51
  * on the reclaim of the 50-day, floor $359.87, target $425. The floor sat
@@ -157,7 +158,7 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     expect(idsOf(t)).toEqual(expect.arrayContaining(PLAN_IDS));
   });
 
-  it("the 16:20 close pass sets the plan down when the day closes below the floor, and says it closed there", async () => {
+  it("the 16:20 close pass stops watching when the day closes below the line: retired as dropped, one Activity line, no run", async () => {
     const t = await tick(CLOSE_PASS, 358.9);
     expect(t.result).toMatchObject({ session: "CLOSE" });
     const rows = audit(t);
@@ -165,14 +166,17 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     expect(rows[0]).toMatchObject({
       type: "TRIGGER_FIRED",
       triggerId: fx.setDown.triggerId,
+      triggerAction: "EXIT",
       priceAtTime: 358.9,
-      summary: "TRV plan set down — it closed below the $359.87 floor before we ever bought it, so the plan's premise is gone.",
+      summary: "Stop watching if below $359.87 · only on the close",
+      fieldChanges: { status: { from: "WATCHING", to: "RETIRED" }, retiredReason: { from: null, to: "DROPPED" } },
     });
-    // The same three the 09:30 set-down removed; the four reviews stay.
-    expect(idsOf(t).some((id) => PLAN_IDS.includes(id))).toBe(false);
-    expect(idsOf(t)).toHaveLength(fx.thesisBefore.triggers.length - PLAN_IDS.length);
-    expect(trv(t)).toMatchObject({ status: "WATCHING", entryPrice: null, targetPrice: null, stopLoss: null });
+    expect(trv(t)).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED", closeReason: "Stop watching if below $359.87 · only on the close" });
+    // Nothing is taken off the stock and nothing is stamped on it: its triggers are as they were.
+    expect(idsOf(t)).toEqual(fx.thesisBefore.triggers.map((x) => x.id));
+    // No run and no approval: no money moves.
     expect(t.sent).toEqual([]);
+    expect(t.db.store.order ?? []).toEqual([]);
   });
 
   it("on a stock we hold, the same floor is a sale and still fires intraday", async () => {

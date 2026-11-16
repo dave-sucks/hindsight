@@ -15,16 +15,16 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## A thesis
 
-- **Thesis:** one analyst's view of one stock, and its plan. Every stock on the book has one. See [Theses](concepts/theses.md).
+- **Thesis:** one analyst's view of one stock, and its triggers. Every stock on the book has one. See [Theses](concepts/theses.md).
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
 - **Wrong if:** what would prove the belief wrong, written before the buy.
-- **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, the target and the time limit.
+- **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, any take-profit and the time limit.
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
 - **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.
-- **Plan:** a thesis's triggers. The buy, the floor and the target are triggers too.
+- **Plan:** not a thing. A stock has its triggers and nothing else; "the buy" and "the floor" are names for kinds of trigger.
 - **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It's due its first research on its review clock.
-- **Wake:** a review trigger on a watch with no plan, like a price or a date, that brings the stock back for a fresh look.
+- **Wake:** a review trigger on a watch with no buy, like a price or a date, that brings the stock back for a fresh look.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Agent Watch:** a watch with its own review clock, so its analyst looks at it on a schedule. A plain watch waits for its triggers.
 - **Holding:** bought. A watch turns into a holding when the broker takes the buy.
@@ -33,7 +33,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Promoted:** held in paper and just moved to live money; the next run re-enters or goes back to watching.
 - **Note:** your words on a stock's thesis. Information, not an order; every run reads the newest ones first and answers them.
 - **Activity:** the stock's log: one line for every change, fire, trade and note.
-- **Thesis sheet:** a stock's detail panel, where you read its thesis and change its plan yourself.
+- **Thesis sheet:** a stock's detail panel, where you read its thesis and change its triggers yourself.
 
 ## Triggers
 
@@ -41,7 +41,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Action:** what a trigger does when it comes true: **buy**, **add**, **trim**, **sell** or **review**. A review wakes the analyst with no order behind it.
 - **Floor:** the sale trigger under the price. The stop.
 - **Trail:** a sale measured as a give-back from the highest price since the buy, like "6% off the high".
-- **Target:** the price the plan aims for. Reaching it is a review: take it, or trail higher.
+- **Target:** only ever Wall Street's number, the analysts' 12-month price target. Hindsight sets none of its own; an upside rule is a take-profit trigger. See [Price targets](concepts/price-targets.md).
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.
 - **On the cross:** how a buy fires, and a review that watches the price: once, on the day the price reaches its level, never every day it stays there.

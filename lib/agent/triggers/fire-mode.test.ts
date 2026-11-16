@@ -123,7 +123,7 @@ describe("the words", () => {
     expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" })).toBe("Auto-sell");
     expect(fireModeWords({ action: "REVIEW" })).toBe("Flag for Review");
     expect(fireModeWords({ action: "EXIT" })).toBe("Send to Agent");
-    expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" }, false)).toBe("Takes the plan down when it fires");
+    expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" }, false)).toBe("Stops watching when it fires");
   });
 
   it("an Auto-trim used once says what was used: MU's real trim, set Auto at 30%", () => {

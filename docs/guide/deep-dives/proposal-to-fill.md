@@ -12,7 +12,7 @@ An agent buys with `place_trade`. Before anything is written it checks:
 2. The thesis has a committed view and scores at or above the analyst's minimum.
 3. The analyst has a free slot. A buy waiting for approval holds its slot, so a queue can't run past the cap.
 4. The analyst holds none of the stock and has no buy waiting on it.
-5. The plan has a floor, and the live price hasn't already passed it, or the target when the stock carries one.
+5. The stock has a floor (a sale trigger below the price), and the live price hasn't already passed it, or its upside line when it carries one.
 
 The agent doesn't pick the size. It's set by risk: the money at risk, divided by the distance to the floor, scaled by conviction and kept inside the analyst's band. One transaction then writes the position and an `Order` with a fresh idempotency key. The key is the broker's client order ID, so a lost reply can't lose the order.
 
@@ -42,14 +42,14 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 The thesis moves when the broker accepts the order, not when the fill prints. With approval off, it moves when the fill is seen.
 
-- **A buy** turns Watching into Holding. The buy trigger is removed, and the floor and target are set to the levels on the trade. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review line set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
-- **A sale** retires the thesis as sold. The exceptions are a sale at the target, or one where the agent attested the belief survived: those return to Watching with a one-day review.
+- **A buy** turns Watching into Holding. The buy trigger is removed and the stock keeps the rest: its floor is the holding's sale. The floor and upside levels on the order (yours, if you changed them on the ticket or in Edit & Approve) are written onto those triggers; nothing is stamped from the fill price but the holding's review clock. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review line set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
+- **A sale** retires the thesis as sold. The exceptions are a profit-take, or one where the agent attested the belief survived: those return to Watching with a one-day review.
 
 When a protective trigger woke the run that sold, the sale is labelled stop or target, whatever the agent wrote. A wrong label would hide the sale from the rules that read it.
 
 ## Meanwhile
 
-A sale waiting for you is yours to answer, so no agent proposes it again or argues it. The stock's other situations still reach the agents (a note, a review that's due, an add), and they answer those with a note or an edit. A buy waiting for you keeps its plan, so an agent can't remove the buy trigger from under it.
+A sale waiting for you is yours to answer, so no agent proposes it again or argues it. The stock's other situations still reach the agents (a note, a review that's due, an add), and they answer those with a note or an edit. A buy waiting for you keeps its triggers, so an agent can't remove the buy trigger from under it.
 
 <details>
 <summary>Technical details</summary>

@@ -2,7 +2,7 @@
 
 **Ask anything. It sees the whole desk.** Chat is the one agent you talk to: about one analyst's book, or the whole account.
 
-It reads the same theses and runs the same research as every other agent, and it can change a plan or propose a trade while you watch.
+It reads the same theses and runs the same research as every other agent, and it can change a stock's triggers or propose a trade while you watch.
 
 ```facts
 Model: claude-sonnet-4-6
@@ -16,7 +16,7 @@ Saves: 24 fields: also belief, direction
 caption: Chat with the Secular Compounder selected.
 user: Why are we still holding AVGO after the report?
 tools: Reading $AVGO's thesis (+1 more)
-- AVGO: Holding since June · up 18.4% · floor $1,610 · target $2,050
+- AVGO: Holding since June · up 18.4% · floor $1,610 · Street average $2,050
 - Beat by 6%, raised AI revenue guidance; the stock fell 3% on the day
 text: The belief is intact. $AVGO (−3.1%) beat and raised; the drop was the sector selling, not the company. None of the things that would prove it wrong has happened.
 user: Good. Raise the floor to $1,650.
@@ -26,9 +26,9 @@ tools: Updating $AVGO's thesis
 
 ## What it does
 
-Chat answers questions about any stock, run, trade or analyst. It researches, does [Discovery](discovery.md)'s screening itself, sends stocks to [the Writer](writer.md), changes a plan and proposes trades. It runs on Claude Sonnet with thinking on.
+Chat answers questions about any stock, run, trade or analyst. It researches, does [Discovery](discovery.md)'s screening itself, sends stocks to [the Writer](writer.md), changes a stock's triggers and proposes trades. It runs on Claude Sonnet with thinking on.
 
-The other agents run on a clock and act on what's saved. Chat is how your judgment gets into that record: as [triggers](../concepts/triggers.md), plan edits and notes that every later run reads.
+The other agents run on a clock and act on what's saved. Chat is how your judgment gets into that record: as [triggers](../concepts/triggers.md), trigger edits and notes that every later run reads.
 
 ## When it runs
 
@@ -60,9 +60,9 @@ Every message you send reaches chat with the day, the time and whether the marke
 
 When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says what it's doing in one sentence and does it.
 
-- **Edit a plan:** `update_thesis`, landing in Activity like any other edit. A price you name becomes a trigger on the [thesis](../concepts/theses.md). Like every agent, chat can raise a floor on a holding but not lower one; lowering a floor is yours, on the thesis.
+- **Edit a trigger:** `update_thesis`, by the trigger's id, landing in Activity like any other edit. A price you name becomes a trigger on the [thesis](../concepts/theses.md). Like every agent, chat can raise a floor on a holding but not lower one; lowering a floor is yours, on the thesis.
 - **Change the belief or direction:** only the Writer and chat can, and chat only when you ask.
-- **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its plan stays as proposed.
+- **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its triggers stay as proposed.
 - **Research:** "research CRWD" or `/research` starts the Writer with `dispatch_thesis_research`; `wait_for_thesis_refresh` brings the thesis back into the conversation.
 
 It never approves or declines a proposal. That's always your click.

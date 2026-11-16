@@ -26,8 +26,8 @@
 // The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
 // only rungs carrying a `basis: "close"` price level, with the day's close
 // as the price. The 5-minute passes never fire those — "closes above the
-// pivot" is not an intraday poke. A watched stock's floor is one of them
-// whatever it stores: its plan comes down on a close below it, never an
+// pivot" is not an intraday poke. A watched stock's sale line is one of them
+// whatever it stores: we stop watching on a close below it, never an
 // intraday dip (watchedFloorOnClose, DAV-337). Cooldown makes the three
 // close ticks fire at most once. It also takes down a proposal a trigger made
 // when none of its triggers holds on the close (lib/proposals/trigger-proposals.ts).
@@ -48,7 +48,7 @@ import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quot
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
-import { levelOf, readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
+import { readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -61,10 +61,10 @@ import {
 } from "@/lib/agent/triggers/earnings";
 import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
-import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/triggers/types";
+import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { waitsForMorning } from "@/lib/agent/triggers/fire-mode";
-import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
+import { stopWatching } from "@/lib/agent/triggers/stop-watching";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
 import {
   loadLevelSources,
@@ -515,8 +515,8 @@ export const triggerEvaluator = inngest.createFunction(
         .map((thesis) => ({
           thesis,
           analystId: thesis.researchRun.agentConfigId,
-          // A watched stock's floor reads the close (DAV-337): a morning dip
-          // through it no longer sets the plan down.
+          // A watched stock's sale line reads the close (DAV-337): a morning
+          // dip through it doesn't end the watch.
           ladder: resolveThesisLadder(
             thesis,
             levelSources.get(thesis.researchRun.agentConfigId ?? ""),
@@ -529,10 +529,8 @@ export const triggerEvaluator = inngest.createFunction(
             ? { ...c, ladder: pausedAnalystTriggers(c.ladder, c.thesis.status) }
             : c,
         )
-        // Whether the stock has a buy, read before the close pass narrows the
-        // ladder: with none, a review at a price is a wake (DAV-335). The whole
-        // ladder too: a trigger's proposal is read against it on the close.
-        .map((c) => ({ ...c, hasBuy: c.ladder.some((t) => t.action === "ENTER"), all: c.ladder, waiting: waitingByThesis.get(c.thesis.id) ?? [] }))
+        // The whole ladder, read before the close pass narrows it: a trigger's proposal is read against it on the close.
+        .map((c) => ({ ...c, all: c.ladder, waiting: waitingByThesis.get(c.thesis.id) ?? [] }))
         // The close pass only looks at rungs that wait for the close.
         .map((c) =>
           session === "CLOSE"
@@ -685,7 +683,7 @@ export const triggerEvaluator = inngest.createFunction(
       }
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers, hasBuy, all, waiting } of candidates) {
+      for (const { thesis, analystId, ladder: triggers, all, waiting } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -799,18 +797,12 @@ export const triggerEvaluator = inngest.createFunction(
           ),
           now,
         });
+        // A sale line on a stock we only watch stops watching it: retired, one
+        // Activity line, no run and no approval (no money moves).
+        const stop = thesis.status === "WATCHING" ? fires.find((t) => t.action === "EXIT") : undefined;
+        if (stop && (await stopWatching({ thesisId: thesis.id, trigger: stop, priceAtTime: latestQuote?.price ?? null })).retired) continue;
         for (const t of fires) {
-          // What this trigger MEANS for a thesis in this state. A floor or a
-          // target firing on something we don't own can't be a sell or a
-          // take-profit — it says the priced plan is stale. Resolved here
-          // rather than stored, so a buy or an opt-out never has to rewrite
-          // trigger actions. See effectiveTriggerAction + DAV-195 L5.
-          const action = effectiveTriggerAction(t, {
-            status: thesis.status,
-            direction: thesis.direction,
-            hasBuy,
-          });
-
+          const action = t.action;
           // The facts behind an earnings fire, when that's what fired. Null
           // for a price/time trigger — the price is already stamped. A
           // heads-up carries the upcoming date + estimate; a beat/miss
@@ -839,46 +831,19 @@ export const triggerEvaluator = inngest.createFunction(
                       })
                     : null;
 
-          // DEMOTE is deterministic and costs nothing to be wrong about — no
-          // money moves — so it runs inline. Never a tactical spawn: arming
-          // watchlist floors is what would otherwise reproduce the 2026-05-18
-          // explosion (28 of 35 tactical runs, zero state changes), and there
-          // are 19 watchlist rows carrying a floor.
-          if (action === "DEMOTE") {
-            const short = thesis.direction === "SHORT";
-            const typed = shapeOf(t.predicate);
-            const level = typed == null ? null : levelOf(typed);
-            const floor = level != null && level.above === short ? level.value : null;
-            const outcome = await demoteThesisPlan({
+          // A sale on a stock we don't hold and can't stop watching (a promoted
+          // row) starts no run: the fire is written down for the morning run.
+          if (action === "EXIT" && thesis.status !== "HOLDING") {
+            await writeThesisUpdate({
               thesisId: thesis.id,
-              reason:
-                t.action === "EXIT"
-                  ? floor != null
-                    ? `it closed ${short ? "above" : "below"} the $${floor} floor before we ever bought it, so the plan's premise is gone.`
-                    : `the floor broke before we ever bought it, so the plan's premise is gone.`
-                  : `it reached the target without us, so the entry is stale.`,
+              type: "TRIGGER_FIRED",
+              summary: sentenceOf(t, false),
               triggerId: t.id,
               ...ruleOnTheLine(t),
+              signalIds: [],
+              runId: null,
               priceAtTime: latestQuote?.price ?? null,
             });
-            // Demotion refuses on anything that isn't WATCHING (a PROMOTED
-            // row, say) and on a thesis with no priced plan left to remove.
-            // Both are legitimate, and `continue` on its own would swallow
-            // the fire — the silent-fire failure this project exists to end,
-            // reintroduced by me. Fall through to the daily run instead.
-            if (!outcome.demoted) {
-              await writeThesisUpdate({
-                thesisId: thesis.id,
-                type: "TRIGGER_FIRED",
-                // held=false: DEMOTE branch ⇒ un-held.
-                summary: sentenceOf(t, false),
-                triggerId: t.id,
-                ...ruleOnTheLine(t),
-                signalIds: [],
-                runId: null,
-                priceAtTime: latestQuote?.price ?? null,
-              });
-            }
             continue;
           }
 

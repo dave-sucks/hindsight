@@ -17,7 +17,7 @@
  *
  * A level is not moved here. update_targets and move_stop_to_breakeven were
  * deleted in step 12, part 3: they were a second path to the same edit as
- * update_thesis's stop_loss / target_price, and they read the position's
+ * a trigger edit in update_thesis, and they read the position's
  * mirror column (MU 2026-10-08: its audit row moved the stop "from $969", the
  * mirror, while the floor in force was $1,048). A level moves through
  * update_thesis only, one trigger op at a time.
@@ -119,7 +119,7 @@ const schema = z.object({
   action: z.enum([
     "partial_close",
     "add_to_position",
-  ]).describe("What to do with this position. A stop or target moves through update_thesis (stop_loss, target_price)."),
+  ]).describe("What to do with this position. The floor and every other line are triggers: move one with update_thesis's edit_triggers, by its id."),
   // Your chat's own words on the add or trim. Inside a run this field is not
   // in the schema: the run's note on the stock (update_thesis) is the
   // proposal's reason and the Activity line (lib/proposals/auto-writeup.ts).

@@ -1,6 +1,6 @@
 // ── Shared thesis-ingest core ────────────────────────────────────────────────
 // Mints a Thesis from external-chat JSON by pushing it through the SAME
-// `record_thesis` logic the agent uses (taxonomy + trigger generation + gates),
+// `record_thesis` logic the agent uses (taxonomy + triggers + gates),
 // at ZERO LLM cost. Two entry points share this:
 //   - app/api/intelligence/thesis-ingest/route.ts  (secret-auth, for Postman/MCP)
 //   - lib/actions/thesis-ingest.actions.ts          (app-auth, for the paste UI)
@@ -16,8 +16,9 @@ export type IngestResult =
 
 /**
  * `payload` is the `record_thesis` args as a plain object, plus an `analyst`
- * (name) or `analyst_id` envelope field. Never persists `triggers` from the
- * caller — record_thesis generates them from horizon + prices.
+ * (name) or `analyst_id` envelope field. The stock's buy and floor are the
+ * `triggers` it sends: nothing generates them (a stock has triggers and
+ * nothing else).
  */
 export async function ingestThesis(
   payload: Record<string, unknown>,
@@ -51,15 +52,9 @@ export async function ingestThesis(
   const runEnvironment =
     (config.tradingEnvironment as "PAPER" | "LIVE") ?? "PAPER";
 
-  // Strip any caller-supplied `triggers` — the endpoint GUARANTEES triggers
-  // are generated server-side from horizon + prices (see
-  // EXTERNAL_THESIS_INGEST.md). record_thesis would otherwise MERGE a caller
-  // array into the horizon defaults. Then inject default provenance so the
-  // chat JSON can stay focused on the research + decision, not plumbing.
-  const { triggers: _callerTriggers, ...callerArgs } = thesisArgs as Record<
-    string,
-    unknown
-  >;
+  // Default provenance, so the chat JSON can stay focused on the research +
+  // decision, not plumbing.
+  const callerArgs = thesisArgs as Record<string, unknown>;
   const candidate = {
     source_kind: "WEB_SEARCH",
     source_rationale:

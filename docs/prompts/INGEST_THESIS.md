@@ -36,9 +36,10 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 >   "ticker": "AVGO",
 >   "direction": "LONG",
 >   "horizon": "COMPOUNDER",
->   "entry_price": 280,
->   "target_price": 360,
->   "stop_loss": 245,
+>   "triggers": [
+>     { "predicate": { "watch": "price", "is": "below", "value": 280 }, "action": "ENTER", "rationale": "the buy: why this level" },
+>     { "predicate": { "watch": "price", "is": "below", "value": 245 }, "action": "EXIT", "rationale": "the floor: what a close below it would mean" }
+>   ],
 >   "core_belief": "two or three plain sentences: what the company does, why it is worth owning, what has to stay true; never a stock price, a target or a date",
 >   "key_assumptions": ["specific checkable premise", "another", "..."],
 >   "invalidation_conditions": ["concrete thing that proves this wrong", "another", "..."],
@@ -62,11 +63,14 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 > - `direction` is `"LONG"`, `"SHORT"`, or `"PASS"` — UPPERCASE. If the setup points the wrong
 >   way for this analyst's edge, output `direction:"PASS"` (documents the decline) — do NOT
 >   force a trade.
-> - **For `LONG`/`SHORT` ALL of these are required:** `horizon`, `entry_price`, `target_price`,
->   `stop_loss`, `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
+> - **For `LONG`/`SHORT` ALL of these are required:** `horizon`, `triggers` (a buy, action
+>   `ENTER`, and a floor, action `EXIT`), `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
 >   `conviction`, `conviction_rationale`, `target_size_pct`.
-> - **Price shape:** LONG → `target_price > entry_price > stop_loss`. SHORT → inverted. Risk/
->   reward must be **≥ 2:1** ((target−entry)/(entry−stop) for LONG).
+> - **A stock has triggers and nothing else:** no price fields, no target of our own ("target"
+>   is Wall Street's number). The buy is `is: "below"` for a pullback, `"above"` for a
+>   breakout. On a LONG the floor sits below the buy; a take-profit (a `REVIEW` or `TRIM` above)
+>   is optional and sits above both. On a stock we watch the floor reads "Stop watching if
+>   below $X": a close below it retires the watch. Nothing is generated for you.
 > - **`variant_view` is required when `conviction` is `STRONG` or `HIGH`.** If you can't state a
 >   real variant view, your conviction is `MEDIUM` — don't inflate it.
 > - **`horizon`** is `CATALYST` | `TARGET` | `TRADE` | `COMPOUNDER`. Conditional requireds:
@@ -102,9 +106,9 @@ on weakness, exit only on invalidation. Concentrated book of 3-4 names.
 operator + capital-allocation discipline, pricing power (gross-margin trajectory), FCF
 conversion, management alignment. Themes: AI infrastructure, datacenter buildout, GLP-1/obesity,
 energy transition, defense reindustrialization, onshoring, demographics.
-**Prices:** `entry_price` = the level you'd start scaling in at — a price the stock has NOT
-reached (a pullback below the tape, or a breakout above it). `target_price` = 3-5yr fair
-value. `stop_loss` = thesis-break level (tolerate ~−15%).
+**Triggers:** the buy (`ENTER`) = the level you'd start scaling in at — a price the stock has
+NOT reached (a pullback below the tape, or a breakout above it). The floor (`EXIT`) = the
+thesis-break level (tolerate ~−15%). No take-profit: the 3-5yr value is the case, not a trigger.
 **Conviction → size:** STRONG 12-15 · HIGH 10-12 · MEDIUM 5-8 · LOW 3-5.
 **Invalidation must be structural:** regulatory break, demand erosion, two consecutive guidance
 cuts, CFO departure, capital-allocation breakdown. Avoid: profitless growth, story stocks,
@@ -130,7 +134,7 @@ LONG-only. Buying the drift, not the gap-day reaction.
 **>1.5× 20-day avg**; analyst estimate revisions **UP within 72h**. Filter out: one-time-item
 beats, sideways/down guides, names already gapped 10%+ (edge is gone).
 **Timing:** entry **1-3 days after** the print (not on it); target a 60-day drift window; stop
-**−8%** or a volume reversal candle. `entry_price` = the drift-entry level you're waiting
+**−8%** or a volume reversal candle. The buy trigger = the drift-entry level you're waiting
 for — above or below the tape, never on it; put the 60-day window in `key_assumptions` and
 (optionally) `max_hold_days`-via-`TRADE` if you prefer a hard time-exit.
 **Conviction → size:** STRONG ~3 · HIGH ~2.5 · MEDIUM ~2 · LOW ~1.5 (small book; cap $3k).
@@ -143,19 +147,19 @@ Any sector, **$5B+ market cap**, US common stock (no thin ADRs/SPACs/microcaps).
 sector ETF outperforming SPY, clean base or initial pullback to the breakout level, **no earnings
 within 5 trading days**. Avoid late-cycle/distribution breakouts, parabolic climax tops, insider-
 selling clusters.
-**Timing:** `entry_price` = the breakout level. Stops are tight: **−5% or a 10-day EMA break**,
-whichever first → set `stop_loss` accordingly. `max_hold_days` 5-10. Never average down.
+**Timing:** the buy trigger = the breakout level. Stops are tight: **−5% or a 10-day EMA break**,
+whichever first → set the floor trigger accordingly. `max_hold_days` 5-10. Never average down.
 **Conviction → size:** STRONG 5 · HIGH 4 · MEDIUM 3 · LOW → PASS (no low-conviction breakouts).
 Max 5 open. Don't hold through earnings.
 
 ---
 
 ## Worked example — Secular Compounder / AVGO (validated 2026-06-28)
-This exact object minted cleanly (status WATCHING, composite 8/10, 5 auto-generated triggers):
+This object mints cleanly (status WATCHING) with the two triggers it sends:
 ```json
 {
   "ticker": "AVGO", "direction": "LONG", "horizon": "COMPOUNDER",
-  "entry_price": 280, "target_price": 360, "stop_loss": 245,
+  "triggers": [{ "predicate": { "watch": "price", "is": "below", "value": 280 }, "action": "ENTER", "rationale": "I start buying on the pullback to $280." }, { "predicate": { "watch": "price", "is": "below", "value": 245 }, "action": "EXIT", "rationale": "A close under $245 would say the XPU ramp is not showing up." }],
   "core_belief": "Broadcom's custom-silicon (XPU) plus networking franchise compounds datacenter revenue >30%/yr through 2028 as hyperscalers in-source AI accelerators, lifting operating margin above 65%.",
   "key_assumptions": ["Hyperscaler AI capex stays above $300B/yr through 2027, custom-XPU share rising toward 25%.", "VMware integration holds software gross margin near 90%.", "≥3 named XPU customers ramp to volume.", "FCF conversion stays above 40% of revenue."],
   "invalidation_conditions": ["A flagship hyperscaler drops Broadcom XPU/networking for an in-house alternative.", "Two consecutive quarters of AI-semi revenue growth below 20% YoY.", "Consolidated gross margin below 70% ex-acquisition.", "VMware subscription conversion stalls two quarters."],

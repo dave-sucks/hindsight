@@ -146,7 +146,7 @@ export const getTheses = defineTool({
     const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
     // Worded for the run that reads it: the trigger run's save has no status
-    // change, so its texts take the plan down by id instead (step 12, part 2).
+    // change, so its texts take the triggers off by id instead (step 12, part 2).
     const guidance = guidanceFor(
       [
         ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [], ctx.runMode)),

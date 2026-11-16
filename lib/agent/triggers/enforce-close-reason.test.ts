@@ -217,7 +217,7 @@ describe("enforceCloseReason — a judgment close that claims a level the tape n
   it("a plan with no target can't have hit one", () => {
     const e = enforceCloseReason({ declared: "TARGET", levels: { ...srrk, targetPrice: null } });
     expect(e.stored).toBe("MANUAL");
-    expect(e.auditNote).toContain("no target");
+    expect(e.auditNote).toContain("no upside level");
   });
 
   it("MANUAL and the judgment codes are untouched by the levels", () => {

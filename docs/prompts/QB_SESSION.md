@@ -55,7 +55,7 @@ rebuild follows) and `docs/THESIS_ARCHITECTURE.md`.
 | Triggers are edited one at a time | `update_thesis` takes add / edit / remove by id; `lib/agent/triggers/ops.ts` is the one write path for the agent, the popover, a buy fill and a set-down. One change = one Activity line. |
 | Buy triggers fire on the crossing | A sell or review trigger is a standing order that asks again every day its condition holds. Re-proposing a breached stop daily is by design; Dave can move it from the reject flow. |
 | 2:1 on a plan we don't own | Enforced for agents on every path. Ordering applies to everyone; the ratio never refuses Dave. |
-| Archive means never again | A refused level or a dead plan sets the plan down and keeps the stock. |
+| Archive means never again | A refused level or a dead buy takes the buy off and keeps the stock. |
 | Sizing is by risk inside three dollar limits | Shares = risk dollars ÷ distance to the stop, at `riskPct` (1%) × conviction, clamped between smallest and largest trade. Open risk and market regime are proposal lines. A seat whose smallest equals its largest trade can't vary size. |
 | Sell rules live on each analyst | Seat style is the analyst's own trigger rules; the account keeps only rules every analyst shares (earnings wakes, review cadence). The per-horizon account layer is deleted. One-off rule changes on live stocks go through the popover's own functions, never a custom job. |
 | No new refusals | Judgment goes in the proposal Dave approves or in a visible flag, never in a tool that fails the run. |

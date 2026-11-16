@@ -56,7 +56,7 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
     const { screen, model } = await read("MORNING_PLAN");
     expect(screen.find((t) => t.id === MA_ID)?.situations).toEqual(["REVIEW_DUE"]);
     expect(Object.keys(model.guidance ?? {})).toEqual(["REVIEW_DUE"]);
-    expect(model.guidance?.REVIEW_DUE).toContain("A watch with no view has no plan to review: go straight to its paragraph.");
+    expect(model.guidance?.REVIEW_DUE).toContain("A watch with no view: go straight to its paragraph.");
     expect(model.guidance?.REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
     expect(String(model.theses.find((t) => t.id === MA_ID)?.stock)).toContain("no view");
   });

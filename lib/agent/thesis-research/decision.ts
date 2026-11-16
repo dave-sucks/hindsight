@@ -20,7 +20,10 @@ import { z } from "zod";
 import { jsonSchema, zodSchema, type Schema } from "ai";
 import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
+import { riskReward as rewardToRisk } from "@/lib/agent/thesis-shape";
+import { applyTriggerOps } from "@/lib/agent/triggers/ops";
+import { canonicalLevels, levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
@@ -49,12 +52,6 @@ export const thesisDecisionSchema = z.object({
     .describe("Your decision, by How you write: what the company is doing and where the stock is and why, then your call. On a refresh it is the note at the top of the stock's page."),
   horizon: W.horizon,
   setup_id: W.setup_id.optional(),
-  entry_price: W.entry_price.optional(),
-  entry_on_close: W.entry_on_close.optional(),
-  stop_basis: W.stop_basis.optional(),
-  target_basis: W.target_basis.optional(),
-  target_price: W.target_price.optional(),
-  stop_loss: W.stop_loss.optional(),
   catalyst_date: W.catalyst_day.optional(),
   core_belief: W.core_belief.optional(),
   key_assumptions: W.key_assumptions.optional(),
@@ -124,8 +121,8 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** Existing thesis target on refresh — a priced row can't be left silently priced. */
-  existingTargetPrice?: number | null;
+  /** The stored triggers on a refresh, with ids: a refresh's edits are read against them. */
+  existingTriggers?: Trigger[];
   /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
   setups?: Setup[];
   /** Chart numbers from the pull, for the stop-distance, chase and window checks. */
@@ -133,7 +130,7 @@ export interface DecisionValidationOpts {
     atr14: number | null;
     pivot: number | null;
     brokenOut: boolean | null;
-    /** The 20- and 50-day averages, for naming the pullback plan when a windowed setup no longer applies. */
+    /** The 20- and 50-day averages, for naming the pullback when a windowed setup no longer applies. */
     sma20?: { value: number; rising: boolean } | null;
     sma50?: { value: number; rising: boolean } | null;
     /** Days since the last report (the report day is 0); null when the calendar has none. */
@@ -151,7 +148,7 @@ export interface DecisionValidationResult {
 
 /**
  * The writer's own rules for a submit_thesis call: what a decision must say
- * (belief, conviction, setup, the stop and target reasons, the chart checks).
+ * (belief, conviction, setup, the chart checks on its buy and floor).
  * The save's rules are NOT copied here — the submit step runs record_thesis /
  * update_thesis itself in check-only mode right after this
  * (checkDecisionAgainstSave in run-thesis-writer.ts). A copy drifted twice:
@@ -185,45 +182,15 @@ export function validateThesisDecision(
   // visible and editable, unlike a column that fed a template once at mint
   // and then drifted from it.
 
-  let riskReward: number | undefined;
-
-  const { entry_price: entry, target_price: target, stop_loss: stop } = d;
-  // A view is either priced (a buy and a floor; a target only when the
-  // setup has an upside rule, 2026-11-04) or not priced at all. The
-  // unpriced shape is the set-down state the persist gates already admit
-  // (no plan level, ≥1 REVIEW wake — DAV-224): "bullish, entry window
-  // opens in January" used to be unwritable, so BMRN came back with
-  // today's quote as its buy level.
-  const priced = entry != null || target != null || stop != null;
-
-  if (directional && priced) {
-    // ── Prices, in order ──────────────────────────────────────────────
-    const unpricedHint = " — or omit entry, stop and target to hold the view unpriced.";
-    if (entry == null || entry <= 0) errors.push(`entry_price: required and positive on a priced plan${unpricedHint}`);
-    if (target != null && target <= 0) errors.push("target_price: positive when given; a plan needs no target (a buy and a floor price it).");
-    if (stop == null || stop <= 0) errors.push(`stop_loss: required and positive on a priced plan${unpricedHint}`);
-
-    if (entry != null && stop != null && entry > 0 && stop > 0 && (target == null || target > 0)) {
-      // The one plan rule (ordering) — the same helper the persist gates
-      // run, so a repair here is a pass there. The ratio is reported, not enforced.
-      const shape = validateThesisShape({
-        direction: d.direction,
-        entryPrice: entry,
-        targetPrice: target ?? null,
-        stopLoss: stop,
-        held,
-      });
-      if (!shape.ok) {
-        errors.push(
-          shape.reason === "risk-reward-below-floor"
-            ? shape.note
-            : `price ordering: ${shape.note}`,
-        );
-      } else {
-        riskReward = shape.riskReward;
-      }
-    }
-  }
+  // The buy and the floor are triggers. A view is priced when the decision
+  // writes a buy or a floor; an unpriced view (no buy, ≥1 REVIEW wake —
+  // DAV-224) is legal: "bullish, entry window opens in January" used to be
+  // unwritable, so BMRN came back with today's quote as its buy level. The
+  // ordering of the levels is the save's check (checkDecisionAgainstSave).
+  const levels = decisionLevels(d, opts);
+  const { entry, stop, target, priced } = levels;
+  const riskReward =
+    directional && entry != null && stop != null && target != null ? (rewardToRisk(d.direction as "LONG" | "SHORT", entry, target, stop) ?? undefined) : undefined;
 
   // ── The setup and how its numbers were derived (DAV-249) ─────────────
   // In-loop: the writer repairs in one step. Nothing
@@ -232,16 +199,16 @@ export function validateThesisDecision(
   // The setup prices a view; it never decides one. An unpriced view needs none.
   if (directional && opts.setups) {
     if (!d.setup_id && priced) {
-      errors.push(`setup_id: required on a priced plan — pick the setup that gives its buy level and floor: ${opts.setups.map((s) => s.id).join(", ")}. If none fits today, omit entry, stop and target and keep the view unpriced with the review that brings it back.`);
+      errors.push(`setup_id: required with a buy or a floor — pick the setup that gives them: ${opts.setups.map((s) => s.id).join(", ")}. If none fits today, write no buy and keep the view with the review that brings it back.`);
     } else if (d.setup_id && !setup) {
-      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those, or omit it on an unpriced view.`);
+      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those, or omit it on a view with no buy.`);
     }
   }
   // A setup with a window, chosen after the window closed, does not apply.
-  // Said in-loop with the plan that does apply — the pullback — priced from
+  // Said in-loop with the setup that does apply — the pullback — priced from
   // the chart. HPE 2026-09-15: PEAD 13 days after the print; the drift
-  // rules could place no stop, so the plan went unpriced with a review at
-  // the very level a pullback plan would buy.
+  // rules could place no stop, so the view went unpriced with a review at
+  // the very level a pullback would buy.
   const window = setup?.entry.windowDays;
   const since = opts.chart?.daysSinceReport;
   if (directional && !held && setup && window && since != null && since > window[1]) {
@@ -256,51 +223,32 @@ export function validateThesisDecision(
     const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.`
-        : " Write it on MA_PULLBACK (buy at a rising 20- or 50-day, stop 1 ATR under it) if the trend allows — or keep the view unpriced (no setup_id, no levels) with the review that brings it back."
-      : " Pick a setup that applies, or keep the view unpriced (no setup_id, no levels) with the review that brings it back.";
+        ? ` Write it on MA_PULLBACK: a buy at ${averages.join(" or ")}, a floor ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.`
+        : " Write it on MA_PULLBACK (a buy at a rising 20- or 50-day, a floor 1 ATR under it) if the trend allows — or keep the view with no buy (no setup_id) and the review that brings it back."
+      : " Pick a setup that applies, or keep the view with no buy (no setup_id) and the review that brings it back.";
     errors.push(
       `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
     );
   }
   if (directional && priced && entry != null && stop != null && entry > 0 && stop > 0) {
-    if (opts.setups && (!d.stop_basis || d.stop_basis.trim().length < 10)) {
-      errors.push("stop_basis: required on a priced plan — what a close below it would say about the belief, then the structure the stop sits under and its distance in ATR, with the numbers.");
-    }
-    // A target is an upside rule only where the setup has one; its basis is owed only when a target is given.
-    if (opts.setups && target != null && (!d.target_basis || d.target_basis.trim().length < 10)) {
-      errors.push("target_basis: required when a target_price is given — the upside rule that set it (a review at the Street's average target, a trim at the prior high), with the numbers.");
-    }
     const atr = opts.chart?.atr14;
     const dist = Math.abs(entry - stop);
     if (!held && setup && atr != null && atr > 0 && dist < setup.stop.minAtr * atr) {
       errors.push(
-        `stop_loss: $${stop} is ${(dist / atr).toFixed(2)} ATR from the $${entry} entry (ATR $${atr.toFixed(2)}). ${setup.name} needs the stop at least ${setup.stop.minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $${(setup.stop.minAtr * atr).toFixed(2)} from entry, or PASS.`,
+        `floor: $${stop} is ${(dist / atr).toFixed(2)} ATR from the $${entry} buy (ATR $${atr.toFixed(2)}). ${setup.name} needs the floor at least ${setup.stop.minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $${(setup.stop.minAtr * atr).toFixed(2)} from the buy, or PASS.`,
       );
     }
     if (!held && setup?.stop.maxPct != null && d.horizon === "TRADE" && (dist / entry) * 100 > setup.stop.maxPct) {
       errors.push(
-        `stop_loss: $${stop} is ${((dist / entry) * 100).toFixed(1)}% from entry; a TRADE on ${setup.name} caps the stop at ${setup.stop.maxPct}%. If structure needs a wider stop, the position is smaller — not the stop wider. Tighten it, or use a longer horizon.`,
+        `floor: $${stop} is ${((dist / entry) * 100).toFixed(1)}% from the buy; a TRADE on ${setup.name} caps it at ${setup.stop.maxPct}%. If structure needs a wider floor, the position is smaller — not the floor wider. Tighten it, or use a longer horizon.`,
       );
     }
     const pivot = opts.chart?.pivot;
     if (!held && setup?.entry.chaseLimitPct != null && pivot != null && pivot > 0 && d.direction === "LONG" && entry > pivot * (1 + setup.entry.chaseLimitPct / 100)) {
       errors.push(
-        `entry_price: $${entry} is ${(((entry - pivot) / pivot) * 100).toFixed(1)}% past the base pivot $${pivot.toFixed(2)}; ${setup.name}'s chase limit is ${setup.entry.chaseLimitPct}%. Buy within the limit, write the plan on a pullback setup, or PASS.`,
+        `buy: $${entry} is ${(((entry - pivot) / pivot) * 100).toFixed(1)}% past the base pivot $${pivot.toFixed(2)}; ${setup.name}'s chase limit is ${setup.entry.chaseLimitPct}%. Buy within the limit, write the buy on a pullback setup, or PASS.`,
       );
     }
-  }
-
-  if (
-    directional &&
-    !priced &&
-    opts.mode === "refresh" &&
-    opts.existingTargetPrice != null &&
-    !(d.remove_trigger_ids && d.remove_trigger_ids.length > 0)
-  ) {
-    errors.push(
-      "levels: you omitted entry/target/stop but the stored plan is priced, and omitting the fields leaves it as it is. To set the plan down, send `remove_trigger_ids` naming the buy, floor and target trigger ids from EXISTING THESIS (keep ≥1 REVIEW wake; the level columns follow the triggers). To keep the plan, send its levels: the buy and the floor, and the target if it has one.",
-    );
   }
 
   if (directional) {
@@ -334,7 +282,7 @@ export function validateThesisDecision(
 
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push(
-      "triggers: a PASS stores no triggers. If you would look again at these, the view is not a PASS: send your direction (LONG or SHORT) with no entry, stop or target, and keep these triggers. If the research doesn't support a view at all, omit the triggers.",
+      "triggers: a PASS stores no triggers. If you would look again at these, the view is not a PASS: send your direction (LONG or SHORT) with no buy, and keep these triggers. If the research doesn't support a view at all, omit the triggers.",
     );
   }
   if (opts.mode === "refresh" && d.triggers !== undefined) {
@@ -343,7 +291,7 @@ export function validateThesisDecision(
     );
   }
   if (opts.mode === "mint" && (d.add_triggers || d.edit_triggers || d.remove_trigger_ids)) {
-    errors.push("add_triggers / edit_triggers / remove_trigger_ids: a mint has no existing triggers to edit — send `triggers` (or omit it for the horizon defaults).");
+    errors.push("add_triggers / edit_triggers / remove_trigger_ids: a mint has no existing triggers to edit — send `triggers`.");
   }
   for (const e of d.edit_triggers ?? []) {
     if (editNumber(e).value !== undefined && !e.rationale?.trim()) {
@@ -353,11 +301,11 @@ export function validateThesisDecision(
 
   // A directional view with nothing on it can never come back (DAV-291).
   // LUXE 2026-09-18: "I want to price a drift or pullback entry rather than
-  // buying now" — then saved LONG with no entry, no trigger and no review.
-  // A watch's horizon defaults carry no clock, so omitting `triggers` on an
-  // unpriced mint leaves zero wakes. Said here, in the writer's loop, with
-  // the level it said it was waiting for — never a refusal at the save.
-  if (directional && !held && !priced && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
+  // buying now" — then saved LONG with no buy, no trigger and no review. A
+  // watch gets no triggers it is not given, so omitting `triggers` on a mint
+  // leaves zero wakes. Said here, in the writer's loop, with the level it
+  // said it was waiting for — never a refusal at the save.
+  if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
     const atr = opts.chart?.atr14;
     const averages = [
       { label: "20-day", ma: opts.chart?.sma20 },
@@ -366,16 +314,16 @@ export function validateThesisDecision(
       .filter((c) => c.ma != null && c.ma.rising)
       .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
-    const plan =
+    const waitingFor =
       canPullback && averages.length
-        ? `Price what you are waiting for: on MA_PULLBACK, buy at ${averages.join(" or ")}, stop ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
-        : "Price the level you are waiting for (the pullback to a rising average, the gap-day low holding) with its stop. ";
+        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, a floor ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
+        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with its floor. ";
     errors.push(
-      `levels: a ${d.direction} with no entry, no trigger and no review can never come back — nothing on the stock can fire. ${plan}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
+      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. ${waitingFor}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );
   }
 
-  // ── Triggers (optional — omission means horizon defaults) ───────────
+  // ── Triggers ─────────────────────────────────────────────────────────
   // On a refresh the same checks run on `add_triggers`: an added trigger is
   // a new trigger, so the action-set rules apply to it alone.
   let parsedTriggers: WriterTrigger[] | undefined;
@@ -408,13 +356,12 @@ export function validateThesisDecision(
           errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
         }
       } else {
-        // Mint, WATCHING refresh, PROMOTED refresh: no position exists.
-        const forbidden = ["EXIT", "TRIM", "ADD"].filter((a) =>
-          actions.has(a as never),
-        );
+        // Mint, WATCHING refresh, PROMOTED refresh: no position exists. A
+        // floor (EXIT) is legal: on a stock we watch it stops watching it.
+        const forbidden = ["TRIM", "ADD"].filter((a) => actions.has(a as never));
         if (forbidden.length > 0) {
           errors.push(
-            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER + REVIEW only.`,
+            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, EXIT (the floor: on a watch it stops watching) and REVIEW.`,
           );
         }
       }
@@ -436,6 +383,53 @@ export function validateThesisDecision(
       ...(dropped.length ? { dropped } : {}),
     },
   };
+}
+
+/**
+ * The buy, the floor and the upside level the decision leaves on the stock,
+ * read off its triggers (a refresh's edits applied to the stored ones), and
+ * whether the decision itself writes a buy or a floor. Pure.
+ */
+export function decisionLevels(
+  d: ThesisDecisionInput,
+  opts: Pick<DecisionValidationOpts, "mode" | "existingStatus" | "existingTriggers">,
+): { entry: number | null; stop: number | null; target: number | null; priced: boolean } {
+  const direction = d.direction === "PASS" ? null : d.direction;
+  const status = opts.mode === "refresh" ? (opts.existingStatus ?? "WATCHING") : "WATCHING";
+  let n = 0;
+  const asStored = (t: unknown): Trigger[] => {
+    const read = triggerInputSchema.safeParse(t);
+    return read.success ? [{ ...(read.data as unknown as Trigger), id: `decision-${n++}` }] : [];
+  };
+  const sets = (t: Trigger) => {
+    const slot = levelSlotOf(t, direction);
+    return slot === "ENTRY" || slot === "FLOOR";
+  };
+  let list: Trigger[];
+  let priced: boolean;
+  if (opts.mode === "mint") {
+    list = ((d.triggers ?? []) as unknown[]).flatMap(asStored);
+    priced = list.some(sets);
+  } else {
+    const stored = opts.existingTriggers ?? [];
+    const adds = ((d.add_triggers ?? []) as unknown[]).flatMap(asStored);
+    const edits = (d.edit_triggers ?? []).filter((e) => editNumber(e).value !== undefined);
+    list = applyTriggerOps({
+      stored,
+      ops: [
+        ...(d.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
+        ...adds.map((trigger) => ({ op: "add" as const, trigger })),
+        ...edits.map((e) => ({ op: "edit" as const, id: e.id, ...editNumber(e), rationale: e.rationale })),
+      ],
+      direction,
+      status,
+      actor: "SYSTEM",
+      mintId: () => `decision-${n++}`,
+    }).triggers;
+    priced = adds.some(sets) || edits.some((e) => stored.some((t) => t.id === e.id && sets(t)));
+  }
+  const { columns } = canonicalLevels({ triggers: list.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })), direction, status });
+  return { entry: status === "HOLDING" ? null : columns.entryPrice, stop: columns.stopLoss, target: columns.targetPrice, priced };
 }
 
 /**

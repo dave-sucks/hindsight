@@ -123,7 +123,7 @@ beforeEach(() => {
 
 describe("update_thesis — the plan rule runs on any level edit", () => {
   it("refuses the 08-27 PLTR edit: moving only the entry onto the target", async () => {
-    const result = await run({ entry_price: 190 });
+    const result = await run({ edit_triggers: [{ id: "enter-1", value: 190, rationale: "Onto the upside line." }] });
     // The entry is refused with the plan message; the rest of the call lands.
     expect(result.data?.ok).toBe(true);
     expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers" })]);
@@ -132,7 +132,7 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
 
   it("accepts an entry edit that leaves the plan under 2:1 (the ratio is not a rule, 2026-11-04)", async () => {
     // 183 → 150 against target 190 / stop 110: reward 40, risk 40 → 1:1.
-    const result = await run({ entry_price: 150 });
+    const result = await run({ edit_triggers: [{ id: "enter-1", value: 150, rationale: "The pullback to $150." }] });
     expect(result.data?.error).toBeUndefined();
     expect(((result.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
     expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.entryPrice === 150)).toBe(true);
@@ -140,7 +140,13 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
 
   it("accepts a re-level that clears the floor in the same call", async () => {
     // entry 165 / target 250 / stop 135: reward 85, risk 30 → 2.8:1.
-    const result = await run({ entry_price: 165, target_price: 250, stop_loss: 135 });
+    const result = await run({
+      edit_triggers: [
+        { id: "enter-1", value: 165, rationale: "The new base at $165." },
+        { id: "target-1", value: 250, rationale: "The measured move to $250." },
+        { id: "floor-1", value: 135, rationale: "Under the base at $135." },
+      ],
+    });
     expect(result.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
@@ -164,7 +170,7 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       }),
     );
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 14.35 });
-    const result = await run({ stop_loss: 16.2 });
+    const result = await run({ edit_triggers: [{ id: "floor-1", value: 16.2, rationale: "Above the fill, under the new shelf." }] });
     expect(result.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });

@@ -13,7 +13,8 @@ import { generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { statSync } from "fs";
 import fixture from "@/lib/agent/__fixtures__/mu-floor-off-969-2026-09-23.json";
-import { replayTool, thesisRow, positionRow, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, type Replay, type Row } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 const FIXTURE = "lib/agent/__fixtures__/mu-floor-off-969-2026-09-23.json";
@@ -40,7 +41,7 @@ async function sentVerbatim(): Promise<{ received: Record<string, unknown>; save
   const model = new MockLanguageModelV3({
     doGenerate: async () =>
       ++turn === 1
-        ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(entry.call) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
+        ? { content: [{ type: "tool-call", toolCallId: "c1", toolName: "update_thesis", input: JSON.stringify(oldLevelFieldsAsTriggerOps(entry.call, entry.thesis.triggers as Trigger[], "LONG")) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] }
         : { content: [{ type: "text", text: "done" }], finishReason: { unified: "stop", raw: undefined }, usage, warnings: [] },
   } as never);
   const out: { received?: Record<string, unknown>; save?: Replay } = {};
@@ -71,7 +72,7 @@ async function sentVerbatim(): Promise<{ received: Record<string, unknown>; save
 describe("MU 09-23: the floor leaves $969 while what-proves-it-wrong still names it", () => {
   it("the save lands the move and the reply says the claim still names the old number", async () => {
     const { received, save } = await sentVerbatim();
-    expect(received.stop_loss).toBe(1041);
+    expect(received.edit_triggers).toEqual(expect.arrayContaining([expect.objectContaining({ id: "t4", value: 1041 })]));
     expect(save.crashed).toBe(false);
     expect(save.refused).toBe(false);
     const row = save.db.store.thesis[0];

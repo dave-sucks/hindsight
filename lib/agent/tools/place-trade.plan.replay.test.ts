@@ -102,8 +102,8 @@ describe("ANET 08-20: the trigger run's buy", () => {
   it("a variant: the row has no floor; the buy is refused with the next move named, and nothing is written", async () => {
     const { buy } = await sentVerbatim(null);
     expect(buy.refused).toBe(true);
-    expect(buy.refusal?.message).toContain("plan has no floor");
-    expect(buy.refusal?.message).toContain("update_thesis (stop_loss)");
+    expect(buy.refusal?.message).toContain("has no floor");
+    expect(buy.refusal?.message).toContain("update_thesis (add_triggers");
     expect(buy.db.store.position ?? []).toHaveLength(0);
     expect(buy.db.store.order ?? []).toHaveLength(0);
   });

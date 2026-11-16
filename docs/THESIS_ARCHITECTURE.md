@@ -303,7 +303,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 1. Discovery in chat: a screen or the movers list surfaces $NVDA.
 2. Research: `get_stock_data`, `get_market_context`, optional `web_search`.
 3. Scores on the 4-dim composite → 6.5. Setup is clean.
-4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', target_price: 220, stop_loss: 180, entry_price: 195, triggers: [...], core_belief, key_assumptions, invalidation_conditions })`.
+4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', triggers: [the buy at 195, the floor at 180, ...], core_belief, key_assumptions, invalidation_conditions })` — a stock has triggers and nothing else (2026-11-16).
 5. Thesis row created. `ThesisUpdate(type='CREATED')` written. **Now on the watchlist.**
 6. Run summary bucket: **Added to watchlist**.
 
@@ -327,7 +327,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 4. Next morning's 8am daily run: `get_theses` returns the PENDING thesis with `needsAction = { kind: 'REVIEW_DUE', daysOverdue: 0, pendingFirstReview: true }`.
 5. Agent researches: `get_stock_data`, scoring, etc.
 6. Calls `update_thesis(thesis_id, ...)` with one of three outcomes:
-   - `direction: 'LONG', target_price, stop_loss, triggers, core_belief, …` — promotes PENDING → LONG WATCHING. Stays on watchlist.
+   - `direction: 'LONG', add_triggers (a buy and a floor), core_belief, …` — promotes PENDING → LONG WATCHING. Stays on watchlist.
    - `direction: 'SHORT', …` — same, bearish.
    - `change_status: 'ARCHIVED'` with rationale — declined coverage. Falls off the watchlist. Shows in run summary's *Removed/Researched-passed* bucket.
 
@@ -457,8 +457,8 @@ The horizon doesn't just label the trade — it constrains the shape of every ot
 
 ### CATALYST / WATCHING / LONG (biotech-event scenario)
 - `catalyst_date` REQUIRED
-- `target_price` = pre-event accumulation level (the ENTER trigger threshold)
-- `stop_loss` = invalidation level
+- the buy trigger = pre-event accumulation level
+- the floor trigger = invalidation level
 - Default triggers: above the target → ENTER (cd=1), any of the filings → REVIEW (cd=1), earnings beat / miss → REVIEW (cd=7), 14d hygiene
 - `key_assumptions` must include something falsifiable about the event
 - `invalidation_conditions` must include "event canceled / event already played"
@@ -473,7 +473,7 @@ The horizon doesn't just label the trade — it constrains the shape of every ot
 - `core_belief` is setup-specific ("$NVDA breaks $185 base on volume")
 
 ### TARGET / ACTIVE / LONG (the 6-month / +150% / -5% anchor)
-- `target_price` = entry × 2.5; `stop_loss` = entry × 0.95
+- a take-profit trigger at entry × 2.5; the floor trigger at entry × 0.95
 - Triggers: below the stop → EXIT (cd=0), above the target → REVIEW, earnings beat / miss → REVIEW (cd=7), 30d hygiene
 - `max_hold_days` not set (TARGET is open-ended)
 
@@ -514,7 +514,7 @@ The Thesis row has three logical sections: **durable belief**, **operational sta
 | `keyAssumptions`     | LONG/SHORT (≥2) | Falsifiable premises that must remain true. Generic prose insufficient. |
 | `invalidationConds`  | LONG/SHORT (≥2); PASS (≥1) | Concrete things that would prove the belief wrong. On PASS theses, double as flip-criteria. |
 
-The **structural-belief gate** (`record_thesis`) enforces the three fields on a directional thesis. The `update_thesis` structural-unchanged-reason gate was deleted 2026-09-25: it refused any target or floor change — including setting a plan down, since levels are triggers — unless a belief field changed, and runs got past it by copying their rationale into `structural_unchanged_reason` (GD 2026-09-25, ISRG 2026-09-23). A level change carries its rationale; `structural_unchanged_reason` is optional and lands on the activity row when sent.
+The **structural-belief gate** (`record_thesis`) enforces the three fields on a directional thesis. The `update_thesis` structural-unchanged-reason gate was deleted 2026-09-25: it refused any upside-line or floor change — including taking the price lines off, since levels are triggers — unless a belief field changed, and runs got past it by copying their rationale into `structural_unchanged_reason` (GD 2026-09-25, ISRG 2026-09-23). A level change carries its rationale; `structural_unchanged_reason` is optional and lands on the activity row when sent.
 
 ### Operational state — mutated freely
 
@@ -572,23 +572,22 @@ Gates (in order): shape · belief · provenance · no-PASS-on-held · researched
 Required: thesis_id, rationale (≥10 chars). Optional: any field on the row, plus:
 - `change_status` (`ACTIVE` / `INVALIDATED` / `CLOSED` / `ARCHIVED`)
 - `direction` (`LONG` / `SHORT` / `PASS`) — **PENDING-promotion only.** Allowed only when existing.direction === 'PENDING'.
-- `entry_price` — required when promoting PENDING → LONG/SHORT.
+- a buy (ENTER) and a floor (EXIT) trigger — required when promoting PENDING → LONG/SHORT.
 - `add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids` (one trigger at a time — DAV-242), `signal_ids`, `trigger_id`, `trade_id`, `structural_unchanged_reason`.
 
 Gates:
 - **Terminal-status block** — can't update INVALIDATED/CLOSED/SUPERSEDED/ARCHIVED.
 - **Direction-change guard** — `direction` arg is only legal when existing.direction === 'PENDING'. Direction flips on committed (LONG ↔ SHORT) theses go through `record_thesis` with `parent_thesis_id`.
-- **PENDING-promotion structural fields** — flipping PENDING → LONG/SHORT requires horizon + target_price + stop_loss + entry_price + core_belief + ≥2 key_assumptions + ≥2 invalidation_conditions in the same call. PENDING → PASS requires ≥1 invalidation_condition (the flip-criteria).
+- **PENDING-promotion structural fields** — flipping PENDING → LONG/SHORT requires horizon + a buy and a floor trigger + core_belief + ≥2 key_assumptions + ≥2 invalidation_conditions in the same call. PENDING → PASS requires ≥1 invalidation_condition (the flip-criteria).
 - **Zero-trigger guard** — review-only updates on theses with no triggers are rejected; agent must add triggers OR close via `change_status: 'INVALIDATED'` or `'ARCHIVED'`. PENDING is exempt (zero triggers is the expected state; promotion attaches them).
-- **Goalpost-moving guard** — refuses to raise `target_price` on a WATCHING thesis whose entry condition is currently met. Bypassed for `change_status: 'ACTIVE'` (legitimate target raise on promotion).
 - **Shape gate** — post-patch (entry, target, stop) satisfies direction-relative ordering. Uses the resulting direction (after `direction` patch) for the check.
-- **ACTIVE promotion requires** `existing.status === 'WATCHING'` and recomputed `target_price` + `stop_loss`.
+- **ACTIVE promotion requires** `existing.status === 'WATCHING'` and the stock's floor trigger.
 
 **PENDING → PASS auto-flips status to ARCHIVED and clears triggers** in the same patch.
 
 ### `place_trade` — opens an Alpaca position from a committed thesis
 
-Required: thesis_id (must be LONG or SHORT, never PENDING), direction, entry_price, target_price, stop_loss. No size: inside a run the tool sizes the buy by risk (the principal's chat may name a notional).
+Required: thesis_id (must be LONG or SHORT, never PENDING), direction, entry_price (the order's expected price; the floor is the stock's own sell trigger, read off the row). No size: inside a run the tool sizes the buy by risk (the principal's chat may name a notional).
 
 Gates (in order):
 - **PENDING reject** — thesis_id pointing at a PENDING thesis is rejected with instructions to promote via `update_thesis` first.

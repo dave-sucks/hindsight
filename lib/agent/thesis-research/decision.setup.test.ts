@@ -6,13 +6,22 @@
  * Specialist (run cmtu9hxmc000004jvp5wbzvpz) — LONG TARGET, entry $62.50,
  * stop $57.50, target $76, MEDIUM, stored setupId null. Chart that day
  * (Alpaca bars through 09-08): ATR(14) $2.94, no base, last swing low
- * $58.73, gapped up 3.9% on 2.5× volume on 09-04. On main this decision is
- * accepted as-is: no setup, no word on why the stop or target sit where they
- * do. Here it comes back with exactly those fields to fix, in-loop.
+ * $58.73, gapped up 3.9% on 2.5× volume on 09-04. The buy, the floor and
+ * the take-profit are triggers (2026-11-16); each trigger's rationale is its
+ * reason, so no separate reason field is owed.
  */
 
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+
+/** A buy, a floor and (when given) a take-profit, as the writer writes them: triggers. */
+function levels(entry: number, stop: number, target?: number) {
+  return [
+    { predicate: { watch: "price", is: "above", value: entry }, action: "ENTER", rationale: "the buy" },
+    { predicate: { watch: "price", is: "below", value: stop }, action: "EXIT", rationale: "the floor" },
+    ...(target != null ? [{ predicate: { watch: "price", is: "above", value: target }, action: "REVIEW", rationale: "take profit" }] : []),
+  ] as NonNullable<ThesisDecisionInput["triggers"]>;
+}
 
 const PEAD_SEAT = setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
 const DOCU_CHART = { atr14: 2.94, pivot: null, brokenOut: null };
@@ -21,9 +30,7 @@ const docu: ThesisDecisionInput = {
   direction: "LONG",
   horizon: "TARGET",
   rationale: "Post-earnings drift after a clean beat; buy a pullback toward the gap area rather than chase.",
-  entry_price: 62.5,
-  target_price: 76,
-  stop_loss: 57.5,
+  triggers: levels(62.5, 57.5, 76),
   core_belief: "DOCU re-rates toward $76 by December as IAM seat growth keeps billings above 8%.",
   key_assumptions: ["Billings growth stays above 8%", "Gross margin holds above 80%"],
   invalidation_conditions: ["A close below $57.50", "Next-quarter billings guide below 6%"],
@@ -34,15 +41,10 @@ const docu: ThesisDecisionInput = {
 const opts = { mode: "mint" as const, setups: PEAD_SEAT, chart: DOCU_CHART };
 
 describe("DOCU 2026-09-09 — the real PEAD mint", () => {
-  it("on main this was accepted; now the writer must name the setup and the bases", () => {
+  it("on main this was accepted; now the writer must name the setup", () => {
     const v = validateThesisDecision(docu, opts);
     expect(v.ok).toBe(false);
     expect(v.errors.some((e) => e.startsWith("setup_id: required"))).toBe(true);
-    expect(v.errors.some((e) => e.startsWith("stop_basis: required"))).toBe(true);
-    expect(v.errors.some((e) => e.startsWith("target_basis: required"))).toBe(true);
-    // No target, no basis owed (2026-11-04): a plan is a buy and a floor; the target is an upside rule only where the setup has one.
-    const noTarget = validateThesisDecision({ ...docu, target_price: undefined, target_basis: undefined, stop_basis: "under the swing low $58.73, 2.2 ATR" }, opts);
-    expect(noTarget.errors.filter((e) => e.startsWith("target_basis"))).toEqual([]);
   });
 
   it("the repaired decision passes — the numbers didn't have to move", () => {
@@ -50,8 +52,6 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
       {
         ...docu,
         setup_id: "PEAD",
-        stop_basis: "under the 08-26 swing low $58.73 — $5.00 below entry, 1.7 ATR",
-        target_basis: "prior high area $76; 2.7R from the $62.50 entry",
       },
       opts,
     );
@@ -59,23 +59,23 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
   });
 
   it("a setup this seat doesn't run is sent back with the seat's list", () => {
-    const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT", stop_basis: "x".repeat(12), target_basis: "y".repeat(12) }, opts);
+    const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT" }, opts);
     expect(v.errors[0]).toMatch(/^setup_id: BASE_BREAKOUT isn't one of this seat's setups \(PEAD, EPISODIC_PIVOT, MA_PULLBACK\)/);
   });
 
   it("a stop inside one ordinary day's move is sent back with the numbers", () => {
     const v = validateThesisDecision(
-      { ...docu, setup_id: "PEAD", stop_loss: 61, target_price: 66, stop_basis: "just under today", target_basis: "3.3R, prior high" },
+      { ...docu, setup_id: "PEAD", triggers: levels(62.5, 61, 66) },
       opts,
     );
     expect(v.errors).toContain(
-      "stop_loss: $61 is 0.51 ATR from the $62.5 entry (ATR $2.94). Post-earnings drift needs the stop at least 1 ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $2.94 from entry, or PASS.",
+      "floor: $61 is 0.51 ATR from the $62.5 buy (ATR $2.94). Post-earnings drift needs the floor at least 1 ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $2.94 from the buy, or PASS.",
     );
   });
 
   it("a buy at the live price is legal — that is how buying now is written", () => {
     const v = validateThesisDecision(
-      { ...docu, setup_id: "PEAD", entry_price: 65.08, stop_loss: 58.6, target_price: 78.5, stop_basis: "under the swing low $58.73, 2.2 ATR", target_basis: "2.1R, measured from the gap" },
+      { ...docu, setup_id: "PEAD", triggers: levels(65.08, 58.6, 78.5) },
       { ...opts, currentPrice: 65.08 },
     );
     expect(v.errors).toEqual([]);
@@ -90,18 +90,14 @@ describe("FIVE 2026-09-09 chart — the chase limit on a breakout", () => {
     ...docu,
     horizon: "TARGET" as const,
     setup_id: "BASE_BREAKOUT" as const,
-    entry_price: 280,
-    stop_loss: 255,
-    target_price: 340,
-    stop_basis: "under the last contraction low, 2.3 ATR",
-    target_basis: "measured move, base depth added to the pivot",
+    triggers: levels(280, 255, 340),
   };
   it("an entry 6.1% past the pivot is sent back", () => {
     const v = validateThesisDecision(breakout, { mode: "mint", setups: seat, chart });
-    expect(v.errors.some((e) => e.startsWith("entry_price: $280 is 6.1% past the base pivot $263.88"))).toBe(true);
+    expect(v.errors.some((e) => e.startsWith("buy: $280 is 6.1% past the base pivot $263.88"))).toBe(true);
   });
   it("an entry at the pivot plus a buffer passes", () => {
-    const v = validateThesisDecision({ ...breakout, entry_price: 264.5, stop_loss: 240, target_price: 320 }, { mode: "mint", setups: seat, chart });
+    const v = validateThesisDecision({ ...breakout, triggers: levels(264.5, 240, 320) }, { mode: "mint", setups: seat, chart });
     expect(v.errors).toEqual([]);
   });
 });
@@ -136,13 +132,13 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     remove_trigger_ids: ["buy-57.25", "floor-54.90", "target-66.50"],
     edit_triggers: [{ id: "review-20d", value: 54.48, rationale: "Anchor the review to the rising 20-day" }],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", existingTargetPrice: 66.5, setups: PEAD_SEAT, chart };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
 
   it("is sent back: PEAD's window closed on day 3, and the pullback plan is named with the chart's numbers", () => {
     const v = validateThesisDecision(hpe, opts);
     expect(v.ok).toBe(false);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), stop 1 ATR ($3.75) under it until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), a floor 1 ATR ($3.75) under it until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.",
     ]);
   });
 
@@ -152,11 +148,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
         ...hpe,
         setup_id: "MA_PULLBACK",
         rationale: "Past the drift window; buy the pullback to the rising 20-day with the stop one ATR under it.",
-        entry_price: 54.48,
-        stop_loss: 50.7,
-        target_price: 62.15,
-        stop_basis: "1 ATR ($3.75) under the rising 20-day $54.48 until the pullback low prints — $3.78 below entry",
-        target_basis: "the 20-day high $62.15; 2.0R from the $54.48 entry",
+        add_triggers: levels(54.48, 50.7, 62.15),
         remove_trigger_ids: undefined,
         edit_triggers: undefined,
       },
@@ -214,12 +206,12 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       },
     ],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", existingTargetPrice: 76, setups: PEAD_SEAT, chart };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
 
   it("is sent back with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), stop 1 ATR ($2.98) under it until the pullback low prints — or keep the view unpriced (no setup_id, no levels) with the review that brings it back.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), a floor 1 ATR ($2.98) under it until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.",
     ]);
   });
 
@@ -228,13 +220,8 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       {
         ...docu,
         setup_id: "MA_PULLBACK",
-        entry_price: 64.5,
-        stop_loss: 61.5,
-        target_price: 82.96,
-        stop_basis: "1 ATR ($2.98) under the rising 20-day $64.50 until the pullback low prints — $3.00 below entry",
-        target_basis: "1.272 extension of the June–September leg, $82.96; 6.2R",
+        add_triggers: levels(64.5, 61.5, 82.96),
         remove_trigger_ids: undefined,
-        add_triggers: undefined,
       },
       opts,
     );

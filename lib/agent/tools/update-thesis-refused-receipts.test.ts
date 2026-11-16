@@ -112,7 +112,7 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
     // The trigger changes are refused together; the note lands as a review.
     expect(result.data?.ok).toBe(true);
-    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
+    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To take them all off") })]);
     expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
 
     const ops = result.data?.trigger_ops as TriggerOpResult[];
@@ -126,7 +126,7 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
   it("the refusal names the exact set-down call, and following it lands", async () => {
     const refused = await run({ remove_trigger_ids: [BUY, CADENCE] });
     const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
-    expect(message).toContain("To set the plan down");
+    expect(message).toContain("To take them all off");
     // Buy, floor and target by id — not the review cadence, which survives a set-down.
     const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
     expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());

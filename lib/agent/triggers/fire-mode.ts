@@ -97,7 +97,7 @@ export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: 
 
 /** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
 export function fireModeWords(t: { action: string; fireMode?: FireMode | null }, sells = true): string {
-  // A sale on a stock we don't own takes the plan down when it fires, whatever is set.
-  if (t.action === "EXIT" && !sells) return "Takes the plan down when it fires";
+  // A sale on a stock we don't own stops watching it when it fires, whatever is set.
+  if (t.action === "EXIT" && !sells) return "Stops watching when it fires";
   return fireModeLabel(fireModeOf(t), t.action);
 }

@@ -76,8 +76,8 @@ describe("validateThesisShape", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toBe("LONG-target-not-above-entry");
-      expect(r.note).toContain("entry=$487");
-      expect(r.note).toContain("target=$470");
+      expect(r.note).toContain("the buy is $487");
+      expect(r.note).toContain("the upside line $470");
     }
   });
 

@@ -44,8 +44,8 @@ import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
- * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
- * regenerating HELD-side triggers based on the executed entry/target/stop.
+ * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING.
+ * The stock keeps its triggers; the buy comes off (armHeldLadderOnFill).
  *
  * Mirrors place_trade.ts:802-874. Idempotent — if no WATCHING / PROMOTED
  * thesis is found (e.g. the agent already flipped it manually), no-op.
@@ -120,11 +120,11 @@ export async function promoteThesisOnApproval(opts: {
  *     trigger that is there, an add if none)
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
- *   - adds each held-side template trigger whose bucket is missing — the
- *     held review cadence and the earnings reviews. Sell rules and
- *     scale-ins are NOT stamped: they are the analyst's and the account's
- *     rules and apply by inheritance, so editing them reaches every
- *     holding instead of none
+ *   - adds the horizon's held review clock when its bucket is missing. No
+ *     floor, target or level is stamped from the fill: the watch's sale
+ *     line is the holding's sale line. Sell rules and scale-ins are the
+ *     analyst's and the account's rules and apply by inheritance, so
+ *     editing them reaches every holding instead of none
  *   - recomputes the displayed level columns FROM the resulting triggers
  *   - stamps entryPrice with the FILL price: once held, entry is a fact
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
@@ -170,19 +170,8 @@ export async function armHeldLadderOnFill(opts: {
 
     const horizon = watchingThesis.horizon as Horizon | null;
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
-    const heldTemplate = horizon
-      ? defaultTriggersForHorizon(
-          horizon,
-          {
-            entryPrice: opts.fillPrice,
-            targetPrice: opts.targetPrice,
-            stopLoss: opts.stopLoss,
-            catalystDate: watchingThesis.catalystDate ?? null,
-            direction: watchingThesis.direction as "LONG" | "SHORT",
-          },
-          "HELD",
-        )
-      : [];
+    // A held stock's review clock, keyed off its horizon — nothing else from a template.
+    const heldClock = horizon ? defaultTriggersForHorizon(horizon, "HELD") : [];
     // The stock's own exits from the setup it was bought on (DAV-254): the
     // time limit counted from this buy, a partial at N R, the beat-the-
     // market-sold review. Seat style (the trail) stays on the analyst.
@@ -208,13 +197,10 @@ export async function armHeldLadderOnFill(opts: {
       ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
       ...(opts.stopIsOwners ? [] : floorOp),
       ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-      // The template's hard stop is not written: "stop when buying" is the one automatic floor.
-      ...heldTemplate
-        .filter((t) => levelSlotOf(t, watchingThesis.direction) !== "FLOOR")
-        .map((t) => ({ op: "add" as const, trigger: t })),
+      ...heldClock.map((t) => ({ op: "add" as const, trigger: t })),
       ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
     ];
-    // A template trigger whose bucket the analyst already filled is left
+    // A clock or setup exit whose bucket the analyst already filled is left
     // alone: the add would become an edit of theirs, and the fill must not
     // move a level the analyst chose.
     const taken = new Set(stored.map(triggerSlot));

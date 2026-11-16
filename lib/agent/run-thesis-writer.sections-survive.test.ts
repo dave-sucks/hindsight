@@ -109,7 +109,7 @@ function research(): WriterResearchPhaseOutput {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
-    existingTargetPrice: fx.thesis.targetPrice,
+    existingTriggers: fx.thesis.triggers as never,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });

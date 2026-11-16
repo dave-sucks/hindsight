@@ -91,10 +91,9 @@ export interface MeasureDef {
   /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
   says?: (c: Condition, words: string) => string;
   /**
-   * A typed price level: a floor or a target. A buy on one is one rule
-   * whichever way it is set (the price you'd start at); on a stock we don't
-   * own, a sale on one sets the plan down and waits for the close; a review
-   * reached before the buy says the plan is stale.
+   * A typed price level. A buy on one is one rule whichever way it is set
+   * (the price you'd start at); on a stock we don't own, a sale on one stops
+   * watching it and waits for the close.
    */
   level?: (c: Condition) => boolean;
   /** The label a sale on it closes with: STOP for a protective give-back, TARGET for a favourable level; null when the analyst labels it. */

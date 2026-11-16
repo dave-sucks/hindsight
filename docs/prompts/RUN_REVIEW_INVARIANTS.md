@@ -97,7 +97,7 @@ WHERE g."createdAt" > '<today> 04:00:00+00' ORDER BY g."createdAt";
 ```
 Then read the next ThesisUpdate on the same stock. Bad: the agent archived the
 name, or moved a different number, to get past the rule (the "move the bar"
-shape). Good: it fixed the level, set the plan down, or left it and said why.
+shape). Good: it fixed the level, took the buy off, or left it and said why.
 
 ## 8. Money paid for research that was thrown away
 

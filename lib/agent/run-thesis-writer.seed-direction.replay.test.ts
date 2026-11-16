@@ -16,7 +16,7 @@
 import { statSync } from "fs";
 import type { z } from "zod";
 import fixture from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
-import { replayTool, thesisRow, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, type Row } from "@/lib/replay";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "./run-thesis-writer";
 
@@ -26,7 +26,8 @@ const fx = fixture as unknown as Fixture;
 
 const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: fx.run.ticker, mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
 const pull = { currentPrice: fx.run.price, catalystOnFile: null } as never;
-const decision = fx.decision as unknown as ValidatedThesisDecision;
+// The decision as the writer writes it now: its buy, floor and take-profit are triggers (the level fields went 2026-11-16).
+const decision = oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG") as unknown as ValidatedThesisDecision;
 const SEED = { direction: null, status: "WATCHING" };
 
 /**

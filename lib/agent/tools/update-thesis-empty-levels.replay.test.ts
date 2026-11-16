@@ -1,6 +1,8 @@
 /**
- * update-thesis-empty-levels.replay.test.ts — an empty level is no change; a
- * level is removed by its trigger's id.
+ * update-thesis-empty-levels.replay.test.ts — a level is a trigger, removed
+ * only by its id. Since 2026-11-16 no save has the entry / target / stop
+ * fields at all; the calls below still carry them, as sent, and they reach
+ * nothing.
  *
  * PRAX, Mon 2026-11-16. The 08:02 morning run kept the buy, floor and target.
  * At 09:30 two filing triggers fired and two trigger runs answered them. Both
@@ -65,7 +67,7 @@ const removals = (r: Awaited<ReturnType<typeof save>>) =>
 
 describe("PRAX 2026-11-16: the trigger runs' saves, verbatim", () => {
   for (const [n, call] of fx.calls.entries()) {
-    it(`call ${n + 1} (${call.runId}) sends the levels empty; the note lands and the buy, floor and target stay`, async () => {
+    it(`call ${n + 1} (${call.runId}) sends the old level fields empty; the note lands and the buy, floor and review stay`, async () => {
       expect([call.input.stop_loss, call.input.target_price]).toEqual([null, null]);
       const r = await save(call.input);
       expect(r.crashed).toBe(false);
@@ -83,7 +85,7 @@ describe("PRAX 2026-11-16: the trigger runs' saves, verbatim", () => {
     });
   }
 
-  it("removing a level is remove_trigger_ids: the same call naming the three by id sets the plan down", async () => {
+  it("removing a level is remove_trigger_ids: the same call naming the three by id takes them off", async () => {
     const r = await save({ ...fx.calls[1].input, remove_trigger_ids: [BUY, FLOOR, TARGET] });
     expect(r.refused).toBe(false);
     expect(removals(r).map((o) => o.id).sort()).toEqual([BUY, FLOOR, TARGET].sort());
@@ -92,6 +94,12 @@ describe("PRAX 2026-11-16: the trigger runs' saves, verbatim", () => {
 });
 
 describe("every door reads an empty level the same way", () => {
+  it("no door offers a level field: a level is a trigger, edited by id", async () => {
+    for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN", "THESIS_WRITER", "PRINCIPAL_CHAT"]) {
+      const fields = Object.keys((await door(runMode) as unknown as { shape: Record<string, unknown> }).shape);
+      for (const f of ["entry_price", "target_price", "stop_loss", "stop_basis", "target_basis", "entry_on_close"]) expect([runMode, f, fields.includes(f)]).toEqual([runMode, f, false]);
+    }
+  });
   for (const runMode of ["MORNING_PLAN", "THESIS_WRITER", "PRINCIPAL_CHAT"]) {
     it(`${runMode}: the second call's empty buy, floor and target change nothing`, async () => {
       const r = await save(fx.calls[1].input, runMode);

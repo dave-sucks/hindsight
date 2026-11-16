@@ -128,12 +128,6 @@ const crwdMint = {
   setup_id: "COMPOUNDER_ACCUMULATION",
   reasoning_summary:
     "Two quarters of re-accelerating ARR with raised guidance. 11.5% above the rising 20-day; arm the pullback entry at the 20-day with the stop under the 50-day.",
-  entry_price: 242.28,
-  target_price: 323.15,
-  stop_loss: 218,
-  stop_basis: "About 2.1 ATR below the 20-day entry, under the rising 50-day ($219.80).",
-  target_basis: "1.272 extension of the April–October up-leg; 3.3R from entry.",
-  entry_on_close: false,
   current_price: 270.04,
   scoring: {
     catalystFreshness: { score: 2, note: "Record net new ARR on August 26; next print December 1." },
@@ -154,7 +148,11 @@ const crwdMint = {
     "Two consecutive quarters of net new ARR below $300M.",
     "Gross margin below 75% for two consecutive quarters.",
   ],
+  // Its buy price, floor and take-profit, as the writer writes them now: triggers (the level fields went 2026-11-16).
   triggers: [
+    { action: "ENTER", predicate: { watch: "price", is: "below", value: 242.28 }, rationale: "The pullback to the rising 20-day at $242.28." },
+    { action: "EXIT", predicate: { watch: "price", is: "below", value: 218 }, rationale: "About 2.1 ATR below the 20-day entry, under the rising 50-day ($219.80)." },
+    { action: "REVIEW", predicate: { watch: "price", is: "above", value: 323.15 }, rationale: "1.272 extension of the April–October up-leg; 3.3R from entry." },
     {
       action: "ENTER",
       predicate: { watch: "move", is: "near", value: 2, variable: "sma20" },
@@ -181,7 +179,7 @@ const crwdMint = {
 };
 
 describe("committing a direction uses the buy already on the stock", () => {
-  it("SMMT: the commit lands without entry_price, with its one existing buy", async () => {
+  it("SMMT: the commit lands with its one existing buy and no second one", async () => {
     const { entry_price: _omit, ...withoutLevel } = smmtCommit;
     void _omit;
     const { refused, refusal, db } = await replayTool("update-thesis", "updateThesis", {

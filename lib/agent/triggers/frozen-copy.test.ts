@@ -172,16 +172,8 @@ describe("DAV-322 — the copies come off", () => {
 describe("DAV-322 — a new holding is not given a copy in the first place", () => {
   it("8. no horizon's held template stamps a rung the account already carries", () => {
     const accountBuckets = new Set(accountSeedTriggers().map(triggerSlot));
-    const thesis = {
-      ticker: "X",
-      direction: "LONG" as const,
-      entryPrice: 100,
-      targetPrice: 130,
-      stopLoss: 92,
-      catalystDate: new Date("2026-11-01"),
-    };
     for (const horizon of ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const) {
-      const stamped = defaultTriggersForHorizon(horizon, thesis as never, "HELD");
+      const stamped = defaultTriggersForHorizon(horizon, "HELD");
       const clash = stamped.filter((s) => accountBuckets.has(triggerSlot(s)));
       // The review clock is the one shared bucket that is legitimately the
       // thesis's own — a CATALYST name reviews on its own schedule, not the

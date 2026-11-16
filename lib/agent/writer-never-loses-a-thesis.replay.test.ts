@@ -58,7 +58,7 @@ beforeAll(async () => {
 });
 
 const decide = (c: Case, d: Record<string, unknown> = c.decision) =>
-  validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price, existingTargetPrice: null, setups: setupsForAnalyst([c.decision.setup_id]), chart: null });
+  validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price, setups: setupsForAnalyst([c.decision.setup_id]), chart: null });
 
 /** submit_thesis as the Writer builds it; its input schema is what the SDK parses the model's call with. */
 const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) =>

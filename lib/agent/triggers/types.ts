@@ -29,8 +29,8 @@
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
 import { shapeOf } from "./condition/valid";
-import { isLevel, onTheClose, protectiveCloseReason, risesWith } from "./condition/rules";
-import type { Condition, When } from "./condition/types";
+import { onTheClose, protectiveCloseReason, risesWith } from "./condition/rules";
+import type { When } from "./condition/types";
 import type { FireMode } from "./fire-mode";
 
 export type SignalType =
@@ -70,21 +70,7 @@ export type TriggerAction =
   | "EXIT"
   | "ENTER"
   | "ADD"
-  | "TRIM"
-  /**
-   * Set the plan down: drop the buy / floor / target levels, keep watching.
-   *
-   * Never authored — it is CHOSEN AT FIRE TIME by `effectiveTriggerAction`
-   * when a price level fires on a thesis we don't own. Storing it on the
-   * trigger would mean every status change (buy, promote, opt-out) had to
-   * rewrite trigger actions to stay correct, and the first path that forgot
-   * would leave a "sell" armed on a watch item or a "demote" armed on a
-   * live position.
-   *
-   * See docs/plans/LEVELS_AS_TRIGGERS.md (L5). DAV-209 calls the same write
-   * for the on-demand version.
-   */
-  | "DEMOTE";
+  | "TRIM";
 
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so cooldown can be tracked. */
@@ -185,69 +171,14 @@ export function autoSellCloseReason(predicate: unknown, direction: string | null
 }
 
 /**
- * What a trigger actually means for a thesis in this state.
- *
- * A price level is written once and outlives the thesis's state changes, so
- * the same level has to mean different things depending on whether we own the
- * stock:
- *
- *                       HOLDING            WATCHING / PROMOTED
- *   floor breached      EXIT (sell)        DEMOTE — the plan's premise broke
- *   target reached      REVIEW (decide)    DEMOTE — it happened without us
- *   buy level hit       (no buy armed)     ENTER
- *
- * Real cases: KLAC (buy $262, floor $225, price $184 — floor breached in
- * June and nothing happened) and NTNX (buy $47.12, target $60.87, price
- * $67.64 — sailed past the target, never bought). Both should have set the
- * plan down; neither could, because "sell" is meaningless with nothing to
- * sell and there was no other verb.
- *
- * Deriving this instead of storing it is what keeps a promotion or an opt-out
- * from having to rewrite the ladder. Pure.
- */
-export function effectiveTriggerAction(
-  trigger: { action: TriggerAction; predicate: unknown },
-  state: {
-    status?: string | null;
-    direction?: string | null;
-    /**
-     * Does the stock carry a buy (an ENTER trigger)? With none, a review at
-     * any price is a wake, not a target: it fires as a review (QB ruling on
-     * DAV-335, 2026-09-29). Absent ⇒ treated as having one, as before.
-     */
-    hasBuy?: boolean;
-  },
-): TriggerAction {
-  if (state.status === "HOLDING") return trigger.action;
-
-  // A sell on something we don't own can only mean the plan is wrong. This
-  // covers judgment exits (earnings, signals) too — on an un-held thesis
-  // those say the same thing.
-  if (trigger.action === "EXIT") return "DEMOTE";
-
-  // An upside price level reached before we bought: the move happened
-  // without us, so the priced plan is stale. Housekeeping REVIEWs (earnings,
-  // review cadence, news) are untouched — they still just want a look. With
-  // no buy there is no priced plan to go stale: the level is a wake.
-  const w = shapeOf(trigger.predicate);
-  if (trigger.action === "REVIEW" && w != null && isLevel(w) && state.hasBuy !== false) {
-    const above = (w as Condition).is === "above";
-    const favourable = state.direction !== "SHORT" ? above : !above;
-    if (favourable) return "DEMOTE";
-  }
-
-  return trigger.action;
-}
-
-/**
  * When a trigger is read, for a thesis in this state (DAV-337).
  *
- * On a stock we don't own, a sell trigger sets the plan down (above), and a
- * plan comes down only on a close past its floor — never an intraday touch.
- * An undercut of a low that is reclaimed the same day is a shakeout, not a
- * breakdown: TRV opened at $359.51 on 2026-09-29, under its $359.87 floor,
- * traded back to $363.83 that morning, and its plan was gone at 09:30. In
- * the 30 days to that day, three of six floor set-downs were dips like it.
+ * On a stock we don't own, a sell trigger stops watching it (the trigger
+ * evaluator retires the thesis), and only on a close past its line — never an
+ * intraday touch. An undercut of a low that is reclaimed the same day is a
+ * shakeout, not a breakdown: TRV opened at $359.51 on 2026-09-29, under its
+ * $359.87 floor, traded back to $363.83 that morning, and its buy was gone at
+ * 09:30. In the 30 days to that day, three of six such fires were dips like it.
  *
  * So on a thesis we don't hold, a sell trigger's typed price levels read the
  * day's close (the 16:20 pass). On a stock we hold the floor is a sale and

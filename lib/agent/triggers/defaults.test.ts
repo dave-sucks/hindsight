@@ -1,19 +1,8 @@
 /**
- * defaults.test.ts — verifies the P1-3 fix.
- *
- * Pre-fix: watchingEntryTrigger read `thesis.targetPrice` and emitted
- * price above(targetPrice) → ENTER. Since `targetPrice` was the
- * take-profit level when the thesis went ACTIVE, the default ENTER
- * fired at the same level as the take-profit EXIT — buying at the sell
- * level. Production bug: MDB 2026-05-25.
- *
- * Post-fix: watchingEntryTrigger reads `thesis.entryPrice` (the writer's
- * actual entry intent). targetPrice is reserved exclusively for the
- * take-profit semantic on ACTIVE rows.
- *
- * These tests pin the behavior so the fix can't quietly regress.
- *
- * See docs/plans/PRICE_LEVEL_SEMANTICS.md.
+ * defaults.test.ts — what code writes on a thesis by itself, and the
+ * trigger defaults. A stock has triggers and nothing else (2026-11-16): the
+ * horizon template writes a held stock's review clock and never a buy, a
+ * floor, a target or an "8% below entry" review.
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -27,109 +16,32 @@ import {
   scaleInOnPullbackTrigger,
   mergeTriggers,
   resolvedCadenceDays,
-  type ThesisShape,
+  CADENCE_DAYS_BY_HORIZON,
 } from "./defaults";
 import { accountSeedTriggers } from "./seed-account";
 import { triggersArraySchema } from "./schema";
 import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
-function base(overrides: Partial<ThesisShape> = {}): ThesisShape {
-  return {
-    entryPrice: 175,
-    targetPrice: 240,
-    stopLoss: 168,
-    direction: "LONG",
-    ...overrides,
-  };
-}
+const HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
 
-describe("defaultTriggersForHorizon — WATCHING ENTER trigger (P1-3 fix)", () => {
-  it("LONG WATCHING TARGET — ENTER fires at entryPrice, NOT targetPrice", () => {
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "WATCHING");
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter).toBeDefined();
-    expect(enter!.predicate).toEqual({ watch: "price", is: "above", value: 175 }); // entryPrice
-    expect(enter!.predicate).not.toEqual({ watch: "price", is: "above", value: 240 }); // NOT targetPrice
-  });
+describe("defaultTriggersForHorizon — the review clock and nothing else", () => {
+  for (const horizon of HORIZONS) {
+    it(`HELD ${horizon}: one review clock at the horizon's cadence, stamped DEFAULT, and no price level`, () => {
+      const triggers = defaultTriggersForHorizon(horizon, "HELD");
+      expect(triggers.map((t) => [t.action, t.predicate, t.source])).toEqual([["REVIEW", { watch: "repeat", value: CADENCE_DAYS_BY_HORIZON[horizon] }, "DEFAULT"]]);
+    });
 
-  it("LONG WATCHING TRADE — ENTER fires at entryPrice", () => {
-    const triggers = defaultTriggersForHorizon("TRADE", base(), "WATCHING");
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter?.predicate).toEqual({ watch: "price", is: "above", value: 175 });
-  });
+    it(`WATCHING ${horizon}: nothing — a watch carries what its author wrote (DAV-209)`, () => {
+      expect(defaultTriggersForHorizon(horizon, "WATCHING")).toEqual([]);
+    });
+  }
 
-  it("LONG WATCHING COMPOUNDER — ENTER fires at entryPrice", () => {
-    const triggers = defaultTriggersForHorizon("COMPOUNDER", base(), "WATCHING");
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter?.predicate).toEqual({ watch: "price", is: "above", value: 175 });
-  });
-
-  it("LONG WATCHING CATALYST (catalyst far out) — ENTER fires at entryPrice", () => {
-    // CATALYST defaults to event-based ENTER (earnings beat) when
-    // catalystDate is within 7 days. With catalystDate further out,
-    // falls back to the standard breakout-entry default.
-    const farFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const triggers = defaultTriggersForHorizon(
-      "CATALYST",
-      base({ catalystDate: farFuture }),
-      "WATCHING",
-    );
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter?.predicate).toEqual({ watch: "price", is: "above", value: 175 });
-  });
-
-  it("SHORT WATCHING — ENTER fires price below(entryPrice), direction-aware", () => {
-    const triggers = defaultTriggersForHorizon(
-      "TARGET",
-      base({ direction: "SHORT", entryPrice: 175, targetPrice: 110, stopLoss: 195 }),
-      "WATCHING",
-    );
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter?.predicate).toEqual({ watch: "price", is: "below", value: 175 });
-  });
-
-  it("PROMOTED reuses WATCHING templates — ENTER fires at entryPrice", () => {
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter?.predicate).toEqual({ watch: "price", is: "above", value: 175 });
-  });
-
-  it("no ENTER trigger when entryPrice is null (writer wants 'buy now via no-trigger')", () => {
-    const triggers = defaultTriggersForHorizon(
-      "TARGET",
-      base({ entryPrice: null }),
-      "WATCHING",
-    );
-    const enter = triggers.find((t) => t.action === "ENTER");
-    expect(enter).toBeUndefined();
-  });
-
-  it("targetPrice still drives EXIT/REVIEW triggers on ACTIVE side (unchanged)", () => {
-    // The fix is scoped to WATCHING. On the HELD/ACTIVE side, targetPrice
-    // remains the take-profit level driving exit-side triggers — that's
-    // its correct meaning.
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "HELD");
-    const targetTrigger = triggers.find(
-      (t) =>
-        shapeName(t.predicate) === "price:above" &&
-        (t.predicate as Condition).value === 240,
-    );
-    expect(targetTrigger).toBeDefined();
-    // It's a take-profit REVIEW (or EXIT depending on horizon), NOT an ENTER.
-    expect(targetTrigger!.action).not.toBe("ENTER");
+  it("PROMOTED: nothing — the promotion keeps the stock's own triggers", () => {
+    expect(defaultTriggersForHorizon("TARGET", "PROMOTED")).toEqual([]);
   });
 });
 
-/**
- * 2026-06-02 NVDA runaway — the agent stamped `cooldownDays: 0` on a
- * a 14d REVIEW rung via `update_thesis`. The old `!= null` check
- * walked past the 0 and the trigger evaluator fired 15 times in 70 min
- * before manual hotfix. These tests pin the rule: on any action,
- * `cooldownDays: 0` is not a wait and the default filler overwrites it
- * (an EXIT kept its 0 until 2026-11-02, when CEG's sale woke a run every
- * five minutes while the analyst held).
- */
 describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
   function mkTrigger(
     overrides: Partial<Trigger> & Pick<Trigger, "action" | "predicate">,
@@ -227,49 +139,6 @@ describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
   });
 });
 
-const HELD_HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
-
-/**
- * DAV-250: the fill no longer stamps constant sell rules or scale-ins onto
- * the thesis. A thesis-level rung beats any account rule in its bucket, so
- * stamping them froze every holding on one TARGET ladder (an 8% trail sell
- * on compounders whose mandate forbids it). They are account rules now, one
- * rules on the analyst (its Triggers tab).
- */
-describe("defaultTriggersForHorizon — HELD carries only the thesis's own levels", () => {
-  // A % sell rule or scale-in: a move from our entry, from the high, or from a recent close.
-  const percentRule = (p: unknown) => /^move:(above|below):(entry|peak|prev_close|close_5d|close_20d)$/.test(shapeName(p) ?? "");
-
-  for (const horizon of HELD_HORIZONS) {
-    it(`HELD ${horizon} stamps no scale-in and no percentage sell rule`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
-      expect(triggers.filter((t) => t.action === "ADD")).toEqual([]);
-      expect(triggers.filter((t) => percentRule(t.predicate))).toEqual([]);
-    });
-
-    it(`HELD ${horizon} keeps its review clock and its floor`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "HELD");
-      expect(triggers.filter((t) => shapeName(t.predicate) === "repeat")).toHaveLength(1);
-      expect(
-        triggers.some(
-          (t) => t.action === "EXIT" && shapeName(t.predicate) === "price:below" && (t.predicate as Condition).value === 168,
-        ),
-      ).toBe(true);
-    });
-
-    it(`WATCHING ${horizon} has no ADD and no protection rungs`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
-      expect(triggers.filter((t) => percentRule(t.predicate))).toEqual([]);
-    });
-  }
-
-  it("PROMOTED has no ADD rung (no live position yet)", () => {
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
-    expect(triggers.find((t) => t.action === "ADD")).toBeUndefined();
-  });
-});
-
 describe("accountStandingRules — the account carries adds, never sell rules", () => {
   it("is the +7% add prompt and nothing else — the −7% add is the Compounder's own (DAV-279)", () => {
     const rules = accountStandingRules();
@@ -296,42 +165,10 @@ describe("mergeTriggers", () => {
         cooldownDays: 0,
       },
     ];
-    const merged = mergeTriggers(defaultTriggersForHorizon("TARGET", base(), "HELD"), agent);
-    const floors = merged.filter((t) => shapeName(t.predicate) === "price:below" && t.action === "EXIT");
-    expect(floors).toHaveLength(1);
-    expect(floors[0].id).toBe("agent-1");
-    expect(merged.some((t) => shapeName(t.predicate) === "repeat")).toBe(true);
-  });
-});
-
-// ── A watch carries only what its author wrote (DAV-209) ──
-describe("defaultTriggersForHorizon — WATCHING carries only the author's levels", () => {
-  for (const horizon of HELD_HORIZONS) {
-    it(`WATCHING ${horizon} template carries NO review clock`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, base(), "WATCHING");
-      expect(triggers.filter((t) => shapeName(t.predicate) === "repeat")).toHaveLength(0);
-    });
-
-    it(`WATCHING ${horizon} with no prices emits NOTHING`, () => {
-      const triggers = defaultTriggersForHorizon(
-        horizon,
-        { entryPrice: null, targetPrice: null, stopLoss: null, catalystDate: null, direction: "LONG" },
-        "WATCHING",
-      );
-      expect(triggers).toEqual([]);
-    });
-
-    it(`WATCHING ${horizon} emits ONLY the author's own levels`, () => {
-      const kinds = new Set(defaultTriggersForHorizon(horizon, base(), "WATCHING").map((t) => shapeName(t.predicate)));
-      expect(kinds.has("repeat")).toBe(false);
-      expect(kinds.has("surprise:beat")).toBe(false);
-      expect(kinds.has("surprise:miss")).toBe(false);
-    });
-  }
-
-  it("PROMOTED still gets its re-entry rung off the author's entry level", () => {
-    const triggers = defaultTriggersForHorizon("TARGET", base(), "PROMOTED");
-    expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
+    const clock: Trigger = { id: "agent-clock", predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Every two weeks." };
+    const merged = mergeTriggers(defaultTriggersForHorizon("TARGET", "HELD"), [...agent, clock]);
+    // The analyst's clock wins its bucket; the template adds nothing else.
+    expect(merged.map((t) => t.id)).toEqual(["agent-1", "agent-clock"]);
   });
 });
 
@@ -343,10 +180,7 @@ describe("triggerSlot — ENTER on a price level is one bucket", () => {
     // this position" — however it's phrased. Without collapsing them, a
     // thesis could carry two contradictory ENTERs, one of which can never
     // be right.
-    const shape = { entryPrice: 262, targetPrice: 340, stopLoss: 210, direction: "LONG" as const };
-    const breakout = defaultTriggersForHorizon("COMPOUNDER", shape, "WATCHING").find(
-      (t) => t.action === "ENTER",
-    )!;
+    const breakout: Trigger = { id: "buy", predicate: { watch: "price", is: "above", value: 262 }, action: "ENTER", rationale: "I buy the breakout." };
     const dip = {
       ...breakout,
       predicate: { watch: "price", is: "below", value: 262 } as When,

@@ -22,30 +22,30 @@ import { updateThesis } from "./update-thesis";
 
 const DOOR = [
   "add_triggers", "answers_update_id", "catalyst_date", "change_status", "conviction", "conviction_rationale", "edit_triggers",
-  "entry_on_close", "entry_price", "horizon", "rationale", "remove_trigger_ids",
-  "setup_id", "stop_basis", "stop_loss", "target_basis", "target_price", "thesis_id", "trigger_id", "verdict", "verdict_line",
+  "horizon", "rationale", "remove_trigger_ids",
+  "setup_id", "thesis_id", "trigger_id", "verdict", "verdict_line",
 ];
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
 const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const enumOf = (runMode: string) => (zodSchema(schemaOf(runMode) as never).jsonSchema as { properties: Record<string, { enum?: string[] }> }).properties.change_status.enum;
 
 describe("the morning run's save", () => {
-  it("offers exactly twenty-one fields, change_status with its three values", () => {
+  it("offers exactly fifteen fields, change_status with its three values", () => {
     expect(Object.keys(schemaOf("MORNING_PLAN").shape).sort()).toEqual(DOOR);
-    expect(DOOR).toHaveLength(21);
+    expect(DOOR).toHaveLength(15);
     expect(enumOf("MORNING_PLAN")).toEqual(["INVALIDATED", "ARCHIVED", "WATCHING"]);
     for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction"]) expect(DOOR).not.toContain(dropped);
   });
 
   it("leaves the other doors' saves as they were", () => {
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(14);
+    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(9);
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
-    expect(chat).toHaveLength(24);
+    expect(chat).toHaveLength(18);
     for (const f of ["price_at_time", "snapshot", "variant_view"]) expect(chat).not.toContain(f);
     expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
-    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(35);
-    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(25);
+    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(29);
+    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(19);
   });
 
   it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {

@@ -112,8 +112,8 @@ any shape.
 **How a trigger reads.** Everywhere — the pill, Activity, the agents' prompts,
 the tactical kickoff — a trigger is one sentence from `condition/describe.ts`:
 "Sell if below $150", "Review every 30 days", "Buy if within 2% of the 20-day
-average", "Take the plan down if below $132" (a sale on a stock we don't own
-sets the plan down). There is no second vocabulary.
+average", "Stop watching if below $132" (a sale on a stock we don't own
+ends the watch). There is no second vocabulary.
 
 **The chart measures read the daily indicator snapshot** (DAV-247):
 `lib/inngest/functions/indicator-snapshot.ts` runs at 06:30 ET, computes the
@@ -458,8 +458,9 @@ but the price path only **evaluates during the regular session**:
   with no bar for today is skipped rather than evaluated on a guess. Cooldown
   makes the three ticks fire a rung at most once.
 - **A watched stock's floor reads the close** (DAV-337). On a stock we don't
-  hold, a sell trigger sets the plan down, and it does so only on a close
-  below the floor — never an intraday touch (TRV 2026-09-29: opened under
+  hold, a sell trigger stops watching it (the thesis retires as dropped,
+  `lib/agent/triggers/stop-watching.ts`), and it does so only on a close
+  below the line — never an intraday touch (TRV 2026-09-29: opened under
   its floor, back above it that morning). `watchedFloorOnClose` in
   `lib/agent/triggers/types.ts` reads such a trigger's level on the close where
   triggers are read (the five-minute check, the morning run's snapshot, the
@@ -476,16 +477,16 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   `applyTriggerAdd`, `applyTriggerReplace` (the dialog's Save: condition,
   action and On fire in one write), `applyTriggerDelete` — each is one op. The reject dialog embeds the same
   editor (`editableOnly`: price/% triggers only).
-- **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`;
-  `entry_price` / `target_price` / `stop_loss` are the same op on the buy /
-  target / floor trigger. Sent empty, a level is no change; a level is removed
-  only by id, in `remove_trigger_ids`. `record_thesis` still takes a whole `triggers` list —
-  a mint is a new list by definition — merged with the horizon defaults.
-- **A buy fill** removes the buy trigger, sets the floor and target to the
-  executed levels, and adds the held-side template triggers that are missing
-  (`armHeldLadderOnFill`). Never a rewrite: the analyst's target and reviews
-  survive the fill. The templates' hard stop is not written: the one
-  automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
+- **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`,
+  the only way a trigger changes; there are no level fields (2026-11-16: a stock
+  has triggers and nothing else). `record_thesis` takes a whole `triggers`
+  list — a mint is a new list by definition — and adds nothing to a watch (a
+  held mint gets its horizon's review clock).
+- **A buy fill** removes the buy trigger, writes the order's own floor and
+  upside levels onto their triggers, and adds the held review clock and the
+  setup's exits when their buckets are missing (`armHeldLadderOnFill`). Never a
+  rewrite: the analyst's lines and reviews survive the fill, and nothing is
+  stamped from the fill price. The one automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
   (its Triggers tab). On, a new long holding gets two lines. The **sale
   floor** is always the buy price less the setting's % (0.5–50, default 8) —
@@ -499,11 +500,12 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   (`approveProposal(…, { tradeTicket: true })` → `stopIsOwners`; one equal
   to the row's floor, the ticket's default, stays the analyst's). With the
   setting on, a buy (and an add) is sized off the
-  wider of the plan's floor and the setting's line (`sizingStop`,
+  wider of the stock's floor and the setting's line (`sizingStop`,
   `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
   the risk per trade. An add to a holding never moves the lines.
-- **A plan set-down** (DEMOTE) removes the buy, floor and target triggers.
-  An automatic one comes from the floor on the close pass (§7).
+- **Stop watching:** a sale line on a stock we only watch, fired on the close
+  pass (§7), retires the thesis as dropped with one Activity line; its
+  triggers are left as they were. There is no plan to set down.
 
 Rules run per op on the resulting list; a refused op is returned by id with
 the reason and the rest of the call lands (`data.trigger_ops` on the tool):

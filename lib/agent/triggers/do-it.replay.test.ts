@@ -97,7 +97,7 @@ describe("CORT: an Auto-buy on a plan with no floor", () => {
   it("is refused by the buy's own check, and nothing is written", async () => {
     const r = await buy(CORT as unknown as typeof TRV, CATALYST, 126.5, { payFromCash: 50_000 });
     expect(r.refused).toBe(true);
-    expect(r.refusal?.message).toContain("plan has no floor");
+    expect(r.refusal?.message).toContain("has no floor");
     expect(r.db.store.order ?? []).toHaveLength(0);
   });
 });

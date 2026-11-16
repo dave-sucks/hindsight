@@ -153,7 +153,7 @@ describe("DAV-323 — the run is told how long this has been asking", () => {
     // Six fires since the 09-18 edit. The three answers in between left
     // the plan as it was, so they don't reset it.
     expect(abt?.needsAction?.repeatCount).toBe(6);
-    expect(abt?.needsAction?.repeatLine ?? "").toMatch(/fired 6 times and the plan has not changed since/);
+    expect(abt?.needsAction?.repeatLine ?? "").toMatch(/fired 6 times and its triggers have not changed since/);
   });
 
   it("2. a first ask gets no repeat line — there is no history to report", async () => {
