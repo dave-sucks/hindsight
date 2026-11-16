@@ -59,7 +59,7 @@ const STEP: Record<string, AccountActivityKind> = {
 const FILL: Record<string, AccountActivityKind> = { OPEN: "bought", ADD: "added", CLOSE: "sold", PARTIAL_CLOSE: "trimmed" };
 
 type Fields = {
-  proposal?: { to?: { status?: unknown; intent?: unknown; side?: unknown; userMessage?: unknown } };
+  proposal?: { to?: { orderId?: unknown; status?: unknown; intent?: unknown; side?: unknown; userMessage?: unknown } };
   status?: { from?: unknown; to?: unknown };
 };
 
@@ -78,6 +78,24 @@ export function accountActivityKind(item: Pick<FeedItem, "type" | "fieldChanges"
   if (to === "PASSED") return "passed";
   if (to === "RETIRED" && (from === "WATCHING" || from === "PROMOTED")) return "stopped-watching";
   return null;
+}
+
+const orderOf = (item: Pick<FeedItem, "fieldChanges">) => (item.fieldChanges as Fields | null)?.proposal?.to?.orderId;
+
+/**
+ * The homepage shows a proposal once, at its latest step: the Proposed step
+ * while it waits, its outcome once it is answered (Bought, Sold, Declined,
+ * Expired …), which carries the proposal's reason. The stock's Activity tab
+ * keeps every step.
+ */
+export function oneRowPerProposal(feed: FeedItem[]): FeedItem[] {
+  const proposed = new Map(feed.filter((i) => i.type === "PROPOSAL_PROPOSED").map((i) => [orderOf(i), i] as const));
+  const answered = new Set(feed.filter((i) => i.type !== "PROPOSAL_PROPOSED" && orderOf(i) != null).map(orderOf));
+  return feed.flatMap((i) => {
+    if (i.type === "PROPOSAL_PROPOSED") return answered.has(orderOf(i)) ? [] : [i];
+    const reason = orderOf(i) != null && !i.rationale ? proposed.get(orderOf(i))?.rationale : null;
+    return [reason ? { ...i, rationale: reason } : i];
+  });
 }
 
 /** A sale's gain: its fill against the position's cost, in dollars and percent. */

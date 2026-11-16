@@ -4,7 +4,8 @@
  *
  *  1. Each stock's Activity list, built by the same activityFeed() from its
  *     orders (every order carries its stock since 2026-08-18) and its lines
- *     that changed its status, cut by the one filter (account-activity.ts).
+ *     that changed its status, cut by the one filter (account-activity.ts),
+ *     each proposal once, at its latest step.
  *     A stock's other lines (fires, reviews, notes) never pass that filter, so
  *     they are not loaded. A stock is on this book when the run that wrote it
  *     was, or when it has an order on this book (a watch written on paper and
@@ -22,7 +23,7 @@ import type { AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 import { prisma } from "@/lib/prisma";
 import { activityFeed, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { FEED_ORDER_SELECT } from "@/lib/thesis/activity-feed.server";
-import { ACCOUNT_ITEMS, accountActivityLine, attemptActivityLine, type AccountActivityLine } from "@/lib/thesis/account-activity";
+import { ACCOUNT_ITEMS, accountActivityLine, attemptActivityLine, oneRowPerProposal, type AccountActivityLine } from "@/lib/thesis/account-activity";
 import { attemptOutcomes, refusalReason, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
 import { describeRefusalTool, NO_LONGER_OWED } from "@/lib/agent/refusal-carryover";
 
@@ -63,7 +64,7 @@ async function loadStockLines(book: Book, limit: number): Promise<AccountActivit
   const stock = (id: string, ticker: string) => stocks.get(id) ?? stocks.set(id, { ticker, updates: [], orders: [] }).get(id)!;
   for (const o of orders) stock(o.thesisId!, o.symbol).orders.push(o as unknown as ProposalOrder);
   for (const l of lines) stock(l.thesisId, l.thesis.ticker).updates.push(l);
-  return [...stocks.values()].flatMap((s) => activityFeed(s).flatMap((item) => accountActivityLine(item, s.ticker) ?? []));
+  return [...stocks.values()].flatMap((s) => oneRowPerProposal(activityFeed(s)).flatMap((item) => accountActivityLine(item, s.ticker) ?? []));
 }
 
 /**
