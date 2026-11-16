@@ -65,7 +65,7 @@ It works the list one stock at a time and takes exactly one action on each. One 
 - **Redraw the plan:** `update_thesis`, one trigger at a time. It can raise a floor; it can never lower one on a stock we hold.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
 - **Answer you:** your notes come first, quoted, with what it decided on each.
-- **Leave your queue alone:** a stock with a sale waiting for your approval is yours to decide, so it carries no work; its row says the proposal is waiting. A waiting buy isn't proposed twice.
+- **Leave your queue alone:** a sale waiting for your approval is yours to answer, so the run doesn't propose it again or argue it; its row says the proposal is waiting. Everything else on that stock still counts (a note, a review that's due, a report, a floor to fix, an add), and the run answers it with a note or an edit, never a second sale. A waiting buy isn't proposed twice.
 - **Look back once:** a stock sold in the last two weeks is either watched again with a re-entry level or let go.
 - **Change nothing:** one sentence on what it checked and what would change its mind.
 

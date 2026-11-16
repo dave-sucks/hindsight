@@ -49,7 +49,7 @@ When a protective trigger woke the run that sold, the sale is labelled stop or t
 
 ## Meanwhile
 
-A sale waiting for you takes the stock off the agents' work list: it's yours to decide. A buy waiting for you keeps its plan, so an agent can't remove the buy trigger from under it.
+A sale waiting for you is yours to answer, so no agent proposes it again or argues it. The stock's other situations still reach the agents (a note, a review that's due, an add), and they answer those with a note or an edit. A buy waiting for you keeps its plan, so an agent can't remove the buy trigger from under it.
 
 <details>
 <summary>Technical details</summary>

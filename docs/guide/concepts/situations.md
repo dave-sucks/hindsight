@@ -25,6 +25,7 @@ The note is the write-up of what the situation sent the agent to find out. Every
 - A [morning run](../agents/morning-runs.md) gets the situations across its whole book; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for; [chat](../agents/chat.md) sees them on any stock it reads; you see them on the thesis sheet.
 - One save on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to [the Writer](../agents/writer.md).
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
+- **A card waiting for you silences only that trade.** While a sale or trim waits for your approval, no sale signal is raised on the stock (not the fire, not the price still past the line, not a sale you declined before): the card is yours to answer. Every other situation still lists the stock, and its row says the sale is waiting, so the run answers with a note or an edit, never a second sale. A stock with only the card is a quiet line.
 - How often each one comes up, and what the runs did with it, is on Performance, under Agent work.
 
 ## The eight
@@ -33,7 +34,7 @@ One per trigger action, and four the code finds with no trigger.
 
 | Cause | Situation | When |
 |---|---|---|
-| A sell or trim trigger | **Sale signal** | It fired on a holding, or a sale you declined is still past its line. |
+| A sell or trim trigger | **Sale signal** | It fired on a holding, or a sale you declined is still past its line. Not while a sale card for it waits for you. |
 | A buy trigger | **Buy level reached** | It fired on a watch, or its condition is still true when the morning run reads the stock. |
 | An add trigger, or the code | **Add or near target** | An add trigger fired, or a holding is three quarters of the way to its target. |
 | A review trigger | **Review due** | It fired, or the review clock came round. A trigger on a report or a filing is a review too. |
@@ -52,7 +53,7 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 <summary>Technical details</summary>
 
 #### The list
-`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by its action (`fireCodes`); one on a report or a filing is a review too.
+`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by its action (`fireCodes`); one on a report or a filing is a review too. A sale or trim card waiting for you is read there, as a waiting buy is: `computeNeedsAction` leaves out the sale fires, the sales true now and the declined sale, and nothing else. The close-out owes the stocks the read lists (`listsTheStock`), so it owes these too.
 
 #### The texts
 `SITUATIONS`, the one table of what an agent is told per situation; each text is held under 2,200 characters by test, and the three that end in a paragraph per case (the buy, the review, the note) just above their length. The Auto write-up's text is `AUTO_WRITEUP` in `lib/agent/system-prompts/intraday-tactical.ts`.

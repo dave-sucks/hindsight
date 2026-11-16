@@ -29,8 +29,6 @@ export interface SituationSources {
   /** A note pinned on the stock and a group it belongs to, that no run has written after (lib/agent/shared-notes.ts). */
   pinnedNote?: boolean;
   soldReview?: boolean;
-  /** A sale waits for the principal's approval: the stock is theirs to decide, quiet with no situations. */
-  saleWaiting?: boolean;
 }
 
 /** The measures a condition watches, groups walked. */
@@ -78,7 +76,6 @@ function flagCodes(s: SituationSources, f: NeedsAction): SituationCode[] {
 
 /** The situations a stock is in, in the list's order, then the row's other sources; each code once. */
 export function situationsFor(s: SituationSources): SituationCode[] {
-  if (s.saleWaiting) return [];
   const codes = s.needs.flatMap((f) => flagCodes(s, f));
   if (s.actionability === "PROMOTED_DECIDE_TODAY") codes.push("PROMOTED_AWAITING");
   if (s.buyBlockedByFull || s.actionability === "ENTER_NOW") codes.push("BUY_ARRIVES");
@@ -87,6 +84,14 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   if (s.soldReview) codes.push("SOLD_ONE_REVIEW");
   return [...new Set(codes)];
 }
+
+/**
+ * What every text that can end in a sale says when a sale card already waits
+ * for the principal (`proposal_waiting` on the row): that sale is theirs to
+ * answer, so the run answers with a note or an edit. A waiting sale silences
+ * only that sale (needs-action.ts); the stock's other situations still list it.
+ */
+const SALE_WAITS = "- Proposing a sale when `proposal_waiting` already shows a sell or trim: that card is the principal's to answer, and a second call lands on the same card. Answer with a note or an edit.";
 
 /**
  * Each situation once: its name in a few plain words (the thesis sheet's flag
@@ -191,7 +196,8 @@ The note: why the stock moved and whether that confirms why we own it; then the 
 Mistakes:
 - Adding into company-specific weakness: that is averaging into a loser.
 - Adding into an exhaustion spike.
-- Holding a winner by default when it asks to be re-underwritten.`,
+- Holding a winner by default when it asks to be re-underwritten.
+${SALE_WAITS}`,
   },
   PROTECTION: {
     name: "floor to fix",
@@ -212,7 +218,8 @@ Answered: the floor raised, a trim or a sale, or that sentence. "The business is
 The note: how the stock got here and what is driving it now; then the new floor and what it locks in, the trim, or why the floor stays, in one sentence.
 
 Mistakes:
-- A round number, or a floor set at the entry by reflex.`,
+- A round number, or a floor set at the entry by reflex.
+${SALE_WAITS}`,
   },
   REVIEW_DUE: {
     name: "review due",
@@ -239,6 +246,7 @@ The note: what has happened with the company and the stock since your last note,
 Mistakes:
 - The same answer to a review that fired again (the \`repeat\` line says how often): change the plan, or say what differs from last time.
 - Deleting a level you still believe in to look at the name less.
+${SALE_WAITS}
 
 If it watches a report: read it before anything else. Before the report: what is expected, and what has the stock done into it? Within days of it, it is sizing, not a trade: is a holding sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story; a watch holds its buy until the report. Your note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it: what did they report against what was expected, what did management say about what comes next, and how did the stock take it? The reaction is the information. The figures are in a trigger run's kickoff, or get_earnings_data in the morning read; read the call before trusting a number (web_search). A surprise on an estimate under $0.05 is left blank; judge it in dollars. Beat on both lines, guidance up: raise the target and floor; consider adding. EPS beat, revenue missed: the beat came from cost; raise nothing on it. A beat the stock is down on: the market wanted more; tighten the floor. A miss: a broken assumption is a sale (close_position, belief_survived false); an intact story that is early stays, floored under structure; say what would change your mind. Your note then answers the bar (answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar) and gives those three answers. Never buy on a beat alone or sell on a miss alone, and never add into the print.
 
@@ -268,6 +276,7 @@ The note: their words, quoted, then your answer: what you found about the compan
 
 Mistakes:
 - Taking an expired proposal for a decision: it may be proposed again if the setup still holds.
+${SALE_WAITS}
 
 If a note is pinned: an Agent note (the 7:30 Market Reviewer's) or the principal's, on this stock alone or with others. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account, and it names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it. What does it say is coming, and when? Does it reach why we own or watch this stock? Check its claim and the stock's own news against the data (get_market_context too). Does the plan still fit what is coming: the floor and the size on a holding, the buy level and the research on a watch? Then one of these. Act on it: on a holding, an add on good news (manage_position add_to_position sizes it), a trim or a sale proposal, or a floor moved up with update_thesis; on a watch, a buy at today's price on good news (its entry_price set at or near the current price with update_thesis), a buy level moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go. Or keep the plan, saying in one sentence why the note doesn't change it for this stock. It is a read on the market, not an order: the stock's own case still decides, and a floor is never moved down or loosened because of it (only the principal lowers a floor). Your update_thesis names the pinned note and says what it means here; the stock leaves this situation once you have written, and the note stays pinned for the others it covers. The note: what the pinned note says is coming, what it means for this stock and why, then what you did, in one sentence.`,
   },
@@ -372,11 +381,12 @@ const LABELS_THAT_LIST = new Set(["ENTER_NOW", "PROMOTED_DECIDE_TODAY"]);
  * Whether a stock gets a full row on the morning read, as get_theses decided
  * it before: any work flag (a floor too far is one, even under a fired sale),
  * a buy into a full analyst, the principal's word unanswered, a pinned note, a
- * reached buy level, or a promoted stock; never one with a sale waiting. The
- * read adds book mode and failed prices itself.
+ * reached buy level, or a promoted stock. A sale waiting for the principal
+ * silences only that sale (computeNeedsAction): the other flags, a note and the
+ * rest still list the stock. The read adds book mode and failed prices itself.
  */
 export function listsTheStock(s: SituationSources): boolean {
-  return !s.saleWaiting && (
+  return (
     s.needs.length > 0 ||
     s.buyBlockedByFull ||
     s.unansweredDecision ||

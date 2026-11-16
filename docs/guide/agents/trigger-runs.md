@@ -54,7 +54,7 @@ A give-back is measured from the highest price since the buy, over the whole hol
 - **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so and names the level, and lowering it is yours to do on the thesis.
 - **Write up an Auto trade:** with no trade tools, what is going on with the company and why, what it means for why we own it, the trade, and whether it agrees. If it would have done otherwise, it says so; you decide on the card. Its note is the trade's reason.
-- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
+- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, that sale is yours to answer: no run proposes it again or argues it, and a run woken by something else on the stock answers that with a note or an edit.
 
 Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and a level the price blew through is reset off the new chart, not a round number.
 

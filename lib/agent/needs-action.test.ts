@@ -199,6 +199,65 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   });
 });
 
+describe("computeNeedsAction — a sale waiting for the principal silences only that sale", () => {
+  const TRIM_LONG: Trigger = { id: "trig-trim", predicate: { watch: "price", is: "above", value: 150 }, action: "TRIM", rationale: "Trim into strength", cooldownDays: 1 };
+  const ADD_LONG: Trigger = { id: "trig-add", predicate: { watch: "price", is: "above", value: 150 }, action: "ADD", rationale: "Press the winner", cooldownDays: 1 };
+  const REVIEW_PRICE: Trigger = { id: "trig-review-price", predicate: { watch: "price", is: "below", value: 95 }, action: "REVIEW", rationale: "Look if it slips", cooldownDays: 1 };
+  const held = (triggers: Trigger[]) => ({ ...baseThesis, status: "HOLDING", triggers });
+  const fired = (triggerId: string, at = "2026-05-10T09:00:00Z") => ({ type: "TRIGGER_FIRED", triggerId, timestamp: new Date(at) });
+  /** The kinds on the list, lead first, and the sale's action wherever a fire carries it. */
+  const kinds = (r: ReturnType<typeof computeNeedsAction>) => r.map((f) => f.kind);
+
+  it("a fired sale is not raised again while its card waits, and is the lead without the card", () => {
+    const input = { thesis: held([EXIT_LONG]), activity: [fired("trig-exit")], latestQuote: { price: 80, changePct: 0 }, now };
+    expect(computeNeedsAction({ ...input, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf(input)?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("a sale true now, and a fired trim, are the card's too", () => {
+    const now80 = { latestQuote: { price: 80, changePct: 0 }, now };
+    expect(computeNeedsAction({ thesis: held([EXIT_LONG]), activity: [], ...now80, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf({ thesis: held([EXIT_LONG]), activity: [], ...now80 })?.kind).toBe("TRIGGER_MATCHING_NOW");
+
+    const high = { latestQuote: { price: 160, changePct: 0 }, now };
+    expect(computeNeedsAction({ thesis: held([TRIM_LONG]), activity: [fired("trig-trim")], ...high, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf({ thesis: held([TRIM_LONG]), activity: [fired("trig-trim")], ...high })?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("a sale the principal declined before is not raised beside a new card", () => {
+    const declinedSale = { declineCount: 1, lapseCount: 0, lastDeclinedAt: "2026-05-09T15:00:00Z", rejectMessage: "not yet", floorPrice: 90, recentLow: 82 };
+    const input = { thesis: held([EXIT_LONG]), activity: [], latestQuote: { price: 80, changePct: 0 }, now, declinedSale };
+    expect(leadOf(input)?.kind).toBe("SALE_DECLINED");
+    expect(computeNeedsAction({ ...input, hasPendingSaleProposal: true })).toEqual([]);
+  });
+
+  it("a review that fired beside the sale, and the review clock, still list the stock", () => {
+    const input = {
+      thesis: { ...held([EXIT_LONG, REVIEW_PRICE, CADENCE_7D]), lastReviewedAt: lookedAt(10) },
+      activity: [fired("trig-exit"), fired("trig-review-price")],
+      latestQuote: { price: 80, changePct: 0 },
+      now,
+    };
+    // Without the card: the sale leads, with the review fired beside it.
+    const without = computeNeedsAction(input);
+    expect(without[0]).toMatchObject({ kind: "TRIGGER_FIRED", action: "EXIT", alsoFired: [{ triggerId: "trig-review-price", action: "REVIEW" }] });
+
+    // With it: the review leads, carries no sale beside it, and the clock is still due.
+    const waiting = computeNeedsAction({ ...input, hasPendingSaleProposal: true });
+    expect(waiting[0]).toMatchObject({ kind: "TRIGGER_FIRED", triggerId: "trig-review-price", action: "REVIEW" });
+    expect(waiting[0]).not.toHaveProperty("alsoFired");
+    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "REVIEW_DUE"]);
+  });
+
+  it("an add that fired, and a review that came due, are not the sale's: still listed", () => {
+    const addFired = computeNeedsAction({ thesis: held([ADD_LONG]), activity: [fired("trig-add")], latestQuote: { price: 160, changePct: 0 }, now, hasPendingSaleProposal: true });
+    expect(addFired[0]).toMatchObject({ kind: "TRIGGER_FIRED", action: "ADD" });
+
+    const due = computeNeedsAction({ thesis: { ...held([CADENCE_7D]), lastReviewedAt: lookedAt(10) }, activity: [], latestQuote: { price: 100, changePct: 0 }, now, hasPendingSaleProposal: true });
+    expect(kinds(due)).toEqual(["REVIEW_DUE"]);
+  });
+});
+
 describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
     const result = leadOf({

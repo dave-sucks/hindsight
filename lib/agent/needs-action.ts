@@ -317,7 +317,11 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
-  /** A sale or trim of this holding waits for the principal's approval: the stock is theirs to decide, so it carries no work at all. */
+  /**
+   * A sale or trim of this holding waits for the principal's approval. That
+   * sale is theirs to answer: no sale fire, sale match or declined sale is
+   * raised while it waits. Every other flag on the stock still is.
+   */
   hasPendingSaleProposal?: boolean;
   /**
    * An unanswered protective sale the principal declined (DAV-315).
@@ -382,11 +386,16 @@ export function reviewDue(
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction[] {
-  const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
-  // A sale waiting for the principal takes the whole stock off the list (NVDA, CEG 10-15: worked anyway).
-  if (input.hasPendingSaleProposal) return [];
-  // A buy waiting for the principal already makes its move (P1-25 Change 4).
-  const waiting = (action: string) => hasPendingEntryProposal && action === "ENTER";
+  const { thesis, latestQuote, now, hasPendingEntryProposal, hasPendingSaleProposal } = input;
+  // A card waiting for the principal already makes its move, and that move is
+  // theirs to answer: a buy's ENTER (P1-25 Change 4), a sale's EXIT or TRIM. The
+  // fire that proposed it, or the price still past its line, asks nothing more
+  // while it waits. Only that: every other flag on the stock still lists it. A
+  // waiting sale used to take the whole stock off the list (NVDA, CEG 10-15:
+  // worked anyway), and then NVDA and MU 11-16 never got the pinned note a
+  // reviewer wrote on them.
+  const waiting = (action: string) =>
+    (hasPendingEntryProposal && action === "ENTER") || (hasPendingSaleProposal && (action === "EXIT" || action === "TRIM"));
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -414,7 +423,8 @@ export function computeNeedsAction(
   //    the race. It did, on IOT, for nine days — the run kept seeing "the
   //    floor is breached" and never "and you already told me not to sell
   //    there." The second sentence is the one that needs answering.
-  const d = input.declinedSale;
+  // A new card waiting for the principal is that sale asked again: the earlier decline is not raised beside it.
+  const d = hasPendingSaleProposal ? null : input.declinedSale;
   const declined: NeedsAction | null = d
     ? {
         kind: "SALE_DECLINED",

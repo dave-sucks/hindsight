@@ -237,7 +237,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       buyBlockedByFull: blocked.has(t.id),
       unansweredDecision: context.get(t.id)?.unansweredDecision != null,
       pinnedNote: context.get(t.id)?.pinnedNote != null,
-      saleWaiting: load.inputs.get(t.id)?.hasPendingSaleProposal ?? false,
     });
   }
 
