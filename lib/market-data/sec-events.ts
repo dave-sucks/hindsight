@@ -142,15 +142,47 @@ export function filingMatches(p: SecEventPredicate, f: SecFiling): boolean {
   return false;
 }
 
-/** The filings that would fire this predicate now: matching, and not already fired on. */
+/** A calendar day in New York, YYYY-MM-DD — the day EDGAR dates a filing by. */
+const etDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+/**
+ * The first filing day a filing trigger can fire on: the day the trigger was
+ * written, or the day its stock's thesis was, whichever is later. A rule has
+ * no memory of the filings that came out before it existed, and whoever wrote
+ * it (or the thesis) could already read them; without this a new rule fires on
+ * a filing the stock's old rule already answered (PRAX 2026-11-16: two rules
+ * the morning run wrote at 08:02 both fired at 09:30 on the Nov 12 8-K).
+ *
+ * EDGAR dates a filing by the day, not the hour, so a filing dated the day the
+ * rule was written still fires: it may be one nobody read, and a missed filing
+ * is worse than a look at one already read. A rule with no stamp (written
+ * before 2026-11-16) is held to its thesis's day alone. Inherited rules (the
+ * analyst's, the account's) have no stamp on the stock; they read the thesis's.
+ */
+export function filingsSince(
+  trigger: { writtenAt?: string | null },
+  thesisCreatedAt: Date | string | null | undefined,
+): string | undefined {
+  const days = [trigger.writtenAt, thesisCreatedAt]
+    .map((at) => (at == null ? null : new Date(at)))
+    .filter((d): d is Date => d != null && Number.isFinite(d.getTime()))
+    .map(etDay);
+  return days.length ? days.reduce((a, b) => (a >= b ? a : b)) : undefined;
+}
+
+/**
+ * The filings that would fire this predicate now: matching, not already fired
+ * on, and filed on or after `since` (./filingsSince) when one is given.
+ */
 export function unfiredMatches(
   p: SecEventPredicate,
   filings: SecFiling[] | null | undefined,
   fired: readonly string[] | null | undefined,
+  since?: string,
 ): SecFiling[] {
   if (!filings?.length) return [];
   const seen = new Set(fired ?? []);
-  return filings.filter((f) => !seen.has(f.accession) && filingMatches(p, f));
+  return filings.filter((f) => !seen.has(f.accession) && (since == null || f.filedDate >= since) && filingMatches(p, f));
 }
 
 /** How many fired filing IDs a trigger remembers. The lookback is days; this is plenty. */
@@ -183,10 +215,11 @@ export function secEventLeaves(w: When): SecEventPredicate[] {
 export function filingsBehindFire(
   trigger: { predicate: When; firedFilings?: readonly string[] },
   filings: SecFiling[] | null | undefined,
+  since?: string,
 ): SecFiling[] {
   const out = new Map<string, SecFiling>();
   for (const leaf of secEventLeaves(trigger.predicate)) {
-    for (const f of unfiredMatches(leaf, filings, trigger.firedFilings)) out.set(f.accession, f);
+    for (const f of unfiredMatches(leaf, filings, trigger.firedFilings, since)) out.set(f.accession, f);
   }
   return Array.from(out.values());
 }

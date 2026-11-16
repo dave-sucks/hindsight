@@ -11,7 +11,9 @@
 // the signal router, 2026-09-15.)
 //
 // A match emits `app/thesis.trigger.fired`, unless its fire mode leaves it
-// for the next morning run (triggers/fire-mode.ts). The `lastFiredAt`
+// for the next morning run (triggers/fire-mode.ts). One event per stock per
+// pass: every fire on a stock rides in one run (triggers/co-fire.ts), and
+// none starts beside the stock's last run while it is still going. The `lastFiredAt`
 // cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
 // and REVIEW rungs additionally fire only on the CROSSING of their level
 // (price past it now, not at the prior close) — see shouldFire, DAV-229.
@@ -49,7 +51,7 @@ import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
 import { levelOf, readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
-import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
+import { oneRunPerStock, type CoFired, type Fire } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
   describeEarningsReport,
@@ -63,7 +65,7 @@ import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { effectiveTriggerAction, watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { waitsForMorning } from "@/lib/agent/triggers/fire-mode";
+import { doItTrade, waitsForMorning } from "@/lib/agent/triggers/fire-mode";
 import { demoteThesisPlan } from "@/lib/agent/triggers/demote";
 import { splitFiresByLevel } from "@/lib/agent/triggers/levels";
 import {
@@ -85,6 +87,7 @@ import {
   describeFiling,
   filingNeedsSameDayLook,
   filingsBehindFire,
+  filingsSince,
   rememberFired,
 } from "@/lib/market-data/sec-events";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -280,10 +283,11 @@ interface FiringEvent {
   ticker: string;
   action: Trigger["action"];
   /**
-   * Other protective triggers on the same thesis that fired on this same
-   * pass (a stop and a trail in the same minute). Folded into ONE run —
-   * the tactical run decides once with both in view (MU 2026-09-14: two
-   * runs, one sale, one folded; DAV-254). See triggers/co-fire.
+   * Every other trigger on the same thesis that fired on this same pass (a
+   * stop and a trail, a review beside a sale, two filing rules). Folded into
+   * ONE run — the tactical run decides once with all of them in view (MU
+   * 2026-09-14, GEV and PRAX 2026-11-16: two runs, one stock; DAV-254).
+   * See triggers/co-fire.
    */
   coFired?: CoFired[];
   /** The fire in words — what a co-fired trigger says on the run it folds into. */
@@ -416,6 +420,34 @@ async function stampLastFiredAt(args: {
       },
     });
   });
+}
+
+/**
+ * A trigger run lasts at most the function's 800 seconds; a row still RUNNING
+ * after this is a run that died, not one going, and must not hold its stock.
+ */
+const RUN_GOING_MS = 15 * 60_000;
+
+/**
+ * The stocks with a trigger run still going (co-fire.ts: no second run beside
+ * it). Fails open: if the rows can't be read, the pass goes on as it did
+ * before this guard, one run per stock per pass.
+ */
+async function stocksWithARunGoing(now: Date): Promise<Set<string>> {
+  try {
+    const rows = await prisma.researchRun.findMany({
+      where: { mode: "INTRADAY_TACTICAL", status: "RUNNING", createdAt: { gte: new Date(now.getTime() - RUN_GOING_MS) } },
+      select: { parameters: true },
+    });
+    return new Set(
+      rows
+        .map((r) => (r.parameters as { thesisId?: unknown } | null)?.thesisId)
+        .filter((id): id is string => typeof id === "string"),
+    );
+  } catch (err) {
+    console.error("[trigger-evaluator] could not read the runs going; fires are not held back for them this pass:", err);
+    return new Set();
+  }
 }
 
 // ── Inngest function ────────────────────────────────────────────────────
@@ -684,6 +716,10 @@ export const triggerEvaluator = inngest.createFunction(
         );
       }
 
+      // The stocks whose trigger run is still going: asked once a pass, and only when a fire needs it.
+      let going: Promise<Set<string>> | null = null;
+      const runsGoing = () => (going ??= stocksWithARunGoing(now));
+
       const events: FiringEvent[] = [];
       for (const { thesis, analystId, ladder: triggers, hasBuy, all, waiting } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
@@ -769,11 +805,12 @@ export const triggerEvaluator = inngest.createFunction(
 
         if (matched.length === 0) continue;
         // The filings behind each filing fire, read before the stamp
-        // remembers them.
+        // remembers them: only the ones that came out once the rule (and its
+        // thesis) existed, the same filings the check itself read.
         const tickerFilings = filingsRead.byTicker.get(thesis.ticker);
         const filingsByTrigger = new Map(
           matched
-            .map((t) => [t.id, filingsBehindFire(t, tickerFilings)] as const)
+            .map((t) => [t.id, filingsBehindFire(t, tickerFilings, filingsSince(t, thesis.createdAt))] as const)
             .filter(([, f]) => f.length > 0),
         );
         // A red filing on a stock we own is looked at today (2026-09-15).
@@ -785,51 +822,27 @@ export const triggerEvaluator = inngest.createFunction(
         const sale = (t: Trigger) => t.action === "EXIT" || t.action === "TRIM";
         const fires = posInfo && saleWaiting.has(posInfo.id) ? matched.filter((t) => !sale(t)) : matched;
         if (fires.length === 0) continue;
-        await stampLastFiredAt({
-          thesisId: thesis.id,
-          ...splitFiresByLevel(fires),
-          firedFilings: new Map(
-            Array.from(filingsByTrigger, ([id, f]) => [id, f.map((x) => x.accession)] as const),
-          ),
-          // A heads-up remembers the report it fired for, not just when.
-          firedReports: new Map(
-            fires
-              .filter((t) => needsUpcomingEarnings(t.predicate) && upcomingRead.report != null)
-              .map((t) => [t.id, upcomingRead.report!.reportDate] as const),
-          ),
-          now,
-        });
-        for (const t of fires) {
-          // What this trigger MEANS for a thesis in this state. A floor or a
-          // target firing on something we don't own can't be a sell or a
-          // take-profit — it says the priced plan is stale. Resolved here
-          // rather than stored, so a buy or an opt-out never has to rewrite
-          // trigger actions. See effectiveTriggerAction + DAV-195 L5.
-          const action = effectiveTriggerAction(t, {
-            status: thesis.status,
-            direction: thesis.direction,
-            hasBuy,
-          });
 
-          // The facts behind an earnings fire, when that's what fired. Null
-          // for a price/time trigger — the price is already stamped. A
-          // heads-up carries the upcoming date + estimate; a beat/miss
-          // carries the reported figures.
-          const upcoming = upcomingRead.report;
-          const report = earnings.reported.get(thesis.ticker);
-          // A filing fire names each filing, in words, with its link; an
-          // insider cluster names its buyers (DAV-252), with the chart facts.
+        // The facts behind an earnings fire, when that's what fired. Null
+        // for a price/time trigger — the price is already stamped. A
+        // heads-up carries the upcoming date + estimate; a beat/miss
+        // carries the reported figures. A filing fire names each filing, in
+        // words, with its link; an insider cluster names its buyers
+        // (DAV-252), with the chart facts.
+        const upcoming = upcomingRead.report;
+        const report = earnings.reported.get(thesis.ticker);
+        const contextOf = (t: Trigger): string | null => {
           const firedFilingList = filingsByTrigger.get(t.id);
-          const firedContext = firedFilingList
+          return firedFilingList
             ? firedFilingList.map(describeFiling).join(" ")
             : needsUpcomingEarnings(t.predicate)
-                ? upcoming
-                  ? describeUpcomingReport(upcoming, now, upcomingRead.calendarDate)
-                  : null
-                : report && needsEarningsData(t.predicate)
-                  ? describeEarningsReport(report)
-                  : needsStreet(t.predicate)
-                    ? describeStreetFire(t.predicate, street.get(thesis.ticker), latestQuote?.price)
+              ? upcoming
+                ? describeUpcomingReport(upcoming, now, upcomingRead.calendarDate)
+                : null
+              : report && needsEarningsData(t.predicate)
+                ? describeEarningsReport(report)
+                : needsStreet(t.predicate)
+                  ? describeStreetFire(t.predicate, street.get(thesis.ticker), latestQuote?.price)
                   : needsIndicators(t.predicate)
                     ? describeChartFire(t.predicate, indicators.get(thesis.ticker), latestQuote?.price, {
                         open: quote?.open ?? null,
@@ -838,13 +851,63 @@ export const triggerEvaluator = inngest.createFunction(
                         now,
                       })
                     : null;
+        };
+        const routed = fires.map((t) => {
+          // What this trigger MEANS for a thesis in this state. A floor or a
+          // target firing on something we don't own can't be a sell or a
+          // take-profit — it says the priced plan is stale. Resolved here
+          // rather than stored, so a buy or an opt-out never has to rewrite
+          // trigger actions. See effectiveTriggerAction + DAV-195 L5.
+          const action = effectiveTriggerAction(t, { status: thesis.status, direction: thesis.direction, hasBuy });
+          return {
+            t,
+            action,
+            firedContext: contextOf(t),
+            // DEMOTE is deterministic and costs nothing to be wrong about — no
+            // money moves — so it runs inline. Never a tactical spawn: arming
+            // watchlist floors is what would otherwise reproduce the 2026-05-18
+            // explosion (28 of 35 tactical runs, zero state changes), and there
+            // are 19 watchlist rows carrying a floor.
+            route: action === "DEMOTE" ? ("DEMOTE" as const) : waitsForMorning(t, sameDayLook(t)) ? ("FLAG" as const) : ("RUN" as const),
+          };
+        });
 
-          // DEMOTE is deterministic and costs nothing to be wrong about — no
-          // money moves — so it runs inline. Never a tactical spawn: arming
-          // watchlist floors is what would otherwise reproduce the 2026-05-18
-          // explosion (28 of 35 tactical runs, zero state changes), and there
-          // are 19 watchlist rows carrying a floor.
-          if (action === "DEMOTE") {
+        // Everything that runs on this stock this pass is ONE run (co-fire.ts), and none
+        // starts beside the stock's last run while it is still going.
+        const runBound: Fire[] = routed
+          .filter((r) => r.route === "RUN")
+          .map((r) => ({
+            thesisId: thesis.id,
+            triggerId: r.t.id,
+            action: r.action,
+            sentence: sentenceOf(r.t, thesis.status === "HOLDING"),
+            firedContext: r.firedContext,
+            ownTrade: doItTrade(r.t, posInfo != null) != null,
+          }));
+        const plan = oneRunPerStock(runBound, { busy: runBound.length > 0 && (await runsGoing()).has(thesis.id) });
+        // A fire that waits is left unstamped: no cooldown, no remembered filing, so it fires again next pass.
+        const deferred = new Set(plan.waiting.map((w) => w.triggerId));
+        const stamped = fires.filter((t) => !deferred.has(t.id));
+        if (stamped.length === 0) continue;
+        await stampLastFiredAt({
+          thesisId: thesis.id,
+          ...splitFiresByLevel(stamped),
+          firedFilings: new Map(
+            Array.from(filingsByTrigger, ([id, f]) => [id, f.map((x) => x.accession)] as const).filter(([id]) => !deferred.has(id)),
+          ),
+          // A heads-up remembers the report it fired for, not just when.
+          firedReports: new Map(
+            stamped
+              .filter((t) => needsUpcomingEarnings(t.predicate) && upcomingRead.report != null)
+              .map((t) => [t.id, upcomingRead.report!.reportDate] as const),
+          ),
+          now,
+        });
+
+        const writtenDown = new Set(plan.writtenDown.map((w) => w.triggerId));
+        for (const { t, route, firedContext } of routed) {
+          if (deferred.has(t.id)) continue;
+          if (route === "DEMOTE") {
             const short = thesis.direction === "SHORT";
             const typed = shapeOf(t.predicate);
             const level = typed == null ? null : levelOf(typed);
@@ -879,12 +942,10 @@ export const triggerEvaluator = inngest.createFunction(
                 priceAtTime: latestQuote?.price ?? null,
               });
             }
-            continue;
-          }
-
-          // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
-          // start no run; the morning run answers it.
-          if (waitsForMorning(t, sameDayLook(t))) {
+          } else if (route === "FLAG" || writtenDown.has(t.id)) {
+            // On fire "Flag for Review", or a review that landed while the stock's run was going:
+            // write the TRIGGER_FIRED row (with the price that fired it) and start no run; the
+            // next look answers it.
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
@@ -899,22 +960,23 @@ export const triggerEvaluator = inngest.createFunction(
               runId: null,
               priceAtTime: latestQuote?.price ?? null,
             });
-            continue;
           }
+        }
+        if (plan.run) {
           events.push({
             thesisId: thesis.id,
-            triggerId: t.id,
+            triggerId: plan.run.triggerId,
             analystId,
             ticker: thesis.ticker,
-            action,
+            action: plan.run.action as Trigger["action"],
             firedPrice: latestQuote?.price ?? null,
-            firedContext,
-            sentence: sentenceOf(t, thesis.status === "HOLDING"),
+            firedContext: plan.run.firedContext ?? null,
+            sentence: plan.run.sentence,
+            ...(plan.run.coFired?.length ? { coFired: plan.run.coFired } : {}),
           });
         }
       }
-      // Two protective fires on one thesis in one pass → one run (DAV-254).
-      return collapseProtectiveFires(events);
+      return events;
     });
 
     for (const f of cronFires) {

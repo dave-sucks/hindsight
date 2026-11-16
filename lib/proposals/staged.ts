@@ -23,10 +23,15 @@ export interface FiredTrigger {
 
 const SIDE: Readonly<Record<string, FiredTrigger["side"]>> = { EXIT: "SELL", TRIM: "SELL", ENTER: "BUY", ADD: "BUY" };
 
-/** What a trigger run's trade answers: the fired trigger and its co-fires; none on a review. */
-export function firedTrigger(ticker: string, fired: { id: string; action: string }, coFired: ReadonlyArray<{ triggerId: string }> = []): FiredTrigger | undefined {
+/**
+ * What a trigger run's trade answers: the fired trigger and the co-fires on its side; none on a review. A co-fire on
+ * the other side (a review, a buy beside a sale) isn't answered by the trade, so the proposal doesn't stay open for it.
+ * A co-fire sent without its action (before 2026-11-16) was a sale, the only kind that folded.
+ */
+export function firedTrigger(ticker: string, fired: { id: string; action: string }, coFired: ReadonlyArray<{ triggerId: string; action?: string }> = []): FiredTrigger | undefined {
   const side = SIDE[fired.action];
-  return side ? { ticker, side, triggerIds: [fired.id, ...coFired.map((c) => c.triggerId)] } : undefined;
+  const same = coFired.filter((c) => (c.action == null ? side === "SELL" : SIDE[c.action] === side));
+  return side ? { ticker, side, triggerIds: [fired.id, ...same.map((c) => c.triggerId)] } : undefined;
 }
 
 /** The triggers a proposal on this stock and side answers, when the run was woken for that trade. */

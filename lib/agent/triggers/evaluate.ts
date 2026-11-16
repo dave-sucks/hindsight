@@ -15,7 +15,7 @@ import type { Trigger } from "./types";
 import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
-import type { SecFiling } from "@/lib/market-data/sec-events";
+import { filingsSince, type SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./condition/read";
 import type { When } from "@/lib/agent/triggers/condition";
 
@@ -78,6 +78,14 @@ export interface EvaluationContext {
    * per trigger — so one filing wakes a trigger once.
    */
   firedFilings?: readonly string[];
+
+  /**
+   * The first filing day the trigger being evaluated can fire on (YYYY-MM-DD):
+   * the later of the day it was written and the day its thesis was
+   * (`filingsSince`). Per trigger, set by `shouldFire` like `firedFilings`: a
+   * filing that came out before a rule existed is not news to it.
+   */
+  filingsSince?: string;
 
   /**
    * The report dates the heads-up being evaluated has already fired for.
@@ -206,8 +214,10 @@ export function shouldFire(
   ctx: EvaluationContext,
   checker: Checker = SHAPE_CHECKER,
 ): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
-  // A filing trigger reads its own fired-filing memory; nothing else does.
+  // A filing trigger reads its own fired-filing memory, and only the filings
+  // that came out once it (and its thesis) existed; nothing else does.
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
+  if (ctx.filings?.length) ctx = { ...ctx, filingsSince: filingsSince(trigger, ctx.thesis.createdAt) };
   if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
   const matched = checker.holds(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };

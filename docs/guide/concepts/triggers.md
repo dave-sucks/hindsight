@@ -62,7 +62,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 - **A day:** a price line, a day's move, a gap, volume, RSI and the trail.
 - **A week:** the move from our entry (a sale on it asks daily, like every sale), a beat or a miss, strength against the S&P, and a review of a state like "below the 200-day".
 - **A month:** an earnings window and insider buying.
-- **Once per filing** for a filing, and **its own interval** for a schedule.
+- **Once per filing** for a filing, and **its own interval** for a schedule. A filing trigger only reads filings filed on or after the day it was written (or the day its stock's thesis was, if later): a new rule can't know what came out before it, and whoever wrote it could already read that. A filing dated the day it was written still counts, since the date doesn't say the hour.
 - **None:** the hard stop a new plan starts with. If a trigger run holds instead of selling, it asks again at the next check.
 
 A trigger's popover shows its rest ("At most once a day") and when it last fired.

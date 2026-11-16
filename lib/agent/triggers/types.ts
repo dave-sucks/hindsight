@@ -116,7 +116,12 @@ export type Trigger = {
    * the trigger, never written by a model.
    */
   rearmedAt?: string;
-  /** ENTER and REVIEW, server-stamped: the live price when written (./written-price). */
+  /**
+   * ENTER and REVIEW, server-stamped (./written-price): `writtenAt` is when the
+   * trigger was written or last changed, always; `writtenPrice` is the live
+   * price then, when one was fresh. A filing trigger reads the time
+   * (`filingsSince`): it fires only on filings from that day on.
+   */
   writtenPrice?: number;
   writtenAt?: string; // ISO timestamp
   /** On fire: DO_IT, ASK_NOW or NEXT_MORNING (./fire-mode). Every stored trigger names one. */

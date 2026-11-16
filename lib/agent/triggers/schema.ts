@@ -229,12 +229,12 @@ export const triggerSchema = z.object({
     .number()
     .positive()
     .optional()
-    .describe("Server-stamped on a buy or review trigger when it is written. Do not set — any supplied value is overwritten."),
+    .describe("Server-stamped on a buy or review trigger when it is written, if a live price was fresh. Do not set — any supplied value is overwritten."),
   writtenAt: z
     .string()
     .datetime()
     .optional()
-    .describe("Server-stamped with writtenPrice. Do not set."),
+    .describe("Server-stamped on a buy or review trigger whenever it is written. Do not set."),
   // No .default(): this is also the read gate, and the write paths stamp the action's default (./fire-mode).
   fireMode: z
     .enum(FIRE_MODES)

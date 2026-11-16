@@ -52,15 +52,21 @@ async function pass(opts: { enabled: boolean; held: Record<string, unknown>[]; w
     jest.useRealTimers();
   }
   const rows = (db.store.thesisUpdate ?? []) as Array<Record<string, unknown>>;
-  return { events: sent.filter((e) => e.name === "app/thesis.trigger.fired").map((e) => e.data.triggerId).sort(), firedRows: rows.filter((r) => r.type === "TRIGGER_FIRED").map((r) => r.triggerId) };
+  const events = sent.filter((e) => e.name === "app/thesis.trigger.fired");
+  return {
+    events: events.map((e) => e.data.triggerId).sort(),
+    // What rode in each run (co-fire.ts): one run per stock per pass.
+    riding: events.flatMap((e) => ((e.data.coFired as Array<{ triggerId: string }> | undefined) ?? []).map((c) => c.triggerId)),
+    firedRows: rows.filter((r) => r.type === "TRIGGER_FIRED").map((r) => r.triggerId),
+  };
 }
 
 describe("the five-minute check, paused analyst", () => {
   it("MRVL's floor fires; the review on it and the watched stock's review are not checked", async () => {
-    expect(await pass({ enabled: false, held: [FLOOR, LOOK], watched: [{ ...LOOK, id: "panw-look" }] }, 255.9)).toEqual({ events: [FLOOR.id], firedRows: [] });
+    expect(await pass({ enabled: false, held: [FLOOR, LOOK], watched: [{ ...LOOK, id: "panw-look" }] }, 255.9)).toEqual({ events: [FLOOR.id], riding: [], firedRows: [] });
   });
 
-  it("under an active analyst the review is checked too, and both go to the trigger run", async () => {
-    expect(await pass({ enabled: true, held: [FLOOR, LOOK] }, 255.9)).toEqual({ events: [FLOOR.id, LOOK.id].sort(), firedRows: [] });
+  it("under an active analyst the review is checked too, and rides in the floor's one trigger run", async () => {
+    expect(await pass({ enabled: true, held: [FLOOR, LOOK] }, 255.9)).toEqual({ events: [FLOOR.id], riding: [LOOK.id], firedRows: [] });
   });
 });

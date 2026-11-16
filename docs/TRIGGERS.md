@@ -74,7 +74,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | `gap` | Opened ≥ `value`% over the prior close, whatever the volume — today, or the snapshot's latest session. Fires once per gap (1-day wait). | `value` (%) |
 | `report` | **Before** a report: "reports within N days" (the heads-up; 14-day lookahead). **After** one: "reported up to N days ago", counting from the report day (0) — the post-report drift window. Off the Finnhub calendar on the cron (`triggers/earnings.ts`), one firm-wide call per pass. Once per report (30-day cooldown); the audit row carries the date, bell and estimates. | `value` (days) |
 | `surprise` | Earnings beat or miss — reported EPS vs estimate, same calendar call. Fires at the first open after the report, once per report (3-day lookback inside the 7-day cooldown). The audit row carries the figures. 0 = any amount. | `value` (% or more) |
-| `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are "any of" one-event conditions. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
+| `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are "any of" one-event conditions. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); no cooldown, because filings cluster. **A filing rule fires only on a filing filed on or after the day it was written, or the day its stock's thesis was, whichever is later** (`filingsSince`, `lib/market-data/sec-events.ts`; the day is New York's, as EDGAR dates it): a new rule has no memory of what came out before it, and whoever wrote it could already read that (PRAX 2026-11-16: two rules the morning run wrote at 08:02 both fired at 09:30 on the Nov 12 8-K, and made two trigger runs). A filing dated the day the rule was written still fires, since the date doesn't say the hour. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. Cooldown 30. | `value`; `settings.days` |
 | `repeat` | The review clock: N days since the last actual review (`lastReviewedAt`), repeating. Cooldown is its own interval. | `value` (days) |
 | `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. Cooldown defaults to N, so a review re-asks every N days once reached; an EXIT is the usual standing order. | `value` (days), `variable` buy / event |
@@ -392,7 +392,9 @@ that don't read the price (time, a report, a filing, the daily move, the move
 from our entry, the trail) can't cross and keep firing on match. **A buy or a
 review written after the prior close is measured from the price it
 was written at** (`writtenPrice`/`writtenAt`, server-stamped by
-`applyTriggerOps` and `record_thesis`; `lib/agent/triggers/written-price.ts`)
+`applyTriggerOps` and `record_thesis`; `lib/agent/triggers/written-price.ts`;
+`writtenAt` goes on every buy or review a write adds or changes, the price only
+when a fresh one was there, and a filing rule reads the time)
 until the next close: otherwise "buy above $100.05" set at $100 on a day the
 stock closed $103 yesterday is already true at that close and never fires that
 day. There is no buy-now option — buying now is an entry price at or near the
@@ -404,6 +406,25 @@ question for a snapshot. A review that reads the price is left off the morning
 read's true-now list (`computeNeedsAction`), since the read can't see its
 crossing: it reaches the morning run only through its crossing's
 `TRIGGER_FIRED` row.
+
+**One run per stock per pass (2026-11-16, `lib/agent/triggers/co-fire.ts`).**
+Everything that fires on one stock in one five-minute pass, whatever its
+action or On fire, is ONE `app/thesis.trigger.fired` event: the highest-ranked
+fire leads (sale, trim, add, buy, review, in that order; an Auto trade first
+within its rank) and the rest ride in it as `coFired`, each with its own
+Activity line, its action and the facts behind it (a filing rule's link). The
+run's kickoff lists them all. Only a proposal's own side is answered by its
+trade (`firedTrigger`, `lib/proposals/staged.ts`): a review or a buy that rode in
+beside a sale does not hold that sale open. Before this only a sale and a trim
+folded, so GEV's review and its two sales made two runs one second apart that
+edited the same triggers, and PRAX's two filing reviews made two runs 14 seconds
+apart. Two kinds of fire do not ride: an Auto trade that is not the run's own (the run
+can't make it for it), and any fire that lands while the stock's last run is still
+going (a `RUNNING` tactical row under 15 minutes old). The first waits for the next pass;
+of the second, a review is written down as a `TRIGGER_FIRED` line like Flag for
+Review, and a sale or a buy waits for the next pass too. A fire that waits is left
+unstamped (no cooldown, no remembered filing), so it fires again once the run ends and
+nothing is lost. `tactical-run` itself runs one at a time per stock (concurrency 1).
 
 **Reviews wait for the morning by default:** a `REVIEW` fire means
 "re-evaluate," not "act now" — it converts to a trade rarely, so unset it is

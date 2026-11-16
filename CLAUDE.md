@@ -37,7 +37,13 @@ semantics differ by action (DAV-229):** a sale, trim or add rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
 an ENTER or a REVIEW fires on the *crossing* of its level (true now, false at
 the prior close; a review that doesn't read the price, like a clock or a
-report, fires while true) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
+report, fires while true) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. **One run
+per stock per pass (2026-11-16):** everything that fires on a stock in one check is one
+`app/thesis.trigger.fired` event, the most urgent leading and the rest riding as `coFired`;
+a fire that lands while the stock's last run is still going starts no second run (a review
+is written down, a sale or a buy asks again unstamped) — `lib/agent/triggers/co-fire.ts`.
+**A filing rule fires only on a filing filed on or after the day it, or its thesis, was
+written** (`filingsSince`, `lib/market-data/sec-events.ts`). The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).

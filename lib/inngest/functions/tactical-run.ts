@@ -1,6 +1,7 @@
 // ── Tactical Run ──────────────────────────────────────────────────────────
 // Consumes `app/thesis.trigger.fired` events emitted by trigger-evaluator.
-// One event = one (thesis, trigger) pair = one focused agent run.
+// One event = one stock's pass = one focused agent run: the fire that leads it,
+// and any others that fired on the same stock in the same pass (coFired).
 //
 // Scope is deliberately narrow:
 //   • Single ticker (thesis.ticker)
@@ -39,6 +40,7 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { doItTrade, trimPctOf } from "@/lib/agent/triggers/fire-mode";
+import type { CoFired } from "@/lib/agent/triggers/co-fire";
 import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
@@ -72,8 +74,8 @@ interface FiredPayload {
    * instead of spending a step fetching what fired it.
    */
   firedContext?: string | null;
-  /** Other protective triggers that fired with this one on the same pass (DAV-254). */
-  coFired?: Array<{ triggerId: string; sentence: string }>;
+  /** The other triggers that fired on this stock in the same pass, folded into this run (DAV-254, co-fire.ts). */
+  coFired?: CoFired[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -114,10 +116,13 @@ export const tacticalRun = inngest.createFunction(
   {
     id: "tactical-run",
     name: "Tactical Run (event-driven)",
-    // Concurrency cap — multiple triggers can fire in the same minute. We
-    // serialize per-thesis to avoid two tactical runs racing on the same
-    // book entry (e.g. EXIT trigger + ADD trigger firing back-to-back).
-    concurrency: { limit: 4, key: "event.data.thesisId" },
+    // Concurrency cap — multiple triggers can fire in the same minute. One at a
+    // time per stock, so two runs never race on the same book entry. It was 4
+    // under this comment: GEV and PRAX 2026-11-16 each ran two at once, editing
+    // the same triggers. The five-minute check sends one event per stock per pass
+    // and holds a fire back while the stock's run is going (co-fire.ts); this is
+    // the net under that.
+    concurrency: { limit: 1, key: "event.data.thesisId" },
     retries: 1,
   },
   { event: "app/thesis.trigger.fired" },
@@ -449,8 +454,8 @@ export const tacticalRun = inngest.createFunction(
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: price-below (price/time)").
       const summary = sentenceOf(trigger as Trigger);
-      // A co-fired protective trigger gets its own audit row — the record
-      // says both fired — but shares this one run.
+      // A co-fired trigger gets its own audit row — the record says all of them
+      // fired — but shares this one run. A filing rule's row names the filing.
       // The rows carry what fired and the price; the analyst's note answers them.
       for (const co of coFired) {
         // The rule as it fired, kept on the line so its title holds after the rule changes.
@@ -460,7 +465,7 @@ export const tacticalRun = inngest.createFunction(
             thesisId: thesis.id,
             type: "TRIGGER_FIRED",
             summary: co.sentence,
-            rationale: null,
+            rationale: co.firedContext ?? null,
             triggerId: co.triggerId,
             triggerAction: rule?.action ?? null,
             ...(rule ? { triggerCondition: rule.predicate as object } : {}),
@@ -740,8 +745,11 @@ export const tacticalRun = inngest.createFunction(
       const fireSentence = sentenceOf(triggerTyped);
       // The numbers behind an earnings fire, when the evaluator sent them.
       const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
+      // The other fires on this stock this pass, each with the facts behind it (the filing it fired on),
+      // unless they are the ones already given above.
       const coFiredSuffix = fired.coFired?.length
-        ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers both.`
+        ? ` Also fired on the same pass: ${fired.coFired.map((c) => c.sentence).join("; ")} — one decision covers all of them.` +
+          [...new Set(fired.coFired.map((c) => c.firedContext).filter((c): c is string => !!c && c !== fired.firedContext))].map((c) => ` ${c}`).join("")
         : "";
       // A pre-catalyst buy is told where the event date sits against the
       // setup's buying window (DAV-338). Information for the decision,

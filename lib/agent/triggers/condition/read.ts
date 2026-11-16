@@ -199,7 +199,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
         : v.startsWith("item:")
           ? { items: [v.slice(5)] }
           : { forms: [v.slice(5)] };
-      return unfiredMatches(rule, ctx.filings, ctx.firedFilings).length > 0;
+      return unfiredMatches(rule, ctx.filings, ctx.firedFilings, ctx.filingsSince).length > 0;
     },
   },
 

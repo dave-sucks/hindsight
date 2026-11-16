@@ -29,8 +29,15 @@ export function crossingBaseline(
 }
 
 /**
- * Stamp the live price on every buy or review trigger this write added or
- * changed; keep the stamp on the rest. Supplied stamps are never trusted.
+ * Stamp every buy or review trigger this write added or changed with the time
+ * it was written, and with the live price when one is fresh; keep the stamp
+ * on the rest. Supplied stamps are never trusted.
+ *
+ * The time is stamped with no price too: a write before the open has no live
+ * price (the PRAX filing rules, 2026-11-16 08:02), and a filing rule reads
+ * its time to tell the filings it could not have missed from the ones that
+ * came out first (`filingsSince`, lib/market-data/sec-events). The baseline
+ * above needs both, so a time alone never moves it.
  */
 export function stampWrittenPrice(
   before: Trigger[],
@@ -49,10 +56,10 @@ export function stampWrittenPrice(
     const unchanged =
       was && was.action === t.action && samePredicate(was.predicate, t.predicate);
     if (unchanged) {
-      return was.writtenPrice != null && was.writtenAt
-        ? { ...rest, writtenPrice: was.writtenPrice, writtenAt: was.writtenAt }
+      return was.writtenAt
+        ? { ...rest, ...(was.writtenPrice != null ? { writtenPrice: was.writtenPrice } : {}), writtenAt: was.writtenAt }
         : rest;
     }
-    return livePrice != null ? { ...rest, writtenPrice: livePrice, writtenAt: now.toISOString() } : rest;
+    return { ...rest, ...(livePrice != null ? { writtenPrice: livePrice } : {}), writtenAt: now.toISOString() };
   });
 }
