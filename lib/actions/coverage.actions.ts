@@ -306,6 +306,8 @@ export async function getCoverageData(
       .findMany({
         where: {
           thesisId: { in: watchingTheses.map((t) => t.id) },
+          // A return, never the first line: the mint's price is its buy level, and its day is createdAt.
+          type: { not: "CREATED" },
           fieldChanges: { path: ["status", "to"], equals: "WATCHING" },
         },
         orderBy: { timestamp: "desc" },

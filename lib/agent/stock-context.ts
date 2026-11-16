@@ -173,7 +173,7 @@ export function etStamp(d: Date): string {
 }
 
 /** The feed item in the shape the Activity tab's title grammar reads. */
-function asTimelineUpdate(item: FeedItem): TimelineUpdate {
+export function asTimelineUpdate(item: FeedItem): TimelineUpdate {
   return {
     ...item,
     timestamp: item.timestamp.toISOString(),

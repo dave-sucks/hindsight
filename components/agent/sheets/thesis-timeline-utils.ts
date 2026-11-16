@@ -202,6 +202,8 @@ export function eventKind(u: TimelineUpdate): EventKind {
       return "status";
     case "CLOSED":
       return "closed";
+    // An order never proposed (approvals off, or your own click) reads as its fill.
+    case "ORDER_FILLED":
     case "PROPOSAL_APPROVED": {
       const { side } = proposalMeta(u);
       return side === "buy" ? "bought" : side === "sell" ? "sold-fill" : "approved";
@@ -451,6 +453,7 @@ function rowMatchesFilter(row: TimelineUpdate, filter: TimelineFilter): boolean 
   if (filter === "money")
     return (
       row.type.startsWith("PROPOSAL_") ||
+      row.type === "ORDER_FILLED" ||
       row.type === "STATUS_CHANGED" ||
       row.type === "CLOSED"
     );
@@ -765,7 +768,7 @@ export function toRow(item: TimelineItem): TimelineRow {
       signal,
       chips: [...ladderChangeLines(u), ...notAppliedLines(u)],
       // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
-      price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
+      price: u.type === "PROPOSAL_APPROVED" || u.type === "ORDER_FILLED" ? null : u.priceAtTime,
       description: text,
       quoted,
       // A review's own row follows the same rule as an episode's: if it

@@ -104,7 +104,9 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 A stock's Activity is one list (`lib/thesis/activity-feed.ts`): its saved
 lines (`ThesisUpdate`) plus each proposal's steps built from its `Order`
 (Proposed / Approved / Declined / Expired; the Order is the truth, the
-PROPOSAL_* rows are never trusted). The Activity tab shows the whole list,
+PROPOSAL_* rows are never trusted), and the fill of an order never proposed.
+The homepage Activity is the same lists cut to trades and watch status by
+stored fields alone (`lib/thesis/account-activity.ts`). The Activity tab shows the whole list,
 and the next run on the stock reads the newest 8 (`RECENT_ITEMS`) exactly as
 they read in the feed (`saidBlock` in `lib/agent/stock-context.ts`); the
 Activity tab marks where those 8 end. The Overview's "Agent insights" is a
