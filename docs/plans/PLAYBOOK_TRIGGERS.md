@@ -12,6 +12,7 @@ A stock has triggers and nothing else. A playbook (one of the 12 setups in `lib/
    - "Sell if below $S", at the chart level where the setup is wrong, at least the playbook's ATR distance under the buy.
    - The playbook's take-profit, if it has one, such as "Trim 50% if above $H" at a chart level like the prior high, never a price of our own choosing. The Street's average target can at most be a "Review if above".
    - The size is the risk for the trade ÷ (buy − S).
+   - So an agent's buy needs the stock's playbook, which sets "Sell if below $S" and the size. A stock with no playbook can't get an agent's buy proposal: it is a pass, or it gets a playbook first. The owner's own Trade ticket is unchanged.
 
    You see these on the proposal and can change them with Edit & Approve, which already exists: the proposal's two prices, which the fill writes as triggers.
 4. **At the fill**, every watch-only line comes off: the buy lines, the Stop watching lines, and any buying-window review. The approved sell triggers go on, and so do the playbook's holding lines (`lib/agent/triggers/setup-exits.ts`). The watch's review clock stays; a stock with none gets its horizon's (#994). The buy-time sell price you can set in Settings → Triggers is unchanged.
@@ -91,7 +92,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 |---|---|
 | Buy if within 2% of the 50-day average (or the 20-day) | The average the stock's pullbacks held, only while it is rising |
 | Review every 7 days | Re-checks that the average is still rising |
-| Stop watching if below the 50-day average and at least 1.5× normal volume | "A close below the 50-day on volume ends the setup." It reads during the day |
+| Stop watching if below the 50-day average and at least 1.5× normal volume | "A close below the 50-day on volume ends the setup" |
 
 | On a holding | How the level is picked | From |
 |---|---|---|
@@ -188,6 +189,7 @@ The first buy is half of full size. The playbook has no take-profit: it trims on
   - It adds the breakout's one-risk review, the pre-catalyst date sale, the pullback's 50-day sale, the episodic pivot's middle-of-the-gap review, and the Compounder's add.
   - It drops its move-from-entry trim, which the proposal's take-profit replaces.
   - It drops the "beat the market sold" review, since the account's beat review already covers every report.
+- **(e) A Stop watching line on a moving average waits for the close**, as a typed price already does. Today `watchedFloorOnClose` and `onTheClose` cover only typed prices. With this change, the pullback's "Stop watching if below the 50-day average and at least 1.5× normal volume" is read on the close, and a morning dip doesn't end the watch.
 
 ## Checked against recent trades
 
