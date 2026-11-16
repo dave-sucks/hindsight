@@ -7,7 +7,7 @@
 ## How it works
 
 1. **The levels don't change.** Account → Analyst → Stock: an analyst's trigger overrides the account's of the same kind, and a stock's overrides both. Same kind means the same measure, direction, variable and action, whatever the number.
-2. **A playbook is chosen per thesis.** The Writer picks it from the analyst's list. It's saved on the thesis and shown there. A playbook is a set of templates, listed in Settings → Playbook. They write ordinary stock triggers, exactly as if you added them by hand. Changing a playbook later doesn't change stocks already written.
+2. **A playbook is chosen per thesis.** The Writer picks it from the analyst's list. It's saved on the thesis and shown there. A playbook is a stored list of trigger templates, which you edit in Settings → Playbook with the same trigger form the analyst's Triggers tab uses. Its templates write ordinary stock triggers, exactly as if you added them by hand. Changing a playbook later doesn't change stocks already written. The tables below are the templates each playbook starts with.
 3. **On a watch there are three kinds of trigger:** Buy if, Review if, and Stop watching if. Stop watching is its own stored action: it ends the watch and never sells. When it mints the thesis, the Writer fills the watch templates' prices from the chart.
 4. **The buy proposal.** The trigger run fills the holding's sell prices from the playbook's templates: "Sell if below $S", plus the take-profit if the playbook has one. Each price comes with its reason. `place_trade` takes them, and the size is the risk for the trade ÷ (buy − S). You see them on the proposal and change them in Edit & Approve. An agent's buy needs the stock's playbook; a stock with none is a pass, or gets a playbook first. Your own Trade ticket is unchanged.
 5. **At the fill**, the buy lines, Stop watching lines and buying-window reviews come off. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
@@ -172,22 +172,34 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
 - **Insider cluster buying** (`INSIDER_CLUSTER`), a screen: a watch wake, "Review if at least 3 insiders buying in the last 30 days", then the breakout's or pullback's lines. Its "Sell if below $S" sits at the lowest insider purchase price, or 12% under the buy if that is higher.
 - **Estimate-revision momentum** (`ESTIMATE_REVISION`) and **sector rotation** (`SECTOR_ROTATION`), screens: no lines of their own.
 
-## 9.5, as PRs (smallest first)
+## 9.5, as PRs
 
 1. **No hidden timing, no status-based meaning.**
    - Delete `watchedFloorOnClose` (`types.ts`, the trigger evaluator, `live-evaluate.ts`, `TriggerPill.tsx`). A Stop watching line saves its own "only on the close" setting, the same setting any typed price has, and the pill and the dialog show it.
    - Stop watching becomes its own stored action. Delete the "sells" label switch in `describe.ts`, the evaluator's sale-on-a-watch branch (`stop-watching.ts`), and the schema's DEMOTE → EXIT mapping. A "Sell if" line exists only on a holding.
    - One data update, so nothing fires differently: the 8 watch sale lines on the live account get the Stop watching action and their "only on the close" setting, and the one stored DEMOTE becomes Stop watching.
-2. **No clock nobody chose.**
-   - Delete `defaultTriggersForHorizon` and `CADENCE_DAYS_BY_HORIZON`, with the two places that fall back to them (the shown review date in `defaults.ts`, and `watchlist.actions.ts`).
-   - The Writer writes the playbook's watch templates.
-   - Settings → Playbook lists every template exactly as it will be written, and the thesis shows its playbook.
-3. **The buy and the fill.**
-   - `place_trade` takes the sell prices the trigger run filled from the templates, and the breakout's one-risk review, each with its reason. The proposal and Edit & Approve show them.
-   - The fill removes Stop watching lines and buying-window reviews. It writes a take-profit as the template's "Trim 50% if above"; today a new upper price lands as a review.
-   - The fill writes the holding templates. `setup-exits.ts` gains the date sale, the 50-day sale and the add. It loses its move-from-entry trim and the "beat the market sold" review, which the account's beat review already covers.
+2. **A playbook is a list of trigger templates.**
+   - **The shape.** Each playbook stores its triggers in the shape the analyst's Triggers tab uses, plus one field: when the trigger is written (on a watch, with the buy proposal, or at the fill). The pre-catalyst's in-window lines are watch templates that the run answering its 70-day review writes.
+   - **Prices.** A price in a template is a named chart level (`{pivot}`, `{swingLow}`, `{priorHigh}`, `{gapDayLow}`, …), the same `{placeholder}` mechanism the buy template already uses. A number that depends on the buy (the breakout's one-risk percent) is named the same way. The agent fills it, with its reason, when it writes the trigger.
+   - **Storage.** Templates are stored on the account, the way the account's own rules are (`Account.triggers` + `triggersSeededAt`): seeded once from this spec's tables, then the owner's to edit. For anything a template now carries (the chase limit, the partial, the time limit, the beat-and-fade switch), they replace `Account.setupOverrides`. The ATR distance, the widest sell distance and the risk multiplier stay as numbers.
+   - **Settings.** Settings → Playbook shows and edits the templates with the same trigger form the analyst's Triggers tab uses. The thesis shows its playbook.
+   - **Deleted.** The hardcoded exits in `setup-exits.ts`. The prose fields in `setups.ts` that become templates (`stop`, `target`, `trail`, `time`, `manage`). The horizon clock (`defaultTriggersForHorizon`, `CADENCE_DAYS_BY_HORIZON`, and their two fallbacks: the shown review date in `defaults.ts`, and `watchlist.actions.ts`), because each playbook's review clock is a template. What stays prose (preconditions, confirmation) is research guidance, never a trigger.
+   - **One reader.** The Writer, the trigger run, the fill and `update_thesis` all read the one list. `update_thesis` is included because it writes the exits when a review names the setup on a stock we hold (`heldSetupExitOps`). Nothing else writes a playbook trigger.
+3. **The writers use the list.**
+   - The Writer writes the watch templates.
+   - The trigger run fills the proposal templates when it proposes the buy. `place_trade` takes each price with its reason, and the proposal and Edit & Approve show them.
+   - The fill removes the watch-only lines (buy, Stop watching, buying-window reviews), writes the approved proposal lines with their template's action ("Trim 50% if above", where today a new upper price lands as a review), and writes the fill templates.
    - A sale back to watch removes the Sell lines and writes the watch templates.
 4. **Question 3, if yes:** delete "stop when buying" (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
+
+**Rough size, in net app code:**
+
+| PR | Size | Lines |
+|---|---|---|
+| 1 | Small | About +200 / −150, plus a one-time data update for 9 lines |
+| 2 | Large, the bulk | About +700 / −900. Adds a column, the seed and the form reuse; deletes `setup-exits.ts`, about 300 lines of `setups.ts` prose and manage fields, the overrides a template now carries, and the horizon clock |
+| 3 | Medium | About +350 / −200 |
+| 4 | Small, a deletion | About −300 |
 
 ## Checked against recent trades
 
