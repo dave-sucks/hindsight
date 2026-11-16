@@ -59,6 +59,8 @@ export interface EnterTriggerGuardArgs {
   triggers: Trigger[];
   /** The resulting target_price after the write — drives the error message. */
   targetPrice: number | null;
+  /** A buy on this stock is proposed and waiting for approval: it is the way in, so the list needs no buy level. */
+  buyWaiting?: boolean;
 }
 
 export type EnterTriggerGuardResult =
@@ -170,6 +172,8 @@ export function validateEnterTriggerRequired(
   // ENTER-presence guard.
   const hasEnter = args.triggers.some((t) => t.action === "ENTER");
   if (hasEnter) return { ok: true };
+  // A buy already proposed is waiting for its answer; the floor and target under it stay, and nothing here says to take them down (IOT 2026-10-15).
+  if (args.buyWaiting) return { ok: true };
 
   // A directional watch with NO plan level is a name being kept in view
   // without a buy plan — "not worth pricing right now." That is legal with

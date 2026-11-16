@@ -12,6 +12,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { loadRunRequests, type CallView } from "@/lib/agent/run-requests";
 
 export interface ChatHistoryItem {
   runId: string;
@@ -159,6 +160,22 @@ export async function findChatRunIdBySession(
     select: { id: true },
   });
   return run?.id ?? null;
+}
+
+/**
+ * What a chat sent the model, for its Context panel: the chat is named by its run id (a resumed chat) or by the
+ * session id it was created with (a fresh one, which never learns its run id). Only the user's own chat is read.
+ */
+export async function loadChatRequests(
+  which: { runId?: string | null; session?: string | null },
+  userId: string,
+): Promise<CallView[]> {
+  const runId = which.runId
+    ? (await prisma.researchRun.findFirst({ where: { id: which.runId, userId, mode: "PRINCIPAL_CHAT" }, select: { id: true } }))?.id ?? null
+    : which.session
+      ? await findChatRunIdBySession(which.session, userId)
+      : null;
+  return runId ? loadRunRequests(runId) : [];
 }
 
 /**

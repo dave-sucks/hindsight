@@ -35,6 +35,8 @@
  *   $X realized = sum of EXIT realizedPnl
  */
 
+import { ACCOUNT_RUN_NAMES } from "@/lib/runs/modes";
+
 // ── Input shape (loose — accepts any superset of these fields) ──────────────
 
 export interface RunSummaryInputTheses {
@@ -546,6 +548,8 @@ export function buildActionSegments(summary: RunSummary): ActionSegment[] {
   }
 
   if (segments.length === 0) {
+    // A run made for the whole account (Portfolio Digest, Market Reviewer) has no book to walk: say nothing.
+    if (summary.mode && Object.keys(ACCOUNT_RUN_NAMES).includes(summary.mode)) return [];
     // Walked nothing AND not failed = quiet run; this happens when the
     // analyst has 0 active+watching theses (new analyst, cleaned book).
     return [{ color: "muted", partial: false, text: "No theses to walk" }];

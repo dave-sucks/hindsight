@@ -19,6 +19,7 @@
  */
 import {
   eventKind,
+  fireTitle,
   isPlainReview,
   ladderChangeLines,
   notAppliedLines,
@@ -192,7 +193,7 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   const tu = asTimelineUpdate(item);
   const kind = eventKind(tu);
   // A plain review reads as the page titles it: the kind of review, from the trigger it answered ("Pre-earnings review · weaker"); everything that happened keeps its title.
-  const t = isPlainReview(tu) ? reviewTitle(tu, triggers) : titleSegments(tu);
+  const t = isPlainReview(tu) ? reviewTitle(tu, triggers) : kind === "fired" ? fireTitle(tu, triggers) : titleSegments(tu);
   const title = kind === "note" ? "Your note" : [t.primary, t.secondary].filter(Boolean).join(" ").trim();
   const chips = [...ladderChangeLines(tu), ...notAppliedLines(tu)].map((c) => c.text);
   const comment = proposalUserMessage(tu);

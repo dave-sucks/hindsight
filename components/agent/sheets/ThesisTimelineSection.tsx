@@ -48,6 +48,8 @@ import {
   toRow,
   isPlainReview,
   reviewTitle,
+  fireTitle,
+  eventKind,
   withPriceChanges,
   type LadderChange,
   type DotKind,
@@ -218,7 +220,9 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
   // so the paragraph always sits under it, never beside the price and the actions.
   const titled = rows.map((r, i) => {
     const item = items[i];
-    return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: reviewTitle(item.row, triggers) } : r;
+    if (item.kind !== "event") return r;
+    if (isPlainReview(item.row)) return { ...r, title: reviewTitle(item.row, triggers) };
+    return eventKind(item.row) === "fired" ? { ...r, title: fireTitle(item.row, triggers) } : r;
   });
   const ids = items.map(itemIds);
   return { rows: titled, spans: proposalSpanSegments(items), labels, ids };

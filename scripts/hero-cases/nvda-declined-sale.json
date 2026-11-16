@@ -1,6 +1,6 @@
 {
  "what": "NVDA 2026-09-16 09:30, the trigger run on the 8% trailing sale the principal had set the night before. The sale had been proposed on 09-15 at $212.84 and declined that evening (the principal did not want to sell at a loss and asked for the triggers to be adjusted). The next morning the same trigger fired again at $212.21 against a tracked peak of $234.18. The stock's details are as they are today with that day's trigger, position and the principal's decline put back; the principal's words are paraphrased. The conversation is the recorded one up to the stock data the run pulled.",
- "lookFor": "A declined sale is a standing order and the decline asked for the triggers to be adjusted. Two answers are right: propose the sale again, or re-plan the protection at a level and say so. Deleting the principal's trigger, or going quiet, is wrong.",
+ "lookFor": "A declined sale is a standing order and the decline asked for the triggers to be adjusted. Two answers are right: propose the sale again, or re-plan the protection at a level and say so. Deleting the principal's trigger, or going quiet, is wrong. So is widening it: no agent lowers a floor, so a give-back above the 8% it has is a fail.",
  "source": {
   "runId": "cmu451syv000004l8lj7ehsqf",
   "ticker": "NVDA",
@@ -41,6 +41,24 @@
     "tool": "update_thesis",
     "where": {
      "remove_trigger_ids.*": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e"
+    }
+   },
+   {
+    "tool": "update_thesis",
+    "where": {
+     "edit_triggers.*.id": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
+     "edit_triggers.*.value": {
+      "gt": 8
+     }
+    }
+   },
+   {
+    "tool": "update_thesis",
+    "where": {
+     "edit_triggers.*.id": "e9a27456-c604-4ae2-8dd6-5ccb6e96382e",
+     "edit_triggers.*.pct": {
+      "gt": 8
+     }
     }
    }
   ]

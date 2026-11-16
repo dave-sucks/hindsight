@@ -14,6 +14,7 @@
 
 import {
   reviewTitle,
+  fireTitle,
   titleSegments,
   triggerPhrase,
   updatedSecondary,
@@ -126,6 +127,23 @@ describe("titleSegments — trade rows read like the thesis banners", () => {
         }),
       ),
     ).toEqual({ primary: "Proposed", secondary: "sell 75 shares" });
+  });
+});
+
+describe("fireTitle — a fire whose rule has since been removed says so", () => {
+  // ABT 2026-10-07: "Review if below $110" fired at 10:05, and the rule was removed after.
+  const fire = row({ type: "TRIGGER_FIRED", triggerId: "abt-110", summary: "Review if below $110 — deferred to the next daily review" });
+  const rule = (id: string) => ({ id, action: "REVIEW", predicate: { watch: "price", is: "below", value: 110 } });
+
+  it("marks the line once its rule is gone from the list", () => {
+    expect(fireTitle(fire, [rule("other")])).toEqual({ primary: "Trigger:", secondary: "Review if below $110 (since removed)" });
+    expect(fireTitle(fire, [])).toEqual({ primary: "Trigger:", secondary: "Review if below $110 (since removed)" });
+  });
+
+  it("leaves the line alone while the rule stands, or when there is no list to look in", () => {
+    expect(fireTitle(fire, [rule("abt-110")])).toEqual({ primary: "Trigger:", secondary: "Review if below $110" });
+    expect(fireTitle(fire)).toEqual({ primary: "Trigger:", secondary: "Review if below $110" });
+    expect(fireTitle({ ...fire, triggerId: null }, [])).toEqual({ primary: "Trigger:", secondary: "Review if below $110" });
   });
 });
 
@@ -339,7 +357,11 @@ describe("one kind per row, then one table each", () => {
     ).toBe("sell");
     expect(dotFor(row({ type: "PROPOSAL_REJECTED" }))).toBe("declined");
     expect(dotFor(row({ type: "PROPOSAL_EXPIRED" }))).toBe("declined");
-    expect(dotFor(row({ type: "PROPOSAL_PROPOSED" }))).toBe("open-ask");
+    // Only a proposal still waiting on the owner pulses; a Proposed row whose proposal was answered or lapsed is a plain mark.
+    const waiting = { proposal: { to: { intent: "OPEN", quantity: 10, status: "AWAITING_APPROVAL" } } };
+    expect(dotFor(row({ type: "PROPOSAL_PROPOSED", fieldChanges: waiting }))).toBe("open-ask");
+    expect(dotFor(row({ type: "PROPOSAL_PROPOSED", fieldChanges: { proposal: { to: { intent: "OPEN", quantity: 10, status: "EXPIRED" } } } }))).toBe("default");
+    expect(dotFor(row({ type: "PROPOSAL_PROPOSED" }))).toBe("default");
     expect(dotFor(row({ type: "TRIGGER_FIRED" }))).toBe("default");
     expect(dotFor(row({ type: "REVIEWED" }))).toBe("default");
   });

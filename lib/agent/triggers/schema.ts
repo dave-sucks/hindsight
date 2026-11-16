@@ -171,6 +171,12 @@ export const triggerActionSchema = z.enum([
   "DEMOTE",
 ]);
 
+/**
+ * The longest wait a rung may carry. A repeat runs 1 to 365 days and its wait is its interval
+ * (measures/schedule.ts), so a cap under 365 clamped a 112-day review to 90 on every read, with a warning each pass.
+ */
+const MAX_COOLDOWN_DAYS = 365;
+
 export const triggerSchema = z.object({
   // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
   // any trigger without one (parseTriggers), and lastFiredAt cooldown
@@ -197,7 +203,7 @@ export const triggerSchema = z.object({
     .number()
     .int()
     .min(0)
-    .max(90)
+    .max(MAX_COOLDOWN_DAYS)
     .optional()
     .describe(
       // Description-level discipline — the agent reads this when picking
@@ -347,20 +353,18 @@ export type TriggerInput = z.infer<typeof triggerSchema>;
 //
 // The file already warns about exactly this hazard for `.refine()`
 // ("would fail the whole array parse and silently drop ALL triggers on
-// that thesis") — the `.max(90)` on cooldownDays does the same thing and
+// that thesis") — the `.max(MAX_COOLDOWN_DAYS)` on cooldownDays does the same thing and
 // nobody noticed.
 //
 // So the read path parses rung-by-rung and repairs what it can:
-//   • cooldownDays out of range → CLAMPED into [0, 90]. A 292-day
-//     cooldown means "basically never re-fire"; 90 is close enough, and
-//     keeping the rung beats losing it.
+//   • cooldownDays out of range → CLAMPED into [0, MAX_COOLDOWN_DAYS]. A
+//     400-day cooldown means "basically never re-fire"; a year is close
+//     enough, and keeping the rung beats losing it.
 //   • anything else invalid   → that ONE rung is dropped, loudly. The
 //     rest of the ladder survives.
 //
 // The write paths keep using `triggersArraySchema` directly and stay
 // strict — bad input should be refused at the door, not repaired.
-
-const MAX_COOLDOWN_DAYS = 90;
 
 export interface ResilientParseResult {
   triggers: TriggerInput[];

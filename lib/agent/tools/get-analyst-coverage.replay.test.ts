@@ -59,10 +59,12 @@ describe("get_analyst_coverage — the Street targets", () => {
     const moved = JSON.parse(JSON.stringify(msft));
     delete moved.targetprice.data.consensusOverview;
     serveNasdaq(moved);
-    const old = { ...parseStreet("MSFT", msft, "2026-10-30"), fetchedAt: new Date(Date.now() - 3 * 86_400_000) };
+    // Three days old by the clock the tool reads, not a fixed date: a row past 14 days is not read.
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000);
+    const old = { ...parseStreet("MSFT", msft, nyDay(threeDaysAgo)), fetchedAt: threeDaysAgo };
     const { result, db } = await run([old]);
     expect(db.store.streetConsensus).toEqual([old]);
-    expect((result.data as unknown as Data).priceTargets).toMatchObject({ average: 634.08, asOf: "2026-10-30" });
+    expect((result.data as unknown as Data).priceTargets).toMatchObject({ average: 634.08, asOf: nyDay(threeDaysAgo) });
   });
 
   it("a row past 14 days is not read: with no fresh pull the range is absent", async () => {

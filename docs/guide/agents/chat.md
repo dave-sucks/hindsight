@@ -107,5 +107,5 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 `app/api/agent/[mode]/route.ts`
 
 #### What was sent
-The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
+The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`). The page reads it again when a reply begins and when a turn ends (`hooks/useLiveRequests.ts`, `/api/chat/requests`), so a new chat has its Context without being reopened.
 </details>

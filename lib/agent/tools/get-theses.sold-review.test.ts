@@ -12,7 +12,8 @@
  * Replay: SMMT, thesis cmtc1kp7o000l04ikm6kf9h1b, position
  * cmtiwz2ua000704l7l0z60jfl. RETIRED(SOLD) 2026-09-21 15:18:44Z at $16.9232
  * for +$1,157.94 (+17.9%) on a protective stop, eight weeks before the
- * November 14 PDUFA it was bought for. The two rows that landed after the
+ * November 14 PDUFA it was bought for (the test moves that date to two weeks
+ * ahead of the clock, so the line is true on any day it runs). The two rows that landed after the
  * close — CLOSED at .537 and PROPOSAL_APPROVED at .852 — are the close's own
  * bookkeeping, not an answer.
  */
@@ -60,12 +61,15 @@ const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000);
 /** SMMT's real close, held at a fixed offset so the "sold today" wording is stable. */
 const SOLD_AT = hoursAgo(20);
 
+/** The PDUFA it was bought for, kept ahead of the real clock: "still ahead" is read against today. */
+const CATALYST = new Date(`${new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)}T00:00:00Z`);
+
 const SMMT_SOLD = {
   id: "cmtc1kp7o000l04ikm6kf9h1b",
   ticker: "SMMT",
   closedAt: SOLD_AT,
   closeReason: "STOP",
-  catalystDate: new Date("2026-11-14T00:00:00Z"),
+  catalystDate: CATALYST,
   // The close's own bookkeeping lands in the same second as the sale. The
   // scan filters to UPDATED / REVIEWED / STATUS_CHANGED, so an empty list
   // here is what production looks like the morning after a sale.
@@ -120,7 +124,7 @@ describe("SMMT reaches the run as sold_to_review", () => {
     expect(ask).toContain("$16.92");
     expect(ask).toContain("+$1,158 (+17.9%)");
     expect(ask).toContain("on a stop");
-    expect(ask).toContain("Its catalyst is still ahead — 2026-11-14.");
+    expect(ask).toContain(`Its catalyst is still ahead — ${CATALYST.toISOString().slice(0, 10)}.`);
     expect(situations).toEqual(["SOLD_ONE_REVIEW"]);
     expect(data.guidance.SOLD_ONE_REVIEW).toContain('change_status "WATCHING"');
   });

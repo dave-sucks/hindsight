@@ -25,6 +25,7 @@ import { HindsightComposer } from "@/components/assistant-ui/hindsight-composer"
 import { ToolUICallbacksProvider } from "@/components/assistant-ui/tool-uis";
 import { useAutoSend } from "@/hooks/useAutoSend";
 import { useSavedAnswerRecovery } from "@/hooks/useSavedAnswerRecovery";
+import { useLiveRequests } from "@/hooks/useLiveRequests";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -144,6 +145,8 @@ interface AgentChatProps {
   readOnly?: boolean;
   /** research-run: what the run's model calls were sent (lib/agent/run-requests.ts), behind the header's Context button. */
   requests?: CallView[];
+  /** Principal chat: called with what the chat sent the model, read again after each message, for the page's Context button. */
+  onRequests?: (calls: CallView[]) => void;
 
   // builder / editor
   currentConfig?: Record<string, unknown>;
@@ -206,6 +209,7 @@ export function AgentChat({
   transcript = null,
   readOnly = false,
   requests = [],
+  onRequests,
   currentConfig,
   heldOrWatched,
   messages,
@@ -286,6 +290,7 @@ export function AgentChat({
         transcript={transcript}
         readOnly={readOnly}
         requests={requests}
+        onRequests={onRequests}
         currentConfig={currentConfig}
         heldOrWatched={heldOrWatched}
         composerSlot={composerSlot}
@@ -314,6 +319,7 @@ interface InnerProps {
   transcript: TranscriptRowData | null;
   readOnly: boolean;
   requests: CallView[];
+  onRequests?: (calls: CallView[]) => void;
   currentConfig?: Record<string, unknown>;
   heldOrWatched?: string[];
   composerSlot?: ReactNode;
@@ -340,6 +346,7 @@ function AgentChatInner({
   transcript,
   readOnly,
   requests,
+  onRequests,
   currentConfig,
   heldOrWatched,
   composerSlot,
@@ -358,6 +365,14 @@ function AgentChatInner({
 
   // research-run: auto-send "Run" to kick off the agent
   useAutoSend({ message: autoStart ? "Run" : initialPrompt, delay: autoStart ? 500 : 300 });
+
+  // The chat's Context, read again each time a reply begins and a turn ends.
+  useLiveRequests({
+    enabled: mode === "principal" && !!onRequests,
+    runId,
+    chatSessionId,
+    onLoaded: (calls) => onRequests?.(calls),
+  });
 
   // Principal chat saves every turn by chatSessionId, so a dropped
   // connection can be recovered from the saved thread.

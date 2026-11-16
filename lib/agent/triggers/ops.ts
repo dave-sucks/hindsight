@@ -665,6 +665,8 @@ export function checkLadder(input: {
   /** The fill on a held name (position avgCost, else the stored entry). */
   entryPrice?: number | null;
   avgCost?: number | null;
+  /** A buy on the stock waits for approval (see validateEnterTriggerRequired). */
+  buyWaiting?: boolean;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
   const held = status === "HOLDING";
@@ -693,6 +695,7 @@ export function checkLadder(input: {
     status: (status ?? "WATCHING") as "WATCHING" | "HOLDING" | "PROMOTED" | "PASSED" | "RETIRED",
     triggers: [...triggers, ...inherited],
     targetPrice: columns.targetPrice,
+    buyWaiting: input.buyWaiting,
   });
   if (!guard.ok) return { ok: false, error: "missing_enter_trigger", message: guard.note };
   return { ok: true, columns };

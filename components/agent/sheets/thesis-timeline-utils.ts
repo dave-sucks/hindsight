@@ -273,6 +273,16 @@ export interface TitleTrigger {
   predicate: unknown;
 }
 
+/**
+ * A fire's title: "Trigger: Review if below $110", and with "(since removed)" once the rule it names is gone from
+ * the thesis's list. No list to look in (`triggers` absent) says nothing; the agent's copy of the line says the same.
+ */
+export function fireTitle(u: TimelineUpdate, triggers?: ReadonlyArray<TitleTrigger>): TitleSegments {
+  const t = titleSegments(u);
+  if (!triggers || !u.triggerId || triggers.some((x) => x.id === u.triggerId)) return t;
+  return { ...t, secondary: `${t.secondary ?? ""} (since removed)`.trim() };
+}
+
 /** What a review on a measure is called. A measure not named here titles the review with the trigger's own condition. */
 const REVIEW_KINDS: Partial<Record<Watch, (c: Condition) => string>> = {
   report: (c) => (c.is === "after" ? "Post-earnings review" : "Pre-earnings review"),

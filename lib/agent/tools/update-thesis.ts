@@ -1310,6 +1310,20 @@ export const updateThesis = defineTool({
         // $434 stop refused against the plan). Fall back to the row.
         const held = levelStatus === "HOLDING";
         let avgCost: number | null | undefined;
+        // A buy on this stock proposed and waiting for approval: the plan under it is never advised down
+        // (IOT 2026-10-15: a refusal said to remove the floor and target, and the run did, buy waiting).
+        // Read only when a save is refused, and a failed read says nothing is waiting.
+        let waiting: Promise<boolean> | undefined;
+        const buyWaiting = () =>
+          (waiting ??= (async () => {
+            if (levelStatus !== "WATCHING") return false;
+            try {
+              return !!(await prisma.order.findFirst({ where: { thesisId: existing.id, status: "AWAITING_APPROVAL", intent: { in: ["OPEN", "ADD"] } }, select: { id: true } }));
+            } catch (err) {
+              console.warn("[update_thesis] could not look for a waiting buy:", err instanceof Error ? err.message : err);
+              return false;
+            }
+          })());
         const checkOf = async (triggers: Trigger[]) => {
           if (avgCost === undefined) {
             const openPosition =
@@ -1322,15 +1336,18 @@ export const updateThesis = defineTool({
                 : null;
             avgCost = openPosition?.avgCost != null ? Number(openPosition.avgCost) : null;
           }
-          return checkLadder({
+          const input = {
             triggers,
             inherited: inheritedLadder,
             direction: levelDirection,
             status: levelStatus,
-            actor: "AGENT",
+            actor: "AGENT" as const,
             entryPrice: avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
-          });
+          };
+          const first = checkLadder(input);
+          // A waiting buy is the way in: with one, a plan with no buy level on the list is not a refusal.
+          return !first.ok && first.error === "missing_enter_trigger" && (await buyWaiting()) ? checkLadder({ ...input, buyWaiting: true }) : first;
         };
         let liveOps = triggerOps;
         let applied = apply(liveOps);
@@ -1374,7 +1391,9 @@ export const updateThesis = defineTool({
           // The refusal offers "set the plan down" as an exit; name the
           // exact ids so the agent doesn't guess (MSFT 2026-09-14 was told
           // to send the whole list again, an argument that no longer exists).
-          const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
+          const message = (await buyWaiting())
+            ? `${check.message} A buy is waiting for approval on $${existing.ticker}, so its floor and target stay.`
+            : `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
           // A seed's commitment is its plan: without a valid one nothing lands.
           if (isUnresearchedSeed(existing.direction)) {
             return {

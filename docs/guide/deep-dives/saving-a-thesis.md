@@ -34,7 +34,7 @@ The fields fall in six groups: write-up, claim, plan, view (direction, convictio
 
 ## Triggers, one at a time
 
-A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_triggers` (by id) or `remove_trigger_ids`, and `entry_price`, `target_price` and `stop_loss` are the same edit on the buy, target and floor trigger. Each op is one line in Activity. A refused op comes back by id and the rest land. Because an edit keeps the trigger's id, its cooldown and fire history stay with it. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
+A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_triggers` (by id) or `remove_trigger_ids`, and `entry_price`, `target_price` and `stop_loss` are the same edit on the buy, target and floor trigger. Each op is one line in Activity. A refused op comes back by id and the rest land. While a buy waits for your approval on a stock, a refused save never says to take the plan down: the floor and target stay under the buy. Because an edit keeps the trigger's id, its cooldown and fire history stay with it. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
 
 ## Floors only go up
 

@@ -58,7 +58,7 @@ export function ChatPageClient({
   resumedMessages,
   resumedRunId,
   resumedAnalystId,
-  requests = [],
+  requests: resumedRequests = [],
   kickoffAnalystId,
   kickoffMessage,
 }: Props) {
@@ -68,6 +68,9 @@ export function ChatPageClient({
   );
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  // What the chat sent the model: the resumed chat's, then each message's as it goes out (AgentChat's onRequests).
+  const [liveRequests, setLiveRequests] = useState<CallView[] | null>(null);
+  const requests = liveRequests ?? resumedRequests;
 
   const handleChange = useCallback((analystId: string | null) => {
     setScopedAnalystId(analystId);
@@ -115,6 +118,7 @@ export function ChatPageClient({
           // route continues writing to the same chat.
           messages={resumedMessages}
           runId={resumedRunId ?? undefined}
+          onRequests={setLiveRequests}
           // Discovery entry-point kickoff (DISCOVERY_OVERHAUL SOON-2). When
           // set on a FRESH chat (no resume), AgentChat's useAutoSend fires
           // this as the first message. On a resumed chat the kickoff is

@@ -163,38 +163,40 @@ export function RunCard({ run }: { run: RunCardRun }) {
             )}
           </div>
 
-          {/* Row 2: action line · realized P&L (if any) */}
-          <div className="flex items-baseline justify-between gap-3 min-w-0">
-            {isPodcastSegmentRun ? (
-              <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
-                {run.segmentTranscript?.title ??
-                  (run.status === "RUNNING" ? "Researching segment…" : "No transcript saved")}
-              </p>
-            ) : tacticalSubtitle ? (
-              <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
-                {tacticalSubtitle}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
-                {segments.map((seg, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
-                    <span>{seg.text}</span>
-                  </span>
-                ))}
-              </p>
-            )}
-            {pnlLabel && (
-              <span
-                className={cn(
-                  "text-xs font-medium tabular-nums shrink-0",
-                  pnl! >= 0 ? "text-emerald-500" : "text-red-500",
-                )}
-              >
-                {pnlLabel}
-              </span>
-            )}
-          </div>
+          {/* Row 2: action line · realized P&L (if any). A run with nothing to say about a book has no row. */}
+          {(isPodcastSegmentRun || tacticalSubtitle || segments.length > 0 || pnlLabel) && (
+            <div className="flex items-baseline justify-between gap-3 min-w-0">
+              {isPodcastSegmentRun ? (
+                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                  {run.segmentTranscript?.title ??
+                    (run.status === "RUNNING" ? "Researching segment…" : "No transcript saved")}
+                </p>
+              ) : tacticalSubtitle ? (
+                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                  {tacticalSubtitle}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed min-w-0">
+                  {segments.map((seg, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="mx-1.5 opacity-40">·</span>}
+                      <span>{seg.text}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {pnlLabel && (
+                <span
+                  className={cn(
+                    "text-xs font-medium tabular-nums shrink-0",
+                    pnl! >= 0 ? "text-emerald-500" : "text-red-500",
+                  )}
+                >
+                  {pnlLabel}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Section 2: timestamp + duration */}

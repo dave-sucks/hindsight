@@ -173,6 +173,16 @@ describe("the block: the newest 8 lines of the feed, as the owner sees them, who
     expect(saidLine(note)).toBe(`  10-01 06:00 · $100.00 · Your note — "${long}" [id n]`);
   });
 
+  it("a fire says (since removed) once its rule is gone from the list the run was handed; a standing rule, or no list, says nothing", () => {
+    const fire = toFeedItem(byId("cmule97cz000004jzj66w096e"));
+    const rule = (id: string) => ({ id, action: "REVIEW", predicate: {} });
+    expect(saidLine(fire)).not.toContain("since removed");
+    expect(saidLine(fire, [rule(FIFTEEN_OFF_HIGH), rule(BELOW_200_DAY)])).not.toContain("since removed");
+    expect(saidLine(fire, [rule(BELOW_200_DAY)])).toContain("Trigger: Trailing 15% from high — review (since removed)");
+    // A thesis with no rules left: every fire it had is of a removed one.
+    expect(saidLine(fire, [])).toContain("(since removed)");
+  });
+
   it("nothing on record → no block", () => {
     expect(buildStockContext({ ticker: "X", feed: [] }).text).toBeNull();
   });

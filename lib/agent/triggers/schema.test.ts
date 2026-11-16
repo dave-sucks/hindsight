@@ -5,6 +5,8 @@
  * with a cooldown of 144 / 144 / 292 against the schema's max of 90. Array
  * validation is all-or-nothing, so ALL 8 / 8 / 6 of their rungs — entry
  * triggers included — were discarded on every read. No error, no alert.
+ * The cap is now a year, as long as a repeat may run (2026-11-15): before, a
+ * review every 112 days was cut to 90 on every read and logged a repair each pass.
  */
 
 import { zodSchema } from "ai";
@@ -18,13 +20,13 @@ const good = {
   rationale: "hard stop",
   cooldownDays: 0,
 };
-/** The exact shape that was discarding whole ladders. */
+/** A cooldown past anything a repeat may run: the shape that was discarding whole ladders, at a year and more. */
 const badCooldown = {
   id: "t2",
   predicate: { watch: "repeat", value: 180 },
   action: "REVIEW",
   rationale: "hygiene",
-  cooldownDays: 292,
+  cooldownDays: 400,
 };
 const unrepairable = {
   id: "t3",
@@ -46,7 +48,18 @@ describe("parseTriggersResilient", () => {
 
   it("clamps the cooldown into range rather than dropping the rung", () => {
     const r = parseTriggersResilient([badCooldown]);
-    expect(r.triggers[0].cooldownDays).toBe(90);
+    expect(r.triggers[0].cooldownDays).toBe(365);
+  });
+
+  it("keeps the wait of every repeat a review may be set to, 1 to 365 days, with nothing to repair", () => {
+    // A repeat's wait is its interval, so the longest repeat needs the longest wait. EXEL's was 112; the read made it 90.
+    for (const days of [1, 90, 112, 365]) {
+      const review = { id: "t4", predicate: { watch: "repeat", value: days }, action: "REVIEW", rationale: "clock", cooldownDays: days };
+      const r = parseTriggersResilient([review]);
+      expect(r).toMatchObject({ clamped: 0, dropped: 0 });
+      expect(r.triggers[0].cooldownDays).toBe(days);
+      expect(triggersArraySchema.safeParse([review]).success).toBe(true);
+    }
   });
 
   it("clamps a negative cooldown to zero", () => {
