@@ -21,7 +21,7 @@ import {
   applyTriggerDefaults,
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
-import { checkLadder } from "@/lib/agent/triggers/ops";
+import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -613,6 +613,12 @@ export const recordThesis = defineTool({
       // Every buy trigger carries the price it was written at, so a level set
       // on a down day isn't judged against yesterday's close (./written-price).
       mergedTriggers = stampWrittenPrice([], mergedTriggers, freshForStamp, new Date());
+
+      // A buy already true at the price it is written at can never cross (the same rule as an added one).
+      const deadBuy = mergedTriggers.map((t) => buyAlreadyTrue(t, quoteForEntrySide)).find(Boolean);
+      if (deadBuy) {
+        return { summary: `Thesis rejected for ${args.ticker}: a buy already true at the price never fires.`, data: { thesis_id: null, status: "FAILED" as const, note: deadBuy }, sources: [] };
+      }
 
       // ── The ladder check (shared with update_thesis) ─────────────────
       // The levels in order (a LONG's floor under its buy, its upside line

@@ -5,7 +5,8 @@
  * whatever its condition is). When it fires, on the close (watchedFloorOnClose),
  * the thesis retires as dropped: status RETIRED, reason DROPPED, one Activity
  * line naming the trigger. No run starts and nothing waits for approval: no
- * money moves. On a stock we hold, the same trigger is a sale.
+ * money moves, and a buy still waiting for approval is withdrawn with it. On a
+ * stock we hold, the same trigger is a sale.
  *
  * It replaced setting "the plan" down (removing the buy, floor and target and
  * leaving the stock on watch): a stock has its triggers and nothing else, so a
@@ -31,9 +32,18 @@ export async function stopWatching(args: {
   if (thesis?.status !== "WATCHING") return { retired: false };
   const line = sentenceOf(args.trigger, false);
   const now = new Date();
-  const { count } = await prisma.thesis.updateMany({
-    where: { id: thesis.id, status: "WATCHING" },
-    data: { status: "RETIRED", retiredReason: "DROPPED", closedAt: now, closeReason: line },
+  const count = await prisma.$transaction(async (tx) => {
+    const { count: n } = await tx.thesis.updateMany({
+      where: { id: thesis.id, status: "WATCHING" },
+      data: { status: "RETIRED", retiredReason: "DROPPED", closedAt: now, closeReason: line },
+    });
+    // A buy waiting for approval goes with the watch, withdrawn as the close pass withdraws one (trigger-proposals.ts).
+    const waiting = n > 0 ? await tx.order.findMany({ where: { thesisId: thesis.id, intent: "OPEN", status: "AWAITING_APPROVAL" }, select: { id: true, positionId: true } }) : [];
+    for (const o of waiting) {
+      await tx.order.updateMany({ where: { id: o.id, status: "AWAITING_APPROVAL" }, data: { status: "WITHDRAWN", withdrawnReason: line } });
+      await tx.position.updateMany({ where: { id: o.positionId, status: "PENDING_APPROVAL" }, data: { status: "CANCELLED", closedAt: now, closeReason: "MANUAL" } });
+    }
+    return n;
   });
   if (count === 0) return { retired: false };
   await writeThesisUpdate({

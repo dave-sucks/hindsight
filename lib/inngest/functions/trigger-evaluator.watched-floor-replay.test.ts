@@ -51,8 +51,13 @@ interface Tick {
  * One pass of the trigger check at `at`, with TRV at `price` (the live quote;
  * on the close pass, the day's close as well).
  */
-async function tick(at: Date, price: number, opts: { held?: boolean } = {}): Promise<Tick> {
-  const triggers = opts.held ? fx.thesisBefore.triggers.filter((t) => t.action !== "ENTER") : fx.thesisBefore.triggers;
+async function tick(
+  at: Date,
+  price: number,
+  opts: { held?: boolean; triggers?: Trig[]; prior?: number; order?: Record<string, unknown>[]; position?: Record<string, unknown>[] } = {},
+): Promise<Tick> {
+  const triggers = opts.triggers ?? (opts.held ? fx.thesisBefore.triggers.filter((t) => t.action !== "ENTER") : fx.thesisBefore.triggers);
+  const prior = opts.prior ?? PRIOR_CLOSE;
   const db = prismaDouble({
     thesis: [
       thesisRow({
@@ -68,9 +73,10 @@ async function tick(at: Date, price: number, opts: { held?: boolean } = {}): Pro
     ],
     agentConfig: [agentConfigRow({ id: fx.analyst.id, accountId: REPLAY_ACCOUNT_ID, triggers: fx.analyst.triggers, enabled: true })],
     account: [accountRow({ triggers: fx.account.triggers, triggersSeededAt: new Date(fx.account.triggersSeededAt) })],
-    position: opts.held
+    position: opts.position ?? (opts.held
       ? [positionRow({ analystId: fx.analyst.id, symbol: "TRV", avgCost: 372.51, peakPrice: 372.51, openedAt: new Date("2026-09-28T14:00:00Z") })]
-      : [],
+      : []),
+    ...(opts.order ? { order: opts.order } : {}),
   });
   const sent: Tick["sent"] = [];
   let result: Record<string, unknown> = {};
@@ -99,16 +105,16 @@ async function tick(at: Date, price: number, opts: { held?: boolean } = {}): Pro
             ? {
                 data: {
                   c: price,
-                  pc: PRIOR_CLOSE,
-                  o: fx.setDown.price,
-                  dp: ((price - PRIOR_CLOSE) / PRIOR_CLOSE) * 100,
+                  pc: prior,
+                  o: opts.prior ? prior : fx.setDown.price,
+                  dp: ((price - prior) / prior) * 100,
                   t: Math.floor(at.getTime() / 1000),
                 },
               }
             : { data: null },
       }));
       jest.doMock("@/lib/alpaca", () => ({
-        getTodaySessionBars: async () => ({ TRV: { close: price, high: 363.83, low: fx.setDown.price, volume: 1_500_000 } }),
+        getTodaySessionBars: async () => ({ TRV: { close: price, high: opts.prior ? prior : 363.83, low: opts.prior ? price : fx.setDown.price, volume: 1_500_000 } }),
       }));
       jest.doMock("@/lib/market-data/ensure-snapshots", () => ({ ensureIndicatorSnapshots: async () => new Map() }));
       jest.doMock("@/lib/agent/triggers/earnings", () => ({
@@ -189,5 +195,36 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     ]);
     expect(trv(t)).toMatchObject({ status: "HOLDING", stopLoss: 359.87 });
     expect(audit(t)).toEqual([]);
+  });
+});
+
+/**
+ * A pullback buy waiting for approval when the watch ends. The buy ("below
+ * $100") is still true at an $89 close, so the close pass keeps its proposal
+ * (withdrawOnTheClose); the $90 sale line closes below, the watch retires, and
+ * the waiting buy goes with it: WITHDRAWN, its staged position CANCELLED.
+ */
+describe("a buy waiting for approval when its watch ends", () => {
+  const BUY = { id: "buy-100", action: "ENTER", predicate: { watch: "price", is: "below", value: 100 }, rationale: "I buy the pullback to $100." };
+  const LINE = { id: "line-90", action: "EXIT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Below $90 the base has failed." };
+  const waiting = {
+    order: [{ id: "ord-buy", userId: REPLAY_ACCOUNT_ID, positionId: "pos-buy", thesisId: fx.thesisBefore.id, symbol: "TRV", side: "BUY", intent: "OPEN", status: "AWAITING_APPROVAL", triggerIds: [BUY.id], quantity: 10, orderType: "MARKET", createdAt: new Date("2026-09-29T15:00:00Z") }],
+    position: [positionRow({ id: "pos-buy", analystId: fx.analyst.id, symbol: "TRV", status: "PENDING_APPROVAL", avgCost: 99, quantity: 10 })],
+  };
+
+  it("the $89 close below the $90 line retires the watch and withdraws the waiting buy, in the same pass", async () => {
+    const t = await tick(CLOSE_PASS, 89, { triggers: [BUY, LINE], prior: 95, ...waiting });
+    expect(trv(t)).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED" });
+    const order = (t.db.store.order as Array<Record<string, unknown>>)[0];
+    expect(order).toMatchObject({ status: "WITHDRAWN", withdrawnReason: "Stop watching if below $90 · only on the close" });
+    expect((t.db.store.position as Array<Record<string, unknown>>)[0]).toMatchObject({ status: "CANCELLED", closeReason: "MANUAL" });
+    expect(t.sent).toEqual([]);
+  });
+
+  it("a close above the line keeps the watch and the waiting buy", async () => {
+    const t = await tick(CLOSE_PASS, 92, { triggers: [BUY, LINE], prior: 95, ...waiting });
+    expect(trv(t)).toMatchObject({ status: "WATCHING" });
+    expect((t.db.store.order as Array<Record<string, unknown>>)[0]).toMatchObject({ status: "AWAITING_APPROVAL" });
+    expect((t.db.store.position as Array<Record<string, unknown>>)[0]).toMatchObject({ status: "PENDING_APPROVAL" });
   });
 });

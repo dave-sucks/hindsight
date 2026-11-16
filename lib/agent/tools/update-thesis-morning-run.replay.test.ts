@@ -140,7 +140,7 @@ describe("a seed's first research at HIGH through the morning run's save", () =>
         direction: "LONG",
         horizon: "TARGET",
         add_triggers: [
-          { predicate: { watch: "price", is: "above", value: 95 }, action: "ENTER", rationale: "The buy at $95." },
+          { predicate: { watch: "price", is: "below", value: 95 }, action: "ENTER", rationale: "The buy at $95." },
           { predicate: { watch: "price", is: "below", value: 88 }, action: "EXIT", rationale: "Below $88 the setup is wrong." },
           { predicate: { watch: "price", is: "above", value: 130 }, action: "REVIEW", rationale: "At $130, take profit or let it run." },
         ],

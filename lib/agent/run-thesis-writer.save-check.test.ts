@@ -345,7 +345,7 @@ describe("a new thesis (mint) is checked the same way", () => {
     ...fx.submit,
     // The buy, the floor and the take-profit, as the writer writes them now: triggers.
     triggers: [
-      { predicate: { watch: "price", is: "above", value: 67.28 }, action: "ENTER", rationale: "I buy as the gap holds above $67.28." },
+      { predicate: { watch: "price", is: "below", value: 67.28 }, action: "ENTER", rationale: "I buy the pullback to the gap-day midpoint, $67.28." },
       { predicate: { watch: "price", is: "below", value: 64.16 }, action: "EXIT", rationale: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry." },
       { predicate: { watch: "price", is: "above", value: 78.3 }, action: "REVIEW", rationale: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk." },
     ] as never,

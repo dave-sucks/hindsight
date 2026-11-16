@@ -200,6 +200,18 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
   return field === "level" ? money(v) : field === "pct" ? `${v}%` : `${v} days`;
 }
 
+/**
+ * A new buy whose price is already true where it is written never crosses, so it never fires until the
+ * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). The price part of a
+ * group counts. Null when the price is unknown or the buy can still cross.
+ */
+export function buyAlreadyTrue(t: Pick<Trigger, "action" | "predicate">, price: number | null | undefined): string | null {
+  const w = t.action === "ENTER" && price != null && price > 0 ? shapeOf(t.predicate) : null;
+  const level = w ? conditionsOf(w).map((c) => levelOf(c)).find((l) => l && (l.above ? price! > l.value : price! < l.value)) : null;
+  if (!level) return null;
+  return `A buy ${level.above ? "above" : "below"} ${money(level.value)} is already true at ${money(price!)}, so it never crosses and never fires. To buy now, set it at or a few cents past ${money(price!)} (is: above); for a pullback, write is: below at a level under ${money(price!)}.`;
+}
+
 /** The trigger an add would collide with: same price slot, else same bucket. */
 export function collision(
   stored: Trigger[],
@@ -448,6 +460,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const text = `Added: ${describeTrigger(trigger, held)}`;
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
+    // An agent's new buy has to be able to cross; the owner's is the owner's.
+    const dead = actor === "AGENT" ? buyAlreadyTrue(trigger, currentPrice) : null;
+    if (dead) return refuse("add", id, text, dead);
     const above = inheritedByBucket.get(triggerSlot(trigger));
     if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
       return refuse(
