@@ -1,44 +1,58 @@
 # Discovery Playbook
 
-> **What this is:** the operator's reference for running discovery on each analyst. Per-analyst mandate summary + trigger rules + template winners + copy-pasteable query patterns for Grok, Perplexity Finance, and Reddit. The 4-step workflow that gets the best output into the Hindsight Discovery agent.
+> **What this is:** the operator's reference for running discovery on each analyst. Per-analyst mandate summary + trigger rules + template winners + copy-pasteable query patterns for Grok, Perplexity Finance, and Reddit. The workflow that gets the best output into the analyst's chat.
 >
 > **Status:** living doc. Updated as we learn what queries actually surface tradeable setups vs. what produces noise. See "Learnings" at the bottom of each analyst section.
 >
-> **Last updated:** 2026-08-03.
+> **Last updated:** 2026-11-16 (stale sizes and the retired Momentum section removed; numbers
+> first, the account read and the full-plan gate added).
 
 ---
 
 ## The roster (quick reference)
 
-| Analyst | Env | Horizon | Per-position (floor → cap) | Max open | Conf | What it hunts |
-|---|---|---|---|---|---|---|
-| **PEAD Specialist** | LIVE | TARGET (30-60d) | **$7k → $14k** | 6 | 70 | Clean beat-and-raise prints; 30-60d drift |
-| **Catalyst Event PM** | LIVE | CATALYST (weeks) | **$5k → $8k** | 5 | 70 | Binary dated events (FDA, courts, contracts, M&A, earnings) |
-| **Secular Compounder** | **LIVE** | COMPOUNDER (years) | **$10k → $15k** (live promo cap $10k) | 4 | 78 | Best-in-class operators in secular themes (multi-year holds) |
-| *4th seat — **open slot*** | — | — | — | — | — | *Deferred, not vacant-by-accident. Must bring **offset idle periods** vs all three above — not another underreaction/lookback style. See `ANALYST_LINEUP.md` (2026-07-27).* |
+All three analysts trade live money. **Read sizes, slots and minimum scores live** from each
+analyst's settings (`read_analyst_config`); this table carries only what changes rarely.
 
-**Position-size floors are real and enforced in each analyst's prompt** (there is no `minPositionSize`
-config field yet — a fix is in flight). A candidate that only justifies a sub-floor position is a
-**WATCHING thesis, not a dispatch**. Size the conviction you actually have.
+| Analyst | Horizon | Setups | What it hunts |
+|---|---|---|---|
+| **PEAD Specialist** | 30–60 days | `PEAD`, `EPISODIC_PIVOT`, `MA_PULLBACK` | Clean beat-and-raise prints; the drift after |
+| **Catalyst Event PM** | Weeks | `PRE_CATALYST`, `BASE_BREAKOUT`, `MA_PULLBACK` | The run-up into a dated FDA decision, 70 to 21 days out |
+| **Secular Compounder** | Months to years | `COMPOUNDER_ACCUMULATION`, `BASE_BREAKOUT`, `MA_PULLBACK` | Best-in-class operators with a multi-year tailwind, any sector |
 
-**Compounder went LIVE 2026-08-11** — promoted on operator call, ahead of the old "2–3 in-band
-proposals across 2 themes" graduation bar (CEG was #1 of 3). Promotion closed its 2 paper positions
-and left CEG + CRWD as PROMOTED theses for the first live run to resolve (`place_trade` to re-enter,
-or demote to WATCHING). It runs with a **$10k live promotion cap** — a deliberate throttle, so every
-live entry is exactly $10k until the seat proves out. Discovery for it should now assume real money
-and a **2-slot** book, not a paper sandbox.
+The app sizes every buy from the floor and conviction (`lib/agent/position-sizing.ts`); discovery
+never picks a size.
 
 Retired: **Momentum Breakout** (disabled 2026-07-27 — PEAD/momentum zero-investment returns correlate
 0.63 and PEAD subsumes momentum, so it duplicated a live seat rather than diversifying it; deliberately
-**not replaced**). EV Catalyst Event Trader (themes folded into Compounder, 2026-05-27).
+**not replaced**; its section was deleted from this playbook 2026-11-16 and is in git history).
+EV Catalyst Event Trader (themes folded into Compounder, 2026-05-27).
+
+### Two rules for every analyst (added 2026-11-16)
+
+- **Numbers first, people second.** For PEAD and Catalyst the candidate list is a calendar the app
+  already reads (`get_earnings_calendar`, `run_screen`, `get_catalyst_calendar`). Grok, Perplexity
+  and Reddit verify it and fill what the app can't see. Only the Compounder, whose universe has
+  no calendar, leads with people.
+- **A named setup and a full plan, or no dispatch.** Every dispatch names its setup and asks the
+  Writer for a buy trigger, a floor, a target and a review clock, and its one-line source says
+  where the stock came from (the screen, the calendar, or the X account and post).
 
 ---
 
-## The 4-step discovery workflow
+## The discovery workflow
 
 Don't ask the Hindsight Discovery agent to do everything. **You scout, the agent triages.** The chain:
 
 ```
+STEP 0 — The account, then the app's own lists
+   → read the latest 8 PM Portfolio Reviewer digest: what the account is
+     crowded in, the cash (once roadmap 5.4 ships: the weekly review's
+     "what the account needs" lines)
+   → in the analyst's chat: its calendar or screen first, against its
+     watchlist and free slots
+   → output: the gap, and the in-app candidates
+
 STEP 1 — Grok (or X directly via grok.com)
    → find names + people who've been historically right
    → output: tickers + sentiment + handle attribution
@@ -51,10 +65,10 @@ STEP 3 — Reddit (via direct search or Perplexity scoped to reddit.com)
    → high-conviction DD with retail catalyst awareness
    → output: contrarian / longer-form theses
 
-STEP 4 — Paste all of it into Hindsight Discovery
-   → /analysts/[id] → Run Discovery → paste compiled output
-   → agent triages against analyst-specific mandate, 4-dim composite,
-     DISPATCH_CAP=5, PASS-records the rest
+STEP 4 — Paste all of it into the analyst's chat
+   → /chat with the analyst selected (there is no separate Discovery run)
+   → the chat triages against the analyst's rules, dispatches up to its
+     free slots (never more than 5), PASS-records the rest
 ```
 
 **Why this works better than agent-driven `web_search`:**
@@ -112,15 +126,15 @@ Chat 3: Of those adjacents, the 5-8 they're most bullish on now + the thesis per
 convergence count.
 ```
 
-**▸ Play C — NARRATIVE NET** (words/news → people → names). *Best for Catalyst, PEAD, Momentum.*
+**▸ Play C — NARRATIVE NET** (words/news → people → names). *Best for Catalyst and PEAD, after the calendar.*
 ```
 Chat 1: Who on X is driving the conversation on [NARRATIVE/keywords/news]? Surface the PEOPLE
 with track records, not the loudest posts.
 Chat 2: What specific tickers are those people tying to [NARRATIVE]? Every ticker, with who's
 mentioning it.
 Chat 3: Which have the most conviction + what exactly is each saying? Rank by convergence ×
-track record. [+ analyst filters: $5B+ no-earnings-5d for Momentum; dated catalyst $1B+ for
-Catalyst; clean beat-and-raise for PEAD.]
+track record. [+ analyst filters: dated catalyst $1B+ for Catalyst; clean beat-and-raise for
+PEAD.]
 ```
 
 **▸ Play D — TRANSFER** (reuse your roster on a new theme). *The cross-pollinate move.*
@@ -139,7 +153,8 @@ engage with — saying about [THEME B]? Names + the claim per name.
 - **📈 Level up the roster.** Every few weeks: *"Of the calls @handle made 60–90 days ago, which
   actually played out?"* Promote the hitters, mute the talkers. `/review-discovery` updates the
   roster's hit/miss tally.
-- **⏱ Freshness by horizon.** Momentum/Catalyst loot decays in days → re-net **2×/week**.
+- **⏱ Freshness by horizon.** PEAD/Catalyst loot decays in days → re-net **2×/week** while
+  reports or dates are clustering.
   Compounder loot (roster + names) lasts months.
 - **🏁 Always close the funnel** with one clean extract per name to paste into Hindsight:
   `ticker | scout(s) | convergence | the claim | freshness`.
@@ -240,7 +255,12 @@ crowded is it. Get the candidate list from the calendar (pdufa.bio, BiopharmaWat
 
 ### Per-archetype triage filters (apply in the Hindsight paste)
 
-- **Catalyst:** dated binary event (FDA/PDUFA/court/contract/M&A) within ~2–4 weeks, **$1B–$20B cap**.
+- **Every analyst — rank outside the account's biggest bet first** (added 2026-11-16). At equal
+  quality, a candidate that doesn't move with what the account already holds outranks one that
+  does. On 2026-11-15 five of seven holdings were one bet on AI and power and Catalyst held
+  nothing. Ranking, never a gate.
+- **Catalyst:** dated binary event (FDA/PDUFA/court/contract/M&A) 70 to 21 days out (the
+  `PRE_CATALYST` window), **$1B–$20B cap**.
   Hard gate: **no specific primary-sourced forward date = not this archetype**, however good the story.
   At equal upside prefer **"positive data already in hand + filing/PDUFA ahead"** (the de-risked-drift
   pattern behind XENE/ARQT) over pure coin-flip readouts.
@@ -256,10 +276,9 @@ crowded is it. Get the candidate list from the calendar (pdufa.bio, BiopharmaWat
 - **Compounder:** best-in-class operator in a secular theme, multi-year durability, conviction-sized.
   Quality is judged **against the candidate's own industry**, never a software screen — see the
   yardstick note in §3.
-  **Theme-balance gate:** as of 2026-08-12 the book covers AI/software and energy (CEG); **GLP-1,
-  onshoring and demographic aging are empty**. Candidates in the empty themes outrank another AI
-  name at equal quality. AI conviction is expressed through **position size** (AI sizes at the top
-  of the band), not through sourcing more AI candidates.
+  **Theme balance is now the account rule above.** Since 2026-08-12 the Compounder's sectors were
+  widened to the whole market, and the account's biggest bet (AI and power, 2026-11-15) is what
+  to rank against. Read it live; don't trust a date in this file.
 
 ---
 
@@ -271,7 +290,7 @@ Buys binary event setups — FDA approvals, M&A targets, positive trial readouts
 
 ### Triggers
 
-- **ENTER:** 1-4 weeks before a confirmed catalyst, never the day before; pre-event accumulation level; minConfidence ≥70
+- **ENTER:** 70 to 21 days before a confirmed catalyst (`PRE_CATALYST`; never inside the last 21 days); the chart sets the buy level; read the minimum score from the analyst's settings
 - **PASS:** already-de-risked catalysts (second filings on same indication), options-implied move too rich, catalyst points DOWN, catalysts without primary-source verification
 - **HOLD:** through the event window; reassess only on thesis invalidation or catalyst slip (PDUFA extension, trial delay)
 - **EXIT:** at event resolution (good or bad — no holding past), on thesis invalidation, or 30 days past the catalyst date if event keeps slipping
@@ -496,6 +515,17 @@ dispatch. Rest → PASS-record with rationale.
 
 - 2026-06-04: First operator-driven discovery on PEAD landed 1 dispatch + many PASS theses. That's the right shape — PEAD's edge is selectivity.
 - May/June is between Q1 / Q2 earnings seasons → expect fewer candidates than Jan/Feb/July/August.
+- **2026-11-15: PEAD is the seat that wins, and its best stretch was June.** 10 of 18 live trades
+  won; the biggest (ZETA, MRVL, CRDO, SNOW, PACS) were AI, chip and software beat-and-raises bought
+  in late May and June, mostly $2–15B names. Then the Oct–Nov season passed with no PEAD buy at
+  all. Discovery volume, not the rules, was the gap.
+- **2026-11-15: a report now wakes a run on anything watched.** The account's beat and miss rules
+  are Send to Agent and cover held and watched stocks, so a name on PEAD's watchlist gets a run
+  the day it reports. **Load the watchlist before a wave of reports**; that's most of PEAD's
+  discovery, and it's the first piece of discovery code can take over.
+- **2026-11-15: re-scan the season for pullbacks.** A clean beat-and-raise past its 1–3 day window
+  is still buyable as an `MA_PULLBACK` at its rising 20- or 50-day. The paste is in
+  `docs/discovery-prep/2026-11-15-IDEAS.md`.
 
 ---
 
@@ -503,7 +533,7 @@ dispatch. Rest → PASS-record with rationale.
 
 ### Mandate
 
-Buys best-in-class operators with 3-5 year secular tailwinds across AI infrastructure, GLP-1, energy transition, defense reindustrialization, onshoring, and demographic aging — concentrated 10-15% positions in 3-4 names. Holds months to years (COMPOUNDER horizon, quarterly review cadence), tolerating -15% drawdowns when the thesis is intact.
+Buys best-in-class operators with 3-5 year secular tailwinds — AI infrastructure, GLP-1, energy transition, defense reindustrialization, onshoring and demographic aging are where it started; since its sectors were widened it can hold any sector. Each name is a real commitment; the slot count is in its settings. Holds months to years (COMPOUNDER horizon, quarterly review cadence), tolerating -15% drawdowns when the thesis is intact.
 
 > **⚠️ The yardstick note — read before writing any screen for this seat.**
 > This seat's quality bar is **relative to the candidate's own industry**, never absolute.
@@ -658,110 +688,6 @@ Ran Play A ×2 (GLP-1, onshoring) + Play D (aging) via 10 batched pastes into Pr
 
 ---
 
-## 4. Momentum Breakout — ⚠️ RETIRED 2026-07-27, DO NOT RUN DISCOVERY
-
-> **This seat is disabled and will be deleted.** Do not source names for it.
->
-> **Why:** it duplicated PEAD rather than diversifying it. PEAD and price-momentum zero-investment
-> returns correlate **0.63**, and PEAD *subsumes* momentum (drift explains momentum better than the
-> reverse) — so this seat was a second helping of a live bet, not a new return source. Compounding
-> that, it ran a day-scale style on a once-daily cron: 0W / 6L / 2BE, −$1,289. Structural, not variance.
->
-> **It is deliberately not replaced.** The open 4th slot must bring *offset idle periods* vs the three
-> live archetypes. Everything below is kept for forensics only.
-
-### Mandate
-
-Buys stocks making new 52-week highs on >2x volume with positive relative strength vs SPY, sector-agnostic, $5B+ market cap floor (no microcap whipsaws), LONG-only, no holding through earnings. Holds days to weeks (TRADE horizon, bounded by maxHoldDays), tight stops, fast exits — talent scout for setups, not long-term coverage.
-
-### Triggers
-
-- **ENTER:** breakout confirmation on volume + positive 30-day RS vs SPY + sector leadership + clean base or initial pullback; no earnings within 5 days; minConfidence ≥75
-- **PASS:** late-cycle breakouts in distribution phases, volume-climactic tops on declining volume, low-float speculative names, anything with imminent earnings
-- **HOLD:** while RS stays positive and price > 10-day EMA, no climactic volume signs
-- **EXIT:** -5% stop OR 10-day EMA break (whichever tighter), target hit, volume-climactic top, maxHoldDays expired; never average down
-
-### Template winners (what this analyst SHOULD catch)
-
-| Ticker | Catalyst | What ran |
-|---|---|---|
-| **APP** | 2024 breakout king | +5x in months on multiple breakouts |
-| **CVNA** | Short squeeze + recovery | Sustained multi-month runs |
-| **RBLX** | Repeated 52-week-high breakouts | Multiple +30-50% runs |
-| **PLTR** | Government + AI narrative | Multiple breakouts 2024-26 |
-| **HOOD** | 2024-25 retail comeback | Multi-month uptrend |
-
-### Discovery queries — **run 2× per week minimum, names rotate fast**
-
-**STEP 1 — Grok:**
-
-```
-Find X technical handles (@AdamMancini4, @traderstewie, @hari_trades,
-@AlpacaTrades, @StockMKTNewz) — current breakout calls from the last
-48 hours with ≥10 likes. Filter TECHNICAL archetype only. $5B+ market
-cap names.
-```
-
-```
-Find X users who were early on $APP's 2024 breakout (posts from before
-the +200% run). What names are they currently bullish on for breakout
-setups in similar shape?
-```
-
-```
-Stocks trending on fintwit X with TECHNICAL_BREAKOUT or NEW_52_WEEK_HIGH
-tags in the last 48 hours. Filter $5B+ market cap, exclude any with
-earnings in next 5 days.
-```
-
-**STEP 2 — Perplexity Finance:**
-
-```
-Today's top 15 stocks making new 52-week highs on >2x average volume,
-market cap $5B+, US-listed common stock. Exclude any with earnings in
-next 5 trading days. Include 30-day RS vs SPY and sector.
-```
-
-```
-Stocks breaking out of multi-month consolidation bases this week, $5B+
-market cap, sector-agnostic, with positive 90-day RS vs SPY. Include
-base length, breakout volume vs average, and prior failed breakouts.
-```
-
-```
-Mid- and large-cap names ($5B+) with the largest single-day volume
-surges in the past 5 trading days that were NOT earnings-driven — looking
-for institutional rotation signals or analyst-day reveals.
-```
-
-**STEP 3 — Reddit:**
-
-```
-site:reddit.com (r/StockMarket OR r/wallstreetbets) DD posts on 52-week
-high breakouts last 7 days. Sort by upvotes. Skip pure meme / pump posts.
-```
-
-**STEP 4 — Paste into Hindsight Discovery:**
-
-```
-Momentum Breakout candidates from today's screen + X + Reddit:
-
-[paste outputs]
-
-Triage on momentum discipline: $5B+ market cap, new 52-week high or
-multi-month base breakout, >2x volume, positive 30-day RS vs SPY, no
-earnings within 5 days. LONG only. Skip already-covered: [LIST CURRENT
-WATCHING TICKERS]. Top 3-5 → dispatch. Rest → PASS-record with rationale.
-```
-
-### Notes & Learnings
-
-- Watchlist for momentum is different from other analysts — names CYCLE OUT every 5-10 days as setups fail. **Refresh discovery 2× per week minimum** (Sunday + Wednesday).
-- Previous config (Tech-only, conf 70) returned -$1,692 / 42.9% win rate. New config (sector-agnostic, $5B floor, conf 75) needs 2-4 weeks of paper data before promotion decision.
-- **For momentum to work with sub-50% win rate, avg win must be ≥2x avg loss.** Watch this ratio.
-
----
-
 ## Workflow learnings (cross-analyst)
 
 *(Add dated entries as we discover patterns that work or fail across all analysts.)*
@@ -769,14 +695,15 @@ WATCHING TICKERS]. Top 3-5 → dispatch. Rest → PASS-record with rationale.
 - **2026-05-31** (Catalyst PM Sunday discovery): cron-driven discovery surfaced 5 fresh theses (RBRK, AVGO, VEEV, ADBE, PANW) — all upcoming earnings catalysts. Cron-based discovery works for earnings-driven analysts (Catalyst PM + PEAD); weaker for thematic ones (Compounder needs operator-driven gap-fill).
 - **2026-06-04** (PEAD operator-driven test): full prompt chain through Grok + Perplexity → 1 dispatch + many PASS theses. Right ratio. Confirms quality-over-volume is the correct shape.
 - **2026-06-05** (Catalyst PM Grok vs Perplexity A/B): Grok-led discovery >>> Perplexity-led discovery for live biotech catalysts (5 quality dispatches vs 6 stale post-window candidates). See per-analyst Notes for full detail. Generalizable insight: **for any analyst whose edge depends on time-sensitive recency (live PDUFAs, this-week earnings, breakouts happening now), Grok is the primary source**. Perplexity is the secondary validation layer.
+- **2026-11-15** (prep across all three): **superseded — numbers first, people second.** The app now reads the earnings and FDA calendars itself, and the 09-24 Catalyst session showed the in-app calendar found every candidate while the outside tools only verified. Grok leads only for the Compounder. Discovery is starved, not mis-aimed: 10 new theses in six weeks and no live buy since 10-15. Prep: `docs/discovery-prep/2026-11-15-IDEAS.md`.
 
 ---
 
 ## See also
 
-- [`docs/plans/ANALYST_LINEUP.md`](./plans/ANALYST_LINEUP.md) — why the 4-analyst lineup looks like it does + sizing math
+- [`docs/plans/ANALYST_LINEUP.md`](./plans/ANALYST_LINEUP.md) — why the 3-analyst lineup looks like it does + sizing math
 - [`docs/THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — thesis state machine the discovery agent writes into
 - The discovery-overhaul and discovery-v2 plans were deleted in the 2026-09-15 docs prune; their history is in git and their live successor is `plans/AGENT_REBUILD.md` (screens) plus the principal chat.
-- `lib/agent/knowledge/strategy-archetypes.ts` — the 8 archetypes; this playbook serves the 4 archetypes mapped to live analysts (THEMATIC_SECULAR, EARNINGS_DRIFT, CATALYST_EVENT, MOMENTUM_BREAKOUT)
+- `lib/agent/knowledge/strategy-archetypes.ts` — the 8 archetypes; this playbook serves the 3 archetypes mapped to live analysts (THEMATIC_SECULAR, EARNINGS_DRIFT, CATALYST_EVENT)
 - [`docs/discovery/scout-roster.md`](./discovery/scout-roster.md) — the durable per-theme bench of credible X handles (built by the Scout Loop, scored by `/review-discovery`)
-- [`docs/prompts/DISCOVERY_PREP.md`](./prompts/DISCOVERY_PREP.md) — the `/discovery-prep` instruction doc (turns a "Feed to Discovery" gap into Grok/Perplexity prompts via the Scout Loop)
+- [`docs/prompts/DISCOVERY_PREP.md`](./prompts/DISCOVERY_PREP.md) — the `/discovery-prep` instruction doc (turns the account's gap into Grok/Perplexity prompts via the Scout Loop)

@@ -4,6 +4,11 @@
 > (09-24 → 09-28). A new session reads this first. Every number was read from the
 > production rows of the account that trades (davembixler@gmail.com) unless it says
 > otherwise. When this file and the database disagree, the database wins — check it.
+>
+> **Updated 2026-11-16** against how the app works now (Dave's pinned Product, Vision,
+> Strategy page and the Hindsight Roadmap). Numbers that go stale (slots, sizes, holdings)
+> were replaced with where to read them live. New: start from the account, a full plan or
+> no dispatch, name the source, and getting ready to automate.
 
 ## Your job
 
@@ -36,7 +41,8 @@ Rules of the road (these are his, and they're binding):
 
 1. `docs/run-reviews/2026-09-28-state-of-the-cycle.md` — the whole cycle, stage by
    stage, from the rows. **Its four data traps apply to every query you run.**
-2. This file.
+2. This file, then the newest file in `docs/discovery-prep/` (the current calendar and
+   pastes).
 3. `docs/discovery-prep/2026-09-24-REFRAME.md` — discovery by source; what each
    tool does and doesn't do.
 4. `docs/discovery-reviews/2026-09-25-CATALYST.md` — the one session reviewed end
@@ -46,27 +52,40 @@ Rules of the road (these are his, and they're binding):
 6. `lib/agent/knowledge/setups.ts` — every setup's entry, floor, target and window.
 7. `docs/TRIGGERS.md` — trigger kinds and the account-wide rules.
 
-## The three analysts, as of 2026-09-28
+## The three analysts
+
+**Read slots, sizes, minimum scores and holdings live** (`read_analyst_config`,
+`get_portfolio_context`). Numbers written in this file have been wrong before. What each
+one trades doesn't change often; as of 2026-11-16:
 
 | | PEAD Specialist | Catalyst Event PM | Secular Compounder |
 |---|---|---|---|
 | Trades | The drift after a clean beat-and-raise report | The run-up into a dated FDA decision | Businesses worth more in 3–5 years; months-to-years holds |
-| Fence | Any sector, $200M+ | Biotech, pharma, devices, life-science tools, semis, software; $500M–$20B | Tech, healthcare, industrials, utilities, comms, energy, materials; themes: AI infrastructure, datacenter buildout, GLP-1, energy transition, defense, onshoring, demographics |
-| Trade size | $3k–$14k | $3k–$8k (half size into an event) | $4k–$10k |
-| Min score to buy | 6/10 | 5/10 | 7/10 |
-| Open slots | 6 (holds MU, NVDA) | 5 (holds nothing) | 6 (holds CEG, WST, ASML, ABT) |
+| Setups | `PEAD`, `EPISODIC_PIVOT`, `MA_PULLBACK` | `PRE_CATALYST`, `BASE_BREAKOUT`, `MA_PULLBACK` | `COMPOUNDER_ACCUMULATION`, `BASE_BREAKOUT`, `MA_PULLBACK` |
+| Fence | Any sector, $200M+ | Health Care and Information Technology; $500M–$20B | All 11 sectors, no size band |
 | When it can buy | Days 1–3 after a report; after that only as a pullback (`MA_PULLBACK`) | 70 to 21 days before the FDA date | Pullback to a rising average, a breakout, or a reclaim of the 50-day |
 
-**The Compounder's instructions say "My book is 3-4 names, each a real
-commitment."** Its settings allow 6. It holds 4, so it turns down its own buys
-(five times in 30 days, per the state-of-the-cycle review). As of 09-28 the line
-is unchanged. This is the single biggest thing between Dave's cash and a purchase.
+**Settled since 09-28:** the Compounder's "3–4 names" line is gone, and its sectors now
+cover the whole market, so a plain long-term hold in any sector has a home. The
+industries and themes an analyst hunts are words in its strategy text, not fence
+fields (those were removed 2026-10-31).
 
-**What nobody covers.** Consumer (food, retail, restaurants, travel), financials and
-real estate get in only through PEAD, and only in the 1–3 days after a report. The
-only months-long seat is the Compounder, and it's theme-locked. So "a strong
-business to buy and hold for a few months" outside AI, power, defense and medtech
-has no home. That's a lineup decision for Dave — see "Open decisions".
+## Start from the account, not the analyst
+
+Each analyst sees only its own stocks. The account sees all of them, and that's where
+a discovery session should start:
+
+- **Read what the account holds as a whole** before sourcing. Today that's the latest
+  8 PM Portfolio Reviewer digest (a read-only run, mode `PORTFOLIO_DIGEST`): what's
+  crowded, the cash, what reports soon. Once roadmap 5.4 ships, the weekly account
+  review ends with a few "what the account needs" lines, such as "nothing in
+  healthcare; too much in AI and power". Read those instead.
+- **At equal quality, rank a candidate outside the account's biggest bet first.** On
+  2026-11-15, five of seven holdings (CEG, GEV, PLTR, MU, NVDA) were one bet on AI and
+  power, and Catalyst held nothing. That's ranking, never a gate: a great name inside
+  the bet still gets dispatched.
+- **Check the market calendar against that bet** (Fed, CPI, jobs, bellwether reports)
+  and say it in one line if a big date lands on it.
 
 ## What's at your disposal
 
@@ -98,13 +117,26 @@ revisions or price targets** — those only come from outside.
 
 | Limit | Effect | Owner |
 |---|---|---|
-| Chart screens pool only today's movers | The app can't find buyable leaders across the market by itself | **DAV-300 — parked by Dave on 09-24** (see Open decisions) |
+| Chart screens pool only today's movers | The app can't find buyable leaders across the market by itself | **Roadmap 13.1** (screens per setup; was DAV-300, parked 09-24) |
 | Chart numbers aren't split-adjusted | A stock that split this year reads as a broken chart (NOW shows a 52-week high of $974; the real one is ~$195); writers won't price it | DAV-333, Signals lane |
-| The FDA calendar misses dates | Wording it doesn't search for, a 120-day look-back, a paging bug; AGIO, SMMT, CYTK, CORT all missed; moved and already-decided dates shown as upcoming | DAV-314, Signals lane |
+| The FDA calendar misses dates | Wording it doesn't search for, a 120-day look-back, a paging bug; AGIO, SMMT, CYTK, CORT all missed; moved and already-decided dates shown as upcoming. It also ignores the seat's size and sectors, reaches 70 days for a 21-day buy window, and reads filings one at a time | DAV-314; **roadmap 13.2** |
 | Buy-time checks | A triggered buy is refused if the thesis score is under the analyst's minimum, if there's no free slot, or if the stock has no committed direction (a "keep watching" row) | By design — check all three before calling a stock buyable |
 | Dip-buys fire at the open | A buy that triggers on touching a level fires intraday; the analyst wants to see the close and passes (DOCU 09-28) | Known, in the state-of-the-cycle review |
-| Proposals expire in about a day | MIRM and LUXE expired unclicked | Tell Dave when one is due |
-| Morning runs are Mon / Wed / Fri 08:00 ET | Nothing corrects the watchlist on a weekend; a Tuesday report can be missed | By design |
+| Buy cards wait for you | No 24-hour expiry since #976. A card comes down at the 4:20 close only if the price closes back past its line | By design |
+| Morning runs are Mon / Wed / Fri 08:00 ET | A report no longer waits for one: since 2026-11-15 the account's beat and miss rules send any held **or watched** stock to a run the day it reports | By design |
+
+## What changed, 09-28 → 11-16 (all live on main)
+
+- **Buy and sale cards wait for you** (#976); a card comes down at the 4:20 close if the
+  price closes back past its line.
+- **A report wakes a run that day** on anything held or watched (the account's beat and
+  miss rules, switched to Send to Agent on 11-15).
+- **Review triggers fire once, on the crossing** (#981), as a buy already did.
+- **Eight situations, one per trigger action** (#986). A watch with no view yet is
+  "Review due".
+- **Two reviewers read every weekday:** the Market Reviewer at 7:30 AM (notes on stocks
+  the news touches) and the Portfolio Reviewer at 8 PM (the whole account).
+- **The Compounder's book cap line is gone** and its sectors cover the market.
 
 ## What changed, 09-24 → 09-28 (all live on main)
 
@@ -131,8 +163,18 @@ From three sessions (09-24 Catalyst, 09-26 PEAD, 09-27 "make every watch buyable
    above the last swing high, or a close back above the 50-day. It fires only if
    the stock turns. This took buyable watches from 8 to 15 on 09-27.
 2. **Then new names**: `run_screen` / the calendars / outside pastes → the chat
-   checks each against the analyst's rules → dispatches up to 5, with
-   *"the thesis must carry a buy trigger, a floor and a target"* in the screen row.
+   checks each against the analyst's rules → dispatches up to the analyst's free
+   slots (never more than 5), with *"the thesis must carry a buy trigger, a floor,
+   a target and a review clock"* in the screen row.
+   - **A named setup and a full plan, or no dispatch.** A stock that fits no setup is
+     not a trade today, however good the story; pass it with the reason. A watch with
+     no buy level is a reminder, not a plan, and the roadmap's "every watch has a plan,
+     or it goes" rule (9.1) will drop it. Since 10-01, ANGX, DOCU and HPE were saved
+     with no setup.
+   - **Name the source.** Every thesis lands with source kind `WEB_SEARCH`, whatever
+     found it. The dispatch's one-line source is the only record of where a stock came
+     from, so name the screen, the calendar, or the X account and post. A source nobody
+     wrote down can't be graded later.
 3. **Then wait and read back.** `wait_for_thesis_refresh` on every child run, and
    end with one table: stock · buy trigger · floor · target · distance from the buy.
    A session isn't done until every dispatch has a thesis or a stated failure.
@@ -140,13 +182,21 @@ From three sessions (09-24 Catalyst, 09-26 PEAD, 09-27 "make every watch buyable
 5. **"Up to N, only names that clear."** The 09-24 chat relaxed a rule to fill a slot.
 6. **Watch wide before a report, buy narrow after it.** The 09-26 PEAD chat threw out
    NKE, CCL, ACN and JEF partly for falling charts — not one of PEAD's rules. Watching
-   into a report costs nothing; the report decides.
+   into a report costs nothing; the report decides. Since 11-15 the report itself wakes
+   a run on anything watched, so loading PEAD's watchlist before a wave of reports is
+   most of PEAD's discovery.
 
 Grok and Perplexity: the app found every Catalyst candidate on 09-24; the outside
 tools found none but **killed two false ones** (an approval that had already
 happened, an invented filing quote). Grok's cold sweeps returned mostly past events.
 Use them to verify and to fill what the app can't see (estimate revisions,
 guidance), and ask for "future events only".
+
+**Numbers first, people second.** Ideas come from what's working (a calendar, a screen,
+a beat-and-raise), and X is the check: is the date real, how crowded is the trade, did
+anyone credible call it. The exception is the Compounder, whose universe has no
+calendar; there, agreement among multi-year holders is real signal
+(`docs/DISCOVERY_PLAYBOOK.md`, the Scout Loop).
 
 ## How to review a session (from the database)
 
@@ -174,37 +224,47 @@ For every stock a session left on the watchlist, check — and say which check f
 6. The direction is set (LONG), not a "keep watching" row.
 7. Dates and claims trace to a source the chat actually read.
 
-## Open decisions for Dave
+## Open decisions
 
-Recommend one answer each; he decides.
+The September list is settled or has moved to the roadmap: the Compounder's cap line is
+gone, its sectors now cover the market, the screens' stock pool is roadmap 13.1, and
+"when a plan stops fitting" is roadmap 9.1 ("every watch has a plan, or it goes").
+Open product decisions live on the Hindsight Roadmap and its task tracker (Dave's
+pinned pages). Recommend one answer each; he decides.
 
-1. **The Compounder's "3–4 names" line.** Changing it to "up to 6" (its setting) lets
-   it buy PLTR / MSFT / ISRG / ETN when they fire. Done in the analyst editor.
-2. **A home for plain long-term holds outside the Compounder's themes** — consumer,
-   financials, the rest of the market. Either widen the Compounder's sectors and
-   themes, or add one analyst for months-long holds of quality leaders on pullbacks,
-   any sector. Read `ANALYST_LINEUP.md` first: it deleted Momentum because PEAD makes
-   the same bet better; a quality/position seat is a different bet, but say so.
-3. **Un-park DAV-300** (the screens' stock pool). It's the in-app way to find "a stock
-   resting on a rising 20-day after a six-week climb" anywhere in the market. Until
-   then, Finviz is the substitute.
-4. **When a plan stops fitting**: the runs take the buy off and keep reviewing; the
-   09-27 chats left a buy at the level where it would fit again. The state-of-the-cycle
-   review calls this Dave's decision.
-5. For the QB: whether a pre-FDA entry can be time-based (the setup's summary says
-   "buy 6–8 weeks before" but its entry needs a chart shape), and MU (held, reports
-   Wed 09-30 after the close; the PEAD rule says out before the print).
+For the QB: the setup catalog (`lib/agent/knowledge/setups.ts`) has `INSIDER_CLUSTER`,
+`ESTIMATE_REVISION`, `RS_52W_HIGH`, `RSI2_BOUNCE` and `SECTOR_ROTATION`, and no analyst
+uses any of them.
 
-## This week (as of the 09-25 close)
+## This week
 
-- Reports: KMX and AIR Tue 09-29, JBL Wed 09-30 (all on PEAD's watchlist; buys, if
-  any, come days 1–3 after), MU Wed after the close (held).
-- Closest to their buy price: ISRG (close above $406, 0.2% away), MSFT (close above
-  $518, 0.4%), DOCU (dip to $67, 0.7%), PLTR (above $192.75, 1.6%), GEV (back over
-  its 50-day ~$973, 1.6%), ETN (close above $448, 1.8%). Four of the six are the
-  Compounder's — see decision 1.
-- Earnings season opens around Oct 12: 800+ real companies report Oct 12 – Nov 7,
-  against about 15 this week. That's when PEAD has something to buy every day.
+Read the newest file in `docs/discovery-prep/` for the calendar, the ideas and the
+pastes. Don't write a dated week into this file: it goes stale in days.
+
+## Getting ready to automate
+
+Dave plans to automate discovery (roadmap 13, "Discovery by the numbers"). Run the
+manual sessions in the shape the automated one will take, so each step can be handed to
+code:
+
+1. **Code builds the list**, per setup: the earnings calendar for PEAD (works today), the
+   FDA calendar for Catalyst (roadmap 13.2), and market-wide screens for the chart setups
+   and the Compounder (roadmap 13.1).
+2. **Read the account and the free slots** before triage (above).
+3. **The model triages a short list**, never a firehose, capped to free slots.
+4. **The Writer writes a full plan**, or the stock is passed with its reason.
+5. **Every thesis records its source.**
+6. **A monthly look-back grades the sources** (the scout roster's tally today; roadmap 12
+   later).
+
+Order: **PEAD first.** Its list is already a calendar plus numbers, and the report rule
+already wakes a run on watched names, so the first automated step can be code that puts
+upcoming in-fence reporters on its watchlist. **Catalyst second**, once 13.2 fixes its
+calendar. **The Compounder last**, since it needs the market-wide screens.
+
+What not to automate: **X**. The app has no X search, and any vendor that offers one gets
+probed live before anyone plans on it. The Signals pipeline (deleted 2026-09-15) pushed
+headlines at the analysts and was noise. X stays an on-demand check on a candidate.
 
 ## Mistakes already made here — don't repeat them
 
