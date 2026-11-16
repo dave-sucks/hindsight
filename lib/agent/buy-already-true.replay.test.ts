@@ -128,3 +128,39 @@ describe("HPE 2026-09-09: a buy above $54.75 written at $57.08", () => {
     expect(op("PRINCIPAL")).toMatchObject({ ok: true });
   });
 });
+
+/**
+ * A group is already true only when it is true as a whole. In "all", a part
+ * that is not a typed price (the 20-day, volume) or a price part not yet true
+ * leaves it able to cross. SMMT 2026-10-02's buy was "closes above $17.10 and
+ * above the 20-day"; at $17.50 under the 20-day it waits for the reclaim. A
+ * breakout with a chase cap ("above $50 on the close, 1.5× volume, below $55")
+ * written between the two waits for the close and the volume.
+ */
+describe("a buy written as a group, added by an agent", () => {
+  const price = (is: "above" | "below", value: number, close = false) => ({ watch: "price", is, value, ...(close ? { settings: { close: true } } : {}) });
+  const addGroup = (ticker: string, at: number, floor: number, predicate: unknown) => {
+    const row = thesisRow({ ticker, status: "WATCHING", direction: "LONG", triggers: [{ ...FLOOR, id: "floor", predicate: price("below", floor) }] });
+    return replayTool("update-thesis", "updateThesis", {
+      seed: { thesis: [row], agentConfig: [agentConfigRow()], account: [accountRow()] },
+      ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID },
+      args: { thesis_id: row.id, add_triggers: [{ id: "buy", action: "ENTER", predicate, rationale: "The buy." }], rationale: "Setting the buy." },
+      quotes: { [ticker]: at },
+    });
+  };
+  const landed = async (r: ReturnType<typeof addGroup>) => ((await r).result.data?.trigger_ops as Array<{ ok: boolean; reason?: string }>)[0];
+
+  it.each([
+    ["SMMT: closes above $17.10 and above the 20-day, at $17.50", "SMMT", 17.5, 15.9, { match: "all", conditions: [price("above", 17.1, true), { watch: "price", is: "above", variable: "sma20" }] }],
+    ["a breakout under a chase cap: above $50 on the close, 1.5× volume, below $55, at $52", "AAA", 52, 45, { match: "all", conditions: [price("above", 50, true), { watch: "volume", value: 1.5 }, price("below", 55)] }],
+  ])("%s saves", async (_name, ticker, at, floor, predicate) => {
+    expect(await landed(addGroup(ticker, at, floor, predicate))).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ['"all" of two price levels, both true: above $50 and below $55, at $52', { match: "all", conditions: [price("above", 50), price("below", 55)] }],
+    ['"any" with one price part true: above $50 or below $40, at $52', { match: "any", conditions: [price("above", 50), price("below", 40)] }],
+  ])("%s is refused", async (_name, predicate) => {
+    expect(await landed(addGroup("AAA", 52, 45, predicate))).toMatchObject({ ok: false, reason: expect.stringContaining("is already true at $52,") });
+  });
+});

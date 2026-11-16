@@ -202,12 +202,18 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
 
 /**
  * A new buy whose price is already true where it is written never crosses, so it never fires until the
- * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). The price part of a
- * group counts. Null when the price is unknown or the buy can still cross.
+ * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). In an "any" group one
+ * true price part makes the buy true; an "all" group is true only when every part is a price level
+ * true at the price (SMMT 10-02: "above $17.10 and above the 20-day" can still cross). A group inside
+ * a group is never refused. Null when the price is unknown or the buy can still cross.
  */
 export function buyAlreadyTrue(t: Pick<Trigger, "action" | "predicate">, price: number | null | undefined): string | null {
   const w = t.action === "ENTER" && price != null && price > 0 ? shapeOf(t.predicate) : null;
-  const level = w ? conditionsOf(w).map((c) => levelOf(c)).find((l) => l && (l.above ? price! > l.value : price! < l.value)) : null;
+  const parts = !w ? [] : isGroup(w) ? w.conditions : [w];
+  if (parts.some(isGroup)) return null;
+  const levels = parts.map((c) => levelOf(c));
+  const holds = (l: ReturnType<typeof levelOf>) => !!l && (l.above ? price! > l.value : price! < l.value);
+  const level = w && isGroup(w) && w.match === "all" ? (levels.every(holds) ? levels[0] : null) : levels.find(holds);
   if (!level) return null;
   return `A buy ${level.above ? "above" : "below"} ${money(level.value)} is already true at ${money(price!)}, so it never crosses and never fires. To buy now, set it at or a few cents past ${money(price!)} (is: above); for a pullback, write is: below at a level under ${money(price!)}.`;
 }
