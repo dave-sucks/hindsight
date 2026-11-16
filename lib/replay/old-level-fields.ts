@@ -39,7 +39,8 @@ export function oldLevelFieldsAsTriggerOps(
     const value = call[field];
     if (typeof value !== "number" || (slot === "ENTRY" && opts.held)) continue;
     const said = basis && typeof call[basis] === "string" ? (call[basis] as string) : null;
-    const own = kept.find((t) => levelSlotOf(t, direction) === slot);
+    // On a stock the caller says we don't hold, an old Sell line is not the floor to edit: it is a Stop watching line.
+    const own = kept.find((t) => levelSlotOf(t, direction) === slot && !(slot === "FLOOR" && opts.held === false && t.action === "EXIT"));
     if (own) {
       const w = shapeOf(own.predicate);
       const current = w ? levelOf(w)?.value : undefined;

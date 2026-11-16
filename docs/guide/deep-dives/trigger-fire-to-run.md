@@ -8,7 +8,7 @@ This page follows a [trigger](../concepts/triggers.md) from the price check to t
 
 While the market is open, the check loads every stock an active analyst holds or watches, and every stock a paused analyst still holds, with its rules resolved from the thesis, the analyst and the account. It prices up to 200 stocks in one call and reads what the rules need: the chart numbers written at 6:30 AM (a stock added since gets its numbers on the spot), today's volume, the earnings calendar and new filings. Each trigger is checked in its own catch: one that can't be read is logged and skipped, and the rest are still checked.
 
-At 4:20 PM a close pass runs for the rules that wait for the closing price, with the day's closing bar as the price. A floor on a stock we only watch is one of them: it reacts to a close, never an intraday dip.
+At 4:20 PM a close pass runs for the rules that wait for the closing price, with the day's closing bar as the price. A Stop watching line on a stock we only watch is written as one of them: it reacts to a close, never an intraday dip.
 
 ## Does it fire
 

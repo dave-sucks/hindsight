@@ -490,8 +490,8 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
 - **A buy fill** removes the buy and Stop watching lines, writes "Sell if
   below $X" at the order's approved sell price (`Position.stopLoss`: the
   analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as the
-  line's note, or the price you set in Edit & Approve or on the Trade
-  ticket), and adds the held review clock and the setup's exits when their
+  line's note; a price you set in Edit & Approve or on the Trade ticket is
+  yours), and adds the held review clock and the setup's exits when their
   buckets are missing (`armHeldLadderOnFill`). A watch's line never becomes
   the sale. Never a rewrite: the analyst's other lines and reviews survive
   the fill, and nothing is stamped from the fill price. An Auto-buy names no

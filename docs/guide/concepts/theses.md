@@ -34,7 +34,7 @@ Every thesis is researched by the Writer. A stock reaches it when [Discovery](..
 
 The Writer reads the numbers, the filings and the web, and comes back with one of three answers:
 
-- **Watch it, with a buy.** A buy trigger and a floor (and a take-profit where the setup has one), priced from the setup's rules and the chart. On a stock we watch the floor is a "Stop watching if below $X · only on the close" line: a close below it retires the watch, and it never sells. The thesis is **Watching**, and with a review clock the sheet calls it an **Agent Watch**: the analyst looks at it again on that schedule.
+- **Watch it, with a buy.** A buy trigger and the place it would stop watching (and a take-profit where the setup has one), priced from the setup's rules and the chart. A watch has no floor: its "Stop watching if below $X · only on the close" line retires the watch on a close below, and it never sells. The thesis is **Watching**, and with a review clock the sheet calls it an **Agent Watch**: the analyst looks at it again on that schedule.
 - **Watch it, with no buy yet.** Strong but not ready to price. It waits on a wake, like a price or a date, that brings it back for a fresh look.
 - **Pass.** Saved as **Passed**, with what would change the verdict, so the stock isn't pitched again without a reason.
 

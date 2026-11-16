@@ -466,9 +466,10 @@ export async function approveProposal(
       // levels. Never the entry, which would arm a sale at the buy price.
       targetPrice: effectiveTarget ?? null,
       stopLoss: effectiveStop ?? null,
-      stopIsOwners: via?.tradeTicket === true,
-      // The analyst's reason goes with its price, never onto a price you changed in Edit & Approve.
-      stopReason: effectiveStop === order.position.stopLoss ? order.position.stopReason : null,
+      // A price you typed is your sale: the Trade ticket's, or one you changed in Edit & Approve.
+      // The analyst's reason goes only with its own price.
+      stopIsOwners: via?.tradeTicket === true || effectiveStop !== order.position.stopLoss,
+      stopReason: order.position.stopReason,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

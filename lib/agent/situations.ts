@@ -343,7 +343,7 @@ export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<read
     ],
     [
       `- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.`,
-      `- No longer applicable: on a stock we watch, take its buy and floor off by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.`,
+      `- No longer applicable: on a stock we watch, take its buy and its Stop watching line off by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.`,
     ],
   ],
 };

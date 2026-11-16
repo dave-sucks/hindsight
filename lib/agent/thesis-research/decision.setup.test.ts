@@ -63,14 +63,12 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     expect(v.errors[0]).toMatch(/^setup_id: BASE_BREAKOUT isn't one of this seat's setups \(PEAD, EPISODIC_PIVOT, MA_PULLBACK\)/);
   });
 
-  it("a stop inside one ordinary day's move is sent back with the numbers", () => {
+  it("a Stop watching line close to the buy is the watch's own: the setup's ATR rule reads the sale (place_trade), never this line", () => {
     const v = validateThesisDecision(
       { ...docu, setup_id: "PEAD", triggers: levels(62.5, 61, 66) },
       opts,
     );
-    expect(v.errors).toContain(
-      "floor: $61 is 0.51 ATR from the $62.5 buy (ATR $2.94). Post-earnings drift needs the floor at least 1 ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $2.94 from the buy, or PASS.",
-    );
+    expect(v.errors).toEqual([]);
   });
 
   it("a buy at the live price is legal — that is how buying now is written", () => {
@@ -138,7 +136,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     const v = validateThesisDecision(hpe, opts);
     expect(v.ok).toBe(false);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), a floor 1 ATR ($3.75) under it until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.",
     ]);
   });
 
@@ -211,7 +209,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   it("is sent back with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);
     expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), a floor 1 ATR ($2.98) under it until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.",
+      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.",
     ]);
   });
 

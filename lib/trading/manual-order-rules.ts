@@ -19,7 +19,7 @@ export type BuyLane =
       /** No view yet (a seed, or not watched): the buy makes it LONG and the writer is sent to research it. */
       needsResearch: boolean;
       targetPrice: number | null;
-      stopLoss: number | null;
+      // No stop: a stock we don't hold has no sale to start from. The one you type is the holding's sale.
     }
   | { kind: "NONE"; reason: string };
 

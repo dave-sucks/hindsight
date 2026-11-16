@@ -6,7 +6,9 @@
  */
 
 import { z } from "zod";
-import { isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { getSetup, isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -27,6 +29,7 @@ import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
   positionBand,
   entrySizeForConviction,
+  saleRuleProblem,
   sizeByRisk,
   sizingStop,
 } from "@/lib/agent/position-sizing";
@@ -66,6 +69,15 @@ export function sizedByPrincipalLine(notional: number, band: { floor: number; ce
   if (band.ceiling != null && notional > band.ceiling) return `Sized by you: ${$(notional)} — above the analyst's largest trade (${$(band.ceiling)}).`;
   if (band.floor > 0 && notional < band.floor) return `Sized by you: ${$(notional)} — below the analyst's smallest trade (${$(band.floor)}).`;
   return `Sized by you: ${$(notional)}.`;
+}
+
+/** A refused buy: nothing is written, and the message names the fix. */
+function blocked(ticker: string, direction: "LONG" | "SHORT", why: string, message: string) {
+  return {
+    summary: `Trade blocked: $${ticker} — ${why}`,
+    data: { success: false, ticker, status: "FAILED" as const, direction, message, tickers: [{ ticker, tag: "Failed", summary: message, actionIcon: "failed" }] },
+    sources: [],
+  };
 }
 
 const placeTradeSchema = z.object({
@@ -344,19 +356,7 @@ export const placeTrade = defineTool({
         const crossed = (price: number) => (long ? stop >= price : stop <= price);
         const at = crossed(args.entry_price) ? { what: "entry", price: args.entry_price } : livePrice != null && crossed(livePrice) ? { what: "the current price", price: livePrice } : null;
         if (at) {
-          const blockedMsg = `Trade blocked: the sale $${stop.toFixed(2)} is at or ${long ? "above" : "below"} ${at.what} $${at.price.toFixed(2)} — for a ${args.direction} sell_if_below must be ${long ? "BELOW" : "ABOVE"} it. Name a sale under structure on the other side of the price, then call place_trade again.`;
-          return {
-            summary: `Trade blocked: $${ticker} — the sale is past the price`,
-            data: {
-              success: false,
-              ticker,
-              status: "FAILED" as const,
-              direction: args.direction,
-              message: blockedMsg,
-              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
-            },
-            sources: [],
-          };
+          return blocked(ticker, args.direction, "the sale is past the price", `Trade blocked: the sale $${stop.toFixed(2)} is at or ${long ? "above" : "below"} ${at.what} $${at.price.toFixed(2)} — for a ${args.direction} sell_if_below must be ${long ? "BELOW" : "ABOVE"} it. Name a sale under structure on the other side of the price, then call place_trade again.`);
         }
       }
 
@@ -398,6 +398,13 @@ export const placeTrade = defineTool({
       // AIR, KMX and JBL (CATALYST rows wearing the PEAD setup) were sized
       // in full the day before their print.
       const binary = sizingThesis ? isBinaryBet(sizingThesis) : false;
+      // The setup's sale rules, on the sale: the 06:30 snapshot's ATR, the account's overrides.
+      const setup = stop != null && sizingThesis?.setupId ? getSetup(sizingThesis.setupId, await loadSetupOverrides(ctx.accountId)) : undefined;
+      if (setup && stop != null) {
+        const atr = (await loadIndicatorSnapshots([ticker]).catch(() => null))?.get(ticker)?.atr14 ?? null;
+        const bad = saleRuleProblem({ setup, horizon: sizingThesis?.horizon ?? null, entry: args.entry_price, stop, atr: atr != null ? Math.round(atr * 100) / 100 : null });
+        if (bad) return blocked(ticker, args.direction, "the sale breaks its setup's rule", `Trade blocked: ${bad}. Then call place_trade again.`);
+      }
       // Sized off the sale this call names; stop when buying on: off the wider of it and the setting's line.
       const riskStop = stop != null ? sizingStop({ entry: args.entry_price, stop, direction: args.direction, autoStop }) : null;
       const riskSized =
@@ -834,35 +841,7 @@ export const placeTrade = defineTool({
         }
       }
 
-      // ── PROMOTED → HOLDING auto-transition ─────────────────────────────
-      // If the thesis was PROMOTED (first-live-run re-entry), flip it to
-      // HOLDING now that we have an open live position. Belt-and-suspenders
-      // — the agent SHOULD have called update_thesis(change_status: ACTIVE)
-      // first, but if it skipped that step the trade itself is the explicit
-      // intent to enter and we shouldn't leave the thesis in PROMOTED with
-      // a live position attached.
-      //
-      // Fires on both FILLED and PENDING paths. On PENDING the close hasn't
-      // landed but the agent committed to the entry; reconcile-orders will
-      // either confirm or cancel the order, and either outcome is consistent
-      // with ACTIVE (a cancellation rolls back via the existing close path).
-      try {
-        const promotedThesis = await prisma.thesis.findUnique({
-          where: { id: args.thesis_id },
-          select: { id: true, status: true },
-        });
-        if (promotedThesis && promotedThesis.status === "PROMOTED") {
-          await prisma.thesis.update({
-            where: { id: promotedThesis.id },
-            data: { status: "HOLDING", promotedAt: null },
-          });
-        }
-      } catch (err) {
-        console.warn(
-          `[place_trade] PROMOTED → HOLDING auto-transition failed for thesis ${args.thesis_id}:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
+      // A PROMOTED row (the first live run's re-entry) flips to HOLDING in armHeldLadderOnFill below, as a watch does.
 
       // suppress unused warning if a path doesn't read submitOutcome
       void submitOutcome;

@@ -64,27 +64,7 @@ export async function promoteThesisOnApproval(opts: {
   stopReason?: string | null;
   runId?: string | null;
 }): Promise<void> {
-  // PROMOTED → ACTIVE — re-entered on first live-run after promotion.
-  // Done as a separate query because the thesis_id may point at a
-  // PROMOTED row while a WATCHING row also exists for the same ticker.
-  try {
-    await prisma.thesis.updateMany({
-      where: {
-        ticker: opts.ticker,
-        status: "PROMOTED",
-        researchRun: { agentConfigId: opts.analystId },
-      },
-      data: { status: "HOLDING", promotedAt: null },
-    });
-  } catch (err) {
-    console.warn(
-      `[promoteThesisOnApproval] PROMOTED → HOLDING flip failed for ${opts.ticker}:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-
-  // WATCHING → HOLDING — the more common path. One shared implementation with
-  // place_trade; see armHeldLadderOnFill below.
+  // WATCHING or PROMOTED → HOLDING. One shared implementation with place_trade; see armHeldLadderOnFill below.
   await armHeldLadderOnFill({
     analystId: opts.analystId,
     ticker: opts.ticker,
@@ -154,23 +134,15 @@ export async function armHeldLadderOnFill(opts: {
   via: "place_trade" | "approved proposal";
 }): Promise<void> {
   try {
-    const watchingThesis = await prisma.thesis.findFirst({
-      where: {
-        ticker: opts.ticker,
-        status: "WATCHING",
-        researchRun: { agentConfigId: opts.analystId },
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        direction: true,
-        horizon: true,
-        setupId: true,
-        accountId: true,
-        catalystDate: true,
-        triggers: true,
-      },
-    });
+    // A promoted row (re-entered on the first live run) is the one bought, else the newest watch. Either way
+    // its buy and Stop watching lines come off below: there is no watch left to end.
+    const find = (status: "PROMOTED" | "WATCHING") =>
+      prisma.thesis.findFirst({
+        where: { ticker: opts.ticker, status, researchRun: { agentConfigId: opts.analystId } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true, direction: true, horizon: true, setupId: true, accountId: true, catalystDate: true, triggers: true },
+      });
+    const watchingThesis = (await find("PROMOTED")) ?? (await find("WATCHING"));
     if (!watchingThesis) return;
 
     const horizon = watchingThesis.horizon as Horizon | null;
@@ -256,6 +228,7 @@ export async function armHeldLadderOnFill(opts: {
       where: { id: watchingThesis.id },
       data: {
         status: "HOLDING",
+        promotedAt: null,
         triggers: nextTriggers as unknown as object,
         entryPrice: opts.fillPrice,
         targetPrice: heldLevels.columns.targetPrice,
@@ -270,9 +243,9 @@ export async function armHeldLadderOnFill(opts: {
       data: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
-        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
+        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
-          status: { from: "WATCHING", to: "HOLDING" },
+          status: { from: watchingThesis.status, to: "HOLDING" },
           triggerOps: { from: null, to: acceptedOps(results) },
         },
         runId: opts.runId ?? null,
@@ -281,7 +254,7 @@ export async function armHeldLadderOnFill(opts: {
     });
   } catch (err) {
     console.warn(
-      `[armHeldLadderOnFill] WATCHING → HOLDING flip failed for ${opts.ticker}:`,
+      `[armHeldLadderOnFill] ${opts.ticker} → HOLDING flip failed:`,
       err instanceof Error ? err.message : err,
     );
   }

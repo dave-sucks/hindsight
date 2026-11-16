@@ -220,7 +220,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   // IOT, 2026-11-04: the field's own example was "a close below the 50-day average", and the Writer wrote a swing low with volume.
   it("what would prove it wrong is the business, never a stock price, in every text the Writer reads", () => {
     const words = wordsOf(props("update_thesis").invalidation_conditions);
-    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the floor holds the price/);
+    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price/);
     expect(words).not.toMatch(/a close below/i);
     expect(wordsOf(submit().invalidation_conditions)).toBe(words);
     expect(SAMPLE_PROMPTS.writer()).toMatch(/Never a stock price, an average, a high or\s+low, or a gap, with or without volume/);

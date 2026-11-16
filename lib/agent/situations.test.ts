@@ -349,14 +349,14 @@ describe("the words per run (step 12, part 2)", () => {
       for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
     }
   });
-  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and floor off by id and the morning run decides", () => {
+  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and the Stop watching line off by id and the morning run decides", () => {
     const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) {
       expect([word, text.includes(word)]).toEqual([word, false]);
       expect([word, promoted.includes(word)]).toEqual([word, false]);
     }
-    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and floor off by id (remove_trigger_ids) and say so in the note; the morning run decides");
+    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and its Stop watching line off by id (remove_trigger_ids) and say so in the note; the morning run decides");
     expect(guidanceFor(["PROMOTED_AWAITING"], "INTRADAY_TACTICAL").PROMOTED_AWAITING).toContain("the stock stays promoted and the morning run decides");
   });
   it("the morning run and the chat keep the verbs", () => {

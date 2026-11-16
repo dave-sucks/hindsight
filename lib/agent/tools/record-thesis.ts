@@ -827,7 +827,7 @@ export const recordThesis = defineTool({
                   ticker: args.ticker,
                   note:
                     `NOT a failure — a ${existingThesis.status} thesis already exists for ${args.ticker} (id ${existingThesis.id}), which is more coverage than a name kept in view with no view. ` +
-                    `If your intent is to set that coverage down, call update_thesis on it and replace its triggers with the wake conditions you want, dropping its buy and floor. ` +
+                    `If your intent is to set that coverage down, call update_thesis on it and replace its triggers with the wake conditions you want, dropping its buy and its Stop watching line. ` +
                     `Do not retry record_thesis on ${args.ticker}.`,
                 },
                 sources: [],

@@ -31,7 +31,8 @@ const ROW = [
   { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 431.5, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the January-July up-leg is $431.53.", cooldownDays: 1 },
 ];
 
-async function tradeTicket(stopLoss: number | null): Promise<PrismaDouble> {
+/** TRV's row and the Trade button's own entry points, with only the database, the broker and the clock doubled. */
+async function desk(use: (m: typeof import("@/lib/trading/manual-order")) => Promise<void>): Promise<PrismaDouble> {
   const db = prismaDouble({
     account: [accountRow({ autoStopOnBuy: true, autoStopPct: 8, setupOverrides: {} })],
     agentConfig: [agentConfigRow({ name: "Secular Compounder", tradingEnvironment: "LIVE", minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, riskPct: 1 })],
@@ -59,23 +60,27 @@ async function tradeTicket(stopLoss: number | null): Promise<PrismaDouble> {
       }));
       jest.doMock("@/lib/trading/after-buy", () => ({ sendWriterAfterBuy: async () => false }));
       jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: () => ({}), send: jest.fn() } }));
-      const { placeManualOrder } = await import("@/lib/trading/manual-order");
-      const r = await placeManualOrder({
-        userId: REPLAY_USER_ID,
-        accountId: REPLAY_ACCOUNT_ID,
-        environment: "LIVE",
-        ticker: "TRV",
-        analystId: REPLAY_ANALYST_ID,
-        order: { side: "BUY", shares: 25, reviewedPrice: PRICE, stopLoss, targetPrice: 431.5 },
-      });
-      if (!r.ok) throw new Error(r.error);
-      expect(r).toMatchObject({ ok: true, intent: "OPEN" });
+      await use(await import("@/lib/trading/manual-order"));
     });
   } finally {
     jest.useRealTimers();
   }
   return db;
 }
+
+const tradeTicket = (stopLoss: number | null) =>
+  desk(async ({ placeManualOrder }) => {
+    const r = await placeManualOrder({
+      userId: REPLAY_USER_ID,
+      accountId: REPLAY_ACCOUNT_ID,
+      environment: "LIVE",
+      ticker: "TRV",
+      analystId: REPLAY_ANALYST_ID,
+      order: { side: "BUY", shares: 25, reviewedPrice: PRICE, stopLoss, targetPrice: 431.5 },
+    });
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ ok: true, intent: "OPEN" });
+  });
 
 const thesis = (db: PrismaDouble) => (db.store.thesis as Array<Record<string, unknown>>)[0];
 const below = (db: PrismaDouble, action: string) =>
@@ -103,10 +108,22 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
     expect((db.store.position as Array<Record<string, unknown>>)[0]).toMatchObject({ stopLoss: 367.03 });
   });
 
-  it("the ticket's default ($382.40, the watch's line) bought as it was: the stop on the ticket is the owner's sale, tighter than the line, so it stays", async () => {
+  it("a typed $382.40 (the watch's line, which the ticket no longer offers): the stop on the ticket is the owner's sale, tighter than the line, so it stays", async () => {
     const db = await tradeTicket(382.4);
     expect(below(db, "EXIT")).toEqual([expect.objectContaining({ predicate: { is: "below", value: 382.4, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $382.40. You set this." })]);
     expect(below(db, "STOP_WATCHING")).toEqual([]);
     expect(below(db, "REVIEW")).toEqual([]);
+  });
+});
+
+describe("the Trade ticket on TRV, a stock we only watch", () => {
+  it("starts with no sell price: the row's hidden stopLoss ($382.40, its Stop watching line) is not offered as a stop", async () => {
+    let lane: Record<string, unknown> | undefined;
+    const db = await desk(async ({ getTradeTicket }) => {
+      const ticket = await getTradeTicket({ userId: REPLAY_USER_ID, accountId: REPLAY_ACCOUNT_ID, ticker: "TRV", environment: "LIVE" });
+      lane = ticket.lanes.find((l) => l.analystId === REPLAY_ANALYST_ID)?.buy as Record<string, unknown> | undefined;
+    });
+    expect(thesis(db)).toMatchObject({ status: "WATCHING", stopLoss: 382.4 });
+    expect(lane).toEqual({ kind: "OPEN", thesisId: "thesis_TRV", needsResearch: false, targetPrice: 431.5 });
   });
 });

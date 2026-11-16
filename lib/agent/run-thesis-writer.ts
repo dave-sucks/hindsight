@@ -620,16 +620,17 @@ every field; the judgment rules:
          close (settings: { close: true }); an intraday poke fails about
          half the time. Never more than the setup's chase limit past its
          pivot.
-       – the floor (a STOP_WATCHING trigger on a typed price, settings:
-         { close: true }): under the structure the setup names, at least
-         its minimum ATR from the buy. A close below it ends the watch; it
-         never sells (the holding's sale comes with the buy). Its
-         rationale opens with what a close below it would say about
-         core_belief, in one plain sentence, then the structure and how
-         many ATR, with the numbers.
+       – where the setup is over (a STOP_WATCHING trigger on a typed
+         price, settings: { close: true }): the structure the setup names
+         (the base's low, the last swing low, the gap day's low). A close
+         below it ends the watch; it never sells, and the holding's sale
+         comes with the buy. Its rationale opens with what a close below
+         it would say about core_belief, in one plain sentence, then the
+         structure, with the number.
        – a take-profit, only if the setup has one: a review at the
          Street's average target, a trim at the prior high. Not required:
-         a buy and a floor are complete. Never a number you don't believe.
+         a buy and a Stop watching line are complete. Never a number you
+         don't believe.
        – THE STREET (the Analyst Coverage block: targets low / average /
          high, the rating split, EPS revisions) informs every level and
          sets none; "target" means the Street's number, never ours. In
@@ -643,23 +644,23 @@ every field; the judgment rules:
      LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a buy at
      an invented level.
    • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
-     window has closed or the floor it names can't be placed, the next
+     window has closed or the structure it names isn't there, the next
      setup on your list applies: a stock past its post-earnings window in
      an uptrend is written on MA_PULLBACK — a buy at the rising 20- or
-     50-day, a floor 1 ATR under it until the pullback low prints, a
-     take-profit at the prior high. A REVIEW at the price you would buy
+     50-day, a Stop watching line where the pullback fails (a close under
+     that average), a take-profit at the prior high. A REVIEW at the price you would buy
      is a buy you did not write: make it the buy, or PASS and say why the
      stock isn't buyable there.
    • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
      setup hasn't formed, you want to price it after the print) → write
-     no buy and no floor. The thesis stays LONG/SHORT and WATCHING and
+     no buy and no Stop watching line. The thesis stays LONG/SHORT and WATCHING and
      gets its buy when the time comes. It MUST carry the wake that brings
      it back, in \`triggers\`: a REVIEW at the price you'd look again, or
      a short day-count review. A watch has no review clock unless you
      give it one, so a view saved with no buy, no trigger and no review
      can never come back. "I want to price the pullback rather than buy
      here" IS a level: write the pullback as the buy (the rising 20- or
-     50-day, a floor 1 ATR under it). Put the when ("price this after the
+     50-day, a Stop watching line where it fails). Put the when ("price this after the
      January readout") in the rationale. A view with no buy needs no
      setup_id.
      PASS is for a view the research does not support — not for a view
@@ -677,13 +678,12 @@ every field; the judgment rules:
    • invalidation_conditions: each a reading about the business and
      where it is read (a guidance cut at the next report, a margin in the
      10-Q, a lost customer). Never a stock price, an average, a high or
-     low, or a gap, with or without volume: the floor holds the price.
+     low, or a gap, with or without volume: the triggers hold the price.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
-   • You do not size the trade. place_trade sizes it by risk from your
-     floor: the account loses about the analyst's risk per trade if the
-     floor hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,
-     honest floor is what earns size.
+   • You do not size the trade. The run that buys names the holding's
+     sale, and place_trade sizes the buy by risk from it, scaled by
+     conviction (LOW ×0.5 … STRONG ×1.25).
 ${
        opts.setupRecord?.length
          ? `   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}\n`

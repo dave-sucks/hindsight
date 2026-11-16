@@ -16,7 +16,7 @@ const watched: TradeLane = {
   analystName: "Secular Compounder",
   position: null,
   sellBlocked: null,
-  buy: { kind: "OPEN", thesisId: "t1", needsResearch: false, targetPrice: 1100, stopLoss: 800 },
+  buy: { kind: "OPEN", thesisId: "t1", needsResearch: false, targetPrice: 1100 },
 };
 
 describe("planManualOrder — sells", () => {
@@ -70,7 +70,7 @@ describe("planManualOrder — buys", () => {
   });
 
   it("opens with no stop or target, even when the thesis has no floor", () => {
-    const bare: TradeLane = { ...watched, buy: { kind: "OPEN", thesisId: null, needsResearch: true, targetPrice: null, stopLoss: null } };
+    const bare: TradeLane = { ...watched, buy: { kind: "OPEN", thesisId: null, needsResearch: true, targetPrice: null } };
     expect(planManualOrder(watched, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
     expect(planManualOrder(bare, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
   });
