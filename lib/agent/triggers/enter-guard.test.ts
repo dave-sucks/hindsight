@@ -35,6 +35,14 @@ const EXIT_STOP: Trigger = {
   cooldownDays: 0,
 };
 
+/** A watch's line: its own action, on the close. */
+const STOP_WATCHING: Trigger = {
+  id: "trig-stop-watching",
+  predicate: { watch: "price", is: "below", value: 80, settings: { close: true } },
+  action: "STOP_WATCHING",
+  rationale: "Below $80 the setup is wrong",
+};
+
 const REVIEW_EARNINGS: Trigger = {
   id: "trig-review-earnings",
   predicate: { watch: "surprise", is: "beat", value: 0 },
@@ -92,44 +100,25 @@ describe("validateEnterTriggerRequired", () => {
   });
 
   // ── A floor on a watch item is legal now (DAV-195 L5) ─────────────────
-  // The guard used to reject EXIT/TRIM/ADD on a WATCHING thesis,
-  // because a price level firing on something we don't own had no meaning
-  // and would spawn an orphan tactical run. Stop-watching (stop-watching.ts) gives
-  // it one — retire the watch, inline, no spawn — so the rule is gone and the write
-  // is allowed. See the deleted-gate note in enter-guard.ts.
+  // A watch ends on its own Stop watching line (stop-watching.ts); a sale on
+  // a watch is refused per op (condition/actions.ts), so this guard has no
+  // watch rule at all.
 
-  it("allows a floor on a WATCHING thesis alongside the buy level", () => {
+  it("allows a Stop watching line on a WATCHING thesis alongside the buy level", () => {
     // The KLAC shape, and the whole reason 19 of 19 watchlist rows carry a
     // stop that fires nothing: the write was refused, so it was never armed.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
-      triggers: [ENTER_LONG, EXIT_STOP, REVIEW_EARNINGS],
+      triggers: [ENTER_LONG, STOP_WATCHING, REVIEW_EARNINGS],
     });
     expect(result.ok).toBe(true);
   });
 
-  it("allows a floor on a WATCHING SHORT too", () => {
-    const result = validateEnterTriggerRequired({
-      direction: "SHORT",
-      status: "WATCHING",
-      triggers: [ENTER_SHORT, EXIT_STOP],
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  it("still requires a buy level — a floor alone is not a plan", () => {
-    // The ENTER-presence guard is untouched and now carries the whole job.
-    // Without a buy level the thesis can never be promoted, however many
-    // other triggers it has.
-    const result = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [REVIEW_EARNINGS, EXIT_STOP],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
+  it("a Stop watching line needs no buy: it ends the watch and sells nothing", () => {
+    for (const triggers of [[STOP_WATCHING], [REVIEW_EARNINGS, STOP_WATCHING]]) {
+      expect(validateEnterTriggerRequired({ direction: "LONG", status: "WATCHING", triggers }).ok).toBe(true);
+    }
   });
 
   it("tolerates position-scoped actions on a watch item without refusing the write", () => {
@@ -168,9 +157,7 @@ describe("validateEnterTriggerRequired", () => {
   });
 
   it("WATCHING LONG with only REVIEW wakes (no plan level): ok — no plan, no ENTER needed", () => {
-    // A name kept in view with wakes but no buy plan. The original
-    // XPEV/MDB bug (HELD-style arrays stripping the ENTER) still rejects:
-    // those arrays carry EXIT plan levels — see the test above.
+    // A name kept in view with wakes but no buy plan.
     const result = validateEnterTriggerRequired({
       direction: "LONG",
       status: "WATCHING",
@@ -214,53 +201,6 @@ describe("validateEnterTriggerRequired", () => {
       ],
     });
     expect(result.ok).toBe(true);
-  });
-
-  it("a sale at a price with no buy is still a half plan — it requires an ENTER", () => {
-    const result = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [
-        {
-          id: "trig-upside-exit",
-          predicate: { watch: "price", is: "above", value: 150 },
-          action: "EXIT",
-          rationale: "Sell at $150.",
-        },
-      ],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
-  });
-
-  // ── Missing targetPrice → different error message ───────────────────────
-
-  it("a half plan — a floor with no buy level — rejects with the finish-the-plan note", () => {
-    const result = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [EXIT_STOP],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe("missing-enter-trigger");
-    expect(result.note).toMatch(/no buy to reach it from/);
-    expect(result.note).not.toMatch(/displaced/);
-  });
-
-  it("WATCHING LONG with a target but no ENTER: the same finish-the-plan note", () => {
-    // FLIPPED 2026-09-09 (DAV-242): the "displaced the default ENTER via the
-    // merge bucket" note existed only because the list was replaced whole.
-    // Triggers are edited one at a time now; there is one note.
-    const result = validateEnterTriggerRequired({
-      direction: "LONG",
-      status: "WATCHING",
-      triggers: [REVIEW_EARNINGS, EXIT_STOP],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.note).toMatch(/no buy to reach it from/);
   });
 
   // ── ACTIVE-side symmetric checks ────────────────────────────────────────

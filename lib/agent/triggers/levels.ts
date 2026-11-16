@@ -175,10 +175,9 @@ function measuresOffPosition(t: Trigger): boolean {
 // rules are move-from-a-close, so the predicate gate above let them through
 // onto WATCHING rows, and on 2026-09-03 five of eight tactical runs were
 // "scale in" on names with no position (HPE, RARE, PLTR, NOW; two of them
-// were then retired by an agent that had been asked to add). EXIT is not
-// here — a sale line on a stock we don't hold stops watching it
-// (stop-watching.ts), which is a real verdict, not a position action.
-const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM"]);
+// were then retired by an agent that had been asked to add). A sale (EXIT)
+// too: there is nothing to sell. A watch ends on its own Stop watching line.
+const POSITION_SCOPED_ACTIONS = new Set(["ADD", "TRIM", "EXIT"]);
 
 /**
  * Order the triggers WITHIN one level so that, when two of them land in the
@@ -293,6 +292,8 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
       ) {
         continue;
       }
+      // A Stop watching line ends a watch; on a holding there is none to end.
+      if (input.state === "HELD" && t.action === "STOP_WATCHING") continue;
       // Only the review CLOCK is opt-in on a watch. A day count from the
       // thesis's event date ("review 10 days before the FDA decision") is
       // an event wake, and a watched stock is exactly where it matters

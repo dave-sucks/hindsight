@@ -81,8 +81,8 @@ const RULE_DEFS = {
     markers: {},
   },
   TRIGGER_SHAPE: {
-    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a sale on a watch with no buy is refused with the fix.",
-    refusal: "missing_enter_trigger — names the missing buy and the two answers.",
+    says: "A trigger's kind is one of the evaluator's kinds, by name. An unknown kind is coerced or dropped with a note; a sale on a watch is refused with the fix (STOP_WATCHING).",
+    refusal: "the action's refusal — names the action that fits the stock.",
     markers: {},
   },
 } as const satisfies Record<string, Rule>;
@@ -127,8 +127,10 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("company_name", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("exchange", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("direction", "CHOSEN"),
-    // The floor is the stock's own sell trigger (step 12, part 3); the buy carries no copy.
     f("entry_price", "JUDGED", { rule: "LEVEL_ORDER", note: "The market order's expected price; it sizes the buy." }),
+    // The holding's sale comes with the buy (2026-11-16): a watch's line ends the watch and is never the sale.
+    f("sell_if_below", "JUDGED", { rule: "LEVEL_ORDER", note: "Below the price for a LONG; sizes the buy; the pending position holds it, and the fill writes it as Sell if below." }),
+    f("sell_reason", "TEXT", { note: "The note on the holding's Sell if below line." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
     f("notional", "COMPUTED", { principalOnly: true, note: "Sized by risk inside the analyst's band (DAV-317). The principal's number is honored with a line." }),

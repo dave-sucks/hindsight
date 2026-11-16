@@ -159,9 +159,7 @@ function toStored({ value, variable, settings, ...base }: AgentCondition): Condi
   return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
 }
 
-export const triggerActionSchema = z.enum(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM"]);
-/** A stored "DEMOTE" (the old set-the-plan-down verb, saved once by an edit) reads as the sale line it was: on a watch, stop watching. */
-const storedActionSchema = z.preprocess((a) => (a === "DEMOTE" ? "EXIT" : a), triggerActionSchema);
+export const triggerActionSchema = z.enum(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM", "STOP_WATCHING"]);
 
 export const triggerSchema = z.object({
   // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
@@ -178,7 +176,7 @@ export const triggerSchema = z.object({
     .default(() => randomUUID())
     .describe("Stable id; auto-generated when the writer omits it."),
   predicate: triggerPredicateSchema,
-  action: storedActionSchema,
+  action: triggerActionSchema,
   rationale: z
     .string()
     .min(1)
@@ -285,7 +283,10 @@ export const triggerInputSchema = triggerSchema
     // 0–90 days until 2026-11-02; a 0 on CEG's sale woke a run every five minutes. A sent value is dropped.
     cooldownDays: true,
   })
-  .extend({ predicate: predicateInputSchema(), action: triggerActionSchema });
+  .extend({
+    predicate: predicateInputSchema(),
+    action: triggerActionSchema.describe("EXIT sells and is for a stock we hold; STOP_WATCHING ends the watch, never sells, and is for a stock we only watch."),
+  });
 
 export const triggersInputArraySchema = z
   .array(triggerInputSchema)

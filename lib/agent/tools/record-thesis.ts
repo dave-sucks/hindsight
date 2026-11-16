@@ -22,6 +22,7 @@ import {
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
+import { actionProblem } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -579,8 +580,7 @@ export const recordThesis = defineTool({
 
       // ── The triggers ──────────────────────────────────────────────────
       // Built before the row hits the DB so the ladder check below can
-      // refuse a list that can't stand (levels out of order, a sale on a
-      // watch with no buy to reach it from).
+      // refuse a list that can't stand (levels out of order).
       let mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
@@ -620,10 +620,15 @@ export const recordThesis = defineTool({
         return { summary: `Thesis rejected for ${args.ticker}: a buy already true at the price never fires.`, data: { thesis_id: null, status: "FAILED" as const, note: deadBuy }, sources: [] };
       }
 
+      // A new thesis is a watch: a sale on it is refused with the fix (STOP_WATCHING), as an added one is.
+      const wrongAction = mergedTriggers.map((t) => actionProblem(t.action, { held: false })).find(Boolean);
+      if (wrongAction) {
+        return { summary: `Thesis rejected for ${args.ticker}: a sale on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: wrongAction }, sources: [] };
+      }
+
       // ── The ladder check (shared with update_thesis) ─────────────────
       // The levels in order (a LONG's floor under its buy, its upside line
-      // above both), a sale on a watch only with a buy to reach it from, a
-      // sale and no buy on a stock we hold. The columns are a cache of the
+      // above both). The columns are a cache of the
       // result (DAV-195 L3): a level on a thesis is whatever its triggers say.
       const ladder = checkLadder({
         triggers: mergedTriggers,
@@ -634,7 +639,7 @@ export const recordThesis = defineTool({
       if (!ladder.ok) {
         console.warn(`[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${ladder.error}.`);
         return {
-          summary: `Thesis rejected for ${args.ticker}: ${ladder.error === "missing_enter_trigger" ? `WATCHING ${args.direction} with a sale and no buy` : "its levels are out of order"}.`,
+          summary: `Thesis rejected for ${args.ticker}: its levels are out of order.`,
           data: { thesis_id: null, status: "FAILED" as const, note: ladder.message },
           sources: [],
         };

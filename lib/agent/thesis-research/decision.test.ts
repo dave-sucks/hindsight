@@ -14,13 +14,13 @@ import {
 import { editTriggerOpSchema, editNumber } from "@/lib/agent/triggers/schema";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 
-/** A buy, a floor and (when given) a take-profit, as the writer writes them: triggers. */
+/** A buy, a floor (the watch's Stop watching line) and (when given) a take-profit, as the writer writes them: triggers. */
 function levels(entry: number, stop: number, target?: number, short = false) {
   const up = short ? "below" : "above";
   const down = short ? "above" : "below";
   return [
     { predicate: { watch: "price", is: up, value: entry }, action: "ENTER", rationale: "the buy" },
-    { predicate: { watch: "price", is: down, value: stop }, action: "EXIT", rationale: "the floor" },
+    { predicate: { watch: "price", is: down, value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "the floor" },
     ...(target != null ? [{ predicate: { watch: "price", is: up, value: target }, action: "REVIEW", rationale: "take profit" }] : []),
   ] as NonNullable<ThesisDecisionInput["triggers"]>;
 }
@@ -254,13 +254,17 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     action: "EXIT" as const,
     rationale: "stop",
   };
+  const stopWatching = { ...exitTrigger, action: "STOP_WATCHING" as const };
 
-  it("mint (no position): TRIM/ADD are forbidden; a floor (EXIT) is legal — on a watch it stops watching", () => {
-    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, exitTrigger] }, mintOpts).ok).toBe(true);
+  it("mint (no position): TRIM/ADD and a sale are forbidden; a Stop watching line is legal", () => {
+    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, stopWatching] }, mintOpts).ok).toBe(true);
     const trim = { predicate: { watch: "price", is: "above", value: 120 } as const, action: "TRIM" as const, rationale: "trim" };
-    const v = validateThesisDecision({ ...validLong, triggers: [enterTrigger, trim] }, mintOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("no position exists");
+    for (const wrong of [trim, exitTrigger]) {
+      const v = validateThesisDecision({ ...validLong, triggers: [enterTrigger, wrong] }, mintOpts);
+      expect(v.ok).toBe(false);
+      expect(v.errors.join(" ")).toContain("no position exists");
+    }
+    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, exitTrigger] }, mintOpts).errors.join(" ")).toContain("Use ENTER, STOP_WATCHING");
   });
 
   // On a refresh the same rules run on `add_triggers` (DAV-242: a refresh
@@ -271,7 +275,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
       { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
     );
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER triggers are forbidden");
+    expect(v.errors.join(" ")).toContain("ENTER and STOP_WATCHING triggers are forbidden");
   });
 
   it("HOLDING refresh: adding EXIT + REVIEW is legal", () => {
@@ -293,10 +297,10 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.ok).toBe(true);
   });
 
-  it("PROMOTED refresh (no live position): ENTER and a floor (EXIT) are legal", () => {
+  it("PROMOTED refresh (no live position): ENTER and a Stop watching line are legal", () => {
     const promotedOpts = { mode: "refresh" as const, existingStatus: "PROMOTED", currentPrice: 101 };
     expect(
-      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [exitTrigger] }, promotedOpts).ok,
+      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [stopWatching] }, promotedOpts).ok,
     ).toBe(true);
     expect(
       validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [enterTrigger] }, promotedOpts).ok,

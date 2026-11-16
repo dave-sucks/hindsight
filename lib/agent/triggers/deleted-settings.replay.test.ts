@@ -87,7 +87,7 @@ describe("a stored trigger still carrying a deleted key", () => {
       { is: "before", value: 5, watch: "report" },
       { watch: "gap", value: 8 },
     ]);
-    expect(triggers.map((t) => sentenceOf(t, true))).toEqual(["Review if within 5 days before earnings", "Review if at least 8% gap up"]);
+    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if within 5 days before earnings", "Review if at least 8% gap up"]);
   });
 
   it("reads without it, and says only its number", () => {
@@ -96,7 +96,7 @@ describe("a stored trigger still carrying a deleted key", () => {
       { is: "above", value: 4.6, watch: "move", variable: "entry" },
       { watch: "move", is: "below", value: 12, variable: "peak" },
     ]);
-    expect(triggers.map((t) => sentenceOf(t, true))).toEqual(["Review if above 4.6% from our entry", "Sell if below 12% from the high since we bought"]);
+    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if above 4.6% from our entry", "Sell if below 12% from the high since we bought"]);
   });
 
   it("V 10-26 09:30 ET at $405.73: the review fires at its level for the morning run, though V ran 12.3% off the buy", async () => {

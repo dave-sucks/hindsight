@@ -61,9 +61,9 @@ describe("AMD (RETIRED): one review-date trigger among five readable ones", () =
     expect(JSON.stringify(errors.mock.calls[0])).toContain("REVIEW_DATE_HIT");
   });
 
-  it("the ladder every reader resolves (the trigger check, the sheet, get_theses) is the other five", () => {
+  it("the ladder every reader resolves (the trigger check, the sheet, get_theses) is the other five, less its sales: AMD is not held", () => {
     const ladder = resolveThesisLadder({ triggers: raw, status: "RETIRED", horizon: null }, undefined);
-    expect(ladder.map((t) => t.id).sort()).toEqual(others.map((t) => t.id).sort());
+    expect(ladder.map((t) => t.id).sort()).toEqual(others.filter((t) => t.action !== "EXIT").map((t) => t.id).sort());
   });
 
   it("the words read it as a removed condition, and the others as themselves", () => {

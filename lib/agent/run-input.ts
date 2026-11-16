@@ -537,7 +537,7 @@ export async function buildRunInput(
         action: isSyntheticOverdue ? "REVIEW" : (t?.action ?? "REVIEW"),
         predicateSummary: isSyntheticOverdue
           ? "scheduled review overdue"
-          : t ? sentenceOf(t, f.thesis.status === "HOLDING") : "(predicate removed)",
+          : t ? sentenceOf(t) : "(predicate removed)",
         rationale: f.rationale ?? f.summary ?? "",
         firedAt: f.timestamp.toISOString(),
       };

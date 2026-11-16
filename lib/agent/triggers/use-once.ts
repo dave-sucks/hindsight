@@ -27,7 +27,7 @@ export async function useOnce(args: { thesisId: string; triggerId: string; runId
   const levels = applied.triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })) as ResolvedTrigger[];
   const entry = used.action === "ENTER" && !held ? { entryPrice: canonicalLevels({ triggers: levels, direction: thesis.direction, status: thesis.status }).columns.entryPrice } : {};
   await prisma.thesis.update({ where: { id: thesis.id }, data: { triggers: applied.triggers as unknown as object[], ...entry } });
-  const line = usedOnceLine(used, held);
+  const line = usedOnceLine(used);
   await writeThesisUpdate({
     thesisId: thesis.id,
     type: "UPDATED",

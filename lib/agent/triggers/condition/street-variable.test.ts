@@ -28,8 +28,8 @@ const above: Condition = { watch: "price", is: "above", variable: "street_avg" }
 
 describe("the Street as a variable: the words and what fits", () => {
   it("reads as a sentence with the Street's words", () => {
-    expect(triggerText("REVIEW", above, true)).toBe("Review if above the Street's average target");
-    expect(triggerText("TRIM", { watch: "price", is: "above", variable: "street_high" } as When, true)).toContain("above the Street's high target");
+    expect(triggerText("REVIEW", above)).toBe("Review if above the Street's average target");
+    expect(triggerText("TRIM", { watch: "price", is: "above", variable: "street_high" } as When)).toContain("above the Street's high target");
   });
 
   it("fits from below only: a sell (or anything) below a Street target is refused, by the form and by the save", () => {

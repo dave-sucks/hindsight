@@ -30,7 +30,7 @@ describe("applySetupOverride", () => {
       rationale: "A drift trade with a 10% stop under the gap-day low.",
       triggers: [
         { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "The buy at $100." },
-        { predicate: { watch: "price", is: "below", value: 90 }, action: "EXIT", rationale: "under the gap-day low $90.10, 1.8 ATR" },
+        { predicate: { watch: "price", is: "below", value: 90, settings: { close: true } }, action: "STOP_WATCHING", rationale: "under the gap-day low $90.10, 1.8 ATR" },
         { predicate: { watch: "price", is: "above", value: 125 }, action: "REVIEW", rationale: "prior high $125, 2.5R" },
       ] as never,
       core_belief: "Drift to $125 in 30 days on the guide raise.", key_assumptions: ["a", "b"], invalidation_conditions: ["c", "d"],

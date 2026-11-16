@@ -465,8 +465,8 @@ is keyed on anything the new shape loses.
 | Once per report (the heads-up), once per filing | `firedReports`, `firedFilings` | The same fields, moved into `triggerState` | Same |
 | A buy passed because the price slipped back is not used up | `rearm.ts` | The same rule, on a fixed-price buy | Same |
 | "Only on the close" waits for the 16:20 pass | `basis` on fixed prices | `params.onClose` on price and volume | Same, and now also available on a % move |
-| A watched stock's floor is read on the close, never on an intraday dip | `watchedFloorOnClose` | The same rule, on a fixed-price sell | Same |
-| A sell on a stock we don't own stops watching it (2026-11-16: it retires the thesis; a review above a price is an ordinary review) | `stopWatching` in the evaluator | The same rule, keyed on the action | Same |
+| A watched stock's floor is read on the close, never on an intraday dip | (deleted 2026-11-16: the Stop watching line saves "only on the close" itself) | The line's own `settings.close` | Same |
+| A watch ends on its Stop watching line (2026-11-16: its own action, STOP_WATCHING; it retires the thesis; a review above a price is an ordinary review) | `stopWatching` in the evaluator | The same rule, keyed on the action | Same |
 | Propose the sale right away, with no analyst | `isDirectEligiblePredicate` | Catalog: price, $ at a typed price, or % from a prior close, our entry or the high | Same set |
 | A protective sale is labelled stop or target | `protectiveExitCloseReason` | The same rule, by side and variable | Same |
 | Agents may tighten a protective level, never lower, widen or remove one | `ratchet.ts` | The same comparison, within a slot. Swapping the variable is a different slot, so it counts as removing the old protection. | Same, and stricter on a variable swap, which no kind could express |

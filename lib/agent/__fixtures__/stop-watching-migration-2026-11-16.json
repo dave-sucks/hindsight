@@ -1,0 +1,290 @@
+{
+ "_note": "The 2026-11-16 stop-watching migration (prisma/migrations/20261116000000_stop_watching_action) run against a local Postgres loaded with a read-only copy of every live thesis (38: watched, promoted, held) taken from production that day. Only these 8 watched stocks changed; every holding was left as it was; a second run changed nothing. Each entry: the sale lines before, the Stop watching lines after.",
+ "stocks": [
+  {
+   "ticker": "AAPL",
+   "thesisId": "cmum3bxkt000204l243g6s93c",
+   "before": [
+    {
+     "id": "218d2a18-5e36-4bb6-ab8e-856597eab4dd",
+     "action": "DEMOTE",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 325.33,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     }
+    },
+    {
+     "id": "45a0e42a-28d3-4a00-bcfc-5365cf74a6bb",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 325.33,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "218d2a18-5e36-4bb6-ab8e-856597eab4dd",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 325.33,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "The right line to protect this setup is now the Nov. 3 swing low at $325.33, where the post-earnings shakeout ended; below that, the breakout would have failed rather than simply wobbled."
+    }
+   ],
+   "linesBefore": 4,
+   "linesAfter": 3
+  },
+  {
+   "ticker": "EXEL",
+   "thesisId": "cmugfyhcl000s04jtzuiezpcf",
+   "before": [
+    {
+     "id": "b9aafef8-1bfb-4c6a-b5e4-a4f5a42e7ccd",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 56.9,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "b9aafef8-1bfb-4c6a-b5e4-a4f5a42e7ccd",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 56.9,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under the Oct. 6 swing low around $57 would mean the post-earnings uptrend has failed, so the floor belongs at $56.90."
+    }
+   ],
+   "linesBefore": 5,
+   "linesAfter": 5
+  },
+  {
+   "ticker": "GD",
+   "thesisId": "cmqb2k3mz000a04l69hca1w1s",
+   "before": [
+    {
+     "id": "5d273a17-e113-4c7e-a2fe-614c6183dcaa",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 342.38,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "5d273a17-e113-4c7e-a2fe-614c6183dcaa",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 342.38,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under the 61.8% retracement near $342.38 would mean this repair failed and the stock fell back into the prior downtrend."
+    }
+   ],
+   "linesBefore": 4,
+   "linesAfter": 4
+  },
+  {
+   "ticker": "HTFL",
+   "thesisId": "cmwfbybem000c08l48pa4poty",
+   "before": [
+    {
+     "id": "336c94a6-5302-4554-9167-b4925bd10f9b",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 46.5,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "336c94a6-5302-4554-9167-b4925bd10f9b",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 46.5,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close below $46.50 — the last swing low from October 8 — would mean the stock fully retraced the entire post-summer rally and the 50-day failed to hold as institutional support; that is a business re-pricing, not a digest of one day's insider sale. The level is $5.44 below the entry at $51.94, or 1.6 ATRs of room, which is enough to avoid getting shaken out on a normal volatile day in a stock with a 6.8% daily range."
+    }
+   ],
+   "linesBefore": 3,
+   "linesAfter": 3
+  },
+  {
+   "ticker": "ISRG",
+   "thesisId": "cmsplh2ow000m04l74ho8iti0",
+   "before": [
+    {
+     "id": "0d3c82d4-0a08-4e3c-bd73-b926967e1d18",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 431,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "0d3c82d4-0a08-4e3c-bd73-b926967e1d18",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 431,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under roughly $431, just below the recent swing low and around the 200-day support area, would mean this repair failed."
+    }
+   ],
+   "linesBefore": 3,
+   "linesAfter": 3
+  },
+  {
+   "ticker": "MSFT",
+   "thesisId": "cmoh5nfsg008m04jubqafc6c6",
+   "before": [
+    {
+     "id": "3392956b-d9fa-42dd-8759-0738e972c8ea",
+     "action": "EXIT",
+     "fireMode": "DO_IT",
+     "predicate": {
+      "is": "below",
+      "value": 504.95,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "3392956b-d9fa-42dd-8759-0738e972c8ea",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 504.95,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under the recent swing low around $504.95 would mean this base failed instead of simply shaking out after the outage headline."
+    }
+   ],
+   "linesBefore": 10,
+   "linesAfter": 10
+  },
+  {
+   "ticker": "TRV",
+   "thesisId": "cmum3c72c000h04jp9ztyxxko",
+   "before": [
+    {
+     "id": "e1642d0c-b315-4bee-ac35-e23a531a1b1c",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 391,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "e1642d0c-b315-4bee-ac35-e23a531a1b1c",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 391,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under roughly $391, just below the recent pullback low around $391.66, would mean the current base failed instead of resolving higher."
+    }
+   ],
+   "linesBefore": 7,
+   "linesAfter": 7
+  },
+  {
+   "ticker": "WST",
+   "thesisId": "cmsplcu9u000004l71leub93x",
+   "before": [
+    {
+     "id": "b48ef278-106b-4da5-8f6a-f2013904eda1",
+     "action": "EXIT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 392,
+      "watch": "price"
+     }
+    }
+   ],
+   "after": [
+    {
+     "id": "b48ef278-106b-4da5-8f6a-f2013904eda1",
+     "action": "STOP_WATCHING",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 392,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "A close under about $392 would mean this post-earnings reclaim failed and the stock lost the support area that should hold if buyers are really back."
+    }
+   ],
+   "linesBefore": 7,
+   "linesAfter": 7
+  }
+ ]
+}

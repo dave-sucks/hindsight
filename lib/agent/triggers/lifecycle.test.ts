@@ -100,16 +100,16 @@ describe("2. the price reaches a level", () => {
   });
 });
 
-describe("3. what happens depends on whether we own it", () => {
+describe("3. each trigger says what it does, whether we own the stock or not", () => {
   const [buy, floor, upside] = written();
 
-  it("held: the floor sells and the upside review asks", () => {
-    expect(sentenceOf(floor, true)).toBe("Sell if below $90");
-    expect(sentenceOf(upside, true)).toBe("Review if above $150");
+  it("a sale sells, the upside review asks, the buy buys", () => {
+    expect(sentenceOf(floor)).toBe("Sell if below $90");
+    expect(sentenceOf(upside)).toBe("Review if above $150");
+    expect(sentenceOf(buy)).toBe("Buy if above $100");
   });
-  it("watched: the floor stops watching (stop-watching.ts retires the thesis), the buy buys", () => {
-    expect(sentenceOf(floor, false)).toBe("Stop watching if below $90");
-    expect(sentenceOf(buy, false)).toBe("Buy if above $100");
+  it("a watch ends on its own Stop watching line (stop-watching.ts retires the thesis), never on a sale", () => {
+    expect(sentenceOf({ ...floor, action: "STOP_WATCHING" })).toBe("Stop watching if below $90");
   });
 });
 

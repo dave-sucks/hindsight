@@ -251,7 +251,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         horizon: "TARGET",
         add_triggers: [
           { predicate: { watch: "price", is: "above", value: 110 }, action: "ENTER", rationale: "The buy at $110." },
-          { predicate: { watch: "price", is: "below", value: 95 }, action: "EXIT", rationale: "Below $95 the setup is wrong." },
+          { predicate: { watch: "price", is: "below", value: 95, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $95 the setup is wrong." },
           { predicate: { watch: "price", is: "above", value: 150 }, action: "REVIEW", rationale: "At $150, take profit or let it run." },
         ],
         core_belief: "TEST reaches 150 within 60 days on PEAD.",
@@ -294,7 +294,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
         horizon: "TARGET",
         add_triggers: [
           { predicate: { watch: "price", is: "above", value: 110 }, action: "ENTER", rationale: "The buy at $110." },
-          { predicate: { watch: "price", is: "below", value: 95 }, action: "EXIT", rationale: "Below $95 the setup is wrong." },
+          { predicate: { watch: "price", is: "below", value: 95, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $95 the setup is wrong." },
           { predicate: { watch: "price", is: "above", value: 150 }, action: "REVIEW", rationale: "At $150, take profit or let it run." },
         ],
         core_belief: "TEST reaches 150 within 60 days on PEAD.",

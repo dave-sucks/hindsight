@@ -225,7 +225,7 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
-  const words = levels.map((t) => describeTrigger(t, false)).join(", ");
+  const words = levels.map((t) => describeTrigger(t)).join(", ");
   return `To take them all off, remove them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
@@ -888,7 +888,7 @@ export const updateThesis = defineTool({
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
           `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and a floor (action EXIT) in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and a floor (action STOP_WATCHING, "Stop watching if below $X") in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
           `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
           `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
           `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
@@ -946,7 +946,7 @@ export const updateThesis = defineTool({
         // it, and the stock got an accidental copy of the buy it already had.
         const has = (action: string) =>
           existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
-        if (!has("EXIT")) missing.push("a floor (one sell trigger, action EXIT, in add_triggers)");
+        if (!has("STOP_WATCHING")) missing.push("a floor (one Stop watching line, action STOP_WATCHING, in add_triggers)");
         if (!has("ENTER")) missing.push("a buy (one buy trigger, action ENTER, in add_triggers)");
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");

@@ -68,7 +68,7 @@ describe("NVDA at the 10-15 morning run, its sale waiting", () => {
   const c = fx.nvda as unknown as Case;
 
   it("the seed is the read's: each trigger says what the read showed, and the read worked the stock", () => {
-    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger, true))).toEqual(c.says);
+    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger))).toEqual(c.says);
     expect(c.read.needsAction.kind).toBe("RESEARCH_STALE");
   });
 
@@ -83,7 +83,7 @@ describe("CEG at the 10-15 morning run, its sale waiting and its 200-day review 
   const c = fx.ceg as unknown as Case;
 
   it("the seed is the read's: each trigger says what the read showed, and the read worked the stock", () => {
-    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger, true))).toEqual(c.says);
+    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger))).toEqual(c.says);
     expect(c.read.needsAction.kind).toBe("TRIGGER_FIRED");
     expect(c.read.situations).toEqual(["REVIEW_DUE"]);
   });

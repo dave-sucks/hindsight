@@ -21,7 +21,13 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
 - **predicate** — the condition, in one shape (`lib/agent/triggers/condition/types.ts`):
   `{ watch, is?, value?, variable?, settings? }` for one condition, or
   `{ match: "all" | "any", conditions }` for two or more.
-- **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM`.
+- **action** — what firing means: `ENTER | EXIT | REVIEW | ADD | TRIM | STOP_WATCHING`.
+  A sale (`EXIT`, "Sell if") is only on a stock we hold; `STOP_WATCHING`
+  ("Stop watching if") only on one we don't, and on the stock itself, never
+  an account or analyst rule. The other is refused with the fix, never
+  converted (`actionProblem` in `condition/actions.ts`); a ladder reads a sale
+  only on a holding and a Stop watching line only on a watch (`resolveLadder`).
+  An action means the same thing whatever the stock's state.
 - **rationale** — prose the agent reads when it acts.
 - **cooldownDays** — don't re-fire within N days (see §6).
 - **fireMode** — on fire: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or
@@ -112,8 +118,9 @@ any shape.
 **How a trigger reads.** Everywhere — the pill, Activity, the agents' prompts,
 the tactical kickoff — a trigger is one sentence from `condition/describe.ts`:
 "Sell if below $150", "Review every 30 days", "Buy if within 2% of the 20-day
-average", "Stop watching if below $132" (a sale on a stock we don't own
-ends the watch). There is no second vocabulary.
+average", "Stop watching if below $132 · only on the close". The words come
+from the action alone, never from whether we own the stock. There is no
+second vocabulary.
 
 **The chart measures read the daily indicator snapshot** (DAV-247):
 `lib/inngest/functions/indicator-snapshot.ts` runs at 06:30 ET, computes the
@@ -457,15 +464,13 @@ but the price path only **evaluates during the regular session**:
   with today's consolidated close (Alpaca SIP daily bar) as the price. A name
   with no bar for today is skipped rather than evaluated on a guess. Cooldown
   makes the three ticks fire a rung at most once.
-- **A watched stock's floor reads the close** (DAV-337). On a stock we don't
-  hold, a sell trigger stops watching it (the thesis retires as dropped,
-  `lib/agent/triggers/stop-watching.ts`), and it does so only on a close
-  below the line — never an intraday touch (TRV 2026-09-29: opened under
-  its floor, back above it that morning). `watchedFloorOnClose` in
-  `lib/agent/triggers/types.ts` reads such a trigger's level on the close where
-  triggers are read (the five-minute check, the morning run's snapshot, the
-  thesis sheet); nothing is stored. A held stock's floor is a sale and
-  keeps its own timing.
+- **A trigger fires on the timing it saved.** A Stop watching line on a
+  typed price is written "only on the close" (`settings.close`, the same
+  setting any typed price has; the Writer writes it that way), so a watch
+  ends on a close below the line, never an intraday touch (DAV-337, TRV
+  2026-09-29: opened under its line, back above it that morning). The pill
+  and the dialog show the setting saved; nothing changes it at check time.
+  One saved intraday fires intraday, because that is what it says.
 - **Cap:** 200 unique tickers per tick.
 
 ## 8. Editing surfaces
@@ -482,11 +487,16 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   has triggers and nothing else). `record_thesis` takes a whole `triggers`
   list — a mint is a new list by definition — and adds nothing to a watch (a
   held mint gets its horizon's review clock).
-- **A buy fill** removes the buy trigger, writes the order's own floor and
-  upside levels onto their triggers, and adds the held review clock and the
-  setup's exits when their buckets are missing (`armHeldLadderOnFill`). Never a
-  rewrite: the analyst's lines and reviews survive the fill, and nothing is
-  stamped from the fill price. The one automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
+- **A buy fill** removes the buy and Stop watching lines, writes "Sell if
+  below $X" at the order's approved sell price (`Position.stopLoss`: the
+  analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as the
+  line's note, or the price you set in Edit & Approve or on the Trade
+  ticket), and adds the held review clock and the setup's exits when their
+  buckets are missing (`armHeldLadderOnFill`). A watch's line never becomes
+  the sale. Never a rewrite: the analyst's other lines and reviews survive
+  the fill, and nothing is stamped from the fill price. An Auto-buy names no
+  sale, so it writes none: the holding sells by its analyst's and the
+  account's rules. The one automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
   (its Triggers tab). On, a new long holding gets two lines. The **sale
   floor** is always the buy price less the setting's % (0.5–50, default 8) —
@@ -497,15 +507,16 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   ASK_NOW, with the floor's own note; with a review already in that slot the
   higher price is kept, never two. A tighter floor the owner set is left
   exactly as it is, and a stop typed on the Trade ticket is the owner's
-  (`approveProposal(…, { tradeTicket: true })` → `stopIsOwners`; one equal
-  to the row's floor, the ticket's default, stays the analyst's). With the
+  (`approveProposal(…, { tradeTicket: true })` → `stopIsOwners`). With the
   setting on, a buy (and an add) is sized off the
   wider of the stock's floor and the setting's line (`sizingStop`,
   `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
   the risk per trade. An add to a holding never moves the lines.
-- **Stop watching:** a sale line on a stock we only watch, fired on the close
-  pass (§7), retires the thesis as dropped with one Activity line; its
-  triggers are left as they were. There is no plan to set down.
+- **Stop watching:** a STOP_WATCHING line on a stock we only watch, fired on
+  its saved timing (§7), retires the thesis as dropped with one Activity line
+  and withdraws a buy waiting for approval; its triggers are left as they
+  were. On a promoted row the fire is written down for the morning run.
+  There is no plan to set down.
 
 Rules run per op on the resulting list; a refused op is returned by id with
 the reason and the rest of the call lands (`data.trigger_ops` on the tool):
@@ -538,7 +549,8 @@ on the row's `fieldChanges.triggerOps`.
 
 - `lib/agent/triggers/condition/` — the condition shape (`types.ts`), one catalog entry per measure (`catalog.ts`, `measures/*`), the variables (`variables.ts`), the rules that read the catalog (`rules.ts`), the check (`read.ts`), the words (`describe.ts`), the form's checks (`check.ts`), what the save accepts (`valid.ts`), what a fire names (`facts.ts`, server-only) and comparing stored conditions (`stored.ts`)
 - `lib/agent/triggers/ops.ts` — the per-trigger write path (`applyTriggerOps` + `checkLadder`) every editor goes through once a thesis exists (§8)
-- `lib/agent/triggers/types.ts` — the `Trigger` type and `watchedFloorOnClose`
+- `lib/agent/triggers/types.ts` — the `Trigger` type
+- `lib/agent/triggers/stop-watching.ts` — a STOP_WATCHING fire on a watch: the thesis retires as DROPPED
 - `lib/agent/triggers/enforce-close-reason.ts` — the sale-label rule: a close from a protective fire stores STOP/TARGET, auto-corrected with an audit note (DAV-192)
 - `lib/agent/triggers/schema.ts` — the one Zod gate, and the condition a model writes (the measures listed from the catalog)
 - `lib/agent/triggers/evaluate.ts` — `shouldFire`: crossing, stale quote, cooldown, re-arm

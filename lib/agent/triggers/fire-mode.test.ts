@@ -6,7 +6,7 @@ import fixture from "./__fixtures__/on-fire-migration-2026-10-22.json";
 import { statSync } from "fs";
 import { triggerSchema, parseTriggersResilient } from "./schema";
 import { applyTriggerDefaults, effectiveCooldownDays } from "./defaults";
-import { approvalLine, defaultFireMode, doItTrade, fireModeLabel, fireModeOf, fireModeProblem, fireModeWords, usedOnceLine, waitsForMorning, type FireMode } from "./fire-mode";
+import { approvalLine, defaultFireMode, doItTrade, fireModeLabel, fireModeOf, fireModeProblem, fireModeWords, STOP_WATCHING_ONE_WAY, usedOnceLine, waitsForMorning, type FireMode } from "./fire-mode";
 import type { Trigger } from "./types";
 import { applyTriggerOps, type TriggerOp } from "./ops";
 import { autoSellCloseReason } from "./types";
@@ -123,12 +123,16 @@ describe("the words", () => {
     expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" })).toBe("Auto-sell");
     expect(fireModeWords({ action: "REVIEW" })).toBe("Flag for Review");
     expect(fireModeWords({ action: "EXIT" })).toBe("Send to Agent");
-    expect(fireModeWords({ action: "EXIT", fireMode: "DO_IT" }, false)).toBe("Stops watching when it fires");
+    expect(fireModeWords({ action: "STOP_WATCHING", fireMode: "ASK_NOW" })).toBe("Stops watching when it fires");
+    // Its one choice: anything else is refused, never ignored.
+    expect(fireModeProblem("STOP_WATCHING", "DO_IT")).toBe(STOP_WATCHING_ONE_WAY);
+    expect(fireModeProblem("STOP_WATCHING", "NEXT_MORNING")).toBe(STOP_WATCHING_ONE_WAY);
+    expect(fireModeProblem("STOP_WATCHING", "ASK_NOW")).toBeNull();
   });
 
   it("an Auto-trim used once says what was used: MU's real trim, set Auto at 30%", () => {
     const trim = { action: "TRIM" as const, predicate: { watch: "price" as const, is: "above" as const, value: 1090 }, trimPct: 30 };
-    expect(usedOnceLine(trim, true)).toBe("Used once: Trim 30% if above $1090 (Auto-trim)");
+    expect(usedOnceLine(trim)).toBe("Used once: Trim 30% if above $1090 (Auto-trim)");
   });
 
   it("says a trade waits for approval when the switch for its side is on (production: all four on)", () => {

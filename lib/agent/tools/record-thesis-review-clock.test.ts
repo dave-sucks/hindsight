@@ -74,7 +74,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     current_price: 180,
     triggers: [
       ...(entry != null ? [{ predicate: { watch: "price", is: "above", value: entry }, action: "ENTER", rationale: "The buy." }] : []),
-      ...(stop != null ? [{ predicate: { watch: "price", is: "below", value: stop }, action: "EXIT", rationale: "The floor." }] : []),
+      ...(stop != null ? [{ predicate: { watch: "price", is: "below", value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "The floor." }] : []),
       ...(target != null ? [{ predicate: { watch: "price", is: "above", value: target }, action: "REVIEW", rationale: "Take profit." }] : []),
       ...supplied,
     ],

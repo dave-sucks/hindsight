@@ -57,10 +57,11 @@ const smmt = () =>
         writtenPrice: 16.765,
       },
       {
+        // A watch's floor, as the 2026-11-16 migration stores it.
         id: "129c7fe1-63e0-4c87-a715-782ba8bd1aeb",
-        action: "EXIT",
+        action: "STOP_WATCHING",
         source: "AGENT",
-        predicate: { watch: "price", is: "below", value: 15.9 },
+        predicate: { watch: "price", is: "below", value: 15.9, settings: { close: true } },
         rationale: "Under the September 29 gap-day low; 1.04 ATR below the $17.10 entry.",
         cooldownDays: 1,
       },
@@ -148,10 +149,10 @@ const crwdMint = {
     "Two consecutive quarters of net new ARR below $300M.",
     "Gross margin below 75% for two consecutive quarters.",
   ],
-  // Its buy price, floor and take-profit, as the writer writes them now: triggers (the level fields went 2026-11-16).
+  // Its buy price, floor (the watch's Stop watching line) and take-profit, as the writer writes them now: triggers (the level fields went 2026-11-16).
   triggers: [
     { action: "ENTER", predicate: { watch: "price", is: "below", value: 242.28 }, rationale: "The pullback to the rising 20-day at $242.28." },
-    { action: "EXIT", predicate: { watch: "price", is: "below", value: 218 }, rationale: "About 2.1 ATR below the 20-day entry, under the rising 50-day ($219.80)." },
+    { action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 218, settings: { close: true } }, rationale: "About 2.1 ATR below the 20-day entry, under the rising 50-day ($219.80)." },
     { action: "REVIEW", predicate: { watch: "price", is: "above", value: 323.15 }, rationale: "1.272 extension of the April–October up-leg; 3.3R from entry." },
     {
       action: "ENTER",

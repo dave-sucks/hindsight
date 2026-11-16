@@ -1,0 +1,111 @@
+{
+ "_note": "WST (Secular Compounder, COMPOUNDER, COMPOUNDER_ACCUMULATION), watched, read from production 2026-11-16 (read-only). Its triggers as stored, and the buy proposal of 2026-11-13 23:30 UTC (position cmwfbb4ua000508l606lpbzm4: $415.14, stop $392, target $478; later withdrawn). The watch's line b48ef278 is stored as a sale (EXIT) until the 2026-11-16 migration makes it STOP_WATCHING on the close.",
+ "thesis": {
+  "id": "cmsplcu9u000004l71leub93x",
+  "ticker": "WST",
+  "status": "WATCHING",
+  "direction": "LONG",
+  "horizon": "COMPOUNDER",
+  "setupId": "COMPOUNDER_ACCUMULATION",
+  "triggers": [
+   {
+    "id": "883b2a20-93e3-451a-9d65-d44b6b794205",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "below",
+     "value": 324.57,
+     "watch": "price"
+    },
+    "rationale": "8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "14361c4f-cf38-49d0-a510-c9fc42f0b671",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "value": 30,
+     "watch": "repeat"
+    },
+    "rationale": "Look at this every 30 days, counting from the last real review.",
+    "cooldownDays": 30
+   },
+   {
+    "id": "566a9085-bbf0-4721-81c5-b5e4b8b08812",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "after",
+     "value": 60,
+     "watch": "from_date",
+     "variable": "buy"
+    },
+    "rationale": "60 days after the buy — A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.",
+    "cooldownDays": 60
+   },
+   {
+    "id": "9a4069ff-ffcc-4bde-ae6e-4bdbee3e5b13",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "above",
+     "value": 25,
+     "watch": "move",
+     "variable": "entry"
+    },
+    "rationale": "If the gain from our entry reaches 25%, revisit the position and make sure protection has caught up with the business confirmation.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "1d09278f-b9cd-4601-97e1-e00c8e64a010",
+    "action": "ENTER",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "below",
+     "value": 415.14,
+     "watch": "price"
+    },
+    "rationale": "The old crossing was spent and the stock is still above that area, so I am re-anchoring the buy to today’s price while treating the old breakout area as support if this proposal expires.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "b48ef278-106b-4da5-8f6a-f2013904eda1",
+    "action": "EXIT",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "is": "below",
+     "value": 392,
+     "watch": "price"
+    },
+    "rationale": "A close under about $392 would mean this post-earnings reclaim failed and the stock lost the support area that should hold if buyers are really back.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "6611c8a6-68e2-4ff2-b6db-d27eb4c2886c",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "is": "above",
+     "value": 478,
+     "watch": "price"
+    },
+    "rationale": "About $478 is still the next review point because it sits near the Street’s average target and below the longer-term upside case.",
+    "cooldownDays": 1
+   }
+  ]
+ },
+ "proposal": {
+  "positionId": "cmwfbb4ua000508l606lpbzm4",
+  "avgCost": 415.14,
+  "stopLoss": 392,
+  "targetPrice": 478
+ }
+}

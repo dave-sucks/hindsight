@@ -8,7 +8,8 @@
  * writes it now: an edit of the buy, floor or upside trigger on the stored
  * list, or an add when the stock has none. As the save did then, a level that
  * only repeats the stored one is no edit, and a buy level on a stock we hold
- * is none (the entry is the fill). Test-only.
+ * is none (the entry is the fill). A floor added on a watch is its Stop
+ * watching line, on the close, as the Writer writes it now. Test-only.
  */
 import { levelSlotOf, type LevelSlot } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
@@ -46,9 +47,11 @@ export function oldLevelFieldsAsTriggerOps(
       edits.push({ id: own.id, value, rationale: said ?? (typeof call.rationale === "string" ? call.rationale : "Moved."), ...(slot === "ENTRY" && typeof close === "boolean" ? { close } : {}) });
     } else {
       const up = slot === "FLOOR" ? !long : long;
+      // A floor on a stock we hold is a sale; on a watch, its Stop watching line on the close (2026-11-16).
+      const watchFloor = slot === "FLOOR" && !opts.held;
       adds.push({
-        predicate: { watch: "price", is: up ? "above" : "below", value, ...(slot === "ENTRY" && close === true ? { settings: { close: true } } : {}) },
-        action: slot === "ENTRY" ? "ENTER" : slot === "FLOOR" ? "EXIT" : "REVIEW",
+        predicate: { watch: "price", is: up ? "above" : "below", value, ...((slot === "ENTRY" && close === true) || watchFloor ? { settings: { close: true } } : {}) },
+        action: slot === "ENTRY" ? "ENTER" : slot === "FLOOR" ? (opts.held ? "EXIT" : "STOP_WATCHING") : "REVIEW",
         rationale: said ?? (typeof call.rationale === "string" ? call.rationale : "Set."),
       });
     }

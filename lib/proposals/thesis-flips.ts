@@ -28,7 +28,6 @@ import {
   type Horizon,
 } from "@/lib/agent/triggers/defaults";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
-import { levelOf, shapeOf, type Condition } from "@/lib/agent/triggers/condition";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   acceptedOps,
@@ -40,7 +39,6 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
@@ -62,6 +60,8 @@ export async function promoteThesisOnApproval(opts: {
   stopLoss: number | null;
   /** The stop was typed on the Trade ticket: the floor it writes is the owner's. */
   stopIsOwners?: boolean;
+  /** The analyst's reason for the proposal's sell price, when you approved that price. */
+  stopReason?: string | null;
   runId?: string | null;
 }): Promise<void> {
   // PROMOTED → ACTIVE — re-entered on first live-run after promotion.
@@ -92,6 +92,7 @@ export async function promoteThesisOnApproval(opts: {
     targetPrice: opts.targetPrice,
     stopLoss: opts.stopLoss,
     stopIsOwners: opts.stopIsOwners,
+    stopReason: opts.stopReason,
     positionId: opts.positionId,
     runId: opts.runId ?? null,
     via: "approved proposal",
@@ -116,13 +117,15 @@ export async function promoteThesisOnApproval(opts: {
  *   - finds the analyst's newest WATCHING thesis on the ticker
  *   - removes the buy trigger(s) — you can't enter what you already hold
  *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
- *   - sets the floor and target to the EXECUTED levels (an edit of the
- *     trigger that is there, an add if none)
+ *     — and the Stop watching lines: there is no watch left to end
+ *   - writes "Sell if below $X" at the approved sell price (the order's
+ *     stopLoss): the analyst's, with its reason, from the proposal; yours
+ *     from the Trade ticket. A watch line never becomes the sale. The
+ *     upside level goes to the order's target when it names one
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
- *   - adds the horizon's held review clock when its bucket is missing. No
- *     floor, target or level is stamped from the fill: the watch's sale
- *     line is the holding's sale line. Sell rules and scale-ins are the
+ *   - adds the horizon's held review clock when its bucket is missing. Sell
+ *     rules and scale-ins are the
  *     analyst's and the account's rules and apply by inheritance, so
  *     editing them reaches every holding instead of none
  *   - recomputes the displayed level columns FROM the resulting triggers
@@ -143,6 +146,8 @@ export async function armHeldLadderOnFill(opts: {
   stopLoss: number | null;
   /** The stop was typed on the Trade ticket: the floor it writes is the owner's. */
   stopIsOwners?: boolean;
+  /** Why the sell price is there: the analyst's words, the note on the "Sell if below" line. */
+  stopReason?: string | null;
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
@@ -187,15 +192,16 @@ export async function armHeldLadderOnFill(opts: {
           mintId: () => randomUUID(),
         })
       : [];
-    // A level the buy didn't name is left as the thesis has it — never
-    // filled in with the entry, which would arm a sale at the buy price.
+    // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
+    // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
+    const chooser = opts.stopIsOwners ? "PRINCIPAL" : opts.stopReason?.trim() ? "AGENT" : null;
     const floorOp: TriggerOp[] =
       opts.stopLoss != null
-        ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, ...(opts.stopIsOwners ? { rationale: addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) } : {}) }]
+        ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, rationale: chooser === "PRINCIPAL" ? addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) : opts.stopReason?.trim() }]
         : [];
     const ops: TriggerOp[] = [
-      ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
-      ...(opts.stopIsOwners ? [] : floorOp),
+      ...stored.filter((t) => t.action === "ENTER" || t.action === "STOP_WATCHING").map((t) => ({ op: "remove" as const, id: t.id })),
+      ...(chooser ? [] : floorOp),
       ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
       ...heldClock.map((t) => ({ op: "add" as const, trigger: t })),
       ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
@@ -212,13 +218,12 @@ export async function armHeldLadderOnFill(opts: {
       actor: "SYSTEM",
       mintId: () => randomUUID(),
     });
-    // A stop typed on the Trade ticket is the owner's floor. One equal to the row's (the ticket's default) stays the analyst's.
-    const rowFloor = system.triggers.find((t) => levelSlotOf(t, watchingThesis.direction) === "FLOOR");
-    const typed = opts.stopIsOwners && floorOp.length > 0 && (rowFloor == null || levelOf(shapeOf(rowFloor.predicate) as Condition)?.value !== opts.stopLoss);
-    const owners = typed
-      ? applyTriggerOps({ stored: system.triggers, ops: floorOp, direction: watchingThesis.direction, status: "HOLDING", actor: "PRINCIPAL", mintId: () => randomUUID() })
-      : null;
-    const applied = { triggers: owners?.triggers ?? system.triggers, results: [...system.results, ...(owners?.results ?? [])] };
+    // The sale is written by whoever chose its price, so it reads as theirs.
+    const chosen =
+      chooser && floorOp.length > 0
+        ? applyTriggerOps({ stored: system.triggers, ops: floorOp, direction: watchingThesis.direction, status: "HOLDING", actor: chooser, mintId: () => randomUUID() })
+        : null;
+    const applied = { triggers: chosen?.triggers ?? system.triggers, results: [...system.results, ...(chosen?.results ?? [])] };
     // Stop when buying: read against the floor the buy just set.
     const stopOps = autoStopOps({
       triggers: applied.triggers,

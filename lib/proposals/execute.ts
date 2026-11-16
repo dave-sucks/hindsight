@@ -134,6 +134,7 @@ export async function approveProposal(
           avgCost: true,
           targetPrice: true,
           stopLoss: true,
+          stopReason: true,
         },
       },
     },
@@ -466,6 +467,8 @@ export async function approveProposal(
       targetPrice: effectiveTarget ?? null,
       stopLoss: effectiveStop ?? null,
       stopIsOwners: via?.tradeTicket === true,
+      // The analyst's reason goes with its price, never onto a price you changed in Edit & Approve.
+      stopReason: effectiveStop === order.position.stopLoss ? order.position.stopReason : null,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

@@ -30,6 +30,6 @@ describe("the Triggers page examples", () => {
   });
 
   it("reads as a sentence, never as a removed condition", () => {
-    for (const e of all) expect(triggerText(e.action, e.when, true)).not.toMatch(/removed condition/);
+    for (const e of all) expect(triggerText(e.action, e.when)).not.toMatch(/removed condition/);
   });
 });

@@ -352,16 +352,15 @@ export function validateThesisDecision(
       // record/update enforce, surfaced here so the repair is one step.
       const actions = new Set(parsed.data.map((t) => t.action));
       if (held) {
-        if (actions.has("ENTER")) {
-          errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
+        if (actions.has("ENTER") || actions.has("STOP_WATCHING")) {
+          errors.push("triggers: this thesis is HOLDING (position open) — ENTER and STOP_WATCHING triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
         }
       } else {
-        // Mint, WATCHING refresh, PROMOTED refresh: no position exists. A
-        // floor (EXIT) is legal: on a stock we watch it stops watching it.
-        const forbidden = ["TRIM", "ADD"].filter((a) => actions.has(a as never));
+        // Mint, WATCHING refresh, PROMOTED refresh: no position exists, so nothing to sell.
+        const forbidden = ["TRIM", "ADD", "EXIT"].filter((a) => actions.has(a as never));
         if (forbidden.length > 0) {
           errors.push(
-            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, EXIT (the floor: on a watch it stops watching) and REVIEW.`,
+            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, STOP_WATCHING ("Stop watching if below $X": it ends the watch, never sells) and REVIEW.`,
           );
         }
       }

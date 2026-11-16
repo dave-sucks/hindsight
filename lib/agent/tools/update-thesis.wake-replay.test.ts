@@ -12,14 +12,15 @@
  * cadence.
  *
  * The call below is the chat's first, verbatim. It saves; the review is a
- * wake, so the target column stays empty. A sale at a price with no buy is
- * still refused.
+ * wake, so the target column stays empty. A sale on a watch is refused by
+ * id, with the fix (STOP_WATCHING).
  */
 import raw from "@/lib/agent/__fixtures__/vst-chat-wake-2026-09-28.json";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import writerRaw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { SELL_ON_A_WATCH } from "@/lib/agent/triggers/condition";
 
 const fx = raw as unknown as {
   runId: string;
@@ -86,11 +87,12 @@ describe("VST 2026-09-27 — the chat's review above $145, with no buy", () => {
     expect(row.stopLoss).toBeNull();
   });
 
-  it("the same call as a sale at $145 is still a half plan — the trigger change is refused, the note lands", async () => {
+  it("the same call as a sale at $145 is refused by id with the fix — there is nothing to sell on a watch — and the note lands", async () => {
     const sale = { ...fx.args, add_triggers: [{ ...fx.args.add_triggers[0], action: "EXIT" }] };
     const r = await call(sale);
     expect(r.refused).toBe(false);
-    expect(JSON.stringify(r.result.data?.refused_fields)).toMatch(/"field":"triggers"/);
+    const ops = r.result.data?.trigger_ops as Array<{ ok: boolean; reason?: string }>;
+    expect(ops).toEqual([expect.objectContaining({ ok: false, reason: SELL_ON_A_WATCH })]);
     expect(rowOf(r).triggers).toEqual(cadence);
   });
 });

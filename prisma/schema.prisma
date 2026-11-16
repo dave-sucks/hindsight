@@ -936,6 +936,9 @@ model Position {
   // Targets & exit strategy
   targetPrice         Float?
   stopLoss            Float?
+  /// Why the sell price is there, in the analyst's words (place_trade's
+  /// sell_reason): the note the fill writes on the "Sell if below" line.
+  stopReason          String?
   /// The stop when the position opened (after any edit at approval). Never
   /// moves: R = gain ÷ (entry − initialStop) for the setup scorecard
   /// (DAV-248). stopLoss above moves with the plan; this is the risk taken.

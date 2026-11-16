@@ -497,7 +497,7 @@ export function computeNeedsAction(
         return {
           f,
           action: (t?.action as NeedsActionVerb) ?? "REVIEW",
-          summary: t ? sentenceOf(t, thesis.status == null || thesis.status === "HOLDING") : "(predicate removed)",
+          summary: t ? sentenceOf(t) : "(predicate removed)",
         };
       })
       .filter((x) => !waiting(x.action));
@@ -571,7 +571,7 @@ export function computeNeedsAction(
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
         action,
-        predicateSummary: sentenceOf(trigger, thesis.status == null || thesis.status === "HOLDING"),
+        predicateSummary: sentenceOf(trigger),
         livePrice: latestQuote?.price ?? null,
       });
     }

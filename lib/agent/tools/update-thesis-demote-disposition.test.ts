@@ -13,7 +13,7 @@
  *      (isPlanLevel on the final ladder, or a level arg on the call).
  *   2. the enter-guard refused any directional WATCHING array without an
  *      ENTER. It now admits the set-down shape (no plan level, ≥1 REVIEW
- *      wake) — the same state the automatic DEMOTE fire already produces.
+ *      wake); since 2026-11-16 a watch needs no buy at all.
  *
  * Invariant 2 (plan ⇒ cadence) must be UNCHANGED for any resend whose
  * ladder still carries a plan — those cases stay pinned in
@@ -80,8 +80,8 @@ const planTriggers: Trigger[] = [
   },
   {
     id: "floor-1",
-    predicate: { watch: "price", is: "below", value: 172 },
-    action: "EXIT",
+    predicate: { watch: "price", is: "below", value: 172, settings: { close: true } },
+    action: "STOP_WATCHING",
     rationale: "Below this the setup is wrong.",
     source: "AGENT",
   },
@@ -192,7 +192,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
     // The plan is untouched — entry and floor both survive.
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
-    expect(triggers.some((t) => t.action === "EXIT")).toBe(true);
+    expect(triggers.some((t) => t.action === "STOP_WATCHING")).toBe(true);
   });
 
   it("setting a price level does not drag a review clock along with it", async () => {
@@ -259,7 +259,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       horizon: "TARGET",
       add_triggers: [
         { predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "The buy at $165." },
-        { predicate: { watch: "price", is: "below", value: 150 }, action: "EXIT", rationale: "Below $150 the setup is wrong." },
+        { predicate: { watch: "price", is: "below", value: 150, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $150 the setup is wrong." },
         { predicate: { watch: "price", is: "above", value: 210 }, action: "REVIEW", rationale: "At $210, take profit or let it run." },
       ],
       core_belief: "Aerospace cycle demand outruns supply through 2027.",

@@ -418,7 +418,7 @@ ${
     ? opts.existingThesis.triggers
         .map((t) => {
           const note = writtenNote(t);
-          return `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.status === "HOLDING")}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
+          return `      - ${t.id}: ${describeTrigger(t)}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
         })
         .join("\n")
     : "      (none)"
@@ -463,15 +463,17 @@ stock's triggers.`;
     / DEFER (downgrade to WATCHING) / KILL. Frame the note so that
     decision is easy, and put your recommended call in the rationale.`
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
-  • Legal actions: ENTER, EXIT and REVIEW. NEVER TRIM/ADD — there is
-    no position.
+  • Legal actions: ENTER, STOP_WATCHING and REVIEW. NEVER EXIT/TRIM/ADD
+    — there is no position, so nothing to sell.
   • The buy is an ENTER: { watch: "price", is: "above", value } for a
     breakout above the tape, is: "below" for a pullback below it (mirror
     for SHORT); settings: { close: true } when it should fire only on a
     close past the level.
-  • The floor is an EXIT: { watch: "price", is: "below", value } for a
-    LONG. On a stock we watch it reads "Stop watching if below $X": a
-    close below it retires the thesis, with no run.
+  • Where the setup is wrong is a STOP_WATCHING: { watch: "price", is:
+    "below", value, settings: { close: true } } for a LONG. It reads
+    "Stop watching if below $X · only on the close": a close below it
+    retires the thesis, with no run. It never sells: the holding's sale
+    comes with the buy, at the price the buy names.
   • A chart condition from the setup's entry rule that isn't a price
     (within 2% of the 50-day for a pullback: { watch: "move", is:
     "near", value: 2, variable: "sma50" }; the days after the report
@@ -480,8 +482,8 @@ stock's triggers.`;
   • Nothing is added for you: a watch carries the triggers you write
     and no others, no review clock included.
   • Taking the buy off on a refresh (no level worth holding): send
-    remove_trigger_ids naming the buy and floor ids from EXISTING
-    THESIS, keeping ≥1 REVIEW wake.`;
+    remove_trigger_ids naming the buy and Stop watching ids from
+    EXISTING THESIS, keeping ≥1 REVIEW wake.`;
 
   // Earnings triggers fire off the published calendar (no news needed).
   // The account already carries the basics for every name; the writer
@@ -618,11 +620,13 @@ every field; the judgment rules:
          close (settings: { close: true }); an intraday poke fails about
          half the time. Never more than the setup's chase limit past its
          pivot.
-       – the floor (an EXIT trigger): under the structure the setup
-         names, at least its minimum ATR from the buy. Its rationale opens
-         with what a close below it would say about core_belief, in one
-         plain sentence, then the structure and how many ATR, with the
-         numbers; the run that answers the floor reads it.
+       – the floor (a STOP_WATCHING trigger on a typed price, settings:
+         { close: true }): under the structure the setup names, at least
+         its minimum ATR from the buy. A close below it ends the watch; it
+         never sells (the holding's sale comes with the buy). Its
+         rationale opens with what a close below it would say about
+         core_belief, in one plain sentence, then the structure and how
+         many ATR, with the numbers.
        – a take-profit, only if the setup has one: a review at the
          Street's average target, a trim at the prior high. Not required:
          a buy and a floor are complete. Never a number you don't believe.

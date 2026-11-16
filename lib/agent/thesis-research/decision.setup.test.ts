@@ -18,7 +18,7 @@ import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 function levels(entry: number, stop: number, target?: number) {
   return [
     { predicate: { watch: "price", is: "above", value: entry }, action: "ENTER", rationale: "the buy" },
-    { predicate: { watch: "price", is: "below", value: stop }, action: "EXIT", rationale: "the floor" },
+    { predicate: { watch: "price", is: "below", value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "the floor" },
     ...(target != null ? [{ predicate: { watch: "price", is: "above", value: target }, action: "REVIEW", rationale: "take profit" }] : []),
   ] as NonNullable<ThesisDecisionInput["triggers"]>;
 }

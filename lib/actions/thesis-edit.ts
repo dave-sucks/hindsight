@@ -24,7 +24,7 @@ import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema"
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
 import { firesOnTheCrossing } from "@/lib/agent/triggers/written-price";
-import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
+import { actionProblem, addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -77,7 +77,8 @@ export function buildPrincipalTrigger(input: {
   /** An account or analyst rule: Auto only on a sale. */
   standing?: boolean;
 }): Trigger {
-  const modeProblem = fireModeProblem(input.action, input.fireMode, { standing: input.standing });
+  // A stock's own action is checked against the stock by the op (ops.ts); a standing rule here.
+  const modeProblem = (input.standing ? actionProblem(input.action, { held: false, standing: true }) : null) ?? fireModeProblem(input.action, input.fireMode, { standing: input.standing });
   if (modeProblem) throw new ThesisEditError("INVALID", modeProblem);
   const parsed = triggerSchema.safeParse({
     predicate: input.predicate,
@@ -393,7 +394,7 @@ export async function applyTriggerAdd(
       return { op: "add", trigger: built };
     },
     (thesis) => ({
-      summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -428,7 +429,7 @@ export async function applyTriggerReplace(
       return { op: "replace", id: triggerId, trigger: built };
     },
     (thesis) => ({
-      summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -463,7 +464,7 @@ export async function applyTriggerDelete(
     () => ({ op: "remove", id: triggerId }),
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const what = sentenceOf(target, thesis.status === "HOLDING");
+      const what = sentenceOf(target);
       if (why) {
         return {
           summary: `${COPIED_RULE_CLEANUP}${thesis.ticker} — ${what}`,

@@ -29,7 +29,7 @@
 // ── Signal-side enums (mirrors of Signal table columns the router has) ──
 
 import { shapeOf } from "./condition/valid";
-import { onTheClose, protectiveCloseReason, risesWith } from "./condition/rules";
+import { protectiveCloseReason, risesWith } from "./condition/rules";
 import type { When } from "./condition/types";
 import type { FireMode } from "./fire-mode";
 
@@ -56,7 +56,11 @@ export type Urgency = "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
  *
  * Action by thesis state:
  *   HELD positions    — EXIT, TRIM, ADD, REVIEW
- *   WATCHING theses   — ENTER, REVIEW
+ *   WATCHING theses   — ENTER, STOP_WATCHING, REVIEW
+ *
+ * EXIT ("Sell if") exists only on a stock we hold; STOP_WATCHING ("Stop
+ * watching if") only on one we don't. Each is its own stored action, so a
+ * trigger means what it says whatever the stock's state (./condition/actions).
  *
  * ENTER fires when a watchlist entry condition is met (e.g. price breaks
  * above a target/breakout level). The tactical agent's typical response
@@ -70,7 +74,8 @@ export type TriggerAction =
   | "EXIT"
   | "ENTER"
   | "ADD"
-  | "TRIM";
+  | "TRIM"
+  | "STOP_WATCHING";
 
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so cooldown can be tracked. */
@@ -168,32 +173,4 @@ export function autoSellCloseReason(predicate: unknown, direction: string | null
   if (w == null) return "STOP";
   const rise = risesWith(w);
   return protectiveCloseReason(w, direction) ?? (rise != null && rise === (direction !== "SHORT") ? "TARGET" : "STOP");
-}
-
-/**
- * When a trigger is read, for a thesis in this state (DAV-337).
- *
- * On a stock we don't own, a sell trigger stops watching it (the trigger
- * evaluator retires the thesis), and only on a close past its line — never an
- * intraday touch. An undercut of a low that is reclaimed the same day is a
- * shakeout, not a breakdown: TRV opened at $359.51 on 2026-09-29, under its
- * $359.87 floor, traded back to $363.83 that morning, and its buy was gone at
- * 09:30. In the 30 days to that day, three of six such fires were dips like it.
- *
- * So on a thesis we don't hold, a sell trigger's typed price levels read the
- * day's close (the 16:20 pass). On a stock we hold the floor is a sale and
- * keeps its own timing. Resolved where triggers are read, never stored, so a
- * buy never has to rewrite it. The five-minute check, the morning run's
- * snapshot and the thesis sheet all call this one function. Pure.
- */
-export function watchedFloorOnClose<T extends { action: string; predicate: unknown }>(
-  trigger: T,
-  state: { status?: string | null },
-): T {
-  if (state.status === "HOLDING" || trigger.action !== "EXIT") return trigger;
-  const w = shapeOf(trigger.predicate);
-  if (w == null) return trigger;
-  const closed = onTheClose(w);
-  if (closed === w) return trigger;
-  return { ...trigger, predicate: closed } as T;
 }

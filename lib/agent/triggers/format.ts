@@ -60,11 +60,10 @@ export function levelBadgeLabel(
  */
 export function triggerForAgent(
   t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: FireMode; trimPct?: number; lastFiredAt?: string; source?: string; cooldownDays?: number },
-  sells: boolean,
 ) {
   return {
     id: t.id,
-    says: sentenceOf(t, sells),
+    says: sentenceOf(t),
     ...(t.rationale ? { rationale: t.rationale } : {}),
     // On fire, said only when it isn't the action's default (the tools' fire_mode names the defaults).
     ...(t.fireMode && t.fireMode !== defaultFireMode(t.action) ? { fireMode: t.fireMode } : {}),

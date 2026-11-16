@@ -7,7 +7,9 @@
  * TRV (Secular Compounder): the watched row on 2026-10-22, buy $398.70, the
  * analyst's floor $382.40 (the ticket's default), target $431.50; a buy at
  * $398.95, its price that day. The line is $367.03. Only the database, the
- * broker and the clock are doubled.
+ * broker and the clock are doubled. The floor is stored as the 2026-11-16
+ * migration stores a watch's (STOP_WATCHING, on the close): the fill takes it
+ * off with the buy, and the ticket's stop is the holding's sale.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, REPLAY_ACCOUNT_ID, REPLAY_USER_ID, type PrismaDouble } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -16,10 +18,10 @@ const AT = new Date("2026-10-22T14:00:05Z"); // 10:00 ET
 const PRICE = 398.95;
 const FLOOR = {
   id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66",
-  action: "EXIT",
+  action: "STOP_WATCHING",
   source: "AGENT",
   fireMode: "ASK_NOW",
-  predicate: { is: "below", value: 382.4, watch: "price" },
+  predicate: { is: "below", value: 382.4, watch: "price", settings: { close: true } },
   rationale: "I am using $382.40 just under the recent swing-high-turned-support area so a failed breakout ends the plan quickly.",
   cooldownDays: 1,
 };
@@ -84,8 +86,10 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
     const db = await tradeTicket(390);
     expect(thesis(db)).toMatchObject({ status: "HOLDING", stopLoss: 390 });
     expect(below(db, "EXIT")).toEqual([
-      expect.objectContaining({ id: FLOOR.id, predicate: { is: "below", value: 390, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $390. You set this." }),
+      expect.objectContaining({ predicate: { is: "below", value: 390, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $390. You set this." }),
     ]);
+    // The watch's line came off with the buy: it is never the sale.
+    expect(below(db, "STOP_WATCHING")).toEqual([]);
     // No review line below: none at the analyst's $382.40, and no template's 8%-below-entry line (deleted 2026-11-16).
     expect(below(db, "REVIEW")).toEqual([]);
   });
@@ -93,15 +97,16 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
   it("a typed $360 stop, looser than the line: raised to $367.03 in place, sold right away, his", async () => {
     const db = await tradeTicket(360);
     expect(below(db, "EXIT")).toEqual([
-      expect.objectContaining({ id: FLOOR.id, predicate: { is: "below", value: 367.03, watch: "price" }, fireMode: "DO_IT", source: "PRINCIPAL" }),
+      expect.objectContaining({ predicate: { is: "below", value: 367.03, watch: "price" }, fireMode: "DO_IT", source: "PRINCIPAL" }),
     ]);
     expect(thesis(db)).toMatchObject({ stopLoss: 367.03 });
     expect((db.store.position as Array<Record<string, unknown>>)[0]).toMatchObject({ stopLoss: 367.03 });
   });
 
-  it("the ticket's default, the analyst's own $382.40 left as it was: still the analyst's, so it becomes the review line over the $367.03 sale floor", async () => {
+  it("the ticket's default ($382.40, the watch's line) bought as it was: the stop on the ticket is the owner's sale, tighter than the line, so it stays", async () => {
     const db = await tradeTicket(382.4);
-    expect(below(db, "EXIT")).toEqual([expect.objectContaining({ id: FLOOR.id, predicate: { is: "below", value: 367.03, watch: "price" }, fireMode: "DO_IT", source: "PRINCIPAL" })]);
-    expect(below(db, "REVIEW")).toEqual([expect.objectContaining({ predicate: FLOOR.predicate, fireMode: "ASK_NOW", rationale: FLOOR.rationale, source: "AGENT" })]);
+    expect(below(db, "EXIT")).toEqual([expect.objectContaining({ predicate: { is: "below", value: 382.4, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $382.40. You set this." })]);
+    expect(below(db, "STOP_WATCHING")).toEqual([]);
+    expect(below(db, "REVIEW")).toEqual([]);
   });
 });
