@@ -8,6 +8,8 @@ This page covers how a save lands, what each agent is allowed to change, and wha
 
 When an agent saves, the first thing the tool does is throw away every value that equals what is already stored. An agent that reads a stock and sends the whole form back changes nothing, and the Activity line records only what moved. Before this, an echoed entry price was read as a change and one run was refused eleven times.
 
+**An empty level is no change.** A save that sends `entry_price`, `target_price` or `stop_loss` empty leaves that level where it is. Removing a level is `remove_trigger_ids`, by its trigger's id. The trigger run's model fills every field it is offered, so it sends the levels it keeps empty. Before this rule an empty level meant "remove": in the 30 days to Nov 16, 16 saves took down a level their own note kept, and PRAX lost its buy, floor and target in two runs that each said the plan was unchanged.
+
 A field that can't be applied comes back by name in `refused_fields`, with the one thing to change. The rest of the call lands. A save is refused whole only when nothing in it can land:
 
 - The thesis doesn't exist, or isn't yours.
@@ -52,7 +54,7 @@ Status changes follow one table. An agent can retire a stock as invalidated or d
 <summary>Technical details</summary>
 
 #### Patch
-`dropUnchanged` in `lib/agent/tools/update-thesis.ts` runs first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent.
+`emptyLevelsUnchanged` and then `dropUnchanged` in `lib/agent/tools/update-thesis.ts` run first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent. A level op in `lib/agent/triggers/ops.ts` always carries a number, so nothing but `remove_trigger_ids` removes a level. The trigger run calls OpenAI's Responses API, which fills every field of a tool that sends no `strict`; the morning run calls Chat Completions, which doesn't. Pinned by `update-thesis-empty-levels.replay.test.ts`.
 
 #### Hand edits
 `handEditsSince` reads `ThesisUpdate` rows since the run's start that `isYourEdit` marks. Skipped for `PRINCIPAL_CHAT`.

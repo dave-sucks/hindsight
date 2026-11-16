@@ -103,7 +103,8 @@ export type TriggerOp =
   | {
       op: "level";
       slot: LevelSlot;
-      price: number | null;
+      /** Always a number: an empty level is no change, and a level is removed by its trigger's id. */
+      price: number;
       /** Why the level is where it is ("under the base low, 1.8 ATR") — becomes the trigger's sentence. */
       rationale?: string;
       /** "close" = fires only on the day's close (a buy that wants the close to confirm). */
@@ -232,16 +233,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   // Applied in the order sent, the add landed on the trigger it replaces —
   // one per bucket made it an edit of that trigger — and the removal then
   // deleted both. Eight saves lost a trigger that way from 09-15 to 09-28,
-  // HPE's and EME's new buys among them. A level sent as null removes the
-  // slot's trigger, so it is a deletion too.
-  const deletes = (o: TriggerOp) => o.op === "remove" || (o.op === "level" && o.price == null);
-  const deleted = new Set<string>();
-  for (const o of input.ops) {
-    if (o.op === "remove") deleted.add(o.id);
-    else if (o.op === "level" && o.price == null) {
-      for (const t of input.stored) if (levelSlotOf(t, direction) === o.slot) deleted.add(t.id);
-    }
-  }
+  // HPE's and EME's new buys among them.
+  const deletes = (o: TriggerOp) => o.op === "remove";
+  const deleted = new Set(input.ops.flatMap((o) => (o.op === "remove" ? [o.id] : [])));
   // The one real contradiction: an edit, by id, of a trigger the same call
   // deletes. Neither is applied; it comes back by id.
   const contradicted = new Set(
@@ -255,7 +249,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   // reason changes only if its number moves (PLTR 10-15: a $191 edit, stop_loss $196; MU 10-15: $982 added, entry $906).
   const levelSet = new Map<string, number>();
   for (const o of input.ops) {
-    if (o.op !== "level" || o.price == null || (o.slot === "ENTRY" && held)) continue;
+    if (o.op !== "level" || (o.slot === "ENTRY" && held)) continue;
     for (const t of input.stored) if (levelSlotOf(t, direction) === o.slot) levelSet.set(t.id, o.price);
   }
   const outvoted = new Set<string>();
@@ -552,7 +546,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
 
   const doLevel = (
     slot: LevelSlot,
-    price: number | null,
+    price: number,
     extra: { rationale?: string; basis?: "intraday" | "close" } = {},
   ) => {
     // A buy level on a stock we own would re-arm a purchase (the 2026-05-19
@@ -561,10 +555,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       return refuse("edit", "", "Entry", "On a held stock the entry is the fill — it is not a plan level and cannot be edited.");
     }
     const occupants = stored.filter((t) => levelSlotOf(t, direction) === slot);
-    if (price == null) {
-      for (const t of occupants) if (!contradicted.has(t.id)) doRemove(t.id);
-      return;
-    }
     if (!(price > 0) || !Number.isFinite(price)) {
       return refuse("edit", "", SLOT_LABEL[slot], `${SLOT_LABEL[slot].toLowerCase()} must be a positive number.`);
     }

@@ -216,12 +216,6 @@ describe("applyTriggerOps — plan levels as ops", () => {
     expect(out.triggers.find((t) => t.id === "new-1")).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "below", value: 175 } });
   });
 
-  it("stop_loss: null removes the floor and says so", () => {
-    const out = watch([{ op: "level", slot: "FLOOR", price: null }]);
-    expect(out.results[0]).toEqual({ op: "remove", id: "floor", ok: true, text: "Removed: Take the plan down if below $150" });
-    expect(out.triggers.some((t) => t.id === "floor")).toBe(false);
-  });
-
   it("entry on a held stock is the fill, not a plan level", () => {
     const out = applyTriggerOps({ stored: [floor], ops: [{ op: "level", slot: "ENTRY", price: 100 }], direction: "LONG", status: "HOLDING", actor: "AGENT", mintId });
     expect(out.results[0].ok).toBe(false);
@@ -265,21 +259,6 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
     ]);
   });
 
-  it("a level sent as null is a removal too — entry_price: null with a new buy keeps the new buy", () => {
-    // In the order sent the null ran last and deleted the buy just added.
-    const out = watch([
-      { op: "add", trigger: { id: "", predicate: { watch: "price", is: "below", value: 175 }, action: "ENTER", rationale: "Buy the pullback to $175." } },
-      { op: "level", slot: "ENTRY", price: null },
-    ]);
-    expect(out.results).toEqual([
-      { op: "remove", id: "buy", ok: true, text: "Removed: Buy if above $183" },
-      { op: "add", id: "new-1", ok: true, text: "Added: Buy if below $175" },
-    ]);
-    expect(out.triggers.filter((t) => t.action === "ENTER")).toEqual([
-      expect.objectContaining({ id: "new-1", predicate: { watch: "price", is: "below", value: 175 } }),
-    ]);
-  });
-
   it("an edit of a trigger the same call removes lands neither; it comes back by id — say which — and the rest lands", () => {
     const out = watch([
       { op: "edit", id: "clock", value: 14, rationale: "Every two weeks until the print." },
@@ -297,17 +276,6 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
       { op: "remove", id: "floor", ok: true, text: "Removed: Take the plan down if below $150" },
     ]);
     expect(out.triggers.find((t) => t.id === "clock")).toEqual(expect.objectContaining({ predicate: { watch: "repeat", value: 7 } }));
-  });
-
-  it("an edit of the trigger a null level clears is the same contradiction", () => {
-    const out = watch([
-      { op: "level", slot: "FLOOR", price: null },
-      { op: "edit", id: "floor", value: 145, rationale: "Under the base low." },
-    ]);
-    expect(out.results).toEqual([
-      expect.objectContaining({ op: "edit", id: "floor", ok: false, text: "Edit and remove: Take the plan down if below $150" }),
-    ]);
-    expect(out.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ watch: "price", is: "below", value: 150 });
   });
 
   it("on a stock we own the removal is refused, so the replacement edits the floor that stays — and may only tighten", () => {
