@@ -209,12 +209,12 @@ The run the gap wakes reads the news, which must be a real catalyst on a stock t
 | Take profit | None | Trims only at valuation extremes, and no measure reads a valuation | |
 | Add (the second half) | Add if above 7% from our entry | "+7% from the first fill" | Send to Agent |
 | Add (the second half) | Add if within 2% of the 50-day average | A held 50-day pullback in a market-wide dip. The run checks the dip is the market's, not the company's. Not written at the buy, where it would already be true on a 50-day way in and ask for the second half the same day; the first review after the stock is more than 2% above the 50-day writes it | Send to Agent |
-| Trail | The analyst's (question 2) | | |
+| Trail | Sell if below 15% from the high since we bought | The playbook's own trail. On this stock it replaces the account's 6% one (question 2) | Send to Agent |
 
 The first buy is half of full size, sized on the distance to the floor. The run that buys the second half removes both add lines, or they keep asking every week. Replayed on recent holdings, the +7% add worked once and bought the top once; the run checks the business before it adds.
 
 - *Can't be written:* the named invalidation (guidance cut twice, a margin break, a capital-allocation failure). These are facts about the business; the account's miss and filing reviews and the analyst's reviews are where they get read. "A new high after a pause": "Add if above the 52-week high" can say the new high but not the pause. "Never add into company-specific bad news" is the run's check.
-- *Inherited:* the analyst's four reviews; under question 2, its "15% off the high" review becomes a sale. Its "Review if above 15% from our entry" also says it may be time for the second half, though the playbook's add comes at 7%. The account's 6% trailing sale and its stop when buying also reach the stock (question 2).
+- *Inherited:* the analyst's four reviews. Its "Review if below 15% from the high since we bought" would fire on the same day as the playbook's 15% trail and start a second run, so it comes off the analyst's Triggers tab. Its "Review if above 15% from our entry" also says it may be time for the second half, though the playbook's add comes at 7%. The account's stop when buying also reaches the stock (question 2).
 
 ## The other six (no analyst uses these today)
 
@@ -267,7 +267,7 @@ No triggers. No measure reads a group's rank, so "the group turns Lagging" can't
 - **Pullback:** the watch gains its stop-watching line, and on the holding that line becomes a sale. It gains a trim at the prior high (today this playbook writes no partial), and the review or sale at our own target price goes.
 - **PEAD:** the watch gets its own beat wake at 5%, a buy at today's price on the close, a stop-watching line at the gap day's low and a window review. The trim moves from twice the floor's distance to the prior high (question 4).
 - **Episodic pivot:** the watch gets the gap wake and a buy at the gap day's high. The holding gains the early warning at the gap's middle.
-- **Compounder:** the watch gets the one three-way buy (its 50-day ways in only on a rising 50-day), a 30-day clock and a 52-week-low line. On the holding, the review 8% under the buy and the copied stop give way to a floor at the structure. The +7% add is new, and the 50-day add is written by the first review, not the buy. The 30-day clock and the 60-day checkpoint stay, and the analyst's 15% give-back becomes a trailing sale (question 2).
+- **Compounder:** the watch gets the one three-way buy (its 50-day ways in only on a rising 50-day), a 30-day clock and a 52-week-low line. On the holding, the review 8% under the buy and the copied stop give way to a floor at the structure. The +7% add is new, and the 50-day add is written by the first review, not the buy. The 30-day clock and the 60-day checkpoint stay. The playbook writes its own 15% trailing sale, and the analyst's 15% review is deleted (question 2).
 - **RSI-2 bounce:** gains a floor at the flush's low.
 
 ## Checked against recent trades
@@ -285,7 +285,11 @@ Before this draft went to the owner, its lines were replayed on real daily price
 ## Questions for the owner
 
 1. **Should a "Stop watching if" line end the watch?** Today a sale line on a stock we watch takes down the buy and keeps the stock on watch. Once roadmap 14.1 deletes those levels there is nothing to take down. *Recommended:* it ends the watch (dropped), with one Activity line naming the line that did it.
-2. **The Compounder's trail: turn its "15% off the high" review into a sale?** Every holding now has a floor; the open question is the trail. The analyst's 15% give-back is a review today and can never fire first, because the account's 6% trailing sale asks sooner. Replayed over five recent compounder holdings:
+2. **Two account settings override the Compounder playbook's sale lines. Should the playbook's lines win?**
+   - **Stop when buying (6%).** At the buy, it throws out any floor more than 6% under the buy price and writes its own sale at 6%. The Compounder playbook puts its floor under the last base or swing low, often 10–25% under the buy, so on this account that floor never survives the buy.
+   - **The 6% trailing sale.** It sells any holding 6% off its high. A playbook trail wider than 6% can't fire before it.
+
+   Replayed over five recent compounder holdings:
 
    | Rule | Summed result |
    |---|---|
@@ -294,7 +298,9 @@ Before this draft went to the owner, its lines were replayed on real daily price
    | 6% trailing sale | about +2 points |
    | 15% trailing sale | about +2 points |
 
-   The 15% trail kept the two winners longer. On this account the 6% stop when buying also replaces any compounder floor wider than 6% at the buy. *Recommended:* make the analyst's 15% review a 15% trailing sale, which then stands in for the account's 6% on the Compounder's holdings. Give the Compounder its own stop when buying no tighter than its floor, so the floor the playbook sets survives the buy. Leave the Catalyst Event PM on the account's settings. Only you can widen these.
+   The 15% trail kept the two winners longer. A deeper floor doesn't risk more money, because the buy is sized on the floor's distance: twice as deep a floor means half the shares.
+
+   *Recommended:* the Compounder playbook writes its own trail on each stock at the buy, "Sell if below 15% from the high since we bought", and on those stocks it replaces the account's 6% trail. Stop when buying leaves a floor alone when the playbook wrote one, so it only fills in for a buy that has no floor. Both loosen what your settings do today, so both are yours to approve.
 3. **When the Compounder buys on a breakout or a pullback, which playbook manages the holding?** *Recommended:* it writes its stocks on Compounder accumulation, whose way in already is a breakout, a 50-day reclaim or a 50-day pullback. A stock written on Base breakout or Pullback is a trade, with that playbook's trims and time limits. Taking those two off its list is optional.
 4. **PEAD's partial: the prior high, as the prose says, or twice the floor's distance, as the code writes today?** *Recommended:* the prior high when there is one above the buy, else twice the distance.
 5. **Stop writing the "beat the market sold" review at the buy?** The account's beat review fires on the same report, and two reviews on one stock start two runs. *Recommended:* drop it; the run the beat starts reads the reaction.
