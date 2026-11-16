@@ -1,0 +1,176 @@
+{
+ "about": "PRAX, Catalyst Event PM, Mon 2026-11-16. The thesis as the 08:02 morning run (cmwj9vxkz000k08lbwd64wbh7) left it, and the two trigger runs' update_thesis calls verbatim from RunMessage (role thread).",
+ "price": 322.3175,
+ "thesisBefore": {
+  "id": "cmwfbxbuq000008kr9jw3zcv4",
+  "ticker": "PRAX",
+  "status": "WATCHING",
+  "direction": "LONG",
+  "horizon": "CATALYST",
+  "setupId": "PRE_CATALYST",
+  "catalystDate": "2026-12-27T00:00:00.000Z",
+  "conviction": "HIGH",
+  "entryPrice": 351.75,
+  "targetPrice": 392,
+  "stopLoss": 236,
+  "triggers": [
+   {
+    "id": "fd8ac088-1fba-4b7f-b792-c24727b2a7a9",
+    "action": "ENTER",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "watch": "price",
+     "is": "above",
+     "value": 351.75,
+     "settings": {
+      "close": true
+     }
+    },
+    "rationale": "A close above the 20-session high of $351.64 confirms the pre-PDUFA run-up has started — that is the signal I need before entering. Send to me; I want to confirm nothing changed on the regulatory front before buying.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "4f81f1c0-8a5c-4462-9c57-7cfdcc16b12e",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "watch": "report",
+     "is": "before",
+     "value": 14
+    },
+    "rationale": "Flag for review two weeks before the December 27 PDUFA date — this is when I'd plan to exit the position if we are in it, to avoid holding through the binary.",
+    "cooldownDays": 30
+   },
+   {
+    "id": "e6abf468-ed1c-465b-90cc-2cfe77aa6019",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "watch": "filing",
+     "variable": "item:1.01"
+    },
+    "rationale": "Any material agreement 8-K filed by Praxis could signal a partnership or licensing deal that changes the commercial picture — send to me same day.",
+    "cooldownDays": 0
+   },
+   {
+    "id": "525fe4a5-37a2-46fe-83cd-269ba2e78ea3",
+    "action": "EXIT",
+    "source": "DEFAULT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "watch": "price",
+     "is": "below",
+     "value": 236
+    },
+    "rationale": "A close below $236 would mean the market has decided the regulatory path is broken — if relutrigine's review produces a refuse-to-file or a clinical hold, that is what this level reflects. The structure under it is the October 14 swing low of $236.79; the stop sits just under that level, which is 1.3× ATR(14) of $18.25 below the swing low. Because this is a binary event setup, size is the actual risk control — a gap will skip any stop, and the $236 level is structural and advisory, not a hard exit on a gap down.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "4710e772-f65f-4f81-810a-0ff74b206096",
+    "action": "REVIEW",
+    "source": "DEFAULT",
+    "fireMode": "NEXT_MORNING",
+    "predicate": {
+     "watch": "price",
+     "is": "above",
+     "value": 392
+    },
+    "rationale": "A review at the August 20 high of $392.70 — the prior peak before the PDUFA extension drove the selloff. If the stock reaches that level before December 10, I'll trim and reassess; the real exit rule is a sale 1–2 weeks before the December 27 decision date regardless of price, to avoid holding through the binary.",
+    "cooldownDays": 1
+   },
+   {
+    "id": "a05c58e2-ca04-4f8f-afac-bdd527d0f832",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "watch": "filing",
+     "variable": "item:7.01"
+    },
+    "rationale": "A new 8-K press release from Praxis could carry an FDA update, trial news, or launch change ahead of the Dec. 27 decision, so send it to me the same day.",
+    "cooldownDays": 0
+   },
+   {
+    "id": "3ca27b95-3f67-48a2-9b83-b7829294ddd4",
+    "action": "REVIEW",
+    "source": "AGENT",
+    "fireMode": "ASK_NOW",
+    "predicate": {
+     "watch": "filing",
+     "variable": "item:8.01"
+    },
+    "rationale": "A new 8-K other-events filing from Praxis could disclose a regulatory or commercial development that changes the pre-decision setup, so send it to me the same day.",
+    "cooldownDays": 0
+   }
+  ]
+ },
+ "morningLine": {
+  "id": "cmwj9wnd5000m08lbydrf1xpe",
+  "runId": "cmwj9vxkz000k08lbwd64wbh7",
+  "timestamp": "2026-11-16T13:02:22.025Z"
+ },
+ "calls": [
+  {
+   "runId": "cmwjd2222000c07jqrbamz5xs",
+   "at": "2026-11-16T14:30:54Z",
+   "input": {
+    "thesis_id": "cmwfbxbuq000008kr9jw3zcv4",
+    "trigger_id": "a05c58e2-ca04-4f8f-afac-bdd527d0f832",
+    "rationale": "Praxis is down about 2% this morning, and I’m holding the watch with the buy plan unchanged. I read the Nov. 12 filing that fired today: it was the investor-day update with launch-readiness detail, more long-term data, and no new FDA setback, financing move, or partnership that changes why we are watching it; today’s dip looks like ordinary biotech trading, not company trouble, and the reason we care still rests on the Dec. 27 review staying on track. I corrected the filing wake issue by keeping the same-day 7.01 and 8.01 reviews in place, and I would only change the call on a close above $351.75 or on a real FDA problem or cheap stock sale before year-end.",
+    "add_triggers": [
+     {
+      "predicate": {
+       "watch": "filing",
+       "variable": "item:7.01"
+      },
+      "action": "REVIEW",
+      "rationale": "A new 8-K press release from Praxis could carry an FDA update, trial news, or launch change ahead of the Dec. 27 decision, so send it to me the same day.",
+      "fireMode": "ASK_NOW"
+     },
+     {
+      "predicate": {
+       "watch": "filing",
+       "variable": "item:8.01"
+      },
+      "action": "REVIEW",
+      "rationale": "A new 8-K other-events filing from Praxis could disclose a regulatory or commercial development that changes the pre-decision setup, so send it to me the same day.",
+      "fireMode": "ASK_NOW"
+     }
+    ],
+    "edit_triggers": [],
+    "remove_trigger_ids": [],
+    "stop_loss": null,
+    "stop_basis": "",
+    "target_price": null,
+    "target_basis": "",
+    "entry_price": 351.75,
+    "verdict": "UNCHANGED",
+    "verdict_line": "The point that matters still stands: the Dec. 27 review appears on track, and nothing in the Nov. 12 filing changed the reason we are watching the stock.",
+    "answers_update_id": "cmwj9wnd5000m08lbydrf1xpe"
+   }
+  },
+  {
+   "runId": "cmwjd2cyp000q07jqewqgkh35",
+   "at": "2026-11-16T14:31:08Z",
+   "input": {
+    "thesis_id": "cmwfbxbuq000008kr9jw3zcv4",
+    "trigger_id": "3ca27b95-3f67-48a2-9b83-b7829294ddd4",
+    "rationale": "Praxis is down about 2% this morning, and I’m holding the watch plan unchanged after reading the Nov. 12 filing. The 8-K was the investor-day deck we already woke on last week: it talked up launch readiness, longer follow-up data, and the two FDA dates, but I did not see a new FDA setback, financing need, or partnership that changes why we are watching it. The stock is still around $322 and below the $351.75 buy level, so I do not want to chase it; what changes this is still a close above $351.75 or a real regulatory setback before Dec. 27.",
+    "add_triggers": [],
+    "edit_triggers": [],
+    "remove_trigger_ids": [],
+    "stop_loss": null,
+    "stop_basis": "",
+    "target_price": null,
+    "target_basis": "",
+    "entry_price": null,
+    "verdict": "UNCHANGED",
+    "verdict_line": "The reason we are watching it has not changed: the Nov. 12 filing added promotion and launch detail, not a new problem with the December FDA review.",
+    "answers_update_id": "cmwj9wnd5000m08lbydrf1xpe"
+   }
+  }
+ ]
+}

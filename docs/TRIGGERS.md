@@ -478,7 +478,8 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   editor (`editableOnly`: price/% triggers only).
 - **Agent** — `update_thesis(add_triggers | edit_triggers | remove_trigger_ids)`;
   `entry_price` / `target_price` / `stop_loss` are the same op on the buy /
-  target / floor trigger. `record_thesis` still takes a whole `triggers` list —
+  target / floor trigger. Sent empty, a level is no change; a level is removed
+  only by id, in `remove_trigger_ids`. `record_thesis` still takes a whole `triggers` list —
   a mint is a new list by definition — merged with the horizon defaults.
 - **A buy fill** removes the buy trigger, sets the floor and target to the
   executed levels, and adds the held-side template triggers that are missing

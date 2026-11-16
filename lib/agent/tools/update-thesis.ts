@@ -527,10 +527,22 @@ export function dropUnchanged(
   return out as UpdateArgs;
 }
 
+/**
+ * An empty level is no change; a level is removed by its trigger's id. The
+ * trigger run's model fills every field it is offered (OpenAI's Responses API
+ * decodes a tool call strictly when the tool sends no `strict`), so a level
+ * it keeps comes back null. Read as "remove", 16 saves in the 30 days to
+ * 2026-11-16 took down a level their own note kept: PRAX lost its buy, floor
+ * and target at 09:30 while its note said the plan was unchanged.
+ */
+function emptyLevelsUnchanged(args: UpdateArgs): UpdateArgs {
+  return { ...args, entry_price: args.entry_price ?? undefined, target_price: args.target_price ?? undefined, stop_loss: args.stop_loss ?? undefined };
+}
+
 export const updateThesis = defineTool({
   description:
     "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
-    "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers, and null removes one. " +
+    "entry_price, target_price and stop_loss are the levels of the buy, target and floor triggers; left empty, a level stays as it is. To remove one, name its trigger in remove_trigger_ids. " +
     "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
     "On a stock we hold, only the principal moves a safety line down. " +
     "If you think one is wrong, keep it and give the number you'd suggest in the rationale.",
@@ -641,7 +653,7 @@ export const updateThesis = defineTool({
     // 2026-10-07 and 10-08 two trigger runs restated fields of a LONG
     // holding in every close-out call; each was refused until the run ran out.
     const sent = args;
-    args = dropUnchanged(args, existing);
+    args = dropUnchanged(emptyLevelsUnchanged(args), existing);
     const refusedFields: RefusedField[] = [];
     const refuseField = (field: keyof UpdateArgs, reason: string, why: string) => {
       const to = args[field];
@@ -1099,11 +1111,11 @@ export const updateThesis = defineTool({
         close: e.close,
       })),
       ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-      ...(args.entry_price !== undefined
+      ...(args.entry_price != null
         ? [{ op: "level" as const, slot: "ENTRY" as const, price: args.entry_price, ...(args.entry_on_close !== undefined ? { basis: args.entry_on_close ? ("close" as const) : ("intraday" as const) } : {}) }]
         : []),
-      ...(args.stop_loss !== undefined ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss, rationale: args.stop_basis }] : []),
-      ...(args.target_price !== undefined ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price, rationale: args.target_basis }] : []),
+      ...(args.stop_loss != null ? [{ op: "level" as const, slot: "FLOOR" as const, price: args.stop_loss, rationale: args.stop_basis }] : []),
+      ...(args.target_price != null ? [{ op: "level" as const, slot: "TARGET" as const, price: args.target_price, rationale: args.target_basis }] : []),
     ];
 
     // The levels above this thesis, resolved against an EMPTY thesis array
