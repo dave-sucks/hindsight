@@ -58,8 +58,7 @@ import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { DigestNote, LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
-import { TickerChip } from '@/components/chat/TickerChip';
-import { NoteSignal } from '@/components/domain/note-signal';
+import { FlameIcon } from '@/components/ui/flame-icon';
 import { SectionLabel } from '@/components/domain/section-label';
 import { openingDigestTab, stripMarkdown, type DigestTab } from '@/components/dashboard/digest-preview';
 import {
@@ -781,16 +780,24 @@ function DigestTabs({
   );
 }
 
-/** One note the market digest's run wrote: its stocks' chips, each opening the stock, then its flame and Bullish / Bearish / Neutral. */
-function DigestNoteRow({ note }: { note: DigestNote }) {
+/**
+ * The stocks the market digest's run wrote a note on, in the digest's dialog
+ * only (the owner, 2026-11-16): each a ghost button, its logo and ticker,
+ * that opens the stock. The flame marks a stock with a high-impact note;
+ * nothing else about the note is spelled out here.
+ */
+function DigestNoteStocks({ notes }: { notes: DigestNote[] }) {
+  const high = new Set(notes.filter((n) => n.impact === 'high').flatMap((n) => n.tickers));
+  const tickers = [...new Set(notes.flatMap((n) => n.tickers))];
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {note.tickers.map((t) => (
-        <Link key={t} href={`/stocks/${t}`} prefetch={false} className="no-underline shrink-0">
-          <TickerChip symbol={t} />
-        </Link>
+    <div className="-mx-2.5 flex flex-wrap items-center gap-1">
+      {tickers.map((t) => (
+        <Button key={t} variant="ghost" size="sm" nativeButton={false} render={<Link href={`/stocks/${t}`} prefetch={false} />}>
+          <StockLogo ticker={t} size="xs" />
+          {t}
+          {high.has(t) ? <FlameIcon className="size-3" /> : null}
+        </Button>
       ))}
-      <NoteSignal impact={note.impact} effect={note.effect} className="text-xs text-muted-foreground" />
     </div>
   );
 }
@@ -815,7 +822,7 @@ function DigestPreviewCard({
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
   const preview = active ? stripMarkdown(active.narrative).slice(0, 700) : null;
-  // The market digest's notes on our stocks, under the preview and the digest.
+  // The market digest's notes on our stocks, under the digest in its dialog.
   const notes = isMarket ? (active?.notes ?? []) : [];
 
   return (
@@ -846,13 +853,6 @@ function DigestPreviewCard({
             <p className="text-xs text-muted-foreground">{emptyLine}</p>
           )}
         </button>
-        {notes.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 text-xs">
-            {notes.map((n) => (
-              <DigestNoteRow key={n.id} note={n} />
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -874,9 +874,7 @@ function DigestPreviewCard({
             {notes.length > 0 ? (
               <div className="mt-4 pt-4 border-t flex flex-col gap-2">
                 <SectionLabel>Agent notes</SectionLabel>
-                {notes.map((n) => (
-                  <DigestNoteRow key={n.id} note={n} />
-                ))}
+                <DigestNoteStocks notes={notes} />
               </div>
             ) : null}
           </div>
