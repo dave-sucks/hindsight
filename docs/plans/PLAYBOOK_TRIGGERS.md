@@ -10,7 +10,7 @@
 2. **A playbook is chosen per thesis.** The Writer picks it from the analyst's list. It's saved on the thesis and shown there. A playbook is a set of templates, listed in Settings → Playbook. They write ordinary stock triggers, exactly as if you added them by hand. Changing a playbook later doesn't change stocks already written.
 3. **On a watch there are three kinds of trigger:** Buy if, Review if, and Stop watching if. Stop watching is its own stored action: it ends the watch and never sells. When it mints the thesis, the Writer fills the watch templates' prices from the chart.
 4. **The buy proposal.** The trigger run fills the holding's sell prices from the playbook's templates: "Sell if below $S", plus the take-profit if the playbook has one. Each price comes with its reason. `place_trade` takes them, and the size is the risk for the trade ÷ (buy − S). You see them on the proposal and change them in Edit & Approve. An agent's buy needs the stock's playbook; a stock with none is a pass, or gets a playbook first. Your own Trade ticket is unchanged.
-5. **At the fill**, the buy lines, Stop watching lines and buying-window reviews come off. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write.
+5. **At the fill**, the buy lines, Stop watching lines and buying-window reviews come off. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
 6. **After a sale back to watch**, the Sell lines come off and the watch templates go on again.
 
 **Writing the lines.**
@@ -70,7 +70,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | Sell if below $S | S: under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8% | Proposal |
 | Trim 50% if above $H | H: the prior high above the buy, else twice (buy − S) above the buy (question 1) | Proposal |
 | Review 20 sessions after the buy | No progress in 10–20 sessions is a failed breakout | Template |
-| Review if above N% from our entry | N: (buy − S) ÷ buy. Once it is up one risk, the run raises "Sell if below" to the buy price | Template |
+| Review if above N% from our entry | N: (buy − S) ÷ buy. Once it is up one risk, the run raises "Sell if below" to the buy price | Proposal |
 | Review every 7 days | | Kept |
 
 *Can't be written:*
@@ -183,9 +183,9 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
    - The Writer writes the playbook's watch templates.
    - Settings → Playbook lists every template exactly as it will be written, and the thesis shows its playbook.
 3. **The buy and the fill.**
-   - `place_trade` takes the sell prices the trigger run filled from the templates, each with its reason. The proposal and Edit & Approve show them.
+   - `place_trade` takes the sell prices the trigger run filled from the templates, and the breakout's one-risk review, each with its reason. The proposal and Edit & Approve show them.
    - The fill removes Stop watching lines and buying-window reviews. It writes a take-profit as the template's "Trim 50% if above"; today a new upper price lands as a review.
-   - The fill writes the holding templates. `setup-exits.ts` gains the one-risk review, the date sale, the 50-day sale and the add. It loses its move-from-entry trim and the "beat the market sold" review, which the account's beat review already covers.
+   - The fill writes the holding templates. `setup-exits.ts` gains the date sale, the 50-day sale and the add. It loses its move-from-entry trim and the "beat the market sold" review, which the account's beat review already covers.
    - A sale back to watch removes the Sell lines and writes the watch templates.
 4. **Question 3, if yes:** delete "stop when buying" (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
 
