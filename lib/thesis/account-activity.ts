@@ -1,22 +1,26 @@
 /**
  * account-activity.ts — the homepage Activity: the account's stocks' Activity
  * lists (activity-feed.ts), merged, and cut by one filter to the trades and
- * the changes of watch status. A line is kept, and named, by its stored fields
- * alone (its type, its status change, its order's intent and status), never by
- * its words. The loader is account-activity.server.ts.
+ * the changes of watch status, beside the attempts that never became a
+ * proposal (lib/portfolio/attempt-outcomes.ts). A line is kept, and named, by
+ * its stored fields alone (its type, its status change, its order's intent
+ * and status), never by its words. The loader is account-activity.server.ts.
  */
 import { titleSegments } from "@/components/agent/sheets/thesis-timeline-utils";
 import { asTimelineUpdate } from "@/lib/agent/stock-context";
 import type { FeedItem } from "@/lib/thesis/activity-feed";
+import type { AttemptLine } from "@/lib/portfolio/attempt-outcomes";
 
 /** How many lines the homepage gets; the first 40 show until "Show more". */
-export const ACCOUNT_ITEMS = 80;
+export const ACCOUNT_ITEMS = 150;
 
 export type AccountActivityKind =
   // A trade: a proposal's steps, and every fill.
   | "proposed" | "approved" | "bought" | "added" | "sold" | "trimmed" | "declined" | "expired" | "withdrawn"
   // A change of watch status.
-  | "watching" | "stopped-watching" | "holding" | "closed" | "passed";
+  | "watching" | "stopped-watching" | "holding" | "closed" | "passed"
+  // An attempt that never became a proposal: the analyst held, a rule blocked it, or the run broke.
+  | "held" | "blocked" | "failed";
 
 export interface AccountActivityLine {
   id: string;
@@ -33,6 +37,17 @@ export interface AccountActivityLine {
   waiting: boolean;
   /** The trade the line belongs to; the row opens it. */
   positionId: string | null;
+  /** The run an attempt was made in; the row opens it. */
+  runId: string | null;
+  /** An attempt names itself: "Held, not sold", "Buy blocked", "Thesis research blocked". */
+  label: string | null;
+}
+
+const ATTEMPT: Record<AttemptLine["kind"], AccountActivityKind> = { PASSED: "held", BLOCKED: "blocked", FAILED: "failed" };
+
+/** An attempt as the homepage shows it: its own label, and its reason (the analyst's note, the refusal, or the failure) as written. */
+export function attemptActivityLine(a: Pick<AttemptLine, "id" | "kind" | "ticker" | "label" | "reason" | "at"> & { runId: string | null }): AccountActivityLine {
+  return { id: a.id, kind: ATTEMPT[a.kind], ticker: a.ticker, timestamp: a.at.toISOString(), text: a.reason, detail: a.reason, gain: null, waiting: false, positionId: null, runId: a.runId, label: a.label };
 }
 
 const STEP: Record<string, AccountActivityKind> = {
@@ -95,5 +110,7 @@ export function accountActivityLine(item: FeedItem, ticker: string): AccountActi
     gain: kind === "sold" || kind === "trimmed" ? saleGain(item) : null,
     waiting: kind === "proposed" && fc.proposal?.to?.status === "AWAITING_APPROVAL",
     positionId: trade ? item.tradeId : null,
+    runId: null,
+    label: null,
   };
 }

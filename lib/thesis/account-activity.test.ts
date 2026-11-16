@@ -5,11 +5,23 @@
  * CORT's sale and the stop-watch that followed (10-20, 10-27), MSFT's
  * Auto-sell and return to watch (11-12, 11-13), NVDA's expired sale card
  * (11-12), SMCI's dropped watch (10-19), SNDK's pass (11-04), and CEG's sale
- * by your own click on paper, never a proposal (08-12).
+ * by your own click on paper, never a proposal (08-12). Beside them, the
+ * attempts: GEV's sale trigger run that held (11-16) and HTFL's research the
+ * Writer could not save (11-13).
  */
 const orderFind = jest.fn();
 const lineFind = jest.fn();
-jest.mock("@/lib/prisma", () => ({ prisma: { order: { findMany: (a: unknown) => orderFind(a) }, thesisUpdate: { findMany: (a: unknown) => lineFind(a) } } }));
+const refusalFind = jest.fn();
+const runFind = jest.fn();
+jest.mock("@/lib/prisma", () => ({
+  prisma: {
+    order: { findMany: (a: unknown) => orderFind(a) },
+    thesisUpdate: { findMany: (a: unknown) => lineFind(a) },
+    gateRejection: { findMany: (a: unknown) => refusalFind(a) },
+    researchRun: { findMany: (a: unknown) => runFind(a) },
+    agentConfig: { findMany: async () => [{ id: "cmmqxola3000004lbj7c11bfn" }] },
+  },
+}));
 
 import { loadAccountActivity } from "./account-activity.server";
 import { accountActivityKind } from "./account-activity";
@@ -44,17 +56,31 @@ const LINES = [
   line({ id: "cmweznpj6002a07jpaeedvr6w", thesisId: "cmoh5nfsg008m04jubqafc6c6", thesis: { ticker: "MSFT" }, type: "STATUS_CHANGED", timestamp: at("2026-11-13T13:04:24.066Z"), summary: "Updated MSFT: Entry set: $559.15, RETIRED → WATCHING", rationale: "Microsoft is flat since yesterday’s sale.", fieldChanges: { status: { to: "WATCHING", from: "RETIRED" }, retiredReason: { to: null, from: "SOLD" } }, priceAtTime: 523 }),
 ];
 
+// GEV 11-16 09:30 ET: its sale line woke a trigger run, which wrote a note and proposed nothing; the two sale cards before it were answered days earlier.
+const RUNS = [{ id: "cmwjd1sqv000607jqi87o8puo", mode: "INTRADAY_TACTICAL", status: "COMPLETE", startedAt: at("2026-11-16T14:30:21.127Z"), completedAt: at("2026-11-16T14:30:48.943Z"), agentConfigId: "cmmqxola3000004lbj7c11bfn", parameters: { ticker: "GEV", action: "EXIT" } }];
+const RUN_ORDERS = [
+  { symbol: "GEV", intent: "CLOSE", status: "EXPIRED", createdAt: at("2026-11-05T14:35:23.248Z"), updatedAt: at("2026-11-06T15:00:19.418Z") },
+  { symbol: "GEV", intent: "CLOSE", status: "EXPIRED", createdAt: at("2026-11-06T14:40:23.713Z"), updatedAt: at("2026-11-07T15:00:22.660Z") },
+];
+const RUN_NOTES = [{ runId: "cmwjd1sqv000607jqi87o8puo", timestamp: at("2026-11-16T14:30:44.627Z"), rationale: "GE Vernova is down again to about $780, and I’m holding.", thesis: { ticker: "GEV" } }];
+const OPEN_REFUSALS = [{ id: "cmwei7r59000502t04fhmno63", tool: "thesis_writer", ticker: "HTFL", summary: "Thesis research on $HTFL produced no thesis (refresh)", detail: "update_thesis refused: terminal_status", createdAt: at("2026-11-13T04:56:06.189Z") }];
+
+type Where = { where: Record<string, { notIn?: unknown } | unknown> };
 beforeEach(() => {
-  orderFind.mockResolvedValue(ORDERS);
-  lineFind.mockResolvedValue(LINES);
+  orderFind.mockImplementation(async (a: Where) => ("thesisId" in a.where ? ORDERS : RUN_ORDERS));
+  lineFind.mockImplementation(async (a: Where) => ("runId" in a.where ? RUN_NOTES : LINES));
+  refusalFind.mockImplementation(async (a: Where) => ((a.where.tool as { notIn?: unknown }).notIn ? OPEN_REFUSALS : []));
+  runFind.mockResolvedValue(RUNS);
 });
 
 describe("the homepage Activity, from the live account's rows", () => {
-  it("lists every trade step and every change of watch status, newest first", async () => {
+  it("lists every trade step, every change of watch status and every attempt, newest first", async () => {
     const feed = await loadAccountActivity({ accountId: "acct", environment: "LIVE" });
     expect(feed.map((l) => `${l.ticker} ${l.kind}`)).toEqual([
+      "GEV held",
       "NVDA expired", // its deadline, the next morning
       "MSFT watching", // back on watch the morning after the sale
+      "HTFL blocked",
       "MSFT closed",
       "MSFT sold",
       "MSFT proposed",
@@ -91,10 +117,16 @@ describe("the homepage Activity, from the live account's rows", () => {
     expect(feed.find((l) => l.kind === "expired")).toMatchObject({ ticker: "NVDA", text: "Expired sell 33 shares — no decision", waiting: false });
   });
 
+  it("names an attempt as attemptOutcomes does, with its reason as written, and opens its run", async () => {
+    const feed = await loadAccountActivity({ accountId: "acct", environment: "LIVE" });
+    expect(feed.find((l) => l.ticker === "GEV")).toMatchObject({ kind: "held", label: "Held, not sold", text: "GE Vernova is down again to about $780, and I’m holding.", runId: "cmwjd1sqv000607jqi87o8puo", positionId: null });
+    expect(feed.find((l) => l.ticker === "HTFL")).toMatchObject({ kind: "blocked", label: "Thesis research blocked", text: "update_thesis refused: terminal_status", runId: null });
+  });
+
   it("loads only the book's orders that carry their stock, and only the lines that changed a status", async () => {
     await loadAccountActivity({ accountId: "acct", environment: "LIVE" });
-    expect(orderFind.mock.calls[0][0].where).toEqual({ thesisId: { not: null }, position: { accountId: "acct", environment: "LIVE" } });
-    const where = lineFind.mock.calls[0][0].where;
+    expect(orderFind.mock.calls.find((c) => "thesisId" in c[0].where)![0].where).toEqual({ thesisId: { not: null }, position: { accountId: "acct", environment: "LIVE" } });
+    const where = lineFind.mock.calls.find((c) => !("runId" in c[0].where))![0].where;
     expect(where.fieldChanges.path).toEqual(["status"]);
     // A watch written on paper and bought live is on the live book.
     expect(where.OR[1].thesisId.in).toContain("cmoh5nfsg008m04jubqafc6c6");

@@ -273,7 +273,7 @@ const THESIS_STATUS_ORDER: ThesisStatus[] = [
   'PROMOTED',
 ];
 const THESIS_PAGE_SIZE = 10;
-type ActivityTabFilter = 'all' | 'trades' | 'proposals' | 'watch';
+type ActivityTabFilter = 'all' | 'trades' | 'proposals' | 'watch' | 'attempts';
 
 // A dropdown filter starts on a real "All …" item, and `items` gives the
 // closed trigger the label (otherwise it shows the raw value, "all").
@@ -282,8 +282,9 @@ const ACTIVITY_FILTERS: { value: ActivityTabFilter; label: string }[] = [
   { value: 'trades', label: 'Trades' },
   { value: 'proposals', label: 'Proposals' },
   { value: 'watch', label: 'Watch status' },
+  { value: 'attempts', label: 'Held & blocked' },
 ];
-// The server sends the newest 80 lines (ACCOUNT_ITEMS); the first 40 show until "Show more".
+// The server sends the newest 150 lines (ACCOUNT_ITEMS); the first 40 show until "Show more".
 const ACTIVITY_FIRST_ROWS = 40;
 
 function dayLabel(iso: string): string {
@@ -323,6 +324,10 @@ const ACTIVITY_KIND: Record<AccountActivityKind, { label: string; dotClass: stri
   holding:            { label: 'Position opened',  dotClass: 'bg-positive',            filter: 'watch' },
   closed:             { label: 'Position closed',  dotClass: 'bg-muted-foreground/60', filter: 'watch' },
   passed:             { label: 'Passed',           dotClass: 'bg-muted-foreground/40', filter: 'watch' },
+  // An attempt names itself ("Held, not sold", "Buy blocked"); these labels are the fallback.
+  held:               { label: 'Passed',           dotClass: 'bg-muted-foreground/40', filter: 'attempts' },
+  blocked:            { label: 'Blocked',          dotClass: 'bg-negative',            filter: 'attempts' },
+  failed:             { label: 'Failed',           dotClass: 'bg-negative',            filter: 'attempts' },
 };
 
 function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowData {
@@ -365,7 +370,7 @@ function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowDa
 
 
 function ActivityRow({ item }: { item: AccountActivityLine }) {
-  const kind = ACTIVITY_KIND[item.kind];
+  const kind = { ...ACTIVITY_KIND[item.kind], label: item.label ?? ACTIVITY_KIND[item.kind].label };
   // Only a proposal still waiting for you is amber; it's decided on the trade page the row opens.
   const status = item.waiting ? { ...kind, dotClass: 'bg-amber-500' } : kind;
   const gain = item.gain;
@@ -380,7 +385,7 @@ function ActivityRow({ item }: { item: AccountActivityLine }) {
         render={
           <Link
             prefetch={false}
-            href={item.positionId ? `/trades/${item.positionId}` : `/stocks/${item.ticker}`}
+            href={item.positionId ? `/trades/${item.positionId}` : item.runId ? `/runs/${item.runId}` : `/stocks/${item.ticker}`}
             // Fixed columns so every row lines up: ticker, status, sentence,
             // gain. On a phone the status column sizes to its badge.
             className="grid grid-cols-[4.75rem_auto_minmax(0,1fr)_auto] sm:grid-cols-[5.5rem_9.5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 hover:bg-muted/70 transition-colors"

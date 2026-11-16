@@ -44,7 +44,7 @@ On a stock we hold, no agent can lower or widen a protective level, remove it, o
 
 ## When a save is refused
 
-Every refusal is recorded. Anything still open when a run ends goes back to the run to fix and opens the next [morning run](../agents/morning-runs.md) as "Blocked last time". It closes when the same tool lands on the same stock. A refusal of a single field isn't carried over, since the rest of that call landed.
+Every refusal is recorded. Anything still open when a run ends goes back to the run to fix, appears in Activity, and opens the next [morning run](../agents/morning-runs.md) as "Blocked last time". It closes when the same tool lands on the same stock. A refusal of a single field isn't carried over, since the rest of that call landed.
 
 An agent that sends the same refused call again gets a nudge on the second refusal. On the third, the run stops and closes as failed with the reason named. Morning and [trigger](../agents/trigger-runs.md) runs share this guard.
 
