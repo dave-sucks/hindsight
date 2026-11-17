@@ -61,9 +61,15 @@ export const EXECUTING_LABEL = "Executing";
 /** Tooltip line for a row in that state. */
 export const EXECUTING_TOOLTIP = "Sent to Alpaca — waiting for the fill";
 
-/** Status-dot tooltip for a row carrying a proposal — awaiting you, or in flight. */
-export function proposalTooltip(intent: string, executing = false): string {
+/**
+ * Status-dot tooltip for a row carrying a proposal: in flight, or waiting on
+ * you, where it says when and at what price it was proposed (`proposed`,
+ * from `proposedLine`). The row itself carries no such line (the owner,
+ * 2026-11-17).
+ */
+export function proposalTooltip(intent: string, executing = false, proposed?: string | null): string {
   if (executing) return EXECUTING_TOOLTIP;
+  if (proposed) return proposed;
   const verb = intent === "OPEN" || intent === "ADD" ? "buy" : "exit";
   return `Pending your approval — agent proposed this ${verb}`;
 }

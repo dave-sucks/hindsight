@@ -56,8 +56,6 @@ export interface TradeRowShellProps {
   secondary?: React.ReactNode;
   /** Bottom-right content (P&L badge). */
   trailingBottom?: React.ReactNode;
-  /** A third line, very small and muted (a proposal's "Proposed at $230.10 on Nov 13, 3:36 PM"). */
-  tertiary?: React.ReactNode;
   /** Kebab-menu actions, shown on hover at the right edge. */
   menuItems?: RowMenuItem[];
   flash?: "win" | "loss";
@@ -76,7 +74,6 @@ export function TradeRowShell({
   trailingTop,
   secondary,
   trailingBottom,
-  tertiary,
   menuItems,
   flash,
   className,
@@ -105,7 +102,6 @@ export function TradeRowShell({
             )}
           </div>
         )}
-        {tertiary !== undefined && <div className="-mt-0.5 text-[10px] leading-tight text-muted-foreground/70 tabular-nums truncate">{tertiary}</div>}
       </div>
     </>
   );
@@ -233,7 +229,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 }
 
 // ── GainPair — the number every row ends with ────────────────────────────────
-// The arrow, the dollars, the percent: the row's one small size, one light weight, coloured,
+// The arrow, the dollars, the percent: the second line's small size, one light weight, coloured,
 // no badge (the owner, 2026-11-17), whether it's a held
 // position's lifetime P&L or a watched name's move today. ONE component so a
 // trade row and a watchlist row can never drift into showing the gain
@@ -374,7 +370,11 @@ export function TradeRow({
 
   const cfg = getTradeStatusDisplay(status);
   const timeLabel = isAwaitingApproval
-    ? proposalTooltip(pendingProposal.intent, isExecuting)
+    ? proposalTooltip(
+        pendingProposal.intent,
+        isExecuting,
+        pendingProposal.proposedAt ? proposedLine(pendingProposal.proposedAt, pendingProposal.proposedPrice) : null,
+      )
     : cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
@@ -402,12 +402,12 @@ export function TradeRow({
       primary={
         <>
           {/* Reads as "Trim SNOW" / "Buy HPE": the verb light, the ticker
-              medium, both the text's own colour and size, so the row scans by
-              weight (the owner, 2026-11-17). */}
+              medium, both the text's own colour, one size up from the line
+              under them, so the row scans by weight (the owner, 2026-11-17). */}
           {isAwaitingApproval && (
             <span
               className={cn(
-                "text-xs font-light text-foreground",
+                "text-sm font-light text-foreground",
                 // Approved and in flight — the same shimmer the agent's
                 // in-progress rows use, in the verb's slot. It's the whole
                 // signal that the trade is on its way rather than lost.
@@ -417,7 +417,7 @@ export function TradeRow({
               {isExecuting ? EXECUTING_LABEL : PROPOSAL_VERB[pendingProposal.intent]}
             </span>
           )}
-          <span className="text-xs font-medium">{ticker}</span>
+          <span className="text-sm font-medium">{ticker}</span>
           <StatusDot
             // Pending proposal — amber dot overrides whatever the underlying
             // status would normally show. Same amber the Coverage Table uses.
@@ -437,7 +437,7 @@ export function TradeRow({
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="inline-flex items-center gap-1 text-xs tabular-nums font-light cursor-default">
+              <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light cursor-default">
                 ${currentPrice.toFixed(2)}
               </span>
             }
@@ -461,7 +461,6 @@ export function TradeRow({
           {dateStr && <> · {dateStr}</>}
         </>
       }
-      tertiary={isAwaitingApproval && !isExecuting && pendingProposal.proposedAt ? proposedLine(pendingProposal.proposedAt, pendingProposal.proposedPrice) : undefined}
       trailingBottom={
         isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>
@@ -548,9 +547,9 @@ export function WatchlistRow({
       onClick={thesisId ? () => setSheetOpen(true) : undefined}
       className={className}
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
-      primary={<span className="text-xs font-medium">{ticker}</span>}
+      primary={<span className="text-sm font-medium">{ticker}</span>}
       trailingTop={
-        <span className="inline-flex items-center gap-1 text-xs tabular-nums font-light">
+        <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light">
           {currentPrice != null ? `$${currentPrice.toFixed(2)}` : "—"}
         </span>
       }
@@ -595,7 +594,7 @@ export function AddStockRow({
           <Plus className="h-4 w-4" />
         </div>
       }
-      primary={<span className="text-xs font-medium text-muted-foreground">{label}</span>}
+      primary={<span className="text-sm font-medium text-muted-foreground">{label}</span>}
     />
   );
 }

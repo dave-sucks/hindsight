@@ -93,9 +93,9 @@ export const TickerChip = memo(function TickerChip({
         <TradeRowShell
           href={`/stocks/${sym}`}
           leading={<StockLogo ticker={sym} size="md" className="rounded-md" />}
-          primary={<span className="text-xs font-medium">{sym}</span>}
+          primary={<span className="text-sm font-medium">{sym}</span>}
           trailingTop={
-            <span className="inline-flex items-center gap-1 text-xs tabular-nums font-light">
+            <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light">
               ${formatPrice(quote.price)}
             </span>
           }
