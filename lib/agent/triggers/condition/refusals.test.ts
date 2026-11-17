@@ -89,10 +89,10 @@ const refused: Array<{ name: string; c: Condition; says: RegExp; inside: Conditi
     inside: { watch: "move", is: "below", value: 99, variable: "prev_close" },
   },
   {
-    name: "an average read on the close",
-    c: { watch: "price", is: "above", variable: "sma50", settings: { close: true } },
-    says: /only a typed price can wait for the close/,
-    inside: { watch: "price", is: "above", variable: "sma50" },
+    name: "a high read on the close (a typed price or an average can wait for it)",
+    c: { watch: "price", is: "above", variable: "high52", settings: { close: true } },
+    says: /only a typed price or an average can wait for the close/,
+    inside: { watch: "price", is: "above", variable: "high52" },
   },
 ];
 

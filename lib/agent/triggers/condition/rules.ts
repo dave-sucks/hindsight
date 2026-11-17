@@ -67,10 +67,27 @@ export function reviewClockDays(w: When): number | null {
   return !isGroup(w) && measureOf(w).clock === true && w.value != null ? w.value : null;
 }
 
-/** Read off the quote, the position and the daily snapshot alone: no earnings calendar, no filings, no schedule. A group only when every condition is. */
-export function readsTheTape(w: When): boolean {
-  return conditionsOf(w).every((c) => measureOf(c).timed !== true && !readsSource(c, "earnings") && !readsSource(c, "filings"));
+/** A window inside an "and": it bounds the others and reads only the stock's own date. */
+export function isWindowIn(w: When, c: Condition): boolean {
+  return isGroup(w) && measureOf(c).window?.(c) === true;
 }
+
+/** Read off the quote, the position and the daily snapshot alone: no earnings calendar, no filings, no schedule. A group only when every condition is (a window inside it aside). */
+export function readsTheTape(w: When): boolean {
+  const read = conditionsOf(w).filter((c) => !isWindowIn(w, c));
+  return read.length > 0 && read.every((c) => measureOf(c).timed !== true && !readsSource(c, "earnings") && !readsSource(c, "filings"));
+}
+
+/**
+ * A trigger that reads our position: a move from our buy price or from the high since we
+ * bought, or a date count from the buy. It means nothing until we own the stock.
+ */
+export function readsThePosition(w: When): boolean {
+  return conditionsOf(w).some((c) => fromPosition(c) || measureOf(c).fromTheBuy?.(c) === true);
+}
+
+export const POSITION_ON_A_WATCH =
+  "The move from our buy price, the high since we bought and the days since the buy exist only once we own the stock, so a trigger on them can't go on a stock we only watch: it comes with the buy, or at the fill.";
 
 /** How soon a protective sale fires, lower first: a typed floor nearer the price, a smaller %. Null when it has no number. */
 export function tightness(w: When, isLong: boolean): number | null {

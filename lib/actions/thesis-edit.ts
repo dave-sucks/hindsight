@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { actionProblem, addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
+import { actionProblem, addProblem, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -307,11 +307,6 @@ async function runPrincipalOp(
 
 // ── Add / replace / delete ────────────────────────────────────────────
 
-/** A condition measured from the open position (our entry, the high since we
- *  bought) is false forever with no position — a silent missed trigger — so
- *  the add path refuses it on an un-held thesis. */
-const offPosition = (p: When) => conditionsOf(p).some((c) => fromPosition(c));
-
 export interface TriggerAddInput {
   action: TriggerAction;
   predicate: When;
@@ -343,15 +338,7 @@ export async function applyTriggerAdd(
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
-    (thesis) => {
-      if (offPosition(input.predicate) && !thesis.position) {
-        throw new ThesisEditError(
-          "INVALID",
-          "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be added to a held (HOLDING) thesis.",
-        );
-      }
-      return { op: "add", trigger: built };
-    },
+    () => ({ op: "add", trigger: built }),
     (thesis) => ({
       summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),
@@ -378,15 +365,7 @@ export async function applyTriggerReplace(
   const outcome = await runPrincipalOp(
     thesisId,
     ctx,
-    (thesis) => {
-      if (offPosition(input.predicate) && !thesis.position) {
-        throw new ThesisEditError(
-          "INVALID",
-          "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
-        );
-      }
-      return { op: "replace", id: triggerId, trigger: built };
-    },
+    () => ({ op: "replace", id: triggerId, trigger: built }),
     (thesis) => ({
       summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),

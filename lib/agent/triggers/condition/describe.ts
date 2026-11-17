@@ -16,7 +16,7 @@ import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { shapeOf } from "./valid";
-import { levelOf } from "./rules";
+import { isWindowIn, levelOf } from "./rules";
 import { variableDef } from "./variables";
 import { money } from "./words";
 
@@ -112,7 +112,8 @@ export function conditionText(c: Condition): string {
 }
 
 export function whenText(w: When): string {
-  return conditionsOf(w).map(conditionText).join(" and ");
+  // A window inside an "and" is the days the others may hold in: "within 70 days before the event date".
+  return conditionsOf(w).map((c) => `${isWindowIn(w, c) ? "within " : ""}${conditionText(c)}`).join(" and ");
 }
 
 /** The whole trigger: "Sell if below $868". A clock has no "if": "Review every 30 days". */

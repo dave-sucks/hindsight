@@ -38,4 +38,7 @@ export const fromDate: MeasureDef = {
     c.value != null && (c.is === "after" || c.is === "before") && (c.variable === "event" || (c.variable === "buy" && c.is === "after")),
   shape: "A date count runs after the buy, or before or after the event date.",
   check: (c) => (c.variable === "buy" && c.is === "before" ? "The buy is already in the past. Pick After." : null),
+  // True from N days before the event until it: inside an "and", the days a buy may fire in.
+  window: (c) => c.variable === "event" && c.is === "before",
+  fromTheBuy: (c) => c.variable === "buy",
 };

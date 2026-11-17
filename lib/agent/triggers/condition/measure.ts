@@ -86,8 +86,16 @@ export interface MeasureDef {
   settings?: readonly SettingDef[];
   /** The actions it can take. All five unless listed. */
   actions?: readonly TriggerAction[];
-  /** A clock, not a condition: "Review every 30 days." It stands alone. */
+  /** A clock, not a condition: "Review every 30 days." It stands alone, unless it is a window. */
   timed?: boolean;
+  /**
+   * A schedule that is a window (a date count before the event): inside an "and" it bounds the
+   * others, so it may join one, says "within", reads only the stock's own date and leaves the
+   * actions to the others ("Buy if … and within 70 days before the event date").
+   */
+  window?: (c: Condition) => boolean;
+  /** Counts from the buy: like a move from our buy price, it reads our position and means nothing on a watch. */
+  fromTheBuy?: (c: Condition) => boolean;
   /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
   says?: (c: Condition, words: string) => string;
   /**

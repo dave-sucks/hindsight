@@ -87,12 +87,16 @@ const placeTradeSchema = z.object({
     company_name: z.string().optional().describe("Company name from get_stock_data"),
     exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
     direction: z.enum(["LONG", "SHORT"]),
-    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the buy trigger's level (a price we have not reached), here today's price is the right answer."),
+    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the buy trigger's price (one we may not have reached), here today's price is the right answer."),
     // Every model call names the sale (schemaFor); an Auto-buy, which no model writes, comes without one.
     sell_if_below: z.number().optional(),
     sell_reason: z.string().optional(),
     triggers_with_buy: z
-      .array(triggerInputSchema)
+      .array(
+        triggerInputSchema.extend({
+          trimPct: z.number().min(1).max(99).optional().describe("A trim's size, as the playbook lists it."),
+        }),
+      )
       .optional()
       .describe("The stock's playbook's other triggers that come with the buy (in its playbook_checks), each price from the chart and each with its reason: its Trim (\"Trim 50% if above $X\") and any review it lists. The owner sees each on the proposal, and they go on the stock when the buy fills. Leave it out when the stock has no playbook."),
     // Principal chat only. Inside a run these two fields are not in the
@@ -362,7 +366,7 @@ export const placeTrade = defineTool({
         }
         const long = args.direction === "LONG";
         const crossed = (price: number) => (long ? stop >= price : stop <= price);
-        const at = crossed(args.entry_price) ? { what: "entry", price: args.entry_price } : livePrice != null && crossed(livePrice) ? { what: "the current price", price: livePrice } : null;
+        const at = crossed(args.entry_price) ? { what: "the buy price", price: args.entry_price } : livePrice != null && crossed(livePrice) ? { what: "the current price", price: livePrice } : null;
         if (at) {
           return blocked(ticker, args.direction, "the sale is past the price", `Trade blocked: the sale $${stop.toFixed(2)} is at or ${long ? "above" : "below"} ${at.what} $${at.price.toFixed(2)} — for a ${args.direction} sell_if_below must be ${long ? "BELOW" : "ABOVE"} it. Name a sale under structure on the other side of the price, then call place_trade again.`);
         }
@@ -411,7 +415,7 @@ export const placeTrade = defineTool({
       if (setup && stop != null) {
         const atr = (await loadIndicatorSnapshots([ticker]).catch(() => null))?.get(ticker)?.atr14 ?? null;
         const bad = saleRuleProblem({ setup, horizon: sizingThesis?.horizon ?? null, entry: args.entry_price, stop, atr: atr != null ? Math.round(atr * 100) / 100 : null });
-        if (bad) return blocked(ticker, args.direction, "the sale breaks its setup's rule", `Trade blocked: ${bad}. Then call place_trade again.`);
+        if (bad) return blocked(ticker, args.direction, "the sale breaks its playbook's rule", `Trade blocked: ${bad}. Then call place_trade again.`);
       }
       // Sized off the sale this call names; stop when buying on: off the wider of it and the setting's line.
       const riskStop = stop != null ? sizingStop({ entry: args.entry_price, stop, direction: args.direction, autoStop }) : null;

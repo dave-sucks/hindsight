@@ -48,7 +48,7 @@ import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quot
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
 import { conditionHolds, evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
-import { conditionsOf, firedSinceFalseClose, fromPosition, readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
+import { conditionsOf, firedSinceFalseClose, readsSource, readsThePosition, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -138,6 +138,12 @@ function isPriceSidePredicate(p: When): boolean {
 function readsTheDaysMove(p: When): boolean {
   const w = shapeOf(p);
   return w != null && conditionsOf(w).some((c) => c.watch === "move" && c.variable === "prev_close");
+}
+
+/** A trigger read off our open position: on the close it needs the position in hand. */
+function readsPosition(p: When): boolean {
+  const w = shapeOf(p);
+  return w != null && readsThePosition(w);
 }
 
 function shapeForLoading(p: When) {
@@ -344,12 +350,6 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
     };
   });
   return { fires, updatedTriggers };
-}
-
-/** Measured from our position (our entry, the high since we bought, days after the buy): it reads the open position. */
-function readsThePosition(p: When): boolean {
-  const w = shapeOf(p);
-  return w != null && conditionsOf(w).some((c) => fromPosition(c) || (c.watch === "from_date" && c.variable === "buy"));
 }
 
 /**
@@ -796,7 +796,7 @@ export const triggerEvaluator = inngest.createFunction(
           (!needsStreet(t.predicate) || street.has(thesis.ticker)) &&
           (!(needsEarningsData(t.predicate) || needsUpcomingEarnings(t.predicate)) || !earnings.error) &&
           (!needsFilings(t.predicate) || !filingsRead.error) &&
-          (!readsThePosition(t.predicate) || posInfo != null) &&
+          (!readsPosition(t.predicate) || posInfo != null) &&
           // The day's move needs yesterday's close: with no quote and no snapshot close it reads 0, not false.
           (!readsTheDaysMove(t.predicate) || prevForClose != null);
 

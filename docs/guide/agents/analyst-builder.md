@@ -41,7 +41,7 @@ When you start one. The builder runs at **New analyst**; the editor runs from **
 ## What it reads
 
 - **Your answers.** `ask_question` asks one question at a time as a card of two to five choices, so you pick rather than type.
-- **The playbook.** `read_knowledge_library` gives the strategy archetypes: each one's strategy and what it comes with, its [setups](../reference/setups.md), hold, confidence, slots and any market-cap band its edge needs.
+- **The playbook.** `read_knowledge_library` gives the strategy archetypes: each one's strategy and what it comes with, its [playbooks](../reference/setups.md), hold, confidence, slots and any market-cap band its edge needs.
 - **Today's market.** `get_market_context` first, then real candidates from `get_market_movers` or `get_earnings_calendar`, checked with `get_stock_data` for sector and size. `get_catalyst_calendar`, `get_sec_filings` and `web_search` fill in the rest.
 - **Your other analysts.** `list_analysts`, so the builder can say how the new one differs from each analyst you already have.
 - **The analyst itself,** for the editor: its whole current configuration comes with every request.

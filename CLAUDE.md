@@ -46,7 +46,11 @@ waits. A filing fires once per filing, a heads-up once per report, and a buy or
 add never fires on a stale quote — see `shouldFire` in
 `lib/agent/triggers/evaluate.ts`. A sale that fired stays on the morning list
 (PROTECTIVE_SALE) until a close finds it false. "Either one" is two triggers:
-two conditions together are "and" only, one level deep. The three
+two conditions together are "and" only, one level deep. Inside an "and", a date
+count before the event is a window (`window` on its catalog entry): the
+pre-catalyst buys fire only within 70 days before the event. A trigger on our
+position (a move from our buy price or the high since we bought, days since the
+buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).

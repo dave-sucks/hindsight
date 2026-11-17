@@ -11,7 +11,7 @@ On the live account nothing reaches the broker until you say yes, and whatever y
 No agent places a trade by itself. A trade becomes a proposal the moment an agent decides on it:
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
-- **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its upside level.
+- **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy price reached, a winner near its upside trigger.
 - **An Auto trigger** (Auto-sell, Auto-trim, Auto-buy, Auto-add), with no agent deciding. The analyst writes it up right after.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 

@@ -28,6 +28,13 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
   an account or analyst rule. The other is refused with the fix, never
   converted (`actionProblem` in `condition/actions.ts`); a ladder reads a sale
   only on a holding and a Stop watching line only on a watch (`resolveLadder`).
+  A trigger on our position (a move from our buy price or the high since we
+  bought, or a date count from the buy: `readsThePosition` in
+  `condition/rules.ts`) is refused at the save on a stock we don't hold, with
+  `POSITION_ON_A_WATCH`: it comes with the buy, or at the fill. A stored one is
+  left as it is. An analyst or account rule on our position doesn't apply to a
+  stock we don't own: `resolveLadder` leaves it off a watch's list, as it does
+  a sale, an add and a trim.
   An action means the same thing whatever the stock's state.
 - **rationale** — prose the agent reads when it acts.
 - **lastFiredAt / falseAtCloseAt** — its fire state, written by the trigger check: when it last fired, and when a market close last found it false after that (see §6). There are no waits.
@@ -73,7 +80,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
-| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
+| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it (a typed price or an average: "Stop watching if below the 200-day average · only on the close") — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
 | `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
@@ -84,7 +91,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are several triggers, one each. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); whatever its fired state, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. | `value`; `settings.days` |
 | `repeat` | The review clock: N days since the last actual review (`lastReviewedAt`), repeating: it fires when due, and the review it asks for starts the next period (that day's close finds it false). | `value` (days) |
-| `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. After the buy, or after the event, it stays true, so it fires once; before the event it is a window, and a close past the event makes it ready for the next one. | `value` (days), `variable` buy / event |
+| `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. After the buy, or after the event, it stays true, so it fires once; before the event it is a window, and a close past the event makes it ready for the next one. Inside an "and", a count before the event is a window on the other condition (`window` on the entry): it may join one, reads "within N days before the event date", and lets the trigger buy ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). Alone it can't buy. | `value` (days), `variable` buy / event |
 
 **A trail is one number.** Its line is the give-back % off the tracked high,
 computed in ONE function, `lib/agent/triggers/trail.ts` → `trailFireLevel`,
@@ -508,14 +515,20 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   has triggers and nothing else). `record_thesis` takes a whole `triggers`
   list — a mint is a new list by definition — and adds nothing to a watch (a
   held mint gets its horizon's review clock).
-- **A buy fill** removes the buy and Stop watching lines, writes "Sell if
-  below $X" at the order's approved sell price (`Position.stopLoss`: the
-  analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as the
-  line's note; a price you set in Edit & Approve or on the Trade ticket is
-  yours), and adds the held review clock and the setup's exits when their
-  buckets are missing (`armHeldLadderOnFill`). A watch's line never becomes
-  the sale. Never a rewrite: the analyst's other lines and reviews survive
-  the fill, and nothing is stamped from the fill price. An Auto-buy names no
+- **A buy fill** removes every buy, every Stop watching trigger and every
+  trigger marked `playbook: "WATCH"` (an edited one keeps its mark), writes
+  "Sell if below $X" at the order's approved sell price (`Position.stopLoss`:
+  the analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as
+  the trigger's note; a price you set in Edit & Approve or on the Trade
+  ticket is yours), the triggers that came with the buy (`Position.buyTriggers`,
+  with a trim's size and a wait as the playbook lists them), and the
+  playbook's fill triggers where the stock has none of that kind
+  (`armHeldLadderOnFill`). A trigger that comes with the buy where you wrote
+  one of the same kind is not written: yours stays, and the fill's Activity
+  line names the one not written; one the save refuses gets its line too. A
+  watch's trigger never becomes the sale. Never a rewrite: the analyst's
+  other triggers and reviews survive the fill, and nothing is stamped from
+  the fill price. An Auto-buy names no
   sale, so it writes none: the holding sells by its analyst's and the
   account's rules. The one automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
@@ -533,6 +546,12 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   wider of the stock's floor and the setting's line (`sizingStop`,
   `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
   the risk per trade. An add to a holding never moves the lines.
+- **A sale back to watch** (a profit-take, or a sale whose agent said the
+  belief survived): the triggers that need a position come off (a sale, a
+  trim, an add, and any measured from the buy: our entry, the high since we
+  bought, days after the buy); the rest stay as written, yours and the
+  holding's review clock included, and nothing is written; the CLOSED
+  Activity row names each one that came off (`closeThesisForPosition`).
 - **Stop watching:** a STOP_WATCHING line on a stock we only watch, fired on
   its saved timing (§7), retires the thesis as dropped with one Activity line
   and withdraws a buy waiting for approval; its triggers are left as they

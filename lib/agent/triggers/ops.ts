@@ -51,6 +51,10 @@ import {
   isLevel,
   levelOf,
   measureOf,
+  settingDefs,
+  waitsForClose,
+  POSITION_ON_A_WATCH,
+  readsThePosition,
   reviewClockDays,
   sentenceOf,
   shapeOf,
@@ -226,6 +230,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   // Only the mode an op sets is held to the owner's rule: an agent may move the level of an owner's Auto trigger.
   const setsMode = (action: string, mode: FireMode | undefined) => fireModeProblem(action, mode, { agent: actor === "AGENT" && !input.ownersWord });
   const held = status === "HOLDING";
+  // A watch carries watch triggers: one that reads our position waits for the buy.
+  const onAWatch = (p: unknown) => {
+    const w = shapeOf(p);
+    return !held && w != null && readsThePosition(w) ? POSITION_ON_A_WATCH : null;
+  };
   const stamp = (t: Trigger): Trigger["source"] =>
     actor === "AGENT" ? "AGENT" : actor === "PRINCIPAL" ? "PRINCIPAL" : (t.source ?? "DEFAULT");
   let stored = input.stored;
@@ -346,9 +355,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = group ? { ...group, conditions: group.conditions.map((c, i) => (i === op.part ? next : c)) } : next;
     }
     // ...unless the caller says when it fires: the edit's own `close`, or
-    // the fill level's basis. It applies to a price level only.
+    // the fill level's basis. It applies to a typed price or an average only.
     const close = op.close ?? meta.close;
-    const closeNotApplied = close !== undefined && (isGroup(predicate) || !isLevel(predicate));
+    // The close setting goes where the save takes it: a typed price or an average (the measure's own rule).
+    const closeFits = (c: Condition) => settingDefs(c).some((d) => d.key === "close") && measureOf(c).fits({ ...c, settings: { ...c.settings, close: true } });
+    const closeNotApplied = close !== undefined && (isGroup(predicate) || !closeFits(predicate as Condition));
     if (close !== undefined && !closeNotApplied) {
       const { settings, ...plain } = predicate as Condition;
       const { close: _old, ...rest } = settings ?? {};
@@ -357,6 +368,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
+    const watchProblem = onAWatch(predicate);
+    if (watchProblem) return refuse("edit", op.id, `Edit ${name}`, watchProblem);
     let rationale = op.rationale?.trim() || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
     const level = levelOf(predicate);
@@ -392,7 +405,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       parts.push(line);
     }
-    const onClose = (p: When) => levelOf(p)?.close === true;
+    const onClose = (p: When) => waitsForClose(p);
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
@@ -403,7 +416,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     // Said, not dropped: "on the close" means nothing to a trigger that isn't
     // a price level. Alone, it comes back by id with the reason (a no-op the
     // save would drop unseen); with other changes, it rides on their line.
-    const notOnClose = `${name}: on the close is for a price level, so its timing is as it was`;
+    const notOnClose = `${name}: on the close is for a typed price or an average, so its timing is as it was`;
     if (parts.length === 0) {
       if (closeNotApplied) return refuse("edit", op.id, `${name}: timing as it was`, `${notOnClose}.`);
       return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", { unchanged: true });
@@ -427,7 +440,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   };
 
   const doAdd = (trigger: Trigger) => {
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("add", trigger.id || mintId(), `Added: ${describeTrigger(trigger)}`, wrongAction);
     const existing = collision(stored, trigger, direction);
     if (existing) {
@@ -480,7 +493,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target)} → ${describeTrigger(trigger)}`;
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("edit", id, text, wrongAction);
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("edit", id, text, modeProblem);
@@ -529,7 +542,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       void _f;
       void _ff;
       void _fr;
-      replaced = { ...fresh, id: mintId(), source: stamp(trigger) };
+      // A playbook's trigger edited into another kind is still the playbook's: the fill takes it off with the rest.
+      replaced = { ...fresh, id: mintId(), source: stamp(trigger), ...(target.playbook ? { playbook: target.playbook } : {}) };
     }
     const next = stored.map((t) => (t.id === id ? replaced : t));
     const blocked = ratchetReason(next);

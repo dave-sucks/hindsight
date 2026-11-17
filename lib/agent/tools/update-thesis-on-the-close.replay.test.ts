@@ -87,7 +87,7 @@ describe("DOCU 09-28: the trigger run's call, and the buy moved to the close", (
     const r = await save({ edit_triggers: [{ id: REVIEW, close: true }] });
     landed(r);
     expect(stored(r, REVIEW).predicate).toEqual({ watch: "surprise", is: "beat", value: 0 });
-    expect(opsOf(r)).toEqual([expect.objectContaining({ id: REVIEW, reason: expect.stringContaining("on the close is for a price level") })]);
+    expect(opsOf(r)).toEqual([expect.objectContaining({ id: REVIEW, reason: expect.stringContaining("on the close is for a typed price or an average") })]);
     expect((r.db.store.thesisUpdate as Row[]).filter((u) => u.type !== "TRIGGER_FIRED")).toEqual([expect.objectContaining({ rationale: fixture.call.rationale })]);
   });
 });
