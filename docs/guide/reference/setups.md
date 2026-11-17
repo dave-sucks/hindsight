@@ -152,7 +152,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Triggers on a watch:**
 
-- Buy if above {price} · only on the close. Today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised and reaction volume 2×+; not already 10% past the gap, never a beat the stock fell on.
+- Buy if above {gapDayMid} · only on the close. The gap held: a close above the gap day's middle.
 - Review every 7 days. The first one after day 3 re-writes the stock on the pullback playbook or lets it go.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
 
@@ -378,9 +378,9 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 - Buy if above {pivot} · only on the close and at least 1.5× normal volume. The base's pivot, on volume.
 - Buy if within 2% of the 50-day average. Only while the 50-day is rising.
-- Buy if above the 50-day average. Back above the 50-day, only while it is rising.
+- Buy if above the 50-day average. The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.
 - Review every 30 days. The compounder's own clock.
-- Stop watching if below {low52} · only on the close. The 52-week low.
+- Stop watching if below the 200-day average · only on the close. The uptrend broke; not an accumulation candidate until it's back.
 
 **Triggers with the buy:**
 

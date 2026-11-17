@@ -22,9 +22,9 @@ const LETTERS: Record<string, Record<string, string>> = {
   PRE_CATALYST: { "{pivot}": "$P", "{pivotChase}": "$C", "{high20}": "$H", "{swingLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H" },
   BASE_BREAKOUT: { "{pivot}": "$P", "{pivotChase}": "$C", "{baseLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H", "{riskPct}": "N%" },
   MA_PULLBACK: { "{sellPrice}": "$S", "{priorHigh}": "$H" },
-  PEAD: { "{price}": "$X", "{gapDayLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H" },
+  PEAD: { "{gapDayMid}": "$M", "{gapDayLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H" },
   EPISODIC_PIVOT: { "{gapDayHigh}": "$H", "{gapDayMid}": "$M", "{gapDayLow}": "$L", "{sellPrice}": "$L" },
-  COMPOUNDER_ACCUMULATION: { "{pivot}": "$P", "{low52}": "$L", "{sellPrice}": "$S" },
+  COMPOUNDER_ACCUMULATION: { "{pivot}": "$P", "{sellPrice}": "$S" },
 };
 
 /** The spec's English and the app's sentence, said one way: its notes and commas off, sessions as the calendar days stored. */

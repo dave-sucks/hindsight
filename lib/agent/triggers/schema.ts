@@ -274,7 +274,7 @@ export const editTriggerOpSchema = z.looseObject({
   action: triggerActionSchema.optional(),
   fire_mode: z.enum(FIRE_MODES).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
-  close: z.boolean().optional().describe("A price level: true fires only on the 16:20 close pass; false = intraday."),
+  close: z.boolean().optional().describe("A typed price or an average: true fires only on the 16:20 close pass; false = intraday."),
 });
 
 /**

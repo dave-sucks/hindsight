@@ -158,7 +158,7 @@ Answer, in order:
 
 What you can do:
 - Buy, only when every check above holds: place_trade (it sizes the buy) with the triggers that come with the buy in the stock's playbook (\`playbook_checks\`), each price from the chart and each with its reason: its "Sell if below" as \`sell_if_below\` and \`sell_reason\`, the rest in \`triggers_with_buy\`. No playbook: only the sell price, under structure on the chart. Then one update_thesis. The stock's "Stop watching if below" ends the watch and is not the sell price.
-- Re-price: edit_triggers on the buy's id, at a price from the chart's structure.
+- Re-price: edit_triggers on the buy's id, at a price from the chart's structure. A pullback buy that touched its average without the reversal is re-priced to a close above today's high, which is the reversal.
 - Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
 
 Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again only after a close finds it false: re-price it or take it off when today's no would stay no.
