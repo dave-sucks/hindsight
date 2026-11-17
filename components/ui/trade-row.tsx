@@ -97,7 +97,7 @@ export function TradeRowShell({
         </div>
         {(secondary !== undefined || trailingBottom !== undefined) && (
           <div className="flex items-center justify-between">
-            <span className="text-sm font-light text-muted-foreground tabular-nums truncate">
+            <span className="text-xs font-light text-muted-foreground tabular-nums truncate">
               {secondary}
             </span>
             {trailingBottom !== undefined && (
@@ -233,7 +233,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 }
 
 // ── GainPair — the number every row ends with ────────────────────────────────
-// The arrow, the dollars, the percent: one size, one light weight, coloured,
+// The arrow, the dollars, the percent: the row's one small size, one light weight, coloured,
 // no badge (the owner, 2026-11-17), whether it's a held
 // position's lifetime P&L or a watched name's move today. ONE component so a
 // trade row and a watchlist row can never drift into showing the gain
@@ -244,7 +244,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 
 export function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
   return (
-    <PriceChange dollarChange={dollar} percentChange={pct} size="sm" arrowFirst className="font-light" />
+    <PriceChange dollarChange={dollar} percentChange={pct} size="xs" arrowFirst className="font-light" />
   );
 }
 
@@ -407,7 +407,7 @@ export function TradeRow({
           {isAwaitingApproval && (
             <span
               className={cn(
-                "text-sm font-light text-foreground",
+                "text-xs font-light text-foreground",
                 // Approved and in flight — the same shimmer the agent's
                 // in-progress rows use, in the verb's slot. It's the whole
                 // signal that the trade is on its way rather than lost.
@@ -417,7 +417,7 @@ export function TradeRow({
               {isExecuting ? EXECUTING_LABEL : PROPOSAL_VERB[pendingProposal.intent]}
             </span>
           )}
-          <span className="text-sm font-medium">{ticker}</span>
+          <span className="text-xs font-medium">{ticker}</span>
           <StatusDot
             // Pending proposal — amber dot overrides whatever the underlying
             // status would normally show. Same amber the Coverage Table uses.
@@ -437,7 +437,7 @@ export function TradeRow({
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light cursor-default">
+              <span className="inline-flex items-center gap-1 text-xs tabular-nums font-light cursor-default">
                 ${currentPrice.toFixed(2)}
               </span>
             }
@@ -548,9 +548,9 @@ export function WatchlistRow({
       onClick={thesisId ? () => setSheetOpen(true) : undefined}
       className={className}
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
-      primary={<span className="text-sm font-medium">{ticker}</span>}
+      primary={<span className="text-xs font-medium">{ticker}</span>}
       trailingTop={
-        <span className="inline-flex items-center gap-1 text-sm tabular-nums font-light">
+        <span className="inline-flex items-center gap-1 text-xs tabular-nums font-light">
           {currentPrice != null ? `$${currentPrice.toFixed(2)}` : "—"}
         </span>
       }
@@ -595,7 +595,7 @@ export function AddStockRow({
           <Plus className="h-4 w-4" />
         </div>
       }
-      primary={<span className="text-sm font-medium text-muted-foreground">{label}</span>}
+      primary={<span className="text-xs font-medium text-muted-foreground">{label}</span>}
     />
   );
 }
