@@ -11,10 +11,9 @@
 // the signal router, 2026-09-15.)
 //
 // A match emits `app/thesis.trigger.fired`, unless its fire mode leaves it
-// for the next morning run (triggers/fire-mode.ts). The `lastFiredAt`
-// cooldown stamp prevents same-trigger re-fires within cooldownDays. ENTER
-// and REVIEW rungs additionally fire only on the CROSSING of their level
-// (price past it now, not at the prior close) — see shouldFire, DAV-229.
+// for the next morning run (triggers/fire-mode.ts). A trigger fires when its
+// condition holds; the `lastFiredAt` stamp and the wait saved on it
+// (`cooldownDays`) are the only thing that stops a repeat (shouldFire).
 //
 // Chart kinds (DAV-247): vs-average, near-average, volume, new-high,
 // from-52-week-high, strength-vs-S&P, gap, RSI and the 5D/20D move read the
@@ -588,9 +587,7 @@ export const triggerEvaluator = inngest.createFunction(
         // (live-quote never invents one); only then 0, because we genuinely
         // can't tell.
         const changePct = q.dp ?? 0;
-        // Prior close: an ENTER or REVIEW fires on the crossing of its level
-        // (DAV-229), and "crossed since the last close" is the cheapest
-        // honest definition the cron can afford.
+        // Prior close: a gap reads it.
         const prevClose = q.pc ?? undefined;
         // Today's regular-session open — gap reads it. A quote from an
         // earlier session carries that session's open, which is not today's.
@@ -689,7 +686,7 @@ export const triggerEvaluator = inngest.createFunction(
         // bar); with no bar for the name there is no close to read, so its
         // close rungs wait for tomorrow rather than fire on a guess.
         if (session === "CLOSE" && !todayBar) continue;
-        // Prior close for the crossing: the quote's, else yesterday's close
+        // Prior close for the day's move: the quote's, else yesterday's close
         // off the snapshot — so a missed quote at 16:20 doesn't skip a day's
         // close-basis rungs when the closing bar itself is in hand.
         const snapPrev = indicators.get(thesis.ticker)?.closes.at(-1);

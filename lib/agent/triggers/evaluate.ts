@@ -1,7 +1,9 @@
 /**
  * Does a trigger fire: the evaluation context, and `shouldFire`, the one fire
- * decision (the condition, the crossing for a buy or a review, a stale quote,
- * the cooldown, a report already fired for, a re-arm).
+ * decision. A trigger fires when its condition holds and it is not inside the
+ * wait saved on it (`cooldownDays`, counted from `lastFiredAt`). A buy or add
+ * never fires on a stale quote; a heads-up whose report it never fired for is
+ * not waiting.
  *
  * Pure: no DB, no fetches, no clock. Everything comes through
  * `EvaluationContext`, and a condition missing what it reads is false rather
@@ -10,7 +12,6 @@
  * chart measures read the daily indicator snapshot next to the live quote.
  */
 
-import { crossingBaseline, firesOnTheCrossing } from "./written-price";
 import type { Trigger } from "./types";
 import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
@@ -23,14 +24,8 @@ import type { When } from "@/lib/agent/triggers/condition";
 
 export interface EvaluationContext {
   /**
-   * Latest quote — present on cron and daily-inline paths.
-   *
-   * `prevClose` is the prior session's close (Finnhub `pc`). It is what
-   * lets an ENTER or REVIEW trigger fire on the CROSSING of its level rather
-   * than every tick the price sits past it (DAV-229). The 5-minute cron always
-   * has it; the read-side snapshots (daily run, resolver, needs-action)
-   * don't carry it and so keep level semantics — they answer "is the
-   * condition true now", which is the right question for a snapshot.
+   * Latest quote — present on cron and daily-inline paths. `prevClose` is the
+   * prior session's close, read by a gap.
    */
   latestQuote?: {
     price: number;
@@ -168,119 +163,52 @@ export function evaluateTrigger(predicate: When, ctx: EvaluationContext): boolea
 }
 
 /**
- * What `shouldFire` asks of a predicate: does it hold now, does it compare the
- * price to a level (so a buy or a review on it fires on the crossing), and does it read
+ * What `shouldFire` asks of a predicate: does it hold now, and does it read
  * the next scheduled report (so a heads-up fires once per report). Answered
  * off the measure catalog (./condition/read.ts).
  */
 export interface Checker {
   holds(p: When, ctx: EvaluationContext): boolean;
-  readsPrice(p: When): boolean;
   readsUpcomingReport(p: When): boolean;
 }
 
 /**
- * Evaluate a full Trigger including the cooldown gate. Returns a reason
- * code so callers (and tests) can distinguish "predicate matched but
- * cooldown blocks fire" from "predicate didn't match."
- *
- * Cooldown semantics:
- *
- *   1. `cooldownDays` absent — fall back to the predicate-kind default
- *      from `defaultCooldownDaysForPredicate`. Defense in depth for legacy
- *      rows from before the write-path default-filler shipped, plus
- *      anything that slips through.
- *
- *   2. `cooldownDays === 0` — a wait of zero is not a wait. Treat it as
- *      "absent", fall back to the per-kind default, then apply the floor
- *      (`flooredCooldownDays`): a trade asks once a day, never more. The
- *      read-path mirror of the write-path fix in `applyTriggerDefaults`,
- *      because rows already on disk keep their shape. Background: the
- *      2026-06-02 NVDA runaway (a review at 0), and CEG on 2026-11-02 (a
- *      sale at 0 woke a run at 9:30, 9:35 and 9:40 while the analyst held:
- *      "a waiting sale drops the repeats" guards nothing when the run
- *      holds, which it may since #889).
+ * The one fire rule: a trigger fires when its condition holds and it is not
+ * inside the wait saved on it (`cooldownDays`, counted from `lastFiredAt`; a
+ * row saved before the wait was written reads its measure's default). A
+ * reason code says which (tests and the evaluator's log read it).
  */
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
   checker: Checker = SHAPE_CHECKER,
-): { fires: boolean; reason: "match" | "no-match" | "no-crossing" | "stale-quote" | "cooldown" } {
+): { fires: boolean; reason: "match" | "no-match" | "stale-quote" | "cooldown" } {
   // A filing trigger reads its own fired-filing memory; nothing else does.
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
   if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
   const matched = checker.holds(trigger.predicate, ctx);
   if (!matched) return { fires: false, reason: "no-match" };
 
-  // Two fire semantics, keyed off the action (DAV-229, 2026-09-02):
-  //
-  //   A sale, trim or add is a STANDING ORDER (principal ruling
-  //   2026-08-16): it fires every day its condition holds; a declined
-  //   proposal means "did nothing today", so it asks again tomorrow.
-  //   Cooldown is the only rate limit. Never latch a protective level —
-  //   that turns a declined sell into a silent one.
-  //
-  //   ENTER and REVIEW fire on the CROSSING: true now, false at the prior
-  //   close. "Buy above $35" means buy when the price gets there — under the
-  //   standing-order reading a level already past (TOST $35.15 against a
-  //   $35.16 tape; PLTR, 16 fires in 30 days) was a daily proposal the
-  //   analyst then declined. A review is the same question: MU's "review if
-  //   below $878" fired on 14 of 21 sessions for 4 crossings. Evaluating the
-  //   same predicate at the prior close gives composites and vs-average the
-  //   crossing for free; ones that don't read the price (a clock, a report,
-  //   a filing) can't cross and keep firing on match. No prevClose ⇒ level
-  //   semantics (the read-side snapshots).
-  //
-  //   One written after that close is measured from the price it was
-  //   written at instead, until the next close — otherwise a level set on a
-  //   down day is dead on arrival (./written-price).
   // A buy never fires on a quote that isn't today's price: at 09:30 Finnhub
-  // still reported ETN's Friday close as "now" and Thursday's as the prior
-  // close, so Friday's crossing counted twice (2026-09-14, DAV-261).
-  // An ADD is a buy too.
+  // still reported ETN's Friday close as "now" (2026-09-14, DAV-261). An ADD
+  // is a buy too.
   if ((trigger.action === "ENTER" || trigger.action === "ADD") && ctx.latestQuote?.stale) {
     return { fires: false, reason: "stale-quote" };
   }
 
-  const baseline =
-    firesOnTheCrossing(trigger.action) && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
-      ? crossingBaseline(trigger, ctx.latestQuote.prevClose, ctx.now)
-      : null;
-  if (baseline != null && ctx.latestQuote && checker.readsPrice(trigger.predicate)) {
-    const atBaseline = checker.holds(trigger.predicate, {
-      ...ctx,
-      latestQuote: { ...ctx.latestQuote, price: baseline },
-    });
-    if (atBaseline) return { fires: false, reason: "no-crossing" };
-  }
-
-  // Read-path defense — see (2) in the docstring above. The written value,
-  // the per-predicate default behind it, and the weekly floor a state
-  // predicate can't go under, all in one place (./defaults).
-  const effectiveCooldown = effectiveCooldownDays(trigger);
-
-  // A heads-up is once per REPORT, and the cooldown is how that is enforced
+  // A heads-up is once per REPORT, and the wait is how that is enforced
   // inside one window — so a report this trigger has never fired for is not
-  // in cooldown, whatever the clock says. Without this, one fire against a
-  // wrong date eats the real heads-up: AIR fired for a phantom 2026-09-21
-  // and the 7-day cooldown ran past the true 09-29 window (DAV-293).
+  // waiting, whatever the clock says. Without this, one fire against a wrong
+  // date eats the real heads-up: AIR fired for a phantom 2026-09-21 and the
+  // 7-day wait ran past the true 09-29 window (DAV-293).
   const reportDate = checker.readsUpcomingReport(trigger.predicate)
     ? (ctx.upcomingEarnings?.reportDate ?? null)
     : null;
   const unfiredReport = reportDate != null && !(trigger.firedReports ?? []).includes(reportDate);
 
-  // A buy a trigger run passed on because the price had slipped back under
-  // its level is left armed (./rearm, DAV-343): a re-arm after the last fire
-  // lifts the cooldown, and the next fire stamps a new one.
-  const rearmed =
-    trigger.rearmedAt != null &&
-    trigger.lastFiredAt != null &&
-    new Date(trigger.rearmedAt).getTime() >= new Date(trigger.lastFiredAt).getTime();
-
-  if (effectiveCooldown > 0 && trigger.lastFiredAt != null && !unfiredReport && !rearmed) {
-    const lastFired = new Date(trigger.lastFiredAt).getTime();
-    const cooldownMs = effectiveCooldown * 86_400_000;
-    if (ctx.now.getTime() - lastFired < cooldownMs) {
+  const wait = effectiveCooldownDays(trigger);
+  if (wait > 0 && trigger.lastFiredAt != null && !unfiredReport) {
+    if (ctx.now.getTime() - new Date(trigger.lastFiredAt).getTime() < wait * 86_400_000) {
       return { fires: false, reason: "cooldown" };
     }
   }

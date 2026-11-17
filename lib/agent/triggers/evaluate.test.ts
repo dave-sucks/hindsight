@@ -407,12 +407,6 @@ describe("evaluateTrigger", () => {
       expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "CLOSE" }))).toBe(true);
       expect(evaluateTrigger(breakout, at(165, { today: { volume: 900_000 }, session: "CLOSE" }))).toBe(false);
     });
-    it("the D5 pullback: near the 50-day OR near the 20-day", () => {
-      const pullback: When = { match: "any", conditions: [{ watch: "move", is: "near", value: 2, variable: "sma20" }, { watch: "move", is: "near", value: 2, variable: "sma50" }] };
-      expect(evaluateTrigger(pullback, at(148))).toBe(true);
-      expect(evaluateTrigger(pullback, at(135))).toBe(true);
-      expect(evaluateTrigger(pullback, at(142))).toBe(false);
-    });
   });
 
   // ── Earnings off the calendar (the source that actually works) ───────
@@ -655,26 +649,6 @@ describe("evaluateTrigger", () => {
       expect(evaluateTrigger(predicate, ctx)).toBe(false);
     });
   });
-
-  describe("OR", () => {
-    it("fires when any sub-predicate fires", () => {
-      const predicate: When = { match: "any", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 7 }] };
-      const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-
-    it("does not fire when all sub-predicates are false", () => {
-      const predicate: When = { match: "any", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 90 }] };
-      const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-      expect(evaluateTrigger(predicate, ctx)).toBe(false);
-    });
-
-    it("recurses through nested AND/OR", () => {
-      const predicate: When = { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: 200 }, { watch: "repeat", value: 7 }] }, { watch: "price", is: "below", value: 200 }] };
-      const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-      expect(evaluateTrigger(predicate, ctx)).toBe(true);
-    });
-  });
 });
 
 describe("shouldFire", () => {
@@ -744,37 +718,9 @@ describe("shouldFire", () => {
     });
   });
 
-  it("EXIT + cooldownDays=0 + fired a minute ago → COOLDOWN: a sale asks once a day, never more", () => {
-    // Until 2026-11-02 this was an "escape hatch": a sale at 0 re-asked on
-    // every check, and a waiting sale was meant to drop the repeats. A run
-    // may hold instead, and then nothing is waiting (CEG, 9:30 / 9:35 / 9:40).
-    const trigger: Trigger = {
-      ...baseTrigger,
-      action: "EXIT",
-      cooldownDays: 0,
-      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
-    };
-    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: false,
-      reason: "cooldown",
-    });
-  });
-
-  // ── Defense-in-depth — non-EXIT cooldownDays=0 (NVDA runaway shape) ───
-  //
-  // The write-path fix (applyTriggerDefaults) stops new bad
-  // values from landing on disk. The evaluator-layer defense below
-  // catches existing on-disk bad rows: a non-EXIT action with explicit
-  // cooldownDays=0 is treated as "needs default" and falls back to the
-  // per-predicate-kind cooldown instead of bypassing the rate limit.
-  // See lib/agent/triggers/evaluate.ts shouldFire docstring (2).
-
-  it("REVIEW + cooldownDays=0 + recent lastFiredAt → COOLDOWN, not match (NVDA runaway shape)", () => {
-    // This is the exact shape that caused the 2026-06-02 NVDA loop:
-    // REVIEW action with cooldownDays=0, fired seconds ago. Pre-fix this
-    // returned 'match' (no rate limit). Post-fix the evaluator falls back
-    // to the price above per-kind default (1d) and blocks the re-fire.
+  it("a 0 saved on a filing is no wait: a trigger reads the number saved on it, nothing else", () => {
+    // Every write path saves a 0 as its measure's default (applyTriggerDefaults), so only a
+    // filing (one fire per filing, read in its condition) is stored at 0.
     const trigger: Trigger = {
       ...baseTrigger,
       action: "REVIEW",
@@ -782,69 +728,18 @@ describe("shouldFire", () => {
       lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
     };
     const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: false,
-      reason: "cooldown",
-    });
+    expect(shouldFire(trigger, ctx)).toMatchObject({ fires: true, reason: "match" });
   });
-
-  it("ENTER + cooldownDays=0 + recent lastFiredAt → COOLDOWN", () => {
-    const trigger: Trigger = {
-      ...baseTrigger,
-      action: "ENTER",
-      cooldownDays: 0,
-      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
-    };
-    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: false,
-      reason: "cooldown",
-    });
-  });
-
-  it("TRIM + cooldownDays=0 + recent lastFiredAt → COOLDOWN (IREN $76.87 shape)", () => {
-    // IREN had TRIM price above $76.87 with cooldownDays:0 — would have
-    // partial-closed every 5 minutes if price held above target.
-    const trigger: Trigger = {
-      ...baseTrigger,
-      action: "TRIM",
-      cooldownDays: 0,
-      lastFiredAt: new Date(NOW.getTime() - 60_000).toISOString(),
-    };
-    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: false,
-      reason: "cooldown",
-    });
-  });
-
-  it("REVIEW + cooldownDays=0 + lastFiredAt past default → MATCH (default cooldown expired)", () => {
-    // price above default cooldown is 1 day. Fired 2 days ago → expired
-    // → fires. Confirms we're falling back to the default, not blocking
-    // forever.
-    const trigger: Trigger = {
-      ...baseTrigger,
-      action: "REVIEW",
-      cooldownDays: 0,
-      lastFiredAt: new Date(NOW.getTime() - 2 * 86_400_000).toISOString(),
-    };
-    const ctx = makeCtx({ latestQuote: { price: 110, changePct: 0 } });
-    expect(shouldFire(trigger, ctx)).toMatchObject({
-      fires: true,
-      reason: "match",
-    });
-  });
-
 });
 
-// ── Standing-order semantics (principal ruling 2026-08-16) ────────────
+// ── One fire rule (2026-11-17) ─────────────────────────────────────────
 //
-// A trigger fires every day its condition is true. A declined or expired
-// proposal means "did nothing", so it fires again tomorrow. An
-// edge-triggered variant shipped 2026-08-13 and was reverted — these pin
-// the reverted behavior so it can't creep back.
+// A trigger fires when its condition holds and it is not inside the wait
+// saved on it. A buy, a review, a sale: the same rule. The crossing (a buy or
+// a review fired only when false at the prior close) and the buy re-arm are
+// deleted; these pin that they can't creep back.
 
-describe("shouldFire — a buy fires on the crossing, a sell is a standing order (DAV-229)", () => {
+describe("shouldFire — a trigger fires when it is true, then waits the days saved on it", () => {
   const enterRung: Trigger = {
     id: "enter-1",
     predicate: { watch: "price", is: "above", value: 128.47 },
@@ -859,11 +754,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
     rationale: "floor",
     cooldownDays: 1,
   };
-  const at = (
-    price: number,
-    now: Date,
-    prevClose?: number,
-  ): EvaluationContext => ({
+  const at = (price: number, now: Date, prevClose?: number): EvaluationContext => ({
     latestQuote: { price, changePct: 0, prevClose },
     thesis: { createdAt: new Date("2026-01-01") },
     now,
@@ -871,101 +762,37 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   const day1 = new Date("2026-08-12T14:00:00Z");
   const day2 = new Date("2026-08-13T14:00:00Z");
 
-  it("ENTER fires when the price crossed the level since the prior close", () => {
-    expect(shouldFire(enterRung, at(130, day1, 127))).toMatchObject({
-      fires: true,
-      reason: "match",
-    });
+  it("a buy past its level fires, whatever the prior close", () => {
+    expect(shouldFire(enterRung, at(130, day1, 127))).toMatchObject({ fires: true, reason: "match" });
+    // The PLTR / TOST shape: already past the level at yesterday's close. It fires.
+    expect(shouldFire(enterRung, at(171, day1, 170))).toMatchObject({ fires: true, reason: "match" });
   });
 
-  it("a close-basis ENTER crosses on the close pass: above today, not at yesterday's close", () => {
-    const closeRung: Trigger = {
-      ...enterRung,
-      predicate: { watch: "price", is: "above", value: 128.47, settings: { close: true } },
-    };
-    const closePass = (price: number, prevClose: number): EvaluationContext => ({
-      ...at(price, day1, prevClose),
-      session: "CLOSE",
-    });
-    expect(shouldFire(closeRung, closePass(130, 127)).fires).toBe(true);
-    expect(shouldFire(closeRung, closePass(131, 130)).reason).toBe("no-crossing");
-    expect(shouldFire(closeRung, { ...at(130, day1, 127), session: "INTRADAY" }).reason).toBe("no-match");
+  it("a buy fired yesterday that still holds fires again once its day is up", () => {
+    const fired: Trigger = { ...enterRung, lastFiredAt: day1.toISOString() };
+    expect(shouldFire(fired, at(131, day2, 130)).fires).toBe(true);
+    expect(shouldFire(fired, at(131, new Date(day1.getTime() + 3_600_000), 130)).reason).toBe("cooldown");
   });
 
-  it("ENTER does NOT fire while the price merely sits past the level", () => {
-    // The PLTR shape: 33% above entry for weeks. Yesterday closed above
-    // the level too, so nothing crossed — this is not a buy signal, it is
-    // a plan the price has left behind (the stock's review's, not the cron's).
-    expect(shouldFire(enterRung, at(171, day1, 170))).toMatchObject({
-      fires: false,
-      reason: "no-crossing",
-    });
+  it("a close-basis buy fires on the close pass, not before", () => {
+    const closeRung: Trigger = { ...enterRung, predicate: { watch: "price", is: "above", value: 128.47, settings: { close: true } } };
+    expect(shouldFire(closeRung, { ...at(131, day1, 130), session: "CLOSE" }).fires).toBe(true);
+    expect(shouldFire(closeRung, { ...at(131, day1, 130), session: "INTRADAY" }).reason).toBe("no-match");
   });
 
-  it("ENTER minted with the level already true fires only on a re-cross", () => {
-    // TOST: buy above $35.15 written against a $35.16 tape. Day 1 the
-    // prior close was under the level, so a crossing genuinely happened.
-    const tost: Trigger = { ...enterRung, predicate: { watch: "price", is: "above", value: 35.15 } };
-    expect(shouldFire(tost, at(35.16, day1, 34.9)).fires).toBe(true);
-    // Day 2 it closed above and still sits above — silent, not asked again.
-    expect(shouldFire(tost, at(35.4, day2, 35.16)).reason).toBe("no-crossing");
-    // Day 3 it dipped under and reclaimed — a real crossing, asks again.
-    const day3 = new Date("2026-08-14T14:00:00Z");
-    expect(shouldFire(tost, at(35.3, day3, 34.8)).fires).toBe(true);
+  it("a review past its level fires the same way (VRT: review if below $275.50, the stock at $188.67)", () => {
+    const vrt: Trigger = { id: "f3cb8376-51dc-4c0c-bb28-5aa6394ce3da", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "below", value: 275.5 }, rationale: "8% drop from entry", cooldownDays: 1 };
+    expect(shouldFire(vrt, at(188.67, new Date("2026-11-18T14:35:00Z"), 188.67)).fires).toBe(true);
   });
 
-  it("a pullback ENTER mirrors: fires on the way down through the level", () => {
-    const dip: Trigger = {
-      ...enterRung,
-      predicate: { watch: "price", is: "below", value: 203 },
-    };
-    expect(shouldFire(dip, at(201, day1, 206)).fires).toBe(true);
-    expect(shouldFire(dip, at(199, day2, 201)).reason).toBe("no-crossing");
-  });
-
-  it("crossing applies inside a composite ENTER predicate", () => {
-    const composite: Trigger = {
-      ...enterRung,
-      predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: 128.47 }, { watch: "move", is: "above", value: 1, variable: "prev_close" }] },
-    };
-    const up = (price: number, prevClose: number): EvaluationContext => ({
-      latestQuote: { price, changePct: 2, prevClose },
-      thesis: { createdAt: new Date("2026-01-01") },
-      now: day1,
-    });
-    expect(shouldFire(composite, up(130, 127)).fires).toBe(true);
-    expect(shouldFire(composite, up(130, 129)).reason).toBe("no-crossing");
-  });
-
-  it("an ENTER that does not read the price keeps firing on match", () => {
-    // Nothing to cross: a time-based entry is true or it isn't.
-    const timed: Trigger = {
-      ...enterRung,
-      predicate: { watch: "repeat", value: 10 },
-    };
-    expect(shouldFire(timed, at(171, day1, 170)).fires).toBe(true);
-  });
-
-  it("without a prior close the snapshot consumers keep level semantics", () => {
-    // The daily run / resolver / needs-action pass a bare price and ask
-    // "is the condition true now" — the right question for a snapshot.
-    expect(shouldFire(enterRung, at(171, day1)).fires).toBe(true);
-  });
-
-  it("EXIT is a standing order: it re-fires every day the floor is breached", () => {
-    // Principal ruling 2026-08-16, unchanged: a declined sell asks again
-    // tomorrow. Yesterday closed under the floor too — still fires.
+  it("a sale is unchanged: it fires each day its floor is breached", () => {
     expect(shouldFire(exitRung, at(390, day1, 392)).fires).toBe(true);
     const declined: Trigger = { ...exitRung, lastFiredAt: day1.toISOString() };
     expect(shouldFire(declined, at(385, day2, 390)).fires).toBe(true);
   });
 
-  it("does not fire twice within the cooldown window", () => {
-    const fired: Trigger = {
-      ...enterRung,
-      lastFiredAt: new Date("2026-08-12T10:00:00Z").toISOString(),
-    };
-    expect(shouldFire(fired, at(130, day1, 127)).reason).toBe("cooldown");
+  it("a buy never fires on a stale quote", () => {
+    expect(shouldFire(enterRung, { ...at(130, day1, 127), latestQuote: { price: 130, changePct: 0, prevClose: 127, stale: true } }).reason).toBe("stale-quote");
   });
 });
 

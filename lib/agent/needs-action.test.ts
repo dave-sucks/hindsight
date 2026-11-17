@@ -246,7 +246,8 @@ describe("computeNeedsAction — a sale waiting for the principal silences only 
     const waiting = computeNeedsAction({ ...input, hasPendingSaleProposal: true });
     expect(waiting[0]).toMatchObject({ kind: "TRIGGER_FIRED", triggerId: "trig-review-price", action: "REVIEW" });
     expect(waiting[0]).not.toHaveProperty("alsoFired");
-    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "REVIEW_DUE"]);
+    // The review is still under its line and out of its wait, so it is also true now.
+    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "TRIGGER_MATCHING_NOW", "REVIEW_DUE"]);
   });
 
   it("an add that fired, and a review that came due, are not the sale's: still listed", () => {

@@ -11,7 +11,7 @@
  *
  * Three parts:
  *   1–2. the count reaches the run as words                  (get_theses)
- *   3–7. a state REVIEW asks weekly; a buy and a sale do not (shouldFire)
+ *   3–7. the wait saved on the trigger is the wait            (shouldFire)
  *  8–10. nothing new refuses: the answers the runs really
  *        wrote still finish the run                          (complete_run)
  *
@@ -20,7 +20,6 @@
  * a thrown preflight would otherwise read as a pass.
  */
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
-import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   replayTool,
@@ -184,100 +183,43 @@ describe("DAV-323 — the run is told how long this has been asking", () => {
   });
 });
 
-describe("DAV-329 — a state asks weekly; a buy on the same state still asks daily", () => {
-  const ctx = (days: number) => ({
+describe("DAV-329, 2026-11-17 — the wait saved on the trigger is the wait", () => {
+  const ctx = () => ({
     latestQuote: { price: PRICE, changePct: -0.8 },
     indicators: { sma: { 200: 105.2, 50: 104.1 } },
     now: at(0, 13),
-    // Fired `days` ago.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any;
+  // The migration wrote the week the floor used to impose onto the Compounder's rule.
+  const asMigrated = { ...reviewRung, cooldownDays: 7 };
 
-  it("3. the Compounder's rung carries cooldownDays: 1 and still waits a week", () => {
-    const firedYesterday = { ...reviewRung, lastFiredAt: at(1, 13) } as unknown as Trigger;
-    expect(shouldFire(firedYesterday, ctx(1))).toEqual({
-      fires: false,
-      reason: "cooldown",
-    });
+  it("3. the Compounder's rule, saved at 7 by the migration, waits a week", () => {
+    const firedYesterday = { ...asMigrated, lastFiredAt: at(1, 13) } as unknown as Trigger;
+    expect(shouldFire(firedYesterday, ctx())).toEqual({ fires: false, reason: "cooldown" });
   });
 
   it("4. …and asks again once the week is up", () => {
-    const firedLastWeek = { ...reviewRung, lastFiredAt: at(8, 13) } as unknown as Trigger;
-    expect(shouldFire(firedLastWeek, ctx(8)).fires).toBe(true);
+    const firedLastWeek = { ...asMigrated, lastFiredAt: at(8, 13) } as unknown as Trigger;
+    expect(shouldFire(firedLastWeek, ctx()).fires).toBe(true);
   });
 
-  it("5. GD/GEV/SYK buy on the same predicate — that one still fires the next day", () => {
-    const buyRung = {
-      ...reviewRung,
-      id: "buy_rung",
-      action: "ENTER",
-      predicate: { watch: "price", is: "above", variable: "sma50" },
-      lastFiredAt: at(1, 13),
-    } as unknown as Trigger;
-    // Above the 50-day now, below it at the prior close — a real crossing.
-    const buyCtx = {
-      latestQuote: { price: 106, changePct: 1.2, prevClose: 103 },
-      indicators: { sma: { 200: 105.2, 50: 104.1 } },
-      now: at(0, 13),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
-    expect(shouldFire(buyRung, buyCtx).fires).toBe(true);
+  it("5. the same rule saved at 1 asks the next day: nothing at check time lifts a saved wait", () => {
+    const firedYesterday = { ...reviewRung, lastFiredAt: at(1, 13) } as unknown as Trigger;
+    expect(shouldFire(firedYesterday, ctx()).fires).toBe(true);
   });
 
-  it("6. a protective SALE on the same state keeps asking daily (DAV-229)", () => {
-    // The floor nearly caught this on the way past: slowing a sale to
-    // weekly turns a sale the principal declined on Monday into silence
-    // until the following Monday. Only the REVIEW slows down.
+  it("6. a sale on the same condition, saved at 1, asks each day it holds (unchanged)", () => {
     for (const action of ["EXIT", "TRIM"]) {
-      const sellRung = {
-        ...reviewRung,
-        id: `sell_${action}`,
-        action,
-        lastFiredAt: at(1, 13),
-      } as unknown as Trigger;
-      expect(shouldFire(sellRung, ctx(1)).fires).toBe(true);
+      const sellRung = { ...reviewRung, id: `sell_${action}`, action, lastFiredAt: at(1, 13) } as unknown as Trigger;
+      expect(shouldFire(sellRung, ctx()).fires).toBe(true);
     }
   });
 
-  it("7. …and so does one with no cooldown written on it at all", () => {
-    const sellRung = {
-      ...reviewRung,
-      id: "sell_bare",
-      action: "EXIT",
-      cooldownDays: undefined,
-      lastFiredAt: at(1, 13),
-    } as unknown as Trigger;
-    expect(shouldFire(sellRung, ctx(1)).fires).toBe(true);
-  });
-
-  it("7a. a state tied to a price line keeps the daily clock; two states together wait the week", () => {
-    const withPriceLine = {
-      ...reviewRung,
-      id: "review_and_line",
-      predicate: { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "price", is: "below", value: 100 }] },
-      lastFiredAt: at(1, 13),
-    } as unknown as Trigger;
-    expect(shouldFire(withPriceLine, ctx(1)).fires).toBe(true);
-
-    const twoStates = {
-      ...reviewRung,
-      id: "review_two_states",
-      predicate: { match: "any", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "price", is: "below", variable: "sma50" }] },
-      lastFiredAt: at(1, 13),
-    } as unknown as Trigger;
-    expect(shouldFire(twoStates, ctx(1))).toEqual({ fires: false, reason: "cooldown" });
-  });
-
-  it("7b. the Triggers tab prints the number in force, not just the stored one", () => {
-    // Stored 1, in force 7: printing the stored value would tell the
-    // principal "once a day" about a rule that asks once a week.
-    expect(flooredCooldownDays(reviewRung, reviewRung.cooldownDays)).toBe(7);
-    expect(flooredCooldownDays({ ...reviewRung, action: "EXIT" }, 1)).toBe(1);
-    expect(flooredCooldownDays({ ...reviewRung, action: "ENTER" }, 1)).toBe(1);
-    // A longer stored cooldown is left alone.
-    expect(flooredCooldownDays(reviewRung, 30)).toBe(30);
-    // The sheet's wire type (kind: string) goes through the same function.
-    expect(flooredCooldownDays({ action: "REVIEW", predicate: { watch: "price", is: "below" } }, 1)).toBe(1);
+  it("7. a row saved before the wait was written reads its measure's default", () => {
+    const sellRung = { ...reviewRung, id: "sell_bare", action: "EXIT", cooldownDays: undefined, lastFiredAt: at(1, 13) } as unknown as Trigger;
+    expect(shouldFire(sellRung, ctx()).fires).toBe(true);
+    const reviewBare = { ...reviewRung, cooldownDays: undefined, lastFiredAt: at(1, 13) } as unknown as Trigger;
+    expect(shouldFire(reviewBare, ctx())).toEqual({ fires: false, reason: "cooldown" });
   });
 });
 

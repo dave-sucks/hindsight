@@ -1,7 +1,6 @@
 /**
  * The trigger rules every measure answers on its catalog entry, combined for
- * a whole condition or group: the default cooldown, the weekly floor on a
- * state review, the label a protective sale closes with, the close-only
+ * a whole condition or group: the default wait, the label a protective sale closes with, the close-only
  * reading of a watched stock's floor, and what the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
@@ -15,22 +14,12 @@ import { conditionsOf, isGroup } from "./types";
 import { variableDef } from "./variables";
 
 /**
- * Days between fires when the trigger names none. A group of one measure's
- * conditions (a rule naming several filings) is one rule and keeps its
- * measure's; a mix takes its slowest condition's, at least a day.
+ * The wait a trigger is saved with when it names none: its measure's. Two
+ * conditions take the slower one's, at least a day.
  */
 export function defaultCooldownDays(w: When, action: string): number {
   if (!isGroup(w)) return measureOf(w).cooldownDays(w, action);
-  const days = w.conditions.map((x) => defaultCooldownDays(x, action));
-  const first = w.conditions[0];
-  const oneMeasure = first != null && !isGroup(first) && w.conditions.every((x) => !isGroup(x) && x.watch === first.watch);
-  return oneMeasure ? Math.max(...days) : Math.max(1, ...days);
-}
-
-/** A state, not a moment ("below the 200-day"). A group is one only when every condition is. */
-export function isState(w: When): boolean {
-  if (isGroup(w)) return w.conditions.length > 0 && w.conditions.every(isState);
-  return measureOf(w).state?.(w) === true;
+  return Math.max(1, ...w.conditions.map((x) => measureOf(x).cooldownDays(x, action)));
 }
 
 /** The label a protective sale closes with (a typed price, or a % from a close, our entry or the high); null for a judgment sale the agent labels itself. */

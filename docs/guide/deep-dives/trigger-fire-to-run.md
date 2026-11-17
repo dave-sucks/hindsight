@@ -16,8 +16,7 @@ At 4:20 PM a close pass runs for the rules that wait for the closing price, with
 
 1. **Does the condition hold?** If not, nothing else matters.
 2. **A buy or an add on a stale quote** never fires. In market hours, a price older than 15 minutes isn't today's price; at the open, the last close was once served as "now". A sale or a review still fires on a stale quote, because missing a stop is worse.
-3. **A buy fires on its crossing:** true now, false at the prior close. So does a review that reads the price. One written after that close is measured from the price it was written at, so a level set on a down day isn't dead on arrival.
-4. **Is it resting?** A cooldown holds back a trigger that fired recently. When it ends, anything that doesn't wait for a crossing and still holds fires again: an add, a trim, a sale, or a review that doesn't read the price. That's how a declined sale returns.
+3. **Is it waiting?** The wait saved on the trigger (its cooldown, "Waits N days before it can fire again" in its dialog) holds it back after a fire. When it ends and the condition still holds, it fires again, whatever the action. That's how a declined sale, or a buy the run passed on, returns. A filing fires once per filing; a heads-up whose report it never fired for isn't waiting.
 
 The check has first claim on prices. Every other caller is refused a quote once a vendor's per-minute allowance falls to a reserve, so a busy page can't leave stops unpriced.
 
@@ -26,7 +25,7 @@ The check has first claim on prices. Every other caller is refused a quote once 
 Where it goes is the trigger's On fire, the same three choices on every trigger but a sale or a trim, which can't be Flag for Review:
 
 - **Send to Agent** (unset, every action but a review): an `app/thesis.trigger.fired` event starts a trigger run.
-- **Flag for Review** (unset, a review): written to Activity and left for the next [morning run](../agents/morning-runs.md). A red filing on a stock we hold starts a run the same day. A buy, add, trim or sale asks at most once a day, whatever its On fire.
+- **Flag for Review** (unset, a review): written to Activity and left for the next [morning run](../agents/morning-runs.md). A red filing on a stock we hold starts a run the same day.
 - **Auto** (only ever chosen): no agent decides. The trigger run makes the trade the agent would have: a sale closes the position, a trim sells its share, a buy or an add is sized and checked by the buy's own rules and paid from cash. It goes to the [approval](../concepts/approvals.md) gate like any other trade. Then the same run reads the stock and writes the trade up, with no trade tools, from the write-up's own instructions (not a [situation](../concepts/situations.md)). Its note replaces the trade's one plain line, so the card and the email carry the analyst's words; the email waits for it. A refused trade is written up too. An Auto buy, add or trim then comes off the stock (used once); an Auto-sell stays. With nothing to trade (a buy on a stock we hold), the agent is asked instead.
 - **A paused analyst's stock:** only the sales on a stock it still holds are checked. Each one that fires comes to you as a sale and never wakes the analyst: an Auto-sell goes through your approval switch as usual; Send to Agent was asking for judgment, so it always waits for your approval.
 - **A stock we only watch,** when its Stop watching line fires ("Stop watching if below $384 · only on the close"): we stop watching it on the spot. The thesis retires as dropped, with one Activity line naming the trigger. No run starts and nothing is proposed: no money moves. A review above a price on a watch is an ordinary review.
@@ -35,10 +34,9 @@ Where it goes is the trigger's On fire, the same three choices on every trigger 
 
 Several rules stop one move from waking the desk twice:
 
-- **Together:** a stop and a trail firing in one pass fold into one run, which sees both. Each still gets its own Activity line. Buys, adds and reviews never fold.
+- **Together:** a stop and a trail firing in one pass fold into one run, which sees both, and so do two buys on one stock. Each still gets its own Activity line. Adds and reviews never fold, and a buy never folds with a sale.
 - **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't start its cooldown, so it asks again on the first check after that proposal is answered, withdrawn or expired. A proposal a trigger made has no 24 hours: it waits, or the 4:20 PM pass withdraws it on a close back past the line. Any other proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined in the last four hours also starts nothing; that fire does start its cooldown.
 - **A buy already waiting,** or checked in the last four hours by a completed run, starts nothing.
-- **A buy that slipped back:** if the run passed because the price had fallen back under the level, without trying to buy, the buy stays armed and can fire again that day, up to three times.
 
 ## The high the trails use
 
@@ -51,7 +49,7 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 `lib/inngest/functions/trigger-evaluator.ts`: cron `*/5 9-16` weekdays ET, then `isMarketOpen()` for the intraday session or `isClosePassTick` (16:20–16:34) for the close. Prices from `getLiveQuotes` in `lib/market-data/live-quote.ts` with `caller: "trigger-check"`, capped at 200 tickers. Chart numbers from `TickerIndicators` through `ensureIndicatorSnapshots`; filings from `fetchBookFilings`; earnings from `fetchEarningsWindow`. `evaluateThesisTriggers` wraps each `shouldFire` in its own try/catch.
 
 #### Fire rules
-`shouldFire` in `lib/agent/triggers/evaluate.ts`. Reasons: `no-match`, `stale-quote` (ENTER and ADD only), `no-crossing`, `cooldown`. Baseline from `crossingBaseline` in `lib/agent/triggers/written-price.ts`. Cooldown from `effectiveCooldownDays` in `lib/agent/triggers/defaults.ts`.
+`shouldFire` in `lib/agent/triggers/evaluate.ts`. Reasons: `no-match`, `stale-quote` (ENTER and ADD only), `cooldown`. The wait is the trigger's `cooldownDays`; a row saved before every write path wrote one reads its measure's default (`effectiveCooldownDays` in `lib/agent/triggers/defaults.ts`).
 
 #### Stale quotes and budget
 `STALE_QUOTE_MS` (15 minutes) and `staleForTrading` in `lib/market-data/quote-age.ts`. `RESERVED_SHARE` in `lib/market-data/quote-budget.ts`: 20% of Alpaca's limit and 75% of Finnhub's are held back from every caller but the trigger check.
@@ -60,10 +58,7 @@ A trail measures the give-back from the highest price since the buy (the lowest,
 A trigger fires on the timing it saved (`settings.close`); nothing changes it at check time. A `STOP_WATCHING` fire on a watch runs `stopWatching` in `lib/agent/triggers/stop-watching.ts`; on a promoted row the fire is written down for the morning run. Reviews write a `TRIGGER_FIRED` row; `filingNeedsSameDayLook` in `lib/market-data/sec-events.ts`. Which fires wait for the morning and which trade with no agent is `waitsForMorning` and `doItTrade` in `lib/agent/triggers/fire-mode.ts`. An Auto-sell is the `direct-close` step in `lib/inngest/functions/tactical-run.ts` and calls `closeOpenPosition`; a paused analyst's sale takes the same step with `propose: true` unless it is Auto (`pausedAnalystTriggers` and `PAUSED_SALE_NOTE` in `lib/agent/triggers/paused.ts`); a trim, buy or add is the `do-it` step, which calls the trade tool with `doItCall` and then `useOnce`. Either way the run then writes the trade up (`autoTrade` in `lib/agent/system-prompts/intraday-tactical.ts`, no tools in `NOT_IN_A_WRITEUP`), and `putNoteOnOrder` in `lib/proposals/auto-writeup.ts` puts its note on the order before the run reads finished; `proposal-pending-email` waits for `app/proposal.note.written`.
 
 #### Folding and snoozes
-`collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT and TRIM only). A sale under way is `saleUnderWay` in `lib/proposals/position-lock.ts` (PENDING, or AWAITING_APPROVAL and not past `expiresAt`); the evaluator drops a sale fire on such a position before `stampLastFiredAt`. In `tactical-run.ts`, the backstop: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.
-
-#### Re-arm
-`decideBuyRearm` and `rearmBuyAfterPass` in `lib/agent/triggers/rearm.ts`, `MAX_REARMS_PER_DAY` = 3, stored as `rearmedAt` in `Thesis.triggerState`.
+`collapseProtectiveFires` in `lib/agent/triggers/co-fire.ts` (EXIT with TRIM; ENTER with ENTER). A sale under way is `saleUnderWay` in `lib/proposals/position-lock.ts` (PENDING, or AWAITING_APPROVAL and not past `expiresAt`); the evaluator drops a sale fire on such a position before `stampLastFiredAt`. In `tactical-run.ts`, the backstop: `check-queued-close` and `EXIT_RECHECK_SNOOZE_MS` (four hours, rejected sales only); `check-queued-buy`; `check-recent-enter-run`.
 
 #### Peak
 `raiseWaterMarks` in `lib/trading/water-mark.ts`, called by the intraday pass before the check: writes `Position.peakPrice` / `peakAt` (and the trough) when a fresh quote moves them. The day's high is the quote's own Alpaca daily bar, regular hours only. On the close pass, `raiseMarksFromDayBars` reads `getTodaySessionBars` for every open position bought before that day's open.

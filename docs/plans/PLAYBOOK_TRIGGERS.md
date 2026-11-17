@@ -145,7 +145,9 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close and at least 1.5× normal volume, or within 2% of the 50-day average, or above the 50-day average | P: the base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, "Buy if above $X" at today's price |
+| Buy if above $P on the close and at least 1.5× normal volume | P: the base's pivot |
+| Buy if within 2% of the 50-day average | Only while the 50-day is rising |
+| Buy if above the 50-day average | Only while the 50-day is rising |
 | Review every 30 days | |
 | Stop watching if below $L on the close | L: the 52-week low |
 

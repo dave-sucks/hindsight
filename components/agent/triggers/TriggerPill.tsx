@@ -24,10 +24,10 @@ import {
   triggerLabel,
   triggerText,
   trimPctOf,
+  waitWords,
   type PillPart,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
-import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
 import { fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
@@ -49,18 +49,18 @@ export interface TriggerPillProps {
   streetMissing?: boolean;
 }
 
-/** What the pill and the popover show: the parts, the joiner, and which parts are a clock. */
+/** What the pill and the popover show: the parts, and which parts are a clock. */
 function readTrigger(trigger: Trigger) {
   const w = shapeOf(trigger.predicate);
-  if (!w) return { parts: [{ label: "a removed condition" }] as PillPart[], joiner: "and" as const, timed: [false], w: null };
-  return { ...pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
+  if (!w) return { parts: [{ label: "a removed condition" }] as PillPart[], timed: [false], w: null };
+  return { parts: pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
 }
 
 export function TriggerPill(props: TriggerPillProps) {
   const { trigger, held, level } = props;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const { parts, joiner, timed } = readTrigger(trigger);
+  const { parts, timed } = readTrigger(trigger);
   const draft = draftOf(trigger);
   return (
     <>
@@ -84,7 +84,7 @@ export function TriggerPill(props: TriggerPillProps) {
           ) : null}
           {parts.map((p, i) => (
             <Fragment key={i}>
-              {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">{joiner}</span> : null}
+              {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">and</span> : null}
               <span className={cn("flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground", i > 0 && "border-l border-border")}>
                 {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
                 {timed[i] ? <SendToAgentIcon className="size-3" /> : null}
@@ -140,7 +140,7 @@ function TriggerCard({
 }: TriggerPillProps & { onEdit?: () => void; onDone: () => void }) {
   // An inherited rule is changed where it lives, so one edit can't mean different things on different stocks.
   const canEdit = editable && !trigger.inherited;
-  const { parts, joiner, w } = readTrigger(trigger);
+  const { parts, w } = readTrigger(trigger);
   const { pending, err, send } = useTriggerRequest(() => {
     onChanged?.();
     onDone();
@@ -148,14 +148,14 @@ function TriggerCard({
   const home =
     trigger.level === "ANALYST" && analystId ? `/analysts/${analystId}` : trigger.level === "ACCOUNT" ? "/settings/triggers" : null;
   const overrides = trigger.overrides ? shapeOf(trigger.overrides.predicate) : null;
-  const cooldown = trigger.cooldownDays ? flooredCooldownDays(trigger, trigger.cooldownDays) : null;
+  const wait = trigger.cooldownDays ?? null;
   const timed = w != null && !isGroup(w) && measureOf(w).timed === true;
   const readsStreet = w != null && conditionsOf(w).some((c) => c.variable?.startsWith("street_") === true);
   const facts = [
     readsStreet && streetMissing ? "No Street data: this can't fire until a Street row arrives" : null,
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
-    // A schedule's rate limit is its own interval, so saying it again would repeat the number.
-    cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
+    // A schedule's wait is its own interval, so saying it again would repeat the number.
+    wait && !timed ? waitWords(wait) : null,
     fireModeWords(trigger),
   ].filter(Boolean);
 
@@ -167,7 +167,7 @@ function TriggerCard({
           <span className="text-muted-foreground">{triggerLabel(trigger)} </span>
           {parts.map((p, i) => (
             <Fragment key={i}>
-              {i > 0 ? <span className="text-muted-foreground"> {joiner} </span> : null}
+              {i > 0 ? <span className="text-muted-foreground"> and </span> : null}
               <span className="text-muted-foreground">{p.label} </span>
               <span className="font-medium tabular-nums">{p.value}</span>
             </Fragment>

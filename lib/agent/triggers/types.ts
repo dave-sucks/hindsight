@@ -85,7 +85,7 @@ export type Trigger = {
   action: TriggerAction;
   /** The trigger's note: the owner reads it, and so does the agent acting on a fire. "A guidance cut means the multiple compresses, so I sell." */
   rationale: string;
-  /** Don't re-fire same trigger more than once per N days. Optional, default no cooldown. */
+  /** The wait: days after a fire before it can fire again. Every write path saves one (./defaults). */
   cooldownDays?: number;
   /** Set by the trigger evaluator; read for cooldown gating. */
   lastFiredAt?: string; // ISO timestamp
@@ -99,17 +99,6 @@ export type Trigger = {
    * on 09-21 and the 7-day cooldown then swallowed the real one).
    */
   firedReports?: string[];
-  /**
-   * ENTER only: when a trigger run last passed on this buy because the price
-   * was back under its level, and left it armed (./rearm, DAV-343). A re-arm
-   * newer than `lastFiredAt` lifts the cooldown. Kept in
-   * `Thesis.triggerState` and merged on at resolve time — never stored on
-   * the trigger, never written by a model.
-   */
-  rearmedAt?: string;
-  /** ENTER and REVIEW, server-stamped: the live price when written (./written-price). */
-  writtenPrice?: number;
-  writtenAt?: string; // ISO timestamp
   /** On fire: DO_IT, ASK_NOW or NEXT_MORNING (./fire-mode). Every stored trigger names one. */
   fireMode?: FireMode;
   /** TRIM only: the % of the position a trim set to DO_IT sells (default 50). */

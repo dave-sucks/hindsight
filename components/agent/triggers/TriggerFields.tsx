@@ -55,29 +55,30 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   schedule: Repeat,
 };
 
-/** What the form edits: the action, one condition or two, what it does on fire, and a trim's size. */
+/** What the form edits: the action, one condition or two (both must hold), what it does on fire, a trim's size, and the wait. */
 export interface Draft {
   action: TriggerAction;
   conditions: Condition[];
-  match: "all" | "any";
   fireMode: FireMode;
   trimPct: number;
+  /** The days it waits after a fire. Null until saved or typed: the condition's default. */
+  cooldownDays: number | null;
 }
 
 export function whenOf(d: Draft): When {
-  return d.conditions.length === 1 ? d.conditions[0] : { match: d.match, conditions: d.conditions };
+  return d.conditions.length === 1 ? d.conditions[0] : { match: "all", conditions: d.conditions };
 }
 
 /** A stored trigger as a draft, or null when the form can't show it (a removed kind, or more than two conditions). */
 export function draftOf(t: Trigger): Draft | null {
   const w = shapeOf(t.predicate);
-  if (!w || (isGroup(w) && (w.conditions.length !== 2 || w.conditions.some(isGroup)))) return null;
+  if (!w || (isGroup(w) && w.conditions.length !== 2)) return null;
   return {
     action: t.action as TriggerAction,
     conditions: conditionsOf(w),
-    match: isGroup(w) ? w.match : "all",
     fireMode: fireModeOf(t),
     trimPct: trimPctOf(t),
+    cooldownDays: t.cooldownDays ?? null,
   };
 }
 
@@ -162,34 +163,49 @@ export function OnFireSelect({
 }
 
 /** A trim's size, the share of the position it sells in every On fire mode. Shown only for a trim. */
-export function TrimSizeField({ trimPct, onTrimPct, disabled }: { trimPct: number; onTrimPct: (n: number) => void; disabled: boolean }) {
-  const [text, setText] = useState(String(trimPct));
-  // Follow a size set from outside (a reset) without fighting typing.
+/** A whole number in a labelled input with words around it: the trim's size, the wait. */
+function NumberField({ label, value, onValue, before, after, disabled }: { label: string; value: number; onValue: (n: number) => void; before?: string; after: string; disabled: boolean }) {
+  const [text, setText] = useState(String(value));
+  // Follow a number set from outside (a reset, a new default) without fighting typing.
   useEffect(() => {
-    if (Number(text) !== trimPct) setText(String(trimPct));
+    if (Number(text) !== value) setText(String(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimPct]);
+  }, [value]);
   return (
     <div className="space-y-1.5">
-      <FieldLabel>Trim size</FieldLabel>
+      <FieldLabel>{label}</FieldLabel>
       <InputGroup>
+        {before ? (
+          <InputGroupAddon align="inline-start">
+            <InputGroupText>{before}</InputGroupText>
+          </InputGroupAddon>
+        ) : null}
         <InputGroupInput
           type="text"
           inputMode="numeric"
           value={text}
-          aria-label="Trim size"
+          aria-label={label}
           disabled={disabled}
           onChange={(e) => {
             setText(e.target.value);
-            onTrimPct(Number(e.target.value));
+            onValue(Number(e.target.value));
           }}
         />
         <InputGroupAddon align="inline-end">
-          <InputGroupText>% of the position</InputGroupText>
+          <InputGroupText>{after}</InputGroupText>
         </InputGroupAddon>
       </InputGroup>
     </div>
   );
+}
+
+export function TrimSizeField({ trimPct, onTrimPct, disabled }: { trimPct: number; onTrimPct: (n: number) => void; disabled: boolean }) {
+  return <NumberField label="Trim size" value={trimPct} onValue={onTrimPct} after="% of the position" disabled={disabled} />;
+}
+
+/** The wait: "Waits N days before it can fire again", prefilled with the saved or the default number. */
+export function WaitField({ days, onDays, disabled }: { days: number; onDays: (n: number) => void; disabled: boolean }) {
+  return <NumberField label="Wait" value={days} onValue={onDays} before="Waits" after="days before it can fire again" disabled={disabled} />;
 }
 
 // ── One condition ───────────────────────────────────────────────────────

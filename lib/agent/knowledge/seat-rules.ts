@@ -58,13 +58,19 @@ const CATALYST_RULES: SeatRule[] = [
     rationale: "30 days after the company's event: if we still own it, sell, or say why we're keeping it.",
     cooldownDays: 30,
   },
+  // DAV-268 (Dave, 2026-09-15): FDA outcomes are usually filed as "other
+  // events" or a press release, which the account's material-tier wake
+  // treats as routine. A catalyst seat wakes on them; other seats would drown.
   {
-    // DAV-268 (Dave, 2026-09-15): FDA outcomes are usually filed as "other
-    // events" or a press release, which the account's material-tier wake
-    // treats as routine. A catalyst seat wakes on them; other seats would drown.
     action: "REVIEW",
-    predicate: { match: "any", conditions: [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", variable: "item:7.01" }] },
-    rationale: "The company filed an 'other events' report or a press release, which is where FDA decisions and trial results show up. Read it before the market finishes reacting.",
+    predicate: { watch: "filing", variable: "item:8.01" },
+    rationale: "The company filed an 'other events' report, which is where FDA decisions and trial results show up. Read it before the market finishes reacting.",
+    cooldownDays: 1,
+  },
+  {
+    action: "REVIEW",
+    predicate: { watch: "filing", variable: "item:7.01" },
+    rationale: "The company filed a press release, which is where FDA decisions and trial results show up. Read it before the market finishes reacting.",
     cooldownDays: 1,
   },
 ];

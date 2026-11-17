@@ -4,12 +4,11 @@
  * read.test.ts does for the readers:
  *   - the cooldown a trigger gets when it names none, per measure, variable
  *     and action;
- *   - which conditions are states (a review on one asks at most weekly);
  *   - which settings and variables make two rules different (the slot), and
  *     the filing tier's slot, which is what lets a stock's own "anything
  *     material" rule override the account's.
  */
-import { defaultCooldownDays, isState } from "./rules";
+import { defaultCooldownDays } from "./rules";
 import { triggerSlot } from "./slot";
 import { resolveLadder } from "../levels";
 import type { Trigger } from "../types";
@@ -46,32 +45,9 @@ describe("the cooldown a trigger gets when it names none", () => {
     expect(defaultCooldownDays(w, action)).toBe(days);
   });
 
-  it("a rule naming several filings is one rule and keeps the filing's; a mix takes its slowest, at least a day", () => {
-    expect(defaultCooldownDays({ match: "any", conditions: [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", variable: "item:7.01" }] }, "REVIEW")).toBe(0);
+  it("two conditions take the slower one's, at least a day", () => {
     expect(defaultCooldownDays({ match: "all", conditions: [{ watch: "price", is: "above", value: 50 }, { watch: "volume", value: 2 }] }, "ENTER")).toBe(1);
     expect(defaultCooldownDays({ match: "all", conditions: [{ watch: "move", is: "above", value: 10, variable: "entry" }, { watch: "volume", value: 2 }] }, "ADD")).toBe(7);
-  });
-});
-
-describe("which conditions are states", () => {
-  it.each([
-    [{ watch: "price", is: "below", variable: "sma200" }, true],
-    [{ watch: "price", is: "above", variable: "sma50" }, true],
-    [{ watch: "move", is: "near", value: 5, variable: "high52" }, true],
-    [{ watch: "strength", value: 5 }, true],
-    [{ watch: "price", is: "below", value: 150 }, false],
-    [{ watch: "price", is: "above", variable: "high52" }, false],
-    [{ watch: "move", is: "near", value: 2, variable: "sma50" }, false],
-    [{ watch: "move", is: "below", value: 12, variable: "peak" }, false],
-    [{ watch: "rsi", is: "below", value: 30 }, false],
-    [{ watch: "volume", value: 2 }, false],
-  ] as Array<[When, boolean]>)("%j is a state: %s", (w, state) => {
-    expect(isState(w)).toBe(state);
-  });
-
-  it("a group is a state only when every condition is", () => {
-    expect(isState({ match: "all", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "strength", value: -5 }] })).toBe(true);
-    expect(isState({ match: "all", conditions: [{ watch: "price", is: "below", variable: "sma200" }, { watch: "rsi", is: "below", value: 30 }] })).toBe(false);
   });
 });
 
@@ -99,12 +75,11 @@ describe("which rules are the same rule (the slot)", () => {
     expect(slot({ watch: "move", is: "below", value: 12, variable: "peak" }, "EXIT")).not.toBe(slot({ watch: "move", is: "below", value: 12, variable: "entry" }, "EXIT"));
   });
 
-  it("the filing tiers share one slot, and a rule naming a tier takes it", () => {
+  it("the filing tiers share one slot; an 8-K item is its own rule, beside the tier rule", () => {
     const material = slot({ watch: "filing", variable: "tier:MATERIAL" });
     expect(slot({ watch: "filing", variable: "tier:RED" })).toBe(material);
-    expect(slot({ match: "any", conditions: [{ watch: "filing", variable: "tier:MATERIAL" }, { watch: "filing", variable: "item:5.02" }] })).toBe(material);
-    // A rule naming only 8-K items is its own rule, added beside the tier rule.
-    expect(slot({ match: "any", conditions: [{ watch: "filing", variable: "item:8.01" }, { watch: "filing", variable: "item:7.01" }] })).not.toBe(material);
+    expect(slot({ watch: "filing", variable: "item:8.01" })).not.toBe(material);
+    expect(slot({ watch: "filing", variable: "item:8.01" })).not.toBe(slot({ watch: "filing", variable: "item:7.01" }));
   });
 
   it("so a stock's own tier rule overrides the account's", () => {

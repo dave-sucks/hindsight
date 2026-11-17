@@ -224,23 +224,6 @@ describe("computeLadderHealth — trailing floors (LONG)", () => {
 });
 
 describe("computeLadderHealth — predicate composition", () => {
-  it("finds a floor inside an OR (any branch fires alone)", () => {
-    const orExit: Trigger = {
-      id: "trig-or",
-      predicate: { match: "any", conditions: [{ watch: "price", is: "below", value: 105 }, { watch: "price", is: "above", value: 140 }] },
-      action: "EXIT",
-      rationale: "stop or take-profit",
-    };
-    const h = computeLadderHealth({
-      ...baseLong,
-      avgCost: 100,
-      currentPrice: 112,
-      triggers: [orExit],
-    })!;
-    expect(h.floor?.price).toBe(105);
-    expect(h.flooredGainPct).toBeCloseTo(5);
-  });
-
   it("does NOT count a level inside an AND (conditional, not standalone protection)", () => {
     const andExit: Trigger = {
       id: "trig-and",

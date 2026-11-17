@@ -47,24 +47,26 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close.
 
-> **Some triggers fire every day.** A sale on a stock we hold asks every day its condition holds, until the stock is sold, whatever its On fire. So does an add or trim on a price line or a day's move, for as long as it stays true. **A buy fires once,** on the day the price crosses its level, and so does a review that watches the price. An Auto-buy, Auto-add or Auto-trim comes off the stock once used.
+> **A trigger fires when it is true, then waits.** Every trigger, a buy, a review, a sale, an add or a trim, fires on the first check its condition holds, and again once its wait is over, for as long as it stays true. A buy written at a price the stock is already past fires on the next check. An Auto-buy, Auto-add or Auto-trim comes off the stock once used.
 
 | | How often it fires |
 |---|---|
-| Buy | **Once**, on the day the price crosses its level. Not again while the price stays past it; only a new crossing fires it again. |
-| Add | Again each time its rest period ends, while its condition holds. An Auto-add fires once. |
-| Trim | Again each time its rest period ends, while its condition holds. An Auto-trim fires once. |
+| Buy | On the first check it holds, then again each time its wait ends, while it holds. An Auto-buy fires once. Two buys on one stock true on the same check start one run. |
+| Add | Again each time its wait ends, while its condition holds. An Auto-add fires once. |
+| Trim | Again each time its wait ends, while its condition holds. An Auto-trim fires once. |
 | Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; it waits until you answer it or the stock closes back past the line (4:20 PM). Declined, it asks again. |
-| Review | **Once** when it watches the price (a level, an average, RSI, the 5- or 20-day move), on the day the price crosses it; only a new crossing fires it again. Any other review (a clock, a report, a filing, a day's move, the move from our entry, the trail): again each time its rest period ends, while its condition holds. |
+| Review | Again each time its wait ends, while its condition holds. |
 
-**The rest period** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It comes with the kind of trigger:
+**The wait** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It is saved on the trigger: the trigger's dialog shows it ("Waits 7 days before it can fire again") and you can change it. A new trigger gets its kind's:
 
 - **A day:** a price line, a day's move, a gap, volume, RSI and the trail.
-- **A week:** the move from our entry (a sale on it asks daily, like every sale), a beat or a miss, strength against the S&P, and a review of a state like "below the 200-day".
+- **A week:** the move from our entry (a sale on it asks daily, like every sale), a beat or a miss, strength against the S&P, and a review of an average like "below the 200-day" or of the 52-week high.
 - **A month:** an earnings window and insider buying.
 - **Once per filing** for a filing, and **its own interval** for a schedule.
 
-A trigger's popover shows its rest ("At most once a day") and when it last fired.
+A trigger's popover shows its wait and when it last fired. A wait of 0 is only for a filing; on anything else it is saved as the kind's.
+
+**Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers.
 
 What happens next is the trigger's **On fire**, in the next section. The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
@@ -111,7 +113,7 @@ On a stock we hold, no agent can lower a floor, widen a trail, remove a protecti
 <summary>Technical details</summary>
 
 #### Shape
-`{ watch, is?, value?, variable?, settings? }`, or `{ match, conditions }` for two or more. Stored on the thesis, the analyst or the account.
+`{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }` for two or more that must all hold, one level deep. Stored on the thesis, the analyst or the account.
 
 #### Catalog
 One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into the five types by `catalog.ts`. Words from `describe.ts`.
@@ -120,7 +122,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `trigger-evaluator.ts`: every 5 minutes in market hours, plus a close pass 16:20–16:34 ET. Chart measures read the 06:30 `TickerIndicators` snapshot.
 
 #### Fire semantics
-`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy, and a review that reads the price, fires on the crossing; everything else fires again while true, once its rest is over. A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
+`shouldFire` in `lib/agent/triggers/evaluate.ts`: a trigger fires when its condition holds and it is not inside its saved wait (`cooldownDays`). A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
 
 #### On fire
 `fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review, refused on an `EXIT` or `TRIM` by `fireModeProblem`), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).
@@ -137,8 +139,8 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 #### Stop when buying
 `autoStopOps` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels: the sale floor `DO_IT` and the owner's, the review line `ASK_NOW` in the price-below review slot. An approval prices it off the live price then (`approveProposal`, `lib/proposals/execute.ts`); the fill moves it to the line under the price paid (`autoStopFillOps`, applied by `restampThesisEntryOnFill` in `lib/inngest/functions/reconcile-orders.ts`). Sizing: `sizingStop` in `lib/agent/position-sizing.ts`, called by `place_trade` and `manage_position`'s add. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).
 
-#### Rest periods
-Each measure's default `cooldownDays`, in its catalog entry; `effectiveCooldownDays` in `lib/agent/triggers/defaults.ts` reads it. `flooredCooldownDays` (`lib/agent/triggers/state-cooldown.ts`) holds a review of a state to a week and a trade flagged for the morning to a day. A same-slot replace (the stop set when buying) keeps the floor's rest. The popover's line is `TriggerPill.tsx`.
+#### The wait
+Each measure's default `cooldownDays`, in its catalog entry, saved on every write by `applyTriggerDefaults` in `lib/agent/triggers/defaults.ts` (none named, or a 0 on anything but a filing); a row saved before that reads the default (`effectiveCooldownDays`). The dialog's field is `WaitField` in `TriggerFields.tsx`; a same-slot replace keeps the wait unless it names one. The popover's line is `TriggerPill.tsx`.
 
 #### Reference
 `docs/TRIGGERS.md` · `docs/plans/TRIGGER_MODEL.md` · `docs/plans/TRIGGER_TYPES.md`

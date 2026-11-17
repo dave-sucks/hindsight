@@ -25,7 +25,8 @@ const ACCOUNT = "34f5c589-e216-4afe-9ee8-613c13f300e7";
 const ASML_FLOOR = { id: "8e790d37-6e92-4eea-9b39-be8a537c471c", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 1835, watch: "price" }, rationale: "Under the $1835 floor.", cooldownDays: 1 };
 // The 10-22 stamp: the 13:45 pass, before the 13:45:20 run it started (10-23's 13:45:17 fire proves it was no later).
 const ASML_STAMP = "2026-10-22T13:45:05.000Z";
-const NVDA_FLOOR = { id: "6306936b-bb02-4298-9ca0-90f586772512", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 236, watch: "price" }, rationale: "Under the $236 floor.", cooldownDays: 0, lastFiredAt: "2026-10-23T14:25:05.000Z" };
+// Stored with a wait of 0; the 2026-11-21 migration saved it at its default, a day.
+const NVDA_FLOOR = { id: "6306936b-bb02-4298-9ca0-90f586772512", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 236, watch: "price" }, rationale: "Under the $236 floor.", cooldownDays: 1, lastFiredAt: "2026-10-23T14:25:05.000Z" };
 
 const proposal = (id: string, positionId: string, symbol: string, qty: number, thesisId: string, createdAt: string, status = "AWAITING_APPROVAL") => ({
   id, positionId, userId: ACCOUNT, environment: "LIVE", symbol, side: "SELL", orderType: "MARKET", quantity: qty, status, intent: "CLOSE",
@@ -197,14 +198,14 @@ describe("ASML 10-22 → 10-23: a floor below the price asks every day", () => {
 });
 
 const NVDA_DAY = { o: 210.99, l: 210.18 };
-describe("NVDA, its floor stored with no wait: a sale asks once a day", () => {
+describe("NVDA, its floor stored with no wait, saved at a day: a sale asks once a day", () => {
   it("while its proposal waits: no run, as before", async () => {
     const db = book("NVDA");
     const { sent } = await pass(db, "2026-10-23T14:30:05Z", { snapshots: { NVDA: snap(212.895, "2026-10-23T14:30:00Z", { ...NVDA_DAY, h: 213.32 }, 212.21) } });
     expect(sent).toEqual([]);
   });
 
-  it("once the sweeper has marked it EXPIRED, the same day: the floor waits for tomorrow (a 0 read as 'ask on every pass' until 2026-11-02; CEG woke a run every five minutes while its analyst held)", async () => {
+  it("once the sweeper has marked it EXPIRED, the same day: the floor waits for tomorrow (a stored 0 asked on every pass until 2026-11-02; CEG woke a run every five minutes while its analyst held)", async () => {
     const db = book("NVDA", "EXPIRED");
     const { sent } = await pass(db, "2026-10-23T15:00:30Z", { snapshots: { NVDA: snap(212.975, "2026-10-23T15:00:29Z", { ...NVDA_DAY, h: 213.85 }, 212.21) } });
     expect(sent).toEqual([]);

@@ -51,7 +51,7 @@ export async function PATCH(
   const auth = await authorize(level);
   if (auth.error) return auth.error;
 
-  let body: { replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown; trimPct?: unknown } };
+  let body: { replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown; trimPct?: unknown; cooldownDays?: unknown } };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -75,6 +75,7 @@ export async function PATCH(
           predicate: r.predicate as LevelTriggerAddInput["predicate"],
           fireMode: (r.fireMode ?? undefined) as LevelTriggerAddInput["fireMode"],
           trimPct: typeof r.trimPct === "number" ? r.trimPct : undefined,
+          cooldownDays: typeof r.cooldownDays === "number" && Number.isFinite(r.cooldownDays) ? r.cooldownDays : undefined,
         },
         ctx,
       );

@@ -57,7 +57,6 @@ import {
 } from "./condition";
 import { applyTriggerDefaults } from "./defaults";
 import { defaultNote } from "./note";
-import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   levelSlotOf,
@@ -147,10 +146,6 @@ export interface ApplyTriggerOpsInput {
   ownersWord?: boolean;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
-  /** Stamped on buy and review triggers this call writes (./written-price). Defaults to `currentPrice`. */
-  writtenPrice?: number | null;
-  /** The write time stamped with it. Defaults to now. */
-  now?: Date;
   mintId: () => string;
 }
 
@@ -201,24 +196,6 @@ function numberOf(p: unknown): { field: "level" | "pct" | "days"; value: number 
 
 function fmtValue(field: "level" | "pct" | "days", v: number): string {
   return field === "level" ? money(v) : field === "pct" ? `${v}%` : `${v} days`;
-}
-
-/**
- * A new buy whose price is already true where it is written never crosses, so it never fires until the
- * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). In an "any" group one
- * true price part makes the buy true; an "all" group is true only when every part is a price level
- * true at the price (SMMT 10-02: "above $17.10 and above the 20-day" can still cross). A group inside
- * a group is never refused. Null when the price is unknown or the buy can still cross.
- */
-export function buyAlreadyTrue(t: Pick<Trigger, "action" | "predicate">, price: number | null | undefined): string | null {
-  const w = t.action === "ENTER" && price != null && price > 0 ? shapeOf(t.predicate) : null;
-  const parts = !w ? [] : isGroup(w) ? w.conditions : [w];
-  if (parts.some(isGroup)) return null;
-  const levels = parts.map((c) => levelOf(c));
-  const holds = (l: ReturnType<typeof levelOf>) => !!l && (l.above ? price! > l.value : price! < l.value);
-  const level = w && isGroup(w) && w.match === "all" ? (levels.every(holds) ? levels[0] : null) : levels.find(holds);
-  if (!level) return null;
-  return `A buy ${level.above ? "above" : "below"} ${money(level.value)} is already true at ${money(price!)}, so it never crosses and never fires. To buy now, set it at or a few cents past ${money(price!)} (is: above); for a pullback, write is: below at a level under ${money(price!)}.`;
 }
 
 /** The trigger an add would collide with: same price slot, else same bucket. */
@@ -357,7 +334,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         // Moving the number never changes when it fires (DAV-247 review).
         next = withBasisOf(subject, next);
       }
-      predicate = group ? { ...group, conditions: group.conditions.map((c: When, i: number) => (i === op.part ? next : c)) } : next;
+      predicate = group ? { ...group, conditions: group.conditions.map((c, i) => (i === op.part ? next : c)) } : next;
     }
     // ...unless the caller says when it fires: the edit's own `close`, or
     // the fill level's basis. It applies to a price level only.
@@ -412,7 +389,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode })}`);
     if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: size ${trimPctOf(target)}% → ${op.trimPct}%`);
     if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
-      parts.push(`${name}: cooldown ${op.cooldownDays} days`);
+      parts.push(`${name}: waits ${op.cooldownDays} ${op.cooldownDays === 1 ? "day" : "days"}`);
     if (parts.length === 0 && rationale !== target.rationale)
       parts.push(`${name}: wording updated`);
     // Said, not dropped: "on the close" means nothing to a trigger that isn't
@@ -472,9 +449,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const text = `Added: ${describeTrigger(trigger)}`;
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
-    // An agent's new buy has to be able to cross; the owner's is the owner's.
-    const dead = actor === "AGENT" ? buyAlreadyTrue(trigger, currentPrice) : null;
-    if (dead) return refuse("add", id, text, dead);
     const above = inheritedByBucket.get(triggerSlot(trigger));
     if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
       return refuse(
@@ -511,7 +485,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       samePredicate(target.predicate, trigger.predicate) &&
       target.action === trigger.action &&
       fireModeOf(target) === fireModeOf(trigger) &&
-      trimPctOf(target) === trimPctOf(trigger)
+      trimPctOf(target) === trimPctOf(trigger) &&
+      (trigger.cooldownDays === undefined || trigger.cooldownDays === target.cooldownDays)
     ) {
       return refuse("edit", id, text, "Nothing to change — the trigger already says this.", { unchanged: true });
     }
@@ -539,6 +514,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         action: trigger.action,
         fireMode: trigger.fireMode,
         trimPct: trigger.trimPct,
+        ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
         rationale: (renumbered && sent) || (moved ?? target.rationale),
         source: stamp(trigger),
       };
@@ -632,17 +608,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   }
 
   const changed = results.some((r) => r.ok);
-  return {
-    triggers: changed
-      ? stampWrittenPrice(
-          input.stored,
-          applyTriggerDefaults(stored),
-          input.writtenPrice !== undefined ? input.writtenPrice : currentPrice,
-          input.now ?? new Date(),
-        )
-      : stored,
-    results,
-  };
+  return { triggers: changed ? applyTriggerDefaults(stored) : stored, results };
 }
 
 // ── The one check after all ops ─────────────────────────────────────────

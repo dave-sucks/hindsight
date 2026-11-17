@@ -18,12 +18,9 @@
 
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { firesOnTheCrossing } from "@/lib/agent/triggers/written-price";
 import { actionProblem, addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
@@ -227,19 +224,6 @@ async function runPrincipalOp(
 ): Promise<OpOutcome> {
   const thesis = await loadEditableThesis(thesisId, ctx);
   const op = buildOp(thesis);
-  // A buy or review edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
-  const stampsPrice =
-    op.op === "level"
-      ? op.slot === "ENTRY"
-      : op.op === "add"
-        ? firesOnTheCrossing(op.trigger.action)
-        : thesis.triggers.some((t) => t.id === op.id && firesOnTheCrossing(t.action)) ||
-          (op.op === "edit" && op.action != null && firesOnTheCrossing(op.action)) ||
-          (op.op === "replace" && firesOnTheCrossing(op.trigger.action));
-  let writtenPrice: number | null = null;
-  if (stampsPrice) {
-    writtenPrice = freshQuotePrice(await getStockQuote(thesis.ticker).catch(() => null), new Date());
-  }
   const applied = applyTriggerOps({
     stored: thesis.triggers,
     inherited: thesis.inherited,
@@ -247,8 +231,6 @@ async function runPrincipalOp(
     direction: thesis.direction,
     status: thesis.status,
     actor: "PRINCIPAL",
-    writtenPrice,
-    now: new Date(),
     mintId: () => randomUUID(),
   });
   const result = applied.results[0];
@@ -408,7 +390,8 @@ export async function applyTriggerReplace(
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
         );
       }
-      return { op: "replace", id: triggerId, trigger: built };
+      // A replace that names no wait keeps the one saved (the default fills one only when there is none).
+      return { op: "replace", id: triggerId, trigger: input.cooldownDays == null ? { ...built, cooldownDays: undefined } : built };
     },
     (thesis) => ({
       summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,

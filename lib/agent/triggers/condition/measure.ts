@@ -108,10 +108,6 @@ export interface MeasureDef {
   cooldownDays: (c: Condition, action: string) => number;
   /** What the trigger check loads for it beyond the live quote. A variable or setting read off the snapshot adds it (./variables). */
   reads?: readonly Source[];
-  /** Somewhere the stock is for weeks (below the 200-day), not a moment: a review on it asks at most weekly. */
-  state?: (c: Condition) => boolean;
-  /** For "any of" this measure's own conditions that is one rule: the condition whose cascade slot it takes. */
-  groupSlot?: (cs: readonly Condition[]) => Condition | undefined;
   /** What a new condition on this tab starts as. */
   fresh: () => Condition;
   /** What's wrong beyond the number and the variable, in one sentence, or null. */
@@ -130,12 +126,6 @@ export interface MeasureDef {
    * data (`value.range`, a setting's `range`); this is the rest.
    */
   rule?: (c: Condition) => string | null;
-  /**
-   * "Any of" several of these conditions read as one rule (several filing
-   * events): what's wrong with that rule (null for nothing), or undefined
-   * when they aren't one rule and each is checked on its own.
-   */
-  problemAny?: (cs: readonly Condition[]) => string | null | undefined;
 }
 
 export const BELOW_ABOVE = [

@@ -37,7 +37,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
   // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
   // 2026-11-17: −1,126, YOUR PLAYBOOKS shows each playbook's watch triggers (the sentence, the trigger as written, its reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
-  writer: 15_815,
+  // 2026-11-17: −200, the writer is no longer told to write a buy that is true today a few cents above today's price (a buy fires when it is true).
+  writer: 15_615,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -66,8 +67,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: +17, a watch's lines are its buy and its Stop watching line (update_thesis's ARCHIVED words); the triggers, not a floor, hold the price.
   // 2026-11-17: +6,201 each, place_trade's triggers_with_buy takes the playbook's other triggers that come with the buy, in the trigger shape (+5,667), and a trigger may say it is one of the playbook's watch triggers (playbook, on record_thesis and update_thesis).
   // 2026-11-17: +8 each, place_trade names the row's playbook_checks (was setup_lines).
-  "research-run": 37_772,
-  tactical: 33_735,
+  // 2026-11-17: −576 each, the trigger shape has no "any" and no group inside a group (one "all" level), on record_thesis, update_thesis and triggers_with_buy.
+  "research-run": 37_196,
+  tactical: 33_159,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -77,7 +79,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: +21, the same field words.
   // 2026-11-17: +6,511, the same triggers_with_buy and playbook fields.
   // 2026-11-17: +8, the same field name.
-  principal: 69_282,
+  // 2026-11-17: −864, the same trigger shape.
+  principal: 68_418,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

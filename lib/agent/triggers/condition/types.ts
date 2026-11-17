@@ -113,9 +113,10 @@ export interface Condition {
   settings?: Settings;
 }
 
+/** Two or more conditions that must all hold ("below $46.92 on the close, on 1.5× volume"). One level deep. */
 export interface Group {
-  match: "all" | "any";
-  conditions: When[];
+  match: "all";
+  conditions: Condition[];
 }
 
 export type When = Condition | Group;
@@ -126,5 +127,5 @@ export function isGroup(w: When): w is Group {
 
 /** Every plain condition in a When, in order. */
 export function conditionsOf(w: When): Condition[] {
-  return isGroup(w) ? w.conditions.flatMap(conditionsOf) : [w];
+  return isGroup(w) ? w.conditions : [w];
 }

@@ -1,15 +1,16 @@
 /**
- * A review fires on the crossing of its level, as a buy does: true now, false at the prior close.
+ * A review fires when it is true, then waits the days saved on it (2026-11-17).
  *
- * MU, Secular Compounder: "Review if below $878" (stored REVIEW, Flag for Review) fired on 14 of the
- * 21 sessions from 2026-10-16 to 11-13, every day MU traded under $878. It crossed on 4 of them.
- * ASML, the Compounder's "Review if below the 200-day average": 4 weekly fires from 10-22, 2 of them
- * crossings. NVDA's "Review every 7 days" reads no price and fires as it did.
+ * MU, Secular Compounder: "Review if below $878" (Flag for Review, saved with a 1-day wait) fired on
+ * 14 of the 21 sessions from 2026-10-16 to 11-13, every day MU traded under $878; under the crossing
+ * rule (deleted) it fired on 4. ASML, the Compounder's "Review if below the 200-day average": saved at
+ * 1, read at a week by the floor (deleted); the migration saves the week on it, and it asks weekly.
+ * NVDA's "Review every 7 days" fires as it did.
  *
  * The evaluator's own cron handler, on one database, at each real fire's time, with that fire's live
- * price and the prior session's close. Rows in lib/agent/__fixtures__/review-crossing-2026-11.json.
+ * price and the prior session's close. Rows in lib/agent/__fixtures__/review-fires-2026-11.json.
  */
-import raw from "@/lib/agent/__fixtures__/review-crossing-2026-11.json";
+import raw from "@/lib/agent/__fixtures__/review-fires-2026-11.json";
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 
@@ -85,8 +86,8 @@ describe("the fixture is the production case", () => {
   });
 });
 
-describe("MU, 2026-10-16 to 11-13 — review if below $878", () => {
-  it("fires on the four days MU crossed under $878 from a close above it, not the ten it stayed under", async () => {
+describe("MU, 2026-10-16 to 11-13 — review if below $878, a 1-day wait", () => {
+  it("fires on each of the 14 days MU traded under $878", async () => {
     const { lastFiredAt: _last, ...review } = fx.mu.review; // the replay starts before its first fire
     void _last;
     const db = book(fx.mu.thesis, { triggers: [review], position: { symbol: "MU", avgCost: fx.mu.position.avgCost, peakPrice: fx.mu.position.avgCost, openedAt: new Date(fx.mu.position.openedAt) } });
@@ -97,14 +98,15 @@ describe("MU, 2026-10-16 to 11-13 — review if below $878", () => {
       const ids = await check(db, at, "MU", f.price, fx.mu.closes[before(days, etDay(at))]);
       if (ids.includes(review.id)) fired.push(etDay(at));
     }
-    // On main: all 14.
-    expect(fired).toEqual(["2026-10-16", "2026-10-22", "2026-10-30", "2026-11-02"]);
+    // Under the crossing rule: 10-16, 10-22, 10-30 and 11-02.
+    expect(fired).toEqual(fx.mu.fires.map((f) => etDay(new Date(f.at))));
   });
 });
 
-describe("ASML, 2026-10-22 to 11-13 — the Compounder's review if below the 200-day", () => {
-  it("fires on the two days ASML crossed under its 200-day, not the two it was already under", async () => {
-    const db = book(fx.asml.thesis, { analystTriggers: [fx.asml.rule] });
+describe("ASML, 2026-10-22 to 11-13 — the Compounder's review if below the 200-day, saved at 7", () => {
+  it("fires weekly, on the four days the floor let it fire", async () => {
+    // The rule as the migration saves it: the week the floor read it at.
+    const db = book(fx.asml.thesis, { analystTriggers: [{ ...fx.asml.rule, cooldownDays: 7 }] });
     const asOf = Object.keys(fx.asml.snapshots);
     const fired: string[] = [];
     for (const f of fx.asml.fires) {
@@ -117,8 +119,8 @@ describe("ASML, 2026-10-22 to 11-13 — the Compounder's review if below the 200
       const ids = await check(db, at, "ASML", f.price, snap.closes.at(-1)!, snap);
       if (ids.includes(fx.asml.rule.id)) fired.push(etDay(at));
     }
-    // On main: all 4.
-    expect(fired).toEqual(["2026-10-22", "2026-10-30"]);
+    // Under the crossing rule: 10-22 and 10-30.
+    expect(fired).toEqual(["2026-10-22", "2026-10-30", "2026-11-06", "2026-11-13"]);
   });
 });
 

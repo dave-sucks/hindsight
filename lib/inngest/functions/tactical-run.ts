@@ -19,7 +19,6 @@
 
 import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { inngest } from "@/lib/inngest/client";
-import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
@@ -384,9 +383,7 @@ export const tacticalRun = inngest.createFunction(
           select: { id: true, createdAt: true },
         }),
       );
-      // A buy the last run passed on because the price had slipped back
-      // under its level was left armed (DAV-343); its re-fire is checked.
-      if (recentEnterCheck && enterAlreadyChecked(recentEnterCheck, trigger)) {
+      if (recentEnterCheck) {
         return {
           skipped: "enter-already-checked",
           thesisId: fired.thesisId,
@@ -449,7 +446,7 @@ export const tacticalRun = inngest.createFunction(
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: price-below (price/time)").
       const summary = sentenceOf(trigger as Trigger);
-      // A co-fired protective trigger gets its own audit row — the record
+      // A co-fired trigger gets its own audit row — the record
       // says both fired — but shares this one run.
       // The rows carry what fired and the price; the analyst's note answers them.
       for (const co of coFired) {
@@ -1092,30 +1089,6 @@ export const tacticalRun = inngest.createFunction(
       await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
 
-    // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────
-    // AAPL 09-30: fired at $331.47, the run read $330.83 and passed, and the
-    // buy was used up for the day. When the pass was because the price was
-    // back under the level, the next check past it fires the buy again.
-    const rearm =
-      trigger.action === "ENTER" && !auto && outcome.closedOut
-        ? await step.run("rearm-buy-after-pass", async () => {
-            try {
-              return await rearmBuyAfterPass({
-                runId: run.id,
-                runStartedAt: new Date(run.createdAt),
-                thesisId: thesis.id,
-                trigger,
-              });
-            } catch (err) {
-              console.error(
-                `[tactical-run] thesis=${thesis.id} re-arm check failed:`,
-                err instanceof Error ? err.message : err,
-              );
-              return null;
-            }
-          })
-        : null;
-
     return {
       runId: run.id,
       thesisId: thesis.id,
@@ -1124,7 +1097,6 @@ export const tacticalRun = inngest.createFunction(
       action: trigger.action,
       ...(auto ? { fireMode: "DO_IT" as const, auto } : {}),
       ...outcome,
-      ...(rearm ? { rearm } : {}),
     };
   },
 );

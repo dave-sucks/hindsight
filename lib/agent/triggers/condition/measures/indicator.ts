@@ -68,7 +68,6 @@ export const strength: MeasureDef = {
   ],
   // A daily number that stays true for weeks: once a week.
   cooldownDays: () => 7,
-  state: () => true,
   // Ahead of the S&P is up; "not lagging by more than N" is neither.
   rises: (c) => ((c.value ?? 0) >= 0 ? true : null),
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),

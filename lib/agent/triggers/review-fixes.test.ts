@@ -117,25 +117,28 @@ const snap: IndicatorSnapshot = {
   atr14: 10.98,
 };
 
-describe("a multi-day move ENTER fires on the crossing, like a price level", () => {
+describe("a multi-day move ENTER fires while it holds, then waits its day", () => {
   const t: Trigger = {
     id: "m",
     predicate: { watch: "move", is: "above", value: 5, variable: "close_5d" },
     action: "ENTER",
     rationale: "Momentum",
+    cooldownDays: 1,
   };
-  const ctx = (price: number, prevClose: number) => ({
+  const ctx = (price: number, prevClose: number, now = "2026-09-11T15:00:00Z") => ({
     latestQuote: { price, changePct: 0, prevClose },
     indicators: snap,
     thesis: { createdAt: new Date() },
-    now: new Date("2026-09-11T15:00:00Z"),
+    now: new Date(now),
   });
-  it("fires the day the 5-session move first reaches 5%", () => {
-    // closes[55] = 495 → 520 is +5.05%; yesterday's 499 was +0.8%.
+  it("fires when the 5-session move reaches 5%", () => {
+    // closes[55] = 495 → 520 is +5.05%.
     expect(shouldFire(t, ctx(520, 499)).fires).toBe(true);
   });
-  it("does not re-fire while it merely stays up", () => {
-    expect(shouldFire(t, ctx(525, 521)).reason).toBe("no-crossing");
+  it("still up a day after it fired, it fires again; inside the day it waits", () => {
+    const fired = { ...t, lastFiredAt: "2026-09-10T15:00:00Z" };
+    expect(shouldFire(fired, ctx(525, 521)).fires).toBe(true);
+    expect(shouldFire(fired, ctx(525, 521, "2026-09-11T14:00:00Z")).reason).toBe("cooldown");
   });
 });
 

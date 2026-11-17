@@ -54,12 +54,13 @@ describe("reseedDiff", () => {
     expect(d.present).toHaveLength(2);
     expect(d.foreign).toEqual([]);
   });
-  it("Catalyst: the two event-date rules would be added; the −10% review is kept as the analyst's own", () => {
+  it("Catalyst: the two event-date rules and the two filing rules would be added; the −10% review is kept as the analyst's own", () => {
     const d = reseedDiff(["PRE_CATALYST", "BASE_BREAKOUT", "MA_PULLBACK"], CATALYST_LIVE, mintId);
     expect(d.toAdd.map(describeSeatRule)).toEqual([
       "Review 10 days before the event date",
       "Review 30 days after the event date",
-      "Review if it files an 8-K 8.01 (other events) or it files an 8-K 7.01 (press release)",
+      "Review if it files an 8-K 8.01 (other events)",
+      "Review if it files an 8-K 7.01 (press release)",
     ]);
     expect(d.foreign.map((t) => t.id)).toEqual(["88ce7423"]);
   });

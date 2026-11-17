@@ -84,7 +84,7 @@ export function triggerMeasuresMarkdown(): string {
     "",
     "## The shape",
     "",
-    "A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: \"all\" | \"any\", conditions: [...] }` for two or more. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.",
+    "A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: \"all\", conditions: [...] }` for two or more that must all hold. Either of two is two triggers. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.",
     "",
     "Actions are `ENTER` (buy), `ADD`, `TRIM`, `EXIT` (sell) and `REVIEW`. Every trigger reads as one sentence, from `describe.ts`.",
     "",

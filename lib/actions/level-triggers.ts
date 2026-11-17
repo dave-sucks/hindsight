@@ -197,7 +197,7 @@ export async function replaceLevelTrigger(
   });
   const sameSlot = triggerSlot(found) === bucket;
   const updated: Trigger = sameSlot
-    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, trimPct: built.trimPct, source: built.source }
+    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, trimPct: built.trimPct, cooldownDays: input.cooldownDays != null ? built.cooldownDays : found.cooldownDays, source: built.source }
     : built;
   const next = existing.map((t) => (t.id === triggerId ? updated : t));
   if (!triggersArraySchema.safeParse(next).success) {

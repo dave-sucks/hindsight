@@ -38,7 +38,7 @@ export async function PATCH(
   const role = await getUserRole(user.id, accountId);
   if (role === "VIEWER") return new Response("Forbidden", { status: 403 });
 
-  let body: { replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown; trimPct?: unknown } };
+  let body: { replace?: { action?: unknown; predicate?: unknown; fireMode?: unknown; trimPct?: unknown; cooldownDays?: unknown } };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -62,6 +62,7 @@ export async function PATCH(
           predicate: r.predicate as TriggerAddInput["predicate"],
           fireMode: (r.fireMode ?? undefined) as TriggerAddInput["fireMode"],
           trimPct: typeof r.trimPct === "number" ? r.trimPct : undefined,
+          cooldownDays: typeof r.cooldownDays === "number" && Number.isFinite(r.cooldownDays) ? r.cooldownDays : undefined,
         },
         editCtx,
       );

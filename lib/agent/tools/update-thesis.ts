@@ -45,7 +45,6 @@ import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
 import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
-import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
   applyTriggerOps,
@@ -1235,14 +1234,6 @@ export const updateThesis = defineTool({
         const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
         const levelStatus = (patch.status ?? existing.status) as string | null;
         const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
-        // The stamp takes only a fresh server quote — never price_at_time.
-        // A check-only call throws the stamp away, so it doesn't spend a
-        // quote on it: the shared key is the trigger check's first.
-        const writtenPrice = ctx.dryRun
-          ? null
-          : await getStockQuote(existing.ticker)
-              .then((q) => freshQuotePrice(q, new Date()))
-              .catch(() => null);
         const apply = (ops: TriggerOp[]) => applyTriggerOps({
           stored: existingTriggers,
           inherited: inheritedLadder,
@@ -1257,8 +1248,6 @@ export const updateThesis = defineTool({
           // analyst wrote "buy the pullback to $203" and the row stored
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
-          writtenPrice,
-          now: new Date(),
           mintId: () => randomUUID(),
         });
         const applied = apply(triggerOps);
@@ -1330,7 +1319,6 @@ export const updateThesis = defineTool({
           direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
           status: "HOLDING",
           actor: "SYSTEM",
-          now: new Date(),
           mintId: () => randomUUID(),
         });
         opResults.push(...written.results);

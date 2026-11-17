@@ -609,9 +609,6 @@ every field; the judgment rules:
      number} replaced by its price from the Price structure block
      (chart.), never a round number, never a feel. Each gets its reason,
      with the price in it. A stock has triggers and nothing else:
-       – when the playbook's buy is already true today, write the buy a
-         few cents above today's price, so it fires on the next tick and
-         becomes the ordinary approval-gated proposal;
        – a "Stop watching if below" trigger's reason opens with what a
          close below it would say about core_belief, in one plain
          sentence, then the chart, with the price. It never sells: the

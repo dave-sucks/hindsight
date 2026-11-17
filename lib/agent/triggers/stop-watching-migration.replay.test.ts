@@ -67,7 +67,7 @@ describe("HTFL, in the pill and the dialog", () => {
 
   it("the pill: Stop watching if · below · $46.50 · only on the close", () => {
     expect(triggerLabel(htfl)).toBe("Stop watching if");
-    expect(pillParts(w).parts).toEqual([{ label: "below", value: "$46.50 · only on the close" }]);
+    expect(pillParts(w)).toEqual([{ label: "below", value: "$46.50 · only on the close" }]);
     expect(sentenceOf(htfl)).toBe("Stop watching if below $46.50 · only on the close");
   });
 

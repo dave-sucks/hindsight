@@ -41,6 +41,11 @@ export function trimPctOf(t: { trimPct?: number | null }): number {
   return t.trimPct ?? DEFAULT_TRIM_PCT;
 }
 
+/** The wait saved on a trigger, as the dialog and the popover say it: "Waits 7 days before it can fire again". */
+export function waitWords(days: number): string {
+  return `Waits ${days} ${days === 1 ? "day" : "days"} before it can fire again`;
+}
+
 /** The action as a trigger says it; a trim names its size: "Trim 30% if". */
 export function triggerLabel(t: { action: string; trimPct?: number | null }): string {
   return t.action === "TRIM" ? `Trim ${trimPctOf(t)}% if` : actionLabel(t.action);
@@ -93,8 +98,7 @@ export function conditionText(c: Condition): string {
 }
 
 export function whenText(w: When): string {
-  if (!isGroup(w)) return conditionText(w);
-  return w.conditions.map(whenText).join(w.match === "all" ? " and " : " or ");
+  return conditionsOf(w).map(conditionText).join(" and ");
 }
 
 /** The whole trigger: "Sell if below $868". A clock has no "if": "Review every 30 days". */
@@ -106,9 +110,9 @@ function labelled(label: string, w: When): string {
   return `${!isGroup(w) && measureOf(w).timed ? label.replace(/ if$/, "") : label} ${whenText(w)}`;
 }
 
-/** A trigger's pill: two halves per condition, with "and" / "or" between conditions. */
-export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } {
-  return { parts: conditionsOf(w).map(conditionParts), joiner: isGroup(w) && w.match === "any" ? "or" : "and" };
+/** A trigger's pill: two halves per condition, with "and" between conditions. */
+export function pillParts(w: When): PillPart[] {
+  return conditionsOf(w).map(conditionParts);
 }
 
 /**

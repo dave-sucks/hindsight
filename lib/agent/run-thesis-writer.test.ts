@@ -424,8 +424,8 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
     expect(prompt).not.toMatch(/^BASE_BREAKOUT — /m);
   });
 
-  it("buying now is a buy a few cents above today's price — the old rule is gone", () => {
-    expect(prompt).toContain("write the buy a\n         few cents above today's price, so it fires on the next tick");
+  it("a buy true today fires as written: no rule moves it off today's price", () => {
+    expect(prompt).not.toContain("few cents above today's price");
     expect(prompt).not.toMatch(/has NOT\s+reached/);
     expect(prompt).not.toContain("never a buy level parked on today's price");
     expect(prompt).not.toContain("MSFT go $418 → $497");

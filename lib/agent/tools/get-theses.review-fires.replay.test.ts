@@ -1,13 +1,12 @@
 /**
- * The morning read lists a review on the price only through its crossing's fire row, never as "true now".
+ * The morning read lists a review on the price as true now when it holds and its wait is over, the same
+ * as the five-minute check fires it (2026-11-17: the crossing is deleted).
  *
  * MU, Wednesday 2026-11-04 at 8:00 ET, the morning read (get_theses) with MU at Tuesday's $855.10 close,
- * under its "Review if below $878". With reviews firing on the crossing, its last fire is the Nov 2
- * crossing, so its one-day rest is over. The read has no prior close and can't see a crossing; before
- * this, it listed the review as true now every morning MU stayed under $878. Rows in
- * lib/agent/__fixtures__/review-crossing-2026-11.json (the review, MU's Nov 2 Activity, the closes).
+ * under its "Review if below $878", last fired Nov 2 with a one-day wait. Rows in
+ * lib/agent/__fixtures__/review-fires-2026-11.json (the review, MU's Nov 2 Activity, the closes).
  */
-import raw from "@/lib/agent/__fixtures__/review-crossing-2026-11.json";
+import raw from "@/lib/agent/__fixtures__/review-fires-2026-11.json";
 import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 
 type Row = Record<string, unknown> & { id: string; timestamp: string; runId: string | null; runMode: string | null };
@@ -21,13 +20,13 @@ const fx = raw as unknown as {
     nov2: { rows: Row[] };
   };
 };
-const [MORNING_LINE, CROSSING_FIRE, TRIGGER_RUN_LINE] = fx.mu.nov2.rows;
+const [MORNING_LINE, NOV2_FIRE, TRIGGER_RUN_LINE] = fx.mu.nov2.rows;
 const WEDNESDAY_8AM = new Date("2026-11-04T13:00:00Z");
 const FAKE = ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] as const;
 
 /** MU in the morning read, with these Activity rows. */
 async function morningRead(rows: Row[]) {
-  const review = { ...fx.mu.review, lastFiredAt: CROSSING_FIRE.timestamp };
+  const review = { ...fx.mu.review, lastFiredAt: NOV2_FIRE.timestamp };
   const lastAnswer = rows.filter((r) => r.runId).at(-1)!;
   jest.useFakeTimers({ now: WEDNESDAY_8AM, doNotFake: [...FAKE] });
   try {
@@ -62,11 +61,11 @@ async function morningRead(rows: Row[]) {
 }
 
 describe("MU, Wednesday 2026-11-04, 8:00 ET — the morning read", () => {
-  it("with the Nov 2 fire answered by a run's line, MU under $878 isn't on the list for the review (on main: listed as true now)", async () => {
-    expect(await morningRead([MORNING_LINE, CROSSING_FIRE, TRIGGER_RUN_LINE])).toEqual({ listed: false, situations: [] });
+  it("with the Nov 2 fire answered by a run's line, MU still under $878 and its day up is on the list: the review is true now", async () => {
+    expect(await morningRead([MORNING_LINE, NOV2_FIRE, TRIGGER_RUN_LINE])).toEqual({ listed: true, situations: ["REVIEW_DUE"] });
   });
 
-  it("with the Nov 2 crossing's fire unanswered, the review is on the list through its fire row", async () => {
-    expect(await morningRead([MORNING_LINE, CROSSING_FIRE])).toEqual({ listed: true, situations: ["REVIEW_DUE"] });
+  it("with the Nov 2 fire unanswered, the review is on the list through its fire row", async () => {
+    expect(await morningRead([MORNING_LINE, NOV2_FIRE])).toEqual({ listed: true, situations: ["REVIEW_DUE"] });
   });
 });

@@ -41,9 +41,10 @@ type Row = { action: TriggerAction; predicate: unknown; scopes: string[]; count:
 const rows = (stored as unknown as { rows: Row[] }).rows;
 
 describe("every stored condition", () => {
-  it("covers the book: 491 distinct conditions behind 913 triggers", () => {
-    expect(rows.length).toBe(491);
-    expect(rows.reduce((a, r) => a + r.count, 0)).toBe(913);
+  // 2026-11-17: the one "or" rule (a filing 8.01 or 7.01) is stored as its two parts.
+  it("covers the book: 492 distinct conditions behind 914 triggers", () => {
+    expect(rows.length).toBe(492);
+    expect(rows.reduce((a, r) => a + r.count, 0)).toBe(914);
   });
 
   it("is in the shape, except the one condition removed in August, on retired theses only", () => {
@@ -62,7 +63,7 @@ describe("every stored condition", () => {
       const w = shapeOf(r.predicate);
       if (!w) continue;
       expect(triggerText(r.action, w)).not.toMatch(/undefined|NaN|null|  /);
-      for (const part of pillParts(w).parts) {
+      for (const part of pillParts(w)) {
         expect(part.label).toMatch(/^[a-z]/);
         expect(part.value ?? "").not.toMatch(/undefined|NaN/);
       }

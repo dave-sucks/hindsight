@@ -16,6 +16,7 @@ import {
   TRIGGER_TYPES,
   actionLabel,
   allowedActions,
+  defaultCooldownDays,
   measureOf,
   typeDef,
   whenProblem,
@@ -24,7 +25,7 @@ import {
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import { DEFAULT_TRIM_PCT, defaultFireMode, fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
-import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, TrimSizeField, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
+import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, TrimSizeField, WaitField, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
 interface AddProps {
   level: Level;
@@ -96,7 +97,7 @@ function freshDraft(type: TriggerType, level: Level, held: boolean): Draft {
   const actions = allowedActions(c, { held, standing: level !== "THESIS" });
   const preferred: TriggerAction = t.trades ? (held || level !== "THESIS" ? "EXIT" : "ENTER") : "REVIEW";
   const action = actions.includes(preferred) ? preferred : actions[0];
-  return { action, conditions: [c], match: "all", fireMode: defaultFireMode(action), trimPct: DEFAULT_TRIM_PCT };
+  return { action, conditions: [c], fireMode: defaultFireMode(action), trimPct: DEFAULT_TRIM_PCT, cooldownDays: null };
 }
 
 /** The dialog: a new trigger of `type`, or `trigger` to change. */
@@ -133,14 +134,17 @@ export function TriggerDialog({
   // A trim's size, in every On fire mode.
   const trimSize = action === "TRIM";
   const trimProblem = trimSize && !(Number.isFinite(draft.trimPct) && draft.trimPct >= 1 && draft.trimPct <= 99) ? "A trim sells 1% to 99% of the position." : null;
-  const problem = whenProblem(w, ctx) ?? trimProblem;
+  // The wait shown is the one saved, or typed, else the condition's default; it follows the condition until one is.
+  const wait = draft.cooldownDays ?? defaultCooldownDays(w, action);
+  const waitProblem = !(Number.isInteger(wait) && wait >= 0 && wait <= 90) ? "A trigger waits 0 to 90 days." : null;
+  const problem = whenProblem(w, ctx) ?? trimProblem ?? waitProblem;
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setCondition = (i: number, c: Draft["conditions"][number]) =>
     setDraft((d) => ({ ...d, conditions: d.conditions.map((x, j) => (j === i ? c : x)) }));
 
   function save() {
     if (problem) return;
-    const body = { action, predicate: w, fireMode: draft.fireMode, ...(trimSize ? { trimPct: draft.trimPct } : {}) };
+    const body = { action, predicate: w, fireMode: draft.fireMode, cooldownDays: wait, ...(trimSize ? { trimPct: draft.trimPct } : {}) };
     if (trigger) void send("PATCH", `${endpointBase}/${trigger.id}`, { replace: body });
     else void send("POST", endpointBase, body);
   }
@@ -182,15 +186,7 @@ export function TriggerDialog({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <Select value={draft.match} onValueChange={(v) => (v === "all" || v === "any") && update({ match: v })} disabled={pending}>
-                    <SelectTrigger width="full" aria-label="Both or either">
-                      <SelectValue>{draft.match === "all" ? "And: both must be true" : "Or: either one is enough"}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">And: both must be true</SelectItem>
-                      <SelectItem value="any">Or: either one is enough</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FieldLabel>And: both must be true</FieldLabel>
                 </div>
                 <Button variant="ghost" size="sm" disabled={pending} onClick={() => update({ conditions: [draft.conditions[0]] })}>
                   Remove
@@ -210,6 +206,8 @@ export function TriggerDialog({
 
           {trimSize ? <TrimSizeField trimPct={draft.trimPct} onTrimPct={(trimPct) => update({ trimPct })} disabled={pending} /> : null}
           {trimProblem ? <p className="text-xs text-muted-foreground">{trimProblem}</p> : null}
+          <WaitField days={wait} onDays={(cooldownDays) => update({ cooldownDays })} disabled={pending} />
+          {waitProblem ? <p className="text-xs text-muted-foreground">{waitProblem}</p> : null}
           {action === "STOP_WATCHING" ? (
             <div className="space-y-1.5">
               <FieldLabel>On fire</FieldLabel>

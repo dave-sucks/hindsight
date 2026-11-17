@@ -5,7 +5,7 @@
 import fixture from "./__fixtures__/on-fire-migration-2026-10-22.json";
 import { statSync } from "fs";
 import { triggerSchema, parseTriggersResilient } from "./schema";
-import { applyTriggerDefaults, effectiveCooldownDays } from "./defaults";
+import { applyTriggerDefaults } from "./defaults";
 import { approvalLine, defaultFireMode, doItTrade, fireModeLabel, fireModeOf, fireModeProblem, fireModeWords, STOP_WATCHING_ONE_WAY, usedOnceLine, waitsForMorning, type FireMode } from "./fire-mode";
 import type { Trigger } from "./types";
 import { applyTriggerOps, type TriggerOp } from "./ops";
@@ -105,12 +105,12 @@ describe("what each mode does", () => {
     expect(doItTrade({ action: "EXIT", fireMode: "ASK_NOW" }, true)).toBeNull();
   });
 
-  it("a sale asks at most once a day whatever its On fire, even with a cooldown of 0", () => {
-    // Until 2026-11-02 only the morning-run mode was floored; CEG's Send-to-Agent sale at 0 woke a run every five minutes.
+  it("a sale saved with a wait of 0 is saved at a day whatever its On fire", () => {
+    // CEG's Send-to-Agent sale at 0 woke a run every five minutes (2026-11-02).
     const floor: Trigger = { id: "f", action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "x", cooldownDays: 0 };
-    expect(effectiveCooldownDays({ ...floor, fireMode: "NEXT_MORNING" })).toBe(1);
-    expect(effectiveCooldownDays({ ...floor, fireMode: "ASK_NOW" })).toBe(1);
-    expect(effectiveCooldownDays({ ...floor, fireMode: "DO_IT" })).toBe(1);
+    for (const fireMode of ["NEXT_MORNING", "ASK_NOW", "DO_IT"] as const) {
+      expect(applyTriggerDefaults([{ ...floor, fireMode }])[0].cooldownDays).toBe(1);
+    }
   });
 });
 

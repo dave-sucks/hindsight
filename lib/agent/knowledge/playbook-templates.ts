@@ -94,7 +94,9 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
   COMPOUNDER_ACCUMULATION: [
-    { action: "ENTER", predicate: { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, near50, { watch: "price", is: "above", variable: "sma50" }] }, rationale: "The base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, the buy is at today's price.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, rationale: "The base's pivot, on volume.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { watch: "price", is: "above", variable: "sma50" }, rationale: "Back above the 50-day, only while it is rising.", writtenOn: "WATCH" },
     ...clock(30, "The compounder's own clock."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{low52}"), rationale: "The 52-week low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "Under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it.", writtenOn: "PROPOSAL" },

@@ -377,7 +377,9 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume or within 2% of the 50-day average or above the 50-day average. The base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, the buy is at today's price.
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume. The base's pivot, on volume.
+- Buy if within 2% of the 50-day average. Only while the 50-day is rising.
+- Buy if above the 50-day average. Back above the 50-day, only while it is rising.
 - Review every 30 days. The compounder's own clock.
 - Stop watching if below {low52} · only on the close. The 52-week low.
 

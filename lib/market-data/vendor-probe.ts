@@ -160,7 +160,7 @@ export async function runVendorProbe(
   const alpacaProbes = async (): Promise<ProbeResult[]> => {
     // The live price every reader gets: a price, the time it printed, and a
     // prior close. A reply missing any of the three is empty — the trigger
-    // check cannot tell a crossing without the prior close.
+    // check reads the day's move and a gap off the prior close.
     const quote = await timed("Alpaca live quote", async () => {
       const snap = (await d.getSnapshots([T], { creds: opts.creds }))[T];
       const q = quoteFromSnapshot(snap, now);
