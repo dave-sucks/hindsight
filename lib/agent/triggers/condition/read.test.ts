@@ -10,8 +10,9 @@
  * The answers are the ones the checker this replaced gave (it agreed on every
  * line before it was deleted): a price above or below a level is strict, so
  * exactly on the line it doesn't hold; every move, ratio, count, report window
- * and day count includes its number, so on the line it does. A sale or review
- * fires exactly when the condition holds. A filing has no number and isn't here.
+ * and day count includes its number, so on the line it does. A sale, and a
+ * review that doesn't read the price, fires exactly when the condition holds
+ * (one that reads it waits for its crossing). A filing has no number and isn't here.
  */
 
 import { shouldFire, type EvaluationContext } from "../evaluate";
@@ -151,6 +152,7 @@ describe("exactly on the line", () => {
   it.each(all.map((x) => [x.on, JSON.stringify(x.c), x.holds, x] as const))("%s: %s holds = %s", (_on, _c, holds, { c, ctx }) => {
     expect(SHAPE_CHECKER.holds(c, ctx)).toBe(holds);
     for (const action of ["EXIT", "REVIEW"] as const) {
+      if (action === "REVIEW" && SHAPE_CHECKER.readsPrice(c)) continue;
       const t: Trigger = { id: "t", predicate: c, action, rationale: "" };
       expect(shouldFire(t, ctx).fires).toBe(holds);
     }

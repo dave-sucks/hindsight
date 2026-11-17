@@ -35,7 +35,7 @@
  *
  * NOT doubled: every rule, gate and pure module in between.
  * `checkStatusTransition`, `resolveThesisLadder`, `applyTriggerOps`,
- * `writeThesisUpdate`, plan-sanity, the sizing band — all real, all running
+ * `writeThesisUpdate`, the sizing band — all real, all running
  * against the in-memory store. That is the property that makes a replay test
  * worth writing: it fails when the wiring is wrong, not only when the leaf
  * arithmetic is wrong.
@@ -221,7 +221,6 @@ export async function replayTool(
         };
       }),
       getDailyBars: jest.fn(async () => ({ feed: "sip", bars: [] })),
-      getDailyRangePcts: jest.fn(async () => ({})),
       ...Object.fromEntries(
         // The write side, by its real export names. A replay that reaches a
         // broker throws — silence here would be the worst possible failure

@@ -29,7 +29,8 @@
  *                         the fresh quote says one of the thesis's
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
- *                         delivered yet.
+ *                         delivered yet. A review on the price is left to
+ *                         its crossing's fire row (TRIGGER_FIRED).
  *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
  *                         above what its tightest protective EXIT rung locks
  *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
@@ -81,17 +82,16 @@
  */
 
 import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
 import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
-import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
-import type { Horizon as StalenessHorizon } from "@/lib/agent/horizon-policy";
 import type { When } from "@/lib/agent/triggers/condition";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -213,29 +213,6 @@ export type NeedsAction =
       floorSummary: string | null;
     }
   | {
-      /**
-       * The deep research behind this thesis is older than its threshold.
-       *
-       * Why this is a work-list flag and not just a label: `researchAge`
-       * has ridden along on every thesis row since P1-1, but only the
-       * REVIEW_DUE branch of the prompt ever consulted it — so a name whose
-       * review clock wasn't due carried "stale" silently. GD, GEV and VST
-       * sat at 80 days with a 30-day clock last reviewed 2026-08-28: the
-       * label said stale, and nothing was going to look until 2026-09-27.
-       *
-       * Same shape as UNPROTECTED_GAIN: computed, not a trigger. Neither
-       * one needs to be a trigger to earn the agent's attention — a flag on
-       * a row nobody opens is decoration.
-       */
-      kind: "RESEARCH_STALE";
-      /** Whole days since the research was last written. Null = never written. */
-      daysOld: number | null;
-      /** The threshold it broke, in days. */
-      threshold: number | null;
-      /** "stale" (past the threshold) or "missing" (no deep research at all). */
-      freshness: "stale" | "missing";
-    }
-  | {
       kind: "REVIEW_DUE";
       daysOverdue: number;
       /**
@@ -288,27 +265,16 @@ export interface NeedsActionInput {
     /** When an analyst last actually looked. Drives the review cadence. */
     lastReviewedAt?: Date | null;
     /**
-     * When the deep research behind this thesis was last WRITTEN — not when
-     * someone last glanced at it. Drives RESEARCH_STALE. Omit and the flag
-     * simply never fires (callers that can't select the column keep their
-     * old behavior).
-     */
-    researchUpdatedAt?: Date | null;
-    /** Horizon picks the staleness threshold. Null falls back to the conservative default. */
-    horizon?: string | null;
-    /**
      * Paired open Position's openedAt, for held rows only. Null when not
      * held or the caller didn't resolve a position.
      */
     positionOpenedAt?: Date | null;
     /**
-     * Paired open Position's blended avgCost + the thesis target price, for
-     * HOLDING rows only. Feed the RUNNING_WINNER computation (progress-to-
-     * target + unrealized gain). Null when not held, no target, or the caller
-     * didn't resolve a position. See lib/agent/winner-signal.ts.
+     * Paired open Position's blended avgCost, for HOLDING rows only. Feeds
+     * the UNPROTECTED_GAIN computation. Null when not held or the caller
+     * didn't resolve a position.
      */
     avgCost?: number | null;
-    targetPrice?: number | null;
     /**
      * Paired open Position's water mark (high LONG / low SHORT), raised
      * by the five-minute trigger check. Feeds the trail floor math
@@ -349,7 +315,11 @@ export interface NeedsActionInput {
    * complete_run. Non-ENTER triggers and REVIEW_DUE still surface.
    */
   hasPendingEntryProposal?: boolean;
-  /** A sale or trim of this holding waits for the principal's approval: the stock is theirs to decide, so it carries no work at all. */
+  /**
+   * A sale or trim of this holding waits for the principal's approval. That
+   * sale is theirs to answer: no sale fire, sale match or declined sale is
+   * raised while it waits. Every other flag on the stock still is.
+   */
   hasPendingSaleProposal?: boolean;
   /**
    * An unanswered protective sale the principal declined (DAV-315).
@@ -407,18 +377,23 @@ export function reviewDue(
  * screen and complete_run show, by the precedence below, unchanged. The rest
  * follow in a fixed rank (SALE_DECLINED, PROMOTED_AWAITING_RESOLUTION,
  * TRIGGER_FIRED, TRIGGER_MATCHING_NOW, FLOOR_TOO_FAR, UNPROTECTED_GAIN,
- * REVIEW_DUE, RESEARCH_STALE), one entry per kind, except one
+ * REVIEW_DUE), one entry per kind, except one
  * TRIGGER_MATCHING_NOW per trigger true now, in ladder order. Fires beyond
  * the lead fire ride inside it (`alsoFired`). Empty when nothing is true.
  */
 export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction[] {
-  const { thesis, latestQuote, now, hasPendingEntryProposal } = input;
-  // A sale waiting for the principal takes the whole stock off the list (NVDA, CEG 10-15: worked anyway).
-  if (input.hasPendingSaleProposal) return [];
-  // A buy waiting for the principal already makes its move (P1-25 Change 4).
-  const waiting = (action: string) => hasPendingEntryProposal && action === "ENTER";
+  const { thesis, latestQuote, now, hasPendingEntryProposal, hasPendingSaleProposal } = input;
+  // A card waiting for the principal already makes its move, and that move is
+  // theirs to answer: a buy's ENTER (P1-25 Change 4), a sale's EXIT or TRIM. The
+  // fire that proposed it, or the price still past its line, asks nothing more
+  // while it waits. Only that: every other flag on the stock still lists it. A
+  // waiting sale used to take the whole stock off the list (NVDA, CEG 10-15:
+  // worked anyway), and then NVDA and MU 11-16 never got the pinned note a
+  // reviewer wrote on them.
+  const waiting = (action: string) =>
+    (hasPendingEntryProposal && action === "ENTER") || (hasPendingSaleProposal && (action === "EXIT" || action === "TRIM"));
 
   // 0) PROMOTED_AWAITING_RESOLUTION — highest precedence. Any PROMOTED
   //    thesis ALWAYS needs resolution this run regardless of trigger
@@ -446,7 +421,8 @@ export function computeNeedsAction(
   //    the race. It did, on IOT, for nine days — the run kept seeing "the
   //    floor is breached" and never "and you already told me not to sell
   //    there." The second sentence is the one that needs answering.
-  const d = input.declinedSale;
+  // A new card waiting for the principal is that sale asked again: the earlier decline is not raised beside it.
+  const d = hasPendingSaleProposal ? null : input.declinedSale;
   const declined: NeedsAction | null = d
     ? {
         kind: "SALE_DECLINED",
@@ -519,7 +495,7 @@ export function computeNeedsAction(
         return {
           f,
           action: (t?.action as NeedsActionVerb) ?? "REVIEW",
-          summary: t ? sentenceOf(t, thesis.status == null || thesis.status === "HOLDING") : "(predicate removed)",
+          summary: t ? sentenceOf(t) : "(predicate removed)",
         };
       })
       .filter((x) => !waiting(x.action));
@@ -573,6 +549,8 @@ export function computeNeedsAction(
   const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
     if (!isPriceOrTimePredicate(trigger.predicate)) continue;
+    // A review on the price fires on its crossing, and this read has no prior close to see one.
+    if (trigger.action === "REVIEW" && SHAPE_CHECKER.readsPrice(trigger.predicate)) continue;
     const result = shouldFire(trigger, {
       latestQuote: latestQuote ?? undefined,
       // During the session a "closes above $X" level is not true yet — it
@@ -591,7 +569,7 @@ export function computeNeedsAction(
         kind: "TRIGGER_MATCHING_NOW",
         triggerId: trigger.id,
         action,
-        predicateSummary: sentenceOf(trigger, thesis.status == null || thesis.status === "HOLDING"),
+        predicateSummary: sentenceOf(trigger),
         livePrice: latestQuote?.price ?? null,
       });
     }
@@ -630,9 +608,9 @@ export function computeNeedsAction(
   // its own MIN_GAIN floor was added to suppress. It was a trigger
   // re-implemented as a morning calculation, permanently second.
   //
-  // What replaced it is not another flag: resolved.unrealizedGainPct and
-  // resolved.progressToTarget sit on every held row the agent reads, so a
-  // stock up 212% is visible without anything pre-deciding that it matters.
+  // What replaced it is not another flag: resolved.unrealizedGainPct sits on
+  // every held row the agent reads, so a stock up 212% is visible without
+  // anything pre-deciding that it matters.
 
   // 5) REVIEW_DUE — the review cadence elapsed OR coming due within the
   //    next 24h. The 24h look-ahead is load-bearing: the morning daily-run
@@ -670,54 +648,11 @@ export function computeNeedsAction(
     due = result;
   }
 
-  // 5) RESEARCH_STALE — the thesis is not due for review, but the work
-  //    behind it is old enough that acting on it would mean acting on
-  //    stale reasoning.
-  //
-  //    Lowest precedence deliberately: it runs only after REVIEW_DUE has
-  //    declined, because a due review already carries the staleness
-  //    instruction in the prompt. This branch catches the gap that used to
-  //    swallow it — a long clock (a compounder's 30 days) outliving the
-  //    research threshold, so "stale" was true for weeks with nothing
-  //    scheduled to look. Terminal rows are history and never flagged.
-  //    Two exclusions, both load-bearing:
-  //      • direction null — an unresearched seed or a quiet watch. Neither
-  //        has a committed view whose research could have gone stale: the
-  //        seed is ASKING for first research (it surfaces via REVIEW_DUE
-  //        with pendingFirstReview, which routes to "commit a direction",
-  //        not "refresh"), and a quiet watch deliberately has no clock, so
-  //        flagging it would put a name the principal asked to leave alone
-  //        into every single morning's work list, forever, with nothing
-  //        that could ever satisfy it.
-  //      • `researchUpdatedAt === undefined` — the caller didn't select the
-  //        column; absent data is not evidence of staleness.
-  let stale: NeedsAction | null = null;
-  if (
-    thesis.researchUpdatedAt !== undefined &&
-    !isUnresearchedSeed(thesis.direction) &&
-    thesis.direction != null &&
-    (thesis.status === "WATCHING" || thesis.status === "HOLDING")
-  ) {
-    const age = classifyResearchAge(
-      thesis.researchUpdatedAt,
-      (thesis.horizon ?? null) as StalenessHorizon | null,
-      thesis.status,
-    );
-    if (age.freshness === "stale" || age.freshness === "missing") {
-      stale = {
-        kind: "RESEARCH_STALE",
-        daysOld: age.daysOld,
-        threshold: age.horizonThreshold,
-        freshness: age.freshness,
-      };
-    }
-  }
-
   // The lead, by the precedence above: a promoted stock; a declined sale; a
   // fire (a floor too far outranks a fired REVIEW); the first trigger true
   // now (a floor too far outranks it when it is a REVIEW); a floor too far;
-  // an unprotected gain; a review due; stale research. With none, nothing to
-  // act on: yesterday's thesis stands.
+  // an unprotected gain; a review due. With none, nothing to act on:
+  // yesterday's thesis stands.
   const firstMatch = matches[0] ?? null;
   const lead =
     promoted ??
@@ -726,10 +661,9 @@ export function computeNeedsAction(
     (firstMatch ? (floorWork && firstMatch.kind === "TRIGGER_MATCHING_NOW" && firstMatch.action === "REVIEW" ? floorWork : firstMatch) : null) ??
     floorWork ??
     unprotected ??
-    due ??
-    stale;
+    due;
   if (!lead) return [];
-  const rest = [declined, promoted, firedEntry, ...matches, floorWork, unprotected, due, stale].filter(
+  const rest = [declined, promoted, firedEntry, ...matches, floorWork, unprotected, due].filter(
     (x): x is NeedsAction => x != null && x !== lead,
   );
   return [lead, ...rest];

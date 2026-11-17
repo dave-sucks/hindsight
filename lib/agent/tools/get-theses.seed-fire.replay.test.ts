@@ -1,7 +1,8 @@
 /**
  * get-theses.seed-fire.replay.test.ts — a fired review on a seed reaches the
- * read as its first research (step 12, part 2), and the read's guidance is
- * worded for the run reading it.
+ * read as a review whose paragraph on a watch with no view is its first
+ * research (one situation per trigger action, 2026-11-15), and the read's
+ * guidance is worded for the run reading it.
  *
  * MA, 2026-10-09 13:30:17 UTC: its strength wake fired. MA is a seed (no
  * view, no claim) with a 45-day review clock of its own, so the fire coded
@@ -51,11 +52,19 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
   beforeAll(() => jest.useFakeTimers({ now: NOW, doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] }));
   afterAll(() => jest.useRealTimers());
 
-  it("the morning read lists it as its first research, with FIRST_RESEARCH's text, and no review of a plan", async () => {
+  it("the morning read lists it as a review whose text sends a watch with no view to its first research, and its row says no view", async () => {
     const { screen, model } = await read("MORNING_PLAN");
-    expect(screen.find((t) => t.id === MA_ID)?.situations).toEqual(["FIRST_RESEARCH"]);
-    expect(Object.keys(model.guidance ?? {})).toEqual(["FIRST_RESEARCH"]);
-    expect(model.guidance?.FIRST_RESEARCH).toContain("dispatch_thesis_research");
+    expect(screen.find((t) => t.id === MA_ID)?.situations).toEqual(["REVIEW_DUE"]);
+    expect(Object.keys(model.guidance ?? {})).toEqual(["REVIEW_DUE"]);
+    expect(model.guidance?.REVIEW_DUE).toContain("A watch with no view: go straight to its paragraph.");
+    expect(model.guidance?.REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
+    expect(String(model.theses.find((t) => t.id === MA_ID)?.stock)).toContain("no view");
+  });
+
+  it("a trigger run reading the same fire is told the first research is the morning run's, as before the merge", async () => {
+    const { model } = await read("INTRADAY_TACTICAL");
+    expect(model.guidance?.REVIEW_DUE).toContain("due its first research on that clock, and the morning run answers it: this run leaves it as it is.");
+    expect(model.guidance?.REVIEW_DUE).not.toContain("wait_for_thesis_refresh on the child run");
   });
 
   it("the same fire on a stock with a view (MA's row with a LONG view, a variant) is a review, worded per run", async () => {

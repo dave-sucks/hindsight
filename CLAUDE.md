@@ -22,27 +22,43 @@ whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Every trade a fire leads to goes through the approval switch (on: a proposal,
 which has no 24 hours: it waits while its trigger holds and the 16:20 ET close
 pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On fire
-is the same three choices on every trigger (2026-10-22):** Auto (`DO_IT`: the
+is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
 the same trigger run then writes it up with no trade tools, and its note is the
-trade's reason (`lib/proposals/auto-writeup.ts`, situation `AUTO_TRADE`);
+trade's reason (`lib/proposals/auto-writeup.ts`; its text is `AUTO_WRITEUP`);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
-run answers it). Unset, a review is Flag for Review and everything else Send to
+run answers it; never a sell or trim, since a sale can't wait for the morning).
+Unset, a review is Flag for Review and everything else Send to
 Agent; every stored trigger names one. Auto on a buy, add or trim is the
 owner's alone, on a stock (not an account or analyst rule), and is used once;
 an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
-semantics differ by action (DAV-229):** a protective/review rung is a standing
+semantics differ by action (DAV-229):** a sale, trim or add rung is a standing
 order (re-fires every day its condition holds; a decline is "did nothing");
-an ENTER fires on the *crossing* of its level (true now, false at the prior
-close) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
+an ENTER or a REVIEW fires on the *crossing* of its level (true now, false at
+the prior close; a review that doesn't read the price, like a clock or a
+report, fires while true) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
 Triggers are edited one at a time (DAV-242): `update_thesis` takes
-`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`, and
-`entry_price` / `target_price` / `stop_loss` are the same edit on the buy /
-target / floor trigger. Every op is one line in the Activity feed; a refused
+`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`; that is the
+only way a trigger changes. **A stock has triggers and nothing else
+(2026-11-16):** no plan, no price target of our own ("target" is Wall
+Street's number, the StreetConsensus card), no level fields on any save, and
+no code that stamps a buy, floor, target or review clock: a playbook's lines
+are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook). "The buy" and "the floor" are names
+for kinds of trigger. **A trigger means what it says, whatever the stock's
+state (2026-11-16):** "Stop watching if below $X" is its own action
+(`STOP_WATCHING`), only on a stock we watch; fired on its saved timing it
+retires the thesis as DROPPED with one Activity line, no run and no approval
+(`lib/agent/triggers/stop-watching.ts`). "Sell if" (`EXIT`) is only on a stock
+we hold; the other is refused with the fix, never converted (`actionProblem`,
+`condition/actions.ts`). The holding's sale comes with the buy: `place_trade`
+takes `sell_if_below` + `sell_reason`, the pending position holds it, and the
+fill removes the buy and Stop watching lines and writes "Sell if below" at the
+approved price (`armHeldLadderOnFill`).
+Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
 **A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
@@ -60,10 +76,11 @@ The chart measures (a price against an average or a high, a move near one,
 volume, RSI, strength vs the S&P, a gap, the 5- and 20-day move, insiders)
 read the daily indicator snapshot
 (`TickerIndicators`, written 06:30 ET from `lib/market-data/price-structure.ts`);
-a price level read on the close (`settings.close`) fires only on the 16:20 ET close pass, and so
-does the floor of a stock we only watch: its plan comes down on a close below
-it, never an intraday dip (`watchedFloorOnClose`, DAV-337). There is
-no buy-now option: buying now is an entry price at or near the current price
+a price level read on the close (`settings.close`) fires only on the 16:20 ET close pass. A
+trigger fires on the timing it saved; nothing changes it at check time. A
+watch's Stop watching line is written "only on the close", so we stop
+watching on a close below it, never an intraday dip. There is
+no buy-now option: buying now is a buy trigger at or near the current price
 (a buy written after the prior close measures its crossing from the price it
 was written at — `lib/agent/triggers/written-price.ts` — so a level set on a
 down day isn't dead on arrival). The
@@ -73,10 +90,13 @@ news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 ## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
 `computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
 stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
-list plus the row's facts to its situation codes (eighteen in all; `AUTO_TRADE`
-is set by the Auto write-up itself), and `SITUATIONS` in the
-same file is the ONE table of the text an agent gets for each (under 2,200
-characters each). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
+list plus the row's facts to its situation codes (eight in all, 2026-11-15:
+one per trigger action, a sale or trim, a buy, an add, a review, and four the
+code finds with no trigger: floor to fix, a note to answer, just sold,
+promoted to live), and `SITUATIONS` in the same file is the ONE table of the
+text an agent gets for each (under 2,200 characters each; the buy, the
+review and the note end in one paragraph per case they took in, and are
+capped just above their length in `situations.test.ts`). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
 for the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set
 of facts; `get_theses`, the thesis sheet, the quote route and `complete_run`'s
 close-out all go through them, so no two surfaces can disagree about a stock.
@@ -92,7 +112,10 @@ The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
 A stock's Activity is one list (`lib/thesis/activity-feed.ts`): its saved
 lines (`ThesisUpdate`) plus each proposal's steps built from its `Order`
 (Proposed / Approved / Declined / Expired; the Order is the truth, the
-PROPOSAL_* rows are never trusted). The Activity tab shows the whole list,
+PROPOSAL_* rows are never trusted), and the fill of an order never proposed.
+The homepage Activity is the same lists cut to trades and watch status by
+stored fields alone (`lib/thesis/account-activity.ts`), beside the attempts
+that never became a proposal (`lib/portfolio/attempt-outcomes.ts`). The Activity tab shows the whole list,
 and the next run on the stock reads the newest 8 (`RECENT_ITEMS`) exactly as
 they read in the feed (`saidBlock` in `lib/agent/stock-context.ts`); the
 Activity tab marks where those 8 end. The Overview's "Agent insights" is a
@@ -311,7 +334,10 @@ plus `get_stock_data`.
 - RunEvent — SSE event from a run (type, title, message, payload)
 - RunMessage — persisted AI SDK messages for run replay
 - Thesis — stock analysis (direction, confidence, reasoning,
-  bullets, risk flags, signal types, sourcesUsed, entry/target/stop).
+  bullets, risk flags, signal types, sourcesUsed, triggers). No level
+  columns (2026-11-16): a stock has triggers and nothing else, shown as
+  their sentences; nothing sums them into a buy, floor or target. What we
+  paid is `Position.avgCost`.
   **Status taxonomy (P1-24 — see `docs/plans/STATUS_TAXONOMY.md`):**
   `status` = WATCHING | HOLDING | PASSED | RETIRED (+`retiredReason`
   DROPPED/SOLD/INVALIDATED/REPLACED) | PROMOTED; `direction` = LONG | SHORT | null.
@@ -356,7 +382,6 @@ plus `get_stock_data`.
 - /stocks/[symbol] — TradingView chart + stock detail
 - /intelligence — read-only view of the kept signal history (Findings +
   Health). No pipeline trigger, no monitor editing — the jobs are deleted.
-  /intelligence/ingest is the paste-a-thesis path.
 - /docs — the guide (docs/guide/ markdown), its own shell; /how-it-works — the tour and The Framework; /agent-workflow redirects
 - /settings — app settings
 
@@ -371,7 +396,7 @@ plus `get_stock_data`.
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
 - /api/intelligence/* — read-only signal history (signals, batches, routes,
-  health) + sync-health + thesis-ingest. email-ingest is a 200-and-drop stub
+  health) + sync-health. email-ingest is a 200-and-drop stub
   so Resend stops retrying. The trigger, monitors and coverage routes are
   deleted.
 - /api/quotes — Finnhub quote fallback
@@ -415,7 +440,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 ### Action Tools
 12. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
 13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED / ARCHIVED (→ stored as RETIRED + retiredReason) and WATCHING; there is NO PASS alias — a researched decline on a committed watch is `record_thesis(direction: 'PASS')`, the chat's tool, and a holding is sold with close_position; the ACTIVE/CLOSED verbs were removed). **A save is a patch (2026-10-08, #808):** a value equal to what is stored is dropped before any rule reads it; a field that cannot be applied comes back by name in `data.refused_fields` and the rest of the call lands; a whole-call refusal remains only for a missing or foreign thesis, a terminal row and a seed's commitment. The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
-14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row.
+14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row. Every model call names the holding's sale (`sell_if_below`, `sell_reason`): it is held to the setup's sale rules (`saleRuleProblem`), sizes the buy, and the pending Position holds it (`stopLoss`, `stopReason`); nothing is read off the stock's triggers.
 15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
 16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
 17. record_run_summary — persist run summary + ranked picks + decision rationale. It does NOT run the narration→execution gate: that moved to complete_run's preflight on 2026-05-23 (P0-12), so an agent that self-corrects before the end of the run isn't marked FAILED for the attempt.
@@ -689,7 +714,7 @@ it with a ticker chip as if it were a traded security.
 - **The model:** an account's gain is `equity − net contributed capital`, where net contributed = `Σ deposits − Σ withdrawals`. NOT `equity − $100k` and NOT `latestEquityPoint − firstEquityPoint`. A cash deposit raises equity without being a gain; measuring against a fixed seed (or a pre-deposit chart point) reports the deposit itself as profit.
 - **What it looked like (2026-06-07):** funding the live account with $88k showed `+$81,275.95 / +1015.95%` on the homepage and a phantom `−$11,937` "Unrealized Gain." Root cause: `STARTING_CAPITAL = 100_000` hardcoded as the P&L baseline, and the header delta read the raw Alpaca equity curve (which steps up on every deposit). It was invisible on paper because Alpaca seeds paper at exactly $100k — so the wrong constant happened to match.
 - **The fix (this is the Alpaca-recommended approach — there is no built-in deposit-adjusted P&L):** pull funding events from the account-activities endpoint (`CSD` = deposit, `CSW` = withdrawal) via `getFundingActivities()`, build `netContributed` + a deposit-adjusted P&L curve (`equity − cumulativeContributions(date)`), and measure all P&L against that. Pure, unit-tested math lives in `lib/portfolio/contributions.ts` (`contributions.test.ts`). LIVE only — paper has no real transfers and falls back to the `STARTING_CAPITAL` seed.
-- **Header semantics:** "Balance" = total equity (incl. deposits); "{Range} P&L" = deposit-adjusted gain over the selected window (1D/1W/1M/1Y/Max). % base is `netContributed` for All-Time, equity-at-range-start for shorter ranges.
+- **Header semantics:** "Balance" = the portfolio snapshot's value (`lib/portfolio/load-snapshot.ts`: cash plus every holding at the app's price, deposits included). The broker's `equity`, which marks holdings at after-hours trades, stands in only when the snapshot can't be read, and the database's sum of open trades only when the broker can't either. "{Range} P&L": 1D = the snapshot's day (every stock against its prior close; without a snapshot, the broker's `equity − last_equity` less deposits today); All-Time = the snapshot's lifetime (value − net contributed); 1W/1M/1Y = the deposit-adjusted curve's delta, the curve ending at the snapshot's value. % base is `netContributed` for All-Time, the account at the prior close for 1D, equity-at-range-start for 1W/1M/1Y.
 - **Don't reintroduce:** any `equity − STARTING_CAPITAL` math, or a header/chart delta off the raw equity curve, brings the bug straight back. Keep the deposit-adjusted curve as the single source for displayed P&L.
 - **Known still-deposit-naive (follow-ups):** the chart's secondary **Unrealized-Only** + **vs-S&P** toggles. The sub-period % is simple net-deposit return, not time-weighted (slightly high if a deposit lands mid-window — TWR is the proper upgrade).
 
@@ -772,12 +797,14 @@ When you spot something new, file it there — not here.)
 - app/api/research/agent-run/route.ts — creates ResearchRun row
 
 ### Triggers (the living ladder)
-- lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id / a plan level as an op) + checkLadder (the one post-op plan check). update_thesis, the UI popover, a buy fill and a plan set-down all go through it (DAV-242)
+- lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id; a buy fill's level op writes the approved order's stop and upside level) + checkLadder (the one post-op check). update_thesis, the UI popover and a buy fill all go through it (DAV-242)
+- lib/agent/triggers/stop-watching.ts — a STOP_WATCHING line on a watched stock, fired on its saved timing: the thesis retires as DROPPED, one Activity line
 - lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
-- lib/agent/triggers/types.ts — the Trigger type + watchedFloorOnClose
+- lib/agent/triggers/types.ts — the Trigger type
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
-- lib/agent/triggers/defaults.ts — horizon templates + accountStandingRules() (the account's add prompts) + cooldown defaults
-- lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
+- lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts) + cooldown defaults
+- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded); the fill writes its FILL templates (`fillTemplateOps`)
+- lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note), and with no fire a declared STOP/TARGET is stored MANUAL; THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
 - lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths

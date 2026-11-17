@@ -184,7 +184,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
       levelSources,
       `thesis=${id}`,
     ) as Array<Trigger & { level?: string }>;
-    const inheritedTriggers = ladder.filter((x) => (x.level ?? "THESIS") !== "THESIS").map((x) => ({ ...triggerForAgent(x, held), level: x.level }));
+    const inheritedTriggers = ladder.filter((x) => (x.level ?? "THESIS") !== "THESIS").map((x) => ({ ...triggerForAgent(x), level: x.level }));
 
     // The situations as of `at`: the flag math over the inputs then.
     const activity = updates.filter((u) => u.thesisId === id && u.timestamp <= at);
@@ -203,11 +203,10 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
     const input: NeedsActionInput = {
       thesis: {
         id, direction, status, triggers: ladder, createdAt: date(row.createdAt) ?? at,
-        lastReviewedAt, researchUpdatedAt: date(row.researchUpdatedAt), horizon: (row.horizon as string | null) ?? null,
+        lastReviewedAt,
         positionOpenedAt: position?.openedAt ?? null, avgCost: position?.avgCost ?? null, peakPrice: position?.peakPrice ?? null,
         quantity: position && position.quantity > 0 ? position.quantity : null,
         structure: snap ? { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] } : null,
-        targetPrice: num(row.targetPrice),
         paperTenureDays: num(row.paperTenureDays), paperRealizedPnl: num(row.paperRealizedPnl), paperReviewCount: num(row.paperReviewCount), promotedAt: date(row.promotedAt),
       },
       activity: rowsThen,
@@ -231,18 +230,12 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
         input.declinedSale = declinedSaleWork({ status, direction, decline: folded, floorPrice: floor, currentPrice: price, recentLow: null, now: at });
       }
     }
-    // The research's age is classified against the wall clock, not `at`, so
-    // the recording's own `researchAge` (as of the day) decides that one.
-    const freshThen = (row.researchAge as { freshness?: string } | null)?.freshness === "fresh";
-    const needs = computeNeedsAction(input).filter((n) => !(freshThen && n.kind === "RESEARCH_STALE"));
+    const needs = computeNeedsAction(input);
     const unanswered = stockContextFor({ ticker, rows: rowsThen }).unansweredDecision != null;
     const sources: SituationSources = {
-      needs, triggers: ladder, status, direction,
-      planSanity: (resolved?.planSanity as Array<{ kind: string }> | null) ?? null,
+      needs, triggers: ladder, status,
       actionability: (resolved?.actionability as string | null) ?? null,
-      progressToTarget: num(resolved?.progressToTarget),
       buyBlockedByFull: row.buyBlockedByFull != null,
-      nameTheSetup: row.nameTheSetup != null,
       unansweredDecision: unanswered,
     };
     const situations = situationsFor(sources);

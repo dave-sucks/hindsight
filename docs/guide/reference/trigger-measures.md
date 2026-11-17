@@ -16,7 +16,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Price
 
-`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, review · reads: the live quote
+`watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, stop watching, review · reads: the live quote
 
 **Variables** (stands in for the number):
 
@@ -67,7 +67,7 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 ### Move
 
-`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, review · reads: the live quote
+`watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, stop watching, review · reads: the live quote
 
 **Variables** (the number is measured from it):
 
@@ -124,7 +124,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### Volume
 
-`watch: "volume"` · value: more than 0× and up to 50× · actions: buy, add, trim, sell, review · reads: snapshot, volume
+`watch: "volume"` · value: more than 0× and up to 50× · actions: buy, add, trim, sell, stop watching, review · reads: snapshot, volume
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
@@ -138,7 +138,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### RSI
 
-`watch: "rsi"` · is: `below` / `above` · value: from 0 to 100 · actions: buy, add, trim, sell, review · reads: snapshot
+`watch: "rsi"` · is: `below` / `above` · value: from 0 to 100 · actions: buy, add, trim, sell, stop watching, review · reads: snapshot
 
 **Settings:**
 
@@ -156,7 +156,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### vs. S&P
 
-`watch: "strength"` · value: from -100 to 500 points · actions: buy, add, trim, sell, review · reads: snapshot
+`watch: "strength"` · value: from -100 to 500 points · actions: buy, add, trim, sell, stop watching, review · reads: snapshot
 
 **Settings:**
 
@@ -174,7 +174,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 ### Gap up
 
-`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, review · reads: snapshot
+`watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, stop watching, review · reads: snapshot
 
 **Rest period for a plain condition, when none is set:** 1 day.
 
@@ -327,7 +327,7 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
 
 ### From a date
 
-`watch: "from_date"` · is: `after` / `before` · value: a whole number from 1 to 365 days · actions: trim, sell, review · a clock, stands alone
+`watch: "from_date"` · is: `after` / `before` · value: a whole number from 1 to 365 days · actions: trim, sell, stop watching, review · a clock, stands alone
 
 **Variables** (the number is measured from it):
 

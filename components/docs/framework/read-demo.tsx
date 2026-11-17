@@ -116,7 +116,7 @@ function FieldBody({ f }: { f: SheetField }) {
     case "situations":
       return (
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="secondary" className="font-normal">Add or near target</Badge>
+          <Badge variant="secondary" className="font-normal">Add</Badge>
           <Badge variant="secondary" className="font-normal">Review due</Badge>
           <span className="text-xs text-muted-foreground">fired again, 3rd day</span>
         </div>

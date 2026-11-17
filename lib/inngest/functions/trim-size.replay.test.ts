@@ -101,7 +101,7 @@ describe("NVDA's trim, sized 30%, in every mode", () => {
   });
 
   it("Flag for Review: the morning run's trigger line says the size", () => {
-    expect(triggerForAgent({ ...TRIM, fireMode: "NEXT_MORNING" }, true).says).toBe("Trim 30% if above 16.6% from our entry");
-    expect(triggerForAgent({ ...TRIM, trimPct: undefined }, true).says).toBe("Trim 50% if above 16.6% from our entry");
+    expect(triggerForAgent({ ...TRIM, fireMode: "NEXT_MORNING" }).says).toBe("Trim 30% if above 16.6% from our entry");
+    expect(triggerForAgent({ ...TRIM, trimPct: undefined }).says).toBe("Trim 50% if above 16.6% from our entry");
   });
 });

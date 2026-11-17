@@ -142,7 +142,7 @@ agentConfigId = X AND status IN ('HOLDING','WATCHING','PROMOTED')`):
 
 1. **Pull today's price action** via `getStockQuote` or `Position.closePrice` at EOD, plus intraday high/low. Acceptable source: any Alpaca snapshot taken between run start and EOD (the app's live price is Alpaca's; Finnhub is its fallback).
 2. **HOLDING positions, price moved ≥3% intraday?** Confirm the thesis was reviewed in the run via `ThesisUpdate WHERE thesisId = X AND runId = <today's morning runId>`. No update row = the agent skipped a meaningful move. Flag.
-3. **WATCHING / PROMOTED, price crossed `entryPrice` or any ENTER trigger level?** Confirm `place_trade` was called (or a tactical run was scheduled and converted). If neither: pull the agent's documented reason from `update_thesis.rationale` or `record_run_summary.decision_rationale`.
+3. **WATCHING / PROMOTED, price crossed an ENTER trigger's level?** Confirm `place_trade` was called (or a tactical run was scheduled and converted). If neither: pull the agent's documented reason from `update_thesis.rationale` or `record_run_summary.decision_rationale`.
 4. **Goalpost-moving check.** [GAPS MRVL reference] — a documented anti-pattern: agent raises the target on a WATCHING thesis when price is already at or above the OLD target instead of trading. Symptom: `update_thesis` with `target` edit, ticker price ≥ old target. Flag with ticker + old target + new target + price.
 5. **Document the agent's reason VERBATIM** when a non-trade is questionable. "Agent didn't trade NVDA despite ENTER trigger conditions met at 14:23 ET (price $185.30 crossed entry $185.00). Stated reason: 'wait for tomorrow's CPI print before committing'" — quote it. The pattern matters more than any one instance.
 

@@ -1,0 +1,107 @@
+{
+  "about": "Mon 2026-11-16, the 8:00 ET morning reads. NVDA (PEAD Specialist) and MU (Secular Compounder) each had a sale card waiting for the principal since Fri 11-13 (a trigger's sale, no expiry), and the 7:30 Market Reviewer's high note on both, pinned to 11-19. Ids, times, statuses, trigger kinds, fire modes and cooldowns are the production rows'; every price, share count and line of text is replaced by a round stand-in (entry 100, the stock below its sale line), and the note body is not kept.",
+  "at": "2026-11-16T13:00:00.000Z",
+  "note": {
+    "id": "cmwj8s1h3000408lbk7zofc9z",
+    "runId": "cmwj8r768000008lbmhoswesu",
+    "author": "MARKET_REVIEWER",
+    "audience": "STOCKS",
+    "tickers": ["NVDA", "MU"],
+    "impact": "high",
+    "effect": "weaker",
+    "body": "(not kept)",
+    "pinnedUntil": "2026-11-19T12:30:47.233Z",
+    "createdAt": "2026-11-16T12:30:47.415Z"
+  },
+  "nvda": {
+    "analyst": { "id": "cmnhxpjio000004jvox6kl6c7", "name": "PEAD Specialist" },
+    "price": 90,
+    "thesis": {
+      "id": "cmtg9nbdy000204jpc6cwawgg",
+      "ticker": "NVDA",
+      "status": "HOLDING",
+      "direction": "LONG",
+      "horizon": "TARGET",
+      "setupId": "PEAD",
+      "conviction": "LOW",
+      "entryPrice": 100,
+      "targetPrice": 130,
+      "stopLoss": 95,
+      "createdAt": "2026-08-30T20:32:41.062Z",
+      "lastReviewedAt": "2026-11-16T02:02:39.350Z",
+      "researchUpdatedAt": "2026-11-16T02:02:39.133Z",
+      "triggers": [
+        { "id": "d9c8dabf-6406-48d8-9127-81e179b78dd4", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "value": 7, "watch": "repeat" }, "rationale": "(not kept)", "cooldownDays": 7 },
+        { "id": "6306936b-bb02-4298-9ca0-90f586772512", "action": "EXIT", "source": "AGENT", "fireMode": "ASK_NOW", "predicate": { "is": "below", "value": 95, "watch": "price" }, "rationale": "(not kept)", "lastFiredAt": "2026-11-13T14:50:06.520Z", "cooldownDays": 1 },
+        { "id": "1f2454ae-1a4d-4123-8502-fdcb85006401", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "is": "after", "value": 60, "watch": "from_date", "variable": "buy" }, "rationale": "(not kept)", "lastFiredAt": "2026-10-30T13:55:10.456Z", "cooldownDays": 60 },
+        { "id": "42cb8d3a-29b9-4a6e-aaef-211b0f5d3ca7", "action": "REVIEW", "source": "AGENT", "fireMode": "ASK_NOW", "predicate": { "is": "after", "value": 1, "watch": "report" }, "rationale": "(not kept)", "cooldownDays": 30 }
+      ]
+    },
+    "position": { "id": "cmtha1mcg000804kyrns3lpjg", "quantity": 10, "avgCost": 100, "openedAt": "2026-08-31T13:53:39.975Z" },
+    "order": {
+      "id": "cmwf3g0rj000r08lhot0aie2e",
+      "positionId": "cmtha1mcg000804kyrns3lpjg",
+      "environment": "LIVE",
+      "symbol": "NVDA",
+      "side": "SELL",
+      "intent": "CLOSE",
+      "quantity": 10,
+      "closeReason": "STOP",
+      "status": "AWAITING_APPROVAL",
+      "triggerIds": ["6306936b-bb02-4298-9ca0-90f586772512"],
+      "createdAt": "2026-11-13T14:50:23.819Z",
+      "expiresAt": null
+    },
+    "activity": [
+      { "id": "act_nv_fire", "type": "TRIGGER_FIRED", "triggerId": "6306936b-bb02-4298-9ca0-90f586772512", "timestamp": "2026-11-13T14:50:09.771Z", "runId": "cmwf3fpqz000v08l8sfn62bjy", "priceAtTime": 90, "summary": "Sell if below the line", "fieldChanges": {} },
+      { "id": "act_nv_reviewed", "type": "REVIEWED", "triggerId": "6306936b-bb02-4298-9ca0-90f586772512", "timestamp": "2026-11-13T14:50:31.109Z", "runId": "cmwf3fpqz000v08l8sfn62bjy", "priceAtTime": 90, "summary": "Reviewed", "fieldChanges": {} },
+      { "id": "act_nv_writer", "type": "UPDATED", "triggerId": null, "timestamp": "2026-11-16T02:02:39.377Z", "runId": "cmwim8vht00016iy7kyjqtjvr", "priceAtTime": null, "summary": "Updated", "fieldChanges": {} }
+    ]
+  },
+  "mu": {
+    "analyst": { "id": "cmmqxola3000004lbj7c11bfn", "name": "Secular Compounder" },
+    "price": 85,
+    "thesis": {
+      "id": "cmv9nm3xo000o06l3om8r7ath",
+      "ticker": "MU",
+      "status": "HOLDING",
+      "direction": "LONG",
+      "horizon": "COMPOUNDER",
+      "setupId": "COMPOUNDER_ACCUMULATION",
+      "conviction": "HIGH",
+      "entryPrice": 100,
+      "targetPrice": 140,
+      "stopLoss": 90,
+      "createdAt": "2026-10-15T14:48:40.812Z",
+      "lastReviewedAt": "2026-11-16T02:05:39.129Z",
+      "researchUpdatedAt": "2026-11-16T02:05:38.912Z",
+      "triggers": [
+        { "id": "010f32d9-158a-4105-b9bb-2e4f47d81ebb", "action": "REVIEW", "source": "AGENT", "fireMode": "NEXT_MORNING", "predicate": { "is": "before", "value": 14, "watch": "report" }, "rationale": "(not kept)", "cooldownDays": 30 },
+        { "id": "d9b6bc8d-017f-4355-8e8c-fe315084db87", "action": "REVIEW", "source": "AGENT", "fireMode": "NEXT_MORNING", "predicate": { "is": "below", "value": 95, "watch": "price" }, "rationale": "(not kept)", "lastFiredAt": "2026-11-13T14:35:02.516Z", "cooldownDays": 1 },
+        { "id": "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "action": "EXIT", "source": "PRINCIPAL", "fireMode": "DO_IT", "predicate": { "is": "below", "value": 90, "watch": "price" }, "rationale": "(not kept)", "lastFiredAt": "2026-11-13T14:45:11.360Z", "cooldownDays": 1 },
+        { "id": "445048fe-f79b-45e1-8aac-30abba7b6deb", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "value": 30, "watch": "repeat" }, "rationale": "(not kept)", "cooldownDays": 30 },
+        { "id": "978117be-a4b6-4470-9f6d-b42ec959a916", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "is": "after", "value": 14, "watch": "from_date", "variable": "buy" }, "rationale": "(not kept)", "lastFiredAt": "2026-11-12T15:15:07.327Z", "cooldownDays": 14 }
+      ]
+    },
+    "position": { "id": "cmv9o0nhe000006lbmypszfe7", "quantity": 10, "avgCost": 100, "openedAt": "2026-10-15T15:06:54.928Z" },
+    "order": {
+      "id": "cmwf39e95000o08l8ifhn9e9c",
+      "positionId": "cmv9o0nhe000006lbmypszfe7",
+      "environment": "LIVE",
+      "symbol": "MU",
+      "side": "SELL",
+      "intent": "CLOSE",
+      "quantity": 10,
+      "closeReason": "STOP",
+      "status": "AWAITING_APPROVAL",
+      "triggerIds": ["ba421f37-1a10-4fbd-aba8-cafc161c2c6e"],
+      "createdAt": "2026-11-13T14:45:14.706Z",
+      "expiresAt": null
+    },
+    "activity": [
+      { "id": "act_mu_fire", "type": "TRIGGER_FIRED", "triggerId": "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "timestamp": "2026-11-13T14:45:14.429Z", "runId": "cmwf39dtt000l08l89uy38vnv", "priceAtTime": 85, "summary": "Sell if below the line", "fieldChanges": {} },
+      { "id": "act_mu_reviewed", "type": "REVIEWED", "triggerId": "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "timestamp": "2026-11-13T14:45:32.764Z", "runId": "cmwf39dtt000l08l89uy38vnv", "priceAtTime": 85, "summary": "Reviewed", "fieldChanges": {} },
+      { "id": "act_mu_writer", "type": "UPDATED", "triggerId": null, "timestamp": "2026-11-16T02:05:39.153Z", "runId": "cmwimd88p0001rwy7o4relz6g", "priceAtTime": null, "summary": "Updated", "fieldChanges": {} }
+    ]
+  }
+}

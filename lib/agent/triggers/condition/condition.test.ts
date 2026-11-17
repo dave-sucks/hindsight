@@ -91,14 +91,15 @@ describe("what people read: the form's words, direction · value", () => {
     expect(triggerText(action, w)).toBe(expected);
   });
 
-  it("names the plan coming down on a stock we don't own", () => {
-    expect(triggerText("EXIT", { watch: "price", is: "below", value: 225 }, false)).toBe("Take the plan down if below $225");
+  it("a watch's line is its own action: Stop watching, whatever the stock's state; a sale is always Sell", () => {
+    expect(triggerText("STOP_WATCHING", { watch: "price", is: "below", value: 225, settings: { close: true } })).toBe("Stop watching if below $225 · only on the close");
+    expect(triggerText("EXIT", { watch: "price", is: "below", value: 225 })).toBe("Sell if below $225");
   });
 
   it("a row of trim pills says \"Trim\": the pill's own \"50% if\" finishes the sentence", () => {
     expect(rowLabel("TRIM")).toBe("Trim");
     expect(rowLabel("EXIT")).toBe("Sell if");
-    expect(rowLabel("EXIT", false)).toBe("Take the plan down if");
+    expect(rowLabel("STOP_WATCHING")).toBe("Stop watching if");
   });
 });
 

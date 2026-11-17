@@ -89,7 +89,6 @@ describe("the daily run's 'matching now' respects the close", () => {
         triggers: [closeBuy],
         createdAt: new Date("2026-09-01T00:00:00Z"),
         lastReviewedAt: new Date(now),
-        horizon: "TARGET",
       },
       latestQuote: { price: 520, changePct: 1 },
       now: new Date(now),

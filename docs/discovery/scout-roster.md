@@ -34,16 +34,25 @@ dispatched theses' outcomes; the operator can override from taste.
 > last verified · notes. Keep one section per theme so Play D ("reuse theme-A scouts on theme-B")
 > is a copy-paste.
 
-### Technical / breakouts — ⚠️ seat RETIRED 2026-07-27 (Momentum deleted)
-> The Momentum seat is gone and not replaced. **Don't source for this theme.** Handles kept only in
-> case a future 4th seat can use them; all remain unscored, so treat them as unproven if reused.
+### Technical / breakouts and pullbacks
+> The Momentum seat was retired 2026-07-27, but its chart shapes live on as setups the current
+> analysts use: `EPISODIC_PIVOT` and `MA_PULLBACK` (PEAD), `BASE_BREAKOUT` and `MA_PULLBACK`
+> (Catalyst, Compounder). Source here for those setups only, never for a momentum seat.
+> All unscored.
 
 | Handle | Tier | Known for | Last verified | Notes |
 |---|---|---|---|---|
+| @PradeepBonde | 🔍 watch | Stockbee; coined "episodic pivot", the setup PEAD trades | — | Added 2026-11-15; unscored |
+| @markminervini | 🔍 watch | Base breakouts, leaders near highs | — | Added 2026-11-15; unscored |
+| @RichardMoglen | 🔍 watch | Leaders on first pullbacks | — | Added 2026-11-15; unscored |
+| @Jake__Wujastyk | 🔍 watch | Leader lists, breakout setups | — | Added 2026-11-15; unscored |
+| @alphatrends | 🔍 watch | Brian Shannon; pullbacks to rising averages | — | Added 2026-11-15; unscored |
+| @IBDinvestors | 🔍 watch | IBD 50 and leaderboard lists | — | Added 2026-11-15; a list source, not a scout |
+| @Qullamaggie | 🔍 watch | Breakouts, episodic pivots | — | Added 2026-11-15; rarely posts on X now |
 | @AdamMancini4 | 🔍 watch | ES/SPX levels, high-tight breakout setups | — | named in Momentum playbook queries; unscored |
 | @traderstewie | 🔍 watch | breakout swing setups | — | named in Momentum playbook queries; unscored |
 | @hari_trades | 🔍 watch | momentum names | — | unscored |
-| @StockMKTNewz | 🔍 watch | fast news/breakout flow | — | unscored |
+| @StockMKTNewz | 🔍 watch | fast news/breakout flow | — | unscored; also a headline source for PEAD |
 
 ### Biotech catalysts / PDUFAs (Catalyst Event PM)
 
@@ -66,6 +75,8 @@ dispatched theses' outcomes; the operator can override from taste.
 | @adamfeuerstein | 🔍 watch *(verification only)* | STAT News; rigorous primary sourcing on regulatory developments | 2026-08-09 | ~125k. Journalist — use to triangulate/verify, never as idea generation. |
 | @catalystalert | 🔍 watch | AI-assisted dated catalyst calendar | 2026-08-09 | Unverified. Low bar to keep watching. |
 | @DeepSouthDoctor | 🔇 muted *(for this seat)* | Longer-horizon SMID-cap position-taking | 2026-08-09 | **Wrong archetype** — not a catalyst timer. Was **short $CYTK**, a name this seat holds long. Kept on record so it isn't re-added. |
+| @bradloncar | 🔍 watch | Biotech investing, sector-wide reads | — | Added 2026-11-15; unscored |
+| @matthewherper | 🔍 watch *(verification only)* | STAT News; FDA and industry reporting | — | Added 2026-11-15. Journalist: verify, don't source |
 | @velorexcapital | 🔇 muted | Self-reported "5-for-5 summer PDUFA streak" | 2026-08-09 | **Survivorship-scored** — counts only approvals that happened, and counts **$IONS as a win when the seat lost $752 on it.** The cleanest proof in the file that *approval rate is the wrong scoreboard for a trader.* |
 
 **Non-X sources worth more than the bench:** `pdufa.bio`, BiopharmaWatch, Assyro (PDUFA
@@ -73,9 +84,44 @@ calendars), FDA.gov, ClinicalTrials.gov, Federal Register (AdCom notices). Candi
 durable monitor so the seat stops depending on whether a handle happened to post about a clock.
 
 ### Earnings / beat-and-raise (PEAD)
+> First seeded 2026-11-15, from memory rather than a Grok session, so every row is unscored.
+> Most are **sources** (calendars, call quotes, KPI charts, price-target headlines), not
+> scouts with calls to grade. Score the ones that make calls with the scorecard prompt in
+> `docs/discovery-prep/2026-11-15-IDEAS.md`.
+
 | Handle | Tier | Known for | Last verified | Notes |
 |---|---|---|---|---|
-| _(seed from the next PEAD prep session)_ | | | | |
+| @eWhispers | 🔍 watch | Earnings Whispers: calendar, whisper numbers | — | A calendar source |
+| @TheTranscript_ | 🔍 watch | Earnings-call quotes | — | Fastest way to tell a raised guide from a reiterated one |
+| @wallstengine | 🔍 watch | Headlines, including price-target raises | — | A headline source |
+| @App_Economy | 🔍 watch | App Economy Insights: earnings visuals | — | A source |
+| @BourbonCap | 🔍 watch | Earnings breakdowns | — | A source |
+| @Fiscal_AI | 🔍 watch | KPI charts per report | — | A source |
+| @jaminball | 🔍 watch | Clouded Judgement: weekly software metrics | — | Software acceleration; also a Compounder source |
+
+### Secular themes — AI infrastructure (Compounder, PEAD)
+> ⚠️ The account already holds this bet (five of seven holdings on 2026-11-15). Use this bench
+> to judge names already held or watched before sourcing new ones.
+
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| @dylan522p | 🔍 watch | Dylan Patel, SemiAnalysis: chip and datacenter supply chain | — | Added 2026-11-15; unscored |
+| @GavinSBaker | 🔍 watch | Atreides: AI semis and infrastructure | — | Added 2026-11-15; unscored |
+| @Beth_Kindig | 🔍 watch | I/O Fund: AI semis | — | Added 2026-11-15; unscored |
+| @BuccoCapital | 🔍 watch | Tech compounders | — | Added 2026-11-15; unscored |
+
+### Smart money (any analyst, as evidence)
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| @QuiverQuant | 🔍 watch | Congress trades, government contracts, lobbying | — | Added 2026-11-15. Congress can report up to 45 days late: evidence, not a copy-trade |
+| @WhaleWisdom | 🔍 watch | 13F holdings | — | Added 2026-11-15. With Dataroma, for fund convergence |
+| @unusual_whales | 🔍 watch | Options flow, Congress trades | — | Added 2026-11-15. Noisy: only to ask why a stock is moving |
+
+### Seasonality / market (context, not names)
+| Handle | Tier | Known for | Last verified | Notes |
+|---|---|---|---|---|
+| @RyanDetrick | 🔍 watch | Seasonal and market statistics | — | Added 2026-11-15 |
+| @charliebilello | 🔍 watch | Market statistics | — | Added 2026-11-15 |
 
 ### Secular themes — GLP-1 supply chain (Compounder)
 > First seeded 2026-08-12 from the Compounder discovery session. All unproven — Grok's own
@@ -124,6 +170,10 @@ durable monitor so the seat stops depending on whether a handle happened to post
 > One line per Scout Loop session: date · analyst/theme · play · new handles added · names that
 > hit the triple-sourced tier. This is the audit trail for promotions.
 
+- **2026-11-15 · all three analysts · prep only, no Grok session** — 25 handles added across
+  PEAD (seeded for the first time), breakouts and pullbacks, AI infrastructure, biotech, smart
+  money and seasonality. All 🔍 unscored, from memory rather than a scout session, so run the
+  scorecard prompt before leaning on any of them. Prep: `docs/discovery-prep/2026-11-15-IDEAS.md`.
 - **2026-08-12 · Secular Compounder · GLP-1 + onshoring + aging · Play A ×2 + Play D** — first
   roster seeding for this seat. 8 handles added (5 GLP-1, 3 industrial), all 🔍 unscored. Play D
   transfer onto aging returned nothing (see that section). Session output: 5 dispatched to

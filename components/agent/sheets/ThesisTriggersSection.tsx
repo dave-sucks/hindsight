@@ -38,9 +38,9 @@ import type { Trigger, ThesisDossier } from "@/lib/types/thesis-sheet";
 
 type Level = "THESIS" | "ANALYST" | "ACCOUNT";
 
-// One row per action — Buy if / Add if / Review if / Trim if / Sell if.
+// One row per action — Buy if / Add if / Review if / Trim if / Sell if / Stop watching if.
 // Rows with no triggers don't render.
-const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "TRIM", "EXIT"];
+const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "TRIM", "EXIT", "STOP_WATCHING"];
 
 /** The pill rows. A pill opens its trigger in a popover. */
 export function TriggerGroups({
@@ -76,7 +76,7 @@ export function TriggerGroups({
         return (
           <div key={action} className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
             {/* Each trim pill leads with its size: "Trim [30% if | above | $150]". */}
-            <span className="shrink-0 text-sm text-foreground">{rowLabel(action, level === "THESIS" ? held : undefined)}</span>
+            <span className="shrink-0 text-sm text-foreground">{rowLabel(action)}</span>
             {items.map((t) => (
               <TriggerPill
                 key={t.id}

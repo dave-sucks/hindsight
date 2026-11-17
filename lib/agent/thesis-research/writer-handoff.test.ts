@@ -14,20 +14,19 @@ import { writerHandoff, writerHandoffLine } from "./writer-handoff";
 const WRITER_SUMMARY =
   "Updated CYTK: Entry $73.50 → $70.25, Entry: fires on the close, Stop: wording updated, Target $96 → $88.31, composite 6 → 3, rationale updated, research refreshed";
 
-/** The plan as the writer left it on the row at 12:08:00. */
-const CYTK_PLAN = { entryPrice: 70.25, targetPrice: 88.31, stopLoss: 64 };
+/** The stock's triggers as the writer left them at 12:08:00, each as its sentence. */
+const CYTK_TRIGGERS = ["Buy if above $70.25 · only on the close", "Review if above $88.31", "Stop watching if below $64 · only on the close"];
+const CYTK_LINE = "The triggers the refresh left: Buy if above $70.25 · only on the close; Review if above $88.31; Stop watching if below $64 · only on the close.";
 
-describe("the plan the refresh wrote goes back to the run that asked for it", () => {
+describe("the triggers the refresh wrote go back to the run that asked for it", () => {
   const h = writerHandoff({
     ticker: "CYTK",
     update: { summary: WRITER_SUMMARY },
-    plan: CYTK_PLAN,
+    triggers: CYTK_TRIGGERS,
   });
 
   it("names every level the parent went on to delete", () => {
-    expect(h.planLine).toBe(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
-    );
+    expect(h.planLine).toBe(CYTK_LINE);
   });
 
   it("carries the writer's own list of what changed, without the boilerplate lead", () => {
@@ -39,7 +38,7 @@ describe("the plan the refresh wrote goes back to the run that asked for it", ()
   it("the one line the tool row and the model both read", () => {
     expect(writerHandoffLine(h)).toBe(
       "The refresh changed: Entry $73.50 → $70.25, Entry: fires on the close, Stop: wording updated, Target $96 → $88.31, composite 6 → 3, rationale updated, research refreshed. " +
-        "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
+        CYTK_LINE,
     );
   });
 
@@ -51,42 +50,34 @@ describe("the plan the refresh wrote goes back to the run that asked for it", ()
 });
 
 describe("the shapes a refresh can leave behind", () => {
-  it("a refresh that wrote no plan says so rather than showing an empty list", () => {
+  it("a refresh that left no triggers says so rather than showing an empty list", () => {
     const h = writerHandoff({
       ticker: "CYTK",
       update: { summary: "Updated CYTK: research refreshed" },
-      plan: { entryPrice: null, targetPrice: null, stopLoss: null },
+      triggers: [],
     });
-    expect(h.planLine).toBe(
-      "The refresh left no priced plan on $CYTK — no buy level, target or floor.",
-    );
+    expect(h.planLine).toBe("The refresh left $CYTK with no triggers.");
     expect(writerHandoffLine(h)).toContain("research refreshed");
   });
 
-  it("a refresh that wrote no audit row leads with the plan alone", () => {
-    const h = writerHandoff({ ticker: "CYTK", update: null, plan: CYTK_PLAN });
+  it("a refresh that wrote no audit row leads with the triggers alone", () => {
+    const h = writerHandoff({ ticker: "CYTK", update: null, triggers: CYTK_TRIGGERS });
     expect(h.changed).toBeNull();
-    expect(writerHandoffLine(h)).toBe(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
-    );
+    expect(writerHandoffLine(h)).toBe(CYTK_LINE);
   });
 
-  it("a partial plan names only what is there", () => {
+  it("a buy on a chart condition reads as written, never as a number", () => {
     expect(
-      writerHandoff({
-        ticker: "ETN",
-        update: null,
-        plan: { entryPrice: 418, targetPrice: null, stopLoss: 355 },
-      }).planLine,
-    ).toBe("The plan the refresh left: buy $418.00, floor $355.00.");
+      writerHandoff({ ticker: "ETN", update: null, triggers: ["Buy if above the 50-day average", "Stop watching if below $355 · only on the close"] }).planLine,
+    ).toBe("The triggers the refresh left: Buy if above the 50-day average; Stop watching if below $355 · only on the close.");
   });
 
   it("the lead strips with or without the dollar sign, and an empty summary is no summary", () => {
     expect(
-      writerHandoff({ ticker: "MU", update: { summary: "Updated $MU: Target $120 → $140" }, plan: CYTK_PLAN }).changed,
+      writerHandoff({ ticker: "MU", update: { summary: "Updated $MU: Target $120 → $140" }, triggers: CYTK_TRIGGERS }).changed,
     ).toBe("Target $120 → $140");
     expect(
-      writerHandoff({ ticker: "MU", update: { summary: "Updated MU:" }, plan: CYTK_PLAN }).changed,
+      writerHandoff({ ticker: "MU", update: { summary: "Updated MU:" }, triggers: CYTK_TRIGGERS }).changed,
     ).toBeNull();
   });
 });

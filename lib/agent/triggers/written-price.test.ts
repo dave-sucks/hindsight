@@ -78,6 +78,25 @@ describe("MSFT, 2026-09-08 — a buy level set on a down day", () => {
   });
 });
 
+describe("MSFT, 2026-09-08 — a review written under its line mid-session", () => {
+  // The same day's tape: "review if below $495" written at 10:30 with MSFT at $492, under the $499.70 close.
+  const review = applyTriggerOps({
+    stored: [floor, target],
+    ops: [{ op: "add", trigger: { id: "new", predicate: { watch: "price", is: "below", value: 495 }, action: "REVIEW", rationale: "A look under $495." } }],
+    direction: "LONG",
+    status: "WATCHING",
+    actor: "AGENT",
+    currentPrice: 492,
+    now: at("10:30"),
+    mintId: () => "look",
+  } as Parameters<typeof applyTriggerOps>[0]).triggers.find((t) => t.rationale === "A look under $495.")!;
+
+  it("is measured from the $492 it was written at, so it doesn't fire on a line it was already under (on main: fires at the next check)", () => {
+    expect(review.writtenPrice).toBe(492);
+    expect(check(review, 493, at("11:00"))).toEqual({ fires: false, reason: "no-crossing" });
+  });
+});
+
 describe("stampWrittenPrice — only the server sets it", () => {
   const now = new Date("2026-09-08T14:30:00Z");
   const enter = (id: string, level: number, extra: Partial<Trigger> = {}): Trigger => ({
@@ -104,9 +123,16 @@ describe("stampWrittenPrice — only the server sets it", () => {
     expect(stampWrittenPrice([], [forged], null, now)[0].writtenPrice).toBeUndefined();
   });
 
-  it("never stamps a sell or review", () => {
-    const sell: Trigger = { id: "s", predicate: { watch: "price", is: "below", value: 90 }, action: "EXIT", rationale: "floor", writtenPrice: 95, writtenAt: now.toISOString() };
-    expect(stampWrittenPrice([], [sell], 99, now)[0].writtenPrice).toBeUndefined();
+  it("never stamps a sale, a trim or an add", () => {
+    for (const action of ["EXIT", "TRIM", "ADD"] as const) {
+      const t: Trigger = { id: "s", predicate: { watch: "price", is: "below", value: 90 }, action, rationale: "a line", writtenPrice: 95, writtenAt: now.toISOString() };
+      expect(stampWrittenPrice([], [t], 99, now)[0].writtenPrice).toBeUndefined();
+    }
+  });
+
+  it("stamps a review as it does a buy: a review fires on its crossing too", () => {
+    const review: Trigger = { id: "r", predicate: { watch: "price", is: "below", value: 90 }, action: "REVIEW", rationale: "a look" };
+    expect(stampWrittenPrice([], [review], 99, now)[0]).toMatchObject({ writtenPrice: 99, writtenAt: now.toISOString() });
   });
 });
 

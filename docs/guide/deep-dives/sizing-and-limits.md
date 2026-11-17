@@ -14,7 +14,7 @@ Each buy risks a share of the account. By default that is 1% of equity, set per 
 
 The shares are that risk divided by the distance from the entry to the floor. With $100,000, 1%, high conviction, a $50 entry and a $45 floor, the buy risks $1,000 over $5 a share: 200 shares, $10,000.
 
-With [stop when buying](../concepts/triggers.md) on, the distance is the wider of the plan's floor and the setting's line, because the sale floor will sit on that line. A 4% plan floor with an 8% setting is sized like an 8% stop, and the agent is told so (`sizingStop` in `lib/agent/position-sizing.ts`, for buys and adds).
+With [stop when buying](../concepts/triggers.md) on, the distance is the wider of the stock's floor and the setting's line, because the sale floor will sit on that line. A 4% plan floor with an 8% setting is sized like an 8% stop, and the agent is told so (`sizingStop` in `lib/agent/position-sizing.ts`, for buys and adds).
 
 Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest, and never over its most in one stock, so a first buy always leaves the room the rule-sized adds need. The agent is told which limit moved it and what the risk alone had asked for. If there is no usable floor or no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the agent is told why. An add risks half the shares a new buy would get.
 
@@ -36,7 +36,7 @@ The market is an input, never a gate. Every buy tells the agent the reading, and
 
 ## Slots
 
-Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity, and the stock enters the "buy blocked, full" [situation](../concepts/situations.md). There the agent weighs the stock against the weakest holding and names which one it would replace. Replacing a holding is your decision.
+Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity, and the stock's "buy level reached" [situation](../concepts/situations.md) reads its paragraph on a full analyst. There the agent weighs the stock against the weakest holding and names which one it would replace. Replacing a holding is your decision.
 
 ## Account-wide lines
 
@@ -55,7 +55,7 @@ Two numbers watch the whole account. Open risk is what we'd lose if every floor 
 `computeRegime` in `lib/agent/regime.ts`, from the daily `TickerIndicators` snapshot; `REGIME_BUFFER_PCT` is 1.
 
 #### Slots
-`maxOpenPositions` on `AgentConfig` (default 5). `place_trade` counts `OPEN` and `PENDING_APPROVAL` positions. `lib/agent/capacity.ts` holds `isFull` and `buyBlockedByFull`; `recordBuyBlockedByFull` writes the Activity line; `BUY_BLOCKED_FULL` is in `lib/agent/situations.ts`.
+`maxOpenPositions` on `AgentConfig` (default 5). `place_trade` counts `OPEN` and `PENDING_APPROVAL` positions. `lib/agent/capacity.ts` holds `isFull` and `buyBlockedByFull`; `recordBuyBlockedByFull` writes the Activity line; what a run does with a buy into a full analyst is a paragraph of `BUY_ARRIVES` in `lib/agent/situations.ts`.
 
 #### Account lines
 `openRisk`, `heatLine` and `industryLine` in `lib/agent/portfolio-risk.ts`, with `PORTFOLIO_HEAT_PCT` and `MAX_NAMES_PER_INDUSTRY`. `place_trade` adds them to its sizing notes: the reply's `sizing` and the `trade_placed` run event, never the proposal's reason.

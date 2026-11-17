@@ -1,12 +1,14 @@
 "use server";
 
-import { NO_LONGER_OWED } from "@/lib/agent/refusal-carryover";
 import { prisma } from "@/lib/prisma";
-import { describeRefusalTool } from "@/lib/agent/gate-rejections";
-import { attemptOutcomes, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
+import { loadAccountActivity } from "@/lib/thesis/account-activity.server";
+import type { AccountActivityLine } from "@/lib/thesis/account-activity";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { createClient } from "@/lib/supabase/server";
-import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PriceLookup } from "@/lib/alpaca";
+import { getAccount, getFundingActivities, getLatestPrices, getLatestPricesWithMeta, getPortfolioHistory, type PortfolioHistoryPoint, type PriceLookup } from "@/lib/alpaca";
+import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
+import { oneDayWindow } from "@/lib/portfolio/one-day-window";
+import { etDateOf } from "@/lib/market-data/intraday-window";
 import {
   netContributedTotal,
   depositAdjustedPnlCurve,
@@ -31,7 +33,12 @@ const STARTING_CAPITAL = 100_000;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PortfolioStats {
-  /** Total account equity — what you'd have if everything closed and margin was paid. Alpaca `equity`. */
+  /**
+   * The account's value: the portfolio snapshot's (cash plus every holding at
+   * the app's price), the number every agent is given. The broker's `equity`,
+   * which marks holdings at after-hours trades, only when the snapshot can't
+   * be read.
+   */
   totalValue: number;
   unrealizedPnl: number;
   realizedPnl: number;
@@ -79,10 +86,10 @@ export interface PortfolioStats {
    * deposit from reading as a gain.
    */
   netContributed: number;
-  /** Today's P&L: `equity − last_equity` minus any deposit posted today. */
-  dayPnl: number;
-  /** Today's P&L as % of the prior close. */
-  dayPnlPct: number;
+  /** The day's P&L: the snapshot's, every stock held or traded that day against its prior close; without a snapshot, the broker's `equity − last_equity` less any deposit posted today. Null when it can't be worked out. */
+  dayPnl: number | null;
+  /** The day's P&L as % of the account at the prior close. */
+  dayPnlPct: number | null;
 }
 
 export interface AgentConfigSummary {
@@ -116,9 +123,6 @@ export interface RecentPick {
   /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
   status: string;
   reasoningSummary: string;
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
   createdAt: string; // ISO
   decision: string | null; // BUY | SELL | PASS | HOLD — actual action taken
   position: {
@@ -147,44 +151,6 @@ export interface SpyBenchmark {
   '1Y': number | null;
 }
 
-/** A single item in the homepage activity timeline. */
-export interface ActivityFeedItem {
-  id: string;
-  /**
-   * BLOCKED / PASSED / FAILED are the attempts that never became a proposal:
-   * a rule stopped it, the analyst chose not to, or the run broke. PASSED is
-   * neutral — often the right call.
-   */
-  type: "OPENED" | "CLOSED" | "MODIFIED" | "PROPOSED" | "REJECTED" | "BLOCKED" | "PASSED" | "FAILED";
-  positionId: string;
-  symbol: string;
-  direction: string | null;
-  timestamp: string;   // ISO — used for sort/display
-  label: string;       // e.g. "Opened LONG", "Closed — WIN", "Stop → breakeven"
-  source: string;      // "agent" | "price_monitor" | "user"
-  reason: string | null;
-  pnl: number | null;
-  pnlPct: number | null;
-  outcome: string | null;
-  analystName: string | null;
-  // Trade-as-Proposal — populated on PROPOSED entries. orderId drives the
-  // inline Review dropdown in ActivityRow. intent tells the row which
-  // verb to show ("Buy" / "Add" / "Close" / "Trim").
-  orderId?: string;
-  intent?: "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
-  expiresAt?: string;
-  // Share count + per-share entry price. On OPENED/PROPOSED rows `price` is
-  // the entry; on CLOSED rows it's the avg cost, paired with `closePrice`
-  // (the exit fill) so the feed can render the full shared trade sentence
-  // "Bought N shares at $price, closed at $closePrice". Null on MODIFIED.
-  shares?: number;
-  price?: number;
-  closePrice?: number;
-  /** BLOCKED / PASSED / FAILED: the run that made the attempt, and which side it was. */
-  runId?: string;
-  side?: "BUY" | "SELL" | "EITHER";
-}
-
 export interface DashboardData {
   /** Held positions (Position.status === "OPEN"). Drives the "Open" count + all P&L / value math. */
   openTrades: MockTrade[];
@@ -196,7 +162,7 @@ export interface DashboardData {
    */
   pendingTrades: MockTrade[];
   closedTrades: MockTrade[];
-  activityFeed: ActivityFeedItem[];
+  activityFeed: AccountActivityLine[];
   portfolio: PortfolioStats;
   /** Total equity curve from Alpaca Portfolio History API (realized + unrealized). Falls back to realizedCurve. */
   equityCurve: { date: string; value: number }[];
@@ -291,6 +257,29 @@ function buildEquityCurve(
   }
 
   return points;
+}
+
+/** The broker's history with its newest point at the snapshot's value, so the chart ends at the header's Balance. */
+function endingAt(history: PortfolioHistoryPoint[], value: number | undefined): PortfolioHistoryPoint[] {
+  if (value == null || history.length === 0) return history;
+  return [...history.slice(0, -1), { ...history[history.length - 1], equity: value }];
+}
+
+/**
+ * The 1D chart's "Prev": the point it measures the day from (oneDayWindow's
+ * first, the prior session's close), set to the curve's last point less the
+ * snapshot's day. So Prev is the account at the prior close at the app's
+ * prices, not the broker's mark, and the line moves by exactly the header's
+ * 1D: a deposit or withdrawal posted today is in the last point and not in
+ * the day, so it never shows as a move. Only when the curve's newest day is
+ * the snapshot's day and the day is known.
+ */
+function prevAtTheClose(curve: { date: string; value: number }[], day: string | undefined, change: number | null | undefined) {
+  if (day == null || change == null || curve.length < 2) return curve;
+  const [prior] = oneDayWindow(curve);
+  const last = curve[curve.length - 1];
+  if (etDateOf(last.date) !== day || etDateOf(prior.date) === day) return curve;
+  return curve.map((p) => (p === prior ? { ...p, value: last.value - change } : p));
 }
 
 // ─── Main data loader ─────────────────────────────────────────────────────────
@@ -397,7 +386,7 @@ export async function getDashboardData(
     positionsWithAnalyst,
     dbRecentRuns,
     dbTodaysPicks,
-    dbManagementActions,
+    activityFeed,
   ] = await Promise.all([
     resolveAlpacaCredentials(userId, environment).then((c) => c ?? undefined),
     prisma.position.findMany({
@@ -473,9 +462,6 @@ export async function getDashboardData(
         direction: true,
         status: true,
         snapshot: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
         createdAt: true,
         triggers: true,
         researchRun: {
@@ -563,34 +549,11 @@ export async function getDashboardData(
         direction: true,
       },
     }),
-    // Activity feed: recent management actions with position context
-    // .catch(() => []) — silently degrades if table hasn't been migrated yet
-    prisma.positionManagementAction.findMany({
-      where: { position: { accountId, environment } },
-      orderBy: { createdAt: "desc" },
-      take: 40,
-      select: {
-        id: true,
-        positionId: true,
-        actionType: true,
-        source: true,
-        reason: true,
-        fillPrice: true,
-        fillQty: true,
-        createdAt: true,
-        position: {
-          select: {
-            symbol: true,
-            direction: true,
-            realizedPnl: true,
-            avgCost: true,
-            quantity: true,
-            outcome: true,
-            analyst: { select: { name: true } },
-          },
-        },
-      },
-    }).catch(() => [] as never[]),
+    // Activity: the stocks' Activity lists, cut to trades and watch status.
+    loadAccountActivity({ accountId, environment }).catch((err) => {
+      console.warn("[dashboard] activity failed to load:", err);
+      return [];
+    }),
   ]);
 
   // ── Phase B: price + name lookups + SPY benchmark, parallel ────────────
@@ -617,7 +580,7 @@ export async function getDashboardData(
     return ((end - start) / start) * 100;
   }
 
-  const [priceLookup, nameMap, spyCandles, portfolioHistory, intradayHistory, alpacaAccount, fundingEvents] = await Promise.all([
+  const [priceLookup, nameMap, spyCandles, brokerHistory, brokerIntraday, alpacaAccount, fundingEvents, snapshot] = await Promise.all([
     allTickers.length > 0
       ? getLatestPricesWithMeta(allTickers, alpacaCreds).catch((err) => {
           console.error(
@@ -690,8 +653,18 @@ export async function getDashboardData(
           return [] as FundingEvent[];
         })
       : Promise.resolve([] as FundingEvent[]),
+    // The portfolio snapshot: the header's value, day and lifetime, the same
+    // numbers every agent is given (lib/portfolio/load-snapshot.ts).
+    alpacaCreds
+      ? loadPortfolioSnapshot({ accountId, environment }).catch((err) => {
+          console.warn(`[portfolio] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const priceMap = priceLookup.prices;
+  const portfolioHistory = endingAt(brokerHistory, snapshot?.value);
+  const intradayHistory = endingAt(brokerIntraday, snapshot?.value);
 
   // Order reconciliation now runs centrally in the reconcile-orders Inngest
   // cron (every 5 min) and the sync-heartbeat (every 1 min during RTH). The
@@ -853,38 +826,45 @@ export async function getDashboardData(
   // Σ withdrawals from Alpaca CSD/CSW activities. Paper / no-creds / failed
   // fetch: fall back to the STARTING_CAPITAL seed (paper math unchanged).
   // This is the number that stops a cash deposit from reading as a gain.
+  // The snapshot's, when it has one: the same deposits, read by the same function.
   const netContributed =
-    fundingEvents.length > 0 ? netContributedTotal(fundingEvents) : STARTING_CAPITAL;
+    snapshot?.lifetime?.contributed ?? (fundingEvents.length > 0 ? netContributedTotal(fundingEvents) : STARTING_CAPITAL);
 
-  // Alpaca's equity is always correct — it includes every open position's
-  // live mark-to-market. Derive unrealized from the account identity:
-  //   equity = net_contributed + realized + unrealized
-  //   ⇒ unrealized = equity − net_contributed − realized
-  // The old path summed openTrades[].pnl, but per-position pnl is 0 when
-  // the live-price fetch silently misses a ticker — so a 10-position
-  // portfolio where 3 prices didn't fetch would under-count by those 3.
-  // Falls back to the DB-summed path only when Alpaca creds are absent.
-  const totalValue = alpacaAccount
-    ? parseFloat(alpacaAccount.equity)
-    : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const unrealizedPnl = alpacaAccount
+  // The value, the day and the lifetime are the portfolio snapshot's: cash
+  // plus every holding at the app's price, the numbers every agent is given.
+  // The broker's own equity marks holdings at after-hours trades: at 10 PM on
+  // Nov 11 it had CEG at $271.81 against its $274.73 close, so the header and
+  // every agent disagreed every night. When the snapshot can't be read and
+  // the broker can, the broker's equity stands in. Only with neither is the
+  // value the database's estimate, summed from the open trades: that sum is
+  // 0 for a position whose price didn't fetch, so it under-counts. The
+  // lifetime is the account identity:
+  //   value = net_contributed + realized + unrealized
+  //   ⇒ unrealized = value − net_contributed − realized
+  const totalValue = snapshot
+    ? snapshot.value
+    : alpacaAccount
+      ? parseFloat(alpacaAccount.equity)
+      : netContributed + realizedPnl + openTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const unrealizedPnl = snapshot || alpacaAccount
     ? totalValue - netContributed - realizedPnl
     : openTrades.reduce((sum, t) => sum + t.pnl, 0);
   const totalPnl = realizedPnl + unrealizedPnl;
 
-  // Day's P&L — equity vs the prior trading day's close, minus any deposit
-  // that posted today (so funding the account today isn't a "gain" either).
-  const lastEquity = alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
+  // The day: the snapshot's, or null when a price it needs is missing. With
+  // no snapshot, the broker's: equity vs the prior trading day's close, minus
+  // any deposit that posted today (so funding the account today isn't a
+  // "gain" either). With neither, null, and the header reads the curve.
+  const lastEquity = !snapshot && alpacaAccount?.last_equity ? parseFloat(alpacaAccount.last_equity) : null;
   const todayIso = new Date().toISOString().slice(0, 10);
   const depositsToday = fundingEvents
     .filter((e) => e.date === todayIso)
     .reduce((sum, e) => sum + e.amount, 0);
-  const dayPnl =
-    lastEquity != null && Number.isFinite(lastEquity)
-      ? totalValue - lastEquity - depositsToday
-      : 0;
-  const dayPnlPct =
-    lastEquity != null && lastEquity > 0 ? (dayPnl / lastEquity) * 100 : 0;
+  const brokerDay = lastEquity != null && Number.isFinite(lastEquity) ? totalValue - lastEquity - depositsToday : null;
+  const dayPnl = snapshot ? snapshot.dayChange?.dollars ?? null : brokerDay;
+  const dayPnlPct = snapshot
+    ? snapshot.dayChange?.pct ?? null
+    : brokerDay != null && lastEquity != null && lastEquity > 0 ? (brokerDay / lastEquity) * 100 : null;
 
   const closedWithOutcome = dbClosedPositions.filter((p) => p.outcome);
   const winRate =
@@ -914,7 +894,8 @@ export async function getDashboardData(
   // Net position = long − shorts. Accounting identity: cash + netPositionValue
   // = equity. Used for the "Position Value" dashboard tile so the visible math
   // reconciles: Available Cash + Position Value = Total Account Value.
-  const netPositionValue = longMarketValue + shortMarketValueRaw; // signed sum
+  // With a snapshot, its holdings: so the cash and the positions add up to its value.
+  const netPositionValue = snapshot ? snapshot.value - snapshot.cash : longMarketValue + shortMarketValueRaw; // signed sum
   // DB-only fallback (no Alpaca creds): approximate cash as starting capital
   // + realized proceeds − capital currently tied up in open positions at
   // entry cost. Under-counts unrealized appreciation on open positions, but
@@ -924,9 +905,11 @@ export async function getDashboardData(
     (s, p) => s + p.avgCost * p.quantity,
     0,
   );
-  const cash = alpacaAccount
-    ? parseFloat(alpacaAccount.cash)
-    : netContributed + realizedPnl - dbOpenCostBasis;
+  const cash = snapshot
+    ? snapshot.cash
+    : alpacaAccount
+      ? parseFloat(alpacaAccount.cash)
+      : netContributed + realizedPnl - dbOpenCostBasis;
   const buyingPower = alpacaAccount
     ? parseFloat(alpacaAccount.buying_power)
     : Math.max(0, totalValue);
@@ -965,17 +948,24 @@ export async function getDashboardData(
   // falls back to the daily series, which is what it used to do always.
   // `depositAdjustedPnlCurve` reads the DATE out of each key, so an ISO
   // timestamp works unchanged: a deposit still lands on its day.
-  const intradayEquityCurve: { date: string; value: number }[] =
+  // Each measured from the prior close at the app's prices (prevAtTheClose).
+  const intradayEquityCurve: { date: string; value: number }[] = prevAtTheClose(
     intradayHistory.length >= 2
       ? intradayHistory.map((p) => ({ date: p.date, value: p.equity }))
-      : [];
-  const intradayPnlCurve: { date: string; value: number }[] =
+      : [],
+    snapshot?.day,
+    snapshot?.dayChange?.dollars,
+  );
+  const intradayPnlCurve: { date: string; value: number }[] = prevAtTheClose(
     intradayHistory.length >= 2
       ? depositAdjustedPnlCurve(
           intradayHistory.map((p) => ({ date: p.date, equity: p.equity })),
           fundingEvents,
         )
-      : [];
+      : [],
+    snapshot?.day,
+    snapshot?.dayChange?.dollars,
+  );
 
   // ── 7b. Per-analyst equity curves (cumulative P&L, starting from 0) ────────
   const analystEquityCurves: Record<string, { date: string; value: number }[]> = {};
@@ -1069,9 +1059,6 @@ export async function getDashboardData(
       direction: p.direction,
       status: p.status,
       reasoningSummary: getThesisSnapshotText(p),
-      entryPrice: p.entryPrice,
-      targetPrice: p.targetPrice,
-      stopLoss: p.stopLoss,
       createdAt: p.createdAt.toISOString(),
       decision: dec?.decision ?? null,
       position: positionData,
@@ -1085,323 +1072,12 @@ export async function getDashboardData(
     };
   });
 
-  // ── 12. Activity feed — merge trade opens/closes + management actions ──────
-  const activityFeed: ActivityFeedItem[] = [];
-
-  // Recent opens (last 20).
-  // Trade-as-Proposal: positions in PENDING_APPROVAL aren't really opened
-  // yet — emit a PROPOSED entry instead of OPENED so the row renders the
-  // inline [Approve][Reject] action pair. Positions with an
-  // AWAITING_APPROVAL close order are already-open positions and DO get the
-  // regular OPENED entry above + a separate PROPOSED entry for the
-  // pending close (emitted in the loop below).
-  for (const p of dbOpenPositions.slice(0, 20)) {
-    const awaitingOrder = p.orders?.find((o) => o.status === "AWAITING_APPROVAL");
-    const isPendingApprovalBuy =
-      p.status === "PENDING_APPROVAL" &&
-      awaitingOrder?.intent === "OPEN";
-
-    if (isPendingApprovalBuy) {
-      activityFeed.push({
-        id: `proposed-${awaitingOrder.id}`,
-        type: "PROPOSED",
-        positionId: p.id,
-        symbol: p.symbol,
-        direction: p.direction,
-        timestamp: awaitingOrder.createdAt.toISOString(),
-        label: `Proposed ${p.direction === "LONG" ? "buy" : "short"}`,
-        source: "agent",
-        reason: null,
-        pnl: null,
-        pnlPct: null,
-        outcome: null,
-        analystName: p.analyst?.name ?? null,
-        orderId: awaitingOrder.id,
-        intent: "OPEN",
-        expiresAt: awaitingOrder.expiresAt?.toISOString(),
-        shares: awaitingOrder.quantity ?? p.quantity,
-        price: p.avgCost,
-      });
-      continue;
-    }
-
-    activityFeed.push({
-      id: `open-${p.id}`,
-      type: "OPENED",
-      positionId: p.id,
-      symbol: p.symbol,
-      direction: p.direction,
-      timestamp: p.openedAt.toISOString(),
-      label: `Opened ${p.direction}`,
-      source: "agent",
-      reason: null,
-      pnl: null,
-      pnlPct: null,
-      outcome: null,
-      analystName: p.analyst?.name ?? null,
-      shares: p.quantity,
-      price: p.avgCost,
-    });
-
-    // For an OPEN position with a pending close/add/trim proposal, ALSO
-    // emit a separate PROPOSED entry so the row surfaces in the feed.
-    if (awaitingOrder && awaitingOrder.intent !== "OPEN") {
-      const intent = (awaitingOrder.intent ?? "CLOSE") as
-        | "ADD"
-        | "CLOSE"
-        | "PARTIAL_CLOSE";
-      const verb =
-        intent === "ADD" ? "add to" :
-        intent === "CLOSE" ? "close" :
-        "trim";
-      activityFeed.push({
-        id: `proposed-${awaitingOrder.id}`,
-        type: "PROPOSED",
-        positionId: p.id,
-        symbol: p.symbol,
-        direction: p.direction,
-        timestamp: awaitingOrder.createdAt.toISOString(),
-        label: `Proposed ${verb}`,
-        source: "agent",
-        reason: null,
-        pnl: null,
-        pnlPct: null,
-        outcome: null,
-        analystName: p.analyst?.name ?? null,
-        orderId: awaitingOrder.id,
-        intent,
-        expiresAt: awaitingOrder.expiresAt?.toISOString(),
-        shares: awaitingOrder.quantity ?? p.quantity,
-        price: p.avgCost,
-      });
-    }
-  }
-
-  // Recent closes (last 20)
-  for (const p of dbClosedPositions.slice(0, 20)) {
-    // A CANCELLED position is a rejected/expired proposal that never filled —
-    // surface it as REJECTED, not a CLOSED/"Sold" trade. (Rejected IONS/XENE buy
-    // proposals were showing as "Sold" with $0 P&L.) It IS real activity, so we
-    // keep it in the feed — just labeled honestly.
-    if (p.status === "CANCELLED") {
-      activityFeed.push({
-        id: `reject-${p.id}`,
-        type: "REJECTED",
-        positionId: p.id,
-        symbol: p.symbol,
-        direction: p.direction,
-        timestamp: (p.closedAt ?? p.updatedAt).toISOString(),
-        label: `Rejected — buy ${p.quantity} @ $${p.avgCost.toFixed(2)}`,
-        source: (p as { closeSource?: string | null }).closeSource ?? "user",
-        reason: null,
-        pnl: null,
-        pnlPct: null,
-        outcome: null,
-        analystName: p.analyst?.name ?? null,
-        shares: p.quantity,
-        price: p.avgCost,
-      });
-      continue;
-    }
-    const pnl = p.realizedPnl ?? 0;
-    const positionCost = p.avgCost * p.quantity;
-    const pnlPct = positionCost > 0 ? (pnl / positionCost) * 100 : 0;
-    const sign = pnl >= 0 ? "+" : "";
-    activityFeed.push({
-      id: `close-${p.id}`,
-      type: "CLOSED",
-      positionId: p.id,
-      symbol: p.symbol,
-      direction: p.direction,
-      timestamp: (p.closedAt ?? p.updatedAt).toISOString(),
-      label: p.outcome === "WIN" ? `Closed — WIN ${sign}$${Math.abs(pnl).toFixed(0)}`
-           : p.outcome === "LOSS" ? `Closed — LOSS $${Math.abs(pnl).toFixed(0)}`
-           : `Closed`,
-      source: (p as { closeSource?: string | null }).closeSource ?? "agent",
-      reason: null,
-      pnl,
-      pnlPct: Math.round(pnlPct * 10) / 10,
-      outcome: p.outcome ?? null,
-      analystName: p.analyst?.name ?? null,
-      // Entry/exit so the feed can render "Bought N at $X, closed at $Y".
-      shares: p.quantity,
-      price: p.avgCost,
-      closePrice: p.closePrice ?? undefined,
-    });
-  }
-
-  // Management actions (non-close — the close is already represented above)
-  for (const action of dbManagementActions) {
-    if (action.actionType === "FULL_CLOSE") continue; // already shown as CLOSED
-    let label = "Position updated";
-    if (action.actionType === "PARTIAL_CLOSE") label = "Partial close";
-    else if (action.actionType === "ADD_TO_POSITION") label = "Added to position";
-    else if (action.actionType === "UPDATE_TARGETS") label = "Targets updated";
-    else if (action.actionType === "MOVE_STOP_TO_BREAKEVEN") label = "Stop → breakeven";
-    else if (action.actionType === "SET_TRAILING_STOP") label = "Trailing stop set";
-
-    activityFeed.push({
-      id: `action-${action.id}`,
-      type: "MODIFIED",
-      positionId: action.positionId,
-      symbol: action.position.symbol,
-      direction: action.position.direction,
-      timestamp: action.createdAt.toISOString(),
-      label,
-      source: action.source,
-      reason: action.reason,
-      pnl: action.actionType === "PARTIAL_CLOSE" && action.fillPrice && action.fillQty
-        ? action.position.direction === "LONG"
-          ? (action.fillPrice - action.position.avgCost) * action.fillQty
-          : (action.position.avgCost - action.fillPrice) * action.fillQty
-        : null,
-      pnlPct: null,
-      outcome: null,
-      analystName: action.position.analyst?.name ?? null,
-    });
-  }
-
-  // ── Attempts that never became a proposal ────────────────────────────
-  // A buy price hit, a sell line broken, a trade tool called — and nothing
-  // reached the principal. In the 30 days to 2026-09-28 that was 23 of 30
-  // buy prices, none of them visible here: a refusal showed only until the
-  // run fixed it (minutes), and an analyst passing on a buy never showed.
-  // The outcome is decided by rows, never by reading what the analyst wrote.
-  try {
-    const analystIds = dbAgentConfigs.map((a) => a.id);
-    const analystNameById = new Map(dbAgentConfigs.map((a) => [a.id, a.name] as const));
-    const since = new Date(Date.now() - 30 * 86_400_000);
-
-    const refusals = await prisma.gateRejection.findMany({
-      where: {
-        tool: { in: TRADE_TOOLS },
-        analystId: { in: analystIds },
-        createdAt: { gte: since },
-      },
-      select: { runId: true, tool: true, ticker: true, summary: true, detail: true, createdAt: true },
-    });
-    const refusedRunIds = Array.from(
-      new Set(refusals.map((r) => r.runId).filter((x): x is string => !!x)),
-    );
-    const runs = await prisma.researchRun.findMany({
-      where: {
-        agentConfigId: { in: analystIds },
-        environment,
-        startedAt: { gte: since },
-        OR: [{ mode: "INTRADAY_TACTICAL" }, { id: { in: refusedRunIds } }],
-      },
-      select: {
-        id: true, mode: true, status: true, startedAt: true, completedAt: true,
-        agentConfigId: true, parameters: true,
-      },
-    });
-    const [orders, notes] = await Promise.all([
-      prisma.order.findMany({
-        // Three days more than the window: a proposal written before it can
-        // still have been waiting for an answer inside it.
-        where: { position: { accountId, environment }, createdAt: { gte: new Date(since.getTime() - 3 * 86_400_000) } },
-        select: { symbol: true, intent: true, status: true, createdAt: true, updatedAt: true },
-      }),
-      prisma.thesisUpdate.findMany({
-        where: {
-          runId: { in: runs.filter((r) => r.mode === "INTRADAY_TACTICAL").map((r) => r.id) },
-          NOT: { type: "TRIGGER_FIRED" },
-        },
-        select: { runId: true, rationale: true, timestamp: true, thesis: { select: { ticker: true } } },
-      }),
-    ]);
-
-    const lines = attemptOutcomes({
-      runs: runs.map((r) => {
-        const p = (r.parameters ?? {}) as Record<string, unknown>;
-        return {
-          id: r.id,
-          mode: r.mode,
-          status: r.status,
-          startedAt: r.startedAt,
-          completedAt: r.completedAt,
-          analystId: r.agentConfigId,
-          ticker: typeof p.ticker === "string" ? p.ticker : null,
-          action: typeof p.action === "string" ? p.action : null,
-          error: typeof p.error === "string" ? p.error : null,
-        };
-      }),
-      orders: orders.map((o) => ({ ...o, intent: String(o.intent), status: String(o.status) })),
-      refusals,
-      notes: notes
-        .filter((n) => n.runId != null)
-        .map((n) => ({ runId: n.runId!, ticker: n.thesis.ticker, rationale: n.rationale, timestamp: n.timestamp })),
-    });
-    for (const l of lines) {
-      activityFeed.push({
-        id: l.id,
-        type: l.kind,
-        positionId: "",
-        symbol: l.ticker,
-        direction: null,
-        timestamp: l.at.toISOString(),
-        label: l.label,
-        source: "agent",
-        reason: l.reason,
-        pnl: null,
-        pnlPct: null,
-        outcome: null,
-        analystName: l.analystId ? analystNameById.get(l.analystId) ?? null : null,
-        runId: l.runId,
-        side: l.side,
-      });
-    }
-
-    // Everything else that was refused and never redone — a thesis edit, a
-    // thesis save (2026-09-25). Only OPEN rows: a refusal the analyst
-    // answered (the same tool landed on the stock) is the app working. The
-    // trade tools are above, by attempt.
-    const blocked = await prisma.gateRejection.findMany({
-      where: {
-        tool: { notIn: [...TRADE_TOOLS, "complete_run"] },
-        analystId: { in: analystIds },
-        resolvedAt: null,
-        createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
-        // A gate that refuses a field now writes no row; its old rows are history, not open work.
-        OR: [{ gateCode: null }, { gateCode: { notIn: [...NO_LONGER_OWED] } }],
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: { id: true, tool: true, ticker: true, summary: true, detail: true, analystId: true, createdAt: true },
-    });
-    for (const b of blocked) {
-      if (!b.ticker) continue;
-      activityFeed.push({
-        id: `blocked-${b.id}`,
-        type: "BLOCKED",
-        positionId: "",
-        symbol: b.ticker,
-        direction: null,
-        timestamp: b.createdAt.toISOString(),
-        label: `${describeRefusalTool(b.tool)} blocked`,
-        source: "agent",
-        reason: b.detail ?? b.summary,
-        pnl: null,
-        pnlPct: null,
-        outcome: null,
-        analystName: b.analystId ? analystNameById.get(b.analystId) ?? null : null,
-      });
-    }
-  } catch {
-    /* these tables are the record of what did not happen — their absence must not break the page */
-  }
-
-  // Sort descending by timestamp. 80, not 40: the attempts above are about
-  // as many again as the trades (42 in the 30 days to 2026-09-28), and at 40
-  // they would push three weeks of trades off the end of the feed.
-  activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  const trimmedFeed = activityFeed.slice(0, 80);
 
   return {
     openTrades,
     pendingTrades,
     closedTrades,
-    activityFeed: trimmedFeed,
+    activityFeed,
     portfolio: {
       totalValue,
       unrealizedPnl,

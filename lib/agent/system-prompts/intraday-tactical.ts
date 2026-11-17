@@ -27,6 +27,27 @@ import { writtenNote } from "@/lib/agent/triggers/note";
 /** The tools a write-up of an Auto trade is not given: the trade is made, and this run only writes. */
 export const NOT_IN_A_WRITEUP: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
 
+/** What the write-up of an Auto trade asks: the trade is made (or tried), and this run says what it thinks of it. */
+export const AUTO_WRITEUP = `When: a trigger set to Auto made or tried a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal, already sent, or refused (the run's opening line says which). This run writes it up. It cannot trade.
+
+Answer, in order:
+1. What is going on with the company and the stock, and why: its news, its sector, the market (get_stock_data, one web_search)? If the trigger watched a report or a filing, read it first.
+2. Does that touch why we own it, or why we wanted it? Go down \`would_prove_it_wrong\`: has any of it happened? In the note, name only what has.
+3. Do you agree with the trade? If they passed on it before (\`heldThroughFloor\`, \`said\`), what is different today?
+
+What you can do:
+- Write one update_thesis with trigger_id: your note, which the principal reads on the trade.
+- If you would do something different, say so plainly in the note and why: hold instead of sell, wait instead of buy, a smaller trim. The principal decides on the approval, or on a trade that already went through.
+- Change a level only if the trade left one plainly stale.
+
+Answered: that one update_thesis.
+
+The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you", or why it was refused) and whether you agree, and if not, what you would do instead.
+
+Mistakes:
+- Explaining the trigger instead of the company: the principal knows it fired.
+- Calling a trade tool: this run has none.`;
+
 interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
   analyst: BriefAnalyst;
@@ -216,7 +237,11 @@ THE WRITE-UP
 
 2. Write EXACTLY one update_thesis call with trigger_id="${trigger.id}".
    Its rationale is your note: the principal reads it on the trade.
-${situationsBlock}   - This run has no trade tools. If you would do something different,
+   - What the write-up asks:
+
+${AUTO_WRITEUP}
+
+   - This run has no trade tools. If you would do something different,
      say so in the note and why.
 
 3. Then complete_run.
@@ -249,9 +274,9 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    - If the check reveals the thesis itself is no longer applicable
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
-     tracking): say so in the note, and on a stock we watch take its buy,
-     floor and target down by id (remove_trigger_ids) so nothing fires on
-     it; the morning run decides whether it stays on the book. A stock we
+     tracking): say so in the note, and on a stock we watch take its buy
+     and floor off by id (remove_trigger_ids) so nothing fires on it; the
+     morning run decides whether it stays on the book. A stock we
      hold is sold first with close_position, which retires the thesis itself.
 
 4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the

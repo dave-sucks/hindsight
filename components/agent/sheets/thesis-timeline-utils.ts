@@ -202,6 +202,8 @@ export function eventKind(u: TimelineUpdate): EventKind {
       return "status";
     case "CLOSED":
       return "closed";
+    // An order never proposed (approvals off, or your own click) reads as its fill.
+    case "ORDER_FILLED":
     case "PROPOSAL_APPROVED": {
       const { side } = proposalMeta(u);
       return side === "buy" ? "bought" : side === "sell" ? "sold-fill" : "approved";
@@ -451,6 +453,7 @@ function rowMatchesFilter(row: TimelineUpdate, filter: TimelineFilter): boolean 
   if (filter === "money")
     return (
       row.type.startsWith("PROPOSAL_") ||
+      row.type === "ORDER_FILLED" ||
       row.type === "STATUS_CHANGED" ||
       row.type === "CLOSED"
     );
@@ -592,6 +595,7 @@ export function groupLabels(timestamps: string[], now = new Date()): (string | n
 // Exact from → to for the scalar plan fields. The trigger ops carry their
 // own lines ("Stop $64 → $71"), so the level columns yield to them.
 
+// Level keys on audit rows written before the level columns went (2026-11-16); new rows carry triggerOps.
 const LEVEL_KEYS = new Set(["targetPrice", "stopLoss", "entryPrice"]);
 
 const SCALAR_LINES: Array<{
@@ -599,9 +603,9 @@ const SCALAR_LINES: Array<{
   label: string;
   fmt: (v: unknown) => string;
 }> = [
-  { key: "targetPrice", label: "Target", fmt: fmtLevel },
-  { key: "stopLoss", label: "Stop", fmt: fmtLevel },
-  { key: "entryPrice", label: "Entry", fmt: fmtLevel },
+  { key: "targetPrice", label: "Upside", fmt: fmtLevel },
+  { key: "stopLoss", label: "Floor", fmt: fmtLevel },
+  { key: "entryPrice", label: "Buy", fmt: fmtLevel },
   { key: "conviction", label: "Conviction", fmt: fmtPlain },
   { key: "horizon", label: "Horizon", fmt: fmtPlain },
 ];
@@ -662,8 +666,8 @@ function askedFor(field: string, to: unknown): string {
   if (field === "direction") return to === "PASS" ? "pass" : word ? `flip to ${word}` : "direction change";
   if (field === "conviction") return word ? `conviction ${word}` : "conviction";
   if (field === "entry_price") return `buy at${price}`;
-  if (field === "target_price") return `target${price}`;
-  if (field === "stop_loss") return `stop${price}`;
+  if (field === "target_price") return `upside line${price}`;
+  if (field === "stop_loss") return `floor${price}`;
   if (field === "triggers") return "trigger changes";
   return field.replace(/_/g, " ");
 }
@@ -765,7 +769,7 @@ export function toRow(item: TimelineItem): TimelineRow {
       signal,
       chips: [...ladderChangeLines(u), ...notAppliedLines(u)],
       // A Bought/Sold title already reads "… at $832.84" — don't repeat it.
-      price: u.type === "PROPOSAL_APPROVED" ? null : u.priceAtTime,
+      price: u.type === "PROPOSAL_APPROVED" || u.type === "ORDER_FILLED" ? null : u.priceAtTime,
       description: text,
       quoted,
       // A review's own row follows the same rule as an episode's: if it

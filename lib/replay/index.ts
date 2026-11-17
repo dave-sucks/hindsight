@@ -3,6 +3,7 @@
  * production-shaped rows. See replay.ts for why it exists.
  */
 export { replayTool, type Replay, type ReplayOptions, type ReplayResult } from "@/lib/replay/replay";
+export { oldLevelFieldsAsTriggerOps } from "@/lib/replay/old-level-fields";
 export { prismaDouble, type PrismaDouble, type Row, type StoreSeed } from "@/lib/replay/prisma-double";
 export {
   thesisRow,
@@ -12,6 +13,7 @@ export {
   accountRow,
   daysAgo,
   planTriggers,
+  triggerSentences,
   REPLAY_ACCOUNT_ID,
   REPLAY_ANALYST_ID,
   REPLAY_RUN_ID,

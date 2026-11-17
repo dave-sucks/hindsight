@@ -22,39 +22,36 @@ import { updateThesis } from "./update-thesis";
 
 const DOOR = [
   "add_triggers", "answers_update_id", "catalyst_date", "change_status", "conviction", "conviction_rationale", "edit_triggers",
-  "entry_on_close", "entry_price", "horizon", "rationale", "remove_trigger_ids",
-  "setup_id", "stop_basis", "stop_loss", "target_basis", "target_price", "thesis_id", "trigger_id", "verdict", "verdict_line",
+  "horizon", "rationale", "remove_trigger_ids",
+  "setup_id", "thesis_id", "trigger_id", "verdict", "verdict_line",
 ];
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
 const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const enumOf = (runMode: string) => (zodSchema(schemaOf(runMode) as never).jsonSchema as { properties: Record<string, { enum?: string[] }> }).properties.change_status.enum;
 
 describe("the morning run's save", () => {
-  it("offers exactly twenty-one fields, change_status with its three values", () => {
+  it("offers exactly fifteen fields, change_status with its three values", () => {
     expect(Object.keys(schemaOf("MORNING_PLAN").shape).sort()).toEqual(DOOR);
-    expect(DOOR).toHaveLength(21);
+    expect(DOOR).toHaveLength(15);
     expect(enumOf("MORNING_PLAN")).toEqual(["INVALIDATED", "ARCHIVED", "WATCHING"]);
     for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction"]) expect(DOOR).not.toContain(dropped);
   });
 
   it("leaves the other doors' saves as they were", () => {
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(14);
+    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(9);
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
-    expect(chat).toHaveLength(24);
+    expect(chat).toHaveLength(18);
     for (const f of ["price_at_time", "snapshot", "variant_view"]) expect(chat).not.toContain(f);
     expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
-    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(35);
-    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(25);
+    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(29);
+    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(19);
   });
 
-  it("FIRST_RESEARCH and a woken watch send the claim through the writer, and name no field this save lacks", () => {
-    for (const code of ["FIRST_RESEARCH", "QUIET_WATCH_WOKE"] as const) {
-      const text = SITUATIONS[code].guidance;
-      for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([code, tool, text.includes(tool)]).toEqual([code, tool, true]);
-      for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([code, f, text.includes(f)]).toEqual([code, f, false]);
-      expect(text.length).toBeLessThanOrEqual(2200);
-    }
+  it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {
+    const text = SITUATIONS.REVIEW_DUE.guidance;
+    for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
+    for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([f, text.includes(f)]).toEqual([f, false]);
   });
 
   it("the saved calls stay under the cap", () => {

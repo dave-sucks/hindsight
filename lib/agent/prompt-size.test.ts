@@ -25,16 +25,22 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-04: +1,311 each, the voice rules' podcaster length, the view a note takes, the neighbor test and the desk words they ban (lib/agent/voice.ts).
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
-  daily: 9_473,
-  tactical: 14_910,
+  // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
+  daily: 9_440,
+  tactical: 14_902,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
-  writer: 16_983,
+  // 2026-11-16: +90, the writer writes the buy and the floor as triggers (no entry / target / stop fields), and a watch's floor stops watching it.
+  // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
+  // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
+  // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
+  writer: 16_941,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
-  chat: 35_963,
+  // 2026-11-16: +1, the same situation texts.
+  chat: 35_929,
 };
 
 /**
@@ -51,11 +57,21 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-06: +77 on the chat, the same clause on record_thesis's status field; +214 each, get_theses says the row's fields follow the situation.
   // 2026-11-12: −23 each, get_portfolio_context no longer carries the digest (the Market and portfolio block does).
   // 2026-11-12: +34 each, get_market_context names the Nasdaq 100 (QQQ) beside the S&P 500 (lib/market-data/market-numbers.ts).
-  "research-run": 32_053,
-  tactical: 28_007,
+  // 2026-11-14: +87 each, get_portfolio_context names the day's move, the value, day and lifetime, and that they are the portfolio snapshot's.
+  // 2026-11-16: +69 each, update_thesis says an empty level stays as it is and a level is removed by id in remove_trigger_ids.
+  // 2026-11-16: −1,332 / −1,219, the entry / target / stop fields and their reasons leave update_thesis; a level is a trigger edit by id.
+  // 2026-11-16: +669 each, place_trade takes sell_if_below and sell_reason (the holding's sale comes with the buy), and the trigger action says EXIT is a holding's and STOP_WATCHING a watch's.
+  // 2026-11-16: +17, a watch's lines are its buy and its Stop watching line (update_thesis's ARCHIVED words); the triggers, not a floor, hold the price.
+  "research-run": 31_563,
+  tactical: 27_526,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
-  principal: 64_273,
+  // 2026-11-14: +87, the same get_portfolio_context description.
+  // 2026-11-16: +69, the same update_thesis description.
+  // 2026-11-16: −2,509, the same fields leave update_thesis and record_thesis.
+  // 2026-11-16: +822, the same place_trade fields and trigger action text.
+  // 2026-11-16: +21, the same field words.
+  principal: 62_763,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

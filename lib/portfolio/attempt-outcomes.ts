@@ -10,8 +10,8 @@
  * principal looks.
  *
  * An attempt starts from a recorded event and ends in exactly one outcome.
- * The outcome is decided by rows, in this order, and never by reading what
- * the analyst wrote:
+ * The outcome is decided by rows, in this order, and never by reading words
+ * (the analyst's, or a refusal's):
  *
  *   PROPOSED  an order for that stock, on that side, from that run — or
  *             one already waiting for an answer when the run started. The
@@ -21,7 +21,7 @@
  *   FAILED    no order, no refusal, and the run did not finish.
  *   PASSED    none of the above: the analyst looked and chose not to. Often
  *             the right call, so it is neutral, not an error. The analyst's
- *             sentence is shown as the reason; the TYPE does not depend on it.
+ *             note is shown as the reason; the TYPE does not depend on it.
  *             Worded as the stock's own timeline words it: a buy is
  *             "passed", a sale is "held".
  *
@@ -31,6 +31,10 @@
  *     an attempt.
  *   - a trade tool refused inside any other run (a morning run, the chat)
  *     that never landed.
+ *
+ * The homepage reads these beside the stocks' Activity lists
+ * (lib/thesis/account-activity.server.ts): a refusal and a run that broke are
+ * not Activity lines, so a stock's list cannot carry them.
  *
  * Pure: rows in, feed lines out. No prisma, no clock.
  */
@@ -56,20 +60,18 @@ const SIDE_OF_INTENT: Record<string, "BUY" | "SELL"> = {
 export const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
 
 /**
- * Which transaction a refusal refused — or null when it refused something
- * that is not a transaction. `manage_position` also moves stops: on
- * 2026-09-14 MU and SMMT were woken by an add trigger, tried to move the
- * stop to breakeven, were refused that, and did not add. That is a pass on
- * the add, not a blocked add.
+ * Which transaction a refused trade tool refused, from the tool alone: a buy,
+ * a sale, or either for manage_position, which adds or trims (stop moves left
+ * it for update_thesis) and whose refusal stores no arguments. Null for any
+ * other tool.
  */
-export function sideOfRefusal(r: { tool: string; summary: string }): "BUY" | "SELL" | "EITHER" | null {
-  if (r.tool === "place_trade") return "BUY";
-  if (r.tool === "close_position") return "SELL";
-  if (r.tool !== "manage_position") return null;
-  if (/^Add\b/i.test(r.summary)) return "BUY";
-  if (/^(Partial close|Nothing left to trim)/i.test(r.summary)) return "SELL";
-  if (/^(Refused (stop change|breakeven move)|No target or stop)/i.test(r.summary)) return null;
-  return "EITHER";
+const SIDE_OF_TOOL: Readonly<Record<string, "BUY" | "SELL" | "EITHER">> = {
+  place_trade: "BUY",
+  close_position: "SELL",
+  manage_position: "EITHER",
+};
+export function sideOfRefusal(r: { tool: string }): "BUY" | "SELL" | "EITHER" | null {
+  return SIDE_OF_TOOL[r.tool] ?? null;
 }
 
 const WORD_OF_ACTION: Record<string, string> = {
@@ -189,47 +191,9 @@ function reachedThePrincipal(
   });
 }
 
-/**
- * The analyst's reason, in its own words: the first two sentences. The
- * first is usually the announcement ("Passed on the $DOCU entry.") and the
- * second the reason, so one sentence is not enough. The row shows what
- * fits; the hover shows all of it.
- */
-export function passReason(text: string | null | undefined, max = 360): string {
-  const clean = (text ?? "")
-    .replace(/\[Belief unchanged:[^\]]*\]?/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!clean) return "";
-  // A sentence ends at a full stop followed by a space and a capital — not
-  // at "$67." or "09:30 ET.", which is where a naive split cuts prices.
-  const sentences = clean.split(/(?<=[.!?])\s+(?=[A-Z"'“$])/);
-  const two = sentences.slice(0, 2).join(" ").trim();
-  return two.length > max ? `${two.slice(0, max - 1).trimEnd()}…` : two;
-}
-
-/** Older refusals stored only a label. Say them in plain words. */
-const PLAIN_REFUSAL: Array<[RegExp, string]> = [
-  [/below min composite/i, "The stock's score is under this analyst's minimum to buy."],
-  [/below min position size/i, "The buy came out smaller than this analyst's smallest trade."],
-  [/exceeds live promotion cap/i, "The buy was larger than the live cap on this analyst."],
-  [/at max open positions/i, "This analyst has no room: it holds as many positions as it is allowed."],
-  [/exceeds largest trade/i, "The buy was larger than this analyst's largest trade."],
-];
-
+/** A refusal's reason: its own full sentence when it gave one, else its summary, as written. */
 export function refusalReason(r: { summary: string; detail: string | null }): string {
-  const own = (r.detail ?? "")
-    .replace(/^Trade blocked:\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (own) return own.charAt(0).toUpperCase() + own.slice(1);
-  const plain = PLAIN_REFUSAL.find(([re]) => re.test(r.summary));
-  if (plain) return plain[1];
-  const label = r.summary
-    .replace(/^Trade blocked:\s*/i, "")
-    .replace(/^\$?[A-Z]{1,5}\s+—\s+/, "")
-    .trim();
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  return r.detail?.trim() || r.summary;
 }
 
 export function attemptOutcomes(input: {
@@ -293,7 +257,7 @@ export function attemptOutcomes(input: {
       id: `attempt-${run.id}`,
       kind: "PASSED",
       label: PASS_LABEL[run.action],
-      reason: passReason(note?.rationale) || "The analyst looked and did not act, and wrote no reason.",
+      reason: note?.rationale?.trim() || "The analyst looked and did not act, and wrote no reason.",
     });
   }
 

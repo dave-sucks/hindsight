@@ -39,13 +39,9 @@ describe("the keys a situation's row sends", () => {
     [/\bbear case\b/i, "bear_case"],
     [/company line/i, "company"],
     [/paper record/i, "paper_record"],
-    [/plan checks?\b/i, "plan_checks"],
   ];
-  // First research describes what the Writer will write (the belief, the assumptions, what would prove it wrong); a seed has none of them to send.
-  const WRITES_NOT_READS = new Set<SituationCode>(["FIRST_RESEARCH"]);
   it("every conditional key a situation's guidance names in plain words is sent with that situation", () => {
     for (const code of CODES) {
-      if (WRITES_NOT_READS.has(code)) continue;
       const sent = rowKeysFor([code], { size: "short", named: false });
       for (const [re, k] of PLAIN_NAMES) {
         if (!re.test(SITUATIONS[code].guidance)) continue;
@@ -70,7 +66,7 @@ describe("the keys a situation's row sends", () => {
     expect([...review].sort()).toEqual(Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] !== "named").sort());
   });
   it("a buy and an add carry an event-driven thesis's event date (a pre-catalyst buy is never the day before it); a sale signal does not", () => {
-    for (const code of ["BUY_ARRIVES", "ADD_OR_WINNER", "EARNINGS"] as SituationCode[]) expect([code, rowKeysFor([code], { size: "short", named: false }).has("catalyst")]).toEqual([code, true]);
+    for (const code of ["BUY_ARRIVES", "ADD_OR_WINNER", "REVIEW_DUE"] as SituationCode[]) expect([code, rowKeysFor([code], { size: "short", named: false }).has("catalyst")]).toEqual([code, true]);
     expect(rowKeysFor(["PROTECTIVE_SALE"], { size: "short", named: false }).has("catalyst")).toBe(false);
   });
   it("no situation named: every short key, as the book read sends it; the full row by name adds the sections and the history", () => {
@@ -88,9 +84,9 @@ describe("the row a situation builds (CEG, held)", () => {
     expect(row.would_prove_it_wrong).toBeDefined();
     expect(row.triggers).toBeDefined();
   });
-  it("a buy level reached: the chart numbers, the Street, the setup and the plan checks come with it", () => {
+  it("a buy level reached: the chart numbers, the Street and the setup come with it", () => {
     const row = rowForModel(saved(["BUY_ARRIVES"]), { named: false, size: "short" }) as Row;
-    for (const k of ["chart", "street", "setup", "plan_checks"]) expect([k, k in row || k === "plan_checks"]).toEqual([k, true]);
+    for (const k of ["chart", "street", "setup"]) expect([k, k in row]).toEqual([k, true]);
     for (const k of ["bull_case", "would_prove_it_wrong", "company"]) expect([k, k in row]).toEqual([k, false]);
   });
   it("the review clock: the whole case", () => {

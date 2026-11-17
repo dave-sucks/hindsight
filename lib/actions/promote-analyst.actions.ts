@@ -8,12 +8,6 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { inngest } from "@/lib/inngest/client";
-import {
-  defaultTriggersForHorizon,
-  applyTriggerDefaults,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
-import type { Trigger } from "@/lib/agent/triggers/types";
 import { revalidatePath } from "next/cache";
 
 async function getServerUserId(): Promise<string> {
@@ -384,22 +378,16 @@ async function transitionThesisToPromoted(input: {
   /** Position id of the paper trade just closed at promotion (null for orphans). */
   tradeId?: string;
 }): Promise<PromotedThesisRecord | null> {
-  // Pull the structural fields we need both for conviction context
-  // and for regenerating the trigger array against the PROMOTED template
-  // (P1-21). Without the regen, PROMOTED inherits the predecessor
-  // ACTIVE row's HELD-template EXIT triggers — orphan tactical EXIT
-  // runs the moment price crosses the old stop on a thesis that has no
-  // open position to close.
+  // The fields we need for conviction context. The stock keeps its own
+  // triggers: nothing is stamped on a promotion. A sale on a stock we don't
+  // hold starts no run (the fire is written down for the morning run), and
+  // an add or trim doesn't apply until it is held again (resolveThesisLadder).
   const thesisSelect = {
     id: true,
     createdAt: true,
     ticker: true,
     direction: true,
     horizon: true,
-    entryPrice: true,
-    targetPrice: true,
-    stopLoss: true,
-    catalystDate: true,
   };
   const thesis = input.thesisId
     ? await prisma.thesis.findUnique({
@@ -448,30 +436,6 @@ async function transitionThesisToPromoted(input: {
 
   const promotedAt = new Date();
 
-  // Regenerate triggers against the PROMOTED template (P1-21). HELD-side
-  // EXIT/TRIM/ADD triggers carried over from the predecessor
-  // ACTIVE row would otherwise spawn orphan tactical EXIT runs on a
-  // thesis with no open position. The PROMOTED template emits ENTER
-  // (the re-entry path — place_trade auto-flips PROMOTED→ACTIVE per
-  // PR #324) + REVIEW only; no EXIT. Falls back to a conservative
-  // strip of EXIT/TRIM/ADD if horizon is missing (rare).
-  const horizon = thesis.horizon as Horizon | null;
-  let promotedTriggers: Trigger[] | undefined;
-  if (horizon) {
-    const defaults = defaultTriggersForHorizon(
-      horizon,
-      {
-        entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
-        targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
-        stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-        catalystDate: thesis.catalystDate ?? null,
-        direction: thesis.direction as "LONG" | "SHORT",
-      },
-      "PROMOTED",
-    );
-    promotedTriggers = applyTriggerDefaults(defaults);
-  }
-
   await prisma.$transaction([
     prisma.thesis.update({
       where: { id: thesis.id },
@@ -481,9 +445,6 @@ async function transitionThesisToPromoted(input: {
         paperTenureDays,
         paperRealizedPnl: cumulativePaperPnl,
         paperReviewCount: reviewCount,
-        ...(promotedTriggers !== undefined
-          ? { triggers: promotedTriggers as unknown as object }
-          : {}),
       },
     }),
   ]);

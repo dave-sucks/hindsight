@@ -38,9 +38,6 @@ const iotThesis = (over: Record<string, unknown> = {}) =>
     ticker: "IOT",
     status: "HOLDING",
     horizon: "TARGET",
-    entryPrice: AVG_COST,
-    targetPrice: 52,
-    stopLoss: FLOOR,
     triggers: [
       {
         id: "trg_floor",
@@ -107,8 +104,9 @@ const floorOp = (result: unknown) => {
     .data?.trigger_ops;
   return ops?.find((o) => o.id === "trg_floor");
 };
-const storedStop = (result: unknown) =>
-  (result as { data?: { card?: { stop_loss?: number | null } } }).data?.card?.stop_loss ?? null;
+/** The card a save hands back: the stock's triggers, each as its sentence. */
+const cardSays = (result: unknown) =>
+  (result as { data?: { card?: { triggers?: string[] } } }).data?.card?.triggers ?? [];
 
 describe("DAV-315 — a declined sale becomes the next run's job", () => {
   it("1. get_theses puts the declined sale on the work list, with the note", async () => {
@@ -153,7 +151,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       },
       args: {
         thesis_id: "t_iot",
-        stop_loss: 40.5,
+        edit_triggers: [{ id: "trg_floor", value: 40.5, rationale: "Just under the gap-day close." }],
         rationale:
           "You declined the $41.40 sale to give it room. Re-drawn to $40.50, just under the gap-day close.",
       },
@@ -162,7 +160,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
 
     expect(floorOp(result)?.ok).toBe(false);
     expect(floorOp(result)?.reason ?? "").toMatch(/weakens the protection/i);
-    expect(storedStop(result)).toBe(FLOOR);
+    expect(cardSays(result)).toContain(`Sell if below $${FLOOR.toFixed(2)}`);
   });
 
   it("3. the same lowering with no declined sale is still refused", async () => {
@@ -174,7 +172,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
       },
       args: {
         thesis_id: "t_iot",
-        stop_loss: 40.5,
+        edit_triggers: [{ id: "trg_floor", value: 40.5, rationale: "Giving it room." }],
         rationale: "Giving it room.",
       },
       quotes: { IOT: PRICE_NEXT_DAY },
@@ -183,7 +181,7 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     // The ratchet is otherwise exactly as it was — DAV-185 still stands.
     expect(floorOp(result)?.ok).toBe(false);
     expect(floorOp(result)?.reason ?? "").toMatch(/weakens the protection/i);
-    expect(storedStop(result)).toBe(FLOOR);
+    expect(cardSays(result)).toContain(`Sell if below $${FLOOR.toFixed(2)}`);
   });
 
   it("4. a note saying why the analyst holds answers it; a run that writes nothing on IOT is still refused", async () => {

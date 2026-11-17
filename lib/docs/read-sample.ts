@@ -39,9 +39,8 @@ export const CRWD_ROW: Row = {
     time: "60 days from the buy.",
     lines: ["Entry: the gap day's close, confirmed by a close above it.", "Stop: under the gap day's low, at least 1.5 ATR.", "Failure looks like: the gap day's low breaks; revisions stall.", "Manage: a 3 ATR trail after +10%.", "Time: 60 days from the buy."],
   },
-  entryPrice: 404.1,
-  targetPrice: null,
-  stopLoss: 384,
+  // What we paid, on a holding: the quiet line names it (the buy on a watch is its trigger's sentence).
+  paid: 404.1,
   reviewDueAt: "2026-10-14T12:00:00.000Z",
   catalystDate: "2026-12-02T00:00:00.000Z",
   snapshot: { text: "A clean beat and raise; four targets raised after the call. The first paragraph on a short row, the whole text on a full one." },
@@ -64,7 +63,6 @@ export const CRWD_ROW: Row = {
   streetMonthAgo: { targetAvg: 432 },
   resolved: {
     currentPrice: 418.2,
-    planSanity: [{ kind: "BUY_FIRED_UNANSWERED", text: "The buy fired 3 days ago, unanswered." }],
     floorRisk: { line: "At the $384 floor, 14 shares lose $281 — 0.3% of the account." },
   },
   triggers: [

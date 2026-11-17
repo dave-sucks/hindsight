@@ -94,8 +94,6 @@ function createdRow(): {
   direction: unknown;
   status: unknown;
   triggers: Trigger[];
-  entryPrice: unknown;
-  stopLoss: unknown;
 } {
   expect(mockThesisCreate).toHaveBeenCalled();
   return mockThesisCreate.mock.calls[0][0].data;
@@ -115,8 +113,8 @@ describe("record_thesis — PASS + WATCHING keeps the name in view", () => {
     const row = createdRow();
     expect(row.direction).toBeNull();
     expect(row.status).toBe("WATCHING");
-    expect(row.entryPrice).toBeNull();
-    expect(row.stopLoss).toBeNull();
+    // Unpriced: no buy, sale or Stop watching line at a price (nothing stores a level).
+    expect(row).not.toHaveProperty("entryPrice");
 
     const kinds = row.triggers.map((t) => `${t.action}:${shapeName(t.predicate)}`);
     expect(kinds).toEqual(["REVIEW:price:below"]);

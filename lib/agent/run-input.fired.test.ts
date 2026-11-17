@@ -15,7 +15,7 @@ const fire = {
   rationale: "Under the floor.",
   thesis: {
     ticker: "TRV",
-    triggers: [{ id: "floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 359.87 }, rationale: "Under the floor." }],
+    triggers: [{ id: "floor", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 359.87 }, rationale: "Under the floor." }],
     triggerState: null,
     horizon: "TRADE",
     status: "WATCHING",
@@ -60,7 +60,7 @@ import { buildRunInput } from "./run-input";
 it("a fired trigger reaches the run as its sentence, not as a removed condition", async () => {
   const input = await buildRunInput("analyst_1", "u");
   expect(input.triggersFiredSinceLastRun).toEqual([
-    expect.objectContaining({ ticker: "TRV", triggerId: "floor", action: "EXIT", predicateSummary: "Take the plan down if below $359.87" }),
+    expect.objectContaining({ ticker: "TRV", triggerId: "floor", action: "STOP_WATCHING", predicateSummary: "Stop watching if below $359.87" }),
   ]);
 });
 

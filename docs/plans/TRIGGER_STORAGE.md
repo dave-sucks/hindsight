@@ -42,7 +42,7 @@ code.
 | Fire state for inherited rules | `Thesis.triggerState` (JSON map, per thesis) | 39 entries on live theses |
 | Fire state for a stock's own triggers | inside each trigger: `lastFiredAt`, `firedFilings`, `firedReports` | 23 of the 188 live triggers carry some |
 | A fire, as a line in Activity | `ThesisUpdate` row, `type = TRIGGER_FIRED`, with `triggerId` and `priceAtTime` | 1,951 rows; 251 in the last 30 days |
-| The plan's buy / target / floor | the price triggers (`canonicalLevels` in `lib/agent/triggers/price-levels.ts`) | — |
+| The plan's buy / target / floor | the price triggers themselves, each as its sentence (no summary since 2026-11-16) | — |
 | A cached copy of those levels | `Thesis.entryPrice / targetPrice / stopLoss` | all 43 live theses match their triggers exactly |
 | A second cached copy for a held stock | `Position.targetPrice / stopLoss` | written alongside the thesis copy |
 

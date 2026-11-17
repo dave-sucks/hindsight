@@ -60,15 +60,24 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
   };
 }
 
+/** A LONG mint; its buy, floor and take-profit are triggers (`entry_price` etc. name their levels here only; undefined leaves one out). */
 function baseLongArgs(overrides: Record<string, unknown> = {}) {
+  const { entry_price: e, stop_loss: s, target_price: t, ...rest } = overrides;
+  const level = (k: string, v: unknown, d: number) => (k in overrides ? (v as number | undefined) : d);
+  const [entry, stop, target] = [level("entry_price", e, 186), level("stop_loss", s, 172), level("target_price", t, 215)];
+  const supplied = (rest.triggers as unknown[] | undefined) ?? [];
+  delete rest.triggers;
   return {
     ticker: "ANET",
     direction: "LONG",
     horizon: "TARGET",
-    entry_price: 186,
     current_price: 180,
-    target_price: 215,
-    stop_loss: 172,
+    triggers: [
+      ...(entry != null ? [{ predicate: { watch: "price", is: "above", value: entry }, action: "ENTER", rationale: "The buy." }] : []),
+      ...(stop != null ? [{ predicate: { watch: "price", is: "below", value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "The floor." }] : []),
+      ...(target != null ? [{ predicate: { watch: "price", is: "above", value: target }, action: "REVIEW", rationale: "Take profit." }] : []),
+      ...supplied,
+    ],
     core_belief: "ANET drifts to $215 within 60 days of the Q2 print.",
     key_assumptions: ["Estimate revisions continue.", "No guidance walk-back."],
     invalidation_conditions: ["Guidance cut.", "Close below $170."],
@@ -82,7 +91,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
       entryQuality: { score: 2, note: "Near the pivot." },
       catalystFreshness: { score: 2, note: "Fresh print." },
     },
-    ...overrides,
+    ...rest,
   };
 }
 

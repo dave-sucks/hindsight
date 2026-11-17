@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { SITUATIONS } from "@/lib/agent/situations";
 import {
-  CATEGORIES, SITUATION_CATEGORY, THREAD_SHAPE, buildAgentWork, fireAction, indexOf, longestStreak, measureLabel, outcomeOf, triggerRunCode,
+  CATEGORIES, MERGED_CODE, SITUATION_CATEGORY, THREAD_SHAPE, buildAgentWork, fireAction, indexOf, longestStreak, measureLabel, outcomeOf, triggerRunCode,
   type Raw, type RunRow, type UpdateRow,
 } from "./agent-work";
 
@@ -28,15 +28,18 @@ describe("the saved morning thread (one real run, 2026-11-13, rows cut to id, ti
     expect(data[THREAD_SHAPE.lists.sold].every((r) => typeof r.thesis_id === "string")).toBe(true);
   });
 
-  it("names only codes the app knows, and stays small", () => {
+  it("names only codes the app knows, one merged since (2026-11-15) or one deleted since (2026-11-13), and stays small", () => {
+    const deleted = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED"]);
     const all = Object.values(data).flat().flatMap((r) => r[THREAD_SHAPE.codes] as string[]);
-    expect(all.every((c) => c in SITUATIONS)).toBe(true);
+    expect(all.every((c) => c in SITUATIONS || c in MERGED_CODE || deleted.has(c))).toBe(true);
+    expect(all.filter((c) => c in MERGED_CODE).map((c) => MERGED_CODE[c])).toEqual(["NOTE_TO_ANSWER"]);
     expect(readFileSync(FIXTURE).length).toBeLessThan(20_000);
   });
 });
 
-it("puts every situation in one of the six categories", () => {
+it("puts every situation in one of the four categories, and every merged code on one situation", () => {
   for (const code of Object.keys(SITUATIONS)) expect(CATEGORIES).toContain(SITUATION_CATEGORY[code as keyof typeof SITUATIONS]);
+  for (const now of Object.values(MERGED_CODE)) expect(Object.keys(SITUATIONS)).toContain(now);
 });
 
 const at = (iso: string) => new Date(iso);
@@ -93,11 +96,12 @@ describe("reading a fire", () => {
     expect(measureLabel(null, "Sell if below 12% from the high since we bought")).toBe("Give-back off the high");
   });
 
-  it("gives a trigger run the situation the morning read would", () => {
-    expect(triggerRunCode(run("r", { action: "EXIT", auto: true }), null)).toBe("AUTO_TRADE");
-    expect(triggerRunCode(run("r", { action: "TRIM" }), null)).toBe("PROTECTIVE_SALE");
-    expect(triggerRunCode(run("r", { action: "REVIEW" }), { watch: "surprise", is: "miss", value: 0 })).toBe("EARNINGS");
-    expect(triggerRunCode(run("r", { action: "REVIEW" }), { watch: "price", is: "below", value: 5 })).toBe("REVIEW_DUE");
+  it("gives a trigger run its trigger's action's situation, an Auto trade's write-up too", () => {
+    expect(triggerRunCode(run("r", { action: "EXIT", auto: true }))).toBe("PROTECTIVE_SALE");
+    expect(triggerRunCode(run("r", { action: "TRIM" }))).toBe("PROTECTIVE_SALE");
+    expect(triggerRunCode(run("r", { action: "ENTER", auto: true }))).toBe("BUY_ARRIVES");
+    expect(triggerRunCode(run("r", { action: "ADD" }))).toBe("ADD_OR_WINNER");
+    expect(triggerRunCode(run("r", { action: "REVIEW" }))).toBe("REVIEW_DUE");
   });
 
   it("counts consecutive trading days over weekends and holidays", () => {
@@ -125,7 +129,7 @@ describe("the tab's numbers", () => {
       orders: [{ id: "o1", thesisId: "t1", symbol: "CEG", intent: "CLOSE", status: "EXPIRED", createdAt: at("2026-11-11T15:01:00Z") }],
       reads: [
         { runId: "m0", list: "read", thesisId: null, ticker: null, codes: [] },
-        { runId: "m0", list: "work", thesisId: "t1", ticker: "CEG", codes: ["PROTECTIVE_SALE", "STALE_RESEARCH"] },
+        { runId: "m0", list: "work", thesisId: "t1", ticker: "CEG", codes: ["PROTECTIVE_SALE", "REVIEW_DUE"] },
         { runId: "m1", list: "read", thesisId: null, ticker: null, codes: [] },
         { runId: "m1", list: "quiet", thesisId: "t9", ticker: "GD", codes: ["PLAN_PROBLEM"] },
       ],
@@ -145,9 +149,19 @@ describe("the tab's numbers", () => {
   it("counts situations on the work list with what the run did, and quiet rows apart", () => {
     const sale = w.situations.codes.find((c) => c.code === "PROTECTIVE_SALE");
     expect(sale).toMatchObject({ shown: 1, quiet: 0, triggerRuns: 1, out: { nothing: 1 } });
-    expect(w.situations.codes.find((c) => c.code === "PLAN_PROBLEM")).toMatchObject({ shown: 0, quiet: 1 });
+    // A code deleted since the read was saved (plan check, 2026-11-13) is not counted.
+    expect(w.situations.codes.find((c) => (c.code as string) === "PLAN_PROBLEM")).toBeUndefined();
     expect(w.situations.categories.find((c) => c.category === "Selling and protection")?.shown).toBe(1);
     expect(w.situations.nothing.map((x) => x.ticker)).toEqual(["CEG"]);
     expect(w.reads).toEqual({ morningRuns: 2, read: 2 });
+  });
+
+  it("counts a code saved before the merge as the situation it is now, once per row", () => {
+    const merged = buildAgentWork(
+      raw({ reads: [{ runId: "m1", list: "work", thesisId: "t1", ticker: "CEG", codes: ["YOUR_WORD_UNANSWERED", "PINNED_NOTE", "EARNINGS"] }] }),
+      { days: 7, analystId: null, since: at("2026-11-06T00:00:00Z"), now: at("2026-11-13T00:00:00Z") },
+    );
+    const shown = Object.fromEntries(merged.situations.codes.map((c) => [c.code, c.shown]));
+    expect(shown).toMatchObject({ NOTE_TO_ANSWER: 1, REVIEW_DUE: 1, BUY_ARRIVES: 0 });
   });
 });

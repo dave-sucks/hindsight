@@ -16,7 +16,7 @@
 import { statSync } from "fs";
 import type { z } from "zod";
 import fixture from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
-import { replayTool, thesisRow, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, triggerSentences, thesisRow, type Row } from "@/lib/replay";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "./run-thesis-writer";
 
@@ -26,7 +26,8 @@ const fx = fixture as unknown as Fixture;
 
 const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: fx.run.ticker, mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
 const pull = { currentPrice: fx.run.price, catalystOnFile: null } as never;
-const decision = fx.decision as unknown as ValidatedThesisDecision;
+// The decision as the writer writes it now: its buy, floor and take-profit are triggers (the level fields went 2026-11-16).
+const decision = oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG") as unknown as ValidatedThesisDecision;
 const SEED = { direction: null, status: "WATCHING" };
 
 /**
@@ -82,7 +83,9 @@ describe("COGT 09-28: the writer's refresh on a seed", () => {
     expect(result.crashed).toBe(false);
     expect(result.refused).toBe(false);
     const row = result.db.store.thesis[0];
-    expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", horizon: "CATALYST", setupId: "PRE_CATALYST", entryPrice: 36.95, targetPrice: 43.35, stopLoss: 34.91 });
+    expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", horizon: "CATALYST", setupId: "PRE_CATALYST" });
+    const said = triggerSentences(row).join(" | ");
+    for (const price of ["$36.95", "$43.35", "$34.91"]) expect(said).toContain(price);
     expect(row.coreBelief).toBe(fx.decision.core_belief);
     expect(row.invalidationConds).toEqual(fx.decision.invalidation_conditions);
     expect(row.conviction).toBe("MEDIUM");
@@ -102,6 +105,6 @@ describe("COGT 09-28: the writer's refresh on a seed", () => {
 
   it("the fixture holds the decision and the row's read fields, under the cap", () => {
     expect(statSync(FIXTURE).size).toBeLessThan(40 * 1024);
-    expect(fx.thesis).toMatchObject({ direction: null, coreBelief: null, entryPrice: null, stopLoss: null });
+    expect(fx.thesis).toMatchObject({ direction: null, coreBelief: null });
   });
 });

@@ -40,7 +40,7 @@ const fieldsOf = (runMode: string): string[] => {
 const ROWS: Record<string, string[]> = {
   "write-up": ["company", "snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data", "variant_view"],
   claim: ["core_belief", "key_assumptions", "invalidation_conditions"],
-  plan: ["entry_price", "entry_on_close", "target_price", "target_basis", "stop_loss", "stop_basis", "setup_id", "horizon", "catalyst_date", "add_triggers", "edit_triggers", "remove_trigger_ids"],
+  plan: ["setup_id", "horizon", "catalyst_date", "add_triggers", "edit_triggers", "remove_trigger_ids"],
   view: ["direction", "conviction", "conviction_rationale", "change_status"],
   note: ["thesis_id", "rationale", "trigger_id", "price_at_time"],
   review: ["verdict", "verdict_line", "answers_update_id"],
@@ -56,7 +56,7 @@ const EXPECTED: Record<(typeof DOORS)[number][1], string[]> = {
   THESIS_WRITER: EVERY_FIELD.filter((f) => !ROWS.review.includes(f)),
   PRINCIPAL_CHAT: EVERY_FIELD.filter((f) => !WRITER_ONLY.includes(f) && f !== "trigger_id"),
   MORNING_PLAN: [...ROWS.plan, "conviction", "conviction_rationale", "change_status", "thesis_id", "rationale", "trigger_id", ...ROWS.review].sort(),
-  INTRADAY_TACTICAL: ["thesis_id", "trigger_id", "rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", "stop_loss", "stop_basis", "target_price", "target_basis", "entry_price", ...ROWS.review].sort(),
+  INTRADAY_TACTICAL: ["thesis_id", "trigger_id", "rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", ...ROWS.review].sort(),
 };
 
 describe("what a save may change, by who is saving", () => {
@@ -70,7 +70,7 @@ describe("what a save may change, by who is saving", () => {
     }
     lines.push(`| **fields** | | ${DOORS.map(([, m]) => byDoor[m].length).join(" | ")} |`);
     console.log(lines.join("\n"));
-    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([35, 24, 21, 14]);
+    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([29, 18, 15, 9]);
   });
 
   it("every field of the tool is in one row of the rule", () => {
@@ -98,7 +98,7 @@ describe("what a save may change, by who is saving", () => {
   });
 
   it("the trigger run's save is the plan, the note and the review: no view, no claim, no write-up, no price", () => {
-    for (const f of [...ROWS.view, ...ROWS.claim, ...ROWS["write-up"], "price_at_time", "setup_id", "horizon", "catalyst_date", "entry_on_close"]) expect([f, byDoor.INTRADAY_TACTICAL.includes(f)]).toEqual([f, false]);
+    for (const f of [...ROWS.view, ...ROWS.claim, ...ROWS["write-up"], "price_at_time", "setup_id", "horizon", "catalyst_date"]) expect([f, byDoor.INTRADAY_TACTICAL.includes(f)]).toEqual([f, false]);
   });
 });
 

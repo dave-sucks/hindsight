@@ -76,15 +76,19 @@ const XENE_SOLD_ROW = {
   closeReason: "STOP",
 };
 
+/** A LONG mint; its buy, floor and take-profit are triggers (`entry_price` etc. name their levels here only). */
 function baseLongArgs(overrides: Record<string, unknown> = {}) {
+  const { entry_price = 67, stop_loss = 55, target_price = 100, ...rest } = overrides as Record<string, number>;
   return {
     ticker: "XENE",
     direction: "LONG",
     horizon: "TARGET",
-    entry_price: 67,
     current_price: 65,
-    target_price: 100,
-    stop_loss: 55,
+    triggers: [
+      { predicate: { watch: "price", is: "above", value: entry_price }, action: "ENTER", rationale: "The buy." },
+      { predicate: { watch: "price", is: "below", value: stop_loss, settings: { close: true } }, action: "STOP_WATCHING", rationale: "The floor." },
+      { predicate: { watch: "price", is: "above", value: target_price }, action: "REVIEW", rationale: "Take profit." },
+    ],
     core_belief: "XENE re-rates on the next pipeline readout within 90 days.",
     key_assumptions: ["Readout stays on calendar.", "Cash runway through 2027."],
     invalidation_conditions: ["Readout slips past Q4.", "Dilutive raise below $60."],
@@ -98,7 +102,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
       entryQuality: { score: 2, note: "Reclaim forming." },
       catalystFreshness: { score: 2, note: "Dated readout ahead." },
     },
-    ...overrides,
+    ...rest,
   };
 }
 

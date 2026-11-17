@@ -7,19 +7,25 @@
  *   - DOCU: the writer took the buy level off but kept the $76 review above
  *     the price; the save refused it as a target with no buy level. Since the
  *     QB ruling of 2026-09-29 (DAV-335) a review at any price on a stock we
- *     only watch is a wake, so DOCU's decision now saves. The refusal these
- *     tests exercise is the same decision with its FLOOR kept: a sale at a
- *     price with no buy is still a half plan.
+ *     only watch is a wake, so DOCU's decision now saves, and since
+ *     2026-11-16 so does a watch with its floor and no buy. The refusal these
+ *     tests exercise is the same decision with its floor kept and turned into
+ *     a sale (an edit to action EXIT): there is nothing to sell on a watch.
  * Both decisions passed the writer's own rules (validateThesisDecision) and
  * were thrown away at the save. The submit step now runs the save itself in
  * check-only mode, so the model hears the refusal while it can still fix it.
  */
 
-/** DOCU's 09-15 decision with its floor ($57.50 sell) kept: a genuine half plan. */
+/** DOCU's 09-15 decision with its floor ($57.50) kept. */
 const FLOOR_ID = "85cba008";
 const withFloorKept = <T extends { remove_trigger_ids: string[] }>(submit: T): T => ({
   ...submit,
   remove_trigger_ids: submit.remove_trigger_ids.filter((id) => !id.startsWith(FLOOR_ID)),
+});
+/** ...and turned into a sale: the save refuses it, since there is nothing to sell on a watch. */
+const withFloorAsSale = <T extends { remove_trigger_ids: string[]; edit_triggers?: unknown[] }>(submit: T): T => ({
+  ...withFloorKept(submit),
+  edit_triggers: [...(submit.edit_triggers ?? []), { id: "85cba008-4f4a-46a9-92eb-b152195d51ed", action: "EXIT", rationale: "Sell below $57.50." }],
 });
 
 const mockThesisFindUnique = jest.fn();
@@ -99,9 +105,15 @@ const ctx = {
 
 type Fx = (typeof fixtures)["DOCU"];
 
+/** The stored row, its watch's floor as the 2026-11-16 migration stores it (STOP_WATCHING, on the close). */
 function storedRow(fx: Fx) {
+  const migrated = (t: unknown) => {
+    const r = t as { action: string; predicate: Record<string, unknown> };
+    return fx.thesis.status !== "HOLDING" && r.action === "EXIT" ? { ...r, action: "STOP_WATCHING", predicate: { ...r.predicate, settings: { close: true } } } : r;
+  };
   return {
     ...fx.thesis,
+    triggers: fx.thesis.triggers.map(migrated),
     userId: "user_1",
     accountId: "account_1",
     retiredReason: null,
@@ -147,7 +159,7 @@ function validateOpts(fx: Fx, ticker: keyof typeof livePrice) {
     mode: "refresh" as const,
     existingStatus: fx.thesis.status,
     currentPrice: livePrice[ticker],
-    existingTargetPrice: fx.thesis.targetPrice,
+    existingTriggers: fx.thesis.triggers as never,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   };
@@ -204,7 +216,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
 
-  it("with its floor kept it is a half plan, refused by the save check before anything is written", async () => {
+  it("with its floor kept it saves: a watch's Stop watching line needs no buy", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
@@ -214,14 +226,27 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       ctx,
       existing: { direction: "LONG", status: fx.thesis.status },
     });
+    expect(outcome).toMatchObject({ wouldSave: true, error: null });
+  });
+
+  it("with its floor turned into a sale it is refused by the save check, with the fix, before anything is written", async () => {
+    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
+    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
+    const outcome = await checkDecisionAgainstSave({
+      args: writerArgs(fx, "DOCU"),
+      pull: null,
+      decision: v.decision as ValidatedThesisDecision,
+      ctx,
+      existing: { direction: "LONG", status: fx.thesis.status },
+    });
     expect(outcome.wouldSave).toBe(false);
     expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/no buy level/);
+    expect(outcome.error).toMatch(/nothing to sell on a stock we only watch.*STOP_WATCHING/);
     expect(mockThesisUpdate).not.toHaveBeenCalled();
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
   });
 
-  it("the fix the refusal asks for (take the floor off too — DOCU's real call) passes the check and writes nothing", async () => {
+  it("DOCU's real call (the floor taken off) passes the check and writes nothing", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
     expect(v.ok).toBe(true);
@@ -254,10 +279,10 @@ describe("submit_thesis runs the save check", () => {
     return { t, onAccept };
   }
 
-  it("hands the half plan's refusal back instead of accepting, then accepts the fix", async () => {
+  it("hands the sale's refusal back instead of accepting, then accepts the fix", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const { t, onAccept } = submitTool();
-    const first = await t.execute(withFloorKept(fx.submit));
+    const first = await t.execute(withFloorAsSale(fx.submit));
     expect(first.accepted).toBe(false);
     expect(first.errors?.[0]).toMatch(/The save refused this decision/);
     expect(onAccept).not.toHaveBeenCalled();
@@ -270,9 +295,9 @@ describe("submit_thesis runs the save check", () => {
   it("after two hand-backs it saves what it can: the call lands and the refused plan is written on the stock", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const { t, onAccept } = submitTool();
-    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(false);
-    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(false);
-    expect((await t.execute(withFloorKept(fx.submit))).accepted).toBe(true);
+    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(false);
+    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(false);
+    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(true);
     expect(onAccept).toHaveBeenCalledTimes(1);
   });
 });
@@ -312,7 +337,7 @@ describe("a check writes nothing anyone reads later", () => {
 
   it("a refused check leaves the refusal ledger empty — the ledger is the run-day record of real refusals", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
       pull: null,
@@ -324,30 +349,33 @@ describe("a check writes nothing anyone reads later", () => {
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
   });
 
-  it("a real save lands the rest and refuses the plan by name (no refusal receipt: the call landed)", async () => {
+  it("a real save lands the rest and refuses the sale by id (no refusal receipt: the call landed)", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
     const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
     const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
-    const res = (await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] })) as { data: { refused_fields?: Array<{ field: string }> } };
-    expect(res.data.refused_fields?.map((f) => f.field)).toEqual(["triggers"]);
+    const res = (await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] })) as { data: { trigger_ops?: Array<{ id: string; ok: boolean; reason?: string }> } };
+    expect(res.data.trigger_ops?.filter((o) => !o.ok)).toEqual([expect.objectContaining({ id: "85cba008-4f4a-46a9-92eb-b152195d51ed", reason: expect.stringContaining("STOP_WATCHING") })]);
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
-    expect(mockThesisUpdate.mock.calls.every(([a]: [{ data: Record<string, unknown> }]) => !("triggers" in a.data))).toBe(true);
+    // The rest landed; the floor is still the watch's Stop watching line.
+    const saved = mockThesisUpdate.mock.calls.map(([a]: [{ data: { triggers?: Array<{ id: string; action: string }> } }]) => a.data.triggers).find(Boolean);
+    expect(saved?.find((t) => t.id.startsWith(FLOOR_ID))?.action).toBe("STOP_WATCHING");
   });
 });
 
 describe("a new thesis (mint) is checked the same way", () => {
   const fx = fixtures.DOCU;
   const mintArgs = { ...writerArgs(fx, "DOCU"), mode: "mint" as const, existingThesisId: null };
-  const mintOpts = { ...validateOpts(fx, "DOCU"), mode: "mint" as const, existingStatus: null, existingTargetPrice: null };
+  const mintOpts = { ...validateOpts(fx, "DOCU"), mode: "mint" as const, existingStatus: null, existingTriggers: undefined };
   // DOCU's decision as a mint: levels priced, no trigger-edit ops.
   const mintDecision = {
     ...fx.submit,
-    entry_price: 67.28,
-    stop_loss: 64.16,
-    target_price: 78.3,
-    stop_basis: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry.",
-    target_basis: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk.",
+    // The buy, the floor and the take-profit, as the writer writes them now: triggers.
+    triggers: [
+      { predicate: { watch: "price", is: "below", value: 67.28 }, action: "ENTER", rationale: "I buy the pullback to the gap-day midpoint, $67.28." },
+      { predicate: { watch: "price", is: "below", value: 64.16, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Under the September 4 gap-day low $64.16 — 1.1 ATR below the $67.28 entry." },
+      { predicate: { watch: "price", is: "above", value: 78.3 }, action: "REVIEW", rationale: "1.272 extension of the gap leg = $78.30, 3.5R on a $3.12 risk." },
+    ] as never,
     add_triggers: undefined,
     edit_triggers: undefined,
     remove_trigger_ids: undefined,

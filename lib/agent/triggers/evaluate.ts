@@ -1,7 +1,7 @@
 /**
  * Does a trigger fire: the evaluation context, and `shouldFire`, the one fire
- * decision (the condition, the crossing for a buy, a stale quote, the
- * cooldown, a report already fired for, a re-arm).
+ * decision (the condition, the crossing for a buy or a review, a stale quote,
+ * the cooldown, a report already fired for, a re-arm).
  *
  * Pure: no DB, no fetches, no clock. Everything comes through
  * `EvaluationContext`, and a condition missing what it reads is false rather
@@ -10,7 +10,7 @@
  * chart measures read the daily indicator snapshot next to the live quote.
  */
 
-import { crossingBaseline } from "./written-price";
+import { crossingBaseline, firesOnTheCrossing } from "./written-price";
 import type { Trigger } from "./types";
 import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
@@ -26,8 +26,8 @@ export interface EvaluationContext {
    * Latest quote — present on cron and daily-inline paths.
    *
    * `prevClose` is the prior session's close (Finnhub `pc`). It is what
-   * lets an ENTER trigger fire on the CROSSING of its level rather than
-   * every tick the price sits past it (DAV-229). The 5-minute cron always
+   * lets an ENTER or REVIEW trigger fire on the CROSSING of its level rather
+   * than every tick the price sits past it (DAV-229). The 5-minute cron always
    * has it; the read-side snapshots (daily run, resolver, needs-action)
    * don't carry it and so keep level semantics — they answer "is the
    * condition true now", which is the right question for a snapshot.
@@ -169,7 +169,7 @@ export function evaluateTrigger(predicate: When, ctx: EvaluationContext): boolea
 
 /**
  * What `shouldFire` asks of a predicate: does it hold now, does it compare the
- * price to a level (so a buy on it fires on the crossing), and does it read
+ * price to a level (so a buy or a review on it fires on the crossing), and does it read
  * the next scheduled report (so a heads-up fires once per report). Answered
  * off the measure catalog (./condition/read.ts).
  */
@@ -214,22 +214,24 @@ export function shouldFire(
 
   // Two fire semantics, keyed off the action (DAV-229, 2026-09-02):
   //
-  //   Every rung but ENTER is a STANDING ORDER (principal ruling
+  //   A sale, trim or add is a STANDING ORDER (principal ruling
   //   2026-08-16): it fires every day its condition holds; a declined
   //   proposal means "did nothing today", so it asks again tomorrow.
   //   Cooldown is the only rate limit. Never latch a protective level —
   //   that turns a declined sell into a silent one.
   //
-  //   ENTER fires on the CROSSING: true now, false at the prior close.
-  //   "Buy above $35" means buy when the price gets there — under the
+  //   ENTER and REVIEW fire on the CROSSING: true now, false at the prior
+  //   close. "Buy above $35" means buy when the price gets there — under the
   //   standing-order reading a level already past (TOST $35.15 against a
   //   $35.16 tape; PLTR, 16 fires in 30 days) was a daily proposal the
-  //   analyst then declined. Evaluating the same predicate at the prior
-  //   close gives composites and vs-average the crossing for free; entries
-  //   that don't read the price can't cross and keep firing on match. No
-  //   prevClose ⇒ level semantics (the read-side snapshots).
+  //   analyst then declined. A review is the same question: MU's "review if
+  //   below $878" fired on 14 of 21 sessions for 4 crossings. Evaluating the
+  //   same predicate at the prior close gives composites and vs-average the
+  //   crossing for free; ones that don't read the price (a clock, a report,
+  //   a filing) can't cross and keep firing on match. No prevClose ⇒ level
+  //   semantics (the read-side snapshots).
   //
-  //   A buy written after that close is measured from the price it was
+  //   One written after that close is measured from the price it was
   //   written at instead, until the next close — otherwise a level set on a
   //   down day is dead on arrival (./written-price).
   // A buy never fires on a quote that isn't today's price: at 09:30 Finnhub
@@ -241,7 +243,7 @@ export function shouldFire(
   }
 
   const baseline =
-    trigger.action === "ENTER" && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
+    firesOnTheCrossing(trigger.action) && ctx.latestQuote?.prevClose != null && ctx.latestQuote.prevClose > 0
       ? crossingBaseline(trigger, ctx.latestQuote.prevClose, ctx.now)
       : null;
   if (baseline != null && ctx.latestQuote && checker.readsPrice(trigger.predicate)) {

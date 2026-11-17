@@ -14,14 +14,14 @@ import { Mono } from "../primitives";
 
 const INPUTS: readonly { title: string; sub: string }[] = [
   { title: "Its triggers", sub: "One fired, or one is true now" },
-  { title: "Its clocks", sub: "A review due, research gone stale" },
-  { title: "Its plan vs the price", sub: "A buy left behind, a floor too far" },
-  { title: "Your word", sub: "A note or a decline not yet answered" },
+  { title: "Its review clock", sub: "It came round" },
+  { title: "Its floor", sub: "Too far behind the gain, or too much to lose" },
+  { title: "A note", sub: "Yours or a pinned one, not yet answered" },
   { title: "A recent sale", sub: "Sold in the last two weeks" },
 ];
 
 const STOCKS: readonly { s: string; situations: readonly string[] }[] = [
-  { s: "MU", situations: ["earnings", "floor to fix"] },
+  { s: "MU", situations: ["review due", "floor to fix"] },
   { s: "CRWD", situations: ["buy level reached"] },
   { s: "LLY", situations: [] },
 ];

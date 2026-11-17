@@ -159,17 +159,7 @@ function toStored({ value, variable, settings, ...base }: AgentCondition): Condi
   return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
 }
 
-export const triggerActionSchema = z.enum([
-  "REVIEW",
-  "EXIT",
-  "ENTER",
-  "ADD",
-  "TRIM",
-  // Never authored — derived at fire time by effectiveTriggerAction. Listed
-  // so a stored value round-trips rather than failing the parse (which would
-  // silently drop the whole ladder — see parseTriggersResilient's header).
-  "DEMOTE",
-]);
+export const triggerActionSchema = z.enum(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM", "STOP_WATCHING"]);
 
 export const triggerSchema = z.object({
   // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
@@ -229,7 +219,7 @@ export const triggerSchema = z.object({
     .number()
     .positive()
     .optional()
-    .describe("Server-stamped on a buy trigger when it is written. Do not set — any supplied value is overwritten."),
+    .describe("Server-stamped on a buy or review trigger when it is written. Do not set — any supplied value is overwritten."),
   writtenAt: z
     .string()
     .datetime()
@@ -293,7 +283,10 @@ export const triggerInputSchema = triggerSchema
     // 0–90 days until 2026-11-02; a 0 on CEG's sale woke a run every five minutes. A sent value is dropped.
     cooldownDays: true,
   })
-  .extend({ predicate: predicateInputSchema() });
+  .extend({
+    predicate: predicateInputSchema(),
+    action: triggerActionSchema.describe("EXIT sells and is for a stock we hold; STOP_WATCHING ends the watch, never sells, and is for a stock we only watch."),
+  });
 
 export const triggersInputArraySchema = z
   .array(triggerInputSchema)

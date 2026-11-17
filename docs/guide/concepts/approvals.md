@@ -11,7 +11,7 @@ On the live account nothing reaches the broker until you say yes, and whatever y
 No agent places a trade by itself. A trade becomes a proposal the moment an agent decides on it:
 
 - **A [trigger run](../agents/trigger-runs.md)**, after a buy, add, trim or sale [trigger](triggers.md) fires and the run confirms it.
-- **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its target.
+- **A [morning run](../agents/morning-runs.md)**, answering a stock's [situation](situations.md): a sale signal, a buy level reached, a winner near its upside level.
 - **An Auto trigger** (Auto-sell, Auto-trim, Auto-buy, Auto-add), with no agent deciding. The analyst writes it up right after.
 - **[Chat](../agents/chat.md)**, when you ask for a trade.
 
@@ -57,7 +57,7 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 `lib/agent/declined-sale.ts` counts a decline (REJECTED) and a lapse (EXPIRED) apart; the row's `heldThroughFloor` carries both.
 
 #### On approval
-`lib/proposals/execute.ts` flips the thesis as soon as the broker accepts the order, through `lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` turns WATCHING into HOLDING and arms the held plan; `closeThesisOnApproval` retires it as SOLD or, after a profit-take, sends it back to WATCHING. `reconcile-orders` later stamps the real fill price.
+`lib/proposals/execute.ts` flips the thesis as soon as the broker accepts the order, through `lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` turns WATCHING into HOLDING: the buy comes off and the stock keeps its other triggers; `closeThesisOnApproval` retires it as SOLD or, after a profit-take, sends it back to WATCHING. `reconcile-orders` later stamps the real fill price.
 
 #### Alerts
 An email (`lib/emails/proposal-pending.ts`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).

@@ -19,15 +19,15 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { updateThesis } from "./update-thesis";
 
 const DOOR = [
-  "add_triggers", "answers_update_id", "edit_triggers", "entry_price", "rationale", "remove_trigger_ids",
-  "stop_basis", "stop_loss", "target_basis", "target_price", "thesis_id", "trigger_id", "verdict", "verdict_line",
+  "add_triggers", "answers_update_id", "edit_triggers", "rationale", "remove_trigger_ids",
+  "thesis_id", "trigger_id", "verdict", "verdict_line",
 ];
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
 const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const CALLS = (["ASML", "NVDA", "CEG", "MU"] as const).map((t) => [t, fixture[t].call as Record<string, unknown>] as const);
 
 describe("the trigger run's save", () => {
-  it("offers exactly fourteen fields, and no change_status", () => {
+  it("offers exactly nine fields, and no change_status", () => {
     const schema = schemaOf("INTRADAY_TACTICAL");
     expect(Object.keys(schema.shape).sort()).toEqual(DOOR);
     const json = zodSchema(schema as never).jsonSchema as { properties: Record<string, unknown> };

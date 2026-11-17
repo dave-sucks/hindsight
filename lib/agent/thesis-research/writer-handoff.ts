@@ -15,30 +15,21 @@
  * The parent waited properly — it dispatched at 12:04:56, the writer finished
  * at 12:08:01, and it wrote sixteen seconds later. It was not a race. The
  * waiter handed it back a "thesis excerpt" that was snapshot text, bull and
- * bear bullets, and a research age — prose, and no plan. So the run deleted
- * three levels the refresh had just priced without ever being shown them,
- * and the only survivor was the deletion.
+ * bear bullets, and a research age — prose, and no triggers. So the run
+ * deleted three levels the refresh had just priced without ever being shown
+ * them, and the only survivor was the deletion.
  *
  * This is the missing input, not a new gate: nothing is refused, and the run
  * may still disagree with its own writer. It just has to do it with the
  * numbers in front of it.
  *
- * Pure: the writer's own audit row plus the plan as it left it.
+ * Pure: the writer's own audit row plus the stock's triggers as it left them.
  */
-
-const fmt = (n: number) =>
-  `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-export interface WriterPlan {
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
-}
 
 export interface WriterHandoff {
   /** The writer's own one-line list of what it changed. Null when it changed nothing. */
   changed: string | null;
-  /** The plan as the refresh left it, in one sentence. */
+  /** The stock's triggers as the refresh left them, each as its sentence, in one line. */
   planLine: string;
   /** What the run owes this plan before it overwrites it. */
   instruction: string;
@@ -54,26 +45,23 @@ export function writerHandoff(input: {
   ticker: string;
   /** The ThesisUpdate the writer child run wrote, if it wrote one. */
   update: { summary: string | null } | null;
-  plan: WriterPlan;
+  /** The stock's own triggers after the refresh, each as its sentence ("Buy if above $51.94 · only on the close"). */
+  triggers: string[];
 }): WriterHandoff {
-  const { ticker, plan } = input;
-  const parts: string[] = [];
-  if (plan.entryPrice != null) parts.push(`buy ${fmt(plan.entryPrice)}`);
-  if (plan.targetPrice != null) parts.push(`target ${fmt(plan.targetPrice)}`);
-  if (plan.stopLoss != null) parts.push(`floor ${fmt(plan.stopLoss)}`);
+  const { ticker, triggers } = input;
 
   const raw = input.update?.summary?.trim() || null;
   const changed = raw ? stripLead(raw, ticker) || null : null;
 
   return {
     changed,
-    planLine: parts.length
-      ? `The plan the refresh left: ${parts.join(", ")}.`
-      : `The refresh left no priced plan on $${ticker} — no buy level, target or floor.`,
+    planLine: triggers.length
+      ? `The triggers the refresh left: ${triggers.join("; ")}.`
+      : `The refresh left $${ticker} with no triggers.`,
     instruction:
       `You commissioned this refresh: read what it wrote before you change it. ` +
-      `If you are about to move or remove any of these levels, say in your rationale why, against these numbers. ` +
-      `Removing a level the refresh just priced without naming it is how $CYTK ended up with its plan written and deleted seventeen seconds apart on 2026-09-21.`,
+      `If you are about to move or remove any of these triggers, say in your rationale why, against these numbers. ` +
+      `Removing a level the refresh just priced without naming it is how $CYTK ended up with its levels written and deleted seventeen seconds apart on 2026-09-21.`,
   };
 }
 

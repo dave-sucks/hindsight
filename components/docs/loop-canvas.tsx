@@ -14,19 +14,19 @@
  * wires drop away. Every ticker and number is an example.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ContextChip, ContextChips } from "@/components/domain/context-chip";
 import { StockLogo } from "@/components/StockLogo";
 import { PriceChange } from "@/components/ui/price-change";
 import { rowLabel } from "@/lib/agent/triggers/condition";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
-import { AGENT_CONTEXT, CHIPS_SHOWN, MARKET_DIGEST, PORTFOLIO_DIGEST, type ContextAgent } from "@/lib/docs/agent-context";
+import { AGENT_CONTEXT, CHIPS_SHOWN, MARKET_DIGEST, PORTFOLIO_DIGEST, type ContextAgent, type ContextPart } from "@/lib/docs/agent-context";
 import { factsOf, parseDoc } from "@/lib/docs/guide-parse";
 import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { cn } from "@/lib/utils";
 import { RunOutputs, type OutputId } from "./run-outputs";
-import { Eyebrow, Mono } from "./primitives";
+import { Eyebrow } from "./primitives";
 import { docBySlug, type DocSlug } from "./registry";
 import { useGuideDoc } from "./tool-catalog";
 import { ExamplePill, type PillSpec } from "./trigger-bits";
@@ -40,22 +40,12 @@ const WAKE: Record<Wake, { bar: string; label: string }> = {
   asked: { bar: "bg-wake-asked", label: "Wakes when asked" },
 };
 
-/** Each agent: its name, what wakes it, its place on the grid (columns 1, 3 and 5; 2 and 4 are the gaps), and what it writes for the others. */
-const AGENTS: Record<ContextAgent, { name: string; wake: Wake; place: string; writes?: ReactNode }> = {
-  discovery: { name: "Discovery", wake: "asked", place: "lg:col-start-1 lg:row-start-1 lg:mb-10" },
-  "portfolio-digest": {
-    name: "Portfolio Digest",
-    wake: "clock",
-    place: "lg:col-start-3 lg:row-start-1 lg:mb-10",
-    writes: <>Writes the <ContextChip part={PORTFOLIO_DIGEST.part}>{PORTFOLIO_DIGEST.label}</ContextChip> for every agent that decides on stocks</>,
-  },
-  "market-reviewer": {
-    name: "Market Reviewer",
-    wake: "clock",
-    place: "lg:col-start-5 lg:row-start-1 lg:mb-10",
-    writes: <>Writes the <ContextChip part={MARKET_DIGEST.part}>{MARKET_DIGEST.label}</ContextChip> and notes on our stocks</>,
-  },
-  writer: { name: "The Writer", wake: "asked", place: "lg:col-start-1 lg:row-start-2 lg:mb-14" },
+/** Each agent: its name, what wakes it, its place on the grid (columns 1, 3 and 5; 2 and 4 are the gaps), and what it creates for the others. */
+const AGENTS: Record<ContextAgent, { name: string; wake: Wake; place: string; creates?: ContextPart }> = {
+  discovery: { name: "Discovery", wake: "asked", place: "lg:col-start-1 lg:row-start-1 lg:mb-6" },
+  "portfolio-digest": { name: "Portfolio Digest", wake: "clock", place: "lg:col-start-3 lg:row-start-1 lg:mb-6", creates: PORTFOLIO_DIGEST },
+  "market-reviewer": { name: "Market Reviewer", wake: "clock", place: "lg:col-start-5 lg:row-start-1 lg:mb-6", creates: MARKET_DIGEST },
+  writer: { name: "The Writer", wake: "asked", place: "lg:col-start-1 lg:row-start-2 lg:mb-10" },
   "trigger-runs": { name: "Trigger run", wake: "trigger", place: "lg:col-start-3 lg:row-start-3 lg:self-center" },
   "morning-runs": { name: "Morning run", wake: "clock", place: "lg:col-start-3 lg:row-start-4 lg:self-center" },
   chat: { name: "Chat", wake: "asked", place: "lg:col-start-3 lg:row-start-5 lg:self-center" },
@@ -190,7 +180,7 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
         </div>
 
         {/* Three columns with the gaps as tracks: room for the arrows' words after the first, the bus before the outputs. */}
-        <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)_4rem_minmax(0,1fr)] lg:gap-x-0 lg:gap-y-6">
+        <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)_4rem_minmax(0,1fr)] lg:gap-x-0 lg:gap-y-4">
           {(["discovery", "portfolio-digest", "market-reviewer", "writer"] as const).map((id) => (
             <AgentCard key={id} id={id} ref={at(id)} onOpen={onOpen} />
           ))}
@@ -211,20 +201,25 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
 function AgentCard({ id, ref, onOpen }: { id: ContextAgent; ref: (el: HTMLElement | null) => void; onOpen: (slug: DocSlug) => void }) {
   const a = AGENTS[id];
   const source = useGuideDoc(id);
-  const starts = useMemo(() => (source ? (factsOf(parseDoc(source)).Starts ?? "") : ""), [source]);
+  // The doc says the time zone; the card leaves it off.
+  const starts = useMemo(() => (source ? (factsOf(parseDoc(source)).Starts ?? "").replace(/ ET$/, "") : ""), [source]);
   return (
-    <div ref={ref} className={cn("flex min-w-0 gap-3 rounded-xl border bg-background p-3.5 shadow-sm", a.place)}>
+    <div ref={ref} className={cn("flex min-w-0 gap-2.5 rounded-xl border bg-background p-2.5 shadow-sm", a.place)}>
       <span className={cn("w-1 shrink-0 rounded-full", WAKE[a.wake].bar)} aria-hidden />
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <button type="button" onClick={() => onOpen(id)} className="group flex flex-col gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <button type="button" onClick={() => onOpen(id)} className="group flex flex-col gap-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className="flex flex-wrap items-baseline justify-between gap-x-3">
             <span className="text-sm font-medium text-foreground">{a.name}</span>
-            <Mono className="text-xs text-muted-foreground">{starts}</Mono>
+            <span className="text-xs text-muted-foreground">{starts}</span>
           </span>
           <span className="line-clamp-2 text-xs leading-snug text-muted-foreground transition-colors group-hover:text-foreground">{docBySlug(id)?.blurb}</span>
         </button>
         <ContextChips parts={AGENT_CONTEXT[id]} shown={CHIPS_SHOWN} onMore={() => onOpen(id)} moreLabel={`Everything ${a.name} is sent`} />
-        {a.writes ? <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">{a.writes}</p> : null}
+        {a.creates ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Creates: <ContextChip part={a.creates.part}>{a.creates.label}</ContextChip>
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -233,7 +228,7 @@ function AgentCard({ id, ref, onOpen }: { id: ContextAgent; ref: (el: HTMLElemen
 /** One thesis, a smaller copy of the sheet: the stock, its belief, one trigger with its On fire, and its newest Activity. */
 function ThesisCard({ ref, onOpen }: { ref: (el: HTMLElement | null) => void; onOpen: (slug: DocSlug) => void }) {
   return (
-    <div ref={ref} className="flex min-w-0 flex-col gap-3 rounded-xl border bg-background p-4 shadow-sm lg:col-start-1 lg:row-span-3 lg:row-start-3 lg:self-stretch">
+    <div ref={ref} className="flex min-w-0 flex-col gap-2.5 rounded-xl border bg-background p-3.5 shadow-sm lg:col-start-1 lg:row-span-3 lg:row-start-3 lg:self-stretch">
       <button type="button" onClick={() => onOpen("theses")} className="group flex items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <StockLogo ticker="CRWD" size="md" />
         <span className="min-w-0 flex-1">

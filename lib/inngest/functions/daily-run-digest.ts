@@ -108,7 +108,6 @@ export const dailyRunDigest = inngest.createFunction(
       analystId: string;
       symbol: string;
       reason: string;
-      targetPrice: number | null;
     };
 
     const sent: string[] = [];
@@ -173,7 +172,6 @@ export const dailyRunDigest = inngest.createFunction(
           },
           select: {
             ticker: true,
-            targetPrice: true,
             // PR-9: reasoningSummary (String) replaced by snapshot (JSONB).
             snapshot: true,
             researchRun: { select: { agentConfigId: true } },
@@ -185,7 +183,6 @@ export const dailyRunDigest = inngest.createFunction(
             analystId: t.researchRun.agentConfigId as string,
             symbol: t.ticker,
             reason: getThesisSnapshotText(t),
-            targetPrice: t.targetPrice,
           }));
 
         return { decisions, watchAdds };
@@ -251,7 +248,6 @@ export const dailyRunDigest = inngest.createFunction(
         }
 
         for (const w of gathered.watchAdds.filter((x) => x.analystId === a.id)) {
-          const targetPart = w.targetPrice != null ? ` · target $${w.targetPrice.toFixed(2)}` : "";
           const reasonPart =
             w.reason && w.reason.length > 0
               ? ` · ${w.reason.length > 80 ? w.reason.slice(0, 77) + "…" : w.reason}`
@@ -259,7 +255,7 @@ export const dailyRunDigest = inngest.createFunction(
           rows.push({
             ticker: w.symbol,
             kind: "WATCH",
-            description: `Added to watchlist${targetPart}${reasonPart}`,
+            description: `Added to watchlist${reasonPart}`,
           });
         }
 

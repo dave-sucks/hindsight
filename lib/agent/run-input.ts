@@ -72,8 +72,6 @@ export interface RunInput {
     reason: string;
     priority: string;
     thesisDirection: string | null;
-    targetPrice: number | null;
-    stopPrice: number | null;
     catalyst: string | null;
     daysOnList: number;
     lastReviewedDaysAgo: number;
@@ -83,9 +81,6 @@ export interface RunInput {
     ticker: string;
     direction: string | null;
     reasoningSummary: string;
-    entryPrice: number | null;
-    targetPrice: number | null;
-    stopLoss: number | null;
     createdAt: string;
     runId: string;
     status: string;
@@ -225,8 +220,7 @@ export async function buildRunInput(
   //    See docs/WATCHLIST_COLLAPSE_PLAN.md.
   let watchlistItems: Array<{
     symbol: string; reason: string; priority: string;
-    thesisDirection: string | null; targetPrice: number | null;
-    stopPrice: number | null;
+    thesisDirection: string | null;
     catalyst: string | null; createdAt: Date; lastReviewedAt: Date | null;
   }> = [];
   try {
@@ -239,8 +233,6 @@ export async function buildRunInput(
       select: {
         ticker: true,
         direction: true,
-        targetPrice: true,
-        stopLoss: true,
         snapshot: true,
         catalystDate: true,
         createdAt: true,
@@ -255,8 +247,6 @@ export async function buildRunInput(
         // P1-24 B4 dual-read: a new seed is direction=null (passes through);
         // a legacy seed is 'PENDING' → null. Both surface as null = no view.
         thesisDirection: t.direction === "PENDING" ? null : t.direction,
-        targetPrice: t.targetPrice,
-        stopPrice: t.stopLoss,
         catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
         createdAt: t.createdAt,
         // The actual last-look stamp. This used to read the cached
@@ -369,8 +359,7 @@ export async function buildRunInput(
   let activeTheses: Array<{
     id: string; ticker: string; direction: string | null;
     snapshot: unknown; bullCase: unknown; bearCase: unknown;
-    entryPrice: number | null; targetPrice: number | null;
-    stopLoss: number | null; createdAt: Date; researchRunId: string; status: string;
+    createdAt: Date; researchRunId: string; status: string;
     horizon: string | null; coreBelief: string | null;
     lastReviewedAt: Date | null; triggers: unknown;
     catalystDate: Date | null;
@@ -396,8 +385,7 @@ export async function buildRunInput(
         select: {
           id: true, ticker: true, direction: true,
           snapshot: true, bullCase: true, bearCase: true,
-          entryPrice: true, targetPrice: true,
-          stopLoss: true, createdAt: true, researchRunId: true, status: true,
+          createdAt: true, researchRunId: true, status: true,
           // Durable-state fields drive the prompt's per-thesis exit-policy
           // hint + structural-belief preview. coreBelief is the durable
           // claim; lastReviewedAt + triggers derive the review due date
@@ -441,8 +429,6 @@ export async function buildRunInput(
     reason: w.reason,
     priority: w.priority,
     thesisDirection: w.thesisDirection,
-    targetPrice: w.targetPrice,
-    stopPrice: w.stopPrice,
     catalyst: w.catalyst,
     daysOnList: Math.floor(
       (now - w.createdAt.getTime()) / (1000 * 60 * 60 * 24),
@@ -537,7 +523,7 @@ export async function buildRunInput(
         action: isSyntheticOverdue ? "REVIEW" : (t?.action ?? "REVIEW"),
         predicateSummary: isSyntheticOverdue
           ? "scheduled review overdue"
-          : t ? sentenceOf(t, f.thesis.status === "HOLDING") : "(predicate removed)",
+          : t ? sentenceOf(t) : "(predicate removed)",
         rationale: f.rationale ?? f.summary ?? "",
         firedAt: f.timestamp.toISOString(),
       };
@@ -618,6 +604,7 @@ export async function buildRunInput(
     `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
   );
 
+  const reviewSources = (await loadLevelSources([config.id]).catch(() => new Map())).get(config.id);
   return {
     portfolioBlock,
     pendingApprovalCount,
@@ -642,24 +629,18 @@ export async function buildRunInput(
         ticker: t.ticker,
         direction: t.direction,
         reasoningSummary: snapshotText,
-        entryPrice: t.entryPrice,
-        targetPrice: t.targetPrice,
-        stopLoss: t.stopLoss,
         createdAt: t.createdAt.toISOString(),
         runId: t.researchRunId,
         status: t.status,
         horizon: t.horizon,
         coreBelief: t.coreBelief,
-        // Derived, not stored (DAV-221) — the raw trigger list is enough
-        // here: a held row's inherited account cadence matches the horizon
-        // fallback inside the helper.
+        // Derived, not stored (DAV-221), from the resolved ladder: an inherited clock counts.
         reviewDueAt: (() => {
           const due = derivedNextReviewAt({
             status: t.status,
             lastReviewedAt: t.lastReviewedAt,
             createdAt: t.createdAt,
-            triggers: t.triggers,
-            horizon: t.horizon,
+            triggers: resolveThesisLadder(t, reviewSources),
           });
           return due ? due.toISOString() : null;
         })(),

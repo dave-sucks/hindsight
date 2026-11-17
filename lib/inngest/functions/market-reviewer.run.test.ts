@@ -294,9 +294,9 @@ describe("the 7:30 Market Reviewer", () => {
     expect(crashed).toBe(false);
     const rows = (result as unknown as { data: { theses: Array<{ id: string; situations: string[]; context: string }> } }).data.theses;
     const mu = rows.find((t) => t.id === "t_mu")!;
-    // Both stocks the high note names are on the list, in PINNED_NOTE.
-    expect(mu.situations).toContain("PINNED_NOTE");
-    expect(rows.find((t) => t.id === "t_asml")?.situations).toContain("PINNED_NOTE");
+    // Both stocks the high note names are on the list, with a note to answer.
+    expect(mu.situations).toContain("NOTE_TO_ANSWER");
+    expect(rows.find((t) => t.id === "t_asml")?.situations).toContain("NOTE_TO_ANSWER");
     // The high note reads pinned above the stock's lines; the low one is one of its newest 8, in `said`.
     const [pinned, said] = mu.context.split("WHAT'S BEEN SAID ON $MU");
     expect(pinned).toContain(`PINNED ON $MU: notes read before its Activity lines:\n  11-11 07:30 · Agent note to MU, ASML · high impact · weaker, pinned until 11-14 — "${NOTES[0].text}"`);

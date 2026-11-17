@@ -232,7 +232,7 @@ describe("a review's verdict and the line it answers: one title on the page, the
     expect(reviewTitle(row, TRIGGERS)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought · weaker" });
     expect(reviewTitle(row)).toEqual({ primary: "Review", secondary: "· weaker" });
     // A line with its own title keeps it, with the word after it.
-    expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "target $80.00 → $95.00 · weaker" });
+    expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "upside $80.00 → $95.00 · weaker" });
   });
 
   it("a note stamped with the proposal it wrote up gives the Proposed step its verdict", () => {
@@ -256,7 +256,7 @@ describe("the rule kept on a line (2026-11-03)", () => {
 
 describe("a trigger's proposal the close pass took down (lib/proposals/trigger-proposals.ts)", () => {
   // PLTR 10-23, as the 30-day replay leaves it: the Auto-sell at $196, withdrawn on the $196.75 close.
-  const card: ProposalOrder = { id: "card-pltr", status: "WITHDRAWN", intent: "CLOSE", side: "SELL", quantity: 38, symbol: "PLTR", rationale: null, rejectionMessage: null, expiresAt: null, withdrawnReason: "closed back above $196 at $196.75", alpacaConfirmedAt: null, filledPrice: null, createdAt: at("2026-10-23T18:40:20Z"), updatedAt: at("2026-10-23T20:20:05Z"), positionId: "pos-pltr" };
+  const card: ProposalOrder = { id: "card-pltr", status: "WITHDRAWN", intent: "CLOSE", side: "SELL", quantity: 38, symbol: "PLTR", rationale: null, rejectionMessage: null, expiresAt: null, triggerIds: ["trail-pltr"], withdrawnReason: "closed back above $196 at $196.75", alpacaConfirmedAt: null, filledPrice: null, createdAt: at("2026-10-23T18:40:20Z"), updatedAt: at("2026-10-23T20:20:05Z"), positionId: "pos-pltr" };
 
   it("is its own step, titled with why, at the close: the owner sees it and so does the next run", () => {
     const [withdrawn, proposed] = activityFeed({ updates: [], orders: [card] });

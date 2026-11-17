@@ -23,7 +23,8 @@ import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { triggerSchema, triggersArraySchema } from "@/lib/agent/triggers/schema";
 import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { fireModeProblem, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
+import { firesOnTheCrossing } from "@/lib/agent/triggers/written-price";
+import { actionProblem, addProblem, conditionsOf, fromPosition, sentenceOf } from "@/lib/agent/triggers/condition";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -39,6 +40,7 @@ import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { COPIED_RULE_CLEANUP } from "@/lib/agent/stock-context";
 import type { When } from "@/lib/agent/triggers/condition";
+import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 
 export interface ThesisEditContext {
   accountId: string;
@@ -76,7 +78,8 @@ export function buildPrincipalTrigger(input: {
   /** An account or analyst rule: Auto only on a sale. */
   standing?: boolean;
 }): Trigger {
-  const modeProblem = fireModeProblem(input.action, input.fireMode, { standing: input.standing });
+  // A stock's own action is checked against the stock by the op (ops.ts); a standing rule here.
+  const modeProblem = (input.standing ? actionProblem(input.action, { held: false, standing: true }) : null) ?? fireModeProblem(input.action, input.fireMode, { standing: input.standing });
   if (modeProblem) throw new ThesisEditError("INVALID", modeProblem);
   const parsed = triggerSchema.safeParse({
     predicate: input.predicate,
@@ -118,9 +121,6 @@ interface EditableThesis {
   ticker: string;
   direction: string | null;
   status: string;
-  targetPrice: number | null;
-  stopLoss: number | null;
-  entryPrice: number | null;
   triggers: Trigger[];
   inherited: ReturnType<typeof resolveThesisLadder>;
   position: { id: string; avgCost: number | null } | null;
@@ -139,9 +139,6 @@ async function loadEditableThesis(
       status: true,
       horizon: true,
       accountId: true,
-      targetPrice: true,
-      stopLoss: true,
-      entryPrice: true,
       triggers: true,
       triggerState: true,
       researchRun: { select: { agentConfigId: true } },
@@ -201,9 +198,6 @@ async function loadEditableThesis(
     ticker: thesis.ticker,
     direction: thesis.direction,
     status: thesis.status,
-    targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
-    stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-    entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
     triggers: parsed.data as Trigger[],
     inherited,
     position: position
@@ -217,7 +211,7 @@ interface OpOutcome {
   /** The id the op landed on — an add into an occupied bucket lands on the existing trigger. */
   id: string;
   triggers: Trigger[];
-  /** Plan columns that moved with the op. */
+  /** The held position's sell price or target, moved with the op. */
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
@@ -233,17 +227,17 @@ async function runPrincipalOp(
 ): Promise<OpOutcome> {
   const thesis = await loadEditableThesis(thesisId, ctx);
   const op = buildOp(thesis);
-  // A buy edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
-  const touchesBuy =
+  // A buy or review edit stamps the live price (triggers/written-price); it doesn't re-pick your side.
+  const stampsPrice =
     op.op === "level"
       ? op.slot === "ENTRY"
       : op.op === "add"
-        ? op.trigger.action === "ENTER"
-        : thesis.triggers.some((t) => t.id === op.id && t.action === "ENTER") ||
-          (op.op === "edit" && op.action === "ENTER") ||
-          (op.op === "replace" && op.trigger.action === "ENTER");
+        ? firesOnTheCrossing(op.trigger.action)
+        : thesis.triggers.some((t) => t.id === op.id && firesOnTheCrossing(t.action)) ||
+          (op.op === "edit" && op.action != null && firesOnTheCrossing(op.action)) ||
+          (op.op === "replace" && firesOnTheCrossing(op.trigger.action));
   let writtenPrice: number | null = null;
-  if (touchesBuy) {
+  if (stampsPrice) {
     writtenPrice = freshQuotePrice(await getStockQuote(thesis.ticker).catch(() => null), new Date());
   }
   const applied = applyTriggerOps({
@@ -271,29 +265,25 @@ async function runPrincipalOp(
     direction: thesis.direction,
     status: thesis.status,
     actor: "PRINCIPAL",
-    entryPrice: thesis.position?.avgCost ?? thesis.entryPrice,
-    avgCost: thesis.position?.avgCost,
   });
   if (!check.ok) throw new ThesisEditError("INVALID", check.message);
 
-  const held = thesis.status === "HOLDING";
+  // The trigger you edited, when it is a sale or an upside line at a price, moves the position's own price with it.
+  const edited = applied.triggers.find((t) => t.id === result.id);
+  const was = thesis.triggers.find((t) => t.id === result.id);
+  const price = edited ? typedPriceOf(edited) : null;
+  const slot = edited ? levelSlotOf(edited, thesis.direction) : null;
   const synced: { stopLoss?: number; targetPrice?: number } = {};
-  if (check.columns.stopLoss != null && check.columns.stopLoss !== thesis.stopLoss)
-    synced.stopLoss = check.columns.stopLoss;
-  if (check.columns.targetPrice != null && check.columns.targetPrice !== thesis.targetPrice)
-    synced.targetPrice = check.columns.targetPrice;
+  if (price != null && (!was || typedPriceOf(was) !== price)) {
+    if (slot === "FLOOR") synced.stopLoss = price;
+    if (slot === "TARGET") synced.targetPrice = price;
+  }
 
   const { summary } = audit(thesis, result.id);
   await prisma.$transaction(async (tx) => {
     await tx.thesis.update({
       where: { id: thesis.id },
-      data: {
-        triggers: applied.triggers as unknown as object,
-        targetPrice: check.columns.targetPrice,
-        stopLoss: check.columns.stopLoss,
-        // Held: the entry is the fill, written once by the buy.
-        ...(held ? {} : { entryPrice: check.columns.entryPrice }),
-      },
+      data: { triggers: applied.triggers as unknown as object },
     });
     if (thesis.position) {
       if (synced.stopLoss != null || synced.targetPrice != null) {
@@ -328,12 +318,6 @@ async function runPrincipalOp(
     fieldChanges: {
       source: { from: null, to: "USER" },
       triggerOps: { from: null, to: acceptedOps(applied.results) },
-      ...(check.columns.stopLoss !== thesis.stopLoss
-        ? { stopLoss: { from: thesis.stopLoss, to: check.columns.stopLoss } }
-        : {}),
-      ...(check.columns.targetPrice !== thesis.targetPrice
-        ? { targetPrice: { from: thesis.targetPrice, to: check.columns.targetPrice } }
-        : {}),
     },
     runId: null,
     tradeId: thesis.position?.id,
@@ -392,7 +376,7 @@ export async function applyTriggerAdd(
       return { op: "add", trigger: built };
     },
     (thesis) => ({
-      summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      summary: `You added a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -427,7 +411,7 @@ export async function applyTriggerReplace(
       return { op: "replace", id: triggerId, trigger: built };
     },
     (thesis) => ({
-      summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input, thesis.status === "HOLDING")}`,
+      summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,
     }),
   );
   const trigger = outcome.triggers.find((t) => t.id === outcome.id)!;
@@ -462,7 +446,7 @@ export async function applyTriggerDelete(
     () => ({ op: "remove", id: triggerId }),
     (thesis) => {
       const target = thesis.triggers.find((t) => t.id === triggerId)!;
-      const what = sentenceOf(target, thesis.status === "HOLDING");
+      const what = sentenceOf(target);
       if (why) {
         return {
           summary: `${COPIED_RULE_CLEANUP}${thesis.ticker} — ${what}`,

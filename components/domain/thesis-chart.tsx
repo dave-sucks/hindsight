@@ -4,14 +4,7 @@ import { useEffect, useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { StockPriceChart, type RangeMove } from '@/components/stocks/StockPriceChart';
 import type { StockCandle } from '@/lib/actions/finnhub.actions';
-import type { ThesisStateLevels } from '@/lib/types/thesis-sheet';
-
-/** A plan level drawn on the chart: the price, whether it is only projected, and the action it fires. */
-export interface CardLevel {
-  price: number;
-  projected: boolean;
-  action?: string;
-}
+import type { PriceLine } from '@/lib/agent/triggers/price-levels';
 
 // Reference-line / marker colors. Hardcoded hex (not CSS vars) because the
 // chart renders to SVG and our theme vars are oklch(), which SVG stroke/fill
@@ -26,24 +19,10 @@ type ThesisChartProps = {
   ticker: string;
   candles: StockCandle[];
   direction: 'LONG' | 'SHORT' | null;
-  /** Planned entry (Thesis.entryPrice). */
-  entryPrice: number | null;
-  /** Actual fill (Position.avgCost) — wins over entryPrice when present. */
+  /** What we paid (Position.avgCost) — the line a holding is drawn from. */
   avgCost?: number | null;
-  /**
-   * Cached level columns. A fallback only — pass `levels` where you have it.
-   * These can name a price no trigger enforces (the SNOW failure).
-   */
-  targetPrice: number | null;
-  stopLoss: number | null;
-  /**
-   * The levels actually in force, from `canonicalLevels`. When supplied the
-   * chart draws EVERY price level as its own labelled line — tiered trims,
-   * a warning review below the floor, a trail sitting at the price it
-   * currently occupies — instead of three numbers, two of which historically
-   * fired nothing. Falls back to the scalar columns when absent.
-   */
-  levels?: ThesisStateLevels | null;
+  /** One line per trigger at a typed price, labelled with its own sentence (`priceLines`). Absent: none. */
+  priceLines?: PriceLine[] | null;
   /** Live current price (drives the gauge fallback + day color). */
   current: number | null;
   /** Thesis.createdAt — "started watching" vertical marker (full only). */
@@ -72,21 +51,17 @@ type ThesisChartProps = {
 
 /**
  * One annotated price chart shared across the thesis sheet, the thesis cards,
- * and the trade detail page. Horizontal Entry/Target/Stop lines on every
- * surface; vertical "started watching" / "entered" markers only on the full
- * variant (the card's short fixed window usually predates entry). Degrades to
- * nothing when there's no candle data, and renders nothing
- * when there's neither a chart nor any price levels to show.
+ * and the trade detail page. One horizontal line per price trigger, labelled
+ * with its sentence, and "Paid" on a holding; vertical "Watching" / "Bought" /
+ * "Sold" markers only on the full variant (the card's short fixed window
+ * usually predates the buy). Renders nothing with neither a chart nor a line.
  */
 export function ThesisChart({
   ticker,
   candles,
   direction,
-  entryPrice,
   avgCost,
-  targetPrice,
-  stopLoss,
-  levels,
+  priceLines,
   current,
   addedAt,
   enteredAt,
@@ -96,24 +71,8 @@ export function ThesisChart({
   onChange,
   showChange,
 }: ThesisChartProps) {
-  const entry = avgCost ?? entryPrice; // actual fill wins over planned
   const dir: 'LONG' | 'SHORT' = direction === 'SHORT' ? 'SHORT' : 'LONG';
-
-  // Prefer the resolved levels; fall back to the cached columns for callers
-  // that don't have them yet. `asCardLevel` marks a column-sourced number as
-  // un-projected, which is right — a typed column never moves.
-  const asCardLevel = (p: number | null): CardLevel | null =>
-    p == null ? null : { price: p, projected: false };
-  const floorLevel: CardLevel | null =
-    levels !== undefined
-      ? levels?.floor ?? null
-      : asCardLevel(stopLoss);
-  const targetLevel: CardLevel | null =
-    levels !== undefined
-      ? levels?.target ?? null
-      : asCardLevel(targetPrice);
-  const hasLevels =
-    entry != null && (targetLevel != null || floorLevel != null);
+  const lines = priceLines ?? [];
 
   // Intraday "1D" tab — full variant only. Lazily fetch 5-min bars for the
   // current session the moment the user selects 1D, then re-poll every 30s
@@ -230,27 +189,23 @@ export function ThesisChart({
   // What DID survive from that attempt is the number itself: the floor drawn
   // here is the one that binds, so on EME it is the 8% trail at $794.76
   // rather than the $753 someone typed underneath it.
+  // What we paid, then one line per price trigger, each labelled with its own sentence.
   const referenceLines = [
-    entry != null ? { price: entry, color: ENTRY, label: 'Entry', dashed: true } : null,
-    targetLevel != null
-      ? { price: targetLevel.price, color: TARGET, label: 'Target', dashed: true }
-      : null,
-    floorLevel != null
-      ? {
-          price: floorLevel.price,
-          color: STOP,
-          label: floorLevel.projected ? 'Stop (trailing)' : 'Stop',
-          dashed: true,
-        }
-      : null,
-  ].filter((l): l is NonNullable<typeof l> => l !== null);
+    ...(avgCost != null ? [{ price: avgCost, color: ENTRY, label: `Paid $${avgCost.toFixed(2)}`, dashed: true }] : []),
+    ...lines.map((l) => ({
+      price: l.price,
+      color: l.action === 'ENTER' ? ENTRY : l.action === 'EXIT' || l.action === 'STOP_WATCHING' ? STOP : TARGET,
+      label: l.says,
+      dashed: true,
+    })),
+  ];
 
   // Vertical markers on BOTH variants — StockPriceChart drops any marker whose
   // date falls before the visible window, so on the card's fixed window they
   // simply appear only when the watch/entry date lands inside it.
   const verticalMarkers = [
     addedAt ? { date: addedAt.slice(0, 10), color: WATCH, label: 'Watching' } : null,
-    enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Entry' } : null,
+    enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Bought' } : null,
     soldAt ? { date: soldAt.slice(0, 10), color: SOLD, label: 'Sold' } : null,
   ].filter((m): m is NonNullable<typeof m> => m !== null);
 

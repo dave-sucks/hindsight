@@ -40,7 +40,6 @@ function alpacaThatMorning() {
     getAccount: jest.fn(async () => ({ equity: "115869.26", cash: "40000", buying_power: "80000", portfolio_value: "115869.26" })),
     getBars: jest.fn(async () => []),
     getDailyBars: jest.fn(async () => []),
-    getDailyRangePcts: jest.fn(empty),
     getTodaySessionBars: jest.fn(empty),
     getPositions: jest.fn(async () => []),
     getAllPositions: jest.fn(async () => []),

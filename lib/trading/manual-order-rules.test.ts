@@ -16,7 +16,7 @@ const watched: TradeLane = {
   analystName: "Secular Compounder",
   position: null,
   sellBlocked: null,
-  buy: { kind: "OPEN", thesisId: "t1", needsResearch: false, targetPrice: 1100, stopLoss: 800 },
+  buy: { kind: "OPEN", thesisId: "t1", needsResearch: false },
 };
 
 describe("planManualOrder — sells", () => {
@@ -70,13 +70,13 @@ describe("planManualOrder — buys", () => {
   });
 
   it("opens with no stop or target, even when the thesis has no floor", () => {
-    const bare: TradeLane = { ...watched, buy: { kind: "OPEN", thesisId: null, needsResearch: true, targetPrice: null, stopLoss: null } };
+    const bare: TradeLane = { ...watched, buy: { kind: "OPEN", thesisId: null, needsResearch: true } };
     expect(planManualOrder(watched, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
     expect(planManualOrder(bare, { side: "BUY", shares: 3, reviewedPrice: 900 }, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
   });
 
   it("opens with a stop below and a target above the price", () => {
-    const ok = { side: "BUY" as const, shares: 3, reviewedPrice: 900, stopLoss: 800, targetPrice: 1100 };
+    const ok = { side: "BUY" as const, shares: 3, reviewedPrice: 900, stopLoss: 800 };
     expect(planManualOrder(watched, ok, m(900))).toEqual({ ok: true, intent: "OPEN", shares: 3 });
     expect(planManualOrder(watched, { ...ok, stopLoss: 950 }, m(900))).toMatchObject({ ok: false });
     expect(planManualOrder(watched, { ...ok, targetPrice: 890 }, m(900))).toMatchObject({ ok: false });

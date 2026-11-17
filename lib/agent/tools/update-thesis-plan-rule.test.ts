@@ -1,12 +1,11 @@
 /**
- * update-thesis-plan-rule.test.ts — the one price-plan rule on the
- * update path (2026-09-02).
+ * update-thesis-plan-rule.test.ts — a level edit on the update path is
+ * saved as written.
  *
- * The shape gate used to run only when target_price or stop_loss changed,
- * so an entry-only edit could produce entry == target (PLTR, 2026-08-27:
- * entry 183 → 190 against a $190 target, nothing objected). And the 2:1
- * floor ran only inside the writer loop, never here or in record_thesis.
- * Both now go through validateThesisShape on any level edit.
+ * There was a price-plan rule here: a buy, floor and upside line had to sit
+ * in order (PLTR, 2026-08-27: a buy moved onto its $190 upside line), and a
+ * 2:1 floor ran in the Writer. Both are gone (2026-11-04, 2026-11-16): each
+ * trigger means what it says, and nothing checks one against another.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -62,9 +61,6 @@ function pltr(overrides: Record<string, unknown> = {}) {
     status: "WATCHING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 183,
-    targetPrice: 190,
-    stopLoss: 110,
     coreBelief: "AIP adoption compounds.",
     keyAssumptions: ["a", "b"],
     invalidationConds: ["c", "d"],
@@ -121,26 +117,35 @@ beforeEach(() => {
   mockThesisFindUnique.mockResolvedValue(pltr());
 });
 
-describe("update_thesis — the plan rule runs on any level edit", () => {
-  it("refuses the 08-27 PLTR edit: moving only the entry onto the target", async () => {
-    const result = await run({ entry_price: 190 });
-    // The entry is refused with the plan message; the rest of the call lands.
+/** A saved patch's trigger price by id (nothing stores a level column). */
+const priceIn = (data: { triggers?: unknown }, id: string) =>
+  ((data.triggers ?? []) as Array<{ id: string; predicate: { value?: number } }>).find((t) => t.id === id)?.predicate.value;
+
+describe("update_thesis — a level edit is saved as written (no order rule)", () => {
+  it("the 08-27 PLTR edit lands: a buy moved onto the upside review is two triggers, each meaning what it says (no order rule since 2026-11-16)", async () => {
+    const result = await run({ edit_triggers: [{ id: "enter-1", value: 190, rationale: "Onto the upside line." }] });
     expect(result.data?.ok).toBe(true);
-    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers" })]);
-    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
+    expect(result.data?.refused_fields).toBeUndefined();
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "enter-1") === 190)).toBe(true);
   });
 
   it("accepts an entry edit that leaves the plan under 2:1 (the ratio is not a rule, 2026-11-04)", async () => {
     // 183 → 150 against target 190 / stop 110: reward 40, risk 40 → 1:1.
-    const result = await run({ entry_price: 150 });
+    const result = await run({ edit_triggers: [{ id: "enter-1", value: 150, rationale: "The pullback to $150." }] });
     expect(result.data?.error).toBeUndefined();
     expect(((result.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
-    expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.entryPrice === 150)).toBe(true);
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "enter-1") === 150)).toBe(true);
   });
 
   it("accepts a re-level that clears the floor in the same call", async () => {
     // entry 165 / target 250 / stop 135: reward 85, risk 30 → 2.8:1.
-    const result = await run({ entry_price: 165, target_price: 250, stop_loss: 135 });
+    const result = await run({
+      edit_triggers: [
+        { id: "enter-1", value: 165, rationale: "The new base at $165." },
+        { id: "target-1", value: 250, rationale: "The measured move to $250." },
+        { id: "floor-1", value: 135, rationale: "Under the base at $135." },
+      ],
+    });
     expect(result.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
@@ -153,9 +158,6 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       pltr({
         ticker: "SMMT",
         status: "HOLDING",
-        entryPrice: 14.35,
-        targetPrice: 26,
-        stopLoss: 12,
         // A held ladder carries a floor, not a buy rung.
         triggers: [
           { id: "floor-1", predicate: { watch: "price", is: "below", value: 12 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
@@ -164,7 +166,7 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       }),
     );
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 14.35 });
-    const result = await run({ stop_loss: 16.2 });
+    const result = await run({ edit_triggers: [{ id: "floor-1", value: 16.2, rationale: "Above the fill, under the new shelf." }] });
     expect(result.data?.error).toBeUndefined();
     expect(mockThesisUpdate).toHaveBeenCalled();
   });
@@ -173,7 +175,6 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
     mockThesisFindUnique.mockResolvedValue(
       pltr({
         status: "HOLDING",
-        stopLoss: 170,
         triggers: [
           { id: "floor-1", predicate: { watch: "price", is: "below", value: 170 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
           { id: "target-1", predicate: { watch: "price", is: "above", value: 190 }, action: "REVIEW", rationale: "Target.", source: "AGENT" },
@@ -181,9 +182,9 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       }),
     );
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 160 });
-    // Raising the floor toward the fill leaves reward 30 / risk ~0 — no R/R
-    // question on a held name, only ordering.
-    const result = await run({ stop_loss: 158 });
-    expect(result.data?.error).not.toBe("invalid_thesis_shape");
+    // The floor ratchets up, $15 over the $160 fill: no question of reward or order.
+    const result = await run({ edit_triggers: [{ id: "floor-1", value: 175, rationale: "Under the new shelf." }] });
+    expect(result.data?.error).toBeUndefined();
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "floor-1") === 175)).toBe(true);
   });
 });

@@ -24,11 +24,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { evaluateTrigger } from "@/lib/agent/triggers/evaluate";
 import { conditionSentence, levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { computeLadderHealth, type LadderHealth } from "@/lib/agent/ladder-health";
-import { computePlanSanity, type PlanSanityFlag } from "@/lib/agent/plan-sanity";
 import { floorTooFar, type FloorRisk, type FloorStructure } from "@/lib/agent/floor-risk";
-import { isPlanLevel } from "@/lib/agent/triggers/price-levels";
-import type { SpentBuyCrossing } from "@/lib/agent/buy-crossing";
-import type { EntryRaiseAway } from "@/lib/agent/entry-raises";
 
 // ── Public types ──────────────────────────────────────────────────────
 
@@ -58,11 +54,6 @@ export interface ResolvedEnvelope {
    * non-held rows or when avgCost/quote is unavailable. (SCALE_INTO_WINNERS.md)
    */
   unrealizedGainPct: number | null;
-  /**
-   * Fraction of the entry→target distance covered for HOLDING rows (≥1 = past
-   * target). The at-a-glance "how close to the decision point." Null otherwise.
-   */
-  progressToTarget: number | null;
 
   /**
    * Ladder-health block for HOLDING rows (Game Plan PR-B): gain% from entry,
@@ -74,17 +65,6 @@ export interface ResolvedEnvelope {
    * unavailable. See lib/agent/ladder-health.ts.
    */
   ladderHealth: LadderHealth | null;
-
-  /**
-   * Plan-sanity flags (System 1 Move 2, DAV-188): the arithmetic that says
-   * a WATCHING plan contradicts the live tape — buy level far from the
-   * price, target already passed, stop already breached. Plain-language,
-   * recomputed against the live quote on every read. Null when clean (or
-   * not applicable) so quiet rows cost no tokens. A non-empty value
-   * promotes the row into the daily run's FULL work list — a flag the
-   * agent never reads is decoration. See lib/agent/plan-sanity.ts.
-   */
-  planSanity: PlanSanityFlag[] | null;
 
   /**
    * A holding whose floor would lose more than 1.5% of the account,
@@ -118,17 +98,6 @@ export interface ResolverThesisInput {
   // P1-24 B4: null when the thesis is an unresearched watchlist seed.
   // The resolver doesn't branch on direction, so null is a pure pass-through.
   direction: string | null;
-  entryPrice: number | null;
-  /** Thesis target price — feeds progress-to-target for HOLDING rows. */
-  targetPrice?: number | null;
-  /** Thesis stop — feeds the plan-sanity stop-already-breached check. */
-  stopLoss?: number | null;
-  /**
-   * The stock's ordinary daily move (% of price) — feeds the plan-sanity
-   * stop-inside-noise check. Callers fetch it batched (getDailyRangePcts)
-   * for the rows that need it; absent ⇒ that check is skipped.
-   */
-  dayRangePct?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
   /** Paired open Position's share count — with avgCost, the loss at the floor (DAV-344). */
@@ -150,16 +119,8 @@ export interface ResolverThesisInput {
    * then omits daysSinceLadderEdit.
    */
   lastLadderEditAt?: Date | null;
-  /** The buy level's moves away from the price, no structure cited (DAV-253). */
-  entryRaisesAway?: EntryRaiseAway[] | null;
-  /** A fired buy the price has left behind, never bought and never answered (DAV-303). */
-  spentBuyCrossing?: SpentBuyCrossing | null;
   triggers: unknown; // Json column; parsed via triggersArraySchema by caller
   catalystDate: Date | null;
-  /** The setup the plan is written on — the pre-catalyst parking rule reads it. */
-  setupId?: string | null;
-  /** The horizon — a CATALYST row with no named setup is a dated binary too. */
-  horizon?: string | null;
   createdAt: Date;
   /** Pre-parsed trigger array — caller invokes triggersArraySchema.safeParse. */
   parsedTriggers: Trigger[];
@@ -299,14 +260,11 @@ export function buildResolvedEnvelope(args: {
   }
 
   // ── P&L on a held row ─────────────────────────────────────────────
-  // Gain% and how far along to the target, inline, so the agent doesn't have
-  // to join get_portfolio_context by ticker. These two numbers are all that
-  // survived winner-signal.ts, which was deleted with the RUNNING_WINNER
-  // flag: the flag re-implemented as a morning calculation what the account's
-  // "review if up 10% from entry" trigger already does, and fires first in
-  // every realistic case. The NUMBERS are still worth showing — an agent that
-  // can see "+212%" on a row does not need a flag to find it interesting.
-  const winner = holdingPnl(thesis, currentPrice);
+  // Gain% inline, so the agent doesn't have to join get_portfolio_context by
+  // ticker. All that survived winner-signal.ts (deleted with the
+  // RUNNING_WINNER flag); "how far to the target" went with the target
+  // (a stock has triggers and nothing else, 2026-11-16).
+  const unrealizedGainPct = holdingGainPct(thesis, currentPrice);
 
   // ── Ladder health (HOLDING rows only — Game Plan PR-B) ────────────
   // Same shared-pure-module pattern as the winner signal above: the
@@ -326,46 +284,10 @@ export function buildResolvedEnvelope(args: {
         })
       : null;
 
-  const planSanityFlags = computePlanSanity({
-    status: thesis.status,
-    direction: thesis.direction,
-    entryPrice: thesis.entryPrice,
-    targetPrice: thesis.targetPrice ?? null,
-    stopLoss: thesis.stopLoss ?? null,
-    currentPrice,
-    dayRangePct: thesis.dayRangePct ?? null,
-    lastLadderEditAt: thesis.lastLadderEditAt ?? null,
-    entryRaisesAway: thesis.entryRaisesAway ?? null,
-    spentBuyCrossing: thesis.spentBuyCrossing ?? null,
-    // The stock's own triggers — an inherited analyst or account rule is
-    // not a plan for this stock.
-    ownTriggerCount: thesis.parsedTriggers.filter((t) => ((t as { level?: string }).level ?? "THESIS") === "THESIS").length,
-    // Can this stock ever be bought? The resolved ladder, not the column:
-    // `entryPrice` is a read model and an inherited rule is not a plan, but
-    // an ENTER trigger anywhere in the cascade genuinely can buy it.
-    hasEnterTrigger: thesis.parsedTriggers.some((t) => t.action === "ENTER"),
-    // A review of the stock's own on the side a buy would profit (above the
-    // price on a LONG) — the wake it is waiting for, the level #737 stopped
-    // reading as a target. A review below is a "something broke" line, not
-    // a way in (BBIO, EME on 2026-09-29).
-    hasPriceWake: thesis.parsedTriggers.some(
-      (t) =>
-        ((t as { level?: string }).level ?? "THESIS") === "THESIS" &&
-        t.action === "REVIEW" &&
-        isPlanLevel(t, thesis.direction),
-    ),
-    setupId: thesis.setupId ?? null,
-    catalystDate: thesis.catalystDate ?? null,
-    horizon: thesis.horizon ?? null,
-    now,
-  });
-
   return {
     currentPrice,
-    unrealizedGainPct: winner.unrealizedGainPct,
-    progressToTarget: winner.progressToTarget,
+    unrealizedGainPct,
     ladderHealth,
-    planSanity: planSanityFlags.length > 0 ? planSanityFlags : null,
     floorRisk: ladderHealth
       ? floorTooFar({
           ticker: thesis.ticker,
@@ -426,35 +348,15 @@ export function buildSupersessionMap(
   return byTicker;
 }
 
-/**
- * Gain % and progress-to-target for a held row. Both null when the inputs
- * can't support the math (not held, no fill price, no live quote).
- *
- * `progressToTarget` is the fraction of the entry→target distance covered:
- * 0 at entry, 1 at target, >1 past it. Null when the target sits on the wrong
- * side of entry, because the distance is then meaningless rather than zero.
- */
-function holdingPnl(
-  thesis: { status: string | null; direction: string | null; avgCost?: number | null; targetPrice?: number | null },
+/** Gain % on a held row; null when not held, no fill price, or no live quote. */
+function holdingGainPct(
+  thesis: { status: string | null; direction: string | null; avgCost?: number | null },
   currentPrice: number | null,
-): { unrealizedGainPct: number | null; progressToTarget: number | null } {
-  const none = { unrealizedGainPct: null, progressToTarget: null };
-  const { avgCost, targetPrice } = thesis;
-  if (thesis.status !== "HOLDING") return none;
-  if (avgCost == null || avgCost <= 0) return none;
-  if (currentPrice == null || currentPrice <= 0) return none;
-
-  const short = thesis.direction === "SHORT";
-  const gained = short ? avgCost - currentPrice : currentPrice - avgCost;
-  const distance =
-    targetPrice != null && targetPrice > 0
-      ? short
-        ? avgCost - targetPrice
-        : targetPrice - avgCost
-      : null;
-
-  return {
-    unrealizedGainPct: (gained / avgCost) * 100,
-    progressToTarget: distance != null && distance > 0 ? gained / distance : null,
-  };
+): number | null {
+  const { avgCost } = thesis;
+  if (thesis.status !== "HOLDING") return null;
+  if (avgCost == null || avgCost <= 0) return null;
+  if (currentPrice == null || currentPrice <= 0) return null;
+  const gained = thesis.direction === "SHORT" ? avgCost - currentPrice : currentPrice - avgCost;
+  return (gained / avgCost) * 100;
 }

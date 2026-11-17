@@ -244,8 +244,6 @@ interface WriterExistingThesis {
   direction: string | null;
   horizon: string | null;
   coreBelief: string | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
   company: string | null;
   /** The stored triggers, with ids — a refresh edits them one at a time. */
   triggers: Trigger[];
@@ -262,8 +260,6 @@ async function loadExistingThesis(
       direction: true,
       horizon: true,
       coreBelief: true,
-      targetPrice: true,
-      stopLoss: true,
       company: true,
       triggers: true,
     },
@@ -275,8 +271,6 @@ async function loadExistingThesis(
     direction: row.direction,
     horizon: row.horizon,
     coreBelief: row.coreBelief,
-    targetPrice: row.targetPrice != null ? Number(row.targetPrice) : null,
-    stopLoss: row.stopLoss != null ? Number(row.stopLoss) : null,
     company: row.company ?? null,
     triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
@@ -417,8 +411,6 @@ export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): strin
   • direction: ${opts.existingThesis.direction ?? "—"}
   • horizon: ${opts.existingThesis.horizon ?? "—"}
   • core belief: ${opts.existingThesis.coreBelief ?? "—"}
-  • target_price: ${opts.existingThesis.targetPrice ?? "—"}
-  • stop_loss: ${opts.existingThesis.stopLoss ?? "—"}
   • company: ${opts.existingThesis.company ?? "—"}
   • triggers (edit by id — these ids are the handles):
 ${
@@ -426,7 +418,7 @@ ${
     ? opts.existingThesis.triggers
         .map((t) => {
           const note = writtenNote(t);
-          return `      - ${t.id}: ${describeTrigger(t, opts.existingThesis!.status === "HOLDING")}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
+          return `      - ${t.id}: ${describeTrigger(t)}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
         })
         .join("\n")
     : "      (none)"
@@ -436,7 +428,8 @@ Where new evidence contradicts or supersedes the existing view, flag the
 change explicitly in the note.`
       : `MODE: MINT — net-new coverage on $${T}. The thesis will be persisted
 as WATCHING (entry-gated). Entering a position is a separate, later
-decision by the orchestrator — you are writing the research and the plan.`;
+decision by the orchestrator — you are writing the research and the
+stock's triggers.`;
 
   // Trigger-template rules branch on position state. Held (HOLDING) theses
   // protect an open position; everything else (mint / WATCHING / PROMOTED)
@@ -450,16 +443,16 @@ decision by the orchestrator — you are writing the research and the plan.`;
     ? `TRIGGERS — YOU ARE REFRESHING A HELD THESIS (open position):
   • Legal actions: EXIT, REVIEW, TRIM, ADD. NEVER ENTER —
     we already own it.
-  • At least one EXIT rung on the stop ({ watch: "price", is: "below",
-    value: stop } for LONG, is: "above" for SHORT) — that's the
-    automated stop-loss path.
+  • At least one EXIT on the floor ({ watch: "price", is: "below",
+    value } for LONG, is: "above" for SHORT) — that's the automated
+    stop-loss path.
   • Most refreshes need no trigger ops at all.
-  • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. The stop on record
-    is $${opts.existingThesis?.stopLoss ?? "—"}: submit that number or a
-    tighter one. A looser stop is refused by itself — the rest of the
-    refresh still lands. If you believe the stop is wrong, keep it and
-    say so in the rationale with the number you'd suggest — that reaches
-    the principal; you cannot move it.`
+  • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. Move the floor
+    trigger (edit_triggers, by its id above) up, never down. A looser
+    floor is refused by itself — the rest of the refresh still lands. If
+    you believe the floor is wrong, keep it and say so in the rationale
+    with the number you'd suggest — that reaches the principal; you
+    cannot move it.`
     : isPromotedRefresh
       ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
   • The paper position was force-closed at promotion. Legal actions:
@@ -470,23 +463,27 @@ decision by the orchestrator — you are writing the research and the plan.`;
     / DEFER (downgrade to WATCHING) / KILL. Frame the note so that
     decision is easy, and put your recommended call in the rationale.`
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
-  • Legal actions: ENTER + REVIEW only. NEVER EXIT/TRIM/ADD —
-    there is no position.
-  • The ENTER rung follows the level: { watch: "price", is: "above",
-    value: entry_price } for a breakout above the tape, is: "below" for
-    a pullback below it (mirror for SHORT).
+  • Legal actions: ENTER, STOP_WATCHING and REVIEW. NEVER EXIT/TRIM/ADD
+    — there is no position, so nothing to sell.
+  • The buy is an ENTER: { watch: "price", is: "above", value } for a
+    breakout above the tape, is: "below" for a pullback below it (mirror
+    for SHORT); settings: { close: true } when it should fire only on a
+    close past the level.
+  • Where the setup is wrong is a STOP_WATCHING: { watch: "price", is:
+    "below", value, settings: { close: true } } for a LONG. It reads
+    "Stop watching if below $X · only on the close": a close below it
+    retires the thesis, with no run. It never sells: the holding's sale
+    comes with the buy, at the price the buy names.
   • A chart condition from the setup's entry rule that isn't a price
     (within 2% of the 50-day for a pullback: { watch: "move", is:
     "near", value: 2, variable: "sma50" }; the days after the report
     for PEAD; a gap) can be added as its own ENTER trigger next to the
     price level — whichever comes true first wakes the buy decision.
-  • Most theses need NO custom triggers — omit the field and the
-    horizon-default template (entry/stop/target, no review clock) is
-    applied for you.
-  • Setting an existing priced plan DOWN on a refresh (levels no longer
-    worth holding): omit entry/target/stop AND send remove_trigger_ids
-    naming the buy, floor and target trigger ids from EXISTING THESIS,
-    keeping ≥1 REVIEW wake — the level columns follow the triggers.`;
+  • Nothing is added for you: a watch carries the triggers you write
+    and no others, no review clock included.
+  • Taking the buy off on a refresh (no level worth holding): send
+    remove_trigger_ids naming the buy and Stop watching ids from
+    EXISTING THESIS, keeping ≥1 REVIEW wake.`;
 
   // Earnings triggers fire off the published calendar (no news needed).
   // The account already carries the basics for every name; the writer
@@ -509,7 +506,7 @@ calendar, not news):
   const priorExitBlock = opts.priorExit
     ? `
 ⚠ RECENTLY SOLD — YOU exited this name ${opts.priorExit.daysAgo} day${opts.priorExit.daysAgo === 1 ? "" : "s"} ago${opts.priorExit.exitPrice != null ? ` at $${opts.priorExit.exitPrice}` : ""}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}.
-If your entry_price is AT OR ABOVE that exit price, submit_thesis REQUIRES \`prior_exit_acknowledgment\`: one line that genuinely engages with the sale — why this is a NEW setup and not a re-buy of the dip you just sold (e.g. "stopped out at $66.53; re-entering only on a confirmed reclaim of the 20-day — different structure"). Below the exit price no acknowledgment is needed, but underwrite with the sale in view, not from amnesia.
+If your buy is AT OR ABOVE that exit price, submit_thesis REQUIRES \`prior_exit_acknowledgment\`: one line that genuinely engages with the sale — why this is a NEW setup and not a re-buy of the dip you just sold (e.g. "stopped out at $66.53; re-entering only on a confirmed reclaim of the 20-day — different structure"). Below the exit price no acknowledgment is needed, but underwrite with the sale in view, not from amnesia.
 `
     : "";
 
@@ -531,7 +528,7 @@ rationale — the next daily run executes it, not you.
   const setupsBlock = setups.length
     ? `
 ═══════════════════════════════════════════════════════════════════
-YOUR SETUPS — every LONG/SHORT plan is written on one of these
+YOUR SETUPS — the playbooks you write a stock's triggers on
 ═══════════════════════════════════════════════════════════════════
 ${setups
   .map((s) => setupLines(s).join("\n  "))
@@ -606,70 +603,67 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. The research decides it, never the
      chart. PASS is a valid, gradeable outcome — use it when the research
      doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • UNDER 2×, SAY WHY. Reward against risk is not a floor: when the room
-     from the entry to your upside level (or to the Street's average, on
-     the Analyst Coverage block) is under twice the distance to the stop,
-     say in the note why the trade is still worth taking.
-   • THE SETUP PRICES THE VIEW. Once the research gives you a view, name
-     the setup (setup_id) from YOUR SETUPS that prices it, then take every
-     number from its rules and the Price structure block — never a round
-     number, never a feel:
-       – entry_price: the level the setup's entry rule gives (the base
-         pivot for a breakout, the moving average for a pullback). It
-         BECOMES the buy trigger. When the setup's condition is already
-         true today, set it at or a few cents past the live price — that
-         is how you buy now; it fires on the first tick through it and
-         becomes the ordinary approval-gated proposal. A breakout wants
-         entry_on_close: true (an intraday poke fails about half the
-         time). Never more than the setup's chase limit past its pivot.
-       – stop_loss: under the structure the setup names, at least its
-         minimum ATR from entry. stop_basis opens with what a close below
+   • THE SETUP SETS THE TRIGGERS. Once the research gives you a view, write
+     the triggers of the setup that fits (setup_id), every number from its
+     rules and the Price structure block — never a round number, never a
+     feel. A stock has triggers and nothing else:
+       – the buy (an ENTER trigger): the level the setup's entry rule
+         gives (the base pivot for a breakout, the moving average for a
+         pullback). When the setup's condition is already true today, set
+         it at or a few cents past the live price — that is how you buy
+         now; it fires on the first tick through it and becomes the
+         ordinary approval-gated proposal. A breakout fires only on the
+         close (settings: { close: true }); an intraday poke fails about
+         half the time.
+       – where the setup is over (a STOP_WATCHING trigger on a typed
+         price, settings: { close: true }): the structure the setup names
+         (the base's low, the last swing low, the gap day's low). A close
+         below it ends the watch; it never sells, and the holding's sale
+         comes with the buy. Its rationale opens with what a close below
          it would say about core_belief, in one plain sentence, then the
-         structure and how many ATR, with the numbers. It becomes the
-         floor's note, read by the run that answers the floor.
-       – target_price: an upside rule only if the setup has one — a
-         review at the Street's average target, a trim at the prior high.
-         Not required: a plan is a buy and a floor. Never a number you
-         don't believe. target_basis says which rule, when there is one.
+         structure, with the number.
+       – a take-profit, only if the setup has one: a review at the
+         Street's average target, a trim at the prior high. Not required:
+         a buy and a Stop watching line are complete. Never a number you
+         don't believe.
        – THE STREET (the Analyst Coverage block: targets low / average /
          high, the rating split, EPS revisions) informs every level and
-         sets none. In conviction_rationale say where your target sits
-         against the Street's average and high. A target above the
-         Street's high, or a buy where the average target sits under the
-         price, needs its reason there. An average target far above the
-         price with estimates revised up in the last 4 weeks is a reason
-         for conviction; a wide low–high spread says the Street is
-         unsettled, not that the midpoint is right.
-     If no setup fits the chart today, the view stays and goes unpriced
-     (NO LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a plan
-     with invented levels.
-   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
-     window has closed or the stop it names can't be placed, the next
-     setup on your list is the plan: a stock past its post-earnings window
-     in an uptrend is written on MA_PULLBACK — buy at the rising 20- or 50-day,
-     stop 1 ATR under it until the pullback low prints, target the prior
-     high. A REVIEW at the price you would buy is a plan you did not
-     write: make it the buy, or PASS and say why the stock isn't buyable
-     there.
+         sets none; "target" means the Street's number, never ours. In
+         conviction_rationale say where the price sits against the
+         Street's average and high. A buy where the average target sits
+         under the price needs its reason there. An average target far
+         above the price with estimates revised up in the last 4 weeks is
+         a reason for conviction; a wide low–high spread says the Street
+         is unsettled, not that the midpoint is right.
+     If no setup fits and no level is honest, the view stays with no buy
+     (NO LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a buy
+     at an invented level.
+   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). A stock
+     past its post-earnings window in an uptrend is written on
+     MA_PULLBACK — a buy at the rising 20- or
+     50-day, a Stop watching line where the pullback fails (a close under
+     that average), a take-profit at the prior high. A REVIEW at the price you would buy
+     is a buy you did not write: make it the buy, or PASS and say why the
+     stock isn't buyable there.
    • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
-     setup hasn't formed, you want to price it after the print) → omit
-     ALL THREE of entry/target/stop. The thesis stays LONG/SHORT and
-     WATCHING and is priced when the time comes. It MUST carry the wake
-     that brings it back, in \`triggers\`: a REVIEW at the price you'd
-     look again, or a short day-count review. A watch has no review
-     clock unless you give it one, so a view saved with no entry, no
-     trigger and no review can never come back. "I want to price the
-     pullback rather than buy here" IS a level: write the pullback as
-     the buy (the rising 20- or 50-day, stop 1 ATR under it).
-     Put the when ("price this after the January readout") in the
-     rationale. An unpriced view needs no setup_id.
+     setup hasn't formed, you want to price it after the print) → write
+     no buy and no Stop watching line. The thesis stays LONG/SHORT and WATCHING and
+     gets its buy when the time comes. It MUST carry the wake that brings
+     it back, in \`triggers\`: a REVIEW at the price you'd look again, or
+     a short day-count review. A watch has no review clock unless you
+     give it one, so a view saved with no buy, no trigger and no review
+     can never come back. "I want to price the pullback rather than buy
+     here" IS a level: write the pullback as the buy (the rising 20- or
+     50-day, a Stop watching line where it fails). Put the when ("price this after the
+     January readout") in the rationale. A view with no buy needs no
+     setup_id.
      PASS is for a view the research does not support — not for a view
      that isn't ready to price. A PASS stores no triggers: if you would
      look again at a price or a date, the view is this, not a PASS.
    • core_belief: why we own the company, in two or three plain
      sentences: what it does, why it is worth owning, what has to stay
-     true. Never a stock price, a price path, a target or "within 60
-     days". It is the claim of record every other agent reads.
+     true. Never a stock price, a price path, a price target or "within
+     60 days". It is the claim of record every other agent reads.
    • key_assumptions: two to four checkable premises with the number,
      each ending with when and where it is checked ("net new ARR stays
      above $120M, checked at the Q3 report on December 4"). A review
@@ -678,13 +672,12 @@ every field; the judgment rules:
    • invalidation_conditions: each a reading about the business and
      where it is read (a guidance cut at the next report, a margin in the
      10-Q, a lost customer). Never a stock price, an average, a high or
-     low, or a gap, with or without volume: the floor holds the price.
+     low, or a gap, with or without volume: the triggers hold the price.
    • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
      middle (most theses).
-   • You do not size the trade. place_trade sizes it by risk from your
-     stop: the account loses about the analyst's risk per trade if the
-     stop hits, scaled by conviction (LOW ×0.5 … STRONG ×1.25). A tight,
-     honest stop is what earns size.
+   • You do not size the trade. The run that buys names the holding's
+     sale, and place_trade sizes the buy by risk from it, scaled by
+     conviction (LOW ×0.5 … STRONG ×1.25).
 ${
        opts.setupRecord?.length
          ? `   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}\n`
@@ -820,7 +813,6 @@ export interface WriterResearchPhaseOutput {
   noteText: string;
   /** The validated decision object, JSON-safe. Null when never accepted. */
   decision: ValidatedThesisDecision | null;
-  riskReward: number | null;
   /** Serialized ModelMessages for the replay thread (user turn excluded). */
   threadMessages: unknown[];
   /** The user prompt (data block + task) for the replay thread. */
@@ -843,7 +835,6 @@ export async function writerResearchPhase(
     ok: false,
     noteText: "",
     decision: null,
-    riskReward: null,
     threadMessages: [],
     userPrompt: "",
     stepCount: 0,
@@ -947,7 +938,6 @@ Write the research note now, then call submit_thesis.`;
     const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer" });
 
     let accepted: ValidatedThesisDecision | null = null;
-    let acceptedRR: number | null = null;
     let submitAttempts = 0;
     let lastRejected: { raw: unknown; errors: string[] } | null = null;
 
@@ -962,9 +952,6 @@ Write the research note now, then call submit_thesis.`;
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
         currentPrice,
-        // Persist-gate mirrors (goalpost + zero-trigger) need the
-        // existing row's shape — see decision.ts review-finding-#4 block.
-        existingTargetPrice: existingThesis?.targetPrice ?? null,
         setups: seatSetups,
         chart: pullOutput.pull?.chart ?? null,
       },
@@ -979,9 +966,8 @@ Write the research note now, then call submit_thesis.`;
             : null,
         }),
       onAttempt: () => ++submitAttempts,
-      onAccept: (d, rr) => {
+      onAccept: (d) => {
         accepted = d;
-        acceptedRR = rr;
       },
     });
 
@@ -1131,10 +1117,7 @@ Write the research note now, then call submit_thesis.`;
       });
       submitAttempts += repaired.attempts;
       capturedMessages.push(...repaired.messages);
-      if (repaired.decision) {
-        accepted = repaired.decision;
-        acceptedRR = repaired.riskReward;
-      }
+      if (repaired.decision) accepted = repaired.decision;
     }
 
     // Read the closure-mutated flags into locals. TS's control-flow
@@ -1142,13 +1125,11 @@ Write the research note now, then call submit_thesis.`;
     // (microsoft/TypeScript#9998), so without the assertion `accepted`
     // stays narrowed to its `null` initializer here.
     const finalDecision = accepted as ValidatedThesisDecision | null;
-    const finalRR = acceptedRR as number | null;
 
     const result: WriterResearchPhaseOutput = {
       ok: finalDecision !== null,
       noteText,
       decision: finalDecision,
-      riskReward: finalRR,
       threadMessages: capturedMessages as unknown[],
       userPrompt,
       systemPrompt,
@@ -1177,7 +1158,6 @@ Write the research note now, then call submit_thesis.`;
         searchCount,
         submitAttempts,
         direction: finalDecision?.direction ?? null,
-        riskReward: finalRR,
       },
     );
     await recordTokenUsage(args.childRunId, tokenUsage, modeConfig.model);
@@ -1339,16 +1319,8 @@ export function buildWriterSaveCall(
         // own terminal state inside record_thesis.
         status: d.direction === "PASS" ? undefined : "WATCHING",
         reasoning_summary: rationale,
-        entry_price: d.entry_price,
-        target_price: d.target_price,
-        stop_loss: d.stop_loss,
         setup_id: d.direction === "PASS" ? undefined : d.setup_id,
-        stop_basis: d.stop_basis,
-        target_basis: d.target_basis,
-        entry_on_close: d.entry_on_close,
-        // The price the research was done at. record_thesis reads the buy
-        // level's side (pullback vs breakout) off it when its own quote
-        // fails — and refuses rather than guesses when both are missing.
+        // The price the research was done at; record_thesis reads it when its own quote fails.
         current_price: pull?.currentPrice ?? undefined,
         horizon: d.horizon,
         catalyst_date: eventDate.iso,
@@ -1390,22 +1362,17 @@ export function buildWriterSaveCall(
   // way a mint would (step 12, part 1: the claim is the writer's): direction
   // commits it through update_thesis's seed path, and PASS lands PASSED.
   // COGT 2026-09-28: a refresh with no direction put a LONG-shaped belief,
-  // a plan and a score on a row that stayed "no view".
+  // levels and a score on a row that stayed "no view".
   const seed = existing != null && existing.direction == null;
   const directionFlag =
     !seed && existing?.direction && d.direction !== existing.direction
       ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
       : "";
-  // On a stock we own, the entry is the fill — update_thesis refuses an edit
-  // to it and lands the rest of the call. The writer's own rules still make
-  // it state all three levels on a priced row, so it always sent one and the
-  // refusal was never heard (FIVE, 2026-09-15). Don't send it.
-  const held = existing?.status === "HOLDING";
   // Held refresh: protective levels only tighten (the 2026-08-16 ruling). A
-  // looser stop is refused as its own op inside update_thesis and the rest
+  // looser floor is refused as its own op inside update_thesis and the rest
   // of the refresh lands (DAV-242).
   const pass = d.direction === "PASS";
-  // A refresh the chat asked for keeps the levels the row has; it may fill an empty one (ruling 2026-10-15).
+  // A refresh the chat asked for keeps the buy, floor and upside line the row has; it may fill an empty one (ruling 2026-10-15).
   const keptIds = new Map((existing?.keep ?? []).flatMap((t) => { const slot = levelSlotOf(t, existing?.direction ?? null); return slot && t.id ? [[t.id, slot] as const] : []; }));
   const kept = new Set(keptIds.values());
   // A decision's trigger is in the model's shape until the save converts it; its slot is read off the stored shape,
@@ -1415,24 +1382,15 @@ export function buildWriterSaveCall(
     return levelSlotOf((asStored.success ? asStored.data : t) as Trigger, existing?.direction ?? null);
   };
   const keeps = (t: unknown) => { const slot = slotOf(t); return slot != null && kept.has(slot); };
-  const word = { ENTRY: "entry", FLOOR: "stop", TARGET: "target" } as const;
-  const own = [
-    ...([["ENTRY", d.entry_price], ["FLOOR", d.stop_loss], ["TARGET", d.target_price]] as const).filter(([s, v]) => kept.has(s) && v != null).map(([s, v]) => `${word[s]} $${v}`),
-    ...(d.add_triggers ?? []).filter(keeps).map((t) => `${word[slotOf(t)!]} $${(t.predicate as { value?: number }).value}`),
-  ];
+  const word = { ENTRY: "buy", FLOOR: existing?.status === "HOLDING" ? "floor" : "Stop watching line", TARGET: "upside line" } as const;
+  const own = (d.add_triggers ?? []).filter(keeps).map((t) => `${word[slotOf(t)!]} $${(t.predicate as { value?: number }).value}`);
   return {
     toolName: "update_thesis",
     toolArgs: {
       thesis_id: args.existingThesisId,
-      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The plan's levels stay as they were set. This refresh's own: ${own.join(", ")}.]` : ""}`,
+      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The stock's price triggers stay as they were set. This refresh's own: ${own.join(", ")}.]` : ""}`,
       direction: seed ? d.direction : undefined,
-      entry_price: pass || held || kept.has("ENTRY") ? undefined : d.entry_price,
-      target_price: pass || kept.has("TARGET") ? undefined : d.target_price,
-      stop_loss: pass || kept.has("FLOOR") ? undefined : d.stop_loss,
       setup_id: pass ? undefined : d.setup_id,
-      stop_basis: pass ? undefined : d.stop_basis,
-      target_basis: pass ? undefined : d.target_basis,
-      entry_on_close: pass || held ? undefined : d.entry_on_close,
       horizon: d.horizon,
       catalyst_date: eventDate.iso,
       conviction: d.conviction,
@@ -1540,7 +1498,7 @@ export function readWriterSaveResult(
 /**
  * The writer's own check IS the save: run the exact args through
  * record_thesis / update_thesis in check-only mode (ctx.dryRun) — the same
- * input schema, trigger ops, plan check and status rules — and stop before
+ * input schema, trigger ops, ladder check and status rules — and stop before
  * the write. Sections are left out: they're built by the server from the
  * note, not chosen by the model, and the save-time retry covers them.
  */
@@ -1564,13 +1522,13 @@ export async function checkDecisionAgainstSave(input: {
 /** How many times the submit step hands a save refusal back before it saves what it can. */
 const SAVE_CHECK_HAND_BACKS = 2;
 
-/** The decision fields a save can go without: none of them is the claim or the plan's levels. */
-const DROPPABLE_FIELDS = new Set(["setup_id", "stop_basis", "target_basis", "entry_on_close", "conviction_rationale", "variant_view", "catalyst_date"]);
+/** The decision fields a save can go without: none of them is the claim or a trigger. */
+const DROPPABLE_FIELDS = new Set(["setup_id", "conviction_rationale", "variant_view", "catalyst_date"]);
 
 /**
  * The decision without what the save's schema refused: a trigger by its
  * place in the call that was sent, or one optional field. Null when a
- * refusal names anything else (the claim, a level, a trigger code added, the
+ * refusal names anything else (the claim, a trigger code added, the
  * call as a whole): nothing smaller can save. The call's lists hold the
  * decision's own trigger objects (buildWriterSaveCall filters and appends,
  * never copies), so the refused one is found in the decision by identity;
@@ -1628,7 +1586,7 @@ export async function saveWhatCan(
 export function makeSubmitThesisTool(opts: {
   validate: Parameters<typeof validateThesisDecision>[1];
   check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>;
-  onAccept: (d: ValidatedThesisDecision, riskReward: number | null) => void;
+  onAccept: (d: ValidatedThesisDecision) => void;
   onAttempt: () => number;
   /** The last refused submit, kept so the repair step can hand it back. */
   onReject?: (raw: unknown, errors: string[]) => void;
@@ -1693,7 +1651,7 @@ export function makeSubmitThesisTool(opts: {
           instruction: "This refuses the whole decision, not one field. Fix it and call submit_thesis again. Do NOT rewrite the research note.",
         };
       }
-      opts.onAccept(kept.decision, v.riskReward ?? null);
+      opts.onAccept(kept.decision);
       const without = kept.decision.dropped ?? [];
       return {
         accepted: true,
@@ -1751,12 +1709,11 @@ async function resubmitWithFeedback(input: {
   previous: unknown;
   /** The refusal, in the refuser's own words. */
   feedback: string;
-}): Promise<{ decision: ValidatedThesisDecision | null; riskReward: number | null; attempts: number; messages: ModelMessage[] }> {
+}): Promise<{ decision: ValidatedThesisDecision | null; attempts: number; messages: ModelMessage[] }> {
   const { args, pullOutput, analyst, existing } = input;
-  if (!input.systemPrompt) return { decision: null, riskReward: null, attempts: 0, messages: [] };
+  if (!input.systemPrompt) return { decision: null, attempts: 0, messages: [] };
   const T = args.ticker.toUpperCase();
   let accepted: ValidatedThesisDecision | null = null;
-  let acceptedRR: number | null = null;
   let attempts = 0;
   const messages: ModelMessage[] = [];
   const submit = makeSubmitThesisTool({
@@ -1765,7 +1722,6 @@ async function resubmitWithFeedback(input: {
       mode: args.mode,
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
-      existingTargetPrice: existing?.targetPrice ?? null,
       setups: setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId)),
       chart: pullOutput.pull?.chart ?? null,
     },
@@ -1778,9 +1734,8 @@ async function resubmitWithFeedback(input: {
         existing: existing ? { direction: existing.direction, status: existing.status } : null,
       }),
     onAttempt: () => ++attempts,
-    onAccept: (d, rr) => {
+    onAccept: (d) => {
       accepted = d;
-      acceptedRR = rr;
     },
   });
   const modeConfig = MODES["thesis-writer"];
@@ -1817,7 +1772,7 @@ async function resubmitWithFeedback(input: {
       err instanceof Error ? err.message : err,
     );
   }
-  return { decision: accepted as ValidatedThesisDecision | null, riskReward: acceptedRR as number | null, attempts, messages };
+  return { decision: accepted as ValidatedThesisDecision | null, attempts, messages };
 }
 
 export async function writerPersistPhase(
@@ -1935,7 +1890,7 @@ export async function writerPersistPhase(
         args.childRunId,
         thesisId ? "Thesis persisted" : "Persist refused",
         thesisId
-          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}${d.dropped?.length ? ` Saved without: ${d.dropped.map((x) => `${x.why} (${x.reason})`).join("; ")}.` : ""}`
+          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}${d.dropped?.length ? ` Saved without: ${d.dropped.map((x) => `${x.why} (${x.reason})`).join("; ")}.` : ""}`
           : persistError ?? "unknown",
         { ticker: T, thesisId, mode: args.mode },
       );
@@ -2002,7 +1957,6 @@ export async function writerPersistPhase(
           sectionCount: research.sectionCount,
           submitAttempts: research.submitAttempts,
           pullErrors: pullOutput.pull?.pullErrors ?? [],
-          riskReward: research.riskReward,
           ...(finalStatus === "FAILED"
             ? { error: persistError ?? research.error ?? "unknown", failedAt: new Date().toISOString() }
             : {}),

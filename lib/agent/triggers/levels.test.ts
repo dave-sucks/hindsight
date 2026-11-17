@@ -391,7 +391,7 @@ describe("resolveLadder — position actions never reach an un-held thesis (2026
     action: "EXIT",
   });
 
-  it("drops ADD / TRIM on WATCHING and PROMOTED at every level", () => {
+  it("drops ADD / TRIM / a sale on WATCHING and PROMOTED at every level", () => {
     for (const state of ["WATCHING", "PROMOTED"] as const) {
       const ids = resolveLadder({
         thesis: [trim],
@@ -400,8 +400,8 @@ describe("resolveLadder — position actions never reach an un-held thesis (2026
       }).map((t) => t.id);
       expect(ids).not.toContain("acct-scale-in");
       expect(ids).not.toContain("acct-trim");
-      // A floor stays: on an un-held thesis it resolves to DEMOTE, a verdict.
-      expect(ids).toContain("acct-floor");
+      // A sale too: there is nothing to sell. A watch ends on its own Stop watching line.
+      expect(ids).not.toContain("acct-floor");
     }
   });
 

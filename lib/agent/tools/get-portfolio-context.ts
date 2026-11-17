@@ -1,11 +1,20 @@
 /**
  * get_portfolio_context — the account as it stands: every open position with
- * its live price, gain and stop, the cash, the equity, the open risk against
- * the limit and the market line. One shape for every caller: with an analyst
- * in the run it covers that analyst's positions; with none (the chat when no
- * analyst is selected) it covers the account and each position names its
- * analyst. The latest digest is in every request's Market and portfolio
- * block (lib/agent/portfolio-block.ts), so it isn't repeated here.
+ * its price, its day, its gain and its stop, the account's value, cash, day
+ * and lifetime, the open risk against the limit and the market line. One
+ * shape for every caller: with an analyst in the run it covers that analyst's
+ * positions; with none (the chat when no analyst is selected) it covers the
+ * account and each position names its analyst.
+ *
+ * Every number the portfolio snapshot has is the snapshot's
+ * (lib/portfolio/load-snapshot.ts), the one every request's Market and
+ * portfolio block prints (lib/agent/portfolio-block.ts), so the two can't
+ * disagree. The account's value used to be the broker's equity, which marks
+ * holdings at after-hours trades: at 10 PM on Nov 11 it had CEG at $271.81
+ * while the block had its $274.73 close. Read here, because the snapshot
+ * doesn't carry them: the stop and target, days held, the distance from the
+ * peak (at the snapshot's price), buying power, the open risk (on the
+ * snapshot's value and prices) and each analyst's room.
  *
  * The stop and target are the thesis's: the position row's copy can lag a
  * moved floor (MU on 2026-10-05: 969 on the position, 1048 on the plan).
@@ -18,11 +27,15 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { loadAccountRisk } from "@/lib/agent/load-account-risk";
 import { heatLine } from "@/lib/agent/portfolio-risk";
 import { prisma } from "@/lib/prisma";
-import { getLatestPricesWithMeta, getAccount, type PriceLookup } from "@/lib/alpaca";
+import { getAccount } from "@/lib/alpaca";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { analystRoomLines } from "@/lib/agent/analyst-scope";
 import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
+import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
+import { snapshotWhen, type HoldingLine, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
+
+type Change = { dollars: number; pct: number };
 
 interface PositionDetail {
   positionId: string;
@@ -33,27 +46,40 @@ interface PositionDetail {
   qty: number;
   initialQty: number;
   avgCost: number;
-  currentPrice: number;
-  unrealizedPnl: number;
-  unrealizedPnlPct: number;
+  /** The snapshot's price: the latest trade in the session, the close outside it. Null when it has none. */
+  currentPrice: number | null;
+  /** The position at that price, and its share of the account (%). */
+  value: number | null;
+  sharePct: number | null;
+  /** The stock's move on the snapshot's day, against the prior close (%). */
+  dayMovePct: number | null;
+  /** What these shares made that day, its buys and sales included. Null when another analyst holds the stock too. */
+  dayPnl: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPnlPct: number | null;
   daysHeld: number;
-  targetPrice: number | null;
-  stopLoss: number | null;
   exitStrategy: string | null;
   trailPct: number | null;
   peakPrice: number | null;
   distanceFromPeak: number | null;
-  /** When `currentPrice` printed (ISO). Null when there was no live price. */
+  /** When `currentPrice` printed (ISO). Null when there is no price. */
   priceAsOf: string | null;
-  /** Plain words when `currentPrice` is missing or old; absent when it is live. */
+  /** Plain words when `currentPrice` is missing or old; absent when it is current. */
   priceWarning?: string;
   thesis: { id: string; reasoning: string; status: string } | null;
 }
 
 interface CapitalSummary {
+  /** When the prices are from: "Wed, Nov 11 at the close", or the time while the market is open. */
+  pricesAt: string;
   totalEquity: number;
   cash: number;
-  buyingPower: number;
+  /** The account's day against the prior close. Null when a price it needs is missing. */
+  dayChange: Change | null;
+  /** The value less the money put in. Null when the transfers couldn't be read. */
+  lifetime: (Change & { contributed: number }) | null;
+  /** The broker's. Null when the broker couldn't be read. */
+  buyingPower: number | null;
   deployedCapital: number;
   deployedPct: number;
   openPositionCount: number;
@@ -74,9 +100,31 @@ type PortfolioContextData = {
   book: { openRiskPct: number | null; market: string | null; lines: string[] };
 };
 
+const round2 = (n: number | null) => (n == null ? null : Math.round(n * 100) / 100);
+const signed = (n: number | null) => (n == null ? "unknown" : `${n >= 0 ? "+" : ""}${n}%`);
+
+/**
+ * One position's numbers from the snapshot's line for its stock. The line is
+ * the broker's whole holding, so it is this position's own when no other
+ * analyst holds the stock; when one does, the value and gain are this
+ * position's shares at the snapshot's price, and the day's dollars aren't split.
+ */
+function fromSnapshot(pos: { quantity: number; avgCost: number; direction: string }, line: HoldingLine | undefined, accountValue: number) {
+  const price = line?.price ?? null;
+  if (!line || price == null) return { price, value: null, share: null, move: null, dayPnl: null, gain: null };
+  if (Math.abs(line.shares) === pos.quantity) {
+    return { price, value: line.value, share: line.share, move: line.move, dayPnl: line.dayDollars, gain: line.sinceBought };
+  }
+  const sign = pos.direction === "SHORT" ? -1 : 1;
+  const value = sign * pos.quantity * price;
+  const gain = pos.avgCost > 0 ? { dollars: sign * pos.quantity * (price - pos.avgCost), pct: (sign * (price - pos.avgCost) / pos.avgCost) * 100 } : null;
+  return { price, value, share: accountValue > 0 ? (value / accountValue) * 100 : null, move: line.move, dayPnl: null, gain };
+}
+
 export const getPortfolioContext = defineTool({
   description:
-    "Open positions with live price, gain, days held, distance from peak, stop and target; cash, equity, open risk and the market line. " +
+    "Open positions with price, day's move, gain, days held, distance from peak, stop and target; " +
+    "the account's value, cash, day and lifetime (the portfolio snapshot's numbers), buying power, open risk and the market line. " +
     "Covers the run's analyst, or with none selected the whole account, naming each position's analyst.",
   schema: z.object({
     include_thesis: z
@@ -98,64 +146,47 @@ export const getPortfolioContext = defineTool({
 
     // This run's book only. A LIVE run must never see PAPER positions and
     // vice versa — they live in different Alpaca accounts.
-    const openPositions = await prisma.position.findMany({
-      where: { accountId: ctx.accountId, status: "OPEN", environment: runEnvironment, ...(analystId ? { analystId } : {}) },
-      include: { analyst: { select: { name: true } } },
-      orderBy: { openedAt: "asc" },
-    });
+    const [openPositions, snapshot, account] = await Promise.all([
+      prisma.position.findMany({
+        where: { accountId: ctx.accountId, status: "OPEN", environment: runEnvironment, ...(analystId ? { analystId } : {}) },
+        include: { analyst: { select: { name: true } } },
+        orderBy: { openedAt: "asc" },
+      }),
+      loadPortfolioSnapshot({ accountId: ctx.accountId, environment: runEnvironment }).catch((err): PortfolioSnapshot | null => {
+        console.warn(`[get_portfolio_context] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
+        return null;
+      }),
+      // Buying power is the broker's alone.
+      getAccount(creds).catch(() => null),
+    ]);
+    const holdingOf = new Map((snapshot?.holdings ?? []).map((h) => [h.ticker, h]));
 
-    let lookup: PriceLookup | null = null;
-    if (openPositions.length > 0) {
-      try {
-        lookup = await getLatestPricesWithMeta(openPositions.map((p) => p.symbol), creds);
-      } catch { /* every position is then shown at cost, and says so */ }
-    }
-    const prices = lookup?.prices ?? {};
-
-    // Each position's thesis: its stop and target are the plan's, and its reasoning on request.
-    const theses = new Map<string, { id: string; snapshot: unknown; status: string; stopLoss: number | null; targetPrice: number | null }>();
+    // Each position's thesis, for its reasoning on request. Its triggers are on get_theses.
+    const theses = new Map<string, { id: string; snapshot: unknown; status: string }>();
     for (const pos of openPositions) {
       try {
         const thesis = await prisma.thesis.findFirst({
           where: { ticker: pos.symbol, status: "HOLDING", researchRun: { agentConfigId: pos.analystId } },
           orderBy: { createdAt: "desc" },
-          select: { id: true, snapshot: true, status: true, stopLoss: true, targetPrice: true },
+          select: { id: true, snapshot: true, status: true },
         });
         if (thesis) theses.set(pos.id, thesis);
-      } catch { /* the position's own levels stand in */ }
+      } catch { /* the reasoning is left off */ }
     }
 
-    const now = Date.now();
+    const now = new Date();
     const positionDetails: PositionDetail[] = openPositions.map((pos) => {
-      const currentPrice = prices[pos.symbol] ?? pos.avgCost;
-      // How old the price is, in words when it isn't live (quote-age).
-      const at = lookup?.asOf[pos.symbol];
-      const reading = readPrice({
-        ticker: pos.symbol,
-        quote: prices[pos.symbol] != null ? { c: prices[pos.symbol], t: at ? new Date(at).getTime() / 1000 : undefined } : null,
-        now: new Date(now),
-      });
+      const line = holdingOf.get(pos.symbol.toUpperCase());
+      const n = fromSnapshot(pos, line, snapshot?.value ?? 0);
+      // How old the price is, in words when it isn't current (quote-age).
+      const reading =
+        n.price != null ? readPrice({ ticker: pos.symbol, quote: { c: n.price, t: line?.priceAt ? Date.parse(line.priceAt) / 1000 : undefined }, now }) : null;
+      const why = !snapshot ? " (the portfolio snapshot couldn't be read)" : !line ? " (the broker's account doesn't hold it)" : "";
       const priceWarning =
-        reading.price == null
-          ? `Live price for $${pos.symbol} unavailable — shown at its cost $${pos.avgCost.toFixed(2)}; its P&L and distance from peak are not measured.`
-          : reading.warning;
-      const isLong = pos.direction === "LONG";
-      const unrealizedPnl = isLong
-        ? (currentPrice - pos.avgCost) * pos.quantity
-        : (pos.avgCost - currentPrice) * pos.quantity;
-      const unrealizedPnlPct = pos.avgCost > 0
-        ? (isLong
-            ? ((currentPrice - pos.avgCost) / pos.avgCost)
-            : ((pos.avgCost - currentPrice) / pos.avgCost)) * 100
-        : 0;
-      const daysHeld = Math.max(0, Math.floor((now - new Date(pos.openedAt).getTime()) / 86_400_000));
-
-      let distanceFromPeak: number | null = null;
-      if (pos.peakPrice) {
-        distanceFromPeak = isLong
-          ? ((currentPrice - pos.peakPrice) / pos.peakPrice) * 100
-          : ((pos.peakPrice - currentPrice) / pos.peakPrice) * 100;
-      }
+        n.price == null ? `No price for $${pos.symbol}${why}: its value, gain and distance from peak are not measured.` : reading?.warning ?? undefined;
+      const sign = pos.direction === "SHORT" ? -1 : 1;
+      const distanceFromPeak = n.price != null && pos.peakPrice ? ((sign * (n.price - pos.peakPrice)) / pos.peakPrice) * 100 : null;
+      const daysHeld = Math.max(0, Math.floor((now.getTime() - new Date(pos.openedAt).getTime()) / 86_400_000));
 
       const thesis = theses.get(pos.id) ?? null;
       return {
@@ -166,17 +197,19 @@ export const getPortfolioContext = defineTool({
         qty: pos.quantity,
         initialQty: pos.initialQty ?? pos.quantity,
         avgCost: pos.avgCost,
-        currentPrice,
-        unrealizedPnl,
-        unrealizedPnlPct: Math.round(unrealizedPnlPct * 100) / 100,
+        currentPrice: n.price,
+        value: n.value,
+        sharePct: round2(n.share),
+        dayMovePct: round2(n.move),
+        dayPnl: n.dayPnl,
+        unrealizedPnl: n.gain?.dollars ?? null,
+        unrealizedPnlPct: round2(n.gain?.pct ?? null),
         daysHeld,
-        targetPrice: thesis?.targetPrice ?? pos.targetPrice ?? null,
-        stopLoss: thesis?.stopLoss ?? pos.stopLoss ?? null,
         exitStrategy: pos.exitStrategy,
         trailPct: pos.trailingStopPct ?? null,
         peakPrice: pos.peakPrice ?? null,
-        distanceFromPeak: distanceFromPeak !== null ? Math.round(distanceFromPeak * 100) / 100 : null,
-        priceAsOf: reading.asOf,
+        distanceFromPeak: round2(distanceFromPeak),
+        priceAsOf: reading?.asOf ?? null,
         ...(priceWarning ? { priceWarning } : {}),
         thesis:
           args.include_thesis && thesis
@@ -190,47 +223,47 @@ export const getPortfolioContext = defineTool({
     });
 
     let capitalSummary: CapitalSummary | null = null;
-    try {
-      const account = await getAccount(creds);
+    if (snapshot) {
       const deployedCapital = positionDetails.reduce((sum, p) => sum + p.avgCost * p.qty, 0);
-      const totalEquity = parseFloat(account.equity);
       const maxPositions = analystId ? (ctx.maxOpenPositions ?? 5) : null;
       capitalSummary = {
-        totalEquity,
-        cash: parseFloat(account.cash),
-        buyingPower: parseFloat(account.buying_power),
+        pricesAt: snapshotWhen(snapshot),
+        totalEquity: snapshot.value,
+        cash: snapshot.cash,
+        dayChange: snapshot.dayChange,
+        lifetime: snapshot.lifetime,
+        buyingPower: account ? parseFloat(account.buying_power) : null,
         deployedCapital,
-        deployedPct: totalEquity > 0 ? Math.round((deployedCapital / totalEquity) * 100) : 0,
+        deployedPct: snapshot.value > 0 ? Math.round((deployedCapital / snapshot.value) * 100) : 0,
         openPositionCount: openPositions.length,
         maxPositions,
         slotsRemaining: maxPositions != null ? maxPositions - openPositions.length : null,
       };
-    } catch { /* non-fatal */ }
+    }
 
+    const price = (p: PositionDetail) => (p.currentPrice != null ? `$${p.currentPrice.toFixed(2)}` : "no price");
+    const peakStr = (p: PositionDetail) => (p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "");
     const summaryLines = positionDetails.map((p) => {
-      const pnlSign = p.unrealizedPnlPct >= 0 ? "+" : "";
-      const peakStr = p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "";
-      const stopStr = p.stopLoss != null ? ` | stop $${p.stopLoss}` : " | no stop";
       const who = !analystId && p.analyst ? ` (${p.analyst})` : "";
-      return `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol}${who} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now $${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.daysHeld}d held${peakStr}${stopStr}`;
+      return (
+        `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol}${who} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now ${price(p)}` +
+        ` | day ${signed(p.dayMovePct)} | since bought ${signed(p.unrealizedPnlPct)} | ${p.daysHeld}d held${peakStr(p)}`
+      );
     });
 
     // Ticker rows for UI rendering — portfolio data, not stock data
-    const tickers = positionDetails.map((p) => {
-      const pnlSign = p.unrealizedPnlPct >= 0 ? "+" : "";
-      const peakStr = p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "";
-      return {
-        ticker: p.symbol,
-        tag: p.direction,
-        summary: `${p.priceWarning ? "⚠ Price not live · " : ""}$${p.currentPrice.toFixed(2)} (${pnlSign}${p.unrealizedPnlPct}%) | ${p.qty}sh @ $${p.avgCost.toFixed(2)} | ${p.daysHeld}d held${peakStr}`,
-      };
-    });
+    const tickers = positionDetails.map((p) => ({
+      ticker: p.symbol,
+      tag: p.direction,
+      summary: `${p.priceWarning ? "⚠ Price not current · " : ""}${price(p)} (${signed(p.unrealizedPnlPct)}) | day ${signed(p.dayMovePct)} | ${p.qty}sh @ $${p.avgCost.toFixed(2)} | ${p.daysHeld}d held${peakStr(p)}`,
+    }));
 
-    // Account-wide book lines — open risk across every seat, and the market.
+    // Account-wide book lines — open risk across every seat, on the snapshot's value and prices, and the market.
     const risk = await loadAccountRisk({
       accountId: ctx.accountId,
       environment: runEnvironment,
       creds,
+      ...(snapshot ? { snapshot } : {}),
     }).catch(() => null);
     const market = risk?.regime?.line ?? null;
     const bookLines = [
@@ -253,11 +286,16 @@ export const getPortfolioContext = defineTool({
       tickers,
       book: { openRiskPct: risk?.open ? Math.round(risk.open.riskPct * 10) / 10 : null, market, lines: bookLines },
     };
+    const usd = (n: number) => `$${n.toFixed(0)}`;
+    const c = capitalSummary;
     return {
       summary:
         positionDetails.filter((p) => p.priceWarning).map((p) => `⚠ ${p.priceWarning} `).join("") +
         (openPositions.length === 0 ? "No open positions" : `Portfolio: ${openPositions.length} open position${openPositions.length !== 1 ? "s" : ""}`) +
-        (capitalSummary ? ` | $${capitalSummary.cash.toFixed(0)} cash | ${capitalSummary.deployedPct}% deployed | $${capitalSummary.buyingPower.toFixed(0)} buying power` : "") +
+        (c
+          ? ` | value ${usd(c.totalEquity)}, ${c.pricesAt} | day ${c.dayChange ? signed(round2(c.dayChange.pct)) : "unknown"} | ${usd(c.cash)} cash | ${c.deployedPct}% deployed` +
+            (c.buyingPower != null ? ` | ${usd(c.buyingPower)} buying power` : "")
+          : " | the account's value and cash couldn't be read") +
         (bookLines.length ? ` | ${bookLines.join(" ")}` : ""),
       data,
       sources: [],

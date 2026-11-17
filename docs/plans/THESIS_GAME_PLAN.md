@@ -79,7 +79,7 @@ on the cron) — acceptable; the new predicates cover the cumulative cases.
 
 ## 4. The three decision moments (who sets, who edits, what cadence)
 
-### Moment 1 — Thesis build (writer / discovery / external ingest): AUTHOR
+### Moment 1 — Thesis build (writer / discovery): AUTHOR
 The full Game Plan is written with the research. WATCHING: ≥1 entry rung
 (level and/or breakout-%), an abandon rung, target rationale. On entry (or a
 HOLDING mint): floor, first add rung(s), damage rung(s), a trail or gain

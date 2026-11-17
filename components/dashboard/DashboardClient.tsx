@@ -52,8 +52,6 @@ import PinnedPanel from '@/components/dashboard/PinnedPanel';
 import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
-import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
-import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { DigestNote, LatestDigest } from '@/lib/actions/digest.actions';
@@ -71,7 +69,6 @@ import { EmptyStateBg } from '@/components/domain/empty-state-bg';
 import { ProductTourDialog } from '@/components/domain/onboarding-flow';
 import { Button } from '@/components/ui/button';
 import { PriceChange } from '@/components/ui/price-change';
-import { buildTradeSentence } from '@/lib/trade-statement';
 import {
   Tooltip as UITooltip,
   TooltipContent as UITooltipContent,
@@ -84,7 +81,8 @@ import {
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData, RecentPick, ActivityFeedItem } from '@/lib/actions/portfolio.actions';
+import type { DashboardData } from '@/lib/actions/portfolio.actions';
+import type { AccountActivityKind, AccountActivityLine } from '@/lib/thesis/account-activity';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
 import { cn, PNL_HEX } from '@/lib/utils';
@@ -272,28 +270,19 @@ const THESIS_STATUS_ORDER: ThesisStatus[] = [
   'PROMOTED',
 ];
 const THESIS_PAGE_SIZE = 10;
-type ActivityTabFilter = 'all' | 'opens' | 'closes' | 'updates';
+type ActivityTabFilter = 'all' | 'trades' | 'proposals' | 'watch' | 'attempts';
 
 // A dropdown filter starts on a real "All …" item, and `items` gives the
 // closed trigger the label (otherwise it shows the raw value, "all").
 const ACTIVITY_FILTERS: { value: ActivityTabFilter; label: string }[] = [
   { value: 'all', label: 'All activity' },
-  { value: 'opens', label: 'Opens' },
-  { value: 'closes', label: 'Closes' },
-  { value: 'updates', label: 'Updates' },
+  { value: 'trades', label: 'Trades' },
+  { value: 'proposals', label: 'Proposals' },
+  { value: 'watch', label: 'Watch status' },
+  { value: 'attempts', label: 'Held & blocked' },
 ];
-// The server sends the newest 80 lines — the blocked / passed / failed
-// attempts need the room (getDashboardData). The first 40 show until
-// "Show more".
+// The server sends the newest 150 lines (ACCOUNT_ITEMS); the first 40 show until "Show more".
 const ACTIVITY_FIRST_ROWS = 40;
-
-function relTime(iso: string): string {
-  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (d === 0) return 'Today';
-  if (d === 1) return '1d ago';
-  if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -304,8 +293,8 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-function groupActivityByDay(items: ActivityFeedItem[]) {
-  const groups: { label: string; items: ActivityFeedItem[] }[] = [];
+function groupActivityByDay(items: AccountActivityLine[]) {
+  const groups: { label: string; items: AccountActivityLine[] }[] = [];
   for (const item of items) {
     const lbl = dayLabel(item.timestamp);
     const last = groups[groups.length - 1];
@@ -315,165 +304,36 @@ function groupActivityByDay(items: ActivityFeedItem[]) {
   return groups;
 }
 
-
-// Mirrors ACTION_STATUS from decision-summary-card.tsx
-const ACTIVITY_ACTION_STATUS: Record<string, { label: string; dotClass: string; tooltip: string }> = {
-  INITIATE: { label: 'Bought',        dotClass: 'bg-positive',                tooltip: 'New position opened' },
-  SHORT:    { label: 'Shorted',       dotClass: 'bg-negative',                tooltip: 'Short position opened' },
-  ADD:      { label: 'Add',           dotClass: 'bg-positive',                tooltip: 'Added to existing position' },
-  REDUCE:   { label: 'Reduce',        dotClass: 'bg-amber-500',               tooltip: 'Trimmed position size' },
-  EXIT:     { label: 'Sold',          dotClass: 'bg-muted-foreground/60',     tooltip: 'Position closed' },
-  HOLD:     { label: 'Hold',          dotClass: 'bg-muted-foreground/40',     tooltip: 'Monitoring — no action taken' },
-  WATCH:    { label: 'Watch',         dotClass: 'bg-brand-blue',                tooltip: 'Added to watchlist' },
-  STOP:     { label: 'Stop Moved',    dotClass: 'bg-amber-500',               tooltip: 'Stop loss level adjusted' },
-  NEAR_TGT: { label: 'Near Target',   dotClass: 'bg-positive',                tooltip: 'Price approaching target' },
-  NEAR_STP: { label: 'Near Stop',     dotClass: 'bg-negative',                tooltip: 'Price approaching stop loss' },
-  // Trade-as-Proposal — see docs/plans/TRADE_AS_PROPOSAL.md
-  PROPOSED: { label: 'Proposal',       dotClass: 'bg-amber-500',              tooltip: 'Awaiting your approval' },
-  REJECTED: { label: 'Rejected',       dotClass: 'bg-muted-foreground/40',    tooltip: 'Proposal rejected — never executed' },
-  BLOCKED:  { label: 'Blocked',        dotClass: 'bg-negative',               tooltip: 'The analyst tried this and a rule stopped it — read why, and act by hand if you disagree' },
-  PASSED:   { label: 'Passed',         dotClass: 'bg-muted-foreground/40',    tooltip: 'A buy, add, sale or trim trigger fired and the analyst chose not to act — often the right call' },
-  FAILED:   { label: 'Failed',         dotClass: 'bg-negative',               tooltip: 'The run that should have handled this did not finish' },
+// One row per kind: its badge, and the filter it falls under. The server names
+// each line by its stored fields (lib/thesis/account-activity.ts).
+const ACTIVITY_KIND: Record<AccountActivityKind, { label: string; dotClass: string; filter: ActivityTabFilter }> = {
+  proposed:           { label: 'Proposal',         dotClass: 'bg-muted-foreground/40', filter: 'proposals' },
+  declined:           { label: 'Declined',         dotClass: 'bg-muted-foreground/40', filter: 'proposals' },
+  expired:            { label: 'Expired',          dotClass: 'bg-muted-foreground/40', filter: 'proposals' },
+  withdrawn:          { label: 'Withdrawn',        dotClass: 'bg-muted-foreground/40', filter: 'proposals' },
+  approved:           { label: 'Approved',         dotClass: 'bg-muted-foreground/60', filter: 'trades' },
+  bought:             { label: 'Bought',           dotClass: 'bg-positive',            filter: 'trades' },
+  added:              { label: 'Added',            dotClass: 'bg-positive',            filter: 'trades' },
+  sold:               { label: 'Sold',             dotClass: 'bg-muted-foreground/60', filter: 'trades' },
+  trimmed:            { label: 'Trimmed',          dotClass: 'bg-amber-500',           filter: 'trades' },
+  watching:           { label: 'Started watching', dotClass: 'bg-brand-blue',          filter: 'watch' },
+  'stopped-watching': { label: 'Stopped watching', dotClass: 'bg-muted-foreground/60', filter: 'watch' },
+  holding:            { label: 'Position opened',  dotClass: 'bg-positive',            filter: 'watch' },
+  closed:             { label: 'Position closed',  dotClass: 'bg-muted-foreground/60', filter: 'watch' },
+  passed:             { label: 'Passed',           dotClass: 'bg-muted-foreground/40', filter: 'watch' },
+  // An attempt names itself ("Held, not sold", "Buy blocked"); these labels are the fallback.
+  held:               { label: 'Passed',           dotClass: 'bg-muted-foreground/40', filter: 'attempts' },
+  blocked:            { label: 'Blocked',          dotClass: 'bg-negative',            filter: 'attempts' },
+  failed:             { label: 'Failed',           dotClass: 'bg-negative',            filter: 'attempts' },
 };
 
-/** The attempts that never became a proposal (lib/portfolio/attempt-outcomes). */
-const isAttempt = (item: ActivityFeedItem) =>
-  item.type === 'BLOCKED' || item.type === 'PASSED' || item.type === 'FAILED';
-
-function getDecisionAction(item: ActivityFeedItem): string {
-  if (item.type === 'PROPOSED') return 'PROPOSED';
-  if (item.type === 'REJECTED') return 'REJECTED';
-  if (item.type === 'BLOCKED') return 'BLOCKED';
-  if (item.type === 'PASSED') return 'PASSED';
-  if (item.type === 'FAILED') return 'FAILED';
-  if (item.type === 'OPENED') return item.direction === 'SHORT' ? 'SHORT' : 'INITIATE';
-  if (item.type === 'CLOSED') return 'EXIT';
-  const lbl = item.label.toLowerCase();
-  if (lbl.includes('partial') || lbl.includes('reduc')) return 'REDUCE';
-  if (lbl.includes('add')) return 'ADD';
-  if (lbl.includes('near target') || lbl.includes('approaching target')) return 'NEAR_TGT';
-  if (lbl.includes('near stop') || lbl.includes('approaching stop')) return 'NEAR_STP';
-  if (lbl.includes('stop')) return 'STOP';
-  if (lbl.includes('watch')) return 'WATCH';
-  return 'HOLD';
-}
-
-function getActivitySentence(item: ActivityFeedItem): string {
-  const src = item.source === 'price_monitor' ? 'an Auto-sell' : item.source === 'user' ? 'you' : 'the agent';
-  if (item.type === 'OPENED') {
-    return item.direction === 'SHORT'
-      ? `Short position opened in ${item.symbol} by ${src}.`
-      : `Long position opened in ${item.symbol} by ${src}.`;
-  }
-  if (item.type === 'CLOSED') {
-    if (item.pnl != null) {
-      const sign = item.pnl >= 0 ? '+' : '';
-      const amt = `${sign}$${Math.abs(item.pnl).toFixed(2)}`;
-      const pct = item.pnlPct != null ? ` (${sign}${item.pnlPct.toFixed(1)}%)` : '';
-      return item.pnl >= 0
-        ? `Closed for a profit of ${amt}${pct} by ${src}.`
-        : `Closed at a loss of ${amt}${pct} by ${src}.`;
-    }
-    return `Position closed by ${src}.`;
-  }
-  if (isAttempt(item) && item.reason) return item.reason;
-  if (item.reason) return `${item.reason} (via ${src}).`;
-  return `${item.label} via ${src}.`;
-}
-
-function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowData {
-  return {
-    id: pick.id,
-    ticker: pick.ticker,
-    direction: pick.direction,
-    status: pick.status,
-    reasoningSummary: pick.reasoningSummary,
-    entryPrice: pick.entryPrice,
-    targetPrice: pick.targetPrice,
-    stopLoss: pick.stopLoss,
-    // True thesis-creation date — anchors the chart's "Watching" marker and
-    // the footer timestamp. (Previously overridden to the position's openedAt
-    // for holdings, which would have collapsed the Watching marker onto Entry.)
-    createdAt: pick.createdAt,
-    agentWatchDays: pick.agentWatchDays,
-    currentPrice: pick.currentPrice,
-    candles,
-    companyName: pick.companyName,
-    analystName: pick.analystName,
-    analystId: pick.analystId,
-    runId: pick.runId,
-    sourcesUsed: pick.sourcesUsed,
-    decision: pick.decision,
-    position: pick.position
-      ? {
-          id: pick.position.id,
-          status: pick.position.status,
-          tradeStatus: pick.position.tradeStatus,
-          avgCost: pick.position.avgCost,
-          quantity: pick.position.quantity,
-          openedAt: pick.position.openedAt,
-          filledAt: pick.position.filledAt,
-          placedAt: pick.position.placedAt,
-        }
-      : null,
-  };
-}
 
 
-function ActivityRow({ item }: { item: ActivityFeedItem }) {
-  const actionKey = getDecisionAction(item);
-  const meta = ACTIVITY_ACTION_STATUS[actionKey] ?? ACTIVITY_ACTION_STATUS.HOLD;
-  // An attempt says what it was ("Buy passed", "Sale blocked", "Thesis edit
-  // blocked") — the server names it; the generic word is the fallback.
-  const status = isAttempt(item) && item.label ? { ...meta, label: item.label } : meta;
-  // Trade-as-Proposal — a row awaiting the user's decision. It's decided on
-  // the trade page the row opens. See docs/plans/TRADE_AS_PROPOSAL.md.
-  const isProposed = item.type === 'PROPOSED' && item.orderId != null;
-
-  // The middle text + right side, built per event type. Trade events
-  // (Bought / Sold / Proposed buy) use the SHARED buildTradeSentence so the
-  // feed reads identically to the thesis sheet / row / trades-page; the gain
-  // renders via <PriceChange> (same green/red ↗ styling, no opaque parens).
-  // Non-trade events (Hold / Near-Stop / etc) keep their prose reason.
-  let middle: string | null = null;
-  let gain: { dollar: number; pct: number | null } | null = null;
-  const hasSize = item.shares != null && item.price != null;
-
-  if (item.type === 'OPENED' && hasSize) {
-    // Event-log buy — "Bought N shares at $X": the event, not the holding's state.
-    middle = buildTradeSentence({ kind: 'bought', qty: item.shares!, entry: item.price! });
-  } else if (isProposed && hasSize) {
-    // A proposal is either a buy (new entry / ADD) or an exit (CLOSE / trim).
-    // Render the matching sentence so a proposed exit never mislabels as "Buy"
-    // — the bug that made a pending CLOSE read "Proposed: Buy 100 shares".
-    middle =
-      item.intent === 'CLOSE' || item.intent === 'PARTIAL_CLOSE'
-        ? buildTradeSentence({
-            kind: 'proposed-exit',
-            qty: item.shares!,
-            entry: item.price!,
-            exitVerb: item.intent === 'PARTIAL_CLOSE' ? 'trim' : 'close',
-          })
-        : buildTradeSentence({
-            kind: 'proposed-buy',
-            qty: item.shares!,
-            entry: item.price!,
-            buyVerb: item.direction === 'SHORT' ? 'Short' : 'Buy',
-          });
-  } else if (item.type === 'REJECTED' && hasSize) {
-    // Rejected/expired proposal — describe the would-be buy; no P&L (nothing executed).
-    middle = buildTradeSentence({ kind: 'proposed-buy', qty: item.shares!, entry: item.price! });
-  } else if (item.type === 'CLOSED' && hasSize) {
-    middle = buildTradeSentence({
-      kind: 'closed',
-      qty: item.shares!,
-      entry: item.price!,
-      closePrice: item.closePrice ?? null,
-    });
-    if (item.pnl != null) gain = { dollar: item.pnl, pct: item.pnlPct };
-  } else {
-    middle = getActivitySentence(item);
-  }
+function ActivityRow({ item }: { item: AccountActivityLine }) {
+  const kind = { ...ACTIVITY_KIND[item.kind], label: item.label ?? ACTIVITY_KIND[item.kind].label };
+  // Only a proposal still waiting for you is amber; it's decided on the trade page the row opens.
+  const status = item.waiting ? { ...kind, dotClass: 'bg-amber-500' } : kind;
+  const gain = item.gain;
 
   // prefetch={false}: Next fetches every link as it scrolls into view, so the
   // feed asked the server for each row's page before anything was clicked
@@ -485,13 +345,7 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
         render={
           <Link
             prefetch={false}
-            href={
-              isAttempt(item)
-                ? item.runId
-                  ? `/runs/${item.runId}`
-                  : `/stocks/${item.symbol}`
-                : `/trades/${item.positionId}`
-            }
+            href={item.positionId ? `/trades/${item.positionId}` : item.runId ? `/runs/${item.runId}` : `/stocks/${item.ticker}`}
             // Fixed columns so every row lines up: ticker, status, sentence,
             // gain. On a phone the status column sizes to its badge.
             className="grid grid-cols-[4.75rem_auto_minmax(0,1fr)_auto] sm:grid-cols-[5.5rem_9.5rem_minmax(0,1fr)_auto] items-center gap-2 rounded-md p-2 hover:bg-muted/70 transition-colors"
@@ -499,8 +353,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
         }
       >
         <span className="flex items-center gap-1.5 min-w-0">
-          <StockLogo ticker={item.symbol} size="sm" />
-          <span className="text-sm font-semibold font-brand truncate">{item.symbol}</span>
+          <StockLogo ticker={item.ticker} size="sm" />
+          <span className="text-sm font-semibold font-brand truncate">{item.ticker}</span>
         </span>
         <span className="min-w-0 overflow-hidden">
           <Badge variant="secondary" className="gap-1.5 font-normal shrink-0">
@@ -509,10 +363,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
           </Badge>
         </span>
         <span className="min-w-0 text-xs text-muted-foreground tabular-nums truncate">
-          {middle}
+          {item.text}
         </span>
-        {/* A proposal has no Review button here: the amber badge marks it
-            and the row opens the trade page, where it's approved. */}
         <span className="justify-self-end">
           {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
         </span>
@@ -520,8 +372,8 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
       <HoverCardContent side="top" align="start" className="w-72">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <StockLogo ticker={item.symbol} size="md" />
-            <span className="text-base font-semibold font-brand">{item.symbol}</span>
+            <StockLogo ticker={item.ticker} size="md" />
+            <span className="text-base font-semibold font-brand">{item.ticker}</span>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="gap-1.5 font-normal">
@@ -530,7 +382,7 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
             </Badge>
             {gain && <PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="sm" />}
           </div>
-          <p className="text-sm text-muted-foreground">{middle ?? getActivitySentence(item)}</p>
+          <p className="text-sm text-muted-foreground line-clamp-6">{item.detail ?? item.text}</p>
         </div>
       </HoverCardContent>
     </HoverCard>
@@ -538,7 +390,7 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
 }
 
 function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
-  activity: ActivityFeedItem[];
+  activity: AccountActivityLine[];
   loading: boolean;
   coverage?: CoverageData;
   /** Rendered below lg only, between the holdings table and Activity. */
@@ -547,12 +399,7 @@ function HomeBottomSection({ activity, loading, coverage, mobileDigest }: {
   const [activityFilter, setActivityFilter] = useState<ActivityTabFilter>('all');
   const [showAllActivity, setShowAllActivity] = useState(false);
 
-  const filteredActivity = activity.filter((a) => {
-    if (activityFilter === 'opens') return a.type === 'OPENED' || (isAttempt(a) && a.side !== 'SELL');
-    if (activityFilter === 'closes') return a.type === 'CLOSED' || (isAttempt(a) && a.side === 'SELL');
-    if (activityFilter === 'updates') return a.type === 'MODIFIED';
-    return true;
-  });
+  const filteredActivity = activity.filter((a) => activityFilter === 'all' || ACTIVITY_KIND[a.kind].filter === activityFilter);
   const shownActivity = showAllActivity
     ? filteredActivity
     : filteredActivity.slice(0, ACTIVITY_FIRST_ROWS);
@@ -1085,21 +932,28 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
     pnlData,
     data?.pnlCurve?.length ? data.pnlCurve : rawPnlCurve,
   );
+  // 1D is the portfolio snapshot's day, every stock against its prior close
+  // at the app's prices: the day every agent is told. The broker's curve marks
+  // holdings at after-hours trades, so after the close it moved the day.
+  const snapshotDay =
+    range === '1D' && portfolio.dayPnl != null && portfolio.dayPnlPct != null ? { pnl: portfolio.dayPnl, pct: portfolio.dayPnlPct } : null;
   // Range-aware P&L: delta over the selected range from the active (filtered)
   // curve. Because that curve is deposit-adjusted, the delta is pure trading
   // P&L — a deposit inside the window cancels out instead of showing as a gain.
-  const rangePnl = includesInception
-    ? portfolio.totalPnl
-    : pnlData.length >= 2
-      ? pnlData[pnlData.length - 1].value - pnlData[0].value
-      : portfolio.totalPnl;
+  const rangePnl = snapshotDay
+    ? snapshotDay.pnl
+    : includesInception
+      ? portfolio.totalPnl
+      : pnlData.length >= 2
+        ? pnlData[pnlData.length - 1].value - pnlData[0].value
+        : portfolio.totalPnl;
   // % base: capital at the start of the window. Whole-account windows divide
   // by net contributed capital so "total return" = gain ÷ money-you-put-in;
   // shorter ranges divide by the equity at the range start.
   const rangePnlBase = includesInception || range === 'Max'
     ? (portfolio.netContributed > 0 ? portfolio.netContributed : (equityRange[0]?.value ?? 0))
     : (equityRange[0]?.value ?? portfolio.netContributed);
-  const rangePnlPct = rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
+  const rangePnlPct = snapshotDay ? snapshotDay.pct : rangePnlBase > 0 ? (rangePnl / rangePnlBase) * 100 : 0;
 
   // The split BEHIND that number, over the SAME window. The header used to put
   // the range's total next to ALL-TIME unrealized — two different clocks — so a

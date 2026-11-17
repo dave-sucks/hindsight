@@ -14,13 +14,22 @@ import {
 import { editTriggerOpSchema, editNumber } from "@/lib/agent/triggers/schema";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 
+/** A buy, a floor (the watch's Stop watching line) and (when given) a take-profit, as the writer writes them: triggers. */
+function levels(entry: number, stop: number, target?: number, short = false) {
+  const up = short ? "below" : "above";
+  const down = short ? "above" : "below";
+  return [
+    { predicate: { watch: "price", is: up, value: entry }, action: "ENTER", rationale: "the buy" },
+    { predicate: { watch: "price", is: down, value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "the floor" },
+    ...(target != null ? [{ predicate: { watch: "price", is: up, value: target }, action: "REVIEW", rationale: "take profit" }] : []),
+  ] as NonNullable<ThesisDecisionInput["triggers"]>;
+}
+
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
   rationale: "Blackwell ramp is underpriced; entry at the breakout with a clean 2.5:1.",
   horizon: "TARGET",
-  entry_price: 100,
-  target_price: 125,
-  stop_loss: 90,
+  triggers: levels(100, 90, 125),
   core_belief:
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
   key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
@@ -34,11 +43,11 @@ const validLong: ThesisDecisionInput = {
 const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 101 };
 
 describe("validateThesisDecision — accept paths", () => {
-  it("accepts a fully-specified LONG mint and computes R/R", () => {
+  it("accepts a fully-specified LONG mint, and reports no reward/risk (the house sets no target)", () => {
     const v = validateThesisDecision(validLong, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeCloseTo(2.5);
+    expect("riskReward" in v).toBe(false);
   });
 
   it("accepts a PASS with only rationale + horizon (no prices, no conviction)", () => {
@@ -58,20 +67,18 @@ describe("validateThesisDecision — accept paths", () => {
       {
         ...validLong,
         direction: "SHORT",
-        entry_price: 100,
-        target_price: 80,
-        stop_loss: 108,
+        triggers: levels(100, 108, 80, true),
       },
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeCloseTo(2.5);
+    expect("riskReward" in v).toBe(false);
   });
 
-  it("accepts omitted triggers (horizon defaults apply downstream)", () => {
+  it("a mint with no triggers is sent back: nothing is added for it (a stock has triggers and nothing else)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: undefined }, mintOpts);
-    expect(v.ok).toBe(true);
-    expect(v.decision?.triggers).toBeUndefined();
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toMatch(/can never come back/);
   });
 
   it("accepts a well-formed WATCHING trigger ladder (ENTER + REVIEW)", () => {
@@ -100,53 +107,34 @@ describe("validateThesisDecision — accept paths", () => {
   });
 });
 
-describe("validateThesisDecision — price ordering; the ratio is reported, not a floor", () => {
-  it("accepts a LONG under 2:1 and reports the ratio", () => {
+describe("validateThesisDecision — price ordering; no reward/risk is reported", () => {
+  it("accepts a LONG under 2:1; there is no ratio to report", () => {
     const v = validateThesisDecision(
-      { ...validLong, target_price: 115, stop_loss: 90 }, // 15/10 = 1.5
+      { ...validLong, triggers: levels(100, 90, 115) }, // 15/10 = 1.5
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeCloseTo(1.5);
+    expect("riskReward" in v).toBe(false);
   });
 
-  it("rejects inverted LONG ordering (stop above entry)", () => {
-    const v = validateThesisDecision(
-      { ...validLong, stop_loss: 105 },
-      mintOpts,
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("price ordering");
+  it("checks no order of the levels: each trigger means what it says (2026-11-16)", () => {
+    const v = validateThesisDecision({ ...validLong, triggers: levels(100, 105, 125) }, mintOpts);
+    expect(v.errors.join(" ")).not.toContain("ordering");
   });
 
-  it("accepts a priced plan with a buy and a floor and no target (ETN as read 2026-11-04: buy $410, floor $358.50); no ratio to report", () => {
-    const v = validateThesisDecision({ ...validLong, entry_price: 410, target_price: undefined, stop_loss: 358.5 }, mintOpts);
+  it("accepts a buy and a floor and no take-profit (ETN as read 2026-11-04: buy $410, floor $358.50)", () => {
+    const v = validateThesisDecision({ ...validLong, triggers: levels(410, 358.5) }, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeUndefined();
+    expect("riskReward" in v).toBe(false);
   });
 
-  it("a target, when given, still has to be positive and in order", () => {
-    expect(validateThesisDecision({ ...validLong, target_price: 0 }, mintOpts).errors.join(" ")).toContain("target_price: positive when given");
-    expect(validateThesisDecision({ ...validLong, target_price: 95 }, mintOpts).errors.join(" ")).toContain("price ordering");
-  });
-
-  it("rejects a half-priced plan (target + stop, no entry)", () => {
-    const v = validateThesisDecision(
-      { ...validLong, entry_price: undefined },
-      mintOpts,
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("entry_price");
-  });
 });
 
 describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHORT)", () => {
   const unpriced: ThesisDecisionInput = {
     ...validLong,
-    entry_price: undefined,
-    target_price: undefined,
-    stop_loss: undefined,
+    triggers: undefined,
     rationale: "Bullish into the January readout; entry to be priced after the data. Not a PASS.",
   };
 
@@ -165,21 +153,10 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeUndefined();
+    expect("riskReward" in v).toBe(false);
   });
 
-  it("refresh on a priced row: omitting the levels AND the triggers is refused — the plan would silently stay", () => {
-    const v = validateThesisDecision(unpriced, {
-      mode: "refresh",
-      existingStatus: "WATCHING",
-      currentPrice: 101,
-      existingTargetPrice: 130,
-    });
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("remove_trigger_ids");
-  });
-
-  it("refresh on a priced row: removing the plan triggers (and keeping a REVIEW wake) is accepted", () => {
+  it("refresh: taking the buy, floor and upside line off by id (and keeping a REVIEW wake) is accepted", () => {
     // FLIPPED 2026-09-09 (DAV-242): the set-down is ops by id, not a resent list.
     const v = validateThesisDecision(
       {
@@ -189,7 +166,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
           { predicate: { watch: "repeat", value: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
         ],
       },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101, existingTargetPrice: 130 },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101 },
     );
     expect(v.ok).toBe(true);
     expect(v.decision?.add_triggers).toHaveLength(1);
@@ -277,28 +254,35 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     action: "EXIT" as const,
     rationale: "stop",
   };
+  const stopWatching = { ...exitTrigger, action: "STOP_WATCHING" as const };
 
-  it("mint (no position): EXIT/TRIM/ADD are forbidden", () => {
-    const v = validateThesisDecision({ ...validLong, triggers: [exitTrigger] }, mintOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("no position exists");
+  it("mint (no position): TRIM/ADD and a sale are forbidden; a Stop watching line is legal", () => {
+    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, stopWatching] }, mintOpts).ok).toBe(true);
+    const trim = { predicate: { watch: "price", is: "above", value: 120 } as const, action: "TRIM" as const, rationale: "trim" };
+    for (const wrong of [trim, exitTrigger]) {
+      const v = validateThesisDecision({ ...validLong, triggers: [enterTrigger, wrong] }, mintOpts);
+      expect(v.ok).toBe(false);
+      expect(v.errors.join(" ")).toContain("no position exists");
+    }
+    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, exitTrigger] }, mintOpts).errors.join(" ")).toContain("Use ENTER, STOP_WATCHING");
   });
 
   // On a refresh the same rules run on `add_triggers` (DAV-242: a refresh
   // edits one trigger at a time; `triggers` is a mint-only argument).
   it("HOLDING refresh: adding an ENTER is forbidden", () => {
     const v = validateThesisDecision(
-      { ...validLong, add_triggers: [enterTrigger] },
+      { ...validLong, triggers: undefined, add_triggers: [enterTrigger] },
       { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
     );
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER triggers are forbidden");
+    expect(v.errors.join(" ")).toContain("ENTER and STOP_WATCHING triggers are forbidden");
   });
 
   it("HOLDING refresh: adding EXIT + REVIEW is legal", () => {
     const v = validateThesisDecision(
       {
         ...validLong,
+        triggers: undefined,
         add_triggers: [
           exitTrigger,
           {
@@ -313,13 +297,13 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     expect(v.ok).toBe(true);
   });
 
-  it("PROMOTED refresh (no live position): adding EXIT is forbidden, ENTER is legal", () => {
+  it("PROMOTED refresh (no live position): ENTER and a Stop watching line are legal", () => {
     const promotedOpts = { mode: "refresh" as const, existingStatus: "PROMOTED", currentPrice: 101 };
     expect(
-      validateThesisDecision({ ...validLong, add_triggers: [exitTrigger] }, promotedOpts).ok,
-    ).toBe(false);
+      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [stopWatching] }, promotedOpts).ok,
+    ).toBe(true);
     expect(
-      validateThesisDecision({ ...validLong, add_triggers: [enterTrigger] }, promotedOpts).ok,
+      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [enterTrigger] }, promotedOpts).ok,
     ).toBe(true);
   });
 
@@ -334,7 +318,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
 
   it("refresh: a level edit without a rationale is refused in the loop", () => {
     const v = validateThesisDecision(
-      { ...validLong, edit_triggers: [{ id: "floor", value: 95 }] },
+      { ...validLong, triggers: undefined, edit_triggers: [{ id: "floor", value: 95 }] },
       { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
     );
     expect(v.ok).toBe(false);
@@ -392,7 +376,6 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       mode: "refresh",
       existingStatus: "WATCHING",
       currentPrice: 101,
-      existingTargetPrice: 130,
     });
     expect(v.ok).toBe(true);
   });
@@ -405,11 +388,12 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
     const v = validateThesisDecision(
       {
         ...validLong,
+        triggers: undefined,
         add_triggers: [
           { predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "hygiene" },
         ],
       },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90, existingTargetPrice: 130 },
+      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90 },
     );
     expect(v.ok).toBe(true);
   });
@@ -495,7 +479,7 @@ describe("validateThesisDecision — a view with no setup yet is a watch, not a 
   it("the PASS it sent with its reviews is sent back as the watch it described", () => {
     const v = validateThesisDecision(sndk, pead);
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/send your direction \(LONG or SHORT\) with no entry, stop or target, and keep these triggers/);
+    expect(v.errors.join(" ")).toMatch(/send your direction \(LONG or SHORT\) with no buy, and keep these triggers/);
   });
 
   it("the same view as a LONG with no levels and no setup is accepted: the setup prices a view, it never decides one", () => {
@@ -504,12 +488,12 @@ describe("validateThesisDecision — a view with no setup yet is a watch, not a 
     expect(v.ok).toBe(true);
   });
 
-  it("a priced plan still names its setup", () => {
+  it("a priced plan with no setup named is accepted: a buy may be saved with no playbook", () => {
     const v = validateThesisDecision(
-      { ...sndk, direction: "LONG", entry_price: 1270, stop_loss: 1170, stop_basis: "A close under $1,170 would mean the repair failed; 1 ATR under the 200-day." } as ThesisDecisionInput,
+      { ...sndk, direction: "LONG", triggers: [...(sndk.triggers ?? []), ...levels(1270, 1170)] } as ThesisDecisionInput,
       pead,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/setup_id: required on a priced plan/);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 });

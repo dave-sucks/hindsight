@@ -13,7 +13,7 @@
  *     them is a plan nobody chose. The note lands.
  */
 import fixture from "@/lib/agent/__fixtures__/close-out-restated-2026-10-08.json";
-import { replayTool, thesisRow, positionRow, thesisUpdateRow, REPLAY_RUN_ID, type Row } from "@/lib/replay";
+import { replayTool, thesisRow, positionRow, thesisUpdateRow, REPLAY_RUN_ID, type Row, triggerSentences } from "@/lib/replay";
 
 type Refused = Array<{ field: string; reason: string }>;
 const refusedOf = (r: { result: { data?: Record<string, unknown> } }) => (r.result.data?.refused_fields as Refused | undefined) ?? [];
@@ -57,7 +57,6 @@ describe("the principal's hand edit wins", () => {
   const thesis = () =>
     thesisRow({
       id: "t_asml", ticker: "ASML", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER",
-      entryPrice: 1716.09, targetPrice: 2600, stopLoss: 1835,
       triggers: [
         { id: "floor-asml", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 1835 }, rationale: "The floor." },
         { id: TGT, action: "REVIEW", source: "PRINCIPAL", predicate: { watch: "price", is: "above", value: 2600 }, rationale: "Target $2600 — decide here." },
@@ -66,7 +65,7 @@ describe("the principal's hand edit wins", () => {
   const handEdit = (at: Date) =>
     thesisUpdateRow({
       id: "hand", thesisId: "t_asml", type: "UPDATED", runId: null, timestamp: at, rationale: "Raised the target.",
-      fieldChanges: { source: { from: null, to: "USER" }, triggerOps: { from: null, to: [{ op: "edit", id: TGT, text: "Target $2400 → $2600" }] }, targetPrice: { from: 2400, to: 2600 } },
+      fieldChanges: { source: { from: null, to: "USER" }, triggerOps: { from: null, to: [{ op: "edit", id: TGT, text: "Target $2400 → $2600" }] } },
     });
   const replay = (args: Record<string, unknown>, opts: { editedAt?: Date; runMode?: string } = {}) =>
     replayTool("update-thesis", "updateThesis", {
@@ -81,58 +80,50 @@ describe("the principal's hand edit wins", () => {
       quotes: { ASML: 1800 },
     });
 
-  it("the run's older target is refused by name; the note lands and the hand edit stands", async () => {
-    const r = await replay({ target_price: 2400 });
-    expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([{ field: "target_price", reason: expect.stringMatching(/^You set this by hand at \d{1,2}:\d{2} [AP]M ET; not changed\.$/) }]);
-    expect(r.db.store.thesis[0].targetPrice).toBe(2600);
-    expect(notAppliedOf(written(r.db)[0])).toEqual([expect.objectContaining({ field: "target_price", to: 2400, why: expect.stringMatching(/^you set it by hand at /) })]);
-  });
-
   it("a trigger edit by id on the hand-edited trigger is refused by id", async () => {
     const r = await replay({ edit_triggers: [{ id: TGT, level: 2500, rationale: "Trim the target to the prior high." }] });
     expect(opsOf(r)).toEqual([expect.objectContaining({ op: "edit", id: TGT, ok: false, reason: expect.stringMatching(/^You set this by hand/) })]);
-    expect(r.db.store.thesis[0].targetPrice).toBe(2600);
+    expect(triggerSentences(r.db.store.thesis[0])).toContain("Review if above $2600");
   });
 
   it("a hand edit made before the run began is not protected", async () => {
-    const r = await replay({ target_price: 2400 }, { editedAt: minutesAgo(45) });
+    const r = await replay({ edit_triggers: [{ id: TGT, value: 2400, rationale: "Back to the prior high at $2400." }] }, { editedAt: minutesAgo(45) });
     expect(refusedOf(r)).toEqual([]);
-    expect(r.db.store.thesis[0].targetPrice).toBe(2400);
+    expect(triggerSentences(r.db.store.thesis[0])).toContain("Review if above $2400");
   });
 
   it("the chat is the principal's own door and is not checked", async () => {
-    const r = await replay({ target_price: 2400 }, { runMode: "PRINCIPAL_CHAT" });
+    const r = await replay({ edit_triggers: [{ id: TGT, value: 2400, rationale: "Back to the prior high at $2400." }] }, { runMode: "PRINCIPAL_CHAT" });
     expect(refusedOf(r)).toEqual([]);
-    expect(r.db.store.thesis[0].targetPrice).toBe(2400);
+    expect(triggerSentences(r.db.store.thesis[0])).toContain("Review if above $2400");
   });
 });
 
-describe("the plan check refuses a call's trigger changes together", () => {
-  const watch = () =>
+describe("the ladder check refuses a call's trigger changes together", () => {
+  // A stock we own: its sale and its upside review. A buy can't sit on it (validateEnterTriggerRequired).
+  const holding = () =>
     thesisRow({
-      id: "t_w", ticker: "AAA", status: "WATCHING", direction: "LONG", entryPrice: 100, targetPrice: 130, stopLoss: 90,
+      id: "t_h", ticker: "AAA", status: "HOLDING", direction: "LONG",
       triggers: [
-        { id: "buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "Buy the pullback to $100." },
-        { id: "tgt", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "above", value: 130 }, rationale: "Target $130." },
-        { id: "flr", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Floor $90." },
+        { id: "tgt", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "above", value: 130 }, rationale: "Look again at $130." },
+        { id: "flr", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Sell if below $90." },
       ],
     });
   const replay = (args: Record<string, unknown>) =>
     replayTool("update-thesis", "updateThesis", {
-      seed: { thesis: [watch()] },
-      args: { thesis_id: "t_w", rationale: "Tightening the plan after the base formed.", price_at_time: 104, ...args },
+      seed: { thesis: [holding()], position: [positionRow({ symbol: "AAA", avgCost: 100, quantity: 5 })] },
+      args: { thesis_id: "t_h", rationale: "Pressing the winner after the base formed.", price_at_time: 104, ...args },
       ctx: { runMode: "MORNING_PLAN" },
       quotes: { AAA: 104 },
     });
   const review = { predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Look at this every 14 days." };
+  const buy = { predicate: { watch: "price", is: "above", value: 106 }, action: "ENTER", rationale: "Buy the breakout above $106." };
 
-  it("a stop above the buy and a review added with it: both refused, the plan unchanged, the note lands", async () => {
-    const r = await replay({ stop_loss: 105, stop_basis: "Under the new shelf at $105.", add_triggers: [review] });
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To set the plan down") })]);
+  it("a buy on a stock we own and a review added with it: both refused, the triggers unchanged, the note lands", async () => {
+    const r = await replay({ add_triggers: [buy, review] });
+    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To take them all off") })]);
     expect(opsOf(r).every((o) => !o.ok)).toBe(true);
-    expect(r.db.store.thesis[0].stopLoss).toBe(90);
-    expect((r.db.store.thesis[0].triggers as Array<{ predicate: { watch: string } }>).some((t) => t.predicate.watch === "repeat")).toBe(false);
-    expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED", rationale: "Tightening the plan after the base formed." })]);
+    expect(triggerSentences(r.db.store.thesis[0])).toEqual(["Review if above $130", "Sell if below $90"]);
+    expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED", rationale: "Pressing the winner after the base formed." })]);
   });
 });

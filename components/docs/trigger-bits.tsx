@@ -18,6 +18,8 @@ export interface PillSpec {
   level?: "THESIS" | "ANALYST" | "ACCOUNT";
   /** Its On fire; unset reads as the action's default. */
   fireMode?: FireMode;
+  /** A trim's size; unset is half. */
+  trimPct?: number;
 }
 
 function asTrigger(p: PillSpec, i: number): Trigger {
@@ -30,6 +32,7 @@ function asTrigger(p: PillSpec, i: number): Trigger {
     level,
     inherited: level !== "THESIS",
     fireMode: p.fireMode,
+    trimPct: p.trimPct,
   };
 }
 
@@ -42,7 +45,7 @@ export function ExamplePill({ spec, index = 0, held = true }: { spec: PillSpec; 
 export function PillRow({ action, specs, held = true }: { action: TriggerAction; specs: readonly PillSpec[]; held?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-      <span className="w-16 shrink-0 whitespace-nowrap text-sm text-muted-foreground">{rowLabel(action, held)}</span>
+      <span className="w-16 shrink-0 whitespace-nowrap text-sm text-muted-foreground">{rowLabel(action)}</span>
       {specs.map((s, i) => (
         <ExamplePill key={i} spec={s} index={i} held={held} />
       ))}

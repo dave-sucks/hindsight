@@ -1,15 +1,15 @@
 /**
  * The five-minute check on a paused analyst's stocks. Production rows: Momentum Breakout (paused) held MRVL
  * 13 @ $293.98 with a $256.50 floor (now Send to Agent). Before this, the check skipped every stock of a
- * paused analyst, so that floor would never fire. Now a held stock's sales are checked and nothing else is,
- * and a sale flagged for the morning run goes out now, since a paused analyst has no morning run.
+ * paused analyst, so that floor would never fire. Now a held stock's sales are checked and nothing else is.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 
 const AT = new Date("2026-10-22T15:00:00Z"); // 11:00 ET, a Thursday
 const MOMENTUM = "cmmofy6t3000004l7858o1xma";
 const FLOOR = { id: "22efb89a-f05c-4b5a-97ab-ec40a4abc244", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256.5 }, rationale: "Tight stop at $256.5. Trade-horizon — get out fast on invalidation.", cooldownDays: 0 };
-const LOOK = { id: "look-260", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 260 }, rationale: "A look under $260.", cooldownDays: 1 };
+// The quote closed at $256 and trades $255.90, so a look under $256 crosses today.
+const LOOK = { id: "look-256", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256 }, rationale: "A look under $256.", cooldownDays: 1 };
 
 async function pass(opts: { enabled: boolean; held: Record<string, unknown>[]; watched?: Record<string, unknown>[] }, price: number) {
   const run = { agentConfigId: MOMENTUM, agentConfig: { name: "Momentum Breakout", setupIds: [], enabled: opts.enabled } };
@@ -60,13 +60,7 @@ describe("the five-minute check, paused analyst", () => {
     expect(await pass({ enabled: false, held: [FLOOR, LOOK], watched: [{ ...LOOK, id: "panw-look" }] }, 255.9)).toEqual({ events: [FLOOR.id], firedRows: [] });
   });
 
-  it("a sale flagged for the morning run goes out now: there is no morning run", async () => {
-    const flagged = { ...FLOOR, fireMode: "NEXT_MORNING" };
-    expect(await pass({ enabled: false, held: [flagged] }, 255.9)).toEqual({ events: [FLOOR.id], firedRows: [] });
-  });
-
-  it("under an active analyst the same flagged sale still waits for the morning run, and the review fires", async () => {
-    const flagged = { ...FLOOR, fireMode: "NEXT_MORNING" };
-    expect(await pass({ enabled: true, held: [flagged, LOOK] }, 255.9)).toEqual({ events: [LOOK.id], firedRows: [FLOOR.id] });
+  it("under an active analyst the review is checked too, and both go to the trigger run", async () => {
+    expect(await pass({ enabled: true, held: [FLOOR, LOOK] }, 255.9)).toEqual({ events: [FLOOR.id, LOOK.id].sort(), firedRows: [] });
   });
 });

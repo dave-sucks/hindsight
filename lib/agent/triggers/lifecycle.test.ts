@@ -3,7 +3,7 @@
  *
  * Every question the principal asked before merging, as an assertion:
  *
- *   a stock is minted with a buy price, a target and a floor
+ *   a stock is minted with a buy, a floor and a take-profit
  *     -> are those three real triggers, and do the displayed numbers match?
  *   the price hits one
  *     -> does it fire, and does the right thing happen for held vs watched?
@@ -15,18 +15,20 @@
  *   the analyst wants to move a level
  *     -> does the thing that fires move with the number on screen?
  *
+ * A stock has triggers and nothing else (2026-11-16): the analyst writes
+ * each of them, and edits one by its id.
+ *
  * These run against the same functions the app uses. Nothing is mocked
  * except the clock.
  */
 
-import { canonicalLevels, applyLevelArgs } from "./price-levels";
+import { priceLines, typedPriceOf } from "./price-levels";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { resolveLadder } from "./levels";
-import { effectiveTriggerAction } from "./types";
+import { sentenceOf } from "./condition";
+import { applyTriggerOps, type TriggerOp } from "./ops";
 import { evaluateTrigger } from "./evaluate";
 import {
-  defaultTriggersForHorizon,
-  CADENCE_DAYS_BY_HORIZON,
   reviewCadenceTrigger,
   derivedNextReviewAt,
 } from "./defaults";
@@ -35,53 +37,26 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 /** The lead: the first entry on the stock's list, null when nothing is true. */
 const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "./types";
-import type { ResolvedTrigger } from "./levels";
 import type { When } from "@/lib/agent/triggers/condition";
 
 const NOW = new Date("2026-08-25T14:00:00Z");
-const asResolved = (ts: Trigger[]): ResolvedTrigger[] =>
-  ts.map((t) => ({ ...t, level: "THESIS" as const, inherited: false }));
 
-// The plan an analyst writes: buy at 100, take profit at 150, wrong below 90.
-const PLAN = { entryPrice: 100, targetPrice: 150, stopLoss: 90 };
+// What an analyst writes: buy at 100, look again at 150, wrong below 90.
+const written = (): Trigger[] => [
+  { id: "buy", predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "I buy the breakout above $100." },
+  { id: "floor", predicate: { watch: "price", is: "below", value: 90 }, action: "EXIT", rationale: "Below $90 the base has failed." },
+  { id: "upside", predicate: { watch: "price", is: "above", value: 150 }, action: "REVIEW", rationale: "At $150 I take profit or let it run." },
+];
 
-describe("1. minting a stock with a plan", () => {
-  const minted = defaultTriggersForHorizon(
-    "TARGET",
-    { ...PLAN, direction: "LONG" },
-    "WATCHING",
-  );
+describe("1. minting a stock", () => {
+  const minted = written();
 
-  it("turns all three prices into triggers", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "WATCHING",
-    });
-    expect(levels.entry?.price).toBe(100);
-    expect(levels.target?.price).toBe(150);
-    expect(levels.floor?.price).toBe(90);
-  });
-
-  it("keeps the buy price and the target as SEPARATE things", () => {
-    // They were conflated once: the buy trigger read targetPrice, so the
-    // analyst would buy at the take-profit level (MDB, 2026-05-25).
-    const buy = minted.find((t) => t.action === "ENTER");
-    expect(buy?.predicate).toEqual({ watch: "price", is: "above", value: 100 });
-    expect(buy?.predicate).not.toEqual({ watch: "price", is: "above", value: 150 });
-  });
-
-  it("shows the same numbers on the card as it will fire on", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "WATCHING",
-    });
-    expect(levels.columns).toEqual({
-      entryPrice: 100,
-      targetPrice: 150,
-      stopLoss: 90,
-    });
+  it("its buy, floor and take-profit are three triggers and nothing else: the chart draws each as its own sentence", () => {
+    expect(priceLines(minted).map((l) => [l.price, l.says])).toEqual([
+      [90, "Sell if below $90"],
+      [100, "Buy if above $100"],
+      [150, "Review if above $150"],
+    ]);
   });
 });
 
@@ -105,74 +80,32 @@ describe("2. the price reaches a level", () => {
   });
 });
 
-describe("3. what happens depends on whether we own it", () => {
-  const floor = { action: "EXIT" as const, predicate: { watch: "price", is: "below", value: 90 } };
-  const target = { action: "REVIEW" as const, predicate: { watch: "price", is: "above", value: 150 } };
-  const buy = { action: "ENTER" as const, predicate: { watch: "price", is: "above", value: 100 } };
-  const held = { status: "HOLDING", direction: "LONG" };
-  const watched = { status: "WATCHING", direction: "LONG" };
+describe("3. each trigger says what it does, whether we own the stock or not", () => {
+  const [buy, floor, upside] = written();
 
-  it("held + floor broken -> sell", () => {
-    expect(effectiveTriggerAction(floor, held)).toBe("EXIT");
+  it("a sale sells, the upside review asks, the buy buys", () => {
+    expect(sentenceOf(floor)).toBe("Sell if below $90");
+    expect(sentenceOf(upside)).toBe("Review if above $150");
+    expect(sentenceOf(buy)).toBe("Buy if above $100");
   });
-  it("held + target reached -> wake a decision, never an auto-sell", () => {
-    expect(effectiveTriggerAction(target, held)).toBe("REVIEW");
-  });
-  it("watched + floor broken -> set the plan down (the plan was wrong)", () => {
-    expect(effectiveTriggerAction(floor, watched)).toBe("DEMOTE");
-  });
-  it("watched + target reached -> set the plan down (it ran without us)", () => {
-    expect(effectiveTriggerAction(target, watched)).toBe("DEMOTE");
-  });
-  it("watched + buy level hit -> buy", () => {
-    expect(effectiveTriggerAction(buy, watched)).toBe("ENTER");
+  it("a watch ends on its own Stop watching line (stop-watching.ts retires the thesis), never on a sale", () => {
+    expect(sentenceOf({ ...floor, action: "STOP_WATCHING" })).toBe("Stop watching if below $90");
   });
 });
 
 describe("4. we buy it", () => {
-  it("entry becomes what we PAID, not what we planned", () => {
-    const minted = defaultTriggersForHorizon(
-      "TARGET",
-      { ...PLAN, direction: "LONG" },
-      "HELD",
-    );
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42, // filled above the planned 100
-    });
-    expect(levels.entry?.price).toBe(103.42);
-    expect(levels.columns.entryPrice).toBe(103.42);
+  const held = written().filter((t) => t.action !== "ENTER");
+
+  it("the buy is gone: what we paid is the position's, never a trigger's", () => {
+    expect(held.some((t) => t.action === "ENTER")).toBe(false);
   });
 
-  it("still protects and still has somewhere to go", () => {
-    const minted = defaultTriggersForHorizon(
-      "TARGET",
-      { ...PLAN, direction: "LONG" },
-      "HELD",
-    );
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-    });
-    expect(levels.floor?.price).toBe(90);
-    expect(levels.target?.price).toBe(150);
+  it("keeps the floor it had and still has somewhere to go", () => {
+    expect(priceLines(held).map((l) => l.says)).toEqual(["Sell if below $90", "Review if above $150"]);
   });
 });
 
 describe("5. the review cadence", () => {
-  it("matches the strategy, not one number for everything", () => {
-    expect(CADENCE_DAYS_BY_HORIZON).toEqual({
-      CATALYST: 1,
-      TRADE: 1,
-      TARGET: 7,
-      COMPOUNDER: 30,
-    });
-  });
-
   it("brings a thesis up once its interval has passed", () => {
     const cadence = reviewCadenceTrigger(7).predicate;
     const since = (days: number) => ({
@@ -218,78 +151,39 @@ describe("5. the review cadence", () => {
   });
 });
 
-describe("6. the analyst changes its mind", () => {
-  const mint = () =>
-    defaultTriggersForHorizon("TARGET", { ...PLAN, direction: "LONG" }, "HELD");
+describe("6. the analyst changes its mind, one trigger by its id", () => {
+  const held = () => written().filter((t) => t.action !== "ENTER");
+  const edit = (stored: Trigger[], ops: TriggerOp[], status: string) => {
+    const out = applyTriggerOps({ stored, ops, direction: "LONG", status, actor: "AGENT", mintId: () => "new" });
+    const price = (id: string) => { const t = out.triggers.find((x) => x.id === id); return t ? typedPriceOf(t) : null; };
+    return { triggers: out.triggers, buy: price("buy"), upside: price("upside"), floor: price("floor") };
+  };
 
-  it("raising the target moves the thing that fires, not just the label", () => {
-    const out = applyLevelArgs({
-      stored: mint(),
-      levels: { target: 180 },
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-      mintId: () => "new",
-    });
-    expect(out.columns.targetPrice).toBe(180);
-    const fires = canonicalLevels({
-      triggers: asResolved(out.triggers),
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-    });
-    expect(fires.target?.price).toBe(180);
+  it("raising the upside level moves the thing that fires, not just the label", () => {
+    const out = edit(held(), [{ op: "edit", id: "upside", value: 180, rationale: "The Street raised its average to $180." }], "HOLDING");
+    expect(out.upside).toBe(180);
   });
 
   it("tightening the floor moves the thing that fires", () => {
-    const out = applyLevelArgs({
-      stored: mint(),
-      levels: { floor: 98 },
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-      mintId: () => "new",
-    });
-    expect(out.columns.stopLoss).toBe(98);
+    const out = edit(held(), [{ op: "edit", id: "floor", value: 98, rationale: "Under the new base at $98." }], "HOLDING");
+    expect(out.floor).toBe(98);
     expect(
       evaluateTrigger(
-        { watch: "price", is: "below", value: out.columns.stopLoss! },
+        { watch: "price", is: "below", value: out.floor! },
         { latestQuote: { price: 97, changePct: 0 }, thesis: { createdAt: NOW }, now: NOW },
       ),
     ).toBe(true);
   });
 
-  it("re-pricing the buy level on a watch item moves it", () => {
-    const watching = defaultTriggersForHorizon(
-      "TARGET",
-      { ...PLAN, direction: "LONG" },
-      "WATCHING",
-    );
-    const out = applyLevelArgs({
-      stored: watching,
-      levels: { entry: 92 },
-      direction: "LONG",
-      status: "WATCHING",
-      mintId: () => "new",
-    });
-    expect(out.columns.entryPrice).toBe(92);
+  it("re-pricing the buy on a watch item moves it", () => {
+    const out = edit(written(), [{ op: "edit", id: "buy", value: 92, rationale: "The pullback to the 50-day at $92." }], "WATCHING");
+    expect(out.buy).toBe(92);
     expect(out.triggers.filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 
-  it("dropping a level from a resent list clears the number too", () => {
-    // update_thesis replaces the whole trigger list. A level the agent
-    // forgot to resend must not linger on screen as protection.
-    const out = applyLevelArgs({
-      stored: mint().filter(
-        (t) => !(t.action === "EXIT" && shapeName(t.predicate) === "price:below"),
-      ),
-      levels: {},
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-    mintId: () => "new",
-    });
-    expect(out.columns.stopLoss).toBeNull();
+  it("removing the floor clears the number too", () => {
+    const out = edit(written(), [{ op: "remove", id: "floor" }, { op: "remove", id: "buy" }], "WATCHING");
+    expect(out.floor).toBeNull();
   });
 });
 
@@ -304,30 +198,18 @@ describe("7. the review date the rest of the app reads", () => {
   const days = (d: Date) =>
     Math.round((d.getTime() - reviewed.getTime()) / 86_400_000);
 
-  it("moves forward when a thesis is reviewed", () => {
-    expect(nextReviewFrom(reviewed, [], "TARGET").getTime()).toBeGreaterThan(
-      reviewed.getTime(),
-    );
+  const clock = [{ predicate: { watch: "repeat", value: 3 } }];
+
+  it("moves forward when a thesis is reviewed — never a date in the past (the overdue-forever bug)", () => {
+    expect(nextReviewFrom(reviewed, clock).getTime()).toBeGreaterThan(reviewed.getTime());
   });
 
-  it("uses the thesis's own cadence when it has one", () => {
-    const own = [{ predicate: { watch: "repeat", value: 3 } }];
-    expect(days(nextReviewFrom(reviewed, own, "COMPOUNDER"))).toBe(3);
+  it("uses the clock on the ladder it is given", () => {
+    expect(days(nextReviewFrom(reviewed, clock))).toBe(3);
   });
 
-  it("falls back to the horizon, which is what it would inherit anyway", () => {
-    expect(days(nextReviewFrom(reviewed, [], "CATALYST"))).toBe(1);
-    expect(days(nextReviewFrom(reviewed, [], "TRADE"))).toBe(1);
-    expect(days(nextReviewFrom(reviewed, [], "TARGET"))).toBe(7);
-    expect(days(nextReviewFrom(reviewed, [], "COMPOUNDER"))).toBe(30);
-  });
-
-  it("never returns a date in the past — the overdue-forever bug", () => {
-    for (const h of ["CATALYST", "TRADE", "TARGET", "COMPOUNDER"] as const) {
-      expect(nextReviewFrom(reviewed, [], h).getTime()).toBeGreaterThan(
-        reviewed.getTime(),
-      );
-    }
+  it("with no clock on the ladder there is no review date: nothing comes from the horizon", () => {
+    expect(nextReviewFrom(reviewed, [])).toBeNull();
   });
 
   it("shows no review date on a watch item with no cadence of its own", () => {
@@ -340,7 +222,6 @@ describe("7. the review date the rest of the app reads", () => {
         lastReviewedAt: null,
         createdAt: new Date("2026-08-01"),
         triggers: [],
-        horizon: "TARGET",
       }),
     ).toBeNull();
   });
@@ -353,23 +234,15 @@ describe("7. the review date the rest of the app reads", () => {
           lastReviewedAt: reviewed,
           createdAt: new Date("2026-08-01"),
           triggers: [reviewCadenceTrigger(7)],
-          horizon: "TARGET",
         }),
       ).toBeNull();
     }
   });
 
-  it("a held row falls back to the horizon when the caller only has raw triggers", () => {
-    // The account's inherited cadence isn't in the raw column; the horizon
-    // fallback hands back the same number the account rule would.
-    const due = derivedNextReviewAt({
-      status: "HOLDING",
-      lastReviewedAt: reviewed,
-      createdAt: new Date("2026-08-01"),
-      triggers: [],
-      horizon: "TARGET",
-    });
-    expect(days(due!)).toBe(CADENCE_DAYS_BY_HORIZON.TARGET);
+  it("a held row with no clock on its ladder has no review date; the account's inherited clock is on the resolved ladder", () => {
+    const held = { status: "HOLDING", lastReviewedAt: reviewed, createdAt: new Date("2026-08-01") };
+    expect(derivedNextReviewAt({ ...held, triggers: [] })).toBeNull();
+    expect(days(derivedNextReviewAt({ ...held, triggers: [reviewCadenceTrigger(7)] })!)).toBe(7);
   });
 });
 
@@ -392,7 +265,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
     new Date(mintedAt.getTime() + d * 86_400_000);
 
   it("shows its first-research date: createdAt + the 7-day seed cadence", () => {
-    expect(derivedNextReviewAt({ ...seed, horizon: null })).toEqual(
+    expect(derivedNextReviewAt(seed)).toEqual(
       daysLater(7),
     );
   });

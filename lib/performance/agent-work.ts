@@ -14,7 +14,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
-import { CATEGORIES, MODE_LABEL, SITUATION_CATEGORY, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
+import { CATEGORIES, MERGED_CODE, MODE_LABEL, SITUATION_CATEGORY, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
 import { conditionsOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import { marketHolidays } from "@/lib/market-hours";
@@ -30,8 +30,9 @@ export const THREAD_SHAPE = {
   codes: "situations",
 } as const;
 
-export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Plan taken down";
+export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Stopped watching";
 const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
+// The three level keys are on audit rows written before the level columns went (2026-11-16).
 const PLAN_KEYS = ["entryPrice", "stopLoss", "targetPrice", "status", "direction", "retiredReason", "catalystDate"];
 const RESEARCH_KEYS = ["researchData", "bullCase", "bearCase", "fundamentals", "coreBelief", "keyAssumptions", "invalidationConds", "variantView", "snapshot", "scoring"];
 
@@ -123,7 +124,7 @@ const ACTION_WORDS: Record<string, string> = { EXIT: "Sell", TRIM: "Trim", ADD: 
 export function fireAction(u: Pick<UpdateRow, "triggerAction" | "summary">): string {
   if (u.triggerAction) return u.triggerAction;
   const s = u.summary ?? "";
-  if (s.startsWith("Sell") || s.includes("plan set down")) return "EXIT";
+  if (s.startsWith("Sell") || s.startsWith("Stop watching") || s.includes("plan set down")) return "EXIT";
   const hit = Object.entries(ACTION_WORDS).find(([, w]) => s.startsWith(w));
   return hit?.[0] ?? "REVIEW";
 }
@@ -156,21 +157,18 @@ export function levelOf(u: Pick<UpdateRow, "triggerId">, t: ThesisRow | undefine
 }
 
 export function fireModeOf(u: Pick<UpdateRow, "runId" | "summary">, run: RunRow | undefined): FireMode {
-  if ((u.summary ?? "").includes("plan set down")) return "Plan taken down";
+  // A sale line on a watch retires it with no run (before 2026-11-16 it took the buy off: "plan set down").
+  const s = u.summary ?? "";
+  if (!u.runId && (s.startsWith("Stop watching") || s.includes("plan set down"))) return "Stopped watching";
   if (!u.runId) return "Flag for Review";
   return run?.auto ? "Auto" : "Send to Agent";
 }
 
-/** A trigger run's situation, from what fired: the code the morning read would have given it. */
-export function triggerRunCode(run: RunRow, condition: unknown): SituationCode {
-  if (run.auto) return "AUTO_TRADE";
+/** A trigger run's situation, by what fired: its action's (an Auto trade's write-up too). */
+export function triggerRunCode(run: Pick<RunRow, "action">): SituationCode {
   if (run.action === "EXIT" || run.action === "TRIM") return "PROTECTIVE_SALE";
   if (run.action === "ENTER") return "BUY_ARRIVES";
   if (run.action === "ADD") return "ADD_OR_WINNER";
-  const w = shapeOf(condition);
-  const watched = w ? conditionsOf(w).map((c) => c.watch as string) : [];
-  if (watched.some((x) => x === "report" || x === "surprise")) return "EARNINGS";
-  if (watched.some((x) => x === "filing" || x === "insiders")) return "FILING";
   return "REVIEW_DUE";
 }
 
@@ -273,15 +271,16 @@ export function buildAgentWork(raw: Raw, opts: { days: RangeDays; analystId: str
   const morning = raw.runs.filter((r) => r.mode === "MORNING_PLAN");
 
   // Situations: the work list (and sold stocks) of each morning read, with what the run did.
-  const work = raw.reads.filter((x) => (x.list === "work" || x.list === "sold") && x.thesisId).map((x) => {
+  // A thread saved before the merge carries the old codes; each counts as the one it is now.
+  const reads = raw.reads.map((x) => ({ ...x, codes: [...new Set(x.codes.map((c) => MERGED_CODE[c] ?? c))] }));
+  const work = reads.filter((x) => (x.list === "work" || x.list === "sold") && x.thesisId).map((x) => {
     const run = ix.run.get(x.runId);
     return { ...x, thesisId: x.thesisId as string, date: run ? etDateOf(run.createdAt) : "", analyst: name.get(run?.analystId ?? "") ?? "", outcome: outcomeOf(x.runId, x.thesisId as string, ix).outcome };
   });
-  const quiet = raw.reads.filter((x) => x.list === "quiet");
+  const quiet = reads.filter((x) => x.list === "quiet");
   const tactical = raw.runs.filter((r) => r.mode === "INTRADAY_TACTICAL");
-  const fireOfRun = new Map(raw.updates.filter((u) => u.type === "TRIGGER_FIRED" && u.runId).map((u) => [u.runId as string, u]));
   const runCodes: Counts = {};
-  for (const r of tactical) bump(runCodes, triggerRunCode(r, fireOfRun.get(r.id)?.condition));
+  for (const r of tactical) bump(runCodes, triggerRunCode(r));
   const codes = (Object.keys(SITUATIONS) as SituationCode[]).map((code) => {
     const rows = work.filter((x) => x.codes.includes(code));
     const out: Counts = {};

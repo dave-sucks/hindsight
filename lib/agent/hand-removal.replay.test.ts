@@ -53,7 +53,9 @@ const cleanup = line((u) => u.summary.startsWith("Removed a copied rule from ABT
 describe("the fixture is the production case", () => {
   it("the predicates rebuilt from the reads say what the reads said", () => {
     for (const t of [...fx.at.morning1007.triggers, ...fx.at.morning1008.triggers, fx.removedBuy]) {
-      expect(sentenceOf(t as never, false)).toBe(t.says); // ABT was watched
+      // ABT was watched: its sale line, stored as a sale, read "Take the plan down" until 2026-11-16; the 11-16 migration stores it as STOP_WATCHING.
+      const migrated = t.action === "EXIT" ? { ...t, action: "STOP_WATCHING" } : t;
+      expect(sentenceOf(migrated as never)).toBe(t.says.replace("Take the plan down if", "Stop watching if"));
     }
     expect(fx.removedBuy.says).toBe(REMOVED_BUY);
   });

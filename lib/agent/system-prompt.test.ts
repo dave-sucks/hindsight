@@ -25,14 +25,14 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a plan check, not refused", () => {
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Set the plan down:");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("A buy left as a note comes back on the next morning run");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it: it comes back as a plan check.");
+  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a mistake, not refused", () => {
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Take the buy off:");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it.");
+    // Plan checks were deleted (2026-11-13): no text points at one.
+    expect(SITUATIONS.BUY_ARRIVES.guidance).not.toMatch(/plan.check/);
     expect(prompt).not.toContain("a fired buy is a decision with two answers");
   });
-  it("a plan check is answered by PLAN_PROBLEM's guidance; the prompt no longer restates the checks", () => {
-    expect(SITUATIONS.PLAN_PROBLEM.guidance).toContain("nothing that can bring it back");
+  it("the prompt does not restate the deleted plan checks", () => {
     expect(prompt).not.toContain("give it a wake, or let it go");
   });
   it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
@@ -48,7 +48,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     // The setup's checklist and the filing's reading are guidance now.
     expect(SITUATIONS.REVIEW_DUE.guidance).toContain("The `setup` line: its failure signs, the manage rule, the time limit.");
-    expect(SITUATIONS.FILING.guidance).toContain("Read it first");
+    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("If it watches a filing: read the document first");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
   });
 });
@@ -61,7 +61,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
   const withBook = (symbols: string[]) =>
     ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
 
-  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is BUY_BLOCKED_FULL's", () => {
+  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is the buy's paragraph on a full analyst", () => {
     const p = buildDailyRunSystemPromptV2(
       { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
@@ -69,7 +69,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
     expect(p).not.toContain("**This analyst is full.**");
-    expect(SITUATIONS.BUY_BLOCKED_FULL.guidance).toContain("Or say it waits for a free slot, and why.");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("or say it waits for a free slot, and why.");
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {

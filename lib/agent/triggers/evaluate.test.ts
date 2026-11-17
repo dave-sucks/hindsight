@@ -895,7 +895,7 @@ describe("shouldFire — a buy fires on the crossing, a sell is a standing order
   it("ENTER does NOT fire while the price merely sits past the level", () => {
     // The PLTR shape: 33% above entry for weeks. Yesterday closed above
     // the level too, so nothing crossed — this is not a buy signal, it is
-    // a plan the price has left behind (plan-sanity's job, not the cron's).
+    // a plan the price has left behind (the stock's review's, not the cron's).
     expect(shouldFire(enterRung, at(171, day1, 170))).toMatchObject({
       fires: false,
       reason: "no-crossing",

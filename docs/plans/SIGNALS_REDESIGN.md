@@ -122,7 +122,6 @@ leaves a dashboard ghost until manual re-sync) when touching function ids.
 | Discovery run (Sunday) | `lib/inngest/functions/discovery-run.ts` | **PAUSED** (explicit principal decision — do not assume unpausing) | Weekly per-analyst scan of routed pool → mints WATCHING theses | gpt-5.4, 45 steps — was part of the ~$15/day complaint |
 | xAI twitter_search | `lib/intelligence/xai-live-search.ts` + `lib/agent/tools/twitter-search.ts` | LIVE (pull tool; principal + discovery allowlists) | Grok Live Search over X, handle-attributed | per-call, operator/agent-invoked; grok-4-fast-reasoning, ~$0.01-0.05/call |
 | web_search (agent tool) | `lib/agent/tools/web-search.ts` | LIVE | Perplexity Sonar live search, per-run budget (`liveSearchBudget`, default 5) | ~$0.007/call, ≤5/run |
-| Thesis ingest (paste) | `lib/intelligence/ingest-thesis.ts` (#460) | LIVE | Mints theses from flat-rate-chat JSON — a *thesis* producer, not a signal producer | ~$0 (reuses record_thesis logic) |
 
 ### Consumers
 
@@ -306,7 +305,7 @@ targeted pull. Discovery firehose stays parked.
  EVERYTHING ELSE = pull:  daily review loop + tactical validation keep
  get_stock_data / get_sec_filings / get_earnings_data / web_search, scoped
  to the name under review.  Discovery = parked (operator-driven chat + pull
- tools + paste ingest), reconnects later by pointing the same producers'
+ tools), reconnects later by pointing the same producers'
  out-of-book events at a discovery surface IF unpaused.
 ```
 

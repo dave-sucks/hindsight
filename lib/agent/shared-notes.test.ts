@@ -53,10 +53,10 @@ describe("a pinned note on the five, the morning before the vote", () => {
 
   it("puts the stock on the list until a run writes on it, then clears for that stock only", () => {
     const sources = (pinnedNote: boolean): SituationSources => ({
-      needs: [], triggers: [], status: "HOLDING", direction: "LONG", planSanity: null, actionability: null,
-      progressToTarget: null, buyBlockedByFull: false, nameTheSetup: false, unansweredDecision: false, pinnedNote,
+      needs: [], triggers: [], status: "HOLDING", actionability: null,
+      buyBlockedByFull: false, unansweredDecision: false, pinnedNote,
     });
-    expect(situationsFor(sources(true))).toEqual(["PINNED_NOTE"]);
+    expect(situationsFor(sources(true))).toEqual(["NOTE_TO_ANSWER"]);
     expect(listsTheStock(sources(true))).toBe(true);
     expect(listsTheStock(sources(false))).toBe(false);
 
@@ -84,9 +84,8 @@ describe("a pinned note on the five, the morning before the vote", () => {
     expect(isAgentAnswer(line)).toBe(false);
   });
 
-  it("the situation's text stays under the 2,200-character limit and names the rule on floors", () => {
-    expect(SITUATIONS.PINNED_NOTE.guidance.length).toBeLessThan(2200);
-    expect(SITUATIONS.PINNED_NOTE.guidance).toContain("only the principal lowers a floor");
+  it("the situation's text names the rule on floors (situations.test.ts caps its length)", () => {
+    expect(SITUATIONS.NOTE_TO_ANSWER.guidance).toContain("only the principal lowers a floor");
   });
 });
 

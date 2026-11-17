@@ -13,7 +13,7 @@
  * ask `/trades/latest` and hand back the print.
  */
 import type { AlpacaSnapshot } from "./alpaca";
-import { getDailyRangePcts, getLatestPrice, getLatestPrices, getLatestPricesWithMeta } from "./alpaca";
+import { getLatestPrice, getLatestPrices, getLatestPricesWithMeta } from "./alpaca";
 import { resetQuoteBudget } from "@/lib/market-data/quote-budget";
 
 const SATURDAY = new Date("2026-10-31T14:00:00Z"); // Sat 10:00 ET
@@ -109,13 +109,6 @@ describe("Saturday 2026-10-31, the morning after FINRA's test prints", () => {
   it("one symbol reads the same number", async () => {
     vendor(AFTER_THE_TEST);
     expect(await getLatestPrice("MSFT")).toBe(521.91);
-  });
-
-  it("the plan-sanity range check measures the day's range off the close, not the print", async () => {
-    vendor(AFTER_THE_TEST);
-    // Thursday's range, 541.29 − 519.56, is the wider; off $521.91 it is 4.16%
-    // (off the $445.05 print it read 4.88%).
-    expect((await getDailyRangePcts(["MSFT"])).MSFT).toBeCloseTo(((541.29 - 519.56) / 521.91) * 100, 6);
   });
 
   it("a symbol no vendor prices is marked missing, the rest are priced, and nothing throws", async () => {

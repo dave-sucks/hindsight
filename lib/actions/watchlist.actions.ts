@@ -7,11 +7,7 @@ import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
 import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import {
-  reviewCadenceTrigger,
-  CADENCE_DAYS_BY_HORIZON,
-} from "@/lib/agent/triggers/defaults";
-import { horizonFor } from "@/lib/agent/triggers/load-levels";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import { HELD_OR_WATCHED } from "@/lib/agent/watchlist-symbols";
 import {
@@ -56,8 +52,6 @@ export interface WatchlistItemView {
   priority: string;
   status: string;
   thesisDirection: string | null;
-  targetPrice: number | null;
-  stopPrice: number | null;
   catalyst: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
@@ -161,8 +155,6 @@ export async function getWatchlistItems(
       id: true,
       ticker: true,
       direction: true,
-      targetPrice: true,
-      stopLoss: true,
       snapshot: true,
       sourceKind: true,
       sourceRationale: true,
@@ -223,8 +215,6 @@ export async function getWatchlistItems(
       // 'PENDING' (legacy, pre-backfill). Normalize both to null so the row
       // renders "Awaiting review".
       thesisDirection: t.direction === "PENDING" ? null : t.direction,
-      targetPrice: t.targetPrice,
-      stopPrice: t.stopLoss,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
       lastReviewedAt: t.lastReviewedAt,
       createdAt: t.createdAt,
@@ -296,8 +286,8 @@ function buildSeedTriggers(
 export async function sendToThesisWriter(
   analystId: string,
   symbol: string,
-  /** Days, null for no clock, or "horizon" to use the thesis's own default. */
-  reviewCadence: number | null | "horizon",
+  /** Days, or null for no clock: the Writer writes the stock's lines. */
+  reviewCadenceDays: number | null,
   mode: "mint" | "refresh" = "mint",
   existingThesisId: string | null = null,
 ): Promise<{ childRunId: string }> {
@@ -313,20 +303,6 @@ export async function sendToThesisWriter(
   if (!analyst) throw new Error("Analyst not found");
 
   const upper = symbol.toUpperCase();
-  // "horizon" is the Send-to-research button: a name pulled back in by hand
-  // comes back scheduled, on whatever cadence its horizon implies.
-  let reviewCadenceDays: number | null = null;
-  if (reviewCadence === "horizon") {
-    const row = existingThesisId
-      ? await prisma.thesis.findUnique({
-          where: { id: existingThesisId },
-          select: { horizon: true },
-        })
-      : null;
-    reviewCadenceDays = CADENCE_DAYS_BY_HORIZON[horizonFor(row?.horizon ?? null)];
-  } else {
-    reviewCadenceDays = reviewCadence;
-  }
   const sent = await startWriterRun({
     userId,
     accountId,
@@ -385,8 +361,6 @@ export async function addWatchlistItem(
       id: true,
       ticker: true,
       direction: true,
-      targetPrice: true,
-      stopLoss: true,
       snapshot: true,
       sourceKind: true,
       createdAt: true,
@@ -411,8 +385,6 @@ export async function addWatchlistItem(
       status: "WATCHING",
       // P1-24 B4 dual-read: null (new seed) or legacy 'PENDING' → null.
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
-      targetPrice: existing.targetPrice,
-      stopPrice: existing.stopLoss,
       catalyst: null,
       lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
@@ -465,6 +437,7 @@ export async function addWatchlistItem(
       reviewCadenceDays != null
         ? `Added ${upper} to watchlist (reviewed every ${reviewCadenceDays}d)`
         : `Added ${upper} to watchlist (no review schedule)`,
+    fieldChanges: { status: { from: null, to: thesis.status } },
     runId,
   });
 
@@ -478,8 +451,6 @@ export async function addWatchlistItem(
     priority: "NORMAL",
     status: "WATCHING",
     thesisDirection: null,
-    targetPrice: null,
-    stopPrice: null,
     catalyst: null,
     lastReviewedAt: null, // just minted — never reviewed
     createdAt: thesis.createdAt,

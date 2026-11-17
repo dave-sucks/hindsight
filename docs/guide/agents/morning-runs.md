@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: Run days · 8:00 AM ET
 Steps: Up to 65
 Tools: 15
-Saves: 21 fields: plan, verdict, note
+Saves: 15 fields: triggers, verdict, note
 ```
 
 ```chat
@@ -21,16 +21,16 @@ text: $SHOP (−3.4%) closed through its $96 floor on no company news. The drift
 tools: Closing $SHOP position (+2 more)
 - SHOP [sell] {Proposal}: Sell 120 shares at about $95.12
 - AVGO: Earnings review · held, floor raised to $1,610 to keep most of the gain
-- ADBE: Plan check · buy moved to $402, under the 20-day
+- ADBE: Review due · buy moved to $402, under the 20-day
 tools: Recording the run summary
-- 1 proposal waiting for you · 2 plans changed · 7 stocks left alone
+- 1 proposal waiting for you · 2 stocks' triggers changed · 7 stocks left alone
 ```
 
 ## What it does
 
 The morning run keeps an analyst's book honest. Once a day it reads every stock the analyst holds or watches, takes one action on each stock that's in a [situation](../concepts/situations.md), and leaves the rest alone.
 
-[Triggers](../concepts/triggers.md) watch prices all day, but a price can't tell you that research went stale, a review came due, a gain has no floor under it, or you left a note nobody answered. The morning run catches all of that, once a day, across the whole book.
+[Triggers](../concepts/triggers.md) watch prices all day, but a price can't tell you that a review came due, a gain has no floor under it, or you left a note nobody answered. The morning run catches all of that, once a day, across the whole book.
 
 Its buys, sales, adds and trims are [proposals](../concepts/approvals.md). On the live account each one waits in your queue for a yes; on paper, approval is off by default and they go straight to the broker. Every change to a [thesis](../concepts/theses.md) lands in Activity the moment it's made.
 
@@ -62,10 +62,10 @@ It works the list one stock at a time and takes exactly one action on each. One 
 
 - **Sell or trim:** `close_position` or `manage_position`, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
 - **Buy or add:** `place_trade` or `manage_position`. The size is worked out by risk, inside the analyst's band; the run never picks it.
-- **Redraw the plan:** `update_thesis`, one trigger at a time. It can raise a floor; it can never lower one on a stock we hold.
+- **Redraw the triggers:** `update_thesis`, one trigger at a time, by id. It can raise a floor; it can never lower one on a stock we hold.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
 - **Answer you:** your notes come first, quoted, with what it decided on each.
-- **Leave your queue alone:** a stock with a sale waiting for your approval is yours to decide, so it carries no work; its row says the proposal is waiting. A waiting buy isn't proposed twice.
+- **Leave your queue alone:** a sale waiting for your approval is yours to answer, so the run doesn't propose it again or argue it; its row says the proposal is waiting. Everything else on that stock still counts (a note, a review that's due, a report, a floor to fix, an add), and the run answers it with a note or an edit, never a second sale. A waiting buy isn't proposed twice.
 - **Look back once:** a stock sold in the last two weeks is either watched again with a re-entry level or let go.
 - **Change nothing:** one sentence on what it checked and what would change its mind.
 

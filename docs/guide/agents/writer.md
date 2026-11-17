@@ -1,15 +1,15 @@
 # The Writer
 
-**Deep research on one stock, in about three minutes.** The Writer researches one stock for one analyst and writes its thesis: the case, the belief and the plan.
+**Deep research on one stock, in about three minutes.** The Writer researches one stock for one analyst and writes its thesis: the case, the belief and the stock's first triggers.
 
-Every plan on the book is written here, whoever found the stock. It never trades and never sizes.
+Every thesis on the book is written here, whoever found the stock. It never trades and never sizes.
 
 ```facts
 Model: claude-sonnet-4-6
 Starts: When asked
 Steps: Up to 8
 Tools: 9
-Saves: 35 fields: the whole thesis
+Saves: 29 fields: the whole thesis
 ```
 
 ```chat
@@ -20,15 +20,15 @@ tools: Pulling $CRWD's 5-year financials (+6 more)
 tools: Searching the web for "CrowdStrike Q2 call guidance" (+3 more)
 - The call, the guide raise, estimate revisions since the print
 tools: Writing the thesis on $CRWD
-- CRWD [watch]: Post-earnings drift · buy $401 · floor $384 · target $480
-- The reward is 2.4 times the risk
+- CRWD [watch]: Post-earnings drift · Buy if above $401 · Stop watching if below $384
+- The Street's average target is 2.4 times the risk away
 ```
 
 ## What it does
 
 The Writer is the only agent that writes a whole [thesis](../concepts/theses.md). It researches one stock in depth, in one [analyst](../concepts/analysts.md)'s strategy, and saves one of three things: a new thesis on the watchlist, a pass, or a rewrite of a thesis that already exists.
 
-One writer means one standard. Every plan on the book was built from the same data, the same sections and the same checks, so the agents that act on a plan can trust its numbers.
+One writer means one standard. Every thesis on the book was built from the same data, the same sections and the same checks, so the agents that act on its triggers can trust their numbers.
 
 It runs on Claude Sonnet with Claude's web search. In a side-by-side test it wrote the most grounded notes, and got fiscal years right where other models quoted a year-old quarter as current.
 
@@ -66,21 +66,20 @@ First, a research note in three parts: the company in two sentences (what it doe
 - **A direction:** long, short or pass, decided by the research, never by the chart. A pass is a real answer: a stock the research says not to own. A stock it would look at again is a watch, not a pass.
 - **A belief:** why we own the company, in two or three plain sentences: what it does, why it's worth owning, and what has to stay true. Never a stock price, a price path or a target.
 - **What would prove it wrong:** two or more things in the business, each with where it's read (a guidance cut at the next report, a margin in the 10-Q). Never a stock price, an average or a gap: the floor holds the price.
-- **A setup and its plan:** once there is a view, the setup prices it. The buy, the floor and the target come from the setup's rules and the chart, never a round number. The floor's note says first what a close below it would mean for the belief, then the chart level, and the run that answers the floor reads it. There is no minimum reward: under twice the risk, the Writer says why in the note. When no setup fits the chart yet, the view is saved with no buy, no floor and no setup, and with a review that brings it back (a price to look again at, or a date).
-- **The [triggers](../concepts/triggers.md)** that carry the plan, and a wake-up if the stock isn't ready to price yet.
+- **A setup and its [triggers](../concepts/triggers.md):** once there is a view, the setup sets them. The buy (an ENTER trigger), where the setup is over (a STOP_WATCHING trigger, "Stop watching if below $384 · only on the close", at the structure the setup names) and a take-profit where the setup has one come from the setup's rules and the chart, never a round number. There are no separate price fields: a stock has triggers and nothing else ([Price targets](../concepts/price-targets.md)). A watch has no floor and no sale: its Stop watching line ends the watch and never sells, and the holding's sale comes with the buy. The line's note says first what a close below it would mean for the belief, then the chart level. There is no minimum reward. When no setup fits the chart yet, the view is saved with no buy, no Stop watching line and no setup, and with a review that brings it back (a price to look again at, or a date). Nothing is added for it: a watch carries the triggers the Writer wrote.
 
-It never picks a size. The buy is sized later by the risk to its floor, so an honest, tight floor is what earns size.
+It never picks a size. The buy is sized later by the risk to the holding's sale, named with the buy, so an honest, tight sale is what earns size.
 
-The decision goes through the same checks as every other save: prices in the right order, triggers that fit a stock we only watch. A problem goes back to the Writer in the same run, twice at most. After that the thesis saves without the trigger or optional field the save still refuses, and the stock's Activity names each one as "Not applied". The research is never thrown away over one trigger: only a decision the save refuses as a whole (the claim, a level) goes unsaved, and the run says why.
+The decision goes through the same checks as every other save: a buy that can still cross, triggers that fit a stock we only watch. Nothing checks one trigger's price against another's. A problem goes back to the Writer in the same run, twice at most. After that the thesis saves without the trigger or optional field the save still refuses, and the stock's Activity names each one as "Not applied". The research is never thrown away over one trigger: only a decision the save refuses as a whole (the claim) goes unsaved, and the run says why.
 
 ## What happens next
 
-- **A new stock** lands as Watching, with its buy, floor and target, and a review clock only if the agent that asked set one. The trigger check starts watching the buy that day. A view with no setup yet lands as Watching with only its review.
+- **A new stock** lands as Watching, with the triggers the Writer wrote (its buy and its Stop watching line, and a take-profit if the setup has one), and a review clock only if the agent that asked set one. The trigger check starts watching the buy that day. A view with no setup yet lands as Watching with only its review.
 - **A pass** on a new stock is saved as Passed, with what would change the verdict, so it isn't pitched again without a reason.
 - **No thesis** when the save refused the decision as a whole: the asking agent, and chat, get the Writer's reason. A chat waits up to five minutes; a Writer still going after that is named with the step it's on, and saves on its own.
-- **A rewrite** replaces the research and the claim. It never changes a stock's direction or status: a different verdict is flagged for the agent that asked, which re-reads the stock and moves its levels if the view changed. A rewrite you asked for in chat keeps the levels you set, fills only an empty one, and notes its own.
+- **A rewrite** replaces the research and the claim. It never changes a stock's direction or status: a different verdict is flagged for the agent that asked, which re-reads the stock and moves its triggers if the view changed. A rewrite you asked for in chat keeps the buy, floor and upside triggers you set, fills only an empty one, and notes its own.
 
-From there, [morning runs](morning-runs.md) review the stock and a [trigger run](trigger-runs.md) acts when its buy fires. The research stays the Writer's: other agents adjust the plan around it, and the belief changes only with a new write-up or when you change it in chat.
+From there, [morning runs](morning-runs.md) review the stock and a [trigger run](trigger-runs.md) acts when its buy fires. The research stays the Writer's: other agents adjust the triggers around it, and the belief changes only with a new write-up or when you change it in chat.
 
 ## Tools
 

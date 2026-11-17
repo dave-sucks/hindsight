@@ -109,7 +109,6 @@ function research(): WriterResearchPhaseOutput {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
-    existingTargetPrice: fx.thesis.targetPrice,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });
@@ -124,7 +123,6 @@ function research(): WriterResearchPhaseOutput {
       "- Q2 billings grew 9% against a 6% guide; a slip under the guide breaks the drift.",
     ].join("\n"),
     decision: v.decision as ValidatedThesisDecision,
-    riskReward: null,
     threadMessages: [],
     userPrompt: "GROUND-TRUTH DATA — DOCU",
     systemPrompt: "You are the PEAD Specialist.",

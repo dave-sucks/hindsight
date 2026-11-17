@@ -26,7 +26,7 @@ export function TriggerKinds() {
             {t.examples.map((e, i) => (
               <div key={i} className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{rowLabel(e.action, true)}</span>
+                  <span className="text-sm font-medium text-foreground">{rowLabel(e.action)}</span>
                   <ExamplePill spec={e} index={i} />
                 </div>
                 <P>{e.why}</P>

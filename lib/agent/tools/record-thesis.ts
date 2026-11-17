@@ -15,19 +15,14 @@ import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
-import {
-  defaultTriggersForHorizon,
-  mergeTriggers,
-  applyTriggerDefaults,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
-import { validateEnterTriggerRequired } from "@/lib/agent/triggers/enter-guard";
+import { mergeTriggers, applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
+import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
+import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
+import { actionProblem } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { applyLevelArgs } from "@/lib/agent/triggers/price-levels";
 import { randomUUID } from "node:crypto";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisBelief } from "@/lib/agent/thesis-belief";
 import { holdDurationFromHorizon } from "@/lib/agent/horizon-policy";
 
@@ -64,13 +59,7 @@ const recordFields = z.object({
     .describe(
       "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
     ),
-  entry_price: F.entry_price.optional(),
-  target_price: F.target_price.optional(),
-  stop_loss: F.stop_loss.optional(),
   setup_id: F.setup_id.optional(),
-  stop_basis: F.stop_basis.optional(),
-  target_basis: F.target_basis.optional(),
-  entry_on_close: F.entry_on_close.optional(),
   current_price: F.live_price.optional(),
   // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
   // value is derived from horizon at render time via
@@ -156,7 +145,7 @@ const recordFields = z.object({
     .optional()
     .describe(
       "A LONG or SHORT thesis lands WATCHING. PASS alone is a terminal pass: no triggers, never woken. " +
-        "PASS with WATCHING keeps the stock in view with no view yet: no direction, no plan, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }). " +
+        "PASS with WATCHING keeps the stock in view with no view yet: no direction, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }). " +
         "(PASS with status WATCHING is for a stock you haven't formed a view on yet.)",
     ),
 
@@ -273,12 +262,12 @@ export const recordThesis = defineTool({
         };
       }
 
-      // A review can't be Auto; a buy, add or trim is Auto only on the owner's word (his chat).
+      // A review can't be Auto, a sale or trim can't wait for the morning, and a buy, add or trim is Auto only on the owner's word (his chat).
       const modeProblem = (args.triggers ?? []).map((t) => fireModeProblem(t.action, t.fireMode, { agent: ctx.runMode !== "PRINCIPAL_CHAT" })).find(Boolean);
       if (modeProblem) {
         return {
           summary: `Thesis rejected for ${args.ticker}: a trigger's fireMode.`,
-          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with fireMode ASK_NOW or NEXT_MORNING, or none.` },
+          data: { thesis_id: null, status: "FAILED" as const, note: `${modeProblem} Resend the trigger with one of those, or with no fireMode.` },
           sources: [],
         };
       }
@@ -314,7 +303,7 @@ export const recordThesis = defineTool({
                 note:
                   `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
                   `If your conviction on this position has dropped, the correct tools are:\n` +
-                  `  • update_thesis(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>", stop_loss: <tighter>, rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
+                  `  • update_thesis(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>", edit_triggers: [<the floor's id, a tighter value>], rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
                   `  • close_position(...) followed by update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "<why>") — exit the position and mark the thesis broken.\n` +
                   `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]) and call update_thesis. Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
               },
@@ -362,36 +351,6 @@ export const recordThesis = defineTool({
       const inferredSourceKind = args.source_kind ?? "WEB_SEARCH";
       const provenanceNudge: string | null = null;
 
-      // Relative-ordering gate. The shape rule depends on direction:
-      //   LONG  — target_price > entry_price > stop_loss
-      //   SHORT — target_price < entry_price < stop_loss
-      //   PASS  — no shape rule (reference levels, no trade plan)
-      // Catches inverted-target theses at write time. PR #227 added the
-      // same check at place_trade; this is the upstream cure that prevents
-      // broken WATCHING rows from sitting in the watchlist for weeks
-      // (2026-05-07 audit found 3 such rows on Earnings Drift / Secular
-      // Theme dating back to April 23-27).
-      const shapeCheck = validateThesisShape({
-        direction: args.direction,
-        entryPrice: args.entry_price ?? null,
-        targetPrice: args.target_price ?? null,
-        stopLoss: args.stop_loss ?? null,
-      });
-      if (!shapeCheck.ok) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — invalid thesis shape (${shapeCheck.reason}).`,
-        );
-        return {
-          summary: `Thesis rejected for ${args.ticker}: ${shapeCheck.reason}.`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note: shapeCheck.note,
-          },
-          sources: [],
-        };
-      }
-
       // Structural-belief gate (P0-1). Directional theses MUST carry the
       // durable claim + the falsifiable premises + the things that would
       // prove them wrong. Audit 2026-05-07: 32% / 32% / 38% population
@@ -427,8 +386,7 @@ export const recordThesis = defineTool({
       // Some horizon × field combinations are structurally required but
       // were silently defaulted before this gate landed. Make them
       // explicit at write time so the durable thesis row reflects what
-      // the agent actually decided, not what defaultTriggersForHorizon
-      // happened to fall through to.
+      // the agent actually decided, not what a default fell through to.
       //
       //   horizon=CATALYST → catalyst_date REQUIRED. The whole point of
       //                      a CATALYST trade is the dated event; the
@@ -588,18 +546,13 @@ export const recordThesis = defineTool({
       // the watchlist screen keeps visible. Nothing replaces them — what was
       // missing was a screen, not another rule.
 
-      // The price that decides the ENTER rung's SIDE, handed to applyLevelArgs
-      // below. The level itself says what the analyst meant — an entry under
-      // the price is a pullback they want to pay, one above it a confirmation
-      // they want to see first — but that reading needs the price. Fresh
-      // quote first, the caller's `current_price` second. With neither, a
-      // priced mint is REFUSED rather than guessed: the old fail-open picked
-      // "breakout" and wrote HPE's $54.75 pullback as price-above against a
-      // $57.08 price on 2026-09-09 (quote failed, three writers in parallel),
-      // a buy that could only fire after a dip below and a re-cross.
+      // The price the stock is at: a buy trigger is stamped with it
+      // (./written-price) and a soft watch's first line carries it. Fresh
+      // quote first, the caller's `current_price` second. A buy's side is
+      // the trigger's own (`is: above` or `below`), as the analyst wrote it.
       let quoteForEntrySide: number | null = null;
       let freshForStamp: number | null = null;
-      // A PASS has no entry side to resolve, so it skipped the quote — but a
+      // A PASS has no buy to stamp, so it skips the quote — but a
       // SOFT WATCH is a PASS that keeps watching, and its coverage row is
       // measured from the price on the day it opened. Without a quote its
       // CREATED row carried no price and the row had nothing to anchor to
@@ -610,50 +563,27 @@ export const recordThesis = defineTool({
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
           freshForStamp = freshQuotePrice(q, new Date());
         } catch {
-          /* handled below — the caller's price, or a refusal */
+          /* handled below — the caller's price */
         }
         if (quoteForEntrySide == null && args.current_price != null && args.current_price > 0) {
           quoteForEntrySide = args.current_price;
           console.warn(
-            `[record_thesis] quote unavailable for ${args.ticker}; ENTER side read from current_price=${args.current_price}`,
+            `[record_thesis] quote unavailable for ${args.ticker}; price read from current_price=${args.current_price}`,
           );
-        }
-        if (quoteForEntrySide == null && args.entry_price != null) {
-          console.warn(`[record_thesis] refused ${args.ticker}: no live price to place the buy level`);
-          return {
-            summary: `No live price for ${args.ticker} — cannot place the $${args.entry_price} buy level.`,
-            data: {
-              thesis_id: null,
-              status: "NO_LIVE_PRICE" as const,
-              ticker: args.ticker,
-              note:
-                `The quote for ${args.ticker} failed and no current_price was passed, so there is no way to know whether $${args.entry_price} ` +
-                `is a pullback (below the price) or a breakout (above it). Retry the same record_thesis call with current_price set to the ` +
-                `price from get_stock_data. The side is never guessed.`,
-            },
-            sources: [],
-          };
         }
       }
 
-      // ── Hoisted trigger build ─────────────────────────────────────────
-      // Hoisted so we can run the watching ENTER-trigger guard below
-      // BEFORE the row hits the DB. The guard inspects the merged final
-      // array (defaults + agent-supplied + cooldown backfill) and rejects
-      // WATCHING/LONG-or-SHORT theses with no ENTER actions — matches the
-      // upstream guard in manage_watchlist.ts and closes the last creation
-      // hole for inert watching theses.
+      // ── The triggers ──────────────────────────────────────────────────
+      // Built before the row hits the DB so the ladder check below can
+      // refuse a list that can't stand (a holding with no sale, or a buy).
       let mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
         if (args.direction === "PASS" && !passKeepsWatch) {
           return [];
         }
-        // Without horizon we can't pick a defaults template — agent's
-        // raw triggers are all we have. Cooldown backfill still runs.
-        // source=AGENT on everything the model supplied. Server-owned —
-        // any value the model fabricated is overwritten. The template
-        // rungs merged in below already carry source=DEFAULT.
+        // source=AGENT on everything the model supplied. Server-owned — any
+        // value the model fabricated is overwritten.
         // The model's trigger shape has no id (the definition it reads
         // leaves the server's fields out); the id is minted here.
         const supplied = ((args.triggers ?? []) as Trigger[]).map((t) => ({
@@ -661,101 +591,54 @@ export const recordThesis = defineTool({
           id: t.id || randomUUID(),
           source: "AGENT" as const,
         }));
-        // No committed view, so no horizon template — those are directional
-        // plans. Whatever triggers the caller sent, verbatim.
+        // No committed view, so no review clock. Whatever triggers the caller sent, verbatim.
         if (passKeepsWatch) {
           return applyTriggerDefaults(supplied);
         }
         if (!args.horizon) {
           return applyTriggerDefaults(supplied);
         }
-        const defaults = defaultTriggersForHorizon(
-          args.horizon as Horizon,
-          {
-            entryPrice: args.entry_price ?? null,
-            targetPrice: args.target_price ?? null,
-            stopLoss: args.stop_loss ?? null,
-            catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
-            direction: args.direction,
-          },
-          effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD",
-        );
-        const merged = mergeTriggers(defaults, supplied);
-        return applyTriggerDefaults(merged);
+        // One trigger per kind; nothing is added that wasn't given.
+        return applyTriggerDefaults(mergeTriggers([], supplied));
       })();
 
-      // ── Derive-on-write: levels are triggers (DAV-195 L3) ───────────
-      // The horizon templates only mint a floor for SOME shapes — of the
-      // four WATCHING templates exactly one reads stopLoss, and it mints a
-      // REVIEW ("better entry, or thesis weakening?"), not a sell level. So
-      // a watch item's stop has never been armed as anything: 19 of 19
-      // watchlist rows in the book carry a stop that fires nothing (the KLAC
-      // shape). This makes every supplied level produce its trigger,
-      // whatever the horizon, and recomputes the columns from the result.
-      //
-      // Safe to arm a watchlist floor only because L5 landed first: a floor
-      // breach on something we don't own resolves to DEMOTE, not a sell
-      // proposal on a position that doesn't exist.
-      const levelled = applyLevelArgs({
-        stored: mergedTriggers as Trigger[],
-        levels: {
-          entry: args.entry_price ?? null,
-          target: args.target_price ?? null,
-          floor: args.stop_loss ?? null,
-        },
-        direction: args.direction === "PASS" ? null : args.direction,
-        status: effectiveStatusForTriggers,
-        currentPrice: quoteForEntrySide,
-        source: "AGENT",
-        notes: { floor: args.stop_basis, target: args.target_basis },
-        entryBasis: args.entry_on_close ? "close" : undefined,
-        mintId: () => randomUUID(),
-      });
       // Every buy trigger carries the price it was written at, so a level set
       // on a down day isn't judged against yesterday's close (./written-price).
-      mergedTriggers = stampWrittenPrice(
-        [],
-        applyTriggerDefaults(levelled.triggers),
-        freshForStamp,
-        new Date(),
-      );
-      const derivedLevelColumns = levelled.columns;
+      mergedTriggers = stampWrittenPrice([], mergedTriggers, freshForStamp, new Date());
 
-      // The re-stamp that used to sit here is gone (DAV-209). It re-added a
-      // review clock to every directional mint that lacked one, which is why
-      // "buy at $X, no schedule" could not be written in a single call. The
-      // clock is an ordinary review-clock trigger: send one in `triggers`
-      // to get one, send none to get none.
+      // A buy already true at the price it is written at can never cross (the same rule as an added one).
+      const deadBuy = mergedTriggers.map((t) => buyAlreadyTrue(t, quoteForEntrySide)).find(Boolean);
+      if (deadBuy) {
+        return { summary: `Thesis rejected for ${args.ticker}: a buy already true at the price never fires.`, data: { thesis_id: null, status: "FAILED" as const, note: deadBuy }, sources: [] };
+      }
 
-      // ── ENTER-trigger guard (shared with update_thesis) ─────────────
-      // A WATCHING/LONG or WATCHING/SHORT thesis without an ENTER trigger
-      // sits inert — the trigger evaluator has no entry-promotion path,
-      // and the daily-run promotion check has no level to compare price
-      // against. The default templates emit one off targetPrice; this
-      // guard catches the cases where (a) targetPrice is missing or (b)
-      // the agent passed an explicit triggers[] array that crowded out
-      // the default ENTER via the (condition, action) merge bucket.
-      // Shared with update_thesis — see lib/agent/triggers/enter-guard.ts.
-      const enterGuard = validateEnterTriggerRequired({
-        direction: args.direction,
-        status: effectiveStatusForTriggers,
+      // A new thesis is a watch: a sale on it is refused with the fix (STOP_WATCHING), as an added one is.
+      const wrongAction = mergedTriggers.map((t) => actionProblem(t.action, { held: false })).find(Boolean);
+      if (wrongAction) {
+        return { summary: `Thesis rejected for ${args.ticker}: a sale on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: wrongAction }, sources: [] };
+      }
+
+      // ── The ladder check (shared with update_thesis) ─────────────────
+      // A held stock carries a sale and no buy (validateEnterTriggerRequired).
+      // A level on a thesis is whatever its triggers say; nothing stores it.
+      const ladder = checkLadder({
         triggers: mergedTriggers,
-        targetPrice: args.target_price ?? null,
+        direction: args.direction === "PASS" ? null : args.direction,
+        status: effectiveStatusForTriggers,
+        actor: "AGENT",
       });
-      if (!enterGuard.ok) {
-        console.warn(
-          `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — WATCHING ${args.direction} with no ENTER trigger.`,
-        );
+      if (!ladder.ok) {
+        console.warn(`[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${ladder.error}.`);
         return {
-          summary: `Thesis rejected for ${args.ticker}: WATCHING ${args.direction} requires an ENTER trigger.`,
-          data: {
-            thesis_id: null,
-            status: "FAILED" as const,
-            note: enterGuard.note,
-          },
+          summary: `Thesis rejected for ${args.ticker}: ${ladder.message}`,
+          data: { thesis_id: null, status: "FAILED" as const, note: ladder.message },
           sources: [],
         };
       }
+      // A buy trigger's own price, when it has one: the re-buy-after-a-sale guard below reads it.
+      const buyLevel = mergedTriggers.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null;
+      // What the stock cost when this was written, for the Activity rows below.
+      const priceNow = freshForStamp ?? quoteForEntrySide ?? null;
 
       // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
       // The agent may pass either the legacy plain-string args
@@ -817,12 +700,6 @@ export const recordThesis = defineTool({
         accountId: ctx.accountId,
         ticker: args.ticker,
         direction: directionToStore,
-        // Derived from the trigger list, not taken from the args — see the
-        // derive-on-write block above. A level on a thesis is whatever the
-        // triggers say it is.
-        entryPrice: derivedLevelColumns.entryPrice,
-        targetPrice: derivedLevelColumns.targetPrice,
-        stopLoss: derivedLevelColumns.stopLoss,
         // Legacy holdDuration column — derived from horizon. The arg was
         // dropped from the zod schema in PR-4 (was a token waste, agents
         // routinely confused it with `horizon`). Column drops in PR-5.
@@ -939,7 +816,7 @@ export const recordThesis = defineTool({
                   ticker: args.ticker,
                   note:
                     `NOT a failure — a ${existingThesis.status} thesis already exists for ${args.ticker} (id ${existingThesis.id}), which is more coverage than a name kept in view with no view. ` +
-                    `If your intent is to set that coverage down, call update_thesis on it and replace its triggers with the wake conditions you want, dropping the plan levels. ` +
+                    `If your intent is to set that coverage down, call update_thesis on it and replace its triggers with the wake conditions you want, dropping its buy and its Stop watching line. ` +
                     `Do not retry record_thesis on ${args.ticker}.`,
                 },
                 sources: [],
@@ -971,10 +848,8 @@ export const recordThesis = defineTool({
                     `  update_thesis({\n` +
                     `    thesis_id: "${existingThesis.id}",\n` +
                     `    rationale: "<one-line: why you're touching this thesis today>",\n` +
-                    `    // Plus any of these you actually want to change:\n` +
-                    `    target_price: <new>,\n` +
-                    `    stop_loss: <new>,\n` +
-                    `    snapshot: { text: "<refreshed>", citations: [] },\n` +
+                    `    // Plus anything you actually want to change, a trigger by its id:\n` +
+                    `    edit_triggers: [{ id: "<the trigger's id>", value: <new>, rationale: "<why>" }],\n` +
                     `  })\n` +
                     `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
                     `record_thesis is reserved for new coverage on a NEW ticker or direction flips (LONG ↔ SHORT). Do NOT retry record_thesis on ${args.ticker} — it will reject again.`,
@@ -1064,8 +939,8 @@ export const recordThesis = defineTool({
             if (
               args.direction !== "PASS" &&
               exitPrice != null &&
-              args.entry_price != null &&
-              args.entry_price >= exitPrice &&
+              buyLevel != null &&
+              buyLevel >= exitPrice &&
               ackMissing
             ) {
               const exitLine =
@@ -1082,10 +957,10 @@ export const recordThesis = defineTool({
                   prior_exit: priorExit,
                   note:
                     `NOT a failure — a guard, not a verdict. ${exitLine}. ` +
-                    `Your proposed entry ($${args.entry_price?.toFixed(2)}) is at or above that exit — the classic "re-buy the dip you just sold" shape (this is how XENE was sold at $66.53 and re-bought at $68.84 twenty hours later). ` +
+                    `Your buy ($${buyLevel.toFixed(2)}) is at or above that exit — the classic "re-buy the dip you just sold" shape (this is how XENE was sold at $66.53 and re-bought at $68.84 twenty hours later). ` +
                     `A RETIRED row here means the exit was NOT judged a belief-intact price stop (those recycle to WATCHING) — the belief was judged broken, or nobody attested. ` +
                     `If this mint is genuinely a NEW setup, retry the same record_thesis call with acknowledge_prior_exit: "<one line engaging with the exit — what is different now, and why this entry level rather than a confirmed reclaim>". ` +
-                    `Otherwise set the entry as a reclaim level below/at structure, or skip the mint.`,
+                    `Otherwise set the buy at a reclaim level below/at structure, or skip the mint.`,
                 },
                 sources: [],
               };
@@ -1270,23 +1145,22 @@ export const recordThesis = defineTool({
         thesisId: thesis.id,
         type: "CREATED",
         summary: createdSummary,
+        fieldChanges: { status: { from: null, to: thesis.status } },
         rationale: narrativeText,
         signalIds: sourceSignalIds,
         runId: ctx.runId,
-        // A soft watch has no entry price — that is the whole point of it —
-        // so it stamps what the stock cost when we started watching. Every
-        // other path keeps the value it has always written.
-        priceAtTime: passKeepsWatch
-          ? (freshForStamp ?? quoteForEntrySide ?? null)
-          : (args.entry_price ?? null),
+        // What the stock cost when we started watching: the coverage row is
+        // measured from it (a buy level is not a price the stock traded at).
+        priceAtTime: priceNow,
       });
 
       // Transition parent thesis lifecycle. A parent already passed or retired
       // keeps its status: the link is the history (a refresh sent as new
       // research on a passed stock, dispatch_thesis_research 11-13).
-      const parentDone = resolvedParentId
-        ? ["PASSED", "RETIRED"].includes((await prisma.thesis.findUnique({ where: { id: resolvedParentId }, select: { status: true } }))?.status ?? "")
-        : false;
+      const parentStatus = resolvedParentId
+        ? (await prisma.thesis.findUnique({ where: { id: resolvedParentId }, select: { status: true } }))?.status ?? null
+        : null;
+      const parentDone = ["PASSED", "RETIRED"].includes(parentStatus ?? "");
       if (resolvedParentId && !parentDone) {
         try {
           if (args.direction === "PASS") {
@@ -1310,13 +1184,13 @@ export const recordThesis = defineTool({
               // The analyst's words, or none.
               ...(narrativeText ? { rationale: narrativeText.slice(0, 500) } : {}),
               fieldChanges: {
-                status: { from: "HOLDING", to: "RETIRED" },
+                status: { from: parentStatus, to: "RETIRED" },
                 retiredReason: { from: null, to: "INVALIDATED" },
               },
               runId: ctx.runId,
               // Same moment as the new thesis — capture current price so
               // the parent's terminal-state row carries context.
-              priceAtTime: args.entry_price ?? null,
+              priceAtTime: priceNow,
             });
           } else {
             await prisma.thesis.update({
@@ -1330,11 +1204,11 @@ export const recordThesis = defineTool({
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
               rationale: narrativeText,
               fieldChanges: {
-                status: { from: "HOLDING", to: "RETIRED" },
+                status: { from: parentStatus, to: "RETIRED" },
                 retiredReason: { from: null, to: "REPLACED" },
               },
               runId: ctx.runId,
-              priceAtTime: args.entry_price ?? null,
+              priceAtTime: priceNow,
             });
           }
         } catch (parentErr) {
@@ -1385,9 +1259,6 @@ export const recordThesis = defineTool({
                 snapshot: snapshotPayload,
                 bull_case: bullCasePayload,
                 bear_case: bearCasePayload,
-                entry_price: args.entry_price,
-                target_price: args.target_price,
-                stop_loss: args.stop_loss,
                 // PR-4: hold_duration arg was dropped from the schema —
                 // derive from horizon for the event payload.
                 hold_duration: holdDurationFromHorizon(args.horizon),

@@ -5,6 +5,10 @@
  * TRV (Secular Compounder, watched): "Buy if above $398.70 · only on the close" fired at $398.95 on
  * 2026-10-21; it asked the analyst, who passed. Here it is an Auto-buy.
  * CORT (Catalyst Event PM, watched): a buy at $126.38 and a target, no floor.
+ *
+ * An Auto-buy names no sale (2026-11-16): no one chose one, and a watch's line ends the watch, never
+ * sells. So it is sized from the analyst's band by conviction, and the holding sells by its analyst's
+ * and the account's rules.
  * IOT (PEAD Specialist, held 300 @ $42.695, LIVE): an Auto-trim.
  */
 import { replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type Replay } from "@/lib/replay";
@@ -22,7 +26,7 @@ const TRV = {
   entryPrice: 398.7, targetPrice: 431.5, stopLoss: 382.4, analystId: SECULAR.id,
   triggers: [
     TRV_BUY,
-    { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4 }, rationale: "Under the recent swing-high-turned-support area.", cooldownDays: 1 },
+    { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "STOP_WATCHING", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4, settings: { close: true } }, rationale: "Under the recent swing-high-turned-support area.", cooldownDays: 1 },
     { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 431.5 }, rationale: "The 1.272 extension.", cooldownDays: 1 },
   ],
 };
@@ -72,9 +76,10 @@ describe("TRV: an Auto-buy", () => {
     expect(cost).toBeLessThanOrEqual(SECULAR.maxPositionSize);
     // The reason is the trigger's line alone (the write-up replaces it); the sizing is in the reply.
     expect(orderOf(doIt)?.rationale).toBe('Your "Buy if above $398.70 · only on the close" came true. It\'s set to Auto-buy.');
-    // sizeByRisk on the $382.40 floor at 1% risk and HIGH conviction ($100,000 replay account), capped at the $10,000 largest trade.
+    // No sale came with it, so the band by conviction sizes it (HIGH: the $10,000 largest trade), and the watch's $382.40 line is not the sale.
     expect(orderOf(doIt)?.quantity).toBe(25);
-    expect((doIt.result.data?.sizing as string[]).join(" ")).toContain("25 shares, $9,974, capped at this analyst's largest trade. Risk alone said 60 shares");
+    expect((doIt.result.data?.sizing as string[]).join(" ")).toContain("Sized from the analyst's band by conviction ($10,000) — no sell price came with the buy");
+    expect(doIt.db.store.position?.[0]).toMatchObject({ stopLoss: null, stopReason: null });
   });
 
   it("is refused cleanly when the cash doesn't cover it, and nothing is written", async () => {
@@ -93,12 +98,11 @@ describe("TRV: an Auto-buy", () => {
   });
 });
 
-describe("CORT: an Auto-buy on a plan with no floor", () => {
-  it("is refused by the buy's own check, and nothing is written", async () => {
+describe("CORT: an Auto-buy on a watch with no floor", () => {
+  it("is proposed like any Auto-buy: the stock's lines were never its sale", async () => {
     const r = await buy(CORT as unknown as typeof TRV, CATALYST, 126.5, { payFromCash: 50_000 });
-    expect(r.refused).toBe(true);
-    expect(r.refusal?.message).toContain("plan has no floor");
-    expect(r.db.store.order ?? []).toHaveLength(0);
+    expect(r.refused).toBe(false);
+    expect(orderOf(r)).toMatchObject({ status: "AWAITING_APPROVAL", intent: "OPEN", thesisId: CORT.id });
   });
 });
 

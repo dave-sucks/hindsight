@@ -1,9 +1,13 @@
 /**
- * A sale waiting for the principal's approval takes the stock off the work
- * list entirely, not only the sale. On 2026-10-15 both morning runs still
- * worked a stock whose sale was waiting: NVDA for stale research, CEG for its
- * "below the 200-day" review. The principal decides those stocks now; the
- * read gives each one quiet line, which says the sale waits.
+ * A sale waiting for the principal's approval silences that sale and nothing
+ * else on the stock (the owner's ruling, 2026-11-16; before it a waiting sale
+ * took the whole stock off the work list, sale-card-note.replay.test.ts).
+ *
+ * On 2026-10-15 both morning runs worked a stock whose sale was waiting: NVDA
+ * for stale research (a flag deleted since, so NVDA is only the card now: a
+ * quiet line that says the sale waits), CEG for its "below the 200-day"
+ * review, which fired after the sale did: the review is CEG's work, the sale
+ * is not, and the row says the sale waits.
  *
  * The morning reads' own rows (sale-waiting-quiet-2026-10-15.json), through
  * get_theses' real entry point at the moment each run began.
@@ -44,25 +48,52 @@ async function morningRead(c: Case, ticker: string) {
     if (crashed) throw new Error(`get_theses crashed: ${JSON.stringify(result).slice(0, 2000)}`);
     const screen = result.data as { theses?: Row[]; quiet_theses?: Row[] };
     const quiet = screen.quiet_theses?.find((r) => r.ticker === ticker) ?? null;
-    return { row: screen.theses?.find((r) => r.ticker === ticker) ?? null, line: quiet ? (rowForModel(quiet, { named: false, size: "line" }) as string) : null };
+    const row = screen.theses?.find((r) => r.ticker === ticker) ?? null;
+    return {
+      row,
+      line: quiet ? (rowForModel(quiet, { named: false, size: "line" }) as string) : null,
+      waits: row ? ((rowForModel(row, { named: false, size: "short" }) as Row).proposal_waiting as string | undefined) : undefined,
+    };
   } finally {
     jest.useRealTimers();
   }
 }
 
-describe.each([
-  ["NVDA", fx.nvda as unknown as Case, "sell 33 sh, placed 10-14 14:01 ET, expires 10-15 14:01 ET"],
-  ["CEG", fx.ceg as unknown as Case, "sell 51 sh, placed 10-14 09:45 ET, expires 10-15 09:45 ET"],
-])("%s at the 10-15 morning run, its sale waiting", (ticker, c, waits) => {
+const SALE_WAITS = {
+  NVDA: "sell 33 sh, placed 10-14 14:01 ET, expires 10-15 14:01 ET",
+  CEG: "sell 51 sh, placed 10-14 09:45 ET, expires 10-15 09:45 ET",
+};
+
+describe("NVDA at the 10-15 morning run, its sale waiting", () => {
+  const c = fx.nvda as unknown as Case;
+
   it("the seed is the read's: each trigger says what the read showed, and the read worked the stock", () => {
-    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger, true))).toEqual(c.says);
-    expect(c.read.needsAction.kind).toBe(ticker === "NVDA" ? "RESEARCH_STALE" : "TRIGGER_FIRED");
+    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger))).toEqual(c.says);
+    expect(c.read.needsAction.kind).toBe("RESEARCH_STALE");
   });
 
-  it("is a quiet line with no work flag, and the line says the sale waits", async () => {
-    const { row, line } = await morningRead(c, ticker);
+  it("is a quiet line: stale research is no situation now, and the sale is the card's; the line says the sale waits", async () => {
+    const { row, line } = await morningRead(c, "NVDA");
     expect(row).toBeNull();
-    expect(line).toContain(`proposal waiting: ${waits}`);
+    expect(line).toContain(`proposal waiting: ${SALE_WAITS.NVDA}`);
+  });
+});
+
+describe("CEG at the 10-15 morning run, its sale waiting and its 200-day review fired", () => {
+  const c = fx.ceg as unknown as Case;
+
+  it("the seed is the read's: each trigger says what the read showed, and the read worked the stock", () => {
+    expect(c.thesis.triggers.map((t) => sentenceOf(t as Trigger))).toEqual(c.says);
+    expect(c.read.needsAction.kind).toBe("TRIGGER_FIRED");
+    expect(c.read.situations).toEqual(["REVIEW_DUE"]);
+  });
+
+  it("is listed for the review, as the run's read was, and not for the sale; the row says the sale waits", async () => {
+    const { row, line, waits } = await morningRead(c, "CEG");
+    expect(line).toBeNull();
+    expect(row?.situations).toEqual(c.read.situations);
+    expect(row?.needsAction).toMatchObject({ kind: "TRIGGER_FIRED", action: "REVIEW", triggerId: c.read.needsAction.triggerId });
+    expect(waits).toBe(SALE_WAITS.CEG);
   });
 });
 

@@ -13,7 +13,6 @@
  */
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 import { setupsFor } from "./decision.test-helpers";
-import { computePlanSanity } from "@/lib/agent/plan-sanity";
 
 /** The writer's submit_thesis input, verbatim from the run's messages. */
 const LUXE_SUBMIT = {
@@ -75,7 +74,8 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
     expect(msg).toMatch(/MA_PULLBACK/);
     expect(msg).toContain("$7.91 (the rising 50-day)");
     expect(msg).not.toMatch(/7\.75/); // the 20-day is falling — not a level to buy
-    expect(msg).toContain("1 ATR ($0.53)");
+    expect(msg).toContain("a Stop watching line where the setup is over");
+    expect(msg).not.toMatch(/floor|ATR/);
     expect(msg).toContain('{watch:"repeat", value: days}');
   });
 
@@ -90,19 +90,5 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
   it("a PASS needs nothing on it", () => {
     const r = check({ direction: "PASS", rationale: "The gap used up the edge and nothing clears 2:1 from here." } as ThesisDecisionInput);
     expect(r.errors.filter((e) => e.startsWith("levels:"))).toEqual([]);
-  });
-});
-
-describe("the six already on the book — get_theses puts them on the work list", () => {
-  it("a LONG watch with no entry and no trigger of its own is flagged, with no live price needed", () => {
-    const flags = computePlanSanity({ status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null, ownTriggerCount: 0 });
-    expect(flags.map((f) => f.kind)).toEqual(["NOTHING_CAN_WAKE"]);
-  });
-  it("one wake of its own is enough; so is a buy price; a seed and a held stock are never flagged", () => {
-    const base = { status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null, currentPrice: null } as const;
-    expect(computePlanSanity({ ...base, ownTriggerCount: 1 })).toEqual([]);
-    expect(computePlanSanity({ ...base, entryPrice: 7.91, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, direction: null, ownTriggerCount: 0 })).toEqual([]);
-    expect(computePlanSanity({ ...base, status: "HOLDING", ownTriggerCount: 0 })).toEqual([]);
   });
 });

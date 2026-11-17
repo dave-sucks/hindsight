@@ -48,7 +48,8 @@ describe("the framework's read section follows row-for-model.ts", () => {
     for (const code of Object.keys(samples.bySituation)) {
       for (const k of printed(samples.bySituation[code])) expect([code, k, keys.bySituation[code].includes(k)]).toEqual([code, k, true]);
     }
-    expect(samples.bySituation.BUY_ARRIVES).toContain("room to the Street average");
+    expect(samples.bySituation.BUY_ARRIVES).toMatch(/^street: .*avg \$/m);
+    expect(samples.bySituation.BUY_ARRIVES).not.toContain("room to the Street average");
     expect(samples.bySituation.PROTECTIVE_SALE).not.toMatch(/^(street|bull_case): /m);
     expect(samples.review).toMatch(/^bull_case: /m);
     expect(samples.review).not.toMatch(/^plan: |^protection: /m);

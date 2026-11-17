@@ -52,7 +52,7 @@ describe("the review flag says when it was due", () => {
  *
  * The union is a discriminated one because each kind genuinely knows
  * different things — REVIEW_DUE has no trigger to name, FLOOR_TOO_FAR has no
- * date. That shape is right; what was wrong was rendering all eight richly,
+ * date. That shape is right; what was wrong was rendering all seven richly,
  * so every stock's header had a differently shaped sentence on it.
  */
 describe("the flag is a name and at most one fact", () => {
@@ -108,16 +108,6 @@ describe("the flag is a name and at most one fact", () => {
       "Gain unprotected",
       "up 31%, no floor under it",
     ],
-    [
-      { kind: "RESEARCH_STALE", daysOld: null, threshold: 30, freshness: "missing" },
-      "Research stale",
-      "never written",
-    ],
-    [
-      { kind: "RESEARCH_STALE", daysOld: 44, threshold: 30, freshness: "stale" },
-      "Research stale",
-      "44 days old",
-    ],
     [{ kind: "REVIEW_DUE", daysOverdue: 0 }, "Review due", null],
     [{ kind: "REVIEW_DUE", daysOverdue: 1 }, "Review due", "1 day overdue"],
     [{ kind: "REVIEW_DUE", daysOverdue: 6 }, "Review due", "6 days overdue"],
@@ -133,7 +123,7 @@ describe("the flag is a name and at most one fact", () => {
   });
 
   // The flag never carries a sentence. The paragraph under it is the
-  // analyst's; the flag's job is to say which of eight things happened.
+  // analyst's; the flag's job is to say which of seven things happened.
   it("a detail is a fact, never prose", () => {
     for (const [na] of cases) {
       const { detail } = needsActionFlag(na);

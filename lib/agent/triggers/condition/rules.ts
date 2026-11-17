@@ -49,16 +49,6 @@ export function isLevel(w: When): boolean {
   return !isGroup(w) && measureOf(w).level?.(w) === true;
 }
 
-/** Every typed price level in the condition read on the close (a watched stock's floor). Same object when nothing changes. */
-export function onTheClose(w: When): When {
-  if (isGroup(w)) {
-    const conditions = w.conditions.map(onTheClose);
-    return conditions.every((c, i) => c === w.conditions[i]) ? w : { ...w, conditions };
-  }
-  if (!isLevel(w) || w.settings?.close === true) return w;
-  return { ...w, settings: { ...w.settings, close: true } };
-}
-
 /** Whether the trigger check must load `source` for it: its measure reads it, or (the snapshot) its variable does. */
 export function readsSource(w: When, source: Source): boolean {
   return conditionsOf(w).some(

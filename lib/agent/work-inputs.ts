@@ -39,7 +39,6 @@ import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { PROPOSED } from "@/lib/proposals/staged";
 
 export interface WorkContext {
   userId?: string;
@@ -71,15 +70,6 @@ export interface PendingProposal {
   expiresAt: Date | null;
 }
 
-/** An audit row the ladder-edit scan reads. */
-export interface LadderEditRow {
-  type: string;
-  timestamp: Date;
-  fieldChanges: unknown;
-  priceAtTime: number | null;
-  rationale: string | null;
-}
-
 export interface WorkLoad {
   /** Each live thesis's work-flag input, the declined sale on it. */
   inputs: Map<string, NeedsActionInput>;
@@ -99,7 +89,6 @@ export interface WorkLoad {
   declines: Map<string, DeclineSummary>;
   recentLow: Map<string, number>;
   lastLadderEditAt: Map<string, Date>;
-  ladderEditRows: Map<string, LadderEditRow[]>;
   equity: number | null;
   /** The activity read failed: open fires fall back to each stock's newest line. A caller that owes on fires fails loud. */
   activityFailed: boolean;
@@ -114,8 +103,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     ? await prisma.thesis.findMany({
         where: { id: { in: thesisIds } },
         select: {
-          id: true, ticker: true, status: true, direction: true, horizon: true, entryPrice: true, targetPrice: true,
-          triggers: true, triggerState: true, createdAt: true, lastReviewedAt: true, researchUpdatedAt: true,
+          id: true, ticker: true, status: true, direction: true, horizon: true,
+          triggers: true, triggerState: true, createdAt: true, lastReviewedAt: true,
           paperTenureDays: true, paperRealizedPnl: true, paperReviewCount: true, promotedAt: true,
           researchRun: { select: { agentConfigId: true } },
         },
@@ -130,7 +119,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   const load: WorkLoad = {
     inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
     indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
-    lastLadderEditAt: new Map(), ladderEditRows: new Map(), equity: null, activityFailed: false, proposalHistory: new Map(),
+    lastLadderEditAt: new Map(), equity: null, activityFailed: false, proposalHistory: new Map(),
   };
 
   // The live price, once, from the one place it comes from (live-quote): the
@@ -249,10 +238,10 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     }
   }
 
-  // The last ladder edit per held or priced watched stock, from one capped
-  // scan of CREATED/UPDATED rows. Truncated with no match ⇒ unknown; complete
-  // with no match ⇒ the ladder was born with the thesis.
-  const scanIds = theses.filter((t) => t.status === "HOLDING" || (t.status === "WATCHING" && t.entryPrice != null)).map((t) => t.id);
+  // The last ladder edit per held stock, from one capped scan of
+  // CREATED/UPDATED rows. Truncated with no match ⇒ unknown; complete with no
+  // match ⇒ the ladder was born with the thesis.
+  const scanIds = theses.filter((t) => t.status === "HOLDING").map((t) => t.id);
   if (scanIds.length > 0) {
     try {
       const take = Math.min(40 * scanIds.length, 600);
@@ -260,11 +249,10 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
         where: { thesisId: { in: scanIds }, type: { in: ["CREATED", "UPDATED"] } },
         orderBy: { timestamp: "desc" },
         take,
-        select: { thesisId: true, type: true, timestamp: true, fieldChanges: true, priceAtTime: true, rationale: true },
+        select: { thesisId: true, type: true, timestamp: true, fieldChanges: true },
       });
       const matched = new Set<string>();
       for (const r of rows) {
-        load.ladderEditRows.set(r.thesisId, [...(load.ladderEditRows.get(r.thesisId) ?? []), r]);
         if (!matched.has(r.thesisId) && isLadderEditUpdate(r.type, r.fieldChanges)) {
           load.lastLadderEditAt.set(r.thesisId, r.timestamp);
           matched.add(r.thesisId);
@@ -358,13 +346,13 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
   }
 
-  // Each stock's proposals (every order that went through the approval seam
-  // carries its thesis since 2026-08-18): their steps join the stock's feed,
-  // so the agent reads a proposed, declined or expired sale as the owner
-  // sees it. Newest first; a dozen a stock covers the window the scan does.
+  // Each stock's orders (every order carries its thesis since 2026-08-18):
+  // their steps join the stock's feed, so the agent reads a proposed,
+  // declined or expired sale, and a fill, as the owner sees it. Newest
+  // first; a dozen a stock covers the window the scan does.
   try {
     const orders = await prisma.order.findMany({
-      where: { thesisId: { in: liveIds }, ...PROPOSED },
+      where: { thesisId: { in: liveIds } },
       orderBy: { createdAt: "desc" },
       take: Math.min(12 * liveIds.length, 600),
       select: { ...FEED_ORDER_SELECT, thesisId: true },
@@ -388,12 +376,12 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     const input: NeedsActionInput = {
       thesis: {
         id: t.id, direction: t.direction, status: t.status, triggers, createdAt: t.createdAt,
-        lastReviewedAt: t.lastReviewedAt, researchUpdatedAt: t.researchUpdatedAt ?? null, horizon: t.horizon ?? null,
+        lastReviewedAt: t.lastReviewedAt,
         positionOpenedAt: pos?.openedAt ?? null,
         avgCost: pos && Number.isFinite(pos.avgCost) ? pos.avgCost : null,
         peakPrice: pos?.peakPrice ?? null,
         quantity: pos && pos.quantity > 0 ? pos.quantity : null,
-        structure: structure.get(t.ticker.toUpperCase()) ?? null, targetPrice: t.targetPrice ?? null,
+        structure: structure.get(t.ticker.toUpperCase()) ?? null,
         paperTenureDays: t.paperTenureDays ?? null,
         paperRealizedPnl: t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,
         paperReviewCount: t.paperReviewCount ?? null, promotedAt: t.promotedAt ?? null,

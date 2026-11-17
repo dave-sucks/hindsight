@@ -1,6 +1,7 @@
 /**
  * On fire, the same three choices on every trigger (docs/TRIGGERS.md §4): DO_IT "Auto" (the trade with no
- * agent), ASK_NOW "Send to Agent" (a trigger run now), NEXT_MORNING "Flag for Review" (the morning run). Pure.
+ * agent), ASK_NOW "Send to Agent" (a trigger run now), NEXT_MORNING "Flag for Review" (the morning run, never
+ * on a sale or trim). Pure.
  */
 
 import { sentenceOf } from "./condition/describe";
@@ -27,14 +28,20 @@ export function withFireMode<T extends { action: string; fireMode?: FireMode | n
 }
 
 export const AUTO_REVIEW = "A review asks the agent, so it can't be Auto. Choose Send to Agent or Flag for Review.";
-export const AUTO_OWNER_ONLY = "Only the owner can make a buy, add or trim Auto. Use Send to Agent or Flag for Review.";
+export const AUTO_OWNER_ONLY = "Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add.";
 export const AUTO_STANDING_SALE_ONLY = "Account and analyst rules can be Auto only for a sale. Set Auto on the stock's own trigger.";
+export const SALE_CANT_WAIT = "A sale can't wait for the morning. Choose Auto-sell or Send to Agent.";
+export const TRIM_CANT_WAIT = "A trim can't wait for the morning. Choose Send to Agent.";
+export const STOP_WATCHING_ONE_WAY = "A Stop watching line stops watching when it fires; it has no other On fire choice.";
 
 /**
  * Why a trigger can't take this mode, or null. `standing`: an account or analyst rule. `agent`: an agent sets
  * it, outside the owner's chat. Auto on a buy, add or trim is a one-time order only the owner places on a stock.
+ * A sale or trim is never Flag for Review: a stop that waits until tomorrow morning isn't a stop.
  */
 export function fireModeProblem(action: string, mode: FireMode | null | undefined, who: { standing?: boolean; agent?: boolean } = {}): string | null {
+  if (action === "STOP_WATCHING") return mode === "DO_IT" || mode === "NEXT_MORNING" ? STOP_WATCHING_ONE_WAY : null;
+  if (mode === "NEXT_MORNING") return action === "EXIT" ? SALE_CANT_WAIT : action === "TRIM" ? TRIM_CANT_WAIT : null;
   if (mode !== "DO_IT") return null;
   if (action === "REVIEW") return AUTO_REVIEW;
   if (action === "EXIT") return null;
@@ -86,13 +93,12 @@ export function approvalLine(
 }
 
 /** The Activity line when an Auto buy, add or trim is used and comes off the stock: "Used once: Trim 30% if above $150 (Auto-trim)". */
-export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }, held: boolean): string {
-  return `Used once: ${sentenceOf(t, held)} (${fireModeLabel("DO_IT", t.action)})`;
+export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }): string {
+  return `Used once: ${sentenceOf(t)} (${fireModeLabel("DO_IT", t.action)})`;
 }
 
 /** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
-export function fireModeWords(t: { action: string; fireMode?: FireMode | null }, sells = true): string {
-  // A sale on a stock we don't own takes the plan down when it fires, whatever is set.
-  if (t.action === "EXIT" && !sells) return "Takes the plan down when it fires";
+export function fireModeWords(t: { action: string; fireMode?: FireMode | null }): string {
+  if (t.action === "STOP_WATCHING") return "Stops watching when it fires";
   return fireModeLabel(fireModeOf(t), t.action);
 }

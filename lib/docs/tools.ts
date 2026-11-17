@@ -220,7 +220,7 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     name: "Portfolio",
     kind: "book",
     sources: ["hindsight", "alpaca"],
-    summary: "Open positions with live price, gain, days held, distance from the high, floor and target; cash, equity, open risk and the daily digest.",
+    summary: "Open positions with the portfolio snapshot's price, day and gain, days held, distance from the high, floor and target; the account's value, cash, day, buying power and open risk.",
   },
   list_proposals: {
     name: "Waiting for you",

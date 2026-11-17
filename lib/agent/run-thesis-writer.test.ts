@@ -121,7 +121,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
     });
 
     it("requires a protective EXIT rung on the stop", () => {
-      expect(prompt).toContain("At least one EXIT rung on the stop");
+      expect(prompt).toContain("At least one EXIT on the floor");
     });
 
     it("does NOT fall through to the PROMOTED or WATCHING blocks", () => {
@@ -140,6 +140,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
     it("declares the WATCHING trigger block", () => {
       expect(prompt).toContain("WATCHING thesis (no position");
       expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
+      expect(prompt).toContain("Stop watching if below $X");
     });
 
     it("does NOT include the PROMOTED or HELD blocks", () => {
@@ -184,9 +185,9 @@ describe("buildWriterResearchPrompt — status branching", () => {
       }
     });
 
-    it("instructs one submit_thesis call and, under 2×, a reason in the note (no R/R floor since 2026-11-04)", () => {
+    it("instructs one submit_thesis call, with no reward/risk rule (the house sets no target, 2026-11-16)", () => {
       expect(prompt).toContain("submit_thesis");
-      expect(prompt).toContain("UNDER 2×, SAY WHY");
+      expect(prompt).not.toContain("UNDER 2×");
       expect(prompt).not.toContain("2:1 MANDATORY");
     });
 
@@ -416,14 +417,14 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
   });
 
   it("lists the seat's setups with their entry, stop and target rules", () => {
-    expect(prompt).toContain("YOUR SETUPS — every LONG/SHORT plan is written on one of these");
+    expect(prompt).toContain("YOUR SETUPS — the playbooks you write a stock's triggers on");
     expect(prompt).toMatch(/^PEAD — /m);
     expect(prompt).toMatch(/^MA_PULLBACK — /m);
     expect(prompt).not.toMatch(/^BASE_BREAKOUT — /m);
   });
 
   it("buying now is an entry at the price — the old rule is gone", () => {
-    expect(prompt).toContain("that\n         is how you buy now");
+    expect(prompt).toContain("that is how you buy\n         now");
     expect(prompt).not.toMatch(/has NOT\s+reached/);
     expect(prompt).not.toContain("never a buy level parked on today's price");
     expect(prompt).not.toContain("MSFT go $418 → $497");

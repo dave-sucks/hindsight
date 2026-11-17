@@ -12,6 +12,7 @@ import { finnhub } from "@/lib/agent/research-helpers";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { computeRegime, type RegimeReading } from "@/lib/agent/regime";
 import { openRisk, type OpenRisk, type RiskHolding } from "@/lib/agent/portfolio-risk";
+import type { PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 
 export interface AccountRisk {
   equity: number | null;
@@ -31,41 +32,39 @@ export async function loadAccountRisk(opts: {
   accountId: string | null | undefined;
   environment: string;
   creds?: AlpacaCredentials;
+  /** The portfolio snapshot, when the caller has one: its value is the equity and its prices the prices. */
+  snapshot?: PortfolioSnapshot;
 }): Promise<AccountRisk> {
   const empty: AccountRisk = { equity: null, holdings: [], open: null, regime: null };
   if (!opts.accountId) return empty;
 
+  const { snapshot } = opts;
   const [account, positions] = await Promise.all([
-    getAccount(opts.creds).catch(() => null),
+    snapshot ? null : getAccount(opts.creds).catch(() => null),
     prisma.position.findMany({
       where: { accountId: opts.accountId, environment: opts.environment, status: "OPEN" },
       select: { analystId: true, symbol: true, direction: true, quantity: true, avgCost: true, stopLoss: true },
     }),
   ]);
-  const equity = account ? parseFloat(account.equity) : null;
+  const equity = snapshot ? snapshot.value : account ? parseFloat(account.equity) : null;
 
   const symbols = Array.from(new Set(positions.map((p) => p.symbol)));
-  const [prices, theses, industries, snapshots] = await Promise.all([
-    symbols.length ? getLatestPrices(symbols, opts.creds).catch(() => ({}) as Record<string, number>) : Promise.resolve({} as Record<string, number>),
-    symbols.length
-      ? prisma.thesis.findMany({
-          where: { ticker: { in: symbols }, status: "HOLDING" },
-          select: { ticker: true, stopLoss: true, researchRun: { select: { agentConfigId: true } } },
-        })
-      : Promise.resolve([]),
+  const [prices, industries, snapshots] = await Promise.all([
+    snapshot
+      ? Object.fromEntries(snapshot.holdings.filter((h) => h.price != null).map((h) => [h.ticker, h.price!]))
+      : symbols.length ? getLatestPrices(symbols, opts.creds).catch(() => ({}) as Record<string, number>) : Promise.resolve({} as Record<string, number>),
     Promise.all(symbols.map(async (s) => [s, await industryOf(s)] as const)),
     loadIndicatorSnapshots(["SPY", ...symbols]).catch(() => new Map()),
   ]);
   const industryBySymbol = new Map(industries);
-  const floorOf = (analystId: string, symbol: string) =>
-    theses.find((t) => t.ticker === symbol && t.researchRun.agentConfigId === analystId)?.stopLoss ?? null;
 
   const holdings: RiskHolding[] = positions.map((p) => ({
     symbol: p.symbol,
     direction: p.direction,
     qty: p.quantity,
-    price: prices[p.symbol] ?? p.avgCost,
-    stop: floorOf(p.analystId, p.symbol) ?? p.stopLoss ?? null,
+    price: prices[p.symbol.toUpperCase()] ?? p.avgCost,
+    // The trade's own approved sell price, moved with the owner's edits and stop when buying.
+    stop: p.stopLoss ?? null,
     industry: industryBySymbol.get(p.symbol) ?? null,
   }));
 

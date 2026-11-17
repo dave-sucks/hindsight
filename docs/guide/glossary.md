@@ -15,16 +15,16 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## A thesis
 
-- **Thesis:** one analyst's view of one stock, and its plan. Every stock on the book has one. See [Theses](concepts/theses.md).
+- **Thesis:** one analyst's view of one stock, and its triggers. Every stock on the book has one. See [Theses](concepts/theses.md).
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
 - **Wrong if:** what would prove the belief wrong, written before the buy.
-- **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, the target and the time limit.
+- **Setup:** the kind of trade, from the shared **playbook** (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has its checklist for the buy, the floor, any take-profit and the time limit, and its triggers: what it writes on a stock on a watch, with the buy and at the fill (Settings → Playbook).
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
 - **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.
-- **Plan:** a thesis's triggers. The buy, the floor and the target are triggers too.
+- **Plan:** not a thing. A stock has its triggers and nothing else; "the buy" and "the floor" are names for kinds of trigger.
 - **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It's due its first research on its review clock.
-- **Wake:** a review trigger on a watch with no plan, like a price or a date, that brings the stock back for a fresh look.
+- **Wake:** a review trigger on a watch with no buy, like a price or a date, that brings the stock back for a fresh look.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Agent Watch:** a watch with its own review clock, so its analyst looks at it on a schedule. A plain watch waits for its triggers.
 - **Holding:** bought. A watch turns into a holding when the broker takes the buy.
@@ -33,7 +33,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Promoted:** held in paper and just moved to live money; the next run re-enters or goes back to watching.
 - **Note:** your words on a stock's thesis. Information, not an order; every run reads the newest ones first and answers them.
 - **Activity:** the stock's log: one line for every change, fire, trade and note.
-- **Thesis sheet:** a stock's detail panel, where you read its thesis and change its plan yourself.
+- **Thesis sheet:** a stock's detail panel, where you read its thesis and change its triggers yourself.
 
 ## Triggers
 
@@ -41,13 +41,13 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Action:** what a trigger does when it comes true: **buy**, **add**, **trim**, **sell** or **review**. A review wakes the analyst with no order behind it.
 - **Floor:** the sale trigger under the price. The stop.
 - **Trail:** a sale measured as a give-back from the highest price since the buy, like "6% off the high".
-- **Target:** the price the plan aims for. Reaching it is a review: take it, or trail higher.
+- **Target:** only ever Wall Street's number, the analysts' 12-month price target. Hindsight sets none of its own; an upside rule is a take-profit trigger. See [Price targets](concepts/price-targets.md).
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.
-- **On the cross:** how a buy fires: once, on the day the price reaches its level, never every day it stays there.
-- **Standing order:** how every trigger but a buy fires: again each time its rest period ends, while its condition holds. A sale asks every day until the stock is sold.
+- **On the cross:** how a buy fires, and a review that watches the price: once, on the day the price reaches its level, never every day it stays there.
+- **Standing order:** how a sale, an add or a trim fires, and a review that doesn't watch the price: again each time its rest period ends, while its condition holds. A sale asks every day until the stock is sold.
 - **Review clock:** a review that repeats, like "Review every 30 days". When it comes round, the stock is due a fresh look.
-- **On fire:** what a trigger does when it comes true: Auto (the trade, no agent: Auto-sell, Auto-trim, Auto-buy, Auto-add), Send to Agent (a trigger run), or Flag for Review (the next morning run).
+- **On fire:** what a trigger does when it comes true: Auto (the trade, no agent: Auto-sell, Auto-trim, Auto-buy, Auto-add), Send to Agent (a trigger run), or Flag for Review (the next morning run; never a sale or a trim).
 - **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day: a day for a price line or the trail, a week for an add, trim or review on the move from our entry. A sale asks daily whatever it watches. A trigger's popover shows it.
 - **Inherited rule:** a trigger that comes from the analyst or the account, not the thesis. Never copied onto the thesis; the closest rule wins.
 - **Close pass:** the 4:20 PM check for levels that read the day's closing price.
@@ -65,7 +65,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 ## What an agent reads
 
 - **The read:** an agent's view of its book from `get_theses`. Each stock is sent at the size today needs: a **line** for a quiet stock, a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
-- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eighteen. See [Situations](concepts/situations.md).
+- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eight: one per trigger action (sale, buy, add, review) and four the code finds with no trigger. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and setups, written once and given to every agent.
 - **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.

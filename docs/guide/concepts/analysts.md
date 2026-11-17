@@ -29,7 +29,7 @@ The sizing math, the market's effect and the account-wide limits: [Sizing and li
 Every agent that touches one of its stocks reads the same brief first: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently. Then:
 
 - **[Discovery](../agents/discovery.md)** searches only inside its universe and scores each stock against its setups.
-- **[The Writer](../agents/writer.md)** researches in its strategy and prices the plan from its setups' rules.
+- **[The Writer](../agents/writer.md)** researches in its strategy and writes a stock's buy and floor triggers from its setups' rules.
 - **Its sell rules** guard every stock it holds without being copied onto them, so changing its style changes every holding at once.
 - **[Morning runs](../agents/morning-runs.md)** review its book on its run days.
 - **[Trigger runs](../agents/trigger-runs.md)** decide in its style. A buy that fires while it's full waits for you to choose what it replaces.
@@ -41,7 +41,7 @@ Every [proposal](approvals.md) names the analyst behind it, so you always know w
 
 ## The playbook
 
-Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, the target and the time limit. A new analyst starts with the ones its strategy's playbook lists, signature first (`lib/agent/knowledge/strategy-archetypes.ts`), and you can change them in Settings. The setups are defined in `lib/agent/knowledge/setups.ts`.
+Every analyst trades from the same playbook of setups, each with its checklist for the buy, the floor, any take-profit and the time limit. A new analyst starts with the ones its strategy's playbook lists, signature first (`lib/agent/knowledge/strategy-archetypes.ts`), and you can change them in Settings. The setups are defined in `lib/agent/knowledge/setups.ts`.
 
 <!-- asset: playbook -->
 

@@ -15,30 +15,17 @@ export const SITUATION_CODES = Object.keys(SITUATIONS) as SituationCode[];
 
 /**
  * What usually puts a stock in each situation (situations.ts `fireCodes` and
- * `flagCodes`): a trigger firing, or a flag read off the stock's facts. A buy
- * level reached and an add or near target can come either way (the price at
- * the level, three quarters of the way to the target); the bolt names the
- * usual one.
+ * `flagCodes`): a trigger firing, or a flag read off the stock's facts.
  */
 export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
-  AUTO_TRADE: "trigger",
   PROMOTED_AWAITING: "flag",
   PROTECTIVE_SALE: "trigger",
   BUY_ARRIVES: "trigger",
-  BUY_BLOCKED_FULL: "trigger",
   ADD_OR_WINNER: "trigger",
-  EARNINGS: "trigger",
-  FILING: "trigger",
-  QUIET_WATCH_WOKE: "trigger",
   PROTECTION: "flag",
-  FIRST_RESEARCH: "trigger",
   REVIEW_DUE: "trigger",
-  STALE_RESEARCH: "flag",
-  PLAN_PROBLEM: "flag",
-  YOUR_WORD_UNANSWERED: "flag",
-  PINNED_NOTE: "flag",
+  NOTE_TO_ANSWER: "flag",
   SOLD_ONE_REVIEW: "flag",
-  NO_SETUP_NAMED: "flag",
 };
 
 /** The keys each read sends. */

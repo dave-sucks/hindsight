@@ -38,7 +38,7 @@ export const ACTIVITY_SELECT = {
  * `notes` are the account's shared notes, newest first (lib/agent/shared-notes.ts).
  * The ones that cover this stock join its Activity, except the newest two
  * pinned ones, which read in their own block above the newest 8 and put the
- * stock in PINNED_NOTE until a run writes on it after them.
+ * stock in NOTE_TO_ANSWER until a run writes on it after them.
  */
 export function stockContextFor(args: {
   ticker: string;

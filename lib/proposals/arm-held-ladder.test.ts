@@ -5,8 +5,8 @@
  * used to be two copies of this logic, and they drifted. DAV-195 L3 taught the
  * place_trade copy to recompute the displayed level columns from the newly
  * armed triggers; the approval copy never got it. Since every LIVE trade goes
- * through approval, the live path regenerated the ladder while entryPrice /
- * targetPrice / stopLoss kept their watching-era values — the SNOW drift,
+ * through approval, the live path regenerated the ladder while the level
+ * columns kept their watching-era values — the SNOW drift,
  * reintroduced on every live fill.
  *
  * One implementation now serves both, so these assertions cover both paths.
@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 describe("armHeldLadderOnFill", () => {
-  it("stamps entryPrice with the FILL price, not the planned entry", async () => {
+  it("flips the stock to HOLDING and stamps no price of its own: what we paid is the position's", async () => {
     thesisFindFirst.mockResolvedValue({
       id: "t1", direction: "LONG", horizon: "TARGET",
       catalystDate: null, triggers: [],
@@ -60,8 +60,8 @@ describe("armHeldLadderOnFill", () => {
 
     const data = thesisUpdate.mock.calls[0][0].data;
     expect(data.status).toBe("HOLDING");
-    // Once held, entry is a FACT — what the buy actually cost.
-    expect(data.entryPrice).toBe(52.975);
+    // What we paid is the position's avgCost; the thesis stores no level (2026-11-16).
+    expect(data).not.toHaveProperty("entryPrice");
   });
 
   it("leaves the thesis's own floor and target when the buy names none", async () => {
@@ -80,7 +80,7 @@ describe("armHeldLadderOnFill", () => {
     expect(exits.map((t) => t.predicate.value)).toEqual([44]);
   });
 
-  it("recomputes the level columns from the armed triggers (the DAV-195 L3 fix)", async () => {
+  it("writes the armed triggers and no level columns: a stock has triggers and nothing else", async () => {
     thesisFindFirst.mockResolvedValue({
       id: "t1", direction: "LONG", horizon: "TARGET",
       catalystDate: null, triggers: [],
@@ -89,10 +89,8 @@ describe("armHeldLadderOnFill", () => {
     await armHeldLadderOnFill(BASE);
 
     const data = thesisUpdate.mock.calls[0][0].data;
-    // The columns are a read model of the ladder. They must be written from
-    // the triggers we just armed, never left at their watching-era values.
-    expect(data).toHaveProperty("targetPrice");
-    expect(data).toHaveProperty("stopLoss");
+    expect(data).not.toHaveProperty("targetPrice");
+    expect(data).not.toHaveProperty("stopLoss");
     expect(Array.isArray(data.triggers)).toBe(true);
   });
 
@@ -172,9 +170,10 @@ describe("armHeldLadderOnFill — the analyst's ladder survives the fill (DAV-23
     const triggers = data.triggers as Array<{ action: string; predicate: unknown }>;
     expect(triggers.some((t) => shapeName(t.predicate) === "move:below:peak")).toBe(false);
     expect(triggers.some((t) => t.action === "ADD")).toBe(false);
-    // And the target column is read off the surviving rung, not lost.
-    expect(data.targetPrice).toBe(2800);
-    expect(data.stopLoss).toBe(1580);
+    // The order's sale and upside line are triggers on the stock, at the order's prices.
+    const at = (id: string) => (data.triggers as Array<{ id: string; predicate: { value?: number } }>).find((t) => t.id === id)?.predicate.value;
+    expect(at("target")).toBe(2800);
+    expect(at("floor")).toBe(1580);
   });
 
   it("the WATCHING template's own rungs stay too — a fill adds, it never rewrites", async () => {

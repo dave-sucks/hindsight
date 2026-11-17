@@ -68,8 +68,8 @@ const airArgs = {
   exchange: "NYSE",
   direction: "LONG",
   entry_price: 150,
-  target_price: 200,
-  stop_loss: 135,
+  sell_if_below: 135,
+  sell_reason: "Under the base low.",
   thesis_id: "t_air",
 };
 

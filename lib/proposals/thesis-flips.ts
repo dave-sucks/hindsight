@@ -21,14 +21,8 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
-import {
-  defaultTriggersForHorizon,
-  reviewCadenceTrigger,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
-import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
-import { levelOf, shapeOf, type Condition } from "@/lib/agent/triggers/condition";
+import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   acceptedOps,
@@ -37,15 +31,13 @@ import {
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
-import { getSetup } from "@/lib/agent/knowledge/setups";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
+import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
- * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING,
- * regenerating HELD-side triggers based on the executed entry/target/stop.
+ * Promote the WATCHING / PROMOTED thesis on (analystId, ticker) to HOLDING.
+ * The stock keeps its triggers; the buy comes off (armHeldLadderOnFill).
  *
  * Mirrors place_trade.ts:802-874. Idempotent — if no WATCHING / PROMOTED
  * thesis is found (e.g. the agent already flipped it manually), no-op.
@@ -62,29 +54,11 @@ export async function promoteThesisOnApproval(opts: {
   stopLoss: number | null;
   /** The stop was typed on the Trade ticket: the floor it writes is the owner's. */
   stopIsOwners?: boolean;
+  /** The analyst's reason for the proposal's sell price, when you approved that price. */
+  stopReason?: string | null;
   runId?: string | null;
 }): Promise<void> {
-  // PROMOTED → ACTIVE — re-entered on first live-run after promotion.
-  // Done as a separate query because the thesis_id may point at a
-  // PROMOTED row while a WATCHING row also exists for the same ticker.
-  try {
-    await prisma.thesis.updateMany({
-      where: {
-        ticker: opts.ticker,
-        status: "PROMOTED",
-        researchRun: { agentConfigId: opts.analystId },
-      },
-      data: { status: "HOLDING", promotedAt: null },
-    });
-  } catch (err) {
-    console.warn(
-      `[promoteThesisOnApproval] PROMOTED → HOLDING flip failed for ${opts.ticker}:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-
-  // WATCHING → HOLDING — the more common path. One shared implementation with
-  // place_trade; see armHeldLadderOnFill below.
+  // WATCHING or PROMOTED → HOLDING. One shared implementation with place_trade; see armHeldLadderOnFill below.
   await armHeldLadderOnFill({
     analystId: opts.analystId,
     ticker: opts.ticker,
@@ -92,6 +66,7 @@ export async function promoteThesisOnApproval(opts: {
     targetPrice: opts.targetPrice,
     stopLoss: opts.stopLoss,
     stopIsOwners: opts.stopIsOwners,
+    stopReason: opts.stopReason,
     positionId: opts.positionId,
     runId: opts.runId ?? null,
     via: "approved proposal",
@@ -103,12 +78,8 @@ export async function promoteThesisOnApproval(opts: {
  *
  * ONE implementation, two callers: `place_trade` (paper, immediate fill) and
  * `promoteThesisOnApproval` (live, on the principal's approval). They used to
- * be two ~50-line copies, and the copies drifted: DAV-195 L3 taught the
- * place_trade copy to recompute the displayed levels from the new triggers and
- * the approval copy never got it — so on the path every live trade actually
- * takes, the ladder regenerated while `entryPrice` / `targetPrice` / `stopLoss`
- * kept their watching-era values. That is the SNOW drift, reintroduced on
- * every live fill. Collapsed 2026-08-27 (DAV-220).
+ * be two ~50-line copies, and the copies drifted (DAV-220, collapsed
+ * 2026-08-27).
  *
  * What it does — as trigger ops, never a rewrite (DAV-242; DAV-234 is
  * what a rewrite cost: ASML's $2,800 target and four reviews, gone on the
@@ -116,17 +87,17 @@ export async function promoteThesisOnApproval(opts: {
  *   - finds the analyst's newest WATCHING thesis on the ticker
  *   - removes the buy trigger(s) — you can't enter what you already hold
  *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
- *   - sets the floor and target to the EXECUTED levels (an edit of the
- *     trigger that is there, an add if none)
+ *     — and the Stop watching lines: there is no watch left to end
+ *   - writes "Sell if below $X" at the approved sell price (the order's
+ *     stopLoss): the analyst's, with its reason, from the proposal; yours
+ *     from the Trade ticket. A watch line never becomes the sale. The
+ *     upside level goes to the order's target when it names one
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
- *   - adds each held-side template trigger whose bucket is missing — the
- *     held review cadence and the earnings reviews. Sell rules and
- *     scale-ins are NOT stamped: they are the analyst's and the account's
- *     rules and apply by inheritance, so editing them reaches every
- *     holding instead of none
- *   - recomputes the displayed level columns FROM the resulting triggers
- *   - stamps entryPrice with the FILL price: once held, entry is a fact
+ *   - writes the stock's playbook's fill templates as Settings → Playbook
+ *     lists them (lib/agent/knowledge/playbooks.ts); one whose kind the stock
+ *     already has is not written, and its Activity line says so. No playbook,
+ *     nothing: the analyst's and the account's rules apply by inheritance
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
  *     one line per op
  *
@@ -136,103 +107,67 @@ export async function promoteThesisOnApproval(opts: {
 export async function armHeldLadderOnFill(opts: {
   analystId: string;
   ticker: string;
-  /** The fill, or on an approval the price then (the fill corrects it). Becomes Thesis.entryPrice. */
+  /** The fill, or on an approval the price then (the fill corrects it). Stop when buying measures from it. */
   fillPrice: number;
   /** Null leaves the thesis's own target / floor trigger as it is. */
   targetPrice: number | null;
   stopLoss: number | null;
   /** The stop was typed on the Trade ticket: the floor it writes is the owner's. */
   stopIsOwners?: boolean;
+  /** Why the sell price is there: the analyst's words, the note on the "Sell if below" line. */
+  stopReason?: string | null;
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
   via: "place_trade" | "approved proposal";
 }): Promise<void> {
   try {
-    const watchingThesis = await prisma.thesis.findFirst({
-      where: {
-        ticker: opts.ticker,
-        status: "WATCHING",
-        researchRun: { agentConfigId: opts.analystId },
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        direction: true,
-        horizon: true,
-        setupId: true,
-        accountId: true,
-        catalystDate: true,
-        triggers: true,
-      },
-    });
+    // A promoted row (re-entered on the first live run) is the one bought, else the newest watch. Either way
+    // its buy and Stop watching lines come off below: there is no watch left to end.
+    const find = (status: "PROMOTED" | "WATCHING") =>
+      prisma.thesis.findFirst({
+        where: { ticker: opts.ticker, status, researchRun: { agentConfigId: opts.analystId } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, status: true, direction: true, setupId: true, accountId: true, catalystDate: true, triggers: true },
+      });
+    const watchingThesis = (await find("PROMOTED")) ?? (await find("WATCHING"));
     if (!watchingThesis) return;
 
-    const horizon = watchingThesis.horizon as Horizon | null;
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
-    const heldTemplate = horizon
-      ? defaultTriggersForHorizon(
-          horizon,
-          {
-            entryPrice: opts.fillPrice,
-            targetPrice: opts.targetPrice,
-            stopLoss: opts.stopLoss,
-            catalystDate: watchingThesis.catalystDate ?? null,
-            direction: watchingThesis.direction as "LONG" | "SHORT",
-          },
-          "HELD",
-        )
-      : [];
-    // The stock's own exits from the setup it was bought on (DAV-254): the
-    // time limit counted from this buy, a partial at N R, the beat-the-
-    // market-sold review. Seat style (the trail) stays on the analyst.
-    const setup = watchingThesis.setupId
-      ? getSetup(watchingThesis.setupId, await loadSetupOverrides(watchingThesis.accountId))
-      : undefined;
-    const setupExits = setup
-      ? setupExitTriggers({
-          setup,
-          horizon,
-          entry: opts.fillPrice,
-          stop: opts.stopLoss,
-          mintId: () => randomUUID(),
-        })
-      : [];
-    // A level the buy didn't name is left as the thesis has it — never
-    // filled in with the entry, which would arm a sale at the buy price.
+    // The playbook's fill templates, read against the lines left once the buy and Stop watching lines come off.
+    // A playbook that can't be read writes none, and the Activity line says so.
+    const watchLines = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING";
+    const playbook = fillTemplateOps(
+      watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
+      stored.filter((t) => !watchLines(t)),
+    );
+    // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
+    // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
+    const chooser = opts.stopIsOwners ? "PRINCIPAL" : opts.stopReason?.trim() ? "AGENT" : null;
     const floorOp: TriggerOp[] =
       opts.stopLoss != null
-        ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, ...(opts.stopIsOwners ? { rationale: addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) } : {}) }]
+        ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, rationale: chooser === "PRINCIPAL" ? addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) : opts.stopReason?.trim() }]
         : [];
     const ops: TriggerOp[] = [
-      ...stored.filter((t) => t.action === "ENTER").map((t) => ({ op: "remove" as const, id: t.id })),
-      ...(opts.stopIsOwners ? [] : floorOp),
+      ...stored.filter(watchLines).map((t) => ({ op: "remove" as const, id: t.id })),
+      ...(chooser ? [] : floorOp),
       ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-      // The template's hard stop is not written: "stop when buying" is the one automatic floor.
-      ...heldTemplate
-        .filter((t) => levelSlotOf(t, watchingThesis.direction) !== "FLOOR")
-        .map((t) => ({ op: "add" as const, trigger: t })),
-      ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
+      ...playbook.ops,
     ];
-    // A template trigger whose bucket the analyst already filled is left
-    // alone: the add would become an edit of theirs, and the fill must not
-    // move a level the analyst chose.
-    const taken = new Set(stored.map(triggerSlot));
     const system = applyTriggerOps({
       stored,
-      ops: ops.filter((o) => o.op !== "add" || !taken.has(triggerSlot(o.trigger))),
+      ops,
       direction: watchingThesis.direction,
       status: "HOLDING",
       actor: "SYSTEM",
       mintId: () => randomUUID(),
     });
-    // A stop typed on the Trade ticket is the owner's floor. One equal to the row's (the ticket's default) stays the analyst's.
-    const rowFloor = system.triggers.find((t) => levelSlotOf(t, watchingThesis.direction) === "FLOOR");
-    const typed = opts.stopIsOwners && floorOp.length > 0 && (rowFloor == null || levelOf(shapeOf(rowFloor.predicate) as Condition)?.value !== opts.stopLoss);
-    const owners = typed
-      ? applyTriggerOps({ stored: system.triggers, ops: floorOp, direction: watchingThesis.direction, status: "HOLDING", actor: "PRINCIPAL", mintId: () => randomUUID() })
-      : null;
-    const applied = { triggers: owners?.triggers ?? system.triggers, results: [...system.results, ...(owners?.results ?? [])] };
+    // The sale is written by whoever chose its price, so it reads as theirs.
+    const chosen =
+      chooser && floorOp.length > 0
+        ? applyTriggerOps({ stored: system.triggers, ops: floorOp, direction: watchingThesis.direction, status: "HOLDING", actor: chooser, mintId: () => randomUUID() })
+        : null;
+    const applied = { triggers: chosen?.triggers ?? system.triggers, results: [...system.results, ...(chosen?.results ?? [])] };
     // Stop when buying: read against the floor the buy just set.
     const stopOps = autoStopOps({
       triggers: applied.triggers,
@@ -247,50 +182,39 @@ export async function armHeldLadderOnFill(opts: {
     const results = [...applied.results, ...(stopped?.results ?? [])];
     for (const r of stopped?.results ?? []) if (!r.ok) console.warn(`[armHeldLadderOnFill] ${opts.ticker}: stop when buying not set — ${r.reason}`);
 
-    // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
-    // here or the sheet shows the price you PLANNED to sell at while a
-    // different one is armed.
-    const heldLevels = canonicalLevels({
-      triggers: nextTriggers.map((x) => ({
-        ...x,
-        level: "THESIS" as const,
-        inherited: false,
-      })),
-      direction: watchingThesis.direction,
-      status: "HOLDING",
-      avgCost: opts.fillPrice,
-    });
-
     await prisma.thesis.update({
       where: { id: watchingThesis.id },
       data: {
         status: "HOLDING",
+        promotedAt: null,
         triggers: nextTriggers as unknown as object,
-        entryPrice: opts.fillPrice,
-        targetPrice: heldLevels.columns.targetPrice,
-        stopLoss: heldLevels.columns.stopLoss,
       },
     });
     // A floor the setting moved is mirrored onto the position, as an owner's edit is.
     if (stopped?.results.some((r) => r.ok)) {
-      await prisma.position.updateMany({ where: { id: opts.positionId }, data: { stopLoss: heldLevels.columns.stopLoss } });
+      // The sale the setting wrote is its first op; its price is the position's sell price.
+      const sale = stopOps[0];
+      const floor = sale && (sale.op === "add" || sale.op === "replace") ? typedPriceOf(sale.trigger) : null;
+      await prisma.position.updateMany({ where: { id: opts.positionId }, data: { stopLoss: floor } });
     }
     await prisma.thesisUpdate.create({
       data: {
         thesisId: watchingThesis.id,
         type: "STATUS_CHANGED",
-        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} WATCHING → HOLDING on ${opts.via}`,
+        summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
-          status: { from: "WATCHING", to: "HOLDING" },
-          triggerOps: { from: null, to: acceptedOps(results) },
+          status: { from: watchingThesis.status, to: "HOLDING" },
+          triggerOps: { from: null, to: [...acceptedOps(results), ...playbook.notWritten] },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,
+        // The price the buy was made at: stop when buying set its sale under it, and the fill moves it from here.
+        priceAtTime: opts.fillPrice,
       },
     });
   } catch (err) {
     console.warn(
-      `[armHeldLadderOnFill] WATCHING → HOLDING flip failed for ${opts.ticker}:`,
+      `[armHeldLadderOnFill] ${opts.ticker} → HOLDING flip failed:`,
       err instanceof Error ? err.message : err,
     );
   }

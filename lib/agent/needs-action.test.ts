@@ -199,6 +199,65 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
   });
 });
 
+describe("computeNeedsAction — a sale waiting for the principal silences only that sale", () => {
+  const TRIM_LONG: Trigger = { id: "trig-trim", predicate: { watch: "price", is: "above", value: 150 }, action: "TRIM", rationale: "Trim into strength", cooldownDays: 1 };
+  const ADD_LONG: Trigger = { id: "trig-add", predicate: { watch: "price", is: "above", value: 150 }, action: "ADD", rationale: "Press the winner", cooldownDays: 1 };
+  const REVIEW_PRICE: Trigger = { id: "trig-review-price", predicate: { watch: "price", is: "below", value: 95 }, action: "REVIEW", rationale: "Look if it slips", cooldownDays: 1 };
+  const held = (triggers: Trigger[]) => ({ ...baseThesis, status: "HOLDING", triggers });
+  const fired = (triggerId: string, at = "2026-05-10T09:00:00Z") => ({ type: "TRIGGER_FIRED", triggerId, timestamp: new Date(at) });
+  /** The kinds on the list, lead first, and the sale's action wherever a fire carries it. */
+  const kinds = (r: ReturnType<typeof computeNeedsAction>) => r.map((f) => f.kind);
+
+  it("a fired sale is not raised again while its card waits, and is the lead without the card", () => {
+    const input = { thesis: held([EXIT_LONG]), activity: [fired("trig-exit")], latestQuote: { price: 80, changePct: 0 }, now };
+    expect(computeNeedsAction({ ...input, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf(input)?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("a sale true now, and a fired trim, are the card's too", () => {
+    const now80 = { latestQuote: { price: 80, changePct: 0 }, now };
+    expect(computeNeedsAction({ thesis: held([EXIT_LONG]), activity: [], ...now80, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf({ thesis: held([EXIT_LONG]), activity: [], ...now80 })?.kind).toBe("TRIGGER_MATCHING_NOW");
+
+    const high = { latestQuote: { price: 160, changePct: 0 }, now };
+    expect(computeNeedsAction({ thesis: held([TRIM_LONG]), activity: [fired("trig-trim")], ...high, hasPendingSaleProposal: true })).toEqual([]);
+    expect(leadOf({ thesis: held([TRIM_LONG]), activity: [fired("trig-trim")], ...high })?.kind).toBe("TRIGGER_FIRED");
+  });
+
+  it("a sale the principal declined before is not raised beside a new card", () => {
+    const declinedSale = { declineCount: 1, lapseCount: 0, lastDeclinedAt: "2026-05-09T15:00:00Z", rejectMessage: "not yet", floorPrice: 90, recentLow: 82 };
+    const input = { thesis: held([EXIT_LONG]), activity: [], latestQuote: { price: 80, changePct: 0 }, now, declinedSale };
+    expect(leadOf(input)?.kind).toBe("SALE_DECLINED");
+    expect(computeNeedsAction({ ...input, hasPendingSaleProposal: true })).toEqual([]);
+  });
+
+  it("a review that fired beside the sale, and the review clock, still list the stock", () => {
+    const input = {
+      thesis: { ...held([EXIT_LONG, REVIEW_PRICE, CADENCE_7D]), lastReviewedAt: lookedAt(10) },
+      activity: [fired("trig-exit"), fired("trig-review-price")],
+      latestQuote: { price: 80, changePct: 0 },
+      now,
+    };
+    // Without the card: the sale leads, with the review fired beside it.
+    const without = computeNeedsAction(input);
+    expect(without[0]).toMatchObject({ kind: "TRIGGER_FIRED", action: "EXIT", alsoFired: [{ triggerId: "trig-review-price", action: "REVIEW" }] });
+
+    // With it: the review leads, carries no sale beside it, and the clock is still due.
+    const waiting = computeNeedsAction({ ...input, hasPendingSaleProposal: true });
+    expect(waiting[0]).toMatchObject({ kind: "TRIGGER_FIRED", triggerId: "trig-review-price", action: "REVIEW" });
+    expect(waiting[0]).not.toHaveProperty("alsoFired");
+    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "REVIEW_DUE"]);
+  });
+
+  it("an add that fired, and a review that came due, are not the sale's: still listed", () => {
+    const addFired = computeNeedsAction({ thesis: held([ADD_LONG]), activity: [fired("trig-add")], latestQuote: { price: 160, changePct: 0 }, now, hasPendingSaleProposal: true });
+    expect(addFired[0]).toMatchObject({ kind: "TRIGGER_FIRED", action: "ADD" });
+
+    const due = computeNeedsAction({ thesis: { ...held([CADENCE_7D]), lastReviewedAt: lookedAt(10) }, activity: [], latestQuote: { price: 100, changePct: 0 }, now, hasPendingSaleProposal: true });
+    expect(kinds(due)).toEqual(["REVIEW_DUE"]);
+  });
+});
+
 describe("computeNeedsAction — TRIGGER_FIRED precedence", () => {
   it("returns TRIGGER_FIRED when latest ThesisUpdate is an unanswered fire", () => {
     const result = leadOf({
@@ -534,7 +593,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     status: "HOLDING",
     triggers: [ionsExit],
     avgCost: 73.83,
-    targetPrice: null as number | null,
   };
 
   it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
@@ -623,7 +681,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         status: "HOLDING",
         triggers: [],
         avgCost: 100,
-        targetPrice: 120,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },
@@ -648,7 +705,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         status: "HOLDING",
         triggers: [tightFloor],
         avgCost: 100,
-        targetPrice: 120,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },
@@ -722,7 +778,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         triggers: [trail],
         avgCost: 100,
         peakPrice: 120,
-        targetPrice: 130,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },
@@ -738,185 +793,15 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
 });
 
 
-// ── RESEARCH_STALE (2026-08-31) ───────────────────────────────────────────
-// The gap this closes: `researchAge` has ridden on every thesis row since
-// P1-1, but only the REVIEW_DUE branch consulted it. A compounder watch on
-// a 30-day clock reviewed on day 0 carried "stale" research silently for
-// the next month. Being computed rather than fired is no reason to stay
-// invisible — UNPROTECTED_GAIN is computed too.
-describe("computeNeedsAction — RESEARCH_STALE", () => {
-  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
-  const freshClock = (days: number): Trigger[] => [
-    {
-      id: "clock",
-      predicate: { watch: "repeat", value: days },
-      action: "REVIEW",
-      rationale: "cadence",
-    } as Trigger,
-  ];
-
-  it("flags an 80-day-old compounder watch whose review is a month away (the GD case)", () => {
+// Old research is not work by itself (2026-11-13: the "research stale" flag
+// was deleted). WST on 2026-11-13: research 65 days old, reviewed on its own
+// clock, nothing fired — it came back every morning and never cleared.
+describe("computeNeedsAction — old research alone puts nothing on the list", () => {
+  it("an 80-day-old compounder watch reviewed today, nothing fired: no flag", () => {
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+    const clock = { id: "clock", predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "cadence" } as Trigger;
     const result = leadOf({
-      thesis: {
-        id: "t1",
-        direction: "LONG",
-        status: "WATCHING",
-        horizon: "COMPOUNDER",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(0), // reviewed today — no review is due
-        researchUpdatedAt: daysAgo(80),
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result?.kind).toBe("RESEARCH_STALE");
-    if (result?.kind !== "RESEARCH_STALE") return;
-    expect(result.daysOld).toBe(80);
-    expect(result.threshold).toBe(35);
-  });
-
-  it("does NOT flag the same age on a stock we own — held names keep the longer clock", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t2",
-        direction: "LONG",
-        status: "HOLDING",
-        horizon: "COMPOUNDER",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(0),
-        researchUpdatedAt: daysAgo(80),
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result).toBeNull();
-  });
-
-  it("a due review still wins — REVIEW_DUE carries the staleness instruction already", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t3",
-        direction: "LONG",
-        status: "WATCHING",
-        horizon: "COMPOUNDER",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(40), // overdue
-        researchUpdatedAt: daysAgo(80),
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result?.kind).toBe("REVIEW_DUE");
-  });
-
-  it("fresh research on a quiet row stays quiet", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t4",
-        direction: "LONG",
-        status: "WATCHING",
-        horizon: "COMPOUNDER",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(0),
-        researchUpdatedAt: daysAgo(10),
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result).toBeNull();
-  });
-
-  it("a thesis with no deep research at all is flagged as missing", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t5",
-        direction: "LONG",
-        status: "WATCHING",
-        horizon: "TARGET",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(0),
-        researchUpdatedAt: null,
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result?.kind).toBe("RESEARCH_STALE");
-    if (result?.kind !== "RESEARCH_STALE") return;
-    expect(result.freshness).toBe("missing");
-  });
-
-  it("never nags a quiet watch — no view, no clock, nothing that could satisfy it", () => {
-    // The interaction bug: a bare name added with attention:"quiet" has no
-    // review clock and no research, so without this exclusion it would flag
-    // RESEARCH_STALE("missing") every morning forever — turning the one
-    // tier that exists to cost nothing into permanent work.
-    const result = leadOf({
-      thesis: {
-        id: "t7",
-        direction: null,
-        status: "WATCHING",
-        horizon: null,
-        triggers: [
-          {
-            id: "wake",
-            predicate: { watch: "price", is: "below", value: 24 },
-            action: "REVIEW",
-            rationale: "wake",
-          } as Trigger,
-        ],
-        createdAt: daysAgo(120),
-        lastReviewedAt: null,
-        researchUpdatedAt: null,
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result).toBeNull();
-  });
-
-  it("an unresearched seed is not 'stale' — it surfaces as REVIEW_DUE asking for first research", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t8",
-        direction: null,
-        status: "WATCHING",
-        horizon: null,
-        triggers: freshClock(7),
-        createdAt: daysAgo(30),
-        lastReviewedAt: null,
-        researchUpdatedAt: null,
-      },
-      activity: [],
-      latestQuote: null,
-      now: new Date(),
-    });
-    expect(result?.kind).toBe("REVIEW_DUE");
-    if (result?.kind !== "REVIEW_DUE") return;
-    expect(result.pendingFirstReview).toBe(true);
-  });
-
-  it("callers that don't pass researchUpdatedAt keep their old behavior", () => {
-    const result = leadOf({
-      thesis: {
-        id: "t6",
-        direction: "LONG",
-        status: "WATCHING",
-        horizon: "COMPOUNDER",
-        triggers: freshClock(30),
-        createdAt: daysAgo(200),
-        lastReviewedAt: daysAgo(0),
-      },
+      thesis: { id: "t1", direction: "LONG", status: "WATCHING", triggers: [clock], createdAt: daysAgo(200), lastReviewedAt: daysAgo(0) },
       activity: [],
       latestQuote: null,
       now: new Date(),

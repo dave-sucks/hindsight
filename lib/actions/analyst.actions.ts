@@ -688,7 +688,7 @@ export async function createAnalystFromBuilder(
           thesisId: t.id,
           type: "CREATED",
           summary: `Builder-seeded ${t.ticker} on analyst creation (awaiting first research)`,
-          fieldChanges: {},
+          fieldChanges: { status: { from: null, to: "WATCHING" } },
           runId: builderRun.id,
         })),
       });
@@ -922,7 +922,7 @@ export async function updateAnalystFromBuilder(
               type: "CREATED",
               // A title, never a paragraph: the reason is the seed's snapshot.
               summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
-              fieldChanges: {},
+              fieldChanges: { status: { from: null, to: "WATCHING" } },
               runId: editorRun.id,
             },
           });
@@ -977,9 +977,6 @@ export async function getAnalystTheses(analystId: string) {
       direction: true,
       status: true,
       snapshot: true,
-      entryPrice: true,
-      targetPrice: true,
-      stopLoss: true,
       holdDuration: true,
       createdAt: true,
       triggers: true,
@@ -1004,9 +1001,6 @@ export async function getAnalystTheses(analystId: string) {
       ticker: t.ticker,
       direction: dir,
       reasoning_summary: getThesisSnapshotText(t),
-      entry_price: t.entryPrice,
-      target_price: t.targetPrice,
-      stop_loss: t.stopLoss,
       hold_duration: t.holdDuration ?? undefined,
       status,
       created_at: t.createdAt.toISOString(),

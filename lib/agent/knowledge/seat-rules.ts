@@ -8,9 +8,8 @@
  * carries a sale or an add on a down day: the account's own sale rules govern
  * every holding. A new analyst starts with these instead of a blank tab; an
  * existing one can be re-seeded from them, shown as a diff first. Nothing here stamps onto a stock — this is
- * the analyst level of the cascade only. The stock's own exits from its
- * setup (the partial, the beat-that-sold review, the time limit from the
- * buy) are written at the fill by lib/agent/triggers/setup-exits.ts.
+ * the analyst level of the cascade only. The stock's own lines from its
+ * playbook are written at the fill from its templates (../knowledge/playbooks).
  *
  * The account keeps only what every seat shares (the review clock, the
  * earnings and filing wakes, the up-7% add).

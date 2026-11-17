@@ -36,7 +36,7 @@ import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import type { StreetFacts } from "@/lib/market-data/street-consensus";
-import { setupChecklist, nameTheSetup } from "@/lib/agent/knowledge/setup-checklist";
+import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
   getThesisBearCaseBullets,
@@ -146,7 +146,7 @@ export const getTheses = defineTool({
     const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
     // Worded for the run that reads it: the trigger run's save has no status
-    // change, so its texts take the plan down by id instead (step 12, part 2).
+    // change, so its texts take the triggers off by id instead (step 12, part 2).
     const guidance = guidanceFor(
       [
         ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [], ctx.runMode)),
@@ -294,9 +294,6 @@ export const getTheses = defineTool({
         bearCase: true,
         keyAssumptions: true,
         invalidationConds: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
         triggers: true,
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
         // overlays it so cooldown reads the same at every level.
@@ -328,10 +325,8 @@ export const getTheses = defineTool({
         // heavy section blobs below stay gated.
         researchUpdatedAt: true,
         setupId: true,
-        // The analyst's own setups are what a row with none may choose from
-        // (DAV-285, DAV-280) — read off the row, not a second query.
         // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
-        researchRun: { select: { agentConfigId: true, agentConfig: { select: { setupIds: true, name: true } } } },
+        researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
         // Deep-research artifacts — opt in via include_research. PR-9
         // flattened `researchSections` blob into 9 first-class columns;
         // selecting all of them by name. snapshot/bullCase/bearCase are
@@ -519,15 +514,11 @@ export const getTheses = defineTool({
         const r = writerRunByThesis.get(t.id);
         return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
       })(),
-      entryPrice: t.entryPrice,
-      targetPrice: t.targetPrice,
-      stopLoss: t.stopLoss,
-      // The live price belongs NEXT TO the plan numbers, even on a quiet
-      // row. Without it the roster line reads "buy at $262 · waiting for
-      // trigger" on a stock trading at $184 — plan numbers with nothing to
-      // judge them against, which is how KLAC/SNPS/NTNX sat mis-priced for
-      // months (2026-08-23 audit). One number per row; the resolver already
-      // fetched it, so this costs a fetch of nothing.
+      // What we paid, on a holding. A quiet row names no trigger: the full
+      // row (get_theses(tickers: [...])) has them, each as its sentence.
+      paid: t.status === "HOLDING" ? (load.positions.get(t.id)?.avgCost ?? null) : null,
+      // The live price, even on a quiet row: one number per row; the
+      // resolver already fetched it, so this costs a fetch of nothing.
       currentPrice: resolvedByThesisId.get(t.id)?.currentPrice ?? null,
       proposals: load.proposals.get(t.id) ?? [],
       // Derived, not stored (DAV-221): last actual look + the cadence on
@@ -537,7 +528,6 @@ export const getTheses = defineTool({
         lastReviewedAt: t.lastReviewedAt,
         createdAt: t.createdAt,
         triggers: ladderByThesisId.get(t.id) ?? [],
-        horizon: t.horizon,
       }),
       catalystDate: t.catalystDate,
       // Resolved ladder, not the stored column — a thesis protected
@@ -564,7 +554,7 @@ export const getTheses = defineTool({
         ...t,
         ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
-        triggers: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).map((x) => triggerForAgent(x, t.status === "HOLDING")),
+        triggers: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).map((x) => triggerForAgent(x)),
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
@@ -581,9 +571,6 @@ export const getTheses = defineTool({
         // horizon's manage rule, the time limit — instead of the horizon
         // glossary. Null on rows written before setups were named.
         setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
-        // No setup named yet (DAV-285): the ask and the seat's choices, so
-        // the next review names one instead of never.
-        nameTheSetup: nameTheSetup(t, t.researchRun?.agentConfig?.setupIds ?? null, setupOverrides),
         // Its buy fired (or is live) and the analyst is full: the portfolio
         // decision, on the row (DAV-286). Null otherwise.
         buyBlockedByFull: blockedByThesisId.get(t.id)?.text ?? null,
@@ -646,9 +633,9 @@ export const getTheses = defineTool({
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),
         risk_flags: getThesisBearCaseBullets(t),
-        entry_price: t.entryPrice ?? null,
-        target_price: t.targetPrice ?? null,
-        stop_loss: t.stopLoss ?? null,
+        // The stock's own triggers, each as its sentence, and what we paid on a holding.
+        triggers: t.triggers.map((x) => x.says),
+        paid: t.status === "HOLDING" ? (load.positions.get(t.id)?.avgCost ?? null) : null,
         hold_duration: undefined,
         signal_types: [],
         company_name: null,
@@ -891,7 +878,7 @@ function rowFacts(
     // comes from; the stock's own are `triggers`.
     inheritedTriggers: (load.ladders.get(t.id) ?? [])
       .filter((x) => ((x as { level?: string }).level ?? "THESIS") !== "THESIS")
-      .map((x) => ({ ...triggerForAgent(x, t.status === "HOLDING"), level: (x as { level?: string }).level })),
+      .map((x) => ({ ...triggerForAgent(x), level: (x as { level?: string }).level })),
   };
 }
 

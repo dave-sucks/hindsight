@@ -37,6 +37,8 @@ const floor: Trigger = {
   rationale: "Floor — sell if the price drops to $150.00. Below this the plan is wrong.",
   source: "AGENT",
 };
+/** The same line on a stock we only watch: its own action. */
+const stopLine: Trigger = { ...floor, action: "STOP_WATCHING", rationale: "Below $150.00 the setup is wrong, so I stop watching it." };
 const clock: Trigger = {
   id: "clock",
   predicate: { watch: "repeat", value: 7 },
@@ -45,7 +47,7 @@ const clock: Trigger = {
   source: "AGENT",
 };
 
-const watch = (ops: Parameters<typeof applyTriggerOps>[0]["ops"], stored = [buy, target, floor, clock]) =>
+const watch = (ops: Parameters<typeof applyTriggerOps>[0]["ops"], stored = [buy, target, stopLine, clock]) =>
   applyTriggerOps({ stored, ops, direction: "LONG", status: "WATCHING", actor: "AGENT", mintId });
 
 beforeEach(() => {
@@ -66,7 +68,7 @@ describe("applyTriggerOps — one trigger per bucket", () => {
       },
     ]);
     expect(out.results).toEqual([
-      { op: "edit", id: "buy", ok: true, text: "Entry $183 → $175" },
+      { op: "edit", id: "buy", ok: true, text: "Buy $183 → $175" },
     ]);
     const buys = out.triggers.filter((t) => t.action === "ENTER");
     expect(buys).toHaveLength(1);
@@ -113,18 +115,18 @@ describe("applyTriggerOps — one trigger per bucket", () => {
 describe("applyTriggerOps — edits", () => {
   it("an agent's level edit without a rationale is refused, by id", () => {
     const out = watch([{ op: "edit", id: "buy", value: 190 }]);
-    expect(out.results[0]).toMatchObject({ op: "edit", id: "buy", ok: false, text: "Entry $183 → $190" });
+    expect(out.results[0]).toMatchObject({ op: "edit", id: "buy", ok: false, text: "Buy $183 → $190" });
     expect(out.results[0].reason).toMatch(/rationale/);
-    expect(out.triggers).toEqual([buy, target, floor, clock]);
+    expect(out.triggers).toEqual([buy, target, stopLine, clock]);
   });
 
-  it("the sentence moves with the number (MU's $969 floor said $935 — DAV-231)", () => {
+  it("the sentence moves with the number on a fill's level op (MU's $969 floor said $935 — DAV-231)", () => {
     const out = applyTriggerOps({
       stored: [{ ...floor, predicate: { watch: "price", is: "below", value: 935 }, rationale: "Exit below $935 — the protective line raised on 8/24." }],
       ops: [{ op: "level", slot: "FLOOR", price: 969 }],
       direction: "LONG",
       status: "HOLDING",
-      actor: "AGENT",
+      actor: "SYSTEM",
       mintId,
     });
     expect(out.results[0]).toEqual({ op: "edit", id: "floor", ok: true, text: "Stop $935 → $969 (tightened)" });
@@ -177,7 +179,7 @@ describe("applyTriggerOps — the ratchet, per op", () => {
 
   it("a loosened held stop is refused by itself while the rest lands (SMMT, #612)", () => {
     const out = held([
-      { op: "level", slot: "FLOOR", price: 140 },
+      { op: "edit", id: "floor", value: 140, rationale: "Wider, under the base." },
       { op: "edit", id: "clock", value: 1, rationale: "Daily into the catalyst." },
     ]);
     expect(out.results).toEqual([
@@ -212,14 +214,8 @@ describe("applyTriggerOps — plan levels as ops", () => {
       currentPrice: 190,
       mintId,
     });
-    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Entry set: $175" });
+    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Buy set: $175" });
     expect(out.triggers.find((t) => t.id === "new-1")).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "below", value: 175 } });
-  });
-
-  it("stop_loss: null removes the floor and says so", () => {
-    const out = watch([{ op: "level", slot: "FLOOR", price: null }]);
-    expect(out.results[0]).toEqual({ op: "remove", id: "floor", ok: true, text: "Removed: Take the plan down if below $150" });
-    expect(out.triggers.some((t) => t.id === "floor")).toBe(false);
   });
 
   it("entry on a held stock is the fill, not a plan level", () => {
@@ -242,7 +238,8 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
     // HPE was left with no buy.
     const hpe: Trigger[] = [
       { id: "eb59bfe1", predicate: { watch: "price", is: "above", value: 58.5 }, action: "ENTER", rationale: "Buy above $58.50.", source: "AGENT" },
-      { id: "0127a7f6", predicate: { watch: "price", is: "below", value: 54.9 }, action: "EXIT", rationale: "Floor $54.90.", source: "AGENT" },
+      // Stored as a sale until the 2026-11-16 migration made it the Stop watching line it was.
+      { id: "0127a7f6", predicate: { watch: "price", is: "below", value: 54.9 }, action: "STOP_WATCHING", rationale: "Floor $54.90.", source: "AGENT" },
       { id: "d5dc23fd", predicate: { watch: "price", is: "above", value: 66.5 }, action: "REVIEW", rationale: "Target $66.50.", source: "AGENT" },
     ];
     const out = watch(
@@ -256,27 +253,12 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
     );
     expect(out.results).toEqual([
       { op: "remove", id: "eb59bfe1", ok: true, text: "Removed: Buy if above $58.50" },
-      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Take the plan down if below $54.90" },
+      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Stop watching if below $54.90" },
       { op: "remove", id: "d5dc23fd", ok: true, text: "Removed: Review if above $66.50" },
       { op: "add", id: "new-1", ok: true, text: "Added: Buy if above $57.25" },
     ]);
     expect(out.triggers).toEqual([
       expect.objectContaining({ id: "new-1", action: "ENTER", predicate: { watch: "price", is: "above", value: 57.25 } }),
-    ]);
-  });
-
-  it("a level sent as null is a removal too — entry_price: null with a new buy keeps the new buy", () => {
-    // In the order sent the null ran last and deleted the buy just added.
-    const out = watch([
-      { op: "add", trigger: { id: "", predicate: { watch: "price", is: "below", value: 175 }, action: "ENTER", rationale: "Buy the pullback to $175." } },
-      { op: "level", slot: "ENTRY", price: null },
-    ]);
-    expect(out.results).toEqual([
-      { op: "remove", id: "buy", ok: true, text: "Removed: Buy if above $183" },
-      { op: "add", id: "new-1", ok: true, text: "Added: Buy if below $175" },
-    ]);
-    expect(out.triggers.filter((t) => t.action === "ENTER")).toEqual([
-      expect.objectContaining({ id: "new-1", predicate: { watch: "price", is: "below", value: 175 } }),
     ]);
   });
 
@@ -294,20 +276,9 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
         text: "Edit and remove: Review every 7 days",
         reason: "Edited and removed in the same call — say which: send the edit or the removal, not both.",
       },
-      { op: "remove", id: "floor", ok: true, text: "Removed: Take the plan down if below $150" },
+      { op: "remove", id: "floor", ok: true, text: "Removed: Stop watching if below $150" },
     ]);
     expect(out.triggers.find((t) => t.id === "clock")).toEqual(expect.objectContaining({ predicate: { watch: "repeat", value: 7 } }));
-  });
-
-  it("an edit of the trigger a null level clears is the same contradiction", () => {
-    const out = watch([
-      { op: "level", slot: "FLOOR", price: null },
-      { op: "edit", id: "floor", value: 145, rationale: "Under the base low." },
-    ]);
-    expect(out.results).toEqual([
-      expect.objectContaining({ op: "edit", id: "floor", ok: false, text: "Edit and remove: Take the plan down if below $150" }),
-    ]);
-    expect(out.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ watch: "price", is: "below", value: 150 });
   });
 
   it("on a stock we own the removal is refused, so the replacement edits the floor that stays — and may only tighten", () => {
@@ -341,29 +312,28 @@ describe("checkLadder — the one check after all ops", () => {
     const out = watch([{ op: "edit", id: "buy", value: 432, rationale: "Confirmation above the repair range." }], [
       buy,
       { ...target, predicate: { watch: "price", is: "above", value: 490 } },
-      { ...floor, predicate: { watch: "price", is: "below", value: 355 } },
+      { ...stopLine, predicate: { watch: "price", is: "below", value: 355 } },
     ]);
     const check = checkLadder({ triggers: out.triggers, direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: 432, targetPrice: 490, stopLoss: 355 } });
+    expect(check).toEqual({ ok: true });
   });
 
-  it("ordering applies to anyone", () => {
-    const under: Trigger[] = [buy, { ...target, predicate: { watch: "price", is: "above", value: 490 } }, { ...floor, predicate: { watch: "price", is: "below", value: 355 } }];
+  it("no order of a buy, floor and upside line is checked: each trigger means what it says (2026-11-16)", () => {
+    const under: Trigger[] = [buy, { ...target, predicate: { watch: "price", is: "above", value: 490 } }, { ...stopLine, predicate: { watch: "price", is: "below", value: 355 } }];
     const moved = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "buy", value: 432 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
     expect(checkLadder({ triggers: moved.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" }).ok).toBe(true);
-    // A stop above the buy price is nonsense for anyone.
-    const inverted = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "floor", value: 400 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
-    expect(checkLadder({ triggers: inverted.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toMatchObject({ ok: false, error: "invalid_thesis_shape" });
+    const crossed = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "floor", value: 400 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
+    expect(checkLadder({ triggers: crossed.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toEqual({ ok: true });
   });
 
-  it("derives the columns from the list when the plan is legal", () => {
-    const check = checkLadder({ triggers: [buy, target, floor], direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: 183, targetPrice: 250, stopLoss: 150 } });
+  it("passes a legal list, and hands back no level of its own (nothing stores one)", () => {
+    const check = checkLadder({ triggers: [buy, target, stopLine], direction: "LONG", status: "WATCHING", actor: "AGENT" });
+    expect(check).toEqual({ ok: true });
   });
 
-  it("a floor with no buy level is a half plan", () => {
-    const check = checkLadder({ triggers: [floor], direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toMatchObject({ ok: false, error: "missing_enter_trigger" });
+  it("a Stop watching line with no buy is a watch, not a half plan", () => {
+    const check = checkLadder({ triggers: [stopLine], direction: "LONG", status: "WATCHING", actor: "AGENT" });
+    expect(check).toEqual({ ok: true });
   });
 
   it("a held stock is satisfied by an inherited sell trigger", () => {
@@ -373,8 +343,6 @@ describe("checkLadder — the one check after all ops", () => {
       direction: "LONG",
       status: "HOLDING",
       actor: "AGENT",
-      entryPrice: 100,
-      avgCost: 100,
     });
     expect(check.ok).toBe(true);
   });
@@ -384,7 +352,7 @@ describe("describeTrigger", () => {
   it("says a trigger the way the pill does", () => {
     expect(describeTrigger(buy)).toBe("Buy if above $183");
     expect(describeTrigger(floor)).toBe("Sell if below $150");
-    expect(describeTrigger(floor, false)).toBe("Take the plan down if below $150");
+    expect(describeTrigger({ ...floor, action: "STOP_WATCHING" })).toBe("Stop watching if below $150");
     expect(describeTrigger(clock)).toBe("Review every 7 days");
     expect(describeTrigger({ ...clock, predicate: { watch: "surprise", is: "beat", value: 0 } })).toBe("Review if earnings beat any amount");
   });

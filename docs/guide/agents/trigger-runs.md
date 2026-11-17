@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
 Tools: 14
-Saves: 14 fields: plan, verdict, note
+Saves: 9 fields: triggers, verdict, note
 ```
 
 ```chat
@@ -26,7 +26,7 @@ tools: Closing $SHOP position
 
 ## What it does
 
-A trigger run is an analyst's short look at one stock, started when one of its [thesis](../concepts/theses.md)'s [triggers](../concepts/triggers.md) comes true. The plan said "buy here" and "sell there"; this is where the plan meets the live price. One stock, one decision, fifteen steps at most. Deep research goes to [the Writer](writer.md) instead.
+A trigger run is an analyst's short look at one stock, started when one of its [thesis](../concepts/theses.md)'s [triggers](../concepts/triggers.md) comes true. Its triggers said "buy here" and "sell there"; this is where they meet the live price. One stock, one decision, fifteen steps at most. Deep research goes to [the Writer](writer.md) instead.
 
 Why a run and not an automatic order? A level is a call made days ago. The run checks it against today (the news, the volume, the market) before anything reaches you, and says what it saw either way.
 
@@ -34,7 +34,7 @@ Why a run and not an automatic order? A level is a call made days ago. The run c
 
 Every five minutes while the market is open, plus a pass at 4:20 PM for levels read on the close, every trigger on every stock is checked. When a trigger set to **Send to Agent** comes true (every trigger but a review, unless you chose otherwise), the fire is written into Activity and a trigger run starts on that stock.
 
-- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. A sale keeps asking every day its condition holds, until the stock is sold. An add or a trim asks again each time its rest period ends: a day on a price line, a week on the move from our entry.
+- **A buy fires on the crossing:** the moment the price reaches its level, not every day it stays there. So does a review that watches the price. A sale keeps asking every day its condition holds, until the stock is sold. An add or a trim asks again each time its rest period ends: a day on a price line, a week on the move from our entry.
 - **Reviews are flagged for the morning, unless sent to the agent.** A review is a question, not an order, so by default (**Flag for Review**) it goes on the stock's list for the next [morning run](morning-runs.md). Set to **Send to Agent**, it starts a trigger run the same day, which answers it with the review's guidance (each one is a run, about 6–18 cents). A worrying new filing on a stock we hold always gets a look the same day.
 - **A trim names its size.** The run is told "Trim 30% if above $150", and a partial sale it makes without naming a size sells that 30%.
 - **An Auto trade is made first, then written up.** An Auto-sell, Auto-trim, Auto-buy or Auto-add happens with no agent deciding: the trigger run makes the trade the agent would have made, with the same tool, sizing and checks, and it goes through the same [approval](../concepts/approvals.md) as any trade. Then the same run reads the stock and writes the note, with no trade tools: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees. That note is the trade's reason on the card and in the email. A refused trade is written up the same way. An Auto buy, add or trim is used once and comes off the stock; an Auto-sell keeps asking.
@@ -45,16 +45,16 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right. It is printed before the stock's row, so the row is read after it.
 
-The stock's row, the same one `get_theses` gives every agent: the position, the plan, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
+The stock's row, the same one `get_theses` gives every agent: the position, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
 ## What it decides
 
-- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
+- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`, which names the holding's sale (`sell_if_below`, from the setup's Stop line, with `sell_reason`). On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
 - **Tighten the line:** move the trigger to a level the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the line is wrong, it says so and names the level, and lowering it is yours to do on the thesis.
 - **Write up an Auto trade:** with no trade tools, what is going on with the company and why, what it means for why we own it, the trade, and whether it agrees. If it would have done otherwise, it says so; you decide on the card. Its note is the trade's reason.
-- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, the stock is yours to decide and no run touches it.
+- **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make asks again every day the price stays past the line, and so does one you declined or let lapse. While a sale is waiting for your approval, that sale is yours to answer: no run proposes it again or argues it, and a run woken by something else on the stock answers that with a note or an edit.
 
 Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and a level the price blew through is reset off the new chart, not a round number.
 
@@ -62,8 +62,8 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
-- **A buy goes through:** the stock becomes a holding. Its floor and target are set to the levels the trade went in with, and its sell side takes over.
-- **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a sale at the target), and a later [morning run](morning-runs.md) gives it one look back.
+- **A buy goes through:** the stock becomes a holding. Its buy and its Stop watching line come off, "Sell if below" goes on at the price approved on the proposal, and its sell side takes over.
+- **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.
 
 ## Tools
 
@@ -84,13 +84,13 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `lib/agent/system-prompts/intraday-tactical.ts`, with the analyst brief, the house rules and the stock's row from `row-for-model.ts`.
 
 #### Fire rules
-`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy fires on its crossing, a protective rule every day it holds.
+`shouldFire` in `lib/agent/triggers/evaluate.ts`: a buy, or a review that reads the price, fires on its crossing; a protective rule every day it holds.
 
 #### Floors
 `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.
 
 #### Auto
-`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`); the write-up has no trade tools (`NOT_IN_A_WRITEUP`) and is sent the `AUTO_TRADE` situation.
+`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`); the write-up has no trade tools (`NOT_IN_A_WRITEUP`) and reads its own text (`AUTO_WRITEUP`, `lib/agent/system-prompts/intraday-tactical.ts`), not a situation.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

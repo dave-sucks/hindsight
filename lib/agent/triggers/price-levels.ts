@@ -1,108 +1,35 @@
 /**
- * Price levels, read off the trigger list.
- *
- * > Design: docs/plans/LEVELS_AS_TRIGGERS.md
+ * Price triggers: the typed price a trigger watches, and its slot.
  *
  * There is no stop, target, or entry price. There is a **price level, a side,
- * and an action** — "sell if it drops to $256" is a downside level with EXIT,
- * "buy at $47" is a level with ENTER. `Thesis.stopLoss` / `targetPrice` /
- * `entryPrice` are the pre-trigger app still sitting in the database; they
- * become a cache computed here and are never authored directly.
+ * and an action**: "sell if it drops to $256" is a downside level with EXIT,
+ * "buy at $47" is a level with ENTER. A stock has triggers and nothing else;
+ * nothing here sums them into a buy, a floor or a target.
  *
- * Four things leave this file:
+ * What leaves this file:
  *
- *   canonicalLevels  read  — what the card, the chart and the columns show
- *   applyLevelArgs   write — a level change, as a trigger change
- *   levelLabelState  read  — what the card says for one slot
- *   isPlanLevel      read  — which triggers demotion removes
+ *   levelSlotOf      read  — which slot a price trigger sits in, for the one-per-slot rule
+ *   typedPriceOf     read  — the price a trigger watches, when it watches a typed price
+ *   priceLines       read  — one line per price trigger, labelled with its sentence (the chart)
+ *   isPlanLevel      read  — a buy, a sale, a Stop watching line or an upside review at a price
  *
- * Floor vs target is the SIDE, never the magnitude. A trigger can't say
- * "exit at 100" — every price predicate carries a direction:
+ * The slot is the SIDE, never the magnitude. A trigger can't say "exit at
+ * 100" — every price predicate carries a direction:
  *
- *              floor (protective)      target (opportunity)
- *   LONG       EXIT + below            EXIT|REVIEW + above
- *   SHORT      EXIT + above            EXIT|REVIEW + below
- *
- * A floor ABOVE the current price is legal; it means we're about to be
- * stopped out.
+ *              under the price         over the price
+ *   LONG       EXIT|STOP_WATCHING      EXIT|REVIEW + above
+ *   SHORT      … + above               … + below
  *
  * Pure — no DB, no clock, no fetches.
  */
 
-import { isLevel, levelOf, lineOf, shapeOf, type Condition } from "./condition";
+import { isLevel, levelOf, sentenceOf, shapeOf, type Condition } from "./condition";
 import type { Trigger, TriggerAction } from "./types";
-import type { ResolvedTrigger, TriggerLevel } from "./levels";
 
 // ── Shape ──────────────────────────────────────────────────────────────
 
-/** The three slots the Price Targets card renders. */
+/** The slots the one-per-slot rule keeps: a buy, the line under the price, an upside rule. */
 export type LevelSlot = "ENTRY" | "FLOOR" | "TARGET";
-
-export interface PriceLevel {
-  slot: LevelSlot | null;
-  /** Where this level sits, in dollars. */
-  price: number;
-  /** UPSIDE is where the trade makes money — direction-aware. */
-  side: "UPSIDE" | "DOWNSIDE";
-  action: TriggerAction;
-  triggerId: string;
-  storedAt: TriggerLevel;
-  inherited: boolean;
-  /**
-   * The price moves: computed from a trail off the high or a gain off entry
-   * cost rather than typed as a level. Drives a distinct chart line, and is
-   * kept out of the cached columns.
-   */
-  projected: boolean;
-}
-
-export interface CanonicalLevels {
-  /** Where we would buy (watching) or what we paid (held). */
-  entry: PriceLevel | null;
-  /** The protective level that fires FIRST — may be a moving trail. */
-  floor: PriceLevel | null;
-  /** The furthest opportunity level — the destination. */
-  target: PriceLevel | null;
-  /** Every price level, ascending. The chart draws all of these. */
-  all: PriceLevel[];
-  /**
-   * The cached column values. Absolute levels only: a trail moves with the
-   * high, and `stopLoss` feeds prompts and the protective ratchet, which want
-   * the stable typed number. The card shows the moving one; the cache stores
-   * the typed one.
-   */
-  columns: {
-    entryPrice: number | null;
-    targetPrice: number | null;
-    stopLoss: number | null;
-  };
-  /**
-   * The floor sits at or above an upside level, so one of the two fires on
-   * essentially every tick regardless of price.
-   *
-   * MU, live: EXIT below $935 and REVIEW above $934 — a $1 gap covering the
-   * whole number line. Neither was written wrong. The agent set the review at
-   * $934 on 8/18 when the floor was $814, then the floor was raised to $935
-   * on 8/19 and crossed it. Nothing notices a raise passing another level, so
-   * MU has generated a daily sell proposal ever since.
-   *
-   * Reported, not blocked: raising a floor is always legal (the ratchet only
-   * cares about weakening), and the fix is to retire the spent checkpoint,
-   * which is a judgment call.
-   */
-  contradiction: { floor: number; upside: number } | null;
-}
-
-export interface LevelInputs {
-  /** The RESOLVED trigger list — cascade already applied. */
-  triggers: ResolvedTrigger[];
-  direction: string | null;
-  /** HOLDING flips entry from "the plan" to "what we paid". */
-  status?: string | null;
-  avgCost?: number | null;
-  /** Position high-water mark, for placing a trail at a real price. */
-  peakPrice?: number | null;
-}
 
 const isLong = (d: string | null | undefined) => d !== "SHORT";
 
@@ -113,374 +40,70 @@ function typedLevel(t: Pick<Trigger, "predicate">, direction: string | null) {
   return level ? { ...level, side: level.above === isLong(direction) ? ("UPSIDE" as const) : ("DOWNSIDE" as const) } : null;
 }
 
-// ── Read ───────────────────────────────────────────────────────────────
-
-/**
- * Read the canonical levels off a resolved trigger list.
- *
- *   ENTRY  — the ENTER trigger; on a held thesis the actual fill instead.
- *            Once you own it, entry is a fact, not a plan.
- *   FLOOR  — the protective EXIT that fires FIRST. Among several the tightest
- *            wins, because that is the one you hit. A trail competes on equal
- *            terms: SNOW showed "$256" while its only real exit was a
- *            give-back off the high.
- *   TARGET — the FURTHEST opportunity level. Intermediate levels stay in
- *            `all` so tiered trims render as their own chart lines.
- */
-export function canonicalLevels(input: LevelInputs): CanonicalLevels {
-  const { triggers, direction, status, avgCost, peakPrice } = input;
-  const long = isLong(direction);
-
-  const all: PriceLevel[] = [];
-  for (const t of triggers) {
-    // A typed level, or a % from our position (./condition: each measure's `line`).
-    const w = shapeOf(t.predicate);
-    const line = w == null ? null : lineOf(w, { isLong: long, avgCost, peakPrice });
-    // A projected level with no position state genuinely is not at a price.
-    if (line?.price == null || !Number.isFinite(line.price) || line.price <= 0) continue;
-    all.push({
-      slot: null,
-      price: line.price,
-      side: line.side,
-      action: t.action,
-      triggerId: t.id,
-      storedAt: t.level,
-      inherited: t.inherited,
-      projected: line.projected,
-    });
-  }
-  all.sort((a, b) => a.price - b.price);
-
-  const held = status === "HOLDING";
-  let entry: PriceLevel | null = null;
-  if (held && avgCost != null && avgCost > 0) {
-    entry = {
-      slot: "ENTRY",
-      price: avgCost,
-      side: "UPSIDE",
-      action: "ENTER",
-      triggerId: "",
-      storedAt: "THESIS",
-      inherited: false,
-      projected: false,
-    };
-  } else {
-    const e = all.find((l) => l.action === "ENTER");
-    entry = e ? { ...e, slot: "ENTRY" } : null;
-  }
-
-  const floors = all.filter((l) => l.side === "DOWNSIDE" && l.action === "EXIT");
-  const floor = firstToFire(floors, long);
-  // On a stock we only watch, a review with no buy behind it is a wake, not
-  // the target (isPlanLevelOnList). "A buy" is an ENTER on the list, priced
-  // or not: COGT's buy is a close above $36.95 on 1.5x volume, which has no
-  // single entry price and still keeps its $43.35 target.
-  const wakeOnly = !held && !triggers.some((t) => t.action === "ENTER");
-  const target = furthest(
-    all.filter(
-      (l) =>
-        l.side === "UPSIDE" &&
-        (l.action === "EXIT" || (l.action === "REVIEW" && !wakeOnly)) &&
-        // A gain milestone off entry is a checkpoint, not a destination.
-        !l.projected,
-    ),
-    long,
-  );
-
-  const slotById = new Map<string, LevelSlot>();
-  if (entry?.triggerId) slotById.set(entry.triggerId, "ENTRY");
-  if (floor) slotById.set(floor.triggerId, "FLOOR");
-  if (target) slotById.set(target.triggerId, "TARGET");
-
-  return {
-    entry,
-    floor: floor ? { ...floor, slot: "FLOOR" } : null,
-    target: target ? { ...target, slot: "TARGET" } : null,
-    all: all.map((l) => ({ ...l, slot: slotById.get(l.triggerId) ?? null })),
-    contradiction: contradictionBetween(floor, all, long),
-    columns: {
-      entryPrice: entry?.price ?? null,
-      targetPrice: target?.price ?? null,
-      // Typed floors only — see CanonicalLevels.columns.
-      stopLoss:
-        firstToFire(floors.filter((l) => !l.projected), long)?.price ?? null,
-    },
-  };
+/** The price a trigger watches, when it watches a typed price; null for a chart condition, a move, a clock. */
+export function typedPriceOf(t: Pick<Trigger, "predicate">): number | null {
+  const w = shapeOf(t.predicate);
+  const v = w == null ? null : levelOf(w)?.value;
+  return v != null && Number.isFinite(v) && v > 0 ? v : null;
 }
 
-// ── Write ──────────────────────────────────────────────────────────────
-
-/**
- * Apply level changes by writing TRIGGERS, then recompute the columns from
- * the result. The single write path behind `stop_loss` / `target_price` /
- * `entry_price` on every tool.
- *
- * Two properties this exists for:
- *
- *  1. A level change IS a trigger change. SNOW happened because the agent
- *     raised `stop_loss` to $256 and no trigger was written.
- *  2. The columns are recomputed from the FINAL list, so a level that is
- *     removed nulls its column with it instead of lingering as a number
- *     nothing enforces.
- *
- * Used where a thesis is being minted (record_thesis) or a position's stop
- * and target are synced (manage_position). Once a thesis exists, its
- * triggers change through ops — `lib/agent/triggers/ops.ts`.
- *
- * `undefined` leaves a slot alone; `null` clears it.
- */
-export function applyLevelArgs(args: {
-  /** Thesis-stored triggers. */
-  stored: Trigger[];
-  /** The resolved analyst/account levels above this thesis. */
-  inherited?: ResolvedTrigger[];
-  levels: { entry?: number | null; target?: number | null; floor?: number | null };
-  /** Why each level is where it is — becomes that trigger's sentence. */
-  notes?: { entry?: string; target?: string; floor?: string };
-  /** "close" = the buy fires only on the day's close. */
-  entryBasis?: "intraday" | "close";
-  direction: string | null;
-  status?: string | null;
-  avgCost?: number | null;
-  /** The live quote, read only by the ENTRY slot — see `predicateFor`. */
-  currentPrice?: number | null;
-  source?: Trigger["source"];
-  mintId: () => string;
-}): { triggers: Trigger[]; columns: CanonicalLevels["columns"] } {
-  const { stored, inherited, levels, direction, status, avgCost,
-    currentPrice, source, mintId, notes, entryBasis } = args;
-  let triggers = stored;
-
-  for (const [slot, price] of [
-    ["ENTRY", levels.entry],
-    ["FLOOR", levels.floor],
-    ["TARGET", levels.target],
-  ] as Array<[LevelSlot, number | null | undefined]>) {
-    if (price === undefined) continue;
-    // On a held thesis `entryPrice` is the fill, not a plan. Minting a buy
-    // trigger for it re-arms a purchase on a name we already own — the
-    // 2026-05-19 bug where 35 of 36 ENTER tacticals fired on held tickers.
-    if (slot === "ENTRY" && status === "HOLDING") continue;
-    triggers = setLevel(
-      slot,
-      price,
-      direction,
-      triggers,
-      mintId,
-      source,
-      status === "HOLDING",
-      currentPrice,
-      slot === "ENTRY" ? notes?.entry : slot === "FLOOR" ? notes?.floor : notes?.target,
-      slot === "ENTRY" ? entryBasis : undefined,
-    );
-  }
-
-  return {
-    triggers,
-    columns: canonicalLevels({
-      triggers: [
-        ...triggers.map((t) => ({
-          ...t,
-          level: "THESIS" as const,
-          inherited: false,
-        })),
-        ...(inherited ?? []),
-      ],
-      direction,
-      status,
-      avgCost,
-    }).columns,
-  };
+/** One chart line: a trigger at a typed price, said as its own sentence. */
+export interface PriceLine {
+  triggerId: string;
+  action: TriggerAction;
+  price: number;
+  /** The trigger's sentence: "Buy if above $51.94 · only on the close". */
+  says: string;
 }
 
-/** A committed bullish/bearish view. Null / PASS / legacy PENDING are not. */
-function isDirectional(direction: string | null): boolean {
-  return direction === "LONG" || direction === "SHORT";
+/** One line per trigger at a typed price, ascending. A percentage rule is not a line; it is in the trigger list. */
+export function priceLines(triggers: readonly Pick<Trigger, "id" | "action" | "predicate" | "trimPct">[]): PriceLine[] {
+  return triggers
+    .flatMap((t) => {
+      const price = typedPriceOf(t);
+      return price == null ? [] : [{ triggerId: t.id, action: t.action, price, says: sentenceOf(t) }];
+    })
+    .sort((a, b) => a.price - b.price);
 }
 
 /**
- * Which plan slot an absolute price trigger occupies, if any: the buy level
- * (ENTER), the floor (a downside EXIT) or the target (an upside EXIT or
- * REVIEW). One trigger per slot is the rule every write path keeps.
+ * Which slot an absolute price trigger occupies, if any: the buy (ENTER), the
+ * floor (a downside EXIT on a holding, STOP_WATCHING on a watch) or the
+ * upside rule (an upside EXIT or REVIEW). One
+ * trigger per slot is the rule every write path keeps.
  */
 export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | null {
   const level = typedLevel(t, direction);
   if (!level) return null;
   if (t.action === "ENTER") return "ENTRY";
-  if (level.side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  if (level.side === "DOWNSIDE") return t.action === "EXIT" || t.action === "STOP_WATCHING" ? "FLOOR" : null;
   return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
 }
 
-/**
- * Set or clear one slot. Editing an existing trigger in the slot is preferred
- * over adding, so it keeps its id and with it its cooldown history and
- * `source` stamp. A duplicate behind it is dropped — a second trigger in the
- * same slot is the hazard where the level you set is not the level that fires.
- */
-function setLevel(
-  slot: LevelSlot,
-  price: number | null,
-  direction: string | null,
-  stored: Trigger[],
-  mintId: () => string,
-  source?: Trigger["source"],
-  held: boolean = true,
-  currentPrice?: number | null,
-  note?: string,
-  basis?: "intraday" | "close",
-): Trigger[] {
-  const occupies = (t: Trigger): boolean => levelSlotOf(t, direction) === slot;
-
-  if (price == null) return stored.filter((t) => !occupies(t));
-
-  const sided = predicateFor(slot, price, direction, currentPrice);
-  const fresh: Condition = basis === "close" ? { ...sided, settings: { close: true } } : sided;
-  const said = note?.trim() || null;
-
-  const matches = stored.filter(occupies);
-  if (matches.length > 0) {
-    const long = isLong(direction);
-    // Floor: keep the tightest. Target: keep the furthest. Same comparison
-    // either way — the level deepest in that slot's direction.
-    const keep =
-      slot === "ENTRY"
-        ? matches[0]
-        : matches.reduce((best, t) => {
-            const a = priceOf(t);
-            const b = priceOf(best);
-            if (a == null || b == null) return best;
-            return (long ? a > b : a < b) ? t : best;
-          });
-    // Moving the number never changes WHEN it fires: a "closes above $X"
-    // level stays a close-basis level (DAV-247 review — the rebuild used to
-    // drop `basis`, turning a close confirmation into an intraday poke).
-    const predicate = basis ? fresh : withBasisOf(keep.predicate, fresh);
-    return stored
-      .filter((t) => !occupies(t) || t.id === keep.id)
-      .map((t) => {
-        if (t.id !== keep.id) return t;
-        // The sentence moves with the number. A side flip makes the old
-        // wording a lie ("broke above $130" on a level the price now comes
-        // back DOWN to) → template sentence. A same-side move keeps the
-        // author's words with the number swapped ("Exit below $935" on a
-        // $969 floor sat on MU for two weeks); when the old number isn't in
-        // the text, the template sentence. Unchanged number → untouched.
-        const before = priceOf(t);
-        const rationale = said
-          ? said
-          : typedLevel(t, direction)?.above !== (predicate.is === "above")
-            ? rationaleFor(slot, price, direction, held, predicate.is === "above")
-            : before != null && before !== price
-              ? (moveNumberInText(t.rationale, "level", before, price) ??
-                rationaleFor(slot, price, direction, held, predicate.is === "above"))
-              : t.rationale;
-        return { ...t, predicate, rationale };
-      });
-  }
-
-  return [
-    ...stored,
-    {
-      id: mintId(),
-      predicate: fresh,
-      // A target is REVIEW, not EXIT (ruling 2026-08-24): a floor is
-      // protective and acts on its own; a target is an opportunity and wakes
-      // a decision. Auto-selling at the target re-creates the capped-winner
-      // problem the ladder exists to fix, and the trail already protects the
-      // downside while the decision waits.
-      //
-      // ENTRY is a BUY only when there is a view to buy on (2026-09-01).
-      // With direction null — an unresearched seed, or a quiet watch that
-      // researched the name and declined — there is no committed thesis, no
-      // target and no stop, so an armed ENTER would let the evaluator
-      // propose a purchase off a row that says "we are not buying this."
-      // The level is still worth keeping; it just wakes a decision instead
-      // of placing an order. A later commitment (update_thesis with a
-      // direction) re-derives it as a real ENTER.
-      action:
-        slot === "ENTRY"
-          ? isDirectional(direction)
-            ? "ENTER"
-            : "REVIEW"
-          : slot === "FLOOR"
-            ? "EXIT"
-            : "REVIEW",
-      rationale: said ?? rationaleFor(slot, price, direction, held, fresh.is === "above"),
-      ...(source ? { source } : {}),
-    },
-  ];
-}
-
-// ── Display ────────────────────────────────────────────────────────────
+// ── Price lines ────────────────────────────────────────────────────────
 
 /**
- * What the card says for one slot.
- *
- * Three states. The third is the headline point — a cached column with no
- * trigger behind it is decoration, and rendering it as plain "Stop $256" is
- * the lie SNOW told on a live position for months.
- *
- * `does` is the quieter half of the same idea. A floor is always a sell, but
- * a target may be a sell OR a review, and the card used to render both as
- * "Target $1150". That tells you the level is real without telling you what
- * reaching it does — a smaller version of the same problem. So the label
- * carries the verb.
- */
-export type LevelLabelState =
-  | { kind: "live"; price: number; moving: boolean; does: "sells" | "asks" }
-  | { kind: "decorative"; price: number }
-  | { kind: "none" };
-
-export function levelLabelState(
-  level:
-    | { price: number; projected: boolean; action?: string }
-    | null
-    | undefined,
-  storedColumn: number | null | undefined,
-): LevelLabelState {
-  if (level) {
-    return {
-      kind: "live",
-      price: level.price,
-      moving: level.projected,
-      // Anything that isn't an outright sell wakes a decision instead —
-      // REVIEW batches to the next morning run, TRIM/ADD propose a size
-      // change. From the card's point of view they all ask rather than act.
-      does: level.action === "EXIT" ? "sells" : "asks",
-    };
-  }
-  if (storedColumn != null) return { kind: "decorative", price: storedColumn };
-  return { kind: "none" };
-}
-
-// ── Demotion ───────────────────────────────────────────────────────────
-
-/**
- * Is this trigger part of the priced plan — the buy level, the floor, or the
- * target? Those are what demotion removes.
- *
- * Only absolute price levels qualify. A review cadence, an earnings trigger
- * or a percentage move is not a plan level and survives: the whole point is
- * that the item keeps being watched. A DOWNSIDE review ("price dropped to
- * support — better entry, or thesis weakening?") is a watching instruction
- * rather than a plan level, so it stays too.
+ * Is this trigger a buy, a sale or an upside review at a price? The half-buy
+ * check (enter-guard.ts) reads it. Only absolute price levels qualify: a
+ * review cadence, an earnings trigger or a percentage move is not one, and
+ * neither is a DOWNSIDE review ("price dropped to support — better entry, or
+ * thesis weakening?").
  */
 export function isPlanLevel(t: Trigger, direction: string | null): boolean {
   const level = typedLevel(t, direction);
   if (!level) return false;
-  if (t.action === "ENTER" || t.action === "EXIT") return true;
+  if (t.action === "ENTER" || t.action === "EXIT" || t.action === "STOP_WATCHING") return true;
   if (t.action !== "REVIEW") return false;
   return level.side === "UPSIDE";
 }
 
 /**
- * Is this trigger part of the priced plan, read against the list it sits
- * in? On a stock we only watch, a review at any price is a wake, not the
- * plan's target, until there is a buy to reach a target from (QB ruling
- * on DAV-335, 2026-09-29; the 2026-09-08 design: "if chat says 'look
- * again under $203', that price is the wake"). VST's "review at $146
- * instead of the buy" was refused as a half plan five times on 09-28. The
- * buy, the floor and a sale at a price are always plan levels.
+ * The same, read against the list it sits in. On a stock we only watch, a
+ * review at any price is a wake until there is a buy to reach it from (QB
+ * ruling on DAV-335, 2026-09-29; the 2026-09-08 design: "if chat says 'look
+ * again under $203', that price is the wake"). VST's "review at $146 instead
+ * of the buy" was refused five times on 09-28. The buy, the floor and a sale
+ * at a price always count.
  */
 export function isPlanLevelOnList(
   t: Trigger,
@@ -560,19 +183,17 @@ export function rationaleFor(
       : `I short when it rallies to ${p}.`;
   }
   if (slot === "FLOOR") {
-    // On a thesis we don't own, "sell" is meaningless — a floor break
-    // resolves to DEMOTE (effectiveTriggerAction) and takes the plan down.
-    // Write the wording that matches what actually happens (DAV-226).
+    // On a thesis we don't own, the floor is a Stop watching line (DAV-226).
     if (!held) {
       return long
-        ? `Below ${p} the setup is wrong, so the plan comes down instead of waiting to buy.`
-        : `Above ${p} the setup is wrong, so the plan comes down instead of waiting to short.`;
+        ? `Below ${p} the setup is wrong, so I stop watching it.`
+        : `Above ${p} the setup is wrong, so I stop watching it.`;
     }
     return long
       ? `I sell at ${p}: below it, the reason I own this is wrong.`
       : `I cover at ${p}: above it, the reason I'm short is wrong.`;
   }
-  return `Target ${p}: when it gets there, I take it, trim, or raise the target.`;
+  return `At ${p}: when it gets there, I take profit, trim, or let it run.`;
 }
 
 /** Every note `rationaleFor` writes; a level set with no note of its own carries one (note.ts). */
@@ -582,50 +203,11 @@ export const levelNotes = (): string[] =>
   );
 
 /**
- * A floor that has been raised past an upside level. Returns the pair when
- * the two overlap so that something fires no matter where price sits.
- */
-function contradictionBetween(
-  floor: PriceLevel | null,
-  all: PriceLevel[],
-  long: boolean,
-): { floor: number; upside: number } | null {
-  if (!floor) return null;
-  for (const l of all) {
-    if (l.side !== "UPSIDE" || l.triggerId === floor.triggerId) continue;
-    const overlaps = long ? floor.price >= l.price : floor.price <= l.price;
-    if (overlaps) return { floor: floor.price, upside: l.price };
-  }
-  return null;
-}
-
-/** The floor you hit first: highest on a long, lowest on a short. */
-function firstToFire(levels: PriceLevel[], long: boolean): PriceLevel | null {
-  if (levels.length === 0) return null;
-  return levels.reduce((best, l) =>
-    (long ? l.price > best.price : l.price < best.price) ? l : best,
-  );
-}
-
-/** The destination: furthest in the winning direction. */
-function furthest(levels: PriceLevel[], long: boolean): PriceLevel | null {
-  if (levels.length === 0) return null;
-  return levels.reduce((best, l) =>
-    (long ? l.price > best.price : l.price < best.price) ? l : best,
-  );
-}
-
-function priceOf(t: Trigger): number | null {
-  return typedLevel(t, null)?.value ?? null;
-}
-
-/**
  * Move the number in a trigger's sentence when its level moves and the
  * caller gave no new wording. MU's $969 floor kept saying "Exit below $935"
  * for two weeks; a sentence that names the old number is worse than none.
  * Returns null when the old number isn't in the text — callers fall back
- * to the template sentence for a plan level and keep the text otherwise.
- * Shared by the level path (applyLevelArgs) and the edit-op path (ops.ts).
+ * to the template sentence for a price level and keep the text otherwise.
  */
 export function moveNumberInText(
   text: string,

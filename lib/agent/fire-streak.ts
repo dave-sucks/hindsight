@@ -149,10 +149,10 @@ function buildLine(
   if (fireCount < 2) return "";
   const day = (lastChangedAt ?? firstFiredAt).toISOString().slice(0, 10);
   const what = lastChangedAt
-    ? `the plan has not changed since ${day}`
-    : `the plan has not changed since it started firing on ${day}`;
+    ? `its triggers have not changed since ${day}`
+    : `its triggers have not changed since it started firing on ${day}`;
   return (
     `This has fired ${fireCount} times and ${what} (${daysUnchanged}d). ` +
-    `Either change the plan or say what is different from the last time you answered it.`
+    `Either change a trigger or say what is different from the last time you answered it.`
   );
 }

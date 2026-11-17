@@ -159,8 +159,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Refresh stale research before acting. Phase 2 of THESIS_LIFECYCLE_FIX:
       // when the daily agent is about to trade a thesis whose research is
       // missing or > STALE_DAYS, it dispatches a refresh, waits for the
-      // worker, then proceeds. Without this, the place_trade staleness
-      // gate refuses and the agent has no recovery path.
+      // worker, then proceeds. Nothing refuses a trade on old research:
+      // the run's own read of the research line decides.
       "dispatch_thesis_research",
       "wait_for_thesis_refresh",
       // Terminal
@@ -263,8 +263,8 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Refresh stale research before acting. Phase 2 of
       // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
       // research > STALE_DAYS old can dispatch + wait for a refresh
-      // before executing the declared action. Without this, the
-      // place_trade staleness gate refuses and the agent is stuck.
+      // before executing the declared action. Nothing refuses a trade on
+      // old research: the run's own read of the research line decides.
       "dispatch_thesis_research",
       "wait_for_thesis_refresh",
       // Thesis (REQUIRED close-out)
@@ -533,7 +533,7 @@ There is no live news pipeline. The jobs that produced \`Signal\` rows and the r
 
 **ResearchRun** — one execution. Mode (MORNING_PLAN / INTRADAY_TACTICAL / DISCOVERY / PRINCIPAL_CHAT / PODCAST_SEGMENT), status (RUNNING / COMPLETE / FAILED), \`parameters\` snapshot, \`agentConfigId\`. Children: \`Thesis[]\`, \`TradeDecision[]\`, \`RunEvent[]\`, \`RunMessage[]\`.
 
-**Thesis** — the durable belief on a (analyst, ticker). Direction (LONG / SHORT / null for an unresearched seed; the agent input alias PASS lands as status PASSED), status (WATCHING / HOLDING / PASSED / RETIRED with \`retiredReason\` DROPPED / SOLD / INVALIDATED / REPLACED / PROMOTED), \`horizon\` (CATALYST / TRADE / TARGET / COMPOUNDER), \`entryPrice/targetPrice/stopLoss\`, \`coreBelief\`, \`keyAssumptions[]\`, \`invalidationConds[]\`, \`triggers[]\` (JSONB structured predicates).
+**Thesis** — the durable belief on a (analyst, ticker). Direction (LONG / SHORT / null for an unresearched seed; the agent input alias PASS lands as status PASSED), status (WATCHING / HOLDING / PASSED / RETIRED with \`retiredReason\` DROPPED / SOLD / INVALIDATED / REPLACED / PROMOTED), \`horizon\` (CATALYST / TRADE / TARGET / COMPOUNDER), \`coreBelief\`, \`keyAssumptions[]\`, \`invalidationConds[]\`, \`triggers[]\` (JSONB structured predicates).
 
   • **Cardinality rule:** at most one HOLDING-or-WATCHING thesis per (analyst, ticker, direction). Direction flips create a new row; the parent retires with reason REPLACED.
   • **Per-horizon review cadence**: CATALYST and TRADE daily, TARGET every 7d, COMPOUNDER every 30d — minted as a review schedule ("every N days") on a held stock's ladder; a watch gets none unless one is given. CATALYST requires \`catalystDate\`. There is no maxHoldDays column; "held long enough" is a day count from the buy, a trigger of that length.

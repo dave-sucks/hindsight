@@ -28,7 +28,6 @@ import {
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
 import { flooredCooldownDays } from "@/lib/agent/triggers/state-cooldown";
-import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import { fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { cn } from "@/lib/utils";
@@ -51,10 +50,8 @@ export interface TriggerPillProps {
 }
 
 /** What the pill and the popover show: the parts, the joiner, and which parts are a clock. */
-function readTrigger(trigger: Trigger, held: boolean) {
-  // A watched stock's floor reads the close; the pill says what the check reads.
-  const shown = watchedFloorOnClose(trigger, { status: held ? "HOLDING" : "WATCHING" }).predicate as When;
-  const w = shapeOf(shown);
+function readTrigger(trigger: Trigger) {
+  const w = shapeOf(trigger.predicate);
   if (!w) return { parts: [{ label: "a removed condition" }] as PillPart[], joiner: "and" as const, timed: [false], w: null };
   return { ...pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
 }
@@ -63,7 +60,7 @@ export function TriggerPill(props: TriggerPillProps) {
   const { trigger, held, level } = props;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const { parts, joiner, timed } = readTrigger(trigger, held);
+  const { parts, joiner, timed } = readTrigger(trigger);
   const draft = draftOf(trigger);
   return (
     <>
@@ -141,10 +138,9 @@ function TriggerCard({
   onEdit,
   onDone,
 }: TriggerPillProps & { onEdit?: () => void; onDone: () => void }) {
-  const sells = held || level !== "THESIS";
   // An inherited rule is changed where it lives, so one edit can't mean different things on different stocks.
   const canEdit = editable && !trigger.inherited;
-  const { parts, joiner, w } = readTrigger(trigger, held);
+  const { parts, joiner, w } = readTrigger(trigger);
   const { pending, err, send } = useTriggerRequest(() => {
     onChanged?.();
     onDone();
@@ -160,7 +156,7 @@ function TriggerCard({
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
     // A schedule's rate limit is its own interval, so saying it again would repeat the number.
     cooldown && !timed ? (cooldown === 1 ? "At most once a day" : `At most once every ${cooldown} days`) : null,
-    fireModeWords(trigger, sells),
+    fireModeWords(trigger),
   ].filter(Boolean);
 
   return (
@@ -168,7 +164,7 @@ function TriggerCard({
       <div className="flex items-start gap-2">
         {/* The same two halves as the pill: the muted direction, then the value. */}
         <p className="min-w-0 flex-1 text-sm">
-          <span className="text-muted-foreground">{triggerLabel(trigger, sells)} </span>
+          <span className="text-muted-foreground">{triggerLabel(trigger)} </span>
           {parts.map((p, i) => (
             <Fragment key={i}>
               {i > 0 ? <span className="text-muted-foreground"> {joiner} </span> : null}
@@ -212,7 +208,7 @@ function TriggerCard({
       {trigger.rationale ? <p className="text-xs text-muted-foreground">{trigger.rationale}</p> : null}
       {overrides ? (
         <p className="text-xs text-muted-foreground">
-          Overrides the {trigger.overrides!.level === "ACCOUNT" ? "account" : "analyst"} rule: {triggerText(trigger.action, overrides, sells)}
+          Overrides the {trigger.overrides!.level === "ACCOUNT" ? "account" : "analyst"} rule: {triggerText(trigger.action, overrides)}
         </p>
       ) : null}
       {facts.length ? <p className="text-xs text-muted-foreground">{facts.join(" · ")}</p> : null}

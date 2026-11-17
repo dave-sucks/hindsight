@@ -4,7 +4,7 @@
  * setup it was bought on, instead of a horizon glossary.
  */
 
-import { getSetup, isNamedSetup, setupsForAnalyst, NO_SETUP_FITS, type Horizon } from "./setups";
+import { getSetup, type Horizon } from "./setups";
 import type { SetupOverrides } from "./setup-overrides";
 import { setupLines } from "@/lib/agent/analyst-brief";
 
@@ -17,9 +17,6 @@ export interface SetupChecklist {
   manage: string | null;
   /** The time limit, in words. */
   time: string;
-  /** What the fill wrote onto the stock from this setup: a partial at this many R, the beat-that-sold review. */
-  partialAtR: number | null;
-  beatAndFadeReview: boolean;
   /** The lines a fire checks, for this horizon (setupLines' decision cut): a row's `setup_lines`. */
   lines: string[];
 }
@@ -40,34 +37,6 @@ export function setupChecklist(
     // A horizon with no line of its own gets none, never another horizon's.
     manage: h ? (s.trail[h] ?? null) : (Object.values(s.trail)[0] ?? null),
     time: s.time.text,
-    partialAtR: s.manage.partialAtR,
-    beatAndFadeReview: s.manage.beatAndFadeReview,
     lines: setupLines(s, h, "decision"),
-  };
-}
-
-/** What a row with no setup carries instead: the seat's setups to choose from (NO_SETUP_NAMED says how). */
-export interface NameTheSetup {
-  choose: { id: string; name: string; when: string }[];
-}
-
-/**
- * A held stock, or a watched one with a buy price, written before setups
- * were named (DAV-285: 29 of 32 on 2026-09-17). Everything setup-aware skips
- * it — the tactical run's confirmation, the exits a buy writes, the held
- * checklist, the scorecard — until a review names one. Null when the row has
- * a setup, when a review already said none fits, or when there is no plan
- * to name a setup for.
- */
-export function nameTheSetup(
-  row: { setupId: string | null | undefined; status: string | null; entryPrice: unknown },
-  /** The analyst's own setups (`AgentConfig.setupIds`); none chosen = the whole catalog. */
-  analystSetupIds: readonly string[] | null | undefined,
-  overrides?: SetupOverrides,
-): NameTheSetup | null {
-  if (isNamedSetup(row.setupId) || row.setupId === NO_SETUP_FITS) return null;
-  if (row.status !== "HOLDING" && !(row.status === "WATCHING" && row.entryPrice != null)) return null;
-  return {
-    choose: setupsForAnalyst(analystSetupIds, overrides).map((s) => ({ id: s.id, name: s.name, when: s.summary })),
   };
 }

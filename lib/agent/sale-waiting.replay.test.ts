@@ -1,10 +1,12 @@
 /**
  * sale-waiting.replay.test.ts — a sale waiting for the principal's approval
- * is off the agent's work list, as a waiting buy is (the owner's ruling,
+ * is not the agent's work, as a waiting buy is not (the owner's ruling,
  * 2026-10-14). The principal's answer is the next step; when the proposal
- * expires, the floor fires again on its own.
+ * expires, the floor fires again on its own. The ruling is the sale's alone
+ * (2026-11-16): any other flag on the stock still lists it
+ * (sale-card-note.replay.test.ts).
  *
- * A sale proposal lives a day, so the 8 AM run usually finds yesterday's sale
+ * A sale proposal lived a day, so the 8 AM run usually found yesterday's sale
  * still waiting. Until this, the stock stayed flagged; close_position handed
  * back the waiting order, and nothing the run could do answered the flag:
  *
@@ -110,17 +112,18 @@ async function completeRun(seed: Record<string, Row[]>, when: string, run: Run, 
   return at(when, () => replayTool("complete-run", "completeRun", { seed: { ...seed, researchRun: [runRow(run)] }, args: {}, ctx: { runId: run.id, runEnvironment: "LIVE" }, quotes }));
 }
 
-describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so it is not the run's work", () => {
-  it("the read: MU is a quiet line, its open review too, and the line says the sale waits", async () => {
+describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so the sale is not the run's work, its open review is", () => {
+  it("the read: MU is listed for the -4% day review, not the sale, and the row says the sale waits", async () => {
     // The run's own read: MU flagged for the sale, with its review beside it.
     expect(mu.orders.map((o) => o.status)).toEqual(["EXPIRED", "EXPIRED", "EXPIRED", "EXPIRED", "AWAITING_APPROVAL"]);
     expect((mu.readThen.needsAction as Row).kind).toBe("SALE_DECLINED");
 
-    // A sale waiting takes the whole stock off the list (2026-10-15), the -4% day review of 10-12 with it.
-    const { row, quiet, modelLine } = await morningRead(muSeed(), fx.mu.run.startedAt, "MU", mu.price);
-    expect(row).toBeNull();
-    expect(quiet).not.toBeNull();
-    expect(modelLine).toContain("proposal waiting: sell 13 sh, placed 10-12 09:30 ET, expires 10-13 09:30 ET");
+    // A sale waiting silences the sale: the lapsed-sale flag and the floor's fire. The review of the -4% day, fired 10-12, is the stock's work.
+    const { row, quiet, modelRow } = await morningRead(muSeed(), fx.mu.run.startedAt, "MU", mu.price);
+    expect(quiet).toBeNull();
+    expect(row?.situations).toEqual(["REVIEW_DUE"]);
+    expect(row?.needsAction).toMatchObject({ kind: "TRIGGER_FIRED", action: "REVIEW" });
+    expect(modelRow?.proposal_waiting).toBe("sell 13 sh, placed 10-12 09:30 ET, expires 10-13 09:30 ET");
   });
 
   it("complete_run accepts the run at its first call: the note answered the review, and the sale was never its to answer", async () => {
@@ -134,13 +137,15 @@ describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so it is not the run's w
     expect(fx.mu.runRows.map((r) => r.type)).toEqual(["REVIEWED"]);
   });
 
-  it("with no line on MU at all, complete_run asks for nothing on MU", async () => {
+  it("with no line on MU at all, complete_run asks for the review and only the review, not the sale", async () => {
     const seed = { ...muSeed(), runEvent: eventRows(fx.mu.run.id, fx.mu.events) };
     const { result, db, crashed } = await completeRun(seed, summaryAt(fx.mu.events), fx.mu.run, { MU: mu.price });
 
     expect(crashed).toBe(false);
-    expect(result.summary).not.toMatch(/refused/i);
-    expect(db.store.researchRun[0].status).toBe("COMPLETE");
+    expect(result.summary).toMatch(/refused/i);
+    expect(String((result.data as { error?: string }).error)).toContain(`MU (${MU_ID}): review due`);
+    expect(String((result.data as { error?: string }).error)).not.toMatch(/sale signal/);
+    expect(db.store.researchRun[0].status).toBe("RUNNING");
   });
 });
 
@@ -158,7 +163,7 @@ describe("MU 10-13 14:00:57 UTC: the 10-12 sale has expired, so the sale is back
 
 describe("NVDA 10-09 08:00 ET: the fired $236 sale was its only work, and that sale was waiting", () => {
   it("the row is the read's: each trigger says what the read showed", () => {
-    expect(nv.thesis.triggers.map((t) => sentenceOf(t, true))).toEqual(nv.says);
+    expect(nv.thesis.triggers.map((t) => sentenceOf(t))).toEqual(nv.says);
     expect(nv.readSituations).toEqual(["PROTECTIVE_SALE"]);
   });
 
@@ -167,7 +172,7 @@ describe("NVDA 10-09 08:00 ET: the fired $236 sale was its only work, and that s
     expect(row).toBeNull();
     expect(quiet).not.toBeNull();
     expect(modelLine).toBe(
-      "NVDA · held · LONG · PEAD · $230.48 · entry $218.23 · proposal waiting: sell 33 sh, placed 10-08 09:31 ET, expires 10-09 09:31 ET · review 10-14 · id cmtg9nbdy000204jpc6cwawgg",
+      "NVDA · held · LONG · PEAD · $230.48 · paid $218.23 · proposal waiting: sell 33 sh, placed 10-08 09:31 ET, expires 10-09 09:31 ET · review 10-14 · id cmtg9nbdy000204jpc6cwawgg",
     );
   });
 

@@ -4,11 +4,12 @@
  * The rule: the Activity tab shows the whole list, the Overview shows the
  * newest 8, and the next run on the stock reads the same 8 as they read in
  * the feed. One function builds the list, so no two surfaces can disagree:
- * the stock's saved Activity lines (`ThesisUpdate`) plus each proposal's
- * steps, built from its order (the Order table is the source of truth for
- * proposed / approved / declined / expired; its ThesisUpdate copies were
+ * the stock's saved Activity lines (`ThesisUpdate`) plus its orders' steps:
+ * a proposal's Proposed / Approved / Declined / Expired, built from its order
+ * (the Order table is the source of truth; its ThesisUpdate copies were
  * dropped ~78% of the time by a fire-and-forget bug, so only the price a
- * Declined or Expired copy recorded is read from them).
+ * Declined or Expired copy recorded is read from them), and the fill of an
+ * order that was never a proposal (approvals off, or your own click).
  *
  * A paragraph lives in one place: the proposal's reason on its "Proposed"
  * step, your comment on a "Declined" step. An "Approved" or "Expired" step is
@@ -77,7 +78,7 @@ export interface StoredLine {
   answers?: { timestamp: Date } | null;
 }
 
-/** An order that went through the approval seam (`expiresAt` set, or a trigger's sale card), as the loaders select it. */
+/** An order on the stock, as the loaders select it. It went through the approval seam when it has a deadline or the triggers its proposal answers. */
 export interface ProposalOrder {
   id: string;
   status: string;
@@ -95,18 +96,25 @@ export interface ProposalOrder {
   createdAt: Date;
   updatedAt: Date;
   positionId: string | null;
+  /** The triggers a proposal answers; absent on older loaders' rows. */
+  triggerIds?: string[];
+  filledAt?: Date | null;
+  /** The position's cost: a sale's fill carries it, so its gain can be read. */
+  position?: { avgCost: number } | null;
 }
 
-/** The steps of one proposal: a "Proposed" anchor, then its outcome when it has one. */
+/** The steps of one order: a proposal's "Proposed" anchor, then its outcome when it has one; any other order's fill. */
 export function proposalSteps(o: ProposalOrder): FeedItem[] {
   const intent = o.intent ?? "OPEN";
   const quantity = Number(o.quantity);
   const qty = ` — ${o.side === "BUY" ? "buy" : "sell"} ${quantity} sh`;
+  const sale = intent === "CLOSE" || intent === "PARTIAL_CLOSE";
+  const fill = { priceAtTime: o.filledPrice ?? null, positionAtTime: sale && o.position ? { qty: quantity, avgCost: o.position.avgCost, unrealizedPnL: null } : null };
   const base = {
     fieldChanges: {
       proposal: {
         from: { orderId: o.id, status: "AWAITING_APPROVAL" },
-        to: { orderId: o.id, status: o.status, intent, quantity, userMessage: o.rejectionMessage },
+        to: { orderId: o.id, status: o.status, intent, side: o.side, quantity, userMessage: o.rejectionMessage },
       },
     },
     priceAtTime: null,
@@ -124,6 +132,10 @@ export function proposalSteps(o: ProposalOrder): FeedItem[] {
     answersAt: null,
     noteId: null,
   };
+  if (o.expiresAt == null && !o.triggerIds?.length) {
+    // Never a proposal: its fill is its one step.
+    return o.status === "FILLED" ? [{ ...base, ...fill, id: `order:${o.id}:filled`, timestamp: o.filledAt ?? o.updatedAt, type: "ORDER_FILLED", summary: `Filled ${intent} on ${o.symbol}${qty}`, rationale: null }] : [];
+  }
   const steps: FeedItem[] = [
     { ...base, id: `order:${o.id}:proposed`, timestamp: o.createdAt, type: "PROPOSAL_PROPOSED", summary: `Proposed ${intent} on ${o.symbol}${qty}`, rationale: o.rationale },
   ];
@@ -136,7 +148,7 @@ export function proposalSteps(o: ProposalOrder): FeedItem[] {
     steps.push({ ...base, id: `order:${o.id}:withdrawn`, timestamp: o.updatedAt, type: "PROPOSAL_WITHDRAWN", summary: `Withdrawn: ${o.withdrawnReason ?? "the stock closed back past the line"}`, rationale: null });
   } else if (o.status !== "AWAITING_APPROVAL") {
     // PENDING / FILLED / CANCELLED after approval: the approve moment, with the real fill price when known.
-    steps.push({ ...base, id: `order:${o.id}:approved`, timestamp: o.alpacaConfirmedAt ?? o.updatedAt, type: "PROPOSAL_APPROVED", summary: `Approved ${intent} on ${o.symbol}${qty}`, rationale: null, priceAtTime: o.filledPrice ?? null });
+    steps.push({ ...base, ...fill, id: `order:${o.id}:approved`, timestamp: o.alpacaConfirmedAt ?? o.updatedAt, type: "PROPOSAL_APPROVED", summary: `Approved ${intent} on ${o.symbol}${qty}`, rationale: null });
   }
   return steps;
 }
@@ -178,7 +190,8 @@ export function toFeedItem(u: StoredLine): FeedItem {
  * PROPOSAL_* copy of an order the steps cover is dropped. A run's note on a
  * proposal it made (the note row stamped with the order as its `tradeId`,
  * lib/proposals/auto-writeup.ts) is one line with the proposal: the
- * "Proposed" step carries the note, the run and the trigger it answered.
+ * "Proposed" step (a fill, for an order never proposed) carries the note,
+ * the run and the trigger it answered.
  * A dropped Declined or Expired copy gives its step the price it recorded.
  * `limit` cuts the merged list; a caller that wants the newest N loads at
  * least N of each.
@@ -205,10 +218,10 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
   }
   const steps = args.orders.flatMap(proposalSteps).map((s) => {
     const oid = proposalOrderId(s.fieldChanges) ?? "";
-    const note = s.type === "PROPOSAL_PROPOSED" ? noteFor.get(oid) : undefined;
+    const note = s.type === "PROPOSAL_PROPOSED" || s.type === "ORDER_FILLED" ? noteFor.get(oid) : undefined;
     if (note) {
       const { rationale, runId, runMode, triggerId, triggerAction, triggerCondition, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt } = note;
-      return { ...s, rationale, runId, runMode, triggerId, triggerAction, triggerCondition, priceAtTime, verdict, verdictLine, answersUpdateId, answersAt, noteId: note.id };
+      return { ...s, rationale, runId, runMode, triggerId, triggerAction, triggerCondition, priceAtTime: s.priceAtTime ?? priceAtTime, verdict, verdictLine, answersUpdateId, answersAt, noteId: note.id };
     }
     const price = priceFor.get(`${oid}:${s.type}`);
     return price != null ? { ...s, priceAtTime: price } : s;

@@ -39,7 +39,7 @@ three doors. A note is someone's read of what those facts mean.
 
 No stored write-up sits beside the analysts. What the owner reads about a
 trade is the analyst's own note, written with the thesis in hand; an Auto
-trade is written up by the trigger run that made it (`AUTO_TRADE`). The
+trade is written up by the trigger run that made it (its text is `AUTO_WRITEUP`). The
 research brief that used to be built for every proposal was deleted on
 2026-10-28.
 

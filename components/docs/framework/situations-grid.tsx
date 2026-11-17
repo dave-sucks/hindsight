@@ -16,10 +16,10 @@ const BOOK = 48;
 
 /** Example reads: which stocks (by seat on the grid) are in which situations. */
 const READS: ReadonlyArray<{ when: string; flagged: Record<number, string[]> }> = [
-  { when: "Monday, 8:00 AM", flagged: { 3: ["REVIEW_DUE"], 17: ["EARNINGS", "PROTECTION"], 30: ["FIRST_RESEARCH"] } },
-  { when: "Tuesday, 8:00 AM", flagged: { 17: ["PROTECTIVE_SALE"], 44: ["PLAN_PROBLEM"] } },
-  { when: "Wednesday, 8:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["YOUR_WORD_UNANSWERED"] } },
-  { when: "Thursday, 8:00 AM", flagged: { 12: ["STALE_RESEARCH"], 35: ["QUIET_WATCH_WOKE"] } },
+  { when: "Monday, 8:00 AM", flagged: { 3: ["REVIEW_DUE"], 17: ["REVIEW_DUE", "PROTECTION"], 30: ["REVIEW_DUE"] } },
+  { when: "Tuesday, 8:00 AM", flagged: { 17: ["PROTECTIVE_SALE"] } },
+  { when: "Wednesday, 8:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["NOTE_TO_ANSWER"] } },
+  { when: "Thursday, 8:00 AM", flagged: { 35: ["REVIEW_DUE"] } },
 ];
 
 export function SituationsGrid({ situations }: { situations: readonly FrameworkSituation[] }) {
@@ -80,7 +80,7 @@ export function SituationsGrid({ situations }: { situations: readonly FrameworkS
           <Stat label="Instructions sent" value={`${sent.toLocaleString("en-US")} chars`} />
         </div>
         <p className="text-sm text-muted-foreground">
-          All seventeen texts together are {all.toLocaleString("en-US")} characters. A read carries only the ones a stock on it is in, once each, however many stocks share one. A quiet stock is one line and carries nothing.
+          All eight texts together are {all.toLocaleString("en-US")} characters. A read carries only the ones a stock on it is in, once each, however many stocks share one. A quiet stock is one line and carries nothing.
         </p>
       </div>
 

@@ -66,26 +66,24 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   // This morning's averages, range, RSI and strength: every decision reads a level off them.
   chart: "always",
   // The facts a situation's text refers to, by name: each with its situation.
-  plan_checks: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "PLAN_PROBLEM", "YOUR_WORD_UNANSWERED"],
   floor_risk: ["PROTECTIVE_SALE", "ADD_OR_WINNER", "PROTECTION"],
-  buyBlockedByFull: ["BUY_BLOCKED_FULL"],
-  heldThroughFloor: ["PROTECTIVE_SALE", "AUTO_TRADE"],
-  supersededBy: ["PLAN_PROBLEM"],
-  nameTheSetup: ["NO_SETUP_NAMED"],
-  street: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "ADD_OR_WINNER", "PLAN_PROBLEM"],
-  setup: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
-  setup_lines: ["BUY_ARRIVES", "BUY_BLOCKED_FULL", "NO_SETUP_NAMED"],
-  assumptions: ["EARNINGS", "STALE_RESEARCH"],
-  would_prove_it_wrong: ["PROTECTIVE_SALE", "AUTO_TRADE", "EARNINGS", "FILING", "STALE_RESEARCH", "PLAN_PROBLEM"],
-  catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER", "EARNINGS", "PLAN_PROBLEM"],
+  buyBlockedByFull: ["BUY_ARRIVES"],
+  heldThroughFloor: ["PROTECTIVE_SALE"],
+  supersededBy: "review",
+  street: ["BUY_ARRIVES", "ADD_OR_WINNER"],
+  setup: ["BUY_ARRIVES"],
+  setup_lines: ["BUY_ARRIVES"],
+  assumptions: "review",
+  would_prove_it_wrong: ["PROTECTIVE_SALE"],
+  catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER"],
   paper_record: ["PROMOTED_AWAITING"],
   // The whole case: the review clock, and a named read.
   company: "review",
   bull_case: "review",
   bear_case: "review",
-  conviction_rationale: ["PLAN_PROBLEM"],
-  variant_view: ["BUY_ARRIVES", "BUY_BLOCKED_FULL"],
-  snapshot: ["PLAN_PROBLEM"],
+  conviction_rationale: "review",
+  variant_view: ["BUY_ARRIVES"],
+  snapshot: "review",
   // Only when asked for by name.
   recentCatalysts: "named",
   fundamentals: "named",
@@ -207,11 +205,11 @@ function researchLine(row: Row, size: RowSize): string {
 
 // ── The one line ───────────────────────────────────────────────────────────
 
-/** A quiet stock: the stock and its stance, the price, the buy it waits on, the next review, the id. The levels are the triggers; a quiet row names none. */
+/** A quiet stock: the stock and its stance, the price, what we paid on a holding, the next review, the id. Its triggers are on its full row. */
 function line(row: Row): string {
   const held = row.status === "HOLDING";
   const price = num(row.currentPrice);
-  const entry = num(row.entryPrice);
+  const paid = held ? (num(row.paid) ?? num(obj(row.position)?.avgCost)) : null;
   const review = date(row.reviewDueAt);
   const catalyst = date(row.catalystDate);
   const { noClaim, failedOn } = writeUp(row);
@@ -222,7 +220,7 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noPlan(row) ? "no plan" : null,
+    paid != null ? `paid ${money(paid)}` : null,
     // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
     proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
@@ -313,8 +311,6 @@ function priceLine(row: Row): string | null {
   return `${money(current)}${dp != null ? `, ${pct(dp)} today` : ""}${at ? ` (${etStamp(at)})` : ""}`;
 }
 
-/** A watched stock with a view and no buy level: nothing to buy on (step 12, part 3). */
-const noPlan = (row: Row) => row.status === "WATCHING" && str(row.direction) != null && num(row.entryPrice) == null;
 /** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 
@@ -402,7 +398,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));
   // The levels are the triggers (`triggers`, each with its id): no plan line and no protection line restate them.
-  put("plan_checks", list<{ text?: string }>(resolved?.planSanity).map((f) => f.text).filter(Boolean));
   put("floor_risk", str(obj(resolved?.floorRisk)?.line));
   put("triggers", triggerLines(row));
   put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
@@ -418,7 +413,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   if (lines.length) { if (setupLinesOn) sent.add("setup_lines"); put("setup_lines", lines); }
   else put("setup", setupLine(row));
   // The facts a situation's text refers to, by the names it uses.
-  put("nameTheSetup", row.nameTheSetup);
   put("buyBlockedByFull", row.buyBlockedByFull);
   put("heldThroughFloor", row.heldThroughFloor);
   put("supersededBy", resolved?.supersededBy);

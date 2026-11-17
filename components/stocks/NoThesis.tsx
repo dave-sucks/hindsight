@@ -23,7 +23,7 @@ import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
 
 export function NoThesis({ ticker, analysts }: { ticker: string; analysts: Array<{ id: string; name: string }> }) {
   const ask = (analyst: { id: string; name: string }) =>
-    sendToThesisWriter(analyst.id, ticker, "horizon", "mint")
+    sendToThesisWriter(analyst.id, ticker, null, "mint")
       .then(() => toast.success(`${ticker} sent to ${analyst.name} — the thesis lands shortly.`))
       .catch((err: unknown) => toast.error(err instanceof Error ? err.message : `Couldn't send ${ticker}`));
   return (

@@ -30,7 +30,8 @@ async function pass(trigger: Record<string, unknown>, price: number) {
       jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn() } }));
       jest.doMock("@/lib/agent/research-helpers", () => ({
         finnhub: async (path: string) =>
-          path.startsWith("/quote?symbol=") ? { data: { c: price, pc: price + 0.1, o: price + 0.1, dp: -0.2, t: Math.floor(AT.getTime() / 1000) } } : { data: null },
+          // Closed 50 cents lower: the review above $52 crosses today.
+          path.startsWith("/quote?symbol=") ? { data: { c: price, pc: price - 0.5, o: price - 0.5, dp: 1, t: Math.floor(AT.getTime() / 1000) } } : { data: null },
       }));
       jest.doMock("@/lib/alpaca", () => ({ getTodaySessionBars: async () => ({ IOT: { close: price, high: price, low: price, volume: 1_000_000 } }) }));
       jest.doMock("@/lib/market-data/ensure-snapshots", () => ({ ensureIndicatorSnapshots: async () => new Map() }));
@@ -65,8 +66,7 @@ describe("where a fire goes", () => {
     expect(await pass({ ...TARGET, fireMode: "ASK_NOW" }, 52.4)).toEqual({ events: [TARGET.id], firedRows: [], firedRules: [] });
   });
 
-  it("the floor set to Auto-sell goes to the trigger run's no-agent sale; left for the morning, it waits", async () => {
+  it("the floor set to Auto-sell goes to the trigger run's no-agent sale", async () => {
     expect((await pass({ ...FLOOR, fireMode: "DO_IT" }, 41.3)).events).toEqual([FLOOR.id]);
-    expect(await pass({ ...FLOOR, fireMode: "NEXT_MORNING" }, 41.3)).toEqual({ events: [], firedRows: [FLOOR.id], firedRules: [{ action: "EXIT", condition: FLOOR.predicate }] });
   });
 });

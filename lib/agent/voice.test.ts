@@ -112,7 +112,7 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/inngest/functions/reconcile-orders.ts", ["Now that we own it, the buy price on the thesis is what we paid", "The automatic stop moves with it"]],
     ["lib/agent/record-buy-blocked.ts", ["Nothing is wrong with the plan; the analyst has no room"]],
     ["lib/agent/triggers/use-once.ts", ["is a one-time order: it came off the stock"]],
-    ["lib/agent/triggers/demote.ts", ["was removed: ", "re-price it if the setup comes back"]],
+    ["lib/agent/triggers/stop-watching.ts", ["was removed: ", "re-price it if the setup comes back"]],
     ["lib/trading/after-buy.ts", ["the next run will set it"]],
     ["lib/actions/thesis-edit.ts", ["You added this trigger:", "You changed this trigger to:", "You removed this trigger:", "Removed in the cleanup of copied rules:"]],
     ["lib/actions/promote-analyst.actions.ts", ["Administrative transition, not a thesis decision", "Demote-while-PROMOTED downgrade"]],
@@ -161,7 +161,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     ["submit_thesis.rationale", wordsOf(submit().rationale)],
     ["record_run_summary.decision_rationale", wordsOf(props("record_run_summary").decision_rationale)],
     ["record_run_summary.ranked_picks.reasoning", wordsOf(props("record_run_summary").ranked_picks?.items?.properties?.reasoning)],
-    ...["core_belief", "conviction_rationale", "variant_view", "snapshot", "stop_basis", "target_basis"].map(
+    ...["core_belief", "conviction_rationale", "variant_view", "snapshot"].map(
       (f): [string, string] => [`update_thesis.${f}`, wordsOf(props("update_thesis")[f])],
     ),
   ];
@@ -179,7 +179,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(VOICE_RULES).toContain("if a neighbor who doesn't follow stocks wouldn't know it, use the one they would");
     // GEV and ABBV replays, 10-28: the note listed every break that had not happened.
     expect(VOICE_RULES).toContain("when nothing that would break the case has happened, say so in a few words, never as a list of each thing that hasn't");
-    expect(VOICE_RULES).toContain("- The last sentence says what would change the call. A stop or target goes in this last sentence, and only when the call turns on it");
+    expect(VOICE_RULES).toContain("- The last sentence says what would change the call. A stop or a level goes in this last sentence, and only when the call turns on it");
     // MSFT and GEV, 11-04: ten numbers in a note, three sentences of 50 to 70 words.
     expect(VOICE_RULES).toContain("Numbers: keep the two or three that matter (the move, what you're up or down, the level the call turns on) and drop the rest; a date or a share count isn't one of them.");
     for (const term of ["catalyst", '"thesis intact"', "constructive", "re-rate", "multiple", "risk/reward", "exposure", "positioning"]) expect(VOICE_RULES).toContain(term);
@@ -220,7 +220,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   // IOT, 2026-11-04: the field's own example was "a close below the 50-day average", and the Writer wrote a swing low with volume.
   it("what would prove it wrong is the business, never a stock price, in every text the Writer reads", () => {
     const words = wordsOf(props("update_thesis").invalidation_conditions);
-    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the floor holds the price/);
+    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price/);
     expect(words).not.toMatch(/a close below/i);
     expect(wordsOf(submit().invalidation_conditions)).toBe(words);
     expect(SAMPLE_PROMPTS.writer()).toMatch(/Never a stock price, an average, a high or\s+low, or a gap, with or without volume/);

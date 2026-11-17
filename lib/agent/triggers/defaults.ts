@@ -1,22 +1,12 @@
 /**
- * Horizon-keyed default trigger templates.
+ * The triggers code writes on its own, and the trigger defaults.
  *
- * Every thesis carries a `triggers[]` array of structured predicates that
- * the router evaluates deterministically. Most of those are universal —
- * "stop hit", "earnings dropped", "closed under the 50-day", "quarterly hygiene check"
- * — and the agent shouldn't have to remember to attach them to every
- * thesis it mints. This module supplies the baseline keyed off horizon.
- *
- * Usage:
- *   const merged = mergeTriggers(
- *     defaultTriggersForHorizon("COMPOUNDER", thesis),
- *     args.triggers ?? [],
- *   );
- *
- * Merge rule (kept simple for v1): defaults fill gaps. Agent-supplied
- * triggers take precedence on the same (condition, action) key.
- * That way the agent can override "sell below $stop" with a
- * tighter level without producing two contradictory exits.
+ * A stock has triggers and nothing else: its buy, its floor and any upside
+ * rule are written by an analyst or the owner, one trigger at a time, never
+ * stamped from code. A playbook's lines are its templates, listed in
+ * Settings → Playbook (lib/agent/knowledge/playbooks.ts). What code still
+ * writes: the account's standing rules, and each trigger's cooldown and fire
+ * mode when none is named.
  *
  * IDs are auto-assigned via randomUUID() — stable for the life of the
  * trigger so cooldown stamps survive subsequent merges.
@@ -37,35 +27,10 @@ const createId = () => randomUUID();
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
-/**
- * Thesis state at the time defaults are derived. Drives the template
- * selection — held positions get EXIT/REVIEW templates around the open
- * position; watching theses get ENTER/REVIEW templates around the
- * watchlist entry condition; PROMOTED theses get the WATCHING-style
- * ENTER + REVIEW set (no EXIT — there's no live position to exit since
- * the paper position was force-closed at promotion).
- *
- * Without this distinction, watchlist theses end up with EXIT triggers
- * on stop-loss that can never fire usefully — there's no position to
- * exit. The agent then has no entry trigger to push it from WATCHING
- * → INITIATE, and the watchlist becomes inert. PROMOTED has the
- * symmetric trap: inheriting HELD-template EXIT triggers spawns an
- * orphan tactical EXIT run whenever price crosses the old stop.
- */
+/** Which of a stock's states a trigger list is read in. */
 export type ThesisState = "HELD" | "WATCHING" | "PROMOTED";
 
-export type ThesisDirection = "LONG" | "SHORT" | "PASS";
-
-export interface ThesisShape {
-  entryPrice?: number | null;
-  targetPrice?: number | null;
-  stopLoss?: number | null;
-  catalystDate?: Date | null;
-  /** Direction colors entry-trigger semantics for watching theses. */
-  direction?: ThesisDirection | null;
-}
-
-// ── Builders for each horizon ──────────────────────────────────────────
+// ── The add prompts ────────────────────────────────────────────────────
 
 /**
  * Reactive strength-press rung (docs/plans/SCALE_INTO_WINNERS.md PR2).
@@ -142,11 +107,9 @@ export function accountStandingRules(): Trigger[] {
  * picks the name up on that schedule; without one, nothing touches it until
  * one of its own triggers fires.
  *
- * A clock is chosen, never inherited. The WATCHING templates below do not
- * stamp one: whoever creates the thesis decides how often to look at it, or
- * that nobody should, by including a review-clock trigger or leaving it
- * out. Held templates keep theirs — a position we own is reviewed on a
- * schedule by default.
+ * A clock is chosen, never stamped: whoever writes the stock's lines (the
+ * owner, an analyst, or its playbook's templates) decides how often to look
+ * at it. A holding with none inherits the account's.
  */
 export function reviewCadenceTrigger(days: number): Trigger {
   return {
@@ -161,14 +124,6 @@ export function reviewCadenceTrigger(days: number): Trigger {
   };
 }
 
-/** Days between reviews by horizon. Was HORIZON_REVIEW_DAYS. */
-export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
-  CATALYST: 1,
-  TRADE: 1,
-  TARGET: 7,
-  COMPOUNDER: 30,
-};
-
 /**
  * When this thesis is next due, given when it was last actually looked at.
  *
@@ -177,51 +132,34 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
  * deleted (DAV-195 L7) and every thesis past its last written date read as
  * overdue forever. A value derived at read time cannot freeze.
  *
- * Cadence comes from the thesis's own review trigger when it has one, and
- * from its horizon otherwise — which is exactly what the account rule would
- * hand it, so an inheriting thesis gets the same answer without resolving
- * the whole cascade on the hottest write path in the app.
+ * The cadence is the clock on the list it is given (the resolved ladder, so
+ * an inherited account clock counts); with none there is no review date.
  */
 export function nextReviewFrom(
   lastReviewedAt: Date,
   triggers: Array<{ predicate: When }> | null | undefined,
-  horizon: Horizon | null,
-): Date {
-  const own = resolvedCadenceDays(triggers ?? []);
-  const days = own ?? CADENCE_DAYS_BY_HORIZON[horizon ?? "TARGET"];
-  return new Date(lastReviewedAt.getTime() + days * 86_400_000);
+): Date | null {
+  const days = resolvedCadenceDays(triggers ?? []);
+  return days == null ? null : new Date(lastReviewedAt.getTime() + days * 86_400_000);
 }
 
 /**
  * The review date every reporting surface shows, derived at read time.
  *
- * Null when there is no scheduled review: terminal rows, and WATCHING rows
- * with no clock of their own (DAV-209 — a watched name is reviewed iff it
- * carries a clock; inventing one from the horizon would display a review
- * that will never fire). Everything else falls through to `nextReviewFrom`, whose
- * horizon fallback matches what a held row inherits from the account rule
- * even when the caller only has the thesis's own trigger list.
+ * Null when there is no scheduled review: terminal rows, and any row whose
+ * resolved ladder carries no clock (DAV-209 — inventing one would display a
+ * review that will never fire).
  */
 export function derivedNextReviewAt(thesis: {
   status: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
-  /** Trigger list — resolved ladder where the caller has one, else the raw column. */
+  /** The resolved ladder, so a clock inherited from the analyst or the account counts. */
   triggers: unknown;
-  horizon: string | null;
 }): Date | null {
   if (thesis.status === "RETIRED" || thesis.status === "PASSED") return null;
-  const triggers = Array.isArray(thesis.triggers)
-    ? (thesis.triggers as Array<{ predicate: When }>)
-    : [];
-  if (thesis.status === "WATCHING" && resolvedCadenceDays(triggers) == null) {
-    return null;
-  }
-  return nextReviewFrom(
-    thesis.lastReviewedAt ?? thesis.createdAt,
-    triggers,
-    (thesis.horizon ?? null) as Horizon | null,
-  );
+  const triggers = Array.isArray(thesis.triggers) ? (thesis.triggers as Array<{ predicate: When }>) : [];
+  return nextReviewFrom(thesis.lastReviewedAt ?? thesis.createdAt, triggers);
 }
 
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
@@ -240,356 +178,9 @@ export function resolvedCadenceDays(
   return null;
 }
 
-function compounderDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.COMPOUNDER));
-
-  if (thesis.stopLoss != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
-      action: "EXIT",
-      rationale: `Hard stop at $${thesis.stopLoss}. If we hit it the thesis is broken; close and write up the lessons.`,
-    });
-  }
-
-  if (thesis.entryPrice != null) {
-    const reviewLevel = +(thesis.entryPrice * 0.92).toFixed(2);
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: reviewLevel },
-      action: "REVIEW",
-      rationale: `8% drop from entry — something material happened. Re-evaluate before deciding to ride it out or trim.`,
-      cooldownDays: 1,
-    });
-  }
-
-  // DAV-322: no earnings review here. Every account is seeded with
-  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
-  // copy on the stock BEATS the account's, so stamping one froze the
-  // account's wording and number onto the name for good. ASML, WST and
-  // CEG each carried the pair below their own account's.
-
-
-  return out;
-}
-
-function targetDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TARGET));
-  if (thesis.stopLoss != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
-      action: "EXIT",
-      rationale: `Hard stop at $${thesis.stopLoss}.`,
-    });
-  }
-  if (thesis.targetPrice != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "above", value: thesis.targetPrice },
-      action: "REVIEW",
-      rationale: `Target $${thesis.targetPrice} hit. Decide: close at target or trail higher with confidence intact.`,
-      cooldownDays: 1,
-    });
-  }
-  // DAV-322: no earnings review here. Every account is seeded with
-  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
-  // copy on the stock BEATS the account's, so stamping one froze the
-  // account's wording and number onto the name for good. ASML, WST and
-  // CEG each carried the pair below their own account's.
-  return out;
-}
-
-function tradeDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.TRADE));
-  if (thesis.stopLoss != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
-      action: "EXIT",
-      rationale: `Tight stop at $${thesis.stopLoss}. Trade-horizon — get out fast on invalidation.`,
-    });
-  }
-  if (thesis.targetPrice != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "above", value: thesis.targetPrice },
-      action: "EXIT",
-      rationale: `Target $${thesis.targetPrice} hit. Trade plan executed; close.`,
-    });
-  }
-  // The "open long enough?" rung is gone, and nothing
-  // replaces it. It was a 14-day window on a horizon the review clock
-  // already visits EVERY day — the daily review asks "close it or
-  // re-underwrite it" two weeks before the max-hold rung ever fired. A
-  // second, slower clock on the same ladder would only add noise.
-  return out;
-}
-
-function catalystDefaults(thesis: ThesisShape): Trigger[] {
-  const out: Trigger[] = [];
-  out.push(reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON.CATALYST));
-  if (thesis.stopLoss != null) {
-    out.push({
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: thesis.stopLoss },
-      action: "EXIT",
-      rationale: `Hard stop at $${thesis.stopLoss}.`,
-    });
-  }
-  // DAV-322: no earnings review here. Every account is seeded with
-  // "beat → review" and "miss → review" (`accountSeedTriggers`), and a
-  // copy on the stock BEATS the account's, so stamping one froze the
-  // account's wording and number onto the name for good. ASML, WST and
-  // CEG each carried the pair below their own account's.
-  return out;
-}
-
-// ── Watching templates ─────────────────────────────────────────────────
-// For NON-HELD theses on the watchlist. Also reused for PROMOTED theses
-// (post-paper-graduation, awaiting first-live re-entry) — same semantic:
-// no open position, so no EXIT; ENTER on the target level is the way
-// price-crossings re-engage tactical. Semantic shift vs HELD:
-//   - No EXIT triggers (nothing to exit)
-//   - The TARGET price is the ENTRY-trigger threshold ("waiting for
-//     price to break above X to consider INITIATE")
-//   - The STOP price becomes a REVIEW threshold for LONG ("price
-//     fell to support — better entry or thesis weakening?") and an
-//     ENTRY threshold for SHORT (mirror semantics)
-//   - News/event triggers stay as REVIEW
-//   - old review-date trigger REMOVED from watching templates 2026-05-20.
-//     It was duplicating daily-run's needsAction.REVIEW_DUE check —
-//     daily-run computes review due-ness itself every morning and
-//     decides REVIEW_DUE without needing a trigger. Auto-attaching the
-//     trigger meant the 5-min cron also spawned a tactical run on every
-//     overdue WATCHING thesis intra-day, which produced almost zero
-//     state changes (28 of 35 tactical runs on 2026-05-18 were
-//     old review-date, 0 produced state changes). The intra-day
-//     "review" was pure busywork — the agent wasn't going to make a
-//     different decision at 11 AM than it would the next morning at
-//     8 AM. The predicate kind stays in the schema + evaluator for
-//     backwards compat with existing rows; cleanup script
-//     scripts/dedupe-review-date-hit-triggers.ts strips it from
-//     existing WATCHING theses.
-//
-// Direction matters here: LONG watches enter on price-above entryPrice,
-// SHORT watches enter on price-below entryPrice. PASS watches get only
-// REVIEW triggers ("the move I dismissed actually happened — re-look").
-//
-// Per-horizon shape (matches the held side's per-horizon split):
-//   CATALYST    — entry trigger + earnings REVIEW + tight 14d
-//                 hygiene (catalyst windows are short)
-//   TRADE       — entry trigger + 14d REVIEW (matches max-hold; if a
-//                 watch is stale after the trade window, kill it)
-//   TARGET      — current shape: entry + support REVIEW + 30d hygiene
-//   COMPOUNDER  — entry trigger with longer cooldown (ignore noise) +
-//                 90d hygiene; no support REVIEW (compounders shouldn't
-//                 react to short-term wiggles)
-
-/**
- * Direction-aware ENTER trigger keyed off `entryPrice`. Shared across
- * horizons.
- *
- * 2026-05-31 (P1-3 fix): this used to read `targetPrice`, which was the
- * structural bug GAPS P1-3 tracked — targetPrice was the take-profit
- * level when ACTIVE, so defaulting the ENTER trigger to
- * a price-above-target trigger on WATCHING meant the agent would literally
- * buy at the take-profit level (production evidence: MDB 2026-05-25).
- * The fix is one line: read `entryPrice` instead. The schema already had
- * `entryPrice` as a distinct column meaning "where you'd buy / did buy."
- * Two separate fields, two separate purposes — the bug was just the
- * default reading the wrong column. See docs/plans/PRICE_LEVEL_SEMANTICS.md.
- */
-function watchingEntryTrigger(
-  thesis: ThesisShape,
-  direction: ThesisDirection,
-  cooldownDays: number,
-): Trigger | null {
-  if (thesis.entryPrice == null) return null;
-  // Direction-only placeholder. WHICH SIDE the rung compares on is decided
-  // once, in `predicateFor` (price-levels.ts), which every write path runs
-  // after this — so a second copy of the rule here only gets overwritten.
-  // It was: #566 put a tape-reading version in this function on 2026-08-27,
-  // applyLevelArgs rewrote its output on the very next line of
-  // record_thesis, and no pullback rung reached the book in five days live.
-  if (direction === "LONG") {
-    return {
-      id: createId(),
-      predicate: { watch: "price", is: "above", value: thesis.entryPrice },
-      action: "ENTER",
-      rationale: `Entry trigger — price broke above $${thesis.entryPrice}. Validate setup and consider INITIATE.`,
-      cooldownDays,
-    };
-  }
-  if (direction === "SHORT") {
-    return {
-      id: createId(),
-      predicate: { watch: "price", is: "below", value: thesis.entryPrice },
-      action: "ENTER",
-      rationale: `Short entry trigger — price broke below $${thesis.entryPrice}. Validate setup and consider INITIATE short.`,
-      cooldownDays,
-    };
-  }
-  // PASS: the move we dismissed actually happened. Re-evaluate.
-  return {
-    id: createId(),
-    predicate: { watch: "price", is: "above", value: thesis.entryPrice },
-    action: "REVIEW",
-    rationale: `Price hit the entry level we dismissed. Re-evaluate the PASS — was the rejection wrong?`,
-    cooldownDays: 7,
-  };
-}
-
-// reviewDateHitTrigger() removed 2026-05-20 (see header comment above).
-// old review-date predicate stays in types/evaluator for back-compat with
-// existing rows; new theses no longer get it.
-
-
-/**
- * The floor and the target, for a thesis we don't own yet.
- *
- * Every WATCHING template was missing these. Only one of the four read
- * `stopLoss` at all, and it minted a REVIEW ("better entry, or thesis
- * weakening?") rather than a sell level — so a watch item's floor and target
- * were written on the thesis and enforced by nothing. That is why all 19
- * watchlist rows in the book carried a stop that fired nothing, and it is
- * KLAC: buy $262, floor $225, price $184, breached in June, nothing happened.
- *
- * Safe to arm on an un-held thesis only because `effectiveTriggerAction`
- * resolves both to DEMOTE when they fire — set the plan down, keep watching.
- * A sell on something we never bought is meaningless; before that verb
- * existed, writing these would have spawned an agent run per name.
- */
-function watchingPlanLevels(
-  thesis: ThesisShape,
-  direction: ThesisDirection,
-): Trigger[] {
-  const out: Trigger[] = [];
-  const long = direction !== "SHORT";
-  if (thesis.stopLoss != null) {
-    out.push({
-      id: createId(),
-      predicate: long
-        ? { watch: "price", is: "below", value: thesis.stopLoss }
-        : { watch: "price", is: "above", value: thesis.stopLoss },
-      action: "EXIT",
-      rationale: `Floor $${thesis.stopLoss} — below this the setup is wrong, so the plan comes off rather than waiting to be bought.`,
-    });
-  }
-  if (thesis.targetPrice != null) {
-    out.push({
-      id: createId(),
-      predicate: long
-        ? { watch: "price", is: "above", value: thesis.targetPrice }
-        : { watch: "price", is: "below", value: thesis.targetPrice },
-      action: "REVIEW",
-      rationale: `Target $${thesis.targetPrice} reached before we bought — the move happened without us, so the entry is stale.`,
-    });
-  }
-  return out;
-}
-
-/**
- * The four watch templates below emit ONLY what the author's own numbers
- * imply: the entry rung off `entryPrice`, and the plan levels off
- * `stopLoss` / `targetPrice`. Nothing else.
- *
- * They used to invent a review schedule and a set of earnings / filing /
- * guidance rungs on every new watch. Both are gone (DAV-209). The schedule
- * was the forced clock. The event rungs were worse than useless: news and
- * earnings routing is paused, so an earnings-beat rung cannot fire at all —
- * it was ladder decoration that made a name look watched when nothing was
- * watching it. A watch now carries what its author wrote, and nothing more.
- *
- * The horizon still decides the ENTER rung's cooldown: a COMPOUNDER waits a
- * week before re-firing on a level it keeps crossing; a TRADE fires the same
- * day.
- */
-function watchingDefaults(thesis: ThesisShape, enterCooldownDays: number): Trigger[] {
-  const direction = thesis.direction ?? "LONG";
-  const out: Trigger[] = [];
-  const entry = watchingEntryTrigger(thesis, direction, enterCooldownDays);
-  if (entry) out.push(entry);
-  out.push(...watchingPlanLevels(thesis, direction));
-  return out;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────
-
-/**
- * Returns the horizon-keyed default trigger array for this thesis.
- * Pure function — no DB, no clock; delegates ID generation to cuid.
- *
- * @param horizon  Trade structure (CATALYST/TARGET/TRADE/COMPOUNDER)
- * @param state    HELD vs WATCHING vs PROMOTED — determines whether to
- *                 emit EXIT triggers (held), ENTER triggers (watching),
- *                 or the no-EXIT/ENTER-as-re-entry shape (promoted).
- *                 Defaults to HELD for backward compatibility with callers
- *                 minted before the split. New callers should pass
- *                 explicitly.
- * @param thesis   Thesis fields used to parameterize the templates
- *
- * PROMOTED note: a PROMOTED thesis was an ACTIVE paper position that
- * the user just graduated PAPER→LIVE. The paper position was
- * force-closed; the thesis itself still carries full conviction (entry,
- * target, stop, belief) and is awaiting first-live-run re-entry.
- * Trigger shape mirrors WATCHING — ENTER on the target level so a
- * matching price crossing wakes tactical-run which calls place_trade
- * (place_trade auto-flips PROMOTED → ACTIVE in the same tx per PR #324).
- * Critically, NO EXIT/TRIM/ADD — those operate on positions
- * and a PROMOTED thesis has none.
- */
-export function defaultTriggersForHorizon(
-  horizon: Horizon,
-  thesis: ThesisShape,
-  state: ThesisState = "HELD",
-): Trigger[] {
-  return stampDefaultSource(defaultTriggersForHorizonInner(horizon, thesis, state));
-}
-
-/** source=DEFAULT on every rung a code template mints. */
-function stampDefaultSource(triggers: Trigger[]): Trigger[] {
-  return triggers.map((t) => ({ ...t, source: "DEFAULT" as const }));
-}
-
-function defaultTriggersForHorizonInner(
-  horizon: Horizon,
-  thesis: ThesisShape,
-  state: ThesisState,
-): Trigger[] {
-  if (state === "WATCHING" || state === "PROMOTED") {
-    // PROMOTED reuses the WATCHING template family: no EXIT (there's no
-    // open position), an ENTER trigger off the target level (the re-entry
-    // path that wakes tactical → place_trade → atomic PROMOTED→ACTIVE
-    // flip), plus the same news/earnings/hygiene REVIEW set. The
-    // WATCHING templates already produce exactly this shape so the
-    // PROMOTED branch is a straight delegation.
-    // COMPOUNDER waits a week before re-firing an entry level it keeps
-    // crossing; the shorter horizons act the same day.
-    return watchingDefaults(thesis, horizon === "COMPOUNDER" ? 7 : 1);
-  }
-  switch (horizon) {
-    case "COMPOUNDER":
-      return compounderDefaults(thesis);
-    case "TARGET":
-      return targetDefaults(thesis);
-    case "TRADE":
-      return tradeDefaults(thesis);
-    case "CATALYST":
-      return catalystDefaults(thesis);
-  }
-}
-
-/** Every note the templates in this file write. Older rows carry them with no source, so note.ts matches the words. */
+/** Every note the code in this file writes. Older rows carry them with no source, so note.ts matches the words. */
 export function templateNotes(): string[] {
-  const levels = { entryPrice: 1, targetPrice: 1, stopLoss: 1 };
-  const minted = (["CATALYST", "TARGET", "TRADE", "COMPOUNDER"] as const).flatMap((h) =>
-    (["HELD", "WATCHING"] as const).flatMap((s) => (["LONG", "SHORT", "PASS"] as const).flatMap((direction) => defaultTriggersForHorizon(h, { ...levels, direction }, s))),
-  );
-  return [...minted, ...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
+  return [...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
 }
 
 // ── Cooldown defaults ──────────────────────────────────────────────────

@@ -7,6 +7,7 @@
  * Auto-buy calls place_trade with the trigger's arguments, then the write-up's note is the buy's whole reason.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
+import { AUTO_WRITEUP } from "@/lib/agent/system-prompts/intraday-tactical";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
@@ -133,12 +134,13 @@ describe("the trigger run, by fire mode", () => {
     expect(r.closes[0][4]).toBe(IOT_LINE);
     // The run row says a write-up is coming, so the card and the email wait for it.
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE", parameters: expect.objectContaining({ autoTrade: true }) });
-    // One write-up: no trade tools, the auto-trade situation, the job is the note.
+    // One write-up: no trade tools, the write-up's own text (no longer a situation, 2026-11-15), the job is the note.
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].tools).not.toEqual(expect.arrayContaining(["place_trade"]));
     expect(r.asked[0].tools.some((t) => ["place_trade", "close_position", "manage_position"].includes(t))).toBe(false);
     expect(r.asked[0].system).toContain("THE WRITE-UP");
-    expect(r.asked[0].system).toContain("AUTO_TRADE — auto trade made");
+    expect(r.asked[0].system).toContain("   - What the write-up asks:\n\n" + AUTO_WRITEUP);
+    expect(r.asked[0].system).not.toContain("AUTO_TRADE");
     expect(r.asked[0].system).not.toContain("DECISION FRAMEWORK");
     expect(r.asked[0].prompt).toContain("The sale of all 300 shares is proposed and waits for the principal's approval.");
     // The card and the email read the analyst's note, and the email is told it's there.

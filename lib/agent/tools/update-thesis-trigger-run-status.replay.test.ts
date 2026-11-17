@@ -11,10 +11,17 @@
  * door's schema as the SDK hands them over, through the real save.
  */
 import fixture from "@/lib/agent/__fixtures__/trigger-run-status-2026-10.json";
-import { replayTool, thesisRow, positionRow, thesisUpdateRow, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, thesisUpdateRow, type Replay, type Row } from "@/lib/replay";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 type Case = (typeof fixture)["nvda"] | (typeof fixture)["docu"];
+
+/** A stock's triggers as stored after the 2026-11-16 migration: on a watch, its sale line is its Stop watching line on the close. */
+const asStored = (c: Case) =>
+  (c.thesis.triggers as Array<{ id: string; action: string; predicate: Record<string, unknown> }>).map((t) =>
+    c.thesis.status !== "HOLDING" && t.action === "EXIT" ? { ...t, action: "STOP_WATCHING", predicate: { ...t.predicate, settings: { close: true } } } : t,
+  );
 
 /** The trigger run's real save schema, read without a database. */
 async function triggerRunSchema(): Promise<z.ZodTypeAny> {
@@ -28,10 +35,12 @@ async function triggerRunSchema(): Promise<z.ZodTypeAny> {
 }
 
 async function closeOut(c: Case, position?: Row): Promise<{ args: Record<string, unknown>; r: Replay }> {
-  const args = (await triggerRunSchema()).parse(c.call) as Record<string, unknown>;
+  // The call's levels as the edits of their triggers (the fields went 2026-11-16).
+  const call = oldLevelFieldsAsTriggerOps(c.call, asStored(c) as unknown as Trigger[], String(c.thesis.direction ?? "LONG"), { held: c.thesis.status === "HOLDING" });
+  const args = (await triggerRunSchema()).parse(call) as Record<string, unknown>;
   const r = await replayTool("update-thesis", "updateThesis", {
     seed: {
-      thesis: [thesisRow({ ...c.thesis, triggers: c.thesis.triggers as Row[] })],
+      thesis: [thesisRow({ ...c.thesis, triggers: asStored(c) as Row[] })],
       position: position ? [position] : [],
       thesisUpdate: [thesisUpdateRow({ id: "fire", thesisId: c.thesis.id, type: "TRIGGER_FIRED", triggerId: c.fire.triggerId, runId: null, timestamp: new Date(Date.now() - 60_000), priceAtTime: c.fire.price })],
     },
@@ -53,7 +62,7 @@ describe("the trigger run's save takes no status change", () => {
     expect(r.result.data?.refused_fields).toBeUndefined();
     expect(r.db.store.thesis[0]).toMatchObject({ status: "HOLDING", retiredReason: null });
     expect(args).not.toHaveProperty("change_status");
-    expect(r.result.data?.trigger_ops).toEqual([expect.objectContaining({ id: "8f58e347-64c5-41bf-90f3-b17ac4466ae7", ok: true, text: "Target: wording updated" })]);
+    expect(r.result.data?.trigger_ops).toEqual([expect.objectContaining({ id: "8f58e347-64c5-41bf-90f3-b17ac4466ae7", ok: true, text: "Upside: wording updated" })]);
     expect(written(r)).toEqual([expect.objectContaining({ rationale: c.call.rationale })]);
   });
 
@@ -66,7 +75,7 @@ describe("the trigger run's save takes no status change", () => {
     const row = r.db.store.thesis[0];
     expect(row).toMatchObject({ status: "WATCHING", retiredReason: null, entryPrice: 67, targetPrice: 83, stopLoss: 63 });
     expect(args).not.toHaveProperty("change_status");
-    expect((row.triggers as Array<{ id: string; predicate: unknown }>).map((t) => [t.id, t.predicate])).toEqual(c.thesis.triggers.map((t) => [t.id, t.predicate]));
+    expect((row.triggers as Array<{ id: string; predicate: unknown }>).map((t) => [t.id, t.predicate])).toEqual(asStored(c).map((t) => [t.id, t.predicate]));
     expect(written(r)).toEqual([expect.objectContaining({ rationale: c.call.rationale })]);
   });
 });

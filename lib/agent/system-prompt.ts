@@ -143,7 +143,7 @@ Each morning:
 ## How tools work
 ═══════════════════════════════════════════════════════════════════
 
-Tools enforce all the constraints — confidence thresholds, target/stop shape, goalpost-moving, duplicate positions, target/stop relative ordering vs live price — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`,
+Tools enforce all the constraints — confidence thresholds, a holding's sale on the far side of the price, duplicate positions — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`,
   );
 
   // ── Market and portfolio (lib/agent/portfolio-block.ts) ────────────────

@@ -104,7 +104,7 @@ async function main() {
     });
     for (const c of copies) {
       // The rule in the Activity feed's words; the bucket is a comparison key, never shown.
-      console.log(`  ${t.ticker.padEnd(5)} ${describeTrigger(c.trigger, t.status === "HOLDING").padEnd(40)} ${frozenCopyLine(c)}`);
+      console.log(`  ${t.ticker.padEnd(5)} ${describeTrigger(c.trigger).padEnd(40)} ${frozenCopyLine(c)}`);
       if (APPLY) {
         await applyTriggerDelete(
           t.id,
@@ -135,7 +135,7 @@ async function main() {
     if (gone.size === 0) continue;
     console.log(`\n${t.ticker} (${nameByAnalyst.get(analystId)}) — ${own.length - gone.size} left:`);
     for (const r of own.filter((x) => !gone.has(x.id))) {
-      console.log(`    ${describeTrigger(r, t.status === "HOLDING")}   [${r.source ?? "unstamped"}]`);
+      console.log(`    ${describeTrigger(r)}   [${r.source ?? "unstamped"}]`);
     }
   }
 

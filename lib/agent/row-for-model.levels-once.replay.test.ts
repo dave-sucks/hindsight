@@ -34,9 +34,9 @@ describe("the read says each level once (V and MU, 2026-11-04)", () => {
     expect(text.match(/\$930\.60/g)).toHaveLength(1);
   });
 
-  it.each(rows)("%s: the quiet one-line row keeps the entry and drops the target and the floor", (_t, row) => {
+  it.each(rows)("%s: the quiet one-line row says what we paid and drops the target and the floor", (_t, row) => {
     const line = rowForModel(row, { named: false, size: "line" }) as string;
-    expect(line).toMatch(/· entry \$\d/);
+    expect(line).toMatch(/· paid \$\d/);
     expect(line).not.toMatch(/· target \$/);
     expect(line).not.toMatch(/· floor \$/);
   });
@@ -44,7 +44,7 @@ describe("the read says each level once (V and MU, 2026-11-04)", () => {
   it("V: the short row's keys, in order, with the two lines gone and nothing else", () => {
     const short = rowForModel(v as Row, { named: false, size: "short" }) as Row;
     expect(Object.keys(short)).toEqual([
-      "stock", "id", "situations", "said", "position", "price", "plan_checks", "floor_risk", "triggers", "belief", "assumptions",
+      "stock", "id", "situations", "said", "position", "price", "floor_risk", "triggers", "belief", "assumptions",
       "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "snapshot",
       "chart", "street", "research", "catalyst",
     ].filter((k) => k in short));

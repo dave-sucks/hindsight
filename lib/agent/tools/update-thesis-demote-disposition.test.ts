@@ -13,7 +13,7 @@
  *      (isPlanLevel on the final ladder, or a level arg on the call).
  *   2. the enter-guard refused any directional WATCHING array without an
  *      ENTER. It now admits the set-down shape (no plan level, ≥1 REVIEW
- *      wake) — the same state the automatic DEMOTE fire already produces.
+ *      wake); since 2026-11-16 a watch needs no buy at all.
  *
  * Invariant 2 (plan ⇒ cadence) must be UNCHANGED for any resend whose
  * ladder still carries a plan — those cases stay pinned in
@@ -80,8 +80,8 @@ const planTriggers: Trigger[] = [
   },
   {
     id: "floor-1",
-    predicate: { watch: "price", is: "below", value: 172 },
-    action: "EXIT",
+    predicate: { watch: "price", is: "below", value: 172, settings: { close: true } },
+    action: "STOP_WATCHING",
     rationale: "Below this the setup is wrong.",
     source: "AGENT",
   },
@@ -118,9 +118,6 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     status: "WATCHING",
     direction: "LONG",
     horizon: "TARGET",
-    entryPrice: 186,
-    targetPrice: 215,
-    stopLoss: 172,
     triggers: planTriggers,
     triggerState: {},
     researchRun: { agentConfigId: "analyst_1" },
@@ -166,10 +163,9 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
     // The wakes survive.
     expect(triggers.filter((t) => t.action === "REVIEW")).toHaveLength(2);
-    // Derive-on-write clears the cached plan columns with the plan.
-    expect(data.targetPrice).toBeNull();
-    expect(data.stopLoss).toBeNull();
-    expect(data.entryPrice).toBeNull();
+    // No price line is left on the stock, and nothing stores one.
+    expect(triggers.some((t) => t.action === "ENTER" || t.action === "EXIT" || t.action === "STOP_WATCHING")).toBe(false);
+    expect(data).not.toHaveProperty("entryPrice");
     // Not a direction change — the analyst's stance stays on record.
     expect(data.direction).toBeUndefined();
   });
@@ -192,7 +188,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
     // The plan is untouched — entry and floor both survive.
     expect(triggers.some((t) => t.action === "ENTER")).toBe(true);
-    expect(triggers.some((t) => t.action === "EXIT")).toBe(true);
+    expect(triggers.some((t) => t.action === "STOP_WATCHING")).toBe(true);
   });
 
   it("setting a price level does not drag a review clock along with it", async () => {
@@ -206,7 +202,9 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       thesis_id: "thesis_demote_1",
       rationale: "Re-anchored the buy level; still not reviewing weekly.",
       remove_trigger_ids: ["clock-1"],
-      entry_price: 180,
+      add_triggers: [
+        { predicate: { watch: "price", is: "above", value: 180 }, action: "ENTER", rationale: "The buy at $180." },
+      ],
     });
     expect(result.data?.error).toBeUndefined();
     const triggers = (patchedData().triggers ?? []) as Trigger[];
@@ -236,9 +234,6 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     mockThesisFindUnique.mockResolvedValue(
       makeRow({
         direction: null,
-        entryPrice: null,
-        targetPrice: null,
-        stopLoss: null,
         horizon: null,
         triggers: [
           {
@@ -255,9 +250,11 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
       thesis_id: "thesis_demote_1",
       direction: "LONG",
       horizon: "TARGET",
-      entry_price: 165,
-      target_price: 210,
-      stop_loss: 150,
+      add_triggers: [
+        { predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "The buy at $165." },
+        { predicate: { watch: "price", is: "below", value: 150, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $150 the setup is wrong." },
+        { predicate: { watch: "price", is: "above", value: 210 }, action: "REVIEW", rationale: "At $210, take profit or let it run." },
+      ],
       core_belief: "Aerospace cycle demand outruns supply through 2027.",
       key_assumptions: [
         "Build rates keep rising into 2027.",

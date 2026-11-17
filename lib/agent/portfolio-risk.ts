@@ -9,10 +9,10 @@
  * Lines, never refusals (DAV-251): place_trade writes these into the buy
  * proposal so the principal sees them when approving.
  *
- * The stop is the thesis's floor (Thesis.stopLoss — the plan level the floor
- * trigger mirrors), falling back to Position.stopLoss. Trailing rungs are
- * not counted, so heat reads HIGH when a trail sits above the floor —
- * the conservative side. A position with no stop at all is named, not
+ * The stop is Position.stopLoss, the sell price the trade was approved with
+ * (moved by the owner's edits and stop when buying). Trailing rungs are not
+ * counted, so heat reads HIGH when a trail sits above the floor — the
+ * conservative side. A position with no stop at all is named, not
  * guessed.
  */
 

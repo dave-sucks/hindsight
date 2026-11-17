@@ -159,8 +159,10 @@ describe("a setting the measure doesn't take is dropped at the gate", () => {
 describe("the actions a trigger can take", () => {
   // No stored trigger ever carried MOVE_STOP (production, 2026-10-06: 0 of 943
   // theses, every analyst, every account). A stop moves by editing the floor.
-  it("are buy, add, trim, sell and review; there is no stop-move action", () => {
-    expect(triggerActionSchema.options.filter((a) => a !== "DEMOTE")).toEqual(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM"]);
+  it("are buy, add, trim, sell, stop watching and review; there is no stop-move action", () => {
+    expect(triggerActionSchema.options).toEqual(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM", "STOP_WATCHING"]);
     expect(triggerActionSchema.safeParse("MOVE_STOP").success).toBe(false);
+    // The old set-the-plan-down verb is not read as a sale any more: the 2026-11-16 migration stored its one row as STOP_WATCHING.
+    expect(triggerActionSchema.safeParse("DEMOTE").success).toBe(false);
   });
 });

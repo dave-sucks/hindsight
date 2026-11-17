@@ -14,7 +14,7 @@
  *   on the floor.
  */
 
-import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, type PrismaDouble } from "@/lib/replay";
+import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, type PrismaDouble, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 let db: PrismaDouble;
@@ -117,7 +117,8 @@ describe("no floor: the sale floor is added on the line", () => {
     await approve("IOT", { account: ON8 }, { stop: null });
     expect(floors()).toEqual([saleAt(38.83)]);
     expect(reviewLines()).toEqual([]);
-    expect(thesis()).toMatchObject({ status: "HOLDING", stopLoss: 38.83 });
+    expect(thesis()).toMatchObject({ status: "HOLDING" });
+    expect(triggerSentences(thesis())).toContain("Sell if below $38.83");
     expect(position()).toMatchObject({ stopLoss: 38.83 });
     expect(activity()).toContain("Added: Sell if below $38.83");
   });
@@ -143,11 +144,11 @@ describe("a tighter floor an analyst or a template set: it becomes the review li
     // The review carries the floor's own words; the sale floor kept the floor's id.
     expect(reviewLines()[0].rationale).toMatch(/\$39\.80/);
     expect(floor.id).not.toBe(reviewLines()[0].id);
-    expect(thesis()).toMatchObject({ stopLoss: 38.83 });
+    expect(triggerSentences(thesis())).toContain("Sell if below $38.83");
     expect(position()).toMatchObject({ stopLoss: 38.83 });
   });
 
-  it("TRV, on at 8%: one review line at the analyst's $382.40, raised from the template's $367.03; the sale floor is $367.03", async () => {
+  it("TRV, on at 8%: one review line at the analyst's $382.40; the sale floor is $367.03", async () => {
     await approve("TRV", { account: ON8 });
     expect(floors()).toEqual([saleAt(367.03)]);
     expect(floors()[0].id).toBe(TRV_FLOOR.id);
@@ -156,9 +157,8 @@ describe("a tighter floor an analyst or a template set: it becomes the review li
     ]);
     expect(activity()).toEqual(
       expect.arrayContaining([
-        "Added: Review if below $367.03",
         "Changed: Sell if below $382.40 → Sell if below $367.03",
-        "Changed: Review if below $367.03 → Review if below $382.40",
+        "Added: Review if below $382.40",
       ]),
     );
     expect(position()).toMatchObject({ stopLoss: 367.03 });
@@ -177,8 +177,8 @@ describe("a tighter floor the owner set: left exactly as it is", () => {
   it("TRV, on at 8%, with its $382.40 floor as the owner's: same price, same mode, no review line made from it", async () => {
     await approve("TRV", { account: ON8 }, { rows: (ts) => ts.map((t) => (t.id === TRV_FLOOR.id ? { ...t, source: "PRINCIPAL" } : t)) });
     expect(floors()).toEqual([expect.objectContaining({ id: TRV_FLOOR.id, predicate: TRV_FLOOR.predicate, fireMode: "ASK_NOW", source: "PRINCIPAL", rationale: TRV_FLOOR.rationale })]);
-    // Only the template's own 8% review, not one at $382.40.
-    expect(reviewLines().map((t) => (t.predicate as { value: number }).value)).toEqual([367.03]);
+    // No review line: none at $382.40, and no template's 8%-below-entry line (deleted 2026-11-16).
+    expect(reviewLines()).toEqual([]);
     expect(position()).toMatchObject({ stopLoss: 382.4 });
   });
 });
@@ -196,7 +196,20 @@ describe("which setting is in force, and off", () => {
     await approve("IOT", { account: OFF });
     expect(floors()).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: 39.8 }, cooldownDays: 1 })]);
     expect(reviewLines()).toEqual([]);
-    expect(activity()).toEqual(["Stop set: $39.80", "Target set: $47", "Target: cooldown 1 days"]);
+    expect(activity()).toEqual(["Stop set: $39.80", "Upside set: $47"]);
+  });
+
+  it("off: TRV's buy comes off, its $382.40 sale line is the holding's sale line, and nothing is stamped from the fill price", async () => {
+    await approve("TRV", { account: OFF });
+    const triggers = thesis().triggers as Trigger[];
+    // The watch's own line, same id and level: no template floor, target or 8%-below-entry review.
+    expect(floors()).toEqual([expect.objectContaining({ id: TRV_FLOOR.id, predicate: TRV_FLOOR.predicate })]);
+    expect(reviewLines()).toEqual([]);
+    expect(triggers.find((t) => t.action === "ENTER")).toBeUndefined();
+    expect(triggers.filter((t) => (t.predicate as { watch?: string }).watch === "price").map((t) => t.id)).toEqual([TRV_FLOOR.id, "c5b67206-924c-4260-be2a-82918f32bbbd"]);
+    // What the fill adds: its playbook's fill templates (a base breakout's), never a clock from the horizon.
+    expect(activity()).toEqual(expect.arrayContaining(["Removed: Buy if above $398.70 · only on the close", "Added: Review every 7 days", "Added: Review 28 days after the buy"]));
+    expect(activity().some((l) => /Sell if|Stop set|Upside set/.test(l))).toBe(false);
   });
 
   it("off, and the ticket named no stop: no floor is written", async () => {

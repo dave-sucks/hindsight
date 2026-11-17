@@ -5,10 +5,8 @@
  * to enforce that the resulting trigger list matches the thesis's state. Two
  * mirror-image structural rules:
  *
- *   WATCHING (no position yet) — a thesis carrying a PLAN LEVEL (a floor or
- *     a target) needs the buy level to reach it from, i.e. ≥1 ENTER. A name
- *     kept in view with no plan levels needs nothing at all, including no
- *     triggers (DAV-209).
+ *   WATCHING (no position yet) — nothing: a watch may carry a buy, a Stop
+ *     watching line, reviews, or no triggers at all (DAV-209).
  *
  *   ACTIVE (held position) — needs ≥1 EXIT (the automated stop-loss path),
  *     must not carry any ENTER action (already in, nothing to enter).
@@ -17,9 +15,7 @@
  *     position we already hold.
  *
  * The check is structural — does the array carry the required action and
- * not carry the forbidden ones? The horizon-aware predicate shapes
- * (price-above target for LONG ENTER, price-below stop for LONG EXIT, etc.)
- * are supplied by `defaultTriggersForHorizon` in defaults.ts — this gate
+ * not carry the forbidden ones? The analyst writes the conditions; this gate
  * just makes sure the right action kinds landed.
  *
  * Why a shared helper: record_thesis had a WATCHING-side guard inline since
@@ -34,7 +30,6 @@
  */
 
 import type { Trigger } from "./types";
-import { isPlanLevelOnList } from "./price-levels";
 
 export interface EnterTriggerGuardArgs {
   /**
@@ -55,10 +50,8 @@ export interface EnterTriggerGuardArgs {
     // record_thesis/update_thesis can pass the post-write status without a cast.
     | "PASSED"
     | "RETIRED";
-  /** The resulting triggers array (after horizon merge + agent overlay). */
+  /** The resulting triggers array. */
   triggers: Trigger[];
-  /** The resulting target_price after the write — drives the error message. */
-  targetPrice: number | null;
 }
 
 export type EnterTriggerGuardResult =
@@ -66,17 +59,14 @@ export type EnterTriggerGuardResult =
   | {
       ok: false;
       reason:
-        | "missing-enter-trigger"
         | "enter-actions-on-active"
         | "missing-exit-trigger-on-active";
       note: string;
     };
 
 /**
- * Returns ok:true unless the resulting thesis is LONG/SHORT and one of:
- *   - WATCHING with no ENTER trigger, or carrying HELD-only actions
- *     (EXIT/TRIM/ADD) that can't fire without a position
- *   - ACTIVE with an ENTER trigger (already in), or with no EXIT trigger
+ * Returns ok:true unless the resulting thesis is LONG/SHORT and HOLDING with
+ *   an ENTER trigger (already in), or with no EXIT trigger
  *     (no automated stop-loss path)
  * PASS and unresearched seeds (direction null/new or 'PENDING'/legacy) never
  * carry directional triggers. PROMOTED, CLOSED, INVALIDATED, ARCHIVED,
@@ -114,7 +104,7 @@ export function validateEnterTriggerRequired(
         ok: false,
         reason: "enter-actions-on-active",
         note:
-          `This is a stock we already own, and the plan would still carry ` +
+          `This is a stock we already own, and its triggers would still carry ` +
           `${enterOffenders.length} buy trigger(s) (action ENTER). A buy can't fire on a ` +
           `position we hold — the 5-minute check would only start runs that end ` +
           `"already in position".` +
@@ -135,58 +125,14 @@ export function validateEnterTriggerRequired(
           `price breaks the stop.` +
           `\n\nFix: add one with add_triggers — action "EXIT" with a price below the stop ` +
           `for a LONG position ({ watch: "price", is: "below", value: stop }; above it for ` +
-          `a SHORT), or set stop_loss, which is the same edit on the floor trigger.`,
+          `a SHORT).`,
       };
     }
     return { ok: true };
   }
 
-  // ── WATCHING-side checks ───────────────────────────────────────────────
-  if (args.status !== "WATCHING") return { ok: true };
-
-  // The HELD-action guard that used to sit here is GONE (DAV-195 L5).
-  //
-  // It refused EXIT/TRIM/ADD on a WATCHING thesis, and its own
-  // reason said why: "the trigger evaluator will spawn orphan tactical runs
-  // that fail cleanly ('no position to close')". That was true — the system
-  // had no verb for a price level firing on something we don't own, so the
-  // only safe move was to forbid writing one.
-  //
-  // It also forbade the correct behaviour. A floor on a watch item is the
-  // price at which the plan is wrong, and refusing to store it is why 19 of
-  // 19 watchlist rows carry a stop that fires nothing (the KLAC shape: buy
-  // $262, floor $225, price $184, breached in June, nothing happened).
-  //
-  // `effectiveTriggerAction` now resolves an EXIT on a non-held thesis to
-  // DEMOTE — set the plan down, keep watching — inline, with no tactical
-  // spawn. The orphan run the gate was protecting against cannot occur, so
-  // the gate is deleted rather than relaxed. Per DAV-210: the missing thing
-  // was a verb, not another rule.
-  //
-  // TRIM/ADD on a watch item stay meaningless, but they are inert
-  // rather than harmful (position-scoped, they evaluate false), and the
-  // shape gate below still requires a real ENTER.
-
-  // ENTER-presence guard.
-  const hasEnter = args.triggers.some((t) => t.action === "ENTER");
-  if (hasEnter) return { ok: true };
-
-  // A directional watch with NO plan level is a name being kept in view
-  // without a buy plan — "not worth pricing right now." That is legal with
-  // any triggers or none at all (DAV-209): a stock can be pinned with
-  // nothing on it, and the only cost of doing so is that nothing wakes it.
-  // What this guard still refuses is a HALF plan — a floor or a sale at a
-  // price sitting on the row with no buy level to reach them from. A review
-  // at any price is a wake, not a target, and needs no buy (QB ruling on
-  // DAV-335, 2026-09-29): VST's "review at $146" was refused here five times.
-  const hasPlanLevel = args.triggers.some((t) =>
-    isPlanLevelOnList(t, args.triggers, args.direction),
-  );
-  if (!hasPlanLevel) return { ok: true };
-
-  return {
-    ok: false,
-    reason: "missing-enter-trigger",
-    note: `This thesis carries a plan level (a floor, or a sale at a price) with no buy level to reach it from. Either finish the plan — set entry_price (the level the buy trigger fires on) — or remove the floor and sale triggers and keep the name in view without a plan. A review at a price needs no buy: it is a wake.`,
-  };
+  // A watch needs nothing: a buy, a Stop watching line, a review, or none of
+  // them (DAV-209). A Stop watching line needs no buy, and a sale is refused
+  // on a watch per op (./condition/actions), so there is no watch rule here.
+  return { ok: true };
 }

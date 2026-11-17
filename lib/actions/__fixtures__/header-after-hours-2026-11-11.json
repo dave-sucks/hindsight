@@ -1,0 +1,8 @@
+{
+  "about": "10 PM ET, Wed Nov 11. The broker marked CEG at an after-hours $271.81; it closed at $274.73, after $267.76 on Nov 10 (TickerIndicators closes). The broker's equity and its history are those prices times the stand-in shares plus the stand-in cash; the history's last point is its after-hours one. The history's 4:00 PM point on Nov 10, which the 1D chart measured the day from (its Prev), marks CEG at $265.50, the close of its 4:00 to 4:15 PM after-hours bar on the tape (Alpaca SIP bars). The shares, cost, cash and money put in are stand-ins: the repo is public.",
+  "now": "2026-11-12T03:00:00.000Z",
+  "close": { "at": "2026-11-11T21:00:00.000Z", "price": 274.73, "prevClose": 267.76 },
+  "brokerMark": 271.81,
+  "brokerPriorMark": 265.5,
+  "standIn": { "shares": 10, "avgCost": 250, "cash": 10000, "contributed": 12000, "depositedOn": "2026-05-01" }
+}

@@ -68,11 +68,7 @@ export function StockOverview({
               ticker={ticker}
               candles={candles}
               direction={held?.direction ?? "LONG"}
-              entryPrice={null}
               avgCost={held?.avgCost ?? null}
-              levels={null}
-              targetPrice={null}
-              stopLoss={null}
               current={price}
               addedAt={null}
               enteredAt={held?.openedAt ?? null}

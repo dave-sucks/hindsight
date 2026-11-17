@@ -40,7 +40,7 @@ async function buy(ticker: keyof typeof CASES, autoStop: { on: boolean; pct: num
       account: [accountRow({ requireApprovalBuysPaper: true, requireApprovalBuysLive: true, autoStopOnBuy: autoStop.on, autoStopPct: autoStop.pct })],
     },
     ctx: { runMode: "INTRADAY_TACTICAL", runEnvironment: "PAPER", ...c.band, maxOpenPositions: 10 },
-    args: { ticker, direction: "LONG", entry_price: c.entry, thesis_id: `thesis_${ticker}` },
+    args: { ticker, direction: "LONG", entry_price: c.entry, sell_if_below: c.stop, sell_reason: "Under the structure.", thesis_id: `thesis_${ticker}` },
     quotes: { [ticker]: c.entry },
   });
   expect([refused, refusal]).toEqual([false, null]);

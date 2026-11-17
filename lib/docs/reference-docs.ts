@@ -5,20 +5,19 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { DIALOG_ACTIONS, TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
-import type { TriggerAction } from "@/lib/agent/triggers/types";
+import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_TYPE_DOCS } from "./trigger-examples";
 
-const ACTIONS: readonly TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW"];
-const ACTION_WORD: Partial<Record<TriggerAction, string>> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", REVIEW: "review" };
+const ACTION_WORD: Record<TriggerAction, string> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", STOP_WATCHING: "stop watching", REVIEW: "review" };
 
 const days = (n: number) => (n === 0 ? "none" : n === 1 ? "1 day" : `${n} days`);
 
 function measureSection(m: MeasureDef): string[] {
   const fresh = m.fresh() as Condition;
-  const actions = m.actions ?? ACTIONS;
+  const actions = m.actions ?? DIALOG_ACTIONS;
   const range = valueRange(fresh);
   const facts: string[] = [
     `\`watch: "${m.id}"\``,
@@ -114,10 +113,14 @@ function setupSection(s: Setup): string[] {
   out.push(`**Buy:** ${s.entry.text}`);
   if (s.entry.entryVia?.length) out.push(` Entry through ${s.entry.entryVia.map((id) => `\`${id}\``).join(", ")}.`);
   out.push("", `**Floor:** ${s.stop.text}`, "");
-  if (s.target) out.push(`**Target:** ${s.target.text}`, "");
+  if (s.target) out.push(`**Take profit:** ${s.target.text}`, "");
   const trails = Object.entries(s.trail);
   if (trails.length) out.push("**Trail:**", "", ...trails.map(([h, text]) => `- ${h.toLowerCase()}: ${text}`), "");
   out.push(`**Time limit:** ${s.time.text}`, "");
+  for (const [on, label] of [["WATCH", "on a watch"], ["PROPOSAL", "with the buy"], ["FILL", "at the fill"]] as const) {
+    const lines = s.triggers.filter((t) => t.writtenOn === on);
+    if (lines.length) out.push(`**Triggers ${label}:**`, "", ...lines.map((t) => `- ${sentenceOf(t as unknown as Trigger)}. ${t.rationale}`), "");
+  }
   if (s.failureSigns.length) out.push("**When it's failing:**", "", ...s.failureSigns.map((f) => `- ${f}`), "");
   return out;
 }
@@ -126,11 +129,11 @@ export function setupsMarkdown(): string {
   const out: string[] = [
     "# Setups",
     "",
-    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and the target go, and when it has failed.`,
+    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.`,
     "",
-    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account can change a setup's numbers in Settings → Playbook (`lib/agent/knowledge/setup-overrides.ts`). How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
+    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",
-    "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names. Every plan needs a reward of at least twice its risk.",
+    "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.",
     "",
   ];
   for (const s of SETUPS) out.push(...setupSection(s));

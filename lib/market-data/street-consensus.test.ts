@@ -90,18 +90,11 @@ describe("the words", () => {
     expect(streetLine({ street: null })).toBeNull();
   });
 
-  it("the room to the Street average against the floor's distance (2026-11-04): from the buy level on a watch, the price on a holding; never stored, never a refusal", () => {
+  it("the street line is Wall Street's numbers alone: no room-to-the-floor ratio (gone 2026-11-16, the house has no target)", () => {
     const street = { ...parseStreet("MSFT", msft, "2026-11-02"), targetAvg: 511.57 };
-    // ETN as watched: buy 410, floor 358.5 → (511.57 − 410) / (410 − 358.5) = 1.97.
-    expect(streetLine({ street, status: "WATCHING", direction: "LONG", entryPrice: 410, stopLoss: 358.5, price: { current: 353.07 } })).toContain("room to the Street average is 2.0× the floor's distance from the buy level");
-    // Held: measured from the live price.
-    expect(streetLine({ street, status: "HOLDING", direction: "LONG", entryPrice: 369.25, stopLoss: 401.91, price: { current: 434.35 } })).toContain("room to the Street average is 2.4× the floor's distance from the price");
-    // The floor already past, the average under the price, or no floor: no ratio.
-    expect(streetLine({ street, status: "HOLDING", direction: "LONG", stopLoss: 196, price: { current: 171.92 } })).toContain("the price is past the floor");
-    expect(streetLine({ street: { ...street, targetAvg: 300 }, status: "WATCHING", direction: "LONG", entryPrice: 410, stopLoss: 358.5 })).toContain("no room to the Street average: it sits under the buy level");
-    expect(streetLine({ street, status: "WATCHING", direction: "LONG", entryPrice: 410 })).not.toMatch(/room|floor/);
-    // SHORT mirrors it.
-    expect(streetLine({ street: { ...street, targetAvg: 80 }, status: "WATCHING", direction: "SHORT", entryPrice: 100, stopLoss: 110 })).toContain("room to the Street average is 2.0× the floor's distance from the buy level");
+    const line = String(streetLine({ street, status: "WATCHING", direction: "LONG", price: { current: 353.07 } }));
+    expect(line).toContain("avg $512");
+    expect(line).not.toMatch(/room|floor|\d\.\d×/);
   });
 
   it("the EPS consensus in full", () => {

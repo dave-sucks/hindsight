@@ -31,7 +31,7 @@ export const fromDate: MeasureDef = {
   ],
   value: { suffix: "days", placeholder: "60", range: { what: "A date count", unit: " days", integer: true, min: 1, max: 365 } },
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },
-  actions: ["TRIM", "EXIT", "REVIEW"],
+  actions: ["TRIM", "EXIT", "STOP_WATCHING", "REVIEW"],
   timed: true,
   says: (c) => `${c.value ?? 0} ${c.value === 1 ? "day" : "days"} ${c.is ?? "after"} ${c.variable ? variableDef(c.variable).words : "a date"}`,
   cooldownDays: (c) => c.value ?? 0,
