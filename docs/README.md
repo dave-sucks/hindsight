@@ -37,7 +37,7 @@ team Davesucks, is the tracker** — issues, not markdown, hold open work.
 ## Routines
 
 - `prompts/RUN_REVIEW_INVARIANTS.md` — the twelve checks, run first every review.
-- `prompts/REVIEW_DAILY_RUN.md` · `prompts/REVIEW_ANALYSTS.md` · `prompts/REVIEW_DISCOVERY_RUN.md` · `prompts/DISCOVERY_PREP.md` · `prompts/INGEST_THESIS.md`.
+- `prompts/REVIEW_DAILY_RUN.md` · `prompts/REVIEW_ANALYSTS.md` · `prompts/REVIEW_DISCOVERY_RUN.md` · `prompts/DISCOVERY_PREP.md`.
 - Written output: `run-reviews/`, `analyst-quality/`, `discovery-reviews/`, `discovery-prep/`, `audits/`. Each has a `TEMPLATE.md` where one exists. Keep the recent ones; delete anything older than about a month unless it's marked a reference.
 
 ## Frozen
