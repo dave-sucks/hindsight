@@ -13,7 +13,7 @@
  * `stockFromRead` and its prompt builder.
  */
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
-import { playbookLines } from "@/lib/agent/knowledge/playbooks";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import raw from "@/lib/agent/__fixtures__/trigger-run-reads-2026-10.json";
 import { replayTool, thesisRow, positionRow, agentConfigRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
@@ -106,8 +106,8 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
-    // A watch: the lines a fire checks, then the playbook's With the buy lines its buy comes with.
-    expect(row.setup_lines).toEqual([...setupLines(getSetup("MA_PULLBACK")!, "decision"), ...playbookLines(PLAYBOOK_TEMPLATES.MA_PULLBACK, "PROPOSAL")]);
+    // A watch: what a fire checks, then the playbook's triggers that come with the buy.
+    expect(row.setup_lines).toEqual([...setupLines(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(PLAYBOOK_TEMPLATES.MA_PULLBACK, "PROPOSAL")]);
     // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
     // Plan checks were deleted (2026-11-13): no plan_checks line, and the writer's own read of the case waits for the review clock.
     shortRow(row, saved, [], ["position", "plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"]);
@@ -127,7 +127,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
-    // A holding: its lines are on the stock, so only the lines a fire checks.
+    // A holding: its triggers are on the stock, so only what a fire checks.
     expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "decision"));
     // A sale signal reads the position and what would prove us wrong, not the Street or the writer's dated read.
     shortRow(row, saved, ["position", "would_prove_it_wrong"], ["street", "snapshot", "conviction_rationale", "variant_view"]);

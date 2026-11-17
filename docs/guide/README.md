@@ -55,7 +55,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
 - **[Situations](concepts/situations.md):** the eight reasons a stock needs an answer today, each with its own instructions.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day, except one a trigger made, which waits while its trigger holds.
-- **[Price targets](concepts/price-targets.md):** the house sets none, and there is no plan. A stock has its triggers (its playbook's lines and any written by hand); Wall Street's targets are a card, and a line a rule can watch.
+- **[Price targets](concepts/price-targets.md):** the house sets none, and there is no plan. A stock has its triggers (its playbook's triggers and any written by hand); Wall Street's targets are a card, and a price a trigger can watch.
 
 ## Deep dives
 
@@ -72,7 +72,7 @@ Exact lists built from the code, with a test that fails when they drift. Regener
 
 - **[Situations library](reference/situations-library.md):** all eight situations, each with its code, what it means and the exact text an agent is sent.
 - **[Trigger measures](reference/trigger-measures.md):** every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in.
-- **[Setups](reference/setups.md):** every setup in the playbook: what must be true first, the triggers its playbook writes, and when it has failed.
+- **[Playbooks](reference/setups.md):** every playbook: what must be true first, the triggers each writes, and when it has failed.
 
 ## Reading these docs
 

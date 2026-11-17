@@ -1,11 +1,11 @@
 /**
- * setups.ts — the setup catalog: the buy patterns a playbook is.
+ * setups.ts — the playbooks: the buy patterns an analyst trades.
  *
  * docs/plans/TRADING_PLAYBOOK.md Part D (D1–D12) as data. Each entry says
  * what the pattern is, which horizons and seats it fits, what must be true
- * first, how a buy is confirmed, the sale's two numbers (the widest and the
- * closest, in ATR), the size note and what failure looks like. Its triggers
- * are its templates (`triggers`, the seed of Settings → Playbook,
+ * first, how a buy is confirmed, the sell price's two numbers (the widest and
+ * the closest, in ATR), the size note and what failure looks like. Its
+ * triggers are its templates (`triggers`, the seed of Settings → Playbook,
  * ./playbook-templates); every rule a trigger carries lives there, never here.
  *
  * Read through read_knowledge_library (topic "setup"). A thesis records the
@@ -111,7 +111,7 @@ export interface Setup {
   /** What must be true before the pattern applies (trend, regime, fundamentals). */
   preconditions: string[];
   entry: {
-    /** For a SCREEN: the ENTRY setups whose lines are used. */
+    /** For a SCREEN: the playbooks with a buy of their own whose triggers it uses. */
     entryVia?: SetupId[];
     /** What else must be true on the day (checked by the tactical run). */
     confirmation: string[];
@@ -126,7 +126,7 @@ export interface Setup {
      */
     windowDays?: [number, number];
   };
-  /** The sale's numbers, read on the sale a buy names (saleRuleProblem): the widest from the buy, %, on a TRADE (null = no cap), and the closest, in ATR(14). */
+  /** The sell price's numbers, read on the sell price a buy names (saleRuleProblem): the widest from the buy price, %, on a TRADE (null = no cap), and the closest, in ATR(14). */
   sale: { maxPct: number | null; minAtr: number };
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
@@ -149,15 +149,14 @@ export const PLACEHOLDERS: Record<Placeholder, string> = {
   "{gapDayMid}": "chart.gaps[0].mid — the gap-day midpoint (a hold above it on day 2 is the entry)",
   "{gapDayLow}": "chart.gaps[0].low — the gap-day low, the market's own line",
   "{swingLow}": "chart.swings.lastLow.price",
-  "{entry}": "the entry level this plan uses",
   "{high20}": "chart.range.high20 — the 20-day high",
   "{baseLow}": "chart.base.low — the base's low",
   "{priorHigh}": "chart.swings.lastHigh.price — the prior high above the buy",
   "{low52}": "chart.range.low52w — the 52-week low",
   "{flagLow}": "chart.range.low20 — the flag's low",
   "{price}": "chart.price — today's price",
-  "{sellPrice}": "the sale the run names with the buy (place_trade's sell_if_below), by the line's own rule",
-  "{riskPct}": "(buy − the sale) ÷ buy, as a % — one risk",
+  "{sellPrice}": "the sell price the run names with the buy (place_trade's sell_if_below), by its trigger's own reason",
+  "{riskPct}": "(the buy price − the sell price) ÷ the buy price, as a % — one risk",
 };
 
 // ── The catalog ───────────────────────────────────────────────────────────

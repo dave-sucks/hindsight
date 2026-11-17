@@ -222,7 +222,7 @@ export function validateThesisDecision(
   // said it was waiting for — never a refusal at the save.
   if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
     errors.push(
-      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. Write what you are waiting for as triggers: the On a watch lines of the setup that fits (YOUR SETUPS), each filled from the chart. If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
+      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. Write what you are waiting for as triggers: the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart. If no price is honest yet, send \`triggers\` with a review that brings it back: a review at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );
   }
 

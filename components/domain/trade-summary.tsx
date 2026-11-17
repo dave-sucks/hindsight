@@ -199,12 +199,12 @@ function describeTrade({ position, pnl, pendingProposal, direction, look }: Trad
   return { pp, sentence, gain, title, action, value, avgCost, dotClass, reviewSlot, proposal: Boolean(pp && !pp.executing), proposed };
 }
 
-/** A buy proposal's sale and the lines it comes with, each as its sentence: they go on the stock at the fill. */
-function ProposalLines({ lines }: { lines: readonly string[] }) {
+/** A buy proposal's "Sell if below" and the triggers that come with it, each as its sentence: they go on the stock at the fill. */
+function ProposalTriggers({ sentences }: { sentences: readonly string[] }) {
   return (
     <ul className="pt-1 text-sm text-muted-foreground tabular-nums">
-      {lines.map((l) => (
-        <li key={l}>{l}</li>
+      {sentences.map((s) => (
+        <li key={s}>{s}</li>
       ))}
     </ul>
   );
@@ -293,7 +293,7 @@ function TradeBanner(props: TradeSummaryProps) {
         action={gain ? <span className="text-sm tabular-nums"><PriceChange dollarChange={gain.dollar} percentChange={gain.pct} size="inherit" /></span> : null}
       />
       <p className="truncate text-base tabular-nums">{sentence}</p>
-      {pp?.lines?.length ? <ProposalLines lines={pp.lines} /> : null}
+      {pp?.triggerSentences?.length ? <ProposalTriggers sentences={pp.triggerSentences} /> : null}
       {/* The reason, muted: two lines until the card is clicked, then all of it (or the "Writing" line while the note is on its way). */}
       {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
@@ -376,7 +376,7 @@ function TradeCard(props: TradeSummaryProps) {
         <p className={cn("text-xl font-light tabular-nums", gain ? (gain.dollar >= 0 ? "text-positive" : "text-negative") : "text-foreground")}>{sentence}</p>
         {/* The footnote: what the shares cost us, how long we have held them, and how many trades the thesis had before this one. */}
         {footnote ? <p className="mt-2 text-xs text-muted-foreground tabular-nums">{footnote}</p> : null}
-        {pp?.lines?.length ? <ProposalLines lines={pp.lines} /> : null}
+        {pp?.triggerSentences?.length ? <ProposalTriggers sentences={pp.triggerSentences} /> : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">

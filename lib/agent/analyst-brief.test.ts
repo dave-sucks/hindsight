@@ -18,7 +18,7 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 import { analystBrief, setupLines, universeLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
-import { playbookLines } from "@/lib/agent/knowledge/playbooks";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
@@ -179,16 +179,16 @@ describe("every door reads the same brief, once", () => {
 
 describe("the writer names a setup by id from the same lines", () => {
   const prompt = DOORS.writer();
-  it("its full block is setupLines, every line, then its playbook's watch lines, for each setup it writes on", () => {
+  it("its full block is setupLines, every one, then the playbook's watch triggers, for each playbook it writes on", () => {
     for (const id of CATALYST.setupIds) {
-      const lines = [...setupLines(getSetup(id)!), ...playbookLines(PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES], "WATCH")];
+      const lines = [...setupLines(getSetup(id)!), ...playbookTriggerText(PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES], "WATCH")];
       expect(prompt).toContain(lines.join("\n  "));
       expect(lines[0].startsWith(`${id} — `)).toBe(true);
     }
-    // The watch lines read as Settings → Playbook says them, a chart level by its name.
+    // The watch triggers read as Settings → Playbook says them, a chart number by its name.
     expect(prompt).toContain('\n  - Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}: {"action":"ENTER","predicate":{"match":"all","conditions":[{"watch":"price","is":"above","value":"{pivot}","settings":{"close":true}}');
     expect(prompt).toContain("{baseLow} chart.base.low — the base's low");
-    // No sale, take-profit, trail or time rule in words: those are the playbook's lines.
+    // No sell, Trim, trail or time rule in words: those are the playbook's triggers.
     for (const word of ["Stop: ", "Take profit: ", "Manage", "Time: "]) expect([word, prompt.includes(word)]).toEqual([word, false]);
   });
   it("the brief's line for a setup is the full block's first line", () => {
@@ -200,7 +200,7 @@ describe("the writer names a setup by id from the same lines", () => {
 
 describe("setupLines", () => {
   const pullback = getSetup("MA_PULLBACK")!;
-  it("two cuts of one text: the brief's first line, the writer's all, a row's decision lines", () => {
+  it("two cuts of one text: the brief's first sentence, the writer's all, what a row's fire checks", () => {
     const all = setupLines(pullback);
     const decision = setupLines(pullback, "decision");
     expect(all[0]).toBe(`MA_PULLBACK — ${pullback.name}: ${pullback.summary}`);

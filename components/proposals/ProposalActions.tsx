@@ -116,6 +116,8 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
   const [editShares, setEditShares] = useState("");
   const [editTarget, setEditTarget] = useState("");
   const [editStop, setEditStop] = useState("");
+  /** The triggers that come with the buy, as sentences: shown, never edited here. */
+  const [editWithBuy, setEditWithBuy] = useState<string[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
 
   // One read of the proposal context, shared by Edit & Approve (reads
@@ -125,6 +127,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
     quantity?: number | null;
     targetPrice?: number | null;
     stopLoss?: number | null;
+    triggersWithBuy?: string[];
     thesisId?: string | null;
     thesisDirection?: string | null;
   }> {
@@ -143,6 +146,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
       setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
       setEditTarget(ctx.targetPrice != null ? String(ctx.targetPrice) : "");
       setEditStop(ctx.stopLoss != null ? String(ctx.stopLoss) : "");
+      setEditWithBuy(ctx.triggersWithBuy ?? []);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -501,17 +505,30 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                 </div>
                 {editIntent === "OPEN" ? (
                   <>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="proposal-edit-target">Take-profit price</Label>
-                      <Input
-                        id="proposal-edit-target"
-                        type="number"
-                        inputMode="decimal"
-                        value={editTarget}
-                        onChange={(e) => setEditTarget(e.target.value)}
-                        disabled={pending === "approve"}
-                      />
-                    </div>
+                    {/* An older proposal keeps the upside price it named (targetPrice); a new one shows the triggers that come with the buy, edited on the stock after the fill. */}
+                    {editTarget ? (
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="proposal-edit-target">Target price</Label>
+                        <Input
+                          id="proposal-edit-target"
+                          type="number"
+                          inputMode="decimal"
+                          value={editTarget}
+                          onChange={(e) => setEditTarget(e.target.value)}
+                          disabled={pending === "approve"}
+                        />
+                      </div>
+                    ) : editWithBuy.length ? (
+                      <div className="grid gap-1.5">
+                        <Label>Comes with the buy</Label>
+                        <ul className="text-sm text-muted-foreground tabular-nums">
+                          {editWithBuy.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs text-muted-foreground">Change these on the stock once the buy fills.</p>
+                      </div>
+                    ) : null}
                     <div className="grid gap-1.5">
                       <Label htmlFor="proposal-edit-stop">Sell if below</Label>
                       <Input

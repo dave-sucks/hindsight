@@ -94,8 +94,8 @@ describe("formatDataBlock — the chart, in dollars", () => {
     expect(formatDataBlock(inputs({ ...chart, volumeFeed: "iex" }))).toContain("IEX-only volume");
   });
 
-  it("tells the writer the levels are where its setup prices come from — and a setup true today is an entry at the price (PR 4)", () => {
-    expect(out).toMatch(/the levels your playbook's lines are filled from/i);
+  it("tells the writer the chart numbers are where its playbook's prices come from — and a buy true today goes a few cents above today's price", () => {
+    expect(out).toContain("These chart numbers are where the prices in your playbook's triggers come from. If the playbook's buy is already true today, write the buy a few cents above today's price so it fires on the next tick.");
     expect(out).not.toMatch(/Today's price is not an entry/i);
   });
 

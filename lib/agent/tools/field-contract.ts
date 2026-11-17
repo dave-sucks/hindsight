@@ -124,7 +124,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     // The holding's sale comes with the buy (2026-11-16): a watch's line ends the watch and is never the sale.
     f("sell_if_below", "JUDGED", { rule: "SALE_SIDE", note: "Below the price for a LONG; sizes the buy; the pending position holds it, and the fill writes it as Sell if below." }),
     f("sell_reason", "TEXT", { note: "The note on the holding's Sell if below line." }),
-    f("with_buy", "JUDGED", { rule: "TRIGGER_SHAPE", note: "The playbook's other With the buy lines, filled by the run; the pending position holds them and the fill writes them." }),
+    f("triggers_with_buy", "JUDGED", { rule: "TRIGGER_SHAPE", note: "The playbook's other triggers that come with the buy, each price from the chart; the pending position saves them and the fill writes them." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
     f("notional", "COMPUTED", { principalOnly: true, note: "Sized by risk inside the analyst's band (DAV-317). The principal's number is honored with a line." }),

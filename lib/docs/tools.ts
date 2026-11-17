@@ -387,6 +387,6 @@ export interface DocsSetup {
   /** What confirms a buy on the day. */
   confirmation: readonly string[];
   /** Its playbook's triggers as the catalog seeds them, one list per moment they are written. */
-  triggers: ReadonlyArray<{ label: string; lines: readonly string[] }>;
+  triggers: ReadonlyArray<{ label: string; sentences: readonly string[] }>;
   failureSigns: readonly string[];
 }

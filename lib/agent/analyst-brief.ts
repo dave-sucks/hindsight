@@ -12,7 +12,7 @@
  * door's own.
  *
  * A setup is written once, by `setupLines`. The brief takes its first line;
- * the writer takes all of them, with its playbook's watch lines.
+ * the writer takes all of them, with the playbook's watch triggers.
  *
  * Pure and safe in the browser: modes.ts, which client components import,
  * renders the brief for the chat.
@@ -81,16 +81,16 @@ function chosenSetups(analyst: BriefAnalyst): Setup[] {
 }
 
 /**
- * One setup's words, written once, in two cuts. "all" (the writer's block):
- * what it is, what must be true, how a buy is confirmed, and what failure
- * looks like. The brief takes the first line of it. "decision" (a row's
- * `setup_lines`): the lines a fire checks, from the confirmation on. Its buy
- * and every other trigger are its playbook's templates, which each door
- * prints beside these (playbookLines).
+ * One playbook's words, written once, in two cuts. "all" (the writer's
+ * block): what it is, what must be true, how a buy is confirmed, and what
+ * failure looks like. The brief takes the first of them. "decision" (a row's
+ * `setup_lines`): what a fire checks, from the confirmation on. Its buy and
+ * every other trigger are the playbook's templates, which each door prints
+ * beside these (playbookTriggerText).
  */
 export function setupLines(setup: Setup, cut: "all" | "decision" = "all"): string[] {
   const confirm = setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding";
-  const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : "";
+  const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the buy trigger's price` : "";
   return [
     ...(cut === "all" ? [`${setup.id} — ${setup.name}: ${setup.summary}`, `Needs: ${setup.preconditions.join("; ")}`] : []),
     `Confirm a buy by: ${confirm}${chase}`,

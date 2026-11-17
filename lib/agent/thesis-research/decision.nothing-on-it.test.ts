@@ -56,13 +56,13 @@ const check = (d: ThesisDecisionInput) =>
   validateThesisDecision(d, { mode: "mint", currentPrice: 9.48 });
 
 describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
-  it("is sent back to its setup's watch lines, with no price of the code's", () => {
+  it("is sent back to its playbook's watch triggers, with no price of the code's", () => {
     const r = check(LUXE_SUBMIT);
     expect(r.ok).toBe(false);
     const msg = r.errors.join(" | ");
     expect(msg).toMatch(/can never come back/);
-    expect(msg).toContain("the On a watch lines of the setup that fits (YOUR SETUPS), each filled from the chart");
-    // The playbook's lines carry every price: the reply names none from the chart.
+    expect(msg).toContain("the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart");
+    // The playbook's triggers carry every price: the reply names none from the chart.
     expect(msg).not.toMatch(/7\.91|7\.75|\$\d/);
     expect(msg).not.toMatch(/floor|ATR/);
     expect(msg).toContain('{watch:"repeat", value: days}');

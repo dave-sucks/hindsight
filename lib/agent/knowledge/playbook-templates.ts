@@ -17,8 +17,8 @@ import type { SetupId, TemplatePredicate } from "./setups";
 
 export const WRITTEN_ON = ["WATCH", "PROPOSAL", "FILL"] as const;
 export type WrittenOn = (typeof WRITTEN_ON)[number];
-/** When each list is written, in the words Settings → Playbook heads it with. */
-export const WRITTEN_LABEL: Record<WrittenOn, string> = { WATCH: "On a watch", PROPOSAL: "With the buy", FILL: "At the fill" };
+/** Each list's name, in the words the agents and the docs read. */
+export const TRIGGER_LIST_NAME: Record<WrittenOn, string> = { WATCH: "The playbook's watch triggers", PROPOSAL: "The triggers that come with the buy", FILL: "The triggers written at the fill" };
 
 export interface Template {
   action: TriggerAction;
@@ -45,7 +45,7 @@ const clock = (days: number, why: string): Template[] => [
 
 export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   PRE_CATALYST: [
-    { action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 70, variable: "event" }, rationale: "While parked: the buying window opens. The run that answers it writes the buy lines and removes this one.", writtenOn: "WATCH" },
+    { action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 70, variable: "event" }, rationale: "While parked: the buying window opens. The run that answers it writes the buy triggers and removes this one.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: onClose("above", "{high20}"), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
@@ -63,14 +63,14 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "EXIT", predicate: sell, rationale: "Under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8%.", writtenOn: "PROPOSAL" },
     trimAtHigh("The prior high above the buy, else twice the risk above the buy."),
     { action: "REVIEW", predicate: afterBuy(28), rationale: "20 sessions. No progress in 10–20 sessions is a failed breakout.", writtenOn: "FILL" },
-    { action: "REVIEW", predicate: { watch: "move", is: "above", value: "{riskPct}", variable: "entry" }, rationale: "One risk: (buy − the sale) ÷ buy. Once it is up one risk, the run raises the sale to the buy price.", writtenOn: "PROPOSAL" },
+    { action: "REVIEW", predicate: { watch: "move", is: "above", value: "{riskPct}", variable: "entry" }, rationale: "One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.", writtenOn: "PROPOSAL" },
   ],
   MA_PULLBACK: [
     { action: "ENTER", predicate: near50, rationale: "The average the stock's pullbacks held (or the 20-day), only while it is rising.", writtenOn: "WATCH" },
     ...clock(7, "Re-checks that the average is still rising."),
-    { action: "STOP_WATCHING", predicate: under50OnVolume, rationale: "A close below the 50-day on volume ends the setup. It reads during the day.", writtenOn: "WATCH" },
+    { action: "STOP_WATCHING", predicate: under50OnVolume, rationale: "A close below the 50-day on volume ends the pullback. It reads during the day.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
-    { action: "EXIT", predicate: under50OnVolume, rationale: "The setup is over.", writtenOn: "FILL" },
+    { action: "EXIT", predicate: under50OnVolume, rationale: "The pullback is over.", writtenOn: "FILL" },
     trimAtHigh("The prior high the pullback came from."),
     { action: "REVIEW", predicate: afterBuy(14), rationale: "10 sessions to reclaim the prior high.", writtenOn: "FILL" },
   ],
@@ -83,13 +83,13 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(60), rationale: "Hold 30–60 days.", writtenOn: "FILL" },
   ],
   EPISODIC_PIVOT: [
-    { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the lines below.", writtenOn: "WATCH" },
+    { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: onClose("above", "{gapDayHigh}"), rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price.", writtenOn: "WATCH" },
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "Moves the levels to the finished gap day."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The gap day's low, at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
-    // The watch's lines come off at the fill, so the holding's own copy comes with the buy.
+    // The watch triggers come off at the fill, so the holding's own copy comes with the buy.
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle, on the holding.", writtenOn: "PROPOSAL" },
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
@@ -118,10 +118,10 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions.", writtenOn: "FILL" },
   ],
   RS_52W_HIGH: [
-    { action: "REVIEW", predicate: { match: "all", conditions: [{ watch: "move", is: "near", value: 5, variable: "high52" }, { watch: "strength", value: 0, settings: { window: "3M" } }] }, rationale: "A screen: the run writes the breakout's, flag's or pullback's lines.", writtenOn: "WATCH" },
+    { action: "REVIEW", predicate: { match: "all", conditions: [{ watch: "move", is: "near", value: 5, variable: "high52" }, { watch: "strength", value: 0, settings: { window: "3M" } }] }, rationale: "A screen: the run writes the breakout's, flag's or pullback's triggers.", writtenOn: "WATCH" },
   ],
   INSIDER_CLUSTER: [
-    { action: "REVIEW", predicate: { watch: "insiders", value: 3, settings: { days: 30 } }, rationale: "A screen: the run writes the breakout's or pullback's lines.", writtenOn: "WATCH" },
+    { action: "REVIEW", predicate: { watch: "insiders", value: 3, settings: { days: 30 } }, rationale: "A screen: the run writes the breakout's or pullback's triggers.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The lowest insider purchase price, or 12% under the buy if that is higher.", writtenOn: "PROPOSAL" },
   ],
   ESTIMATE_REVISION: [],

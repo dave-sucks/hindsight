@@ -26,9 +26,7 @@ import {
 import { answers } from "@/lib/proposals/staged";
 import { isInsideMorningBatch } from "@/lib/email-suppression";
 import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
-import { takeProfitOf } from "@/lib/proposals/buy-lines";
 import { triggerInputSchema } from "@/lib/agent/triggers/schema";
-import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import {
   positionBand,
@@ -93,10 +91,10 @@ const placeTradeSchema = z.object({
     // Every model call names the sale (schemaFor); an Auto-buy, which no model writes, comes without one.
     sell_if_below: z.number().optional(),
     sell_reason: z.string().optional(),
-    with_buy: z
+    triggers_with_buy: z
       .array(triggerInputSchema)
       .optional()
-      .describe("The stock's playbook's other With the buy lines (its setup_lines), each filled from the chart with its reason: the take-profit (Trim if above its number) and any review it lists. The owner sees them on the proposal and they go on the stock at the fill. Omit them when the stock has no playbook."),
+      .describe("The stock's playbook's other triggers that come with the buy (in its setup_lines), each price from the chart and each with its reason: its Trim (\"Trim 50% if above $X\") and any review it lists. The owner sees each on the proposal, and they go on the stock when the buy fills. Leave it out when the stock has no playbook."),
     // Principal chat only. Inside a run these two fields are not in the
     // schema at all — the analyst's rules size every buy, and a size the
     // model typed ($11,222 on PLTR, 2026-09-25) is what killed a fired buy.
@@ -120,8 +118,8 @@ const withSale = <T extends z.ZodObject>(schema: T) =>
     sell_if_below: z
       .number()
       .positive()
-      .describe("The holding's sale: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's Sell if below line (its setup_lines), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."),
-    sell_reason: z.string().min(1).describe("Why the sale sits there, in one sentence: the structure it is under. It becomes the note on the holding's Sell if below line."),
+      .describe("The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in setup_lines), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."),
+    sell_reason: z.string().min(1).describe("Why the sell price sits there, in one sentence: the structure it is under. It becomes the note on the holding's \"Sell if below\" trigger."),
   });
 
 export const placeTrade = defineTool({
@@ -352,10 +350,8 @@ export const placeTrade = defineTool({
       // analyst's and the account's rules alone. Quote failure skips the live
       // check (the entry check is the static fallback).
       const stop: number | null = args.sell_if_below != null && args.sell_if_below > 0 ? args.sell_if_below : null;
-      // The other lines the buy comes with, as the run wrote them; the take-profit's price is the position's targetPrice.
-      const buyLines: Trigger[] = (args.with_buy ?? []).map((t) => ({ ...(t as Trigger), id: randomUUID(), source: "AGENT", playbook: "PROPOSAL" }));
-      const takeProfit = takeProfitOf(buyLines);
-      const takeProfitPrice = takeProfit ? typedPriceOf(takeProfit) : null;
+      // The other triggers that come with the buy, saved as the run wrote them.
+      const buyTriggers: Trigger[] = (args.triggers_with_buy ?? []).map((t) => ({ ...(t as Trigger), id: randomUUID(), source: "AGENT", playbook: "PROPOSAL" }));
       if (stop != null) {
         let livePrice: number | null = null;
         try {
@@ -525,8 +521,7 @@ export const placeTrade = defineTool({
             avgCost: args.entry_price,
             stopLoss: stop,
             stopReason: args.sell_reason?.trim() || null,
-            targetPrice: takeProfitPrice,
-            ...(buyLines.length ? { buyLines: buyLines as unknown as object } : {}),
+            ...(buyTriggers.length ? { buyTriggers: buyTriggers as unknown as object } : {}),
             // The risk taken — never moves; the scorecard's R (DAV-248).
             initialStop: stop,
             // Per-thesis triggers (lib/agent/triggers/*) own ALL exit logic now.
@@ -882,10 +877,10 @@ export const placeTrade = defineTool({
         analystId,
         ticker,
         fillPrice,
-        targetPrice: takeProfitPrice,
+        targetPrice: null,
         stopLoss: stop,
         stopReason: args.sell_reason,
-        buyLines,
+        buyTriggers,
         positionId: position.id,
         runId: ctx.runId,
         via: "place_trade",

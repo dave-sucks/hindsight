@@ -35,8 +35,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
   // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
   // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
-  // 2026-11-17: −1,074, the setups block shows each playbook's watch lines (sentence, the trigger as written, reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
-  writer: 15_867,
+  // 2026-11-17: −1,126, YOUR PLAYBOOKS shows each playbook's watch triggers (the sentence, the trigger as written, its reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
+  writer: 15_815,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -63,9 +63,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: −1,332 / −1,219, the entry / target / stop fields and their reasons leave update_thesis; a level is a trigger edit by id.
   // 2026-11-16: +669 each, place_trade takes sell_if_below and sell_reason (the holding's sale comes with the buy), and the trigger action says EXIT is a holding's and STOP_WATCHING a watch's.
   // 2026-11-16: +17, a watch's lines are its buy and its Stop watching line (update_thesis's ARCHIVED words); the triggers, not a floor, hold the price.
-  // 2026-11-17: +6,135 each, place_trade's with_buy takes the playbook's other With the buy lines in the trigger shape (+5,667), and a trigger may say it is a playbook's watch line (playbook, on record_thesis and update_thesis).
-  "research-run": 37_698,
-  tactical: 33_661,
+  // 2026-11-17: +6,201 each, place_trade's triggers_with_buy takes the playbook's other triggers that come with the buy, in the trigger shape (+5,667), and a trigger may say it is one of the playbook's watch triggers (playbook, on record_thesis and update_thesis).
+  "research-run": 37_764,
+  tactical: 33_727,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -73,8 +73,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: −2,509, the same fields leave update_thesis and record_thesis.
   // 2026-11-16: +822, the same place_trade fields and trigger action text.
   // 2026-11-16: +21, the same field words.
-  // 2026-11-17: +6,463, the same with_buy and playbook fields.
-  principal: 69_226,
+  // 2026-11-17: +6,511, the same triggers_with_buy and playbook fields.
+  principal: 69_274,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

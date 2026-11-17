@@ -287,7 +287,7 @@ export const triggerInputSchema = triggerSchema
   .extend({
     predicate: predicateInputSchema(),
     action: triggerActionSchema.describe("EXIT sells and is for a stock we hold; STOP_WATCHING ends the watch, never sells, and is for a stock we only watch."),
-    playbook: z.enum(["WATCH"]).optional().describe("WATCH when this line is one of the stock's playbook's watch lines (On a watch), filled from the chart. When the stock is bought those lines come off with the buy; a line you write yourself stays. Omit it on any other line."),
+    playbook: z.enum(["WATCH"]).optional().describe("WATCH when this trigger is one of the stock's playbook's watch triggers, its prices from the chart. When the stock is bought those come off with the buy; a trigger you write yourself stays. Leave it out on any other trigger."),
   });
 
 export const triggersInputArraySchema = z

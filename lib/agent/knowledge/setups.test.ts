@@ -42,7 +42,7 @@ describe("the setup catalog", () => {
     expect(Array.isArray(s.triggers)).toBe(true);
   });
 
-  it("carries no trigger rule in words: the sale, the take-profit, the trail and the time limit are its templates", () => {
+  it("carries no trigger rule in words: the sell price, the Trim, the trail and the time limit are its templates", () => {
     for (const s of SETUPS) {
       expect(Object.keys(s).filter((k) => ["stop", "target", "trail", "time", "manage"].includes(k))).toEqual([]);
       expect("template" in s.entry || "text" in s.entry).toBe(false);
@@ -107,13 +107,13 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.summary).toMatch(/^12 setups:/);
   });
 
-  it("returns a full entry with readable content: the setup's words, then its playbook's lines", async () => {
+  it("returns a full entry with readable content: the playbook's words, then its triggers", async () => {
     const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
     expect(r.data.found).toBe(true);
     const content = String(r.data.content);
     expect(content).toContain("Post-earnings drift (D4)");
-    expect(content).toContain('On a watch:\n- Buy if above {price} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{price}","settings":{"close":true}}} — Today\'s price');
-    expect(content).toContain("With the buy:\n- Sell if below {sellPrice}: ");
+    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {price} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{price}","settings":{"close":true}}} — Today\'s price');
+    expect(content).toContain("The triggers that come with the buy:\n- Sell if below {sellPrice}: ");
     expect(content).toContain('- Review 60 days after the buy: {"action":"REVIEW","predicate":{"watch":"from_date","is":"after","value":60,"variable":"buy"}} — Hold 30–60 days.');
     expect(content).not.toMatch(/^(Stop|Target|Trail|Time|  Condition):/m);
   });

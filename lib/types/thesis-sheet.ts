@@ -112,8 +112,8 @@ export interface ThesisPendingProposal {
   /** ISO — when it was proposed, and the price the run read then (null before 2026-11-14). */
   proposedAt?: string;
   proposedPrice?: number | null;
-  /** A buy's sale and the lines it comes with, each as its sentence ("Sell if below $325.33", "Trim 50% if above $427.42"). */
-  lines?: string[];
+  /** A buy's "Sell if below" and the triggers that come with it, each as its sentence ("Sell if below $325.33", "Trim 50% if above $427.42"). */
+  triggerSentences?: string[];
 }
 
 /**

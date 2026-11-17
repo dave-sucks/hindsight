@@ -470,7 +470,7 @@ export const getTheses = defineTool({
     const resolvedByThesisId = facts.resolved;
     const blockedByThesisId = facts.blocked;
     const setupOverrides = facts.setupOverrides;
-    // The account's playbooks: a watch's row carries the lines its buy comes with.
+    // The account's playbooks: a watch's row carries the triggers that come with its buy.
     const playbookOf = await loadPlaybooks(ctx.accountId);
     const resolverNow = facts.now;
     const situationsOf = (id: string): SituationCode[] => {
@@ -569,9 +569,9 @@ export const getTheses = defineTool({
         // rows; `triggerDetail` shows trigger state vs current price;
         // `supersededBy` flags rows killed by a newer sister thesis.
         resolved: resolvedByThesisId.get(t.id) ?? null,
-        // The setup the stock was written on, compact (DAV-253): its failure
-        // signs and confirmation, and on a watch the playbook's lines that come
-        // with the buy. Null on rows written before setups were named.
+        // The playbook the stock was written on, compact (DAV-253): its failure
+        // signs and confirmation, and on a watch the playbook's triggers that
+        // come with the buy. Null on rows written before playbooks were named.
         setup: t.setupId ? setupChecklist(t.setupId, { overrides: setupOverrides, held: t.status === "HOLDING", templates: playbookOf ? playbookOf(t.setupId) : null }) : null,
         // Its buy fired (or is live) and the analyst is full: the portfolio
         // decision, on the row (DAV-286). Null otherwise.

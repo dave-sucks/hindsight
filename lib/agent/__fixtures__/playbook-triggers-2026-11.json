@@ -1,5 +1,5 @@
 {
- "_note": "Production, read 2026-11-17. zts: the Writer's submit_thesis on ZTS (run cmwip25nl000r07iezpy2uvc5, 2026-11-16), a view no setup fits. aapl: the trigger run's buy on AAPL (run cmwf2qah4000608l8khv3gsmt, 2026-11-13), BASE_BREAKOUT: its place_trade call, the sale and upside it named (update_thesis's stop_basis and target_basis, written before the sale came with the buy), the chart its get_stock_data read, and the thesis's triggers that day. htfl: the Writer's submit_thesis on HTFL (claude-sonnet-4-6, 2026-11-17), from this PR's prompt on the ground-truth data recorded in run cmwfbv2ia000508l4qnbi09q8 (2026-11-13), via scripts/hero-case.ts; 3 of 3 runs wrote one playbook's On a watch lines exactly (two MA_PULLBACK, one PEAD), each marked.",
+ "_note": "Production, read 2026-11-17. zts: the Writer's submit_thesis on ZTS (run cmwip25nl000r07iezpy2uvc5, 2026-11-16), a view no playbook fits. aapl: the trigger run's buy on AAPL (run cmwf2qah4000608l8khv3gsmt, 2026-11-13), BASE_BREAKOUT: its place_trade call, the sell price and upside it named (update_thesis's stop_basis and target_basis, written before the sell price came with the buy), the chart its get_stock_data read, and the thesis's triggers that day. htfl: the Writer's submit_thesis on HTFL (claude-sonnet-4-6, 2026-11-17), from this PR's prompt on the ground-truth data recorded in run cmwfbv2ia000508l4qnbi09q8 (2026-11-13), via scripts/hero-case.ts; 3 of 3 runs wrote one playbook's watch triggers (one MA_PULLBACK, two PEAD); 2 of 3 exactly as listed, the third added Flag for Review to its buy and left its review clock unmarked. This is run 1.",
  "zts": {
   "run": {
    "id": "cmwip25nl000r07iezpy2uvc5",
@@ -162,22 +162,22 @@
   },
   "decision": {
    "direction": "LONG",
-   "rationale": "HeartFlow reported Q3 2026 yesterday \u2014 EPS of -$0.03 vs. the -$0.10 estimate, a 71% beat, with revenue up 57% year-over-year to $72.9M. The stock opened sharply higher but closed today down 17.7% to $49.31, giving back most of the gap. That gap-day collapse means the PEAD setup is gone \u2014 the market is not under-reacting to good news, it is actively selling it. Three analysts raised price targets today (Canaccord to $69, Stifel to $70, Baird to $68), which lifts the street's average well above the stale $48.50 consensus, and implies real upside from here \u2014 but the stock needs to find a floor first. The prior pass in August was on a weaker chart and slower business momentum; what's changed is 57% revenue growth, expanding gross margins (83.6%), and a raised full-year guide. The setup that fits now is a pullback-to-rising-average entry once the stock stabilizes. The 50-day at $51.94 is rising and roughly 5% above today's close of $49.31; a hold near that level on calming volume is the entry I want to price. I'm watching for the stock to find its footing near the 50-day before writing a buy.",
+   "rationale": "HeartFlow reported Q3 2026 yesterday \u2014 revenue up 57% year-over-year to $72.9M, gross margin 83.6%, EPS beat of 71%, and full-year guidance raised. The stock was up to $60+ intraday but closed today at $49.31, down 17.7%, likely on profit-taking after the run. Three sell-side analysts raised their price targets this morning \u2014 Canaccord to $69, Stifel to $70, Baird to $68 \u2014 well above the stale consensus average of $48.50. The prior PASS from August was based on a weaker setup; the business has since delivered a second consecutive strong beat, revenue growth has accelerated materially, and the street is now revising upward. The stock's pullback today puts it near the 50-day moving average at $51.94, which is the natural re-entry level if the uptrend holds.",
    "horizon": "TARGET",
    "conviction": "MEDIUM",
-   "conviction_rationale": "The business is genuinely accelerating \u2014 57% revenue growth, 83.6% gross margins, and a beat that drove three analyst target raises to $68\u201370 today. That puts the refreshed street high at $70 against today's $49.31, meaningful upside if the stock stabilizes. But the gap-day reversal (opened near $60, closed at $49) is a warning: the market wanted more, or sellers were waiting. I want to see the 50-day hold before committing capital. This is medium conviction until the chart confirms buyers are back.",
-   "core_belief": "HeartFlow makes AI-powered cardiac imaging software \u2014 specifically FFR-CT, which lets cardiologists assess coronary artery disease from a CT scan without an invasive catheterization. The company earns revenue from per-analysis fees and enterprise contracts with hospitals and health systems, growing fast as clinical guidelines and payer coverage expand. The case rests on continued adoption growth translating into revenue at 80%+ gross margins, with the path to profitability shortening each quarter.",
-   "variant_view": "Analysts who set targets before yesterday's report were anchored to $45\u201355; the three who updated today jumped to $68\u201370, suggesting the street is still catching up to 57% revenue growth and 83.6% gross margins. The consensus average ($48.50, stale) sits below today's price \u2014 the market doesn't yet price in the upgraded targets, and if revisions follow broadly, the stock has a wide lane to reprice upward.",
+   "conviction_rationale": "The business quality is real \u2014 57% revenue growth, 83%+ gross margins, and two consecutive big beats \u2014 but the stock is loss-making, the street consensus target of $48.50 is below today's price, and I want to see the gap-day selling stabilize before committing. The three fresh targets of $68\u2013$70 suggest the stale average will reprice upward quickly, which is a tailwind, but I'm sizing to a confirmed pullback hold rather than a full position.",
+   "core_belief": "HeartFlow makes AI-powered software that simulates blood flow in coronary arteries from a CT scan, letting cardiologists diagnose heart disease without invasive procedures. It earns revenue each time the analysis is run, so growth comes from hospitals and health systems adopting the technology and running more cases \u2014 a volume-driven model with very high gross margins once the platform is in place. What has to stay true is that case volume keeps growing at a double-digit rate and gross margins hold above 80%, because those two things together are what turns the operating losses into eventual free cash flow.",
    "setup_id": "MA_PULLBACK",
+   "variant_view": "Analysts have price targets averaging $48.50 \u2014 below today's price \u2014 because revisions haven't caught up to the Q3 beat yet. The three firms that raised targets this morning went to $68\u2013$70, implying the consensus will re-rate significantly. I think the market is underpricing how durable 57% revenue growth is for a healthcare AI platform with 83% gross margins, and that the post-earnings selloff is institutional profit-taking rather than a signal about the business.",
    "key_assumptions": [
-    "Revenue growth stays above 40% year-over-year, checked at the Q4 2026 earnings report (expected February 2027)",
-    "Gross margin holds at or above 80%, checked in each 10-Q filing",
-    "Payer coverage and clinical guideline adoption continue to expand, checked via press releases and the Q4 2026 earnings call commentary"
+    "Case volume (revenue) grows at least 40% year-over-year in Q4 2026, checked at the next earnings report around February 2027",
+    "Gross margin holds above 80% in each quarterly 10-Q filing, the next being the Q4 2026 report around February 2027",
+    "At least two additional sell-side analysts raise price targets above $60 within 10 days of the Q3 report (by November 22, 2026), confirming estimate revision momentum"
    ],
    "invalidation_conditions": [
-    "Revenue growth decelerates below 30% year-over-year at the next earnings report, signaling adoption is plateauing",
-    "Gross margin falls below 78% in any quarterly 10-Q, indicating pricing pressure or mix shift toward lower-margin contracts",
-    "Full-year 2026 guidance is cut or withdrawn at any point, reversing the raise that drove the Q3 beat"
+    "Revenue growth decelerates below 25% year-over-year in the Q4 2026 report, suggesting hospital adoption is stalling",
+    "Gross margin falls below 78% in any quarterly 10-Q, indicating pricing pressure or rising delivery costs on the per-case model",
+    "Full-year guidance is cut or withdrawn at any point, reversing the raise that made this setup valid"
    ],
    "triggers": [
     {
@@ -188,7 +188,7 @@
       "variable": "sma50"
      },
      "action": "ENTER",
-     "rationale": "The 50-day average is rising at $51.94 and was a support level before this week's sell-off; a pull back to within 2% of it on calming volume is the entry I want, confirming institutions are stepping back in.",
+     "rationale": "The stock pulled back sharply after earnings and is approaching the 50-day average at $51.94. A stabilization here \u2014 where institutions historically re-buy uptrending names \u2014 is the entry. I want a close near this level after the selling settles, not a catch of a falling stock.",
      "playbook": "WATCH"
     },
     {
@@ -197,7 +197,7 @@
       "value": 7
      },
      "action": "REVIEW",
-     "rationale": "Check weekly that the 50-day is still rising and the pullback volume is fading \u2014 if distribution continues or the average turns flat, the setup is gone.",
+     "rationale": "Check weekly that the 50-day is still rising and the pullback is on declining volume. If the average turns flat or the stock closes below it on heavy volume, the pullback thesis is gone and I stop watching.",
      "playbook": "WATCH"
     },
     {
@@ -216,7 +216,7 @@
       ]
      },
      "action": "STOP_WATCHING",
-     "rationale": "A close below the rising 50-day on heavy volume would say the sell-off after earnings is distribution, not a shakeout \u2014 the business momentum story doesn't translate to a buyable stock here, and I'd stop watching.",
+     "rationale": "A close below the 50-day average on 1.5\u00d7 or more normal volume would say the post-earnings selling has become something worse \u2014 institutions distributing, not just profit-taking. The 50-day sits at $51.94 today. That break ends the pullback case.",
      "playbook": "WATCH"
     }
    ]

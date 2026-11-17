@@ -1,6 +1,6 @@
 # Setups
 
-**Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, the triggers its playbook writes, and when it has failed.
+**Every playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, the triggers each writes, and when it has failed.
 
 This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
 
@@ -36,7 +36,7 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 - Sell if below {sellPrice}. Under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8%.
 - Trim 50% if above {priorHigh}. The prior high above the buy, else twice the risk above the buy.
-- Review if above {riskPct} from our entry. One risk: (buy − the sale) ÷ buy. Once it is up one risk, the run raises the sale to the buy price.
+- Review if above {riskPct} from our entry. One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.
 
 **Triggers at the fill:**
 
@@ -108,7 +108,7 @@ A neglected stock reprices on unexpected news with volume many times average; in
 
 **Triggers on a watch:**
 
-- Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the lines below.
+- Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the triggers below.
 - Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
 - Review if below {gapDayMid} · only on the close. The gap day's middle.
 - Review every 7 days. Moves the levels to the finished gap day.
@@ -193,7 +193,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 - Buy if within 2% of the 50-day average. The average the stock's pullbacks held (or the 20-day), only while it is rising.
 - Review every 7 days. Re-checks that the average is still rising.
-- Stop watching if below the 50-day average and at least 1.5× normal volume. A close below the 50-day on volume ends the setup. It reads during the day.
+- Stop watching if below the 50-day average and at least 1.5× normal volume. A close below the 50-day on volume ends the pullback. It reads during the day.
 
 **Triggers with the buy:**
 
@@ -203,7 +203,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 **Triggers at the fill:**
 
 - Review every 7 days. The watch's clock, kept on the holding.
-- Sell if below the 50-day average and at least 1.5× normal volume. The setup is over.
+- Sell if below the 50-day average and at least 1.5× normal volume. The pullback is over.
 - Review 14 days after the buy. 10 sessions to reclaim the prior high.
 
 **When it's failing:**
@@ -262,7 +262,7 @@ Entered through `BASE_BREAKOUT`, `MOMENTUM_FLAG`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Review if within 5% of the 52-week high and at least 0 points ahead of the S&P. A screen: the run writes the breakout's, flag's or pullback's lines.
+- Review if within 5% of the 52-week high and at least 0 points ahead of the S&P. A screen: the run writes the breakout's, flag's or pullback's triggers.
 
 **When it's failing:**
 
@@ -292,7 +292,7 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Review 70 days before the event date. While parked: the buying window opens. The run that answers it writes the buy lines and removes this one.
+- Review 70 days before the event date. While parked: the buying window opens. The run that answers it writes the buy triggers and removes this one.
 - Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
 - Buy if within 2% of the 50-day average. Only while the 50-day is rising and the stock's pullbacks held it.
 - Buy if above {high20} · only on the close. The 20-day high, above today's price (the reclaim).
@@ -330,7 +330,7 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Review if at least 3 insiders buying. A screen: the run writes the breakout's or pullback's lines.
+- Review if at least 3 insiders buying. A screen: the run writes the breakout's or pullback's triggers.
 
 **Triggers with the buy:**
 

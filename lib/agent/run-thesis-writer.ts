@@ -44,7 +44,7 @@ import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
-import { playbookLines } from "@/lib/agent/knowledge/playbooks";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, setupLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
@@ -354,9 +354,9 @@ export interface WriterResearchPromptOpts {
    * absent → no block.
    */
   setupRecord?: string[];
-  /** The setups this analyst writes on (setupsForAnalyst) — the prompt lists each in full (setupLines), with its playbook's watch lines. */
+  /** The playbooks this analyst writes on (setupsForAnalyst) — the prompt lists each in full (setupLines), with its watch triggers. */
   setups?: Setup[];
-  /** The account's playbooks (loadPlaybooks); null when they couldn't be read, and then no line is written from one. */
+  /** The account's playbooks (loadPlaybooks); null when they couldn't be read, and then no trigger is written from one. */
   playbooks?: ((setupId: string) => Template[]) | null;
   /** P1-35: this analyst sold this ticker within the last 14 days. */
   priorExit?: {
@@ -470,14 +470,14 @@ stock's triggers.`;
       : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
   • Legal actions: ENTER, STOP_WATCHING and REVIEW. NEVER EXIT/TRIM/ADD
     — there is no position, so nothing to sell.
-  • A price line is { watch: "price", is: "above" | "below", value };
+  • A price trigger is { watch: "price", is: "above" | "below", value };
     settings: { close: true } is "only on the close".
     "Stop watching if below $X · only on the close" retires the thesis on
-    a close below it, with no run. It never sells: the holding's sale comes with the buy, at
-    the price the buy names.
+    a close below it, with no run. It never sells: the holding's sell
+    price comes with the buy.
   • Nothing is added for you: a watch carries the triggers you write
     and no others, no review clock included.
-  • Taking the buy off on a refresh (no level worth holding): send
+  • Taking the buy off on a refresh (no price worth holding): send
     remove_trigger_ids naming the buy and Stop watching ids from
     EXISTING THESIS, keeping ≥1 REVIEW wake.`;
 
@@ -521,14 +521,14 @@ rationale — the next daily run executes it, not you.
     : "";
 
   const setups = opts.setups ?? [];
-  // Each setup's words, then its playbook's watch lines as Settings → Playbook lists them.
+  // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
   const setupsBlock = setups.length
     ? `
 ═══════════════════════════════════════════════════════════════════
-YOUR SETUPS — the playbooks you write a stock's triggers on
+YOUR PLAYBOOKS — the ones you write a stock's triggers from
 ═══════════════════════════════════════════════════════════════════
 ${setups
-  .map((s) => [...setupLines(s), ...playbookLines(opts.playbooks ? opts.playbooks(s.id) : null, "WATCH")].join("\n  "))
+  .map((s) => [...setupLines(s), ...playbookTriggerText(opts.playbooks ? opts.playbooks(s.id) : null, "WATCH")].join("\n  "))
   .join("\n\n")}
 `
     : "";
@@ -601,27 +601,25 @@ every field; the judgment rules:
      chart. PASS is a valid, gradeable outcome — use it when the research
      doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
    • THE PLAYBOOK WRITES THE TRIGGERS. Once the research gives you a
-     view, name the setup that fits (setup_id) and write every one of its
-     playbook's On a watch lines (YOUR SETUPS), each with "playbook":
-     "WATCH", exactly as listed: the trigger it shows, its action,
-     condition and fireMode as they are (a line that says "within 2% of
-     the 50-day average" is that, never a price; no fireMode where it
-     shows none), every {chart level} replaced by its number from the
-     Price structure block (chart.), never a round number, never a feel.
-     Each gets its reason, with the number in it. A stock has triggers and
-     nothing else:
-       – when the setup's buy is already true today, its price is at or a
-         few cents past the live price — that is how you buy now; it fires
-         on the first tick through it and becomes the ordinary
-         approval-gated proposal;
-       – a Stop watching line's rationale opens with what a close below it
-         would say about core_belief, in one plain sentence, then the
-         structure, with the number. It never sells: the holding's sale
-         comes with the buy;
-       – a line of your own (an earnings review, a price you'd look again
-         at) goes next to them, without "playbook";
+     view, name the playbook that fits (setup_id) and write every one of
+     its watch triggers (YOUR PLAYBOOKS), each with "playbook": "WATCH",
+     exactly as listed: the trigger it shows, its action, condition and
+     fireMode as they are ("within 2% of the 50-day average" stays that,
+     never a price; no fireMode where it shows none), and every {chart
+     number} replaced by its price from the Price structure block
+     (chart.), never a round number, never a feel. Each gets its reason,
+     with the price in it. A stock has triggers and nothing else:
+       – when the playbook's buy is already true today, write the buy a
+         few cents above today's price, so it fires on the next tick and
+         becomes the ordinary approval-gated proposal;
+       – a "Stop watching if below" trigger's reason opens with what a
+         close below it would say about core_belief, in one plain
+         sentence, then the chart, with the price. It never sells: the
+         holding's sell price comes with the buy;
+       – a trigger of your own (an earnings review, a price you'd look
+         again at) goes next to them, without "playbook";
        – THE STREET (the Analyst Coverage block: targets low / average /
-         high, the rating split, EPS revisions) informs every level and
+         high, the rating split, EPS revisions) informs every price and
          sets none; "target" means the Street's number, never ours. In
          conviction_rationale say where the price sits against the
          Street's average and high. A buy where the average target sits
@@ -629,25 +627,24 @@ every field; the judgment rules:
          above the price with estimates revised up in the last 4 weeks is
          a reason for conviction; a wide low–high spread says the Street
          is unsettled, not that the midpoint is right.
-     If no setup fits, name none: the view stays with no buy (NO LEVEL
+     If no playbook fits, name none: the view stays with no buy (NO PRICE
      WORTH WAITING FOR YET, below) — not a PASS, and not a buy at an
-     invented level.
-   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). A stock
-     past its post-earnings window in an uptrend is written on
-     MA_PULLBACK. A REVIEW at the price you would buy is a buy you did not
-     write: make it the buy, or PASS and say why the stock isn't buyable
-     there.
-   • NO LEVEL WORTH WAITING FOR YET (the entry window opens later, the
-     setup hasn't formed, you want to price it after the print) → write
-     no buy and no Stop watching line. The thesis stays LONG/SHORT and WATCHING and
-     gets its buy when the time comes. It MUST carry the wake that brings
-     it back, in \`triggers\`: a REVIEW at the price you'd look again, or
-     a short day-count review. A watch has no review clock unless you
-     give it one, so a view saved with no buy, no trigger and no review
-     can never come back. "I want to price the pullback rather than buy
-     here" IS a setup: write it on MA_PULLBACK. Put the when ("price this
-     after the January readout") in the rationale. A view with no buy
-     needs no setup_id.
+     invented price.
+   • A PLAYBOOK HAS A WINDOW AND PRECONDITIONS (its Needs). A stock past
+     its post-earnings window in an uptrend is written on MA_PULLBACK. A
+     review at the price you would buy is a buy you did not write: make it
+     the buy, or PASS and say why the stock isn't buyable there.
+   • NO PRICE WORTH WAITING FOR YET (the buying window opens later, the
+     chart hasn't formed, you want to price it after the report) → write
+     no buy and no "Stop watching if below". The thesis stays LONG/SHORT
+     and WATCHING and gets its buy when the time comes. It MUST carry the
+     review that brings it back, in \`triggers\`: a review at the price
+     you'd look again, or a short day-count review. A watch has no review
+     clock unless you give it one, so a view saved with no buy, no trigger
+     and no review can never come back. "I want to buy the pullback rather
+     than buy here" IS a playbook: write it on MA_PULLBACK. Put the when
+     ("price this after the January readout") in the rationale. A view
+     with no buy names no playbook (no setup_id).
      PASS is for a view the research does not support — not for a view
      that isn't ready to price. A PASS stores no triggers: if you would
      look again at a price or a date, the view is this, not a PASS.
@@ -896,7 +893,7 @@ export async function writerResearchPhase(
       }
     }
 
-    // The playbook's numbers as this account set them (DAV-273), and its lines.
+    // The playbook's numbers as this account set them (DAV-273), and its triggers.
     const setupOverrides = await loadSetupOverrides(analyst.accountId);
     const seatSetups = setupsForAnalyst(analyst.setupIds, setupOverrides);
     const playbooks = await loadPlaybooks(analyst.accountId);

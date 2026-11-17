@@ -34,7 +34,7 @@ import {
 import { GHOST_INPUT } from "@/components/analysts/AnalystConfigForm";
 import { PillRow } from "@/components/docs/trigger-bits";
 import { DIALOG_ACTIONS, type When } from "@/lib/agent/triggers/condition";
-import { WRITTEN_LABEL, WRITTEN_ON } from "@/lib/agent/knowledge/playbook-templates";
+import { WRITTEN_ON, type WrittenOn } from "@/lib/agent/knowledge/playbook-templates";
 import { cn } from "@/lib/utils";
 import {
   savePlaybookSetup,
@@ -70,6 +70,8 @@ const NUMBER_FIELDS: NumberField[] = [
     step: 0.25,
   },
 ];
+
+const WRITTEN_LABEL: Record<WrittenOn, string> = { WATCH: "On a watch", PROPOSAL: "With the buy", FILL: "At the fill" };
 
 function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();

@@ -34,7 +34,7 @@ const ANALYSTS = [
   },
 ] as const;
 
-/** The playbook's entry setups, one accordion each: what it is, what it needs, how it fails, and its playbook's triggers. */
+/** The playbooks with a buy of their own, one accordion each: what it is, what it needs, how it fails, and its triggers. */
 export function Playbook() {
   const setups = useDocsSetups().filter((s) => s.role === "ENTRY");
   if (setups.length === 0) return null;
@@ -69,8 +69,8 @@ export function Playbook() {
           {s.triggers.map((g) => (
             <DocFact key={g.label} label={g.label}>
               <Ul>
-                {g.lines.map((l, i) => (
-                  <li key={i}>{l}</li>
+                {g.sentences.map((t, i) => (
+                  <li key={i}>{t}</li>
                 ))}
               </Ul>
             </DocFact>

@@ -124,7 +124,7 @@ export function setupsMarkdown(): string {
   const out: string[] = [
     "# Setups",
     "",
-    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, the triggers its playbook writes, and when it has failed.`,
+    `**Every playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, the triggers each writes, and when it has failed.`,
     "",
     "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",

@@ -15,7 +15,7 @@ import { setupLines } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
-import { playbookLines } from "@/lib/agent/knowledge/playbooks";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -105,8 +105,8 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   it("the row carries the lines a fire checks for the plan's setup and horizon; the old block is gone", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", { templates: PLAYBOOK_TEMPLATES.PEAD }) }) } }));
     for (const line of setupLines(getSetup("PEAD")!, "decision")) expect(prompt).toContain(JSON.stringify(line));
-    // A watch's row carries the lines its buy comes with, as Settings → Playbook says them.
-    for (const line of playbookLines(PLAYBOOK_TEMPLATES.PEAD, "PROPOSAL")) expect(prompt).toContain(JSON.stringify(line));
+    // A watch's row carries the triggers that come with its buy, as Settings → Playbook says them.
+    for (const text of playbookTriggerText(PLAYBOOK_TEMPLATES.PEAD, "PROPOSAL")) expect(prompt).toContain(JSON.stringify(text));
     expect(prompt).toContain("- Trim 50% if above {priorHigh}: ");
     // The summary and the preconditions are the brief's and the writer's, not the row's.
     expect(prompt).not.toContain(JSON.stringify(setupLines(getSetup("PEAD")!)[0]));
