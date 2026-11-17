@@ -34,7 +34,7 @@ import {
 import { GHOST_INPUT } from "@/components/analysts/AnalystConfigForm";
 import { PillRow } from "@/components/docs/trigger-bits";
 import { DIALOG_ACTIONS, type When } from "@/lib/agent/triggers/condition";
-import { WRITTEN_ON, type WrittenOn } from "@/lib/agent/knowledge/playbook-templates";
+import { WRITTEN_LABEL, WRITTEN_ON } from "@/lib/agent/knowledge/playbook-templates";
 import { cn } from "@/lib/utils";
 import {
   savePlaybookSetup,
@@ -70,8 +70,6 @@ const NUMBER_FIELDS: NumberField[] = [
     step: 0.25,
   },
 ];
-
-const WRITTEN_LABEL: Record<WrittenOn, string> = { WATCH: "On a watch", PROPOSAL: "With the buy", FILL: "At the fill" };
 
 function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
@@ -252,18 +250,14 @@ function SetupSheet({
         <div className="space-y-6 px-4 pb-6">
           {/* ── The playbook's words — read-only ───────────────────────── */}
           <div className="space-y-4">
-            <PlaybookBlock label="Entry">{setup.entryText}</PlaybookBlock>
-            <PlaybookBlock label="Stop">{setup.stopText}</PlaybookBlock>
-            {setup.targetText ? <PlaybookBlock label="Target">{setup.targetText}</PlaybookBlock> : null}
-            <PlaybookBlock label="Time">{setup.timeText}</PlaybookBlock>
             {setup.preconditions.length > 0 ? (
               <PlaybookBlock label="Only when">
                 <Bullets items={setup.preconditions} />
               </PlaybookBlock>
             ) : null}
-            {setup.trail.length > 0 ? (
-              <PlaybookBlock label="Trailing a winner">
-                <Bullets items={setup.trail.map((t) => `${titleCase(t.horizon)} — ${t.text}`)} />
+            {setup.confirmation.length > 0 ? (
+              <PlaybookBlock label="A buy is confirmed by">
+                <Bullets items={setup.confirmation} />
               </PlaybookBlock>
             ) : null}
             {setup.failureSigns.length > 0 ? (

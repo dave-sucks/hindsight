@@ -384,10 +384,9 @@ export interface DocsSetup {
   role: "ENTRY" | "SCREEN";
   summary: string;
   preconditions: readonly string[];
-  entry: string;
-  stop: string;
-  /** Null when the setup has no upside rule: the plan is the buy and the floor. */
-  target: string | null;
-  time: string;
+  /** What confirms a buy on the day. */
+  confirmation: readonly string[];
+  /** Its playbook's triggers as the catalog seeds them, one list per moment they are written. */
+  triggers: ReadonlyArray<{ label: string; lines: readonly string[] }>;
   failureSigns: readonly string[];
 }

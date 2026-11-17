@@ -40,7 +40,7 @@ const docu: ThesisDecisionInput = {
   conviction_rationale: "The beat was real and the stock held the gap, but the multiple already moved a lot.",
 };
 
-const opts = { mode: "mint" as const, setups: PEAD_SEAT };
+const opts = { mode: "mint" as const };
 
 describe("DOCU 2026-09-09 — the real PEAD mint", () => {
   it("a buy with no setup named is accepted: a buy may be saved with no playbook", () => {
@@ -80,7 +80,7 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     const seat = setupsForAnalyst(["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]);
     const v = validateThesisDecision(
       { ...docu, setup_id: "BASE_BREAKOUT", triggers: levels(280, 255, 340) },
-      { mode: "mint", setups: seat },
+      { mode: "mint" },
     );
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
@@ -109,7 +109,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     remove_trigger_ids: ["buy-57.25", "floor-54.90", "target-66.50"],
     edit_triggers: [{ id: "review-20d", value: 54.48, rationale: "Anchor the review to the rising 20-day" }],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING" };
 
   it("is accepted: PEAD's window closed on day 3 and nothing sends it back for that", () => {
     const v = validateThesisDecision(hpe, opts);
@@ -161,7 +161,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       },
     ],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING" };
 
   it("is accepted with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);

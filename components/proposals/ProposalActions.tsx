@@ -502,7 +502,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                 {editIntent === "OPEN" ? (
                   <>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="proposal-edit-target">Target price</Label>
+                      <Label htmlFor="proposal-edit-target">Take-profit price</Label>
                       <Input
                         id="proposal-edit-target"
                         type="number"
@@ -513,7 +513,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                       />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label htmlFor="proposal-edit-stop">Stop price</Label>
+                      <Label htmlFor="proposal-edit-stop">Sell if below</Label>
                       <Input
                         id="proposal-edit-stop"
                         type="number"

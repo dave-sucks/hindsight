@@ -126,8 +126,6 @@ function research(): WriterResearchPhaseOutput {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
-    setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
-    chart: null,
   });
   return {
     ok: true,

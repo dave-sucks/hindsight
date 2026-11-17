@@ -17,6 +17,8 @@ import type { SetupId, TemplatePredicate } from "./setups";
 
 export const WRITTEN_ON = ["WATCH", "PROPOSAL", "FILL"] as const;
 export type WrittenOn = (typeof WRITTEN_ON)[number];
+/** When each list is written, in the words Settings → Playbook heads it with. */
+export const WRITTEN_LABEL: Record<WrittenOn, string> = { WATCH: "On a watch", PROPOSAL: "With the buy", FILL: "At the fill" };
 
 export interface Template {
   action: TriggerAction;
@@ -83,10 +85,12 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   EPISODIC_PIVOT: [
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the lines below.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: onClose("above", "{gapDayHigh}"), rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price.", writtenOn: "WATCH" },
-    { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle. Kept on the holding.", writtenOn: "WATCH" },
+    { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "Moves the levels to the finished gap day."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The gap day's low, at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
+    // The watch's lines come off at the fill, so the holding's own copy comes with the buy.
+    { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle, on the holding.", writtenOn: "PROPOSAL" },
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
   COMPOUNDER_ACCUMULATION: [

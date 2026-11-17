@@ -20,7 +20,6 @@ import { z } from "zod";
 import { jsonSchema, zodSchema, type Schema } from "ai";
 import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
 /** The fields the writer shares with record_thesis and update_thesis, defined once, in the writer's form: no number ranges on the score parts, as before (validateThesisDecision refuses a score out of range). */
@@ -117,13 +116,6 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** The setups this seat may write on (setupsForSeat): the reply to a view with nothing on it names MA_PULLBACK when it is one. */
-  setups?: Setup[];
-  /** The 20- and 50-day averages from the pull, for naming the pullback in that reply. */
-  chart?: {
-    sma20?: { value: number; rising: boolean } | null;
-    sma50?: { value: number; rising: boolean } | null;
-  } | null;
 }
 
 export interface DecisionValidationResult {
@@ -229,19 +221,8 @@ export function validateThesisDecision(
   // leaves zero wakes. Said here, in the writer's loop, with the level it
   // said it was waiting for — never a refusal at the save.
   if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
-    const averages = [
-      { label: "20-day", ma: opts.chart?.sma20 },
-      { label: "50-day", ma: opts.chart?.sma50 },
-    ]
-      .filter((c) => c.ma != null && c.ma.rising)
-      .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
-    const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
-    const waitingFor =
-      canPullback && averages.length
-        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, and a Stop watching line where the setup is over. `
-        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with a Stop watching line where the setup is over. ";
     errors.push(
-      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. ${waitingFor}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
+      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. Write what you are waiting for as triggers: the On a watch lines of the setup that fits (YOUR SETUPS), each filled from the chart. If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );
   }
 

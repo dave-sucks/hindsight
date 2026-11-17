@@ -26,6 +26,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { parseBuyLines } from "@/lib/proposals/buy-lines";
 import {
   placeMarketOrder,
   closePositionPartial,
@@ -135,6 +136,7 @@ export async function approveProposal(
           targetPrice: true,
           stopLoss: true,
           stopReason: true,
+          buyLines: true,
         },
       },
     },
@@ -470,6 +472,9 @@ export async function approveProposal(
       // The analyst's reason goes only with its own price.
       stopIsOwners: via?.tradeTicket === true || effectiveStop !== order.position.stopLoss,
       stopReason: order.position.stopReason,
+      // The lines the buy came with; a take-profit price you changed is yours.
+      buyLines: parseBuyLines(order.position.buyLines),
+      targetIsOwners: effectiveTarget !== order.position.targetPrice,
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

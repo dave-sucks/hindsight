@@ -110,13 +110,8 @@ function setupSection(s: Setup): string[] {
     "",
   ];
   if (s.preconditions.length) out.push("**Before it applies:**", "", ...s.preconditions.map((p) => `- ${p}`), "");
-  out.push(`**Buy:** ${s.entry.text}`);
-  if (s.entry.entryVia?.length) out.push(` Entry through ${s.entry.entryVia.map((id) => `\`${id}\``).join(", ")}.`);
-  out.push("", `**Floor:** ${s.stop.text}`, "");
-  if (s.target) out.push(`**Take profit:** ${s.target.text}`, "");
-  const trails = Object.entries(s.trail);
-  if (trails.length) out.push("**Trail:**", "", ...trails.map(([h, text]) => `- ${h.toLowerCase()}: ${text}`), "");
-  out.push(`**Time limit:** ${s.time.text}`, "");
+  if (s.entry.entryVia?.length) out.push(`Entered through ${s.entry.entryVia.map((id) => `\`${id}\``).join(", ")}.`, "");
+  if (s.entry.confirmation.length) out.push("**A buy is confirmed by:**", "", ...s.entry.confirmation.map((c) => `- ${c}`), "");
   for (const [on, label] of [["WATCH", "on a watch"], ["PROPOSAL", "with the buy"], ["FILL", "at the fill"]] as const) {
     const lines = s.triggers.filter((t) => t.writtenOn === on);
     if (lines.length) out.push(`**Triggers ${label}:**`, "", ...lines.map((t) => `- ${sentenceOf(t as unknown as Trigger)}. ${t.rationale}`), "");
@@ -129,7 +124,7 @@ export function setupsMarkdown(): string {
   const out: string[] = [
     "# Setups",
     "",
-    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.`,
+    `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, the triggers its playbook writes, and when it has failed.`,
     "",
     "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",

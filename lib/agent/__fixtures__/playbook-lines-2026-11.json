@@ -1,0 +1,225 @@
+{
+ "_note": "Production, read 2026-11-17. zts: the Writer's submit_thesis on ZTS (run cmwip25nl000r07iezpy2uvc5, 2026-11-16), a view no setup fits. aapl: the trigger run's buy on AAPL (run cmwf2qah4000608l8khv3gsmt, 2026-11-13), BASE_BREAKOUT: its place_trade call, the sale and upside it named (update_thesis's stop_basis and target_basis, written before the sale came with the buy), the chart its get_stock_data read, and the thesis's triggers that day. htfl: the Writer's submit_thesis on HTFL (claude-sonnet-4-6, 2026-11-17), from this PR's prompt on the ground-truth data recorded in run cmwfbv2ia000508l4qnbi09q8 (2026-11-13), via scripts/hero-case.ts; 3 of 3 runs wrote one playbook's On a watch lines exactly (two MA_PULLBACK, one PEAD), each marked.",
+ "zts": {
+  "run": {
+   "id": "cmwip25nl000r07iezpy2uvc5",
+   "startedAt": "2026-11-16T08:18:47.073Z",
+   "ticker": "ZTS"
+  },
+  "decision": {
+   "conviction": "LOW",
+   "conviction_rationale": "The business quality is genuine \u2014 70% gross margins, durable pricing power, and a blue-chip institutional cluster buying at a 37% discount to the 52-week high \u2014 but I cannot place an honest entry today. The market sold the beat on volume, Q4 estimates are being cut, and the chart is a confirmed downtrend. The Street's average target is $87, only 3.8% above the current price, and the high is $115 from just one analyst \u2014 not enough of a consensus runway to justify entry with no chart support. LOW conviction here means I'm tracking it, not trading it.",
+   "core_belief": "Zoetis owns the strongest franchise in animal health \u2014 70% gross margins, pricing power across pets and livestock, and a pipeline that just added a next-generation 75-day itch-relief antibody in Cytopoint Plus. The business is under real pressure right now from generic competition in dermatology, softer vet visit volumes, and a companion animal market that is repricing in a cost-conscious consumer environment, but those are cyclical and competitive headwinds, not franchise destruction. What has to stay true: gross margins hold at or above 70%, the livestock and diagnostics segments keep growing to offset companion animal softness, and new products like Cytopoint Plus extend pricing power in dermatology over time.",
+   "direction": "LONG",
+   "horizon": "TARGET",
+   "invalidation_conditions": [
+    "Full-year 2026 adjusted diluted EPS guidance cut below $6.15 at the Q4 report, signaling cost discipline has broken",
+    "U.S. companion animal revenue declines accelerate beyond 10% year-over-year in Q4 2026 or Q1 2027, as reported in the respective 10-Q",
+    "Gross margin falls below 68% on an adjusted basis in any reported quarter, indicating pricing power is eroding faster than expected",
+    "A further material impairment or write-down on the pipeline (beyond the $89M PetMedix charge already taken) disclosed in a future 8-K or 10-Q"
+   ],
+   "key_assumptions": [
+    "U.S. companion animal revenue stabilizes or grows year-over-year by Q1 2027, checked at the February 2027 earnings report",
+    "Gross margin stays at or above 70% on an adjusted basis, checked in each 10-Q filing",
+    "Cytopoint Plus achieves commercial launch and enters the revenue run-rate without safety or uptake setbacks, checked at the Q4 2026 report around February 2027",
+    "Full-year 2026 adjusted diluted EPS lands within the raised guidance range of $6.25\u2013$6.35, confirmed at the Q4 2026 report"
+   ],
+   "rationale": "Zoetis reported a clean adjusted EPS beat on November 5 \u2014 14\u201316% above estimates with a revenue beat and a full-year EPS guidance raise \u2014 but the stock gapped down 4.8% on 2.5\u00d7 volume on report day and fell another 3.8% the next session. That gap-down-on-a-beat is a hard disqualifier for the post-earnings drift setup: the market is saying the numbers weren't enough, and earnings revisions for Q4 are running 0 up / 5 down. The chart is a confirmed downtrend with the 200-day falling at $91.48, the Trend Template scores 2/8, and no moving-average pullback setup applies. I'm watching the stock, not buying it today. What would change that: the companion animal franchise stabilizing (Q1 2027 report, around February 10), the 200-day turning flat, and Q4 estimate revisions reversing upward. The 13F institutional cluster \u2014 Davis at $249M, Gayner 5\u00d7, Tweedy and First Eagle opening \u2014 and the new Cytopoint Plus USDA license keep the business interesting enough to track; those quality value managers typically buy durable franchises at multi-year discounts, not broken ones.",
+   "triggers": [
+    {
+     "action": "REVIEW",
+     "fireMode": "NEXT_MORNING",
+     "predicate": {
+      "is": "before",
+      "value": 7,
+      "watch": "report"
+     },
+     "rationale": "The February 2027 Q4 report is the first real test of whether companion animal is stabilizing and whether Cytopoint Plus is gaining traction \u2014 I want to look at the setup and estimates a week before it prints."
+    },
+    {
+     "action": "REVIEW",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "above",
+      "value": 89.29,
+      "watch": "price"
+     },
+     "rationale": "A close above the base pivot at $89.29 would mean the stock has reclaimed its November high on the way out of the downtrend \u2014 that's the first technical signal worth pricing a buy against."
+    }
+   ],
+   "variant_view": "The sell-side consensus is 27% Buy, and most of the neutral crowd is waiting for companion animal to stabilize before turning constructive. I think the Q3 institutional cluster \u2014 Davis, Gayner, Tweedy, First Eagle all arriving simultaneously \u2014 is smarter money than the sell-side on this, and they are pricing in a franchise that earns through the cycle. But their time horizon is 3\u20135 years, not 60 days, and I need a chart setup that isn't in a downtrend before I can trade alongside them on a swing basis."
+  }
+ },
+ "aapl": {
+  "run": "cmwf2qah4000608l8khv3gsmt",
+  "placeTrade": {
+   "ticker": "AAPL",
+   "company_name": "Apple Inc.",
+   "exchange": "NASDAQ NMS - GLOBAL MARKET",
+   "direction": "LONG",
+   "entry_price": 359.36,
+   "thesis_id": "cmum3bxkt000204l243g6s93c"
+  },
+  "named": {
+   "stop_loss": 325.33,
+   "stop_basis": "A close below the Nov. 3 swing low at $325.33 would mean the post-earnings shakeout low failed and this breakout did not stick.",
+   "target_price": 406.68,
+   "target_basis": "About $406.68 is the next measured upside area from the breakout and still sits just under the higher end of Street targets, even though it is above the average target."
+  },
+  "chart": {
+   "price": 359.36,
+   "atr14": {
+    "dollars": 8.39,
+    "pct": 2.34
+   },
+   "swings": {
+    "lastHigh": {
+     "price": 351.73,
+     "date": "2026-10-23"
+    },
+    "lastLow": {
+     "price": 325.33,
+     "date": "2026-11-03"
+    }
+   },
+   "base": {
+    "pivot": 355.38,
+    "low": 309.9,
+    "depthPct": 12.8,
+    "lengthBars": 46,
+    "startDate": "2026-09-03",
+    "endDate": "2026-11-06",
+    "lastContractionPct": 8.5,
+    "brokenOut": true
+   },
+   "range": {
+    "high20": 359.37,
+    "low20": 325.33,
+    "high52w": 359.37
+   }
+  },
+  "thesis": {
+   "id": "cmum3bxkt000204l243g6s93c",
+   "ticker": "AAPL",
+   "horizon": "COMPOUNDER",
+   "status": "WATCHING",
+   "direction": "LONG",
+   "conviction": "MEDIUM",
+   "setupId": "BASE_BREAKOUT",
+   "triggers": [
+    {
+     "id": "5a99553e-7397-4ea1-9592-778dcb8df8be",
+     "action": "ENTER",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "above",
+      "value": 359.36,
+      "watch": "price"
+     },
+     "rationale": "Apple has cleared the old breakout line and is still within the chase room, so I am re-anchoring the buy to today\u2019s price after a clean move to new highs; the old breakout area now acts as support.",
+     "writtenAt": "2026-11-13T14:30:47.394Z",
+     "lastFiredAt": "2026-11-13T14:30:17.640Z",
+     "cooldownDays": 1,
+     "writtenPrice": 359.09
+    },
+    {
+     "id": "218d2a18-5e36-4bb6-ab8e-856597eab4dd",
+     "action": "STOP_WATCHING",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "below",
+      "value": 325.33,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     "rationale": "The right line to protect this setup is now the Nov. 3 swing low at $325.33, where the post-earnings shakeout ended; below that, the breakout would have failed rather than simply wobbled.",
+     "cooldownDays": 1
+    },
+    {
+     "id": "1bbf7c78-d2af-4c1f-b043-9cc08cb0dd1a",
+     "action": "REVIEW",
+     "source": "AGENT",
+     "fireMode": "ASK_NOW",
+     "predicate": {
+      "is": "above",
+      "value": 406.68,
+      "watch": "price"
+     },
+     "rationale": "About $406.68 is the next measured upside area from the breakout and still sits just under the higher end of Street targets, even though it is above the average target.",
+     "cooldownDays": 1
+    }
+   ]
+  }
+ },
+ "htfl": {
+  "run": {
+   "id": "cmwfbv2ia000508l4qnbi09q8",
+   "price": 49.26
+  },
+  "decision": {
+   "direction": "LONG",
+   "rationale": "HeartFlow reported Q3 2026 yesterday \u2014 EPS of -$0.03 vs. the -$0.10 estimate, a 71% beat, with revenue up 57% year-over-year to $72.9M. The stock opened sharply higher but closed today down 17.7% to $49.31, giving back most of the gap. That gap-day collapse means the PEAD setup is gone \u2014 the market is not under-reacting to good news, it is actively selling it. Three analysts raised price targets today (Canaccord to $69, Stifel to $70, Baird to $68), which lifts the street's average well above the stale $48.50 consensus, and implies real upside from here \u2014 but the stock needs to find a floor first. The prior pass in August was on a weaker chart and slower business momentum; what's changed is 57% revenue growth, expanding gross margins (83.6%), and a raised full-year guide. The setup that fits now is a pullback-to-rising-average entry once the stock stabilizes. The 50-day at $51.94 is rising and roughly 5% above today's close of $49.31; a hold near that level on calming volume is the entry I want to price. I'm watching for the stock to find its footing near the 50-day before writing a buy.",
+   "horizon": "TARGET",
+   "conviction": "MEDIUM",
+   "conviction_rationale": "The business is genuinely accelerating \u2014 57% revenue growth, 83.6% gross margins, and a beat that drove three analyst target raises to $68\u201370 today. That puts the refreshed street high at $70 against today's $49.31, meaningful upside if the stock stabilizes. But the gap-day reversal (opened near $60, closed at $49) is a warning: the market wanted more, or sellers were waiting. I want to see the 50-day hold before committing capital. This is medium conviction until the chart confirms buyers are back.",
+   "core_belief": "HeartFlow makes AI-powered cardiac imaging software \u2014 specifically FFR-CT, which lets cardiologists assess coronary artery disease from a CT scan without an invasive catheterization. The company earns revenue from per-analysis fees and enterprise contracts with hospitals and health systems, growing fast as clinical guidelines and payer coverage expand. The case rests on continued adoption growth translating into revenue at 80%+ gross margins, with the path to profitability shortening each quarter.",
+   "variant_view": "Analysts who set targets before yesterday's report were anchored to $45\u201355; the three who updated today jumped to $68\u201370, suggesting the street is still catching up to 57% revenue growth and 83.6% gross margins. The consensus average ($48.50, stale) sits below today's price \u2014 the market doesn't yet price in the upgraded targets, and if revisions follow broadly, the stock has a wide lane to reprice upward.",
+   "setup_id": "MA_PULLBACK",
+   "key_assumptions": [
+    "Revenue growth stays above 40% year-over-year, checked at the Q4 2026 earnings report (expected February 2027)",
+    "Gross margin holds at or above 80%, checked in each 10-Q filing",
+    "Payer coverage and clinical guideline adoption continue to expand, checked via press releases and the Q4 2026 earnings call commentary"
+   ],
+   "invalidation_conditions": [
+    "Revenue growth decelerates below 30% year-over-year at the next earnings report, signaling adoption is plateauing",
+    "Gross margin falls below 78% in any quarterly 10-Q, indicating pricing pressure or mix shift toward lower-margin contracts",
+    "Full-year 2026 guidance is cut or withdrawn at any point, reversing the raise that drove the Q3 beat"
+   ],
+   "triggers": [
+    {
+     "predicate": {
+      "watch": "move",
+      "is": "near",
+      "value": 2,
+      "variable": "sma50"
+     },
+     "action": "ENTER",
+     "rationale": "The 50-day average is rising at $51.94 and was a support level before this week's sell-off; a pull back to within 2% of it on calming volume is the entry I want, confirming institutions are stepping back in.",
+     "playbook": "WATCH"
+    },
+    {
+     "predicate": {
+      "watch": "repeat",
+      "value": 7
+     },
+     "action": "REVIEW",
+     "rationale": "Check weekly that the 50-day is still rising and the pullback volume is fading \u2014 if distribution continues or the average turns flat, the setup is gone.",
+     "playbook": "WATCH"
+    },
+    {
+     "predicate": {
+      "match": "all",
+      "conditions": [
+       {
+        "watch": "price",
+        "is": "below",
+        "value": "sma50"
+       },
+       {
+        "watch": "volume",
+        "value": 1.5
+       }
+      ]
+     },
+     "action": "STOP_WATCHING",
+     "rationale": "A close below the rising 50-day on heavy volume would say the sell-off after earnings is distribution, not a shakeout \u2014 the business momentum story doesn't translate to a buyable stock here, and I'd stop watching.",
+     "playbook": "WATCH"
+    }
+   ]
+  }
+ }
+}

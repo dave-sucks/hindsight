@@ -17,6 +17,8 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { analystBrief, setupLines, universeLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
+import { playbookLines } from "@/lib/agent/knowledge/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
@@ -74,7 +76,7 @@ const DOORS = {
   daily: () => buildDailyRunSystemPromptV2(CATALYST, runInput(["MRNA", "IONS"])),
   trigger: () => tactical(CATALYST),
   chat: () => buildPrincipalSystemPrompt({ scopedAnalyst: CATALYST }),
-  writer: () => buildWriterResearchPrompt({ analyst: CATALYST, ticker: "DOCU", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-10-08", setups: setupsForAnalyst(CATALYST.setupIds) }),
+  writer: () => buildWriterResearchPrompt({ analyst: CATALYST, ticker: "DOCU", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-10-08", setups: setupsForAnalyst(CATALYST.setupIds), playbooks: (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES] }),
 };
 
 const count = (text: string, part: string) => text.split(part).length - 1;
@@ -177,12 +179,17 @@ describe("every door reads the same brief, once", () => {
 
 describe("the writer names a setup by id from the same lines", () => {
   const prompt = DOORS.writer();
-  it("its full block is setupLines, every line, for each setup it writes on", () => {
+  it("its full block is setupLines, every line, then its playbook's watch lines, for each setup it writes on", () => {
     for (const id of CATALYST.setupIds) {
-      const lines = setupLines(getSetup(id)!);
+      const lines = [...setupLines(getSetup(id)!), ...playbookLines(PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES], "WATCH")];
       expect(prompt).toContain(lines.join("\n  "));
       expect(lines[0].startsWith(`${id} — `)).toBe(true);
     }
+    // The watch lines read as Settings → Playbook says them, a chart level by its name.
+    expect(prompt).toContain('\n  - Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}: {"action":"ENTER","predicate":{"match":"all","conditions":[{"watch":"price","is":"above","value":"{pivot}","settings":{"close":true}}');
+    expect(prompt).toContain("{baseLow} chart.base.low — the base's low");
+    // No sale, take-profit, trail or time rule in words: those are the playbook's lines.
+    for (const word of ["Stop: ", "Take profit: ", "Manage", "Time: "]) expect([word, prompt.includes(word)]).toEqual([word, false]);
   });
   it("the brief's line for a setup is the full block's first line", () => {
     const first = setupLines(getSetup("MA_PULLBACK")!)[0];
@@ -193,27 +200,19 @@ describe("the writer names a setup by id from the same lines", () => {
 
 describe("setupLines", () => {
   const pullback = getSetup("MA_PULLBACK")!;
-  it("with a horizon, the one Manage line for it, and none when it has none (never another horizon's)", () => {
-    const breakout = getSetup("BASE_BREAKOUT")!;
-    expect(setupLines(breakout, "TRADE").filter((l) => l.startsWith("Manage"))).toEqual([`Manage: ${breakout.trail.TRADE}`]);
-    expect(setupLines(pullback, "TARGET").filter((l) => l.startsWith("Manage"))).toEqual([]);
-  });
-  it("without one, each horizon's, labelled", () => {
-    const lines = setupLines(pullback);
-    expect(lines.filter((l) => l.startsWith("Manage"))).toEqual(Object.entries(pullback.trail).map(([h, t]) => `Manage (${h}): ${t}`));
-  });
-  it("three cuts of one text: the brief's first line, the writer's all, a row's decision lines", () => {
-    const all = setupLines(pullback, "TARGET");
-    const decision = setupLines(pullback, "TARGET", "decision");
+  it("two cuts of one text: the brief's first line, the writer's all, a row's decision lines", () => {
+    const all = setupLines(pullback);
+    const decision = setupLines(pullback, "decision");
     expect(all[0]).toBe(`MA_PULLBACK — ${pullback.name}: ${pullback.summary}`);
     expect(all[1]).toBe(`Needs: ${pullback.preconditions.join("; ")}`);
     expect(decision).toEqual(all.slice(2));
-    expect(decision[0]).toMatch(/^Entry: /);
+    expect(decision[0]).toMatch(/^Confirm a buy by: /);
     expect(decision.at(-1)).toMatch(/^Failure looks like: /);
   });
-  it("carries the confirmation and the failure signs the trigger run reads", () => {
-    const lines = setupLines(pullback, "TARGET");
+  it("carries the confirmation and the failure signs the trigger run reads, and no trigger rule in words", () => {
+    const lines = setupLines(pullback);
     expect(lines).toContain(`Failure looks like: ${pullback.failureSigns.join("; ")}`);
-    expect(lines.find((l) => l.startsWith("Entry: "))).toContain(`Confirm a buy by: ${pullback.entry.confirmation.join("; ")}`);
+    expect(lines.find((l) => l.startsWith("Confirm a buy by: "))).toContain(pullback.entry.confirmation.join("; "));
+    expect(lines.filter((l) => /^(Entry|Stop|Take profit|Manage|Time)/.test(l))).toEqual([]);
   });
 });

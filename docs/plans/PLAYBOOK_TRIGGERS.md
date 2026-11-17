@@ -10,7 +10,7 @@
 2. **A playbook is chosen per thesis.** The Writer picks it from the analyst's list. It's saved on the thesis and shown there. A playbook is a stored list of trigger templates, which you edit in Settings → Playbook with the same trigger form the analyst's Triggers tab uses. Its templates write ordinary stock triggers, exactly as if you added them by hand. Changing a playbook later doesn't change stocks already written. The tables below are the templates each playbook starts with.
 3. **On a watch there are three kinds of trigger:** Buy if, Review if, and Stop watching if. Stop watching is its own stored action: it ends the watch and never sells. When it mints the thesis, the Writer fills the watch templates' prices from the chart.
 4. **The buy proposal.** The trigger run fills the holding's sell prices from the playbook's templates: "Sell if below $S", plus the take-profit if the playbook has one. Each price comes with its reason. `place_trade` takes them, and the size is the risk for the trade ÷ (buy − S). You see them on the proposal and change them in Edit & Approve. An agent's buy needs the stock's playbook; a stock with none is a pass, or gets a playbook first. Your own Trade ticket is unchanged.
-5. **At the fill**, the buy lines, Stop watching lines and buying-window reviews come off. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
+5. **At the fill**, the playbook's watch lines come off and its holding lines go on: the buy lines, the Stop watching lines and every line the Writer wrote from the playbook's watch list (each is marked) come off; a line written by hand stays. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
 6. **After a sale back to watch**, the Sell lines come off and the watch templates go on again.
 
 **Writing the lines.**
@@ -30,7 +30,7 @@
 
 ## The six playbooks the analysts use
 
-In the holding tables, "Proposal" means the trigger run fills the price when it proposes the buy. "Template" means the fill writes the line as listed. "Kept" means a watch line that stays through the fill.
+In the holding tables, "Proposal" means the trigger run fills the price when it proposes the buy. "Template" means the fill writes the line as listed. "Kept" means the holding has the watch's line too: the fill takes every watch line off, so a kept clock is written again at the fill and any other kept line comes with the buy (filled by the run).
 
 ### Pre-catalyst run-up (`PRE_CATALYST`): Catalyst Event PM
 

@@ -1,6 +1,6 @@
 # Setups
 
-**Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.
+**Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, the triggers its playbook writes, and when it has failed.
 
 This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
 
@@ -20,15 +20,11 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 - Earnings at least 10 days away
 - A risk-on market: breakouts fail most in a cautious one (playbook Part C)
 
-**Buy:** Close above the pivot on 1.5× volume, not more than 5% past it.
+**A buy is confirmed by:**
 
-**Floor:** Under the last contraction's low, or the base low if that is within 8%. At least 1 ATR from entry. If structure needs a wider stop, the position is smaller — the stop is not wider.
-
-**Trail:**
-
-- trade: Stop to breakeven at +1R; close under the 21-day EMA.
-
-**Time limit:** No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.
+- A close above the pivot, not an intraday poke (intraday crosses fail about half the time)
+- Volume ≥ 1.5× average on the breakout day
+- No more than 5% past the pivot
 
 **Triggers on a watch:**
 
@@ -66,17 +62,11 @@ A leader that already ran pulls back in an orderly way and surfs its rising shor
 - Orderly pullback: higher lows, tightening range, riding the rising 10/20-day
 - Dollar volume enough to fill the seat's size
 
-**Buy:** Close above the flag high on volume.
+**A buy is confirmed by:**
 
-**Floor:** The entry day's low, never wider than one ADR. If the structure forces a wider stop, the position is smaller.
-
-**Take profit:** No fixed target: sell a third to a half after 3–5 days of progress, stop to breakeven, trail the rest.
-
-**Trail:**
-
-- trade: Close under the 10-day (aggressive) or 20-day (patient).
-
-**Time limit:** If it hasn't moved in 3–5 sessions, it's wrong; exit.
+- Range expands upward out of the flag
+- Volume ≥ 1.5× the 20-day average volume on the day it clears
+- Price above the 10- and 20-day
 
 **Triggers on a watch:**
 
@@ -111,29 +101,23 @@ A neglected stock reprices on unexpected news with volume many times average; in
 - Volume ≥ 3× average (ideally 10×)
 - Growth numbers mid-double-digit or better; liquidity floor met
 
-**Buy:** A close above the gap-day high, or a day-2 hold above the gap-day midpoint.
+**A buy is confirmed by:**
 
-**Floor:** The gap-day low. A close below the gap's midpoint is an early warning; a filled gap ends the setup.
-
-**Take profit:** Partial at 3–5 days of progress; the trail decides the rest.
-
-**Trail:**
-
-- trade: Close under the 10- or 20-day.
-
-**Time limit:** Partial at 3–5 sessions; the trail decides the rest.
+- The gap holds (day 2 closes above the gap-day midpoint)
+- Volume stays heavy
 
 **Triggers on a watch:**
 
 - Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the lines below.
 - Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
-- Review if below {gapDayMid} · only on the close. The gap day's middle. Kept on the holding.
+- Review if below {gapDayMid} · only on the close. The gap day's middle.
 - Review every 7 days. Moves the levels to the finished gap day.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
 
 **Triggers with the buy:**
 
 - Sell if below {sellPrice}. The gap day's low, at least 1 ATR under the buy.
+- Review if below {gapDayMid} · only on the close. The gap day's middle, on the holding.
 
 **Triggers at the fill:**
 
@@ -161,17 +145,10 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 - Not already 10%+ past the gap
 - Never a beat the market sold: a beat that gaps down is a fade signal, not a buy
 
-**Buy:** Days 1–3 after the print, above the gap-day low — usually already true, so the entry is set at the current price. After day 3 the drift entry is gone; a name still worth owning in an uptrend is written on the pullback setup (MA_PULLBACK).
+**A buy is confirmed by:**
 
-**Floor:** The gap-day low or −8% from entry, whichever is tighter — but not inside 1 ATR.
-
-**Take profit:** A partial at the prior high; the trail decides the rest.
-
-**Trail:**
-
-- trade: Close under the 20-day.
-
-**Time limit:** Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.
+- Gap held
+- Surprise and guidance confirmed from the release or transcript
 
 **Triggers on a watch:**
 
@@ -207,17 +184,10 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 - Relative strength vs SPY positive over 3 months (chart.relativeStrength.vsSpy.m3 > 0)
 - The pullback comes on below-average volume (healthy), not above (distribution)
 
-**Buy:** Within 2% of the rising 20- or 50-day. The buy level is the average itself; the tactical run confirms the touch held (a close above the prior day's high). This is the entry for a stock that never dips 10%.
+**A buy is confirmed by:**
 
-**Floor:** Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume ends the setup.
-
-**Take profit:** A partial at the prior high; the trail decides the rest.
-
-**Trail:**
-
-- catalyst: The structural stop until the event.
-
-**Time limit:** 10 sessions to reclaim the prior high, else review.
+- The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire
+- The pullback came on below-average volume
 
 **Triggers on a watch:**
 
@@ -252,17 +222,9 @@ A stock above its 200-day that flushes hard for a few days tends to snap back wi
 - Price above the 200-day
 - A sharp 2–5 day flush
 
-**Buy:** Above the 200-day with RSI(2) under 10; buy the close.
+**A buy is confirmed by:**
 
-**Floor:** No fixed stop in the original; time and the 200-day are the stops.
-
-**Take profit:** Exit on a close above the 5-day average or RSI(2) > 65.
-
-**Trail:**
-
-- trade: Close above the 5-day average or RSI(2) > 65.
-
-**Time limit:** Snaps back within 1–5 sessions or it's out.
+- Buy the close
 
 **Triggers on a watch:**
 
@@ -296,12 +258,7 @@ Stocks near their 52-week high and ahead of the market keep outperforming for up
 - Within 5% of the 52-week high (chart.range.pctBelow52wHigh ≤ 5)
 - Beating SPY over 3–12 months; momentum is negative under 1 month — the window matters
 
-**Buy:** A screen: it says which names; D1/D2/D5 say when. As a condition: within 5% of the 52-week high and ahead of the S&P over 3 months.
- Entry through `BASE_BREAKOUT`, `MOMENTUM_FLAG`, `MA_PULLBACK`.
-
-**Floor:** From the entry setup used.
-
-**Time limit:** From the entry setup used.
+Entered through `BASE_BREAKOUT`, `MOMENTUM_FLAG`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
@@ -319,23 +276,19 @@ A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, n
 
 **Before it applies:**
 
-- A dated event 21–70 days out (Thesis.catalystDate) — the analyst's own event-date review already wakes the run before the date; do NOT write a copy of it on the thesis, a trigger on the thesis overrides the analyst's and freezes its number
+- A dated event 21–70 days out (Thesis.catalystDate)
 - A positive advisory-committee vote if one happened
 - Cash runway past the decision
 - Sub-$1B single-asset names: supplemental approvals and label expansions only
 
-**Buy:** Inside the window (21–70 days out) this setup always carries a buy level — the first of these the chart offers. 1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. 2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". An upside rule only if you believe it (a trim at the prior high, a review at the Street's average target); the plan is the buy and the stop. More than 70 days out, do not guess a level: park it with the date the window opens and the review that wakes it then.
- Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
+Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
-**Floor:** Structural but advisory: gaps skip stops. Size is the stop.
+**A buy is confirmed by:**
 
-**Take profit:** Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.
-
-**Trail:**
-
-- catalyst: The structural stop until the event; the event is the exit.
-
-**Time limit:** The event, or T+30. A buy that has not filled with 21 days to go is set down — the run-up did not happen, which is this setup's own first failure sign.
+- Never the day before the event
+- Never inside the last 21 days before the date — by then the run-up either happened or did not
+- A falling chart is never bought at the market: the level sits ABOVE the current price and the run-up has to start before we are in it
+- No Trend Template: a stock drifting into its decision will not pass one
 
 **Triggers on a watch:**
 
@@ -373,14 +326,7 @@ Three or more insiders buying within a month predicts positive returns over 6–
 - 3+ insiders buying on the open market within 30 days, ideally including independent directors
 - Stronger in small and mid caps
 
-**Buy:** A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: insider buying (at least 3 open-market buyers in 30 days) → REVIEW, with the buyers named on the fire.
- Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
-
-**Floor:** Below the lowest insider purchase price or −12%, whichever is tighter.
-
-**Take profit:** The effect runs 6–12 months; the entry setup's exits apply.
-
-**Time limit:** 6–12 months for the effect; the entry setup's clock for the trade.
+Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
@@ -403,13 +349,9 @@ Rising estimates extend post-earnings drift; the Zacks Rank in one line.
 **Before it applies:**
 
 - Consensus EPS estimates rose in the last 30 days, especially right after a print
+- Cite a revision only from a source you actually read: no data we hold has the revision number
 
-**Buy:** A screen and D4's third confirmation — but no plan we hold serves estimate history (Finnhub /stock/eps-estimate refuses; probed 2026-09-11), so there is no revision number to read and no trigger kind for it. Cite a revision only from a source you actually read.
- Entry through `PEAD`, `MA_PULLBACK`.
-
-**Floor:** From the entry setup used.
-
-**Time limit:** From the entry setup used.
+Entered through `PEAD`, `MA_PULLBACK`.
 
 **When it's failing:**
 
@@ -426,14 +368,12 @@ A business bought at conviction size and held through volatility, entered on con
 - Quality: ROIC > 20% for years, high stable gross margin for its industry, FCF margin ≥ 15%, high reinvestment at high returns, aligned management
 - A business that will be structurally more valuable in 3–5 years
 
-**Buy:** Whichever comes first: a base breakout, a reclaim of the 50-day, or a pullback that holds the 50-day. A stock at new highs on a working thesis is working, not extended; with no pullback in 30 days of uptrend, take the breakout. When one is already true, set the entry at the current price.
- Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
+Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
-**Floor:** Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a 15% give-back are reviews.
+**A buy is confirmed by:**
 
-**Take profit:** A 3–5 year valuation case; trims only at valuation extremes.
-
-**Time limit:** A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.
+- Thesis intact; volume matters less than for a trade
+- A stock at new highs on a working thesis is working, not extended
 
 **Triggers on a watch:**
 
@@ -468,12 +408,7 @@ Stocks move in groups and leadership rotates; three longs in one group are one b
 - The stock's group is Leading or Improving by relative strength vs SPY and its slope
 - Buy the leader in a leading group; skip the best chart in a lagging group
 
-**Buy:** A screen and a regime input. (A group-rank trigger kind is not in the plan yet.)
- Entry through `BASE_BREAKOUT`, `MA_PULLBACK`.
-
-**Floor:** From the entry setup used.
-
-**Time limit:** From the entry setup used.
+Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **When it's failing:**
 

@@ -12,13 +12,13 @@
  * door's own.
  *
  * A setup is written once, by `setupLines`. The brief takes its first line;
- * the writer takes all of them.
+ * the writer takes all of them, with its playbook's watch lines.
  *
  * Pure and safe in the browser: modes.ts, which client components import,
  * renders the brief for the chat.
  */
 import { capacityLine, type AnalystCapacity } from "@/lib/agent/capacity";
-import { getSetup, isNamedSetup, type Horizon, type Setup } from "@/lib/agent/knowledge/setups";
+import { getSetup, isNamedSetup, type Setup } from "@/lib/agent/knowledge/setups";
 import type { SetupOverrides } from "@/lib/agent/knowledge/setup-overrides";
 import { positionTotalCap } from "@/lib/agent/position-sizing";
 
@@ -81,28 +81,19 @@ function chosenSetups(analyst: BriefAnalyst): Setup[] {
 }
 
 /**
- * One setup, written once, in three cuts. "all" (the writer's block): what it
- * is, what must be true, the entry and how a buy is confirmed, the stop, the
- * target, how it is managed, its time limit and what failure looks like. The
- * brief takes the first line of it. "decision" (a row's `setup_lines`): the
- * lines a fire checks, from the entry on; the summary is in the brief and the
- * preconditions are the writer's. With a horizon, the one Manage line for it (none when it has none);
- * without, each horizon's, labelled.
+ * One setup's words, written once, in two cuts. "all" (the writer's block):
+ * what it is, what must be true, how a buy is confirmed, and what failure
+ * looks like. The brief takes the first line of it. "decision" (a row's
+ * `setup_lines`): the lines a fire checks, from the confirmation on. Its buy
+ * and every other trigger are its playbook's templates, which each door
+ * prints beside these (playbookLines).
  */
-export function setupLines(setup: Setup, horizon?: string | null, cut: "all" | "decision" = "all"): string[] {
+export function setupLines(setup: Setup, cut: "all" | "decision" = "all"): string[] {
   const confirm = setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding";
   const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the level` : "";
-  const trail = setup.trail as Partial<Record<string, string>>;
-  const manage = horizon
-    ? [trail[horizon]].filter((t): t is string => !!t).map((t) => `Manage: ${t}`)
-    : (Object.keys(trail) as Horizon[]).map((h) => `Manage (${h}): ${trail[h]}`);
   return [
     ...(cut === "all" ? [`${setup.id} — ${setup.name}: ${setup.summary}`, `Needs: ${setup.preconditions.join("; ")}`] : []),
-    `Entry: ${setup.entry.text} Confirm a buy by: ${confirm}${chase}`,
-    `Stop: ${setup.stop.text}`,
-    ...(setup.target ? [`Take profit: ${setup.target.text}`] : []),
-    ...manage,
-    `Time: ${setup.time.text}`,
+    `Confirm a buy by: ${confirm}${chase}`,
     `Failure looks like: ${setup.failureSigns.join("; ")}`,
   ];
 }

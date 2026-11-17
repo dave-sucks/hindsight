@@ -157,7 +157,7 @@ Answer, in order:
 5. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (\`variant_view\`).
 
 What you can do:
-- Buy, only when every check above holds: place_trade (it sizes the buy), its \`sell_if_below\` the holding's sale from the setup's Stop line (\`setup_lines\`), under structure on the chart, with \`sell_reason\`; then one update_thesis. The stock's Stop watching line ends the watch and is not the sale.
+- Buy, only when every check above holds: place_trade (it sizes the buy) with the playbook's With the buy lines (\`setup_lines\`), each filled from the chart with its reason: its Sell if below as \`sell_if_below\` and \`sell_reason\`, the rest in \`with_buy\`. No playbook: only the sale, under structure on the chart. Then one update_thesis. The stock's Stop watching line ends the watch and is not the sale.
 - Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
 

@@ -416,7 +416,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
   });
 
-  it("lists the seat's setups with their entry, stop and target rules", () => {
+  it("lists the seat's setups with their entry rules and their playbooks' watch lines", () => {
     expect(prompt).toContain("YOUR SETUPS — the playbooks you write a stock's triggers on");
     expect(prompt).toMatch(/^PEAD — /m);
     expect(prompt).toMatch(/^MA_PULLBACK — /m);
@@ -424,7 +424,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
   });
 
   it("buying now is an entry at the price — the old rule is gone", () => {
-    expect(prompt).toContain("that is how you buy\n         now");
+    expect(prompt).toContain("that is how you buy now");
     expect(prompt).not.toMatch(/has NOT\s+reached/);
     expect(prompt).not.toContain("never a buy level parked on today's price");
     expect(prompt).not.toContain("MSFT go $418 → $497");

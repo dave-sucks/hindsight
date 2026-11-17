@@ -315,12 +315,10 @@ function priceLine(row: Row): string | null {
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 
 function setupLine(row: Row): string | null {
-  const s = obj(row.setup) as { id?: string; name?: string; failureSigns?: string[]; manage?: string | null; time?: string | null } | null;
+  const s = obj(row.setup) as { id?: string; name?: string; failureSigns?: string[] } | null;
   if (!s) return null;
   const parts = [[s.id, s.name].filter(Boolean).join(", ") + "."];
   if (s.failureSigns?.length) parts.push(`Failure looks like: ${s.failureSigns.join("; ")}.`);
-  if (s.manage) parts.push(`Manage: ${s.manage}`);
-  if (s.time) parts.push(`Time: ${s.time}`);
   return parts.join(" ");
 }
 

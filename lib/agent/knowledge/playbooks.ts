@@ -9,12 +9,13 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { triggerSchema } from "@/lib/agent/triggers/schema";
-import { actionProblem, refusalOf, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { MEASURES, actionProblem, refusalOf, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { TriggerOp } from "@/lib/agent/triggers/ops";
-import { WRITTEN_ON, type Template } from "./playbook-templates";
-import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type TemplatePredicate } from "./setups";
+import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
+import { WRITTEN_LABEL, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
+import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type TemplatePredicate } from "./setups";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
@@ -50,6 +51,34 @@ export function playbookTemplates(account: { playbooks: unknown; playbooksSeeded
 
 export const PLAYBOOK_UNREAD = "The playbook couldn't be read, so none of its triggers were written";
 
+/** A template's condition as an agent writes it: a line a measure reads in place of a number goes in `value`. */
+function asWritten(p: TemplatePredicate): unknown {
+  if ("match" in p) return { match: p.match, conditions: p.conditions.map(asWritten) };
+  const { variable, ...rest } = p;
+  return variable && MEASURES[p.watch]?.variables?.mode === "replace" ? { ...rest, value: variable } : p;
+}
+
+/**
+ * One of a playbook's lists, for an agent's prompt: each template as the
+ * trigger sentence Settings → Playbook shows, the trigger as the agent writes
+ * it, and its reason; then where each {chart level} it names comes from. The
+ * agent fills every number.
+ */
+export function playbookLines(templates: Template[] | null, on: WrittenOn): string[] {
+  if (templates == null) return ["The playbook couldn't be read: write no line from it."];
+  const mine = templates.filter((t) => t.writtenOn === on);
+  if (!mine.length) return [`${WRITTEN_LABEL[on]}: none.`];
+  const marks = [...new Set(mine.flatMap((t) => templatePlaceholders(t.predicate)))] as Placeholder[];
+  return [
+    `${WRITTEN_LABEL[on]}:`,
+    ...mine.map((t) => {
+      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}) };
+      return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
+    }),
+    ...(marks.length ? [`Where each number comes from: ${marks.map((m) => `${m} ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
+  ];
+}
+
 /**
  * A fill's lines from the playbook: each fill template as an ordinary stock
  * trigger, except where the stock already has a line of the same kind. That
@@ -63,7 +92,7 @@ export function fillTemplateOps(templates: Template[] | null, stored: Trigger[],
   const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
   for (const { writtenOn, predicate, ...rest } of templates) {
     if (writtenOn !== "FILL") continue;
-    const trigger: Trigger = { ...rest, id: mintId(), predicate: predicate as Trigger["predicate"], source: "DEFAULT" };
+    const trigger: Trigger = { ...rest, id: mintId(), predicate: predicate as Trigger["predicate"], source: "DEFAULT", playbook: "FILL" };
     const there = taken.get(triggerSlot(trigger));
     if (there) notWritten.push({ op: "kept", id: there.id, text: `Kept ${sentenceOf(there)}; the playbook's ${sentenceOf(trigger)} not written` });
     else ops.push({ op: "add", trigger });

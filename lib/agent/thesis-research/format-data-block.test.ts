@@ -95,7 +95,7 @@ describe("formatDataBlock — the chart, in dollars", () => {
   });
 
   it("tells the writer the levels are where its setup prices come from — and a setup true today is an entry at the price (PR 4)", () => {
-    expect(out).toMatch(/the levels your setup's entry, stop and target come from/i);
+    expect(out).toMatch(/the levels your playbook's lines are filled from/i);
     expect(out).not.toMatch(/Today's price is not an entry/i);
   });
 

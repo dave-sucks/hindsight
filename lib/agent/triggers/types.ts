@@ -129,6 +129,14 @@ export type Trigger = {
    * is not.
    */
   source?: "DEFAULT" | "AGENT" | "PRINCIPAL";
+  /**
+   * Written from one of the stock's playbook's template lists (Settings →
+   * Playbook): its watch lines (the Writer), the lines that come with the
+   * buy (the proposal), or its fill lines. At the fill the WATCH lines come
+   * off with the buy and Stop watching lines; a line without it was written
+   * by hand and stays.
+   */
+  playbook?: "WATCH" | "PROPOSAL" | "FILL";
 };
 
 /**

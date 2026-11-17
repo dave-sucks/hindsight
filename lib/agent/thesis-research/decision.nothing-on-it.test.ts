@@ -12,7 +12,6 @@
  * zero buy plans.
  */
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
-import { setupsFor } from "./decision.test-helpers";
 
 /** The writer's submit_thesis input, verbatim from the run's messages. */
 const LUXE_SUBMIT = {
@@ -53,28 +52,18 @@ const LUXE_SUBMIT = {
 } as unknown as ThesisDecisionInput;
 
 /** The chart block the writer was given that run. */
-const LUXE_CHART = {
-  atr14: 0.53,
-  pivot: 8.25,
-  brokenOut: true,
-  sma20: { value: 7.75, rising: false },
-  sma50: { value: 7.91, rising: true },
-  daysSinceReport: 2,
-};
-
 const check = (d: ThesisDecisionInput) =>
-  validateThesisDecision(d, { mode: "mint", currentPrice: 9.48, setups: setupsFor(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), chart: LUXE_CHART });
+  validateThesisDecision(d, { mode: "mint", currentPrice: 9.48 });
 
 describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
-  it("is sent back with the pullback it said it was waiting for, priced from the chart", () => {
+  it("is sent back to its setup's watch lines, with no price of the code's", () => {
     const r = check(LUXE_SUBMIT);
     expect(r.ok).toBe(false);
     const msg = r.errors.join(" | ");
     expect(msg).toMatch(/can never come back/);
-    expect(msg).toMatch(/MA_PULLBACK/);
-    expect(msg).toContain("$7.91 (the rising 50-day)");
-    expect(msg).not.toMatch(/7\.75/); // the 20-day is falling — not a level to buy
-    expect(msg).toContain("a Stop watching line where the setup is over");
+    expect(msg).toContain("the On a watch lines of the setup that fits (YOUR SETUPS), each filled from the chart");
+    // The playbook's lines carry every price: the reply names none from the chart.
+    expect(msg).not.toMatch(/7\.91|7\.75|\$\d/);
     expect(msg).not.toMatch(/floor|ATR/);
     expect(msg).toContain('{watch:"repeat", value: days}');
   });

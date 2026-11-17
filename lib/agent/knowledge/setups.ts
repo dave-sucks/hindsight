@@ -1,17 +1,16 @@
 /**
- * setups.ts — the setup catalog: the buy patterns a plan is built from.
+ * setups.ts — the setup catalog: the buy patterns a playbook is.
  *
  * docs/plans/TRADING_PLAYBOOK.md Part D (D1–D12) as data. Each entry says
  * what the pattern is, which horizons and seats it fits, what must be true
- * first, the entry as trigger conditions with placeholders the writer fills
- * from the chart (lib/market-data/price-structure.ts), how the stop and
- * target are set (Part E), the size note, the trail by horizon, the time
- * limit, and what failure looks like.
+ * first, how a buy is confirmed, the sale's two numbers (the widest and the
+ * closest, in ATR), the size note and what failure looks like. Its triggers
+ * are its templates (`triggers`, the seed of Settings → Playbook,
+ * ./playbook-templates); every rule a trigger carries lives there, never here.
  *
  * Read through read_knowledge_library (topic "setup"). A thesis records the
  * pattern it was written on in `Thesis.setupId`. Nothing here refuses
- * anything: it is the knowledge the writer (PR 4), tactical run (PR 6),
- * screens (PR 9) and scorecard (PR 11) consume. DAV-244.
+ * anything.
  *
  * The numbers are the playbook's, blessed by Dave on DAV-245 (2026-09-11).
  * They live at the top of this file so one edit changes them everywhere.
@@ -20,7 +19,7 @@
 
 import { etTradingDayDate } from "@/lib/market-hours";
 import { applySetupOverride, type SetupOverrides } from "./setup-overrides";
-import { whenText, type Condition, type When } from "@/lib/agent/triggers/condition";
+import type { Condition, When } from "@/lib/agent/triggers/condition";
 import { PLAYBOOK_TEMPLATES, type Template } from "./playbook-templates";
 
 // ── The numbers (DAV-245 ruling 1: playbook defaults accepted) ───────────
@@ -112,9 +111,7 @@ export interface Setup {
   /** What must be true before the pattern applies (trend, regime, fundamentals). */
   preconditions: string[];
   entry: {
-    /** The condition, with placeholders. Null for a SCREEN. */
-    template: TemplatePredicate | null;
-    /** For a SCREEN: the ENTRY setups whose condition is used. */
+    /** For a SCREEN: the ENTRY setups whose lines are used. */
     entryVia?: SetupId[];
     /** What else must be true on the day (checked by the tactical run). */
     confirmation: string[];
@@ -128,25 +125,12 @@ export interface Setup {
      * plan the drift rules could price).
      */
     windowDays?: [number, number];
-    text: string;
   };
-  stop: {
-    /** The structure the stop sits under, in order of preference. */
-    structure: string[];
-    /** Widest the stop may be from entry, %, where the pattern caps it. */
-    maxPct: number | null;
-    minAtr: number;
-    text: string;
-  };
-  /** The upside rule, only where the setup has one that is an action (a partial, the trail, a time or valuation exit). None: the plan is the buy and the floor. */
-  target?: { text: string };
+  /** The sale's numbers, read on the sale a buy names (saleRuleProblem): the widest from the buy, %, on a TRADE (null = no cap), and the closest, in ATR(14). */
+  sale: { maxPct: number | null; minAtr: number };
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
   sizing: string;
-  /** A TRADE or CATALYST holding's exit line. A TARGET or COMPOUNDER holding sells by its analyst's and the account's rules, so it has none. */
-  trail: Partial<Record<Horizon, string>>;
-  /** The time limit in words. The review it writes is a fill template in `triggers`. */
-  time: { text: string };
   failureSigns: string[];
   /** The playbook's paragraph, condensed. */
   summary: string;
@@ -305,29 +289,16 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "A risk-on market: breakouts fail most in a cautious one (playbook Part C)",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }, { watch: "price", is: "below", value: "{pivotChase}" }] },
       confirmation: [
         `A close above the pivot, not an intraday poke (intraday crosses fail about half the time)`,
         `Volume ≥ ${BREAKOUT_VOLUME_RATIO}× average on the breakout day`,
         `No more than ${CHASE_LIMIT_PCT}% past the pivot`,
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: `Close above the pivot on ${BREAKOUT_VOLUME_RATIO}× volume, not more than ${CHASE_LIMIT_PCT}% past it.`,
     },
-    stop: {
-      structure: ["the last contraction's low", "the base low, if within the max"],
-      maxPct: TRADE_STOP_MAX_PCT,
-      minAtr: MIN_STOP_ATR,
-      text: `Under the last contraction's low, or the base low if that is within ${TRADE_STOP_MAX_PCT}%. At least ${MIN_STOP_ATR} ATR from entry. If structure needs a wider stop, the position is smaller — the stop is not wider.`,
-    },
+    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
-    trail: {
-      TRADE: "Stop to breakeven at +1R; close under the 21-day EMA.",
-    },
-    time: {
-      text: "No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.",
-    },
     failureSigns: [
       "Closes back below the pivot within days, on volume",
       "Breakout-day volume below average",
@@ -349,24 +320,12 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Dollar volume enough to fill the seat's size",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "price", is: "above", value: "{flagHigh}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }] },
       confirmation: ["Range expands upward out of the flag", `Volume ≥ ${BREAKOUT_VOLUME_RATIO}× the 20-day average volume on the day it clears`, "Price above the 10- and 20-day"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: "Close above the flag high on volume.",
     },
-    stop: {
-      structure: ["the entry day's low"],
-      maxPct: TRADE_STOP_MAX_PCT,
-      minAtr: MIN_STOP_ATR,
-      text: "The entry day's low, never wider than one ADR. If the structure forces a wider stop, the position is smaller.",
-    },
-    target: {
-      text: "No fixed target: sell a third to a half after 3–5 days of progress, stop to breakeven, trail the rest.",
-    },
+    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4); 0.25–1% of account at risk.",
-    trail: { TRADE: "Close under the 10-day (aggressive) or 20-day (patient)." },
-    time: { text: "If it hasn't moved in 3–5 sessions, it's wrong; exit." },
     failureSigns: ["No follow-through in 3–5 days", "Closes back inside the flag"],
     summary:
       "A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No seat runs this today (DAV-245 ruling 3).",
@@ -384,24 +343,12 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Growth numbers mid-double-digit or better; liquidity floor met",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "gap", value: EP_GAP_MIN_PCT }, { match: "any", conditions: [{ watch: "price", is: "above", value: "{gapDayHigh}", settings: { close: true } }, { watch: "price", is: "above", value: "{gapDayMid}", settings: { close: true } }] }] },
       confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: "A close above the gap-day high, or a day-2 hold above the gap-day midpoint.",
     },
-    stop: {
-      structure: ["the gap-day low"],
-      maxPct: null,
-      minAtr: MIN_STOP_ATR,
-      text: "The gap-day low. A close below the gap's midpoint is an early warning; a filled gap ends the setup.",
-    },
-    target: { text: "Partial at 3–5 days of progress; the trail decides the rest." },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4); a wide gap-day low means fewer shares.",
-    trail: {
-      TRADE: "Close under the 10- or 20-day.",
-    },
-    time: { text: "Partial at 3–5 sessions; the trail decides the rest." },
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
     summary:
       "A neglected stock reprices on unexpected news with volume many times average; institutions need weeks to build positions, so real gaps start multi-month moves. Breakaway earnings gaps fill within a month under 30% of the time.",
@@ -421,29 +368,13 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Never a beat the market sold: a beat that gaps down is a fade signal, not a buy",
     ],
     entry: {
-      template: { match: "all", conditions: [{ watch: "report", is: "after", value: PEAD_ENTRY_WINDOW[1] }, { watch: "price", is: "above", value: "{gapDayLow}" }] },
       confirmation: ["Gap held", "Surprise and guidance confirmed from the release or transcript"],
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
       windowDays: PEAD_ENTRY_WINDOW,
-      text: `Days ${PEAD_ENTRY_WINDOW[0]}–${PEAD_ENTRY_WINDOW[1]} after the print, above the gap-day low — usually already true, so the entry is set at the current price. After day ${PEAD_ENTRY_WINDOW[1]} the drift entry is gone; a name still worth owning in an uptrend is written on the pullback setup (MA_PULLBACK).`,
     },
-    stop: {
-      structure: ["the gap-day low", `−${TRADE_STOP_MAX_PCT}% from entry`],
-      maxPct: TRADE_STOP_MAX_PCT,
-      minAtr: MIN_STOP_ATR,
-      text: `The gap-day low or −${TRADE_STOP_MAX_PCT}% from entry, whichever is tighter — but not inside 1 ATR.`,
-    },
-    target: {
-      text: "A partial at the prior high; the trail decides the rest.",
-    },
+    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
-    trail: {
-      TRADE: "Close under the 20-day.",
-    },
-    time: {
-      text: "Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
-    },
     failureSigns: [
       "The gap-day low breaks",
       "A beat with flat or vague guidance",
@@ -464,35 +395,15 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "The pullback comes on below-average volume (healthy), not above (distribution)",
     ],
     entry: {
-      // The arm. The buy level itself is the average, written as the plan's
-      // entry price; the reversal is the tactical run's confirmation, not a
-      // stored condition. A stored "close above the prior day's high" needs
-      // a level something re-sets every day, and nothing did — the writer
-      // had an entry it could not store (HPE 2026-09-15).
-      template: { match: "any", conditions: [{ watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma20" }, { watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma50" }] },
       confirmation: [
         "The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire",
         "The pullback came on below-average volume",
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      text: `Within ${PULLBACK_NEAR_SMA_PCT}% of the rising 20- or 50-day. The buy level is the average itself; the tactical run confirms the touch held (a close above the prior day's high). This is the entry for a stock that never dips 10%.`,
     },
-    stop: {
-      structure: [
-        "the pullback's swing low, once it has printed",
-        "until then, 1 ATR under the average being bought",
-      ],
-      maxPct: null,
-      minAtr: MIN_STOP_ATR,
-      text: "Under the pullback's swing low once it has printed; until then, 1 ATR under the average being bought (the 20-day for a 20-day pullback). At least 1 ATR from entry. A close below the 50-day on volume ends the setup.",
-    },
-    target: { text: "A partial at the prior high; the trail decides the rest." },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
-    trail: {
-      CATALYST: "The structural stop until the event.",
-    },
-    time: { text: "10 sessions to reclaim the prior high, else review." },
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
     summary:
       "Buying a confirmed uptrend at a discount with a natural stop — the moving average is where institutions re-buy. MSFT touched its 50-day repeatedly on the way from $418 to $497.",
@@ -505,24 +416,12 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     horizons: ["TRADE"],
     preconditions: ["Price above the 200-day", "A sharp 2–5 day flush"],
     entry: {
-      template: { match: "all", conditions: [{ watch: "price", is: "above", variable: "sma200" }, { watch: "rsi", is: "below", value: RSI2_ENTRY_BELOW, settings: { period: 2 } }] },
       confirmation: ["Buy the close"],
       chaseLimitPct: null,
-      text: `Above the 200-day with RSI(2) under ${RSI2_ENTRY_BELOW}; buy the close.`,
     },
-    stop: {
-      structure: ["a close below the 200-day"],
-      maxPct: null,
-      minAtr: MIN_STOP_ATR,
-      text: "No fixed stop in the original; time and the 200-day are the stops.",
-    },
-    target: {
-      text: `Exit on a close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}.`,
-    },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4). Best used as a scale-in rule on a held compounder.",
-    trail: { TRADE: `Close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}.` },
-    time: { text: "Snaps back within 1–5 sessions or it's out." },
     failureSigns: ["Closes below the 200-day"],
     summary:
       "A stock above its 200-day that flushes hard for a few days tends to snap back within a week. Not a primary seat — a scale-in rule for a held compounder.",
@@ -538,17 +437,13 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Beating SPY over 3–12 months; momentum is negative under 1 month — the window matters",
     ],
     entry: {
-      template: null,
       entryVia: ["BASE_BREAKOUT", "MOMENTUM_FLAG", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen: it says which names; D1/D2/D5 say when. As a condition: within 5% of the 52-week high and ahead of the S&P over 3 months.",
     },
-    stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
-    trail: {},
-    time: { text: "From the entry setup used." },
     failureSigns: ["Relative strength rolls over"],
     summary:
       "Stocks near their 52-week high and ahead of the market keep outperforming for up to 12 months (George & Hwang). A ranking, not a trigger.",
@@ -560,52 +455,25 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     role: "ENTRY",
     horizons: ["CATALYST"],
     preconditions: [
-      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate) — the analyst's own event-date review already wakes the run before the date; do NOT write a copy of it on the thesis, a trigger on the thesis overrides the analyst's and freezes its number`,
+      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate)`,
       "A positive advisory-committee vote if one happened",
       "Cash runway past the decision",
       "Sub-$1B single-asset names: supplemental approvals and label expansions only",
     ],
     entry: {
-      template: null,
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [
         "Never the day before the event",
         `Never inside the last ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days before the date — by then the run-up either happened or did not`,
         "A falling chart is never bought at the market: the level sits ABOVE the current price and the run-up has to start before we are in it",
+        // QB ruling 2026-09-26: BBIO, IBRX and CORT landed with no buy waiting for a Trend Template.
+        "No Trend Template: a stock drifting into its decision will not pass one",
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
-      // QB ruling 2026-09-26. The old text asked for a D1 or D5 shape and
-      // nothing else, and D1 carries the Trend Template — an uptrend near
-      // the 52-week high. A biotech walking into an FDA date is rarely
-      // that, so writers kept declining to price at all: on 2026-09-26
-      // BBIO, IBRX and CORT all landed with no buy level, and five Catalyst
-      // names sat inside their window with one priced between them.
-      //
-      // Inside the window the chart sets the LEVEL, never whether there is
-      // one.
-      text:
-        `Inside the window (${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out) this setup always carries a buy level — the first of these the chart offers. ` +
-        "1) A D1 base breakout or a D5 pullback, when the stock actually qualifies. " +
-        "2) Otherwise a RECLAIM: a close above the highest high of the last 20 sessions. No Trend Template — that is the point; a stock drifting into its decision will not pass one. " +
-        `The stop goes under the most recent swing low. Size is already half (the binary multiplier) with the gap-loss cap, which is the risk control — D8's "size is the stop". ` +
-        "An upside rule only if you believe it (a trim at the prior high, a review at the Street's average target); the plan is the buy and the stop. " +
-        `More than ${CATALYST_WINDOW_DAYS[1]} days out, do not guess a level: park it with the date the window opens and the review that wakes it then.`,
     },
-    stop: {
-      structure: ["the entry setup's structure"],
-      maxPct: null,
-      minAtr: MIN_STOP_ATR,
-      text: "Structural but advisory: gaps skip stops. Size is the stop.",
-    },
-    target: {
-      text: "Run-up version: sell 1–2 weeks before the event. Hold-through version: exit at the event or T+30.",
-    },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
-    trail: { CATALYST: "The structural stop until the event; the event is the exit." },
-    time: {
-      text: `The event, or T+30. A buy that has not filled with ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days to go is set down — the run-up did not happen, which is this setup's own first failure sign.`,
-    },
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
     summary:
       "A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, never holding the coin flip) or hold through at a size that survives a −60% gap.",
@@ -621,23 +489,13 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Stronger in small and mid caps",
     ],
     entry: {
-      template: null,
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen and a conviction input; the entry is a D1 or D5 condition. As a wake: insider buying (at least 3 open-market buyers in 30 days) → REVIEW, with the buyers named on the fire.",
     },
-    stop: {
-      structure: ["the lowest insider purchase price"],
-      maxPct: INSIDER_STOP_MAX_PCT,
-      minAtr: MIN_STOP_ATR,
-      text: `Below the lowest insider purchase price or −${INSIDER_STOP_MAX_PCT}%, whichever is tighter.`,
-    },
-    target: { text: "The effect runs 6–12 months; the entry setup's exits apply." },
+    sale: { maxPct: INSIDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
-    trail: {},
-    time: { text: "6–12 months for the effect; the entry setup's clock for the trade." },
     failureSigns: ["Insiders sell into the rally"],
     summary:
       "Three or more insiders buying within a month predicts positive returns over 6–12 months — roughly double a single buy.",
@@ -648,19 +506,19 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     name: "Estimate-revision momentum",
     role: "SCREEN",
     horizons: ["TARGET"],
-    preconditions: ["Consensus EPS estimates rose in the last 30 days, especially right after a print"],
+    preconditions: [
+      "Consensus EPS estimates rose in the last 30 days, especially right after a print",
+      // Finnhub /stock/eps-estimate refuses (probed 2026-09-11): no plan we hold serves estimate history.
+      "Cite a revision only from a source you actually read: no data we hold has the revision number",
+    ],
     entry: {
-      template: null,
       entryVia: ["PEAD", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen and D4's third confirmation — but no plan we hold serves estimate history (Finnhub /stock/eps-estimate refuses; probed 2026-09-11), so there is no revision number to read and no trigger kind for it. Cite a revision only from a source you actually read.",
     },
-    stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
-    trail: {},
-    time: { text: "From the entry setup used." },
     failureSigns: ["Revisions turn down"],
     summary: "Rising estimates extend post-earnings drift; the Zacks Rank in one line.",
   },
@@ -675,23 +533,13 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "A business that will be structurally more valuable in 3–5 years",
     ],
     entry: {
-      template: { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: BREAKOUT_VOLUME_RATIO }] }, { watch: "move", is: "near", value: PULLBACK_NEAR_SMA_PCT, variable: "sma50" }, { watch: "price", is: "above", variable: "sma50" }] },
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
-      confirmation: ["Thesis intact; volume matters less than for a trade"],
+      confirmation: ["Thesis intact; volume matters less than for a trade", "A stock at new highs on a working thesis is working, not extended"],
       chaseLimitPct: null,
-      text: "Whichever comes first: a base breakout, a reclaim of the 50-day, or a pullback that holds the 50-day. A stock at new highs on a working thesis is working, not extended; with no pullback in 30 days of uptrend, take the breakout. When one is already true, set the entry at the current price.",
     },
-    stop: {
-      structure: ["a named thesis invalidation"],
-      maxPct: COMPOUNDER_STOP_MAX_PCT,
-      minAtr: MIN_STOP_ATR,
-      text: `Thesis invalidation named in advance (guidance cut twice, margin break, capital-allocation failure). A close below the 200-day and a ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% give-back are reviews.`,
-    },
-    target: { text: "A 3–5 year valuation case; trims only at valuation extremes." },
+    sale: { maxPct: COMPOUNDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
-    trail: {},
-    time: { text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],
     summary:
       "A business bought at conviction size and held through volatility, entered on confirmation rather than hope, sold only when the story breaks.",
@@ -707,17 +555,13 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Buy the leader in a leading group; skip the best chart in a lagging group",
     ],
     entry: {
-      template: null,
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
       confirmation: [],
       chaseLimitPct: null,
-      text: "A screen and a regime input. (A group-rank trigger kind is not in the plan yet.)",
     },
-    stop: { structure: [], maxPct: null, minAtr: MIN_STOP_ATR, text: "From the entry setup used." },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
     sizing: `From the entry setup used; at most ${MAX_NAMES_PER_INDUSTRY} names per industry group.`,
-    trail: {},
-    time: { text: "From the entry setup used." },
     failureSigns: ["The group turns Lagging — a review for every name in it"],
     summary: "Stocks move in groups and leadership rotates; three longs in one group are one bet.",
   },
@@ -754,12 +598,6 @@ export function setupIndex(): { id: SetupId; code: string; name: string; role: S
 
 const isGroupTemplate = (p: TemplatePredicate): p is { match: "all" | "any"; conditions: TemplatePredicate[] } => "match" in p;
 
-/** The measures a template uses, recursively. */
-export function templateMeasures(p: TemplatePredicate | null): string[] {
-  if (!p) return [];
-  return isGroupTemplate(p) ? p.conditions.flatMap(templateMeasures) : [p.watch];
-}
-
 /** The `{placeholders}` a template uses, recursively. */
 export function templatePlaceholders(p: TemplatePredicate | null): string[] {
   if (!p) return [];
@@ -771,9 +609,4 @@ export function templatePlaceholders(p: TemplatePredicate | null): string[] {
 export function fillTemplate(p: TemplatePredicate, fill: (name: Placeholder) => number): When {
   if (isGroupTemplate(p)) return { match: p.match, conditions: p.conditions.map((c) => fillTemplate(c, fill)) };
   return { ...p, value: typeof p.value === "string" ? fill(p.value) : p.value } as Condition;
-}
-
-/** The template in words, the way a trigger reads ("above {pivot} · only on the close and at least 1.5× …"). */
-export function describeTemplate(p: TemplatePredicate | null): string {
-  return p ? whenText(p as When) : "(no condition of its own)";
 }
