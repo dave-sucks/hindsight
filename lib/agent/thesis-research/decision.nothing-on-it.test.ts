@@ -74,7 +74,8 @@ describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
     expect(msg).toMatch(/MA_PULLBACK/);
     expect(msg).toContain("$7.91 (the rising 50-day)");
     expect(msg).not.toMatch(/7\.75/); // the 20-day is falling — not a level to buy
-    expect(msg).toContain("1 ATR ($0.53)");
+    expect(msg).toContain("a Stop watching line where the setup is over");
+    expect(msg).not.toMatch(/floor|ATR/);
     expect(msg).toContain('{watch:"repeat", value: days}');
   });
 

@@ -417,7 +417,7 @@ describe("buildWriterResearchPrompt — setup first (DAV-249)", () => {
   });
 
   it("lists the seat's setups with their entry, stop and target rules", () => {
-    expect(prompt).toContain("YOUR SETUPS — every LONG/SHORT stock's triggers are written on one of these");
+    expect(prompt).toContain("YOUR SETUPS — the playbooks you write a stock's triggers on");
     expect(prompt).toMatch(/^PEAD — /m);
     expect(prompt).toMatch(/^MA_PULLBACK — /m);
     expect(prompt).not.toMatch(/^BASE_BREAKOUT — /m);

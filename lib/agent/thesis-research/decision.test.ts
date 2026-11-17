@@ -488,12 +488,12 @@ describe("validateThesisDecision — a view with no setup yet is a watch, not a 
     expect(v.ok).toBe(true);
   });
 
-  it("a priced plan still names its setup", () => {
+  it("a priced plan with no setup named is accepted: a buy may be saved with no playbook", () => {
     const v = validateThesisDecision(
       { ...sndk, direction: "LONG", triggers: [...(sndk.triggers ?? []), ...levels(1270, 1170)] } as ThesisDecisionInput,
       pead,
     );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/setup_id: required with a buy or a floor/);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 });

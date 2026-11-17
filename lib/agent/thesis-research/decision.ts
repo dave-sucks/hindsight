@@ -145,7 +145,7 @@ export interface DecisionValidationResult {
 
 /**
  * The writer's own rules for a submit_thesis call: what a decision must say
- * (belief, conviction, setup, the chart checks on its buy and floor).
+ * (belief, conviction, the chart checks on its buy).
  * The save's rules are NOT copied here — the submit step runs record_thesis /
  * update_thesis itself in check-only mode right after this
  * (checkDecisionAgainstSave in run-thesis-writer.ts). A copy drifted twice:
@@ -179,49 +179,16 @@ export function validateThesisDecision(
   // visible and editable, unlike a column that fed a template once at mint
   // and then drifted from it.
 
-  // The buy and the floor are triggers. A view is priced when the decision
-  // writes a buy or a floor; an unpriced view (no buy, ≥1 REVIEW wake —
+  // The buy and the Stop watching line are triggers. A view is priced when the decision
+  // writes a buy or a Stop watching line; an unpriced view (no buy, ≥1 REVIEW wake —
   // DAV-224) is legal: "bullish, entry window opens in January" used to be
   // unwritable, so BMRN came back with today's quote as its buy level.
   const { entry, priced } = decisionBuy(d, opts);
 
-  // ── The setup and how its numbers were derived (DAV-249) ─────────────
-  // In-loop: the writer repairs in one step. Nothing
-  // downstream refuses on these.
+  // ── The setup named, if any ───────────────────────────────────────────
+  // A buy may be saved with no setup named, and a setup off the seat's list is
+  // accepted as named. The setup only gives the chase limit below.
   const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
-  // The setup prices a view; it never decides one. An unpriced view needs none.
-  if (directional && opts.setups) {
-    if (!d.setup_id && priced) {
-      errors.push(`setup_id: required with a buy or a floor — pick the setup that gives them: ${opts.setups.map((s) => s.id).join(", ")}. If none fits today, write no buy and keep the view with the review that brings it back.`);
-    } else if (d.setup_id && !setup) {
-      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those, or omit it on a view with no buy.`);
-    }
-  }
-  // A setup with a window, chosen after the window closed, does not apply.
-  // Said in-loop with the setup that does apply — the pullback — priced from
-  // the chart. HPE 2026-09-15: PEAD 13 days after the print; the drift
-  // rules could place no stop, so the view went unpriced with a review at
-  // the very level a pullback would buy.
-  const window = setup?.entry.windowDays;
-  const since = opts.chart?.daysSinceReport;
-  if (directional && !held && setup && window && since != null && since > window[1]) {
-    const pullback = opts.setups?.find((s) => s.id === "MA_PULLBACK");
-    const candidates = [
-      { label: "20-day", ma: opts.chart?.sma20 },
-      { label: "50-day", ma: opts.chart?.sma50 },
-    ];
-    const averages = candidates
-      .filter((c) => c.ma != null && c.ma.rising)
-      .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
-    const next = pullback
-      ? averages.length
-        ? ` Write it on MA_PULLBACK: a buy at ${averages.join(" or ")}, and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.`
-        : " Write it on MA_PULLBACK (a buy at a rising 20- or 50-day, a Stop watching line where the pullback fails) if the trend allows — or keep the view with no buy (no setup_id) and the review that brings it back."
-      : " Pick a setup that applies, or keep the view with no buy (no setup_id) and the review that brings it back.";
-    errors.push(
-      `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
-    );
-  }
   // The setup's sale rules (minimum ATR, widest %) are read on the sale the buy names (place_trade's
   // saleRuleProblem), never on a watch's Stop watching line: that line never sells.
   if (directional && priced && entry != null && entry > 0) {
@@ -288,7 +255,6 @@ export function validateThesisDecision(
   // leaves zero wakes. Said here, in the writer's loop, with the level it
   // said it was waiting for — never a refusal at the save.
   if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
-    const atr = opts.chart?.atr14;
     const averages = [
       { label: "20-day", ma: opts.chart?.sma20 },
       { label: "50-day", ma: opts.chart?.sma50 },
@@ -298,8 +264,8 @@ export function validateThesisDecision(
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
     const waitingFor =
       canPullback && averages.length
-        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, a floor ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
-        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with its floor. ";
+        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, and a Stop watching line where the setup is over. `
+        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with a Stop watching line where the setup is over. ";
     errors.push(
       `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. ${waitingFor}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );

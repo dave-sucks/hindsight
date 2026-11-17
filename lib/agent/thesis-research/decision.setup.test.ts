@@ -41,10 +41,10 @@ const docu: ThesisDecisionInput = {
 const opts = { mode: "mint" as const, setups: PEAD_SEAT, chart: DOCU_CHART };
 
 describe("DOCU 2026-09-09 — the real PEAD mint", () => {
-  it("on main this was accepted; now the writer must name the setup", () => {
+  it("a buy with no setup named is accepted: a buy may be saved with no playbook", () => {
     const v = validateThesisDecision(docu, opts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.some((e) => e.startsWith("setup_id: required"))).toBe(true);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 
   it("the repaired decision passes — the numbers didn't have to move", () => {
@@ -58,9 +58,19 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     expect(v.errors).toEqual([]);
   });
 
-  it("a setup this seat doesn't run is sent back with the seat's list", () => {
+  it("a setup this seat doesn't run is accepted as named", () => {
     const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT" }, opts);
-    expect(v.errors[0]).toMatch(/^setup_id: BASE_BREAKOUT isn't one of this seat's setups \(PEAD, EPISODIC_PIVOT, MA_PULLBACK\)/);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
+  });
+
+  it("PEAD named 10 days after the report is accepted: the playbook's window is not checked", () => {
+    const v = validateThesisDecision(
+      { ...docu, setup_id: "PEAD" },
+      { ...opts, chart: { ...DOCU_CHART, daysSinceReport: 10 } },
+    );
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 
   it("a Stop watching line close to the buy is the watch's own: the setup's ATR rule reads the sale (place_trade), never this line", () => {
@@ -106,8 +116,9 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
   // $51.39 rising, ATR(14) $3.75, last swing low $45.70, two gap-downs (09-03
   // and 09-14). The print was 09-02, so this is day 13; PEAD's entry is days
   // 1–3. The writer kept setup PEAD, found no stop the drift rules allowed,
-  // and saved an unpriced view with a REVIEW below the 20-day — the very
-  // level a pullback plan would buy. On main that decision is accepted.
+  // and saved an unpriced view with a REVIEW below the 20-day. The check that
+  // sent it back for the closed window was deleted 2026-11-16: the window is
+  // not checked, so the decision is accepted.
   const chart = {
     atr14: 3.75,
     pivot: null,
@@ -132,12 +143,10 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
   };
   const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
 
-  it("is sent back: PEAD's window closed on day 3, and the pullback plan is named with the chart's numbers", () => {
+  it("is accepted: PEAD's window closed on day 3 and nothing sends it back for that", () => {
     const v = validateThesisDecision(hpe, opts);
-    expect(v.ok).toBe(false);
-    expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $54.48 (the rising 20-day) or $51.39 (the rising 50-day), and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.",
-    ]);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 
   it("the same view written on the pullback passes: buy at the 20-day, stop 1 ATR under it, the 20-day high as the target", () => {
@@ -156,17 +165,6 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     expect("riskReward" in v).toBe(false);
   });
 
-  it("inside the window the check is silent, and a held name is never sent back for it", () => {
-    const day2 = validateThesisDecision(hpe, { ...opts, chart: { ...chart, daysSinceReport: 2 } });
-    expect(day2.errors.some((e) => e.includes("applies days"))).toBe(false);
-    const held = validateThesisDecision(
-      { ...hpe, remove_trigger_ids: undefined, edit_triggers: undefined },
-      { ...opts, existingStatus: "HOLDING" },
-    );
-    expect(held.errors.some((e) => e.includes("applies days"))).toBe(false);
-    const noCalendar = validateThesisDecision(hpe, { ...opts, chart: { ...chart, daysSinceReport: null } });
-    expect(noCalendar.errors.some((e) => e.includes("applies days"))).toBe(false);
-  });
 });
 
 describe("DOCU 2026-09-15 — the same shape, the same night", () => {
@@ -175,7 +173,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   // $71.85, 20-day $64.50 rising, 50-day $58.27 rising, ATR $2.98. The writer
   // kept setup PEAD, went unpriced, and wrote the entire pullback plan
   // (buy ~$64.50, stop $61.52, target $82.96, "R/R exceeds 6:1") into the
-  // rationale of a REVIEW below $65. On main that is accepted.
+  // rationale of a REVIEW below $65. Accepted (the window check was deleted 2026-11-16).
   const chart = {
     atr14: 2.98,
     pivot: null,
@@ -206,11 +204,10 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   };
   const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
 
-  it("is sent back with the pullback plan it had already written into a review", () => {
+  it("is accepted with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);
-    expect(v.errors).toEqual([
-      "setup_id: Post-earnings drift applies days 1–3 after the report; the last report was 13 days ago, so it no longer does. Write it on MA_PULLBACK: a buy at $64.50 (the rising 20-day) or $58.27 (the rising 50-day), and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.",
-    ]);
+    expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 
   it("the plan from its own rationale passes as a pullback: buy $64.50, stop $61.50, target $82.96", () => {
