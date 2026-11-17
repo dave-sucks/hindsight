@@ -9,11 +9,12 @@
  * for, the sheet carries everything else (see the thesis sheet and the
  * analyst configuration sheet). The row never edits.
  *
- * The words in the sheet are the playbook's and read-only. The numbers are
- * the account's: each one sits on its own label-left / value-right row
- * (`InfoRow`, the same rows the thesis sheet uses), shows the playbook's
- * value underneath when this account has changed it, and Save / Reset sit
- * at the bottom of the sheet.
+ * The words in the sheet are the playbook's and read-only, and so are its
+ * triggers for now: the pills the thesis sheet draws, grouped by when each is
+ * written. The numbers are the account's: each one sits on its own label-left
+ * / value-right row (`InfoRow`, the same rows the thesis sheet uses), shows
+ * the playbook's value underneath when this account has changed it, and
+ * Save / Reset sit at the bottom of the sheet.
  */
 
 import { useState, useTransition } from "react";
@@ -30,8 +31,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
 import { GHOST_INPUT } from "@/components/analysts/AnalystConfigForm";
+import { PillRow } from "@/components/docs/trigger-bits";
+import { DIALOG_ACTIONS, type When } from "@/lib/agent/triggers/condition";
+import { WRITTEN_ON, type WrittenOn } from "@/lib/agent/knowledge/playbook-templates";
 import { cn } from "@/lib/utils";
 import {
   savePlaybookSetup,
@@ -66,53 +69,42 @@ const NUMBER_FIELDS: NumberField[] = [
     nullable: false,
     step: 0.25,
   },
-  {
-    key: "chaseLimitPct",
-    label: "Chase limit",
-    suffix: "%",
-    help: "Don't buy more than this far past the level. Blank = no chase rule.",
-    nullable: true,
-    step: 0.5,
-  },
-  {
-    key: "partialAtR",
-    label: "Partial sale at",
-    suffix: "R",
-    help: "A buy writes a trim at this many R on the stock. Blank = none.",
-    nullable: true,
-    step: 0.5,
-  },
-  {
-    key: "timeTradingDays",
-    label: "Time limit",
-    suffix: "",
-    help: "A buy writes a review this long after it on the stock. Blank = none.",
-    nullable: true,
-    step: 1,
-  },
 ];
+
+const WRITTEN_LABEL: Record<WrittenOn, string> = { WATCH: "On a watch", PROPOSAL: "With the buy", FILL: "At the fill" };
 
 function titleCase(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
-function unitFor(field: NumberField, setup: PlaybookSetupView): string {
-  if (field.key !== "timeTradingDays") return field.suffix;
-  return setup.timeUnit === "SESSIONS" ? "sessions" : "days";
-}
-
-/** "Stop ≤ 8% · trim 2R · 20 sessions" — the row's one-line shape. */
+/** "Stop ≤ 8% · 9 triggers" — the row's one-line shape. */
 function numbersSentence(setup: PlaybookSetupView): string {
   const n = setup.numbers;
-  const parts: string[] = [];
-  if (n.stopMaxPct != null) parts.push(`stop ≤ ${n.stopMaxPct}%`);
-  if (n.partialAtR != null) parts.push(`trim at ${n.partialAtR}R`);
-  if (n.timeTradingDays != null) {
-    parts.push(
-      `${n.timeTradingDays} ${setup.timeUnit === "SESSIONS" ? "sessions" : "days"}`,
-    );
-  }
-  return parts.join(" · ");
+  const count = `${setup.templates.length} trigger${setup.templates.length === 1 ? "" : "s"}`;
+  return n.stopMaxPct != null ? `stop ≤ ${n.stopMaxPct}% · ${count}` : count;
+}
+
+/** The playbook's triggers, read-only: one block per moment they are written, one row per action. */
+function PlaybookTriggers({ setup }: { setup: PlaybookSetupView }) {
+  return (
+    <PlaybookBlock label="Triggers">
+      {setup.templates.length === 0 ? <p className="text-muted-foreground">None of its own: the entry setup's lines apply.</p> : null}
+      <div className="space-y-3">
+        {WRITTEN_ON.map((on) => {
+          const mine = setup.templates.filter((t) => t.writtenOn === on);
+          if (mine.length === 0) return null;
+          return (
+            <div key={on} className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">{WRITTEN_LABEL[on]}</p>
+              {DIALOG_ACTIONS.filter((a) => mine.some((t) => t.action === a)).map((a) => (
+                <PillRow key={a} action={a} held={on !== "WATCH"} specs={mine.filter((t) => t.action === a).map((t) => ({ action: t.action, when: t.predicate as When, why: t.rationale, fireMode: t.fireMode, trimPct: t.trimPct }))} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </PlaybookBlock>
+  );
 }
 
 // ── Row ──────────────────────────────────────────────────────────────────────
@@ -197,14 +189,11 @@ function SetupSheet({
       ]),
     ),
   );
-  const [beatAndFade, setBeatAndFade] = useState<boolean>(setup.numbers.beatAndFadeReview);
   const [pending, start] = useTransition();
 
-  const dirty =
-    beatAndFade !== setup.numbers.beatAndFadeReview ||
-    NUMBER_FIELDS.some(
-      (f) => (values[f.key] === "" ? null : Number(values[f.key])) !== setup.numbers[f.key],
-    );
+  const dirty = NUMBER_FIELDS.some(
+    (f) => (values[f.key] === "" ? null : Number(values[f.key])) !== setup.numbers[f.key],
+  );
 
   function submit(numbers: SetupOverride) {
     start(async () => {
@@ -219,7 +208,6 @@ function SetupSheet({
             ]),
           ),
         );
-        setBeatAndFade(saved.numbers.beatAndFadeReview);
         toast.success(`${setup.name}: saved`);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : String(e));
@@ -228,7 +216,7 @@ function SetupSheet({
   }
 
   function save() {
-    const numbers: SetupOverride = { beatAndFadeReview: beatAndFade };
+    const numbers: SetupOverride = {};
     for (const f of NUMBER_FIELDS) {
       const raw = values[f.key];
       if (raw === "") {
@@ -283,6 +271,7 @@ function SetupSheet({
                 <Bullets items={setup.failureSigns} />
               </PlaybookBlock>
             ) : null}
+            <PlaybookTriggers setup={setup} />
           </div>
 
           {/* ── The numbers — this account's ──────────────────────────── */}
@@ -301,7 +290,7 @@ function SetupSheet({
                     tooltip={f.help}
                     description={
                       changed
-                        ? `The playbook's: ${fallback == null ? "none" : fallback}${unitFor(f, setup) ? ` ${unitFor(f, setup)}` : ""}`
+                        ? `The playbook's: ${fallback == null ? "none" : fallback} ${f.suffix}`
                         : undefined
                     }
                   >
@@ -321,23 +310,12 @@ function SetupSheet({
                         aria-label={f.label}
                       />
                       <span className="w-16 shrink-0 text-xs text-muted-foreground">
-                        {unitFor(f, setup)}
+                        {f.suffix}
                       </span>
                     </div>
                   </InfoRow>
                 );
               })}
-              <InfoRow
-                label="Beat-that-sold review"
-                tooltip="A buy writes a review for a beat the stock fell 3%+ on."
-                border={false}
-              >
-                <Switch
-                  checked={beatAndFade}
-                  disabled={!canEdit || pending}
-                  onCheckedChange={(c) => setBeatAndFade(!!c)}
-                />
-              </InfoRow>
             </div>
           </div>
 

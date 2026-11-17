@@ -7,7 +7,7 @@
 
 import { DIALOG_ACTIONS, TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
-import type { TriggerAction } from "@/lib/agent/triggers/types";
+import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_TYPE_DOCS } from "./trigger-examples";
 
@@ -117,6 +117,10 @@ function setupSection(s: Setup): string[] {
   const trails = Object.entries(s.trail);
   if (trails.length) out.push("**Trail:**", "", ...trails.map(([h, text]) => `- ${h.toLowerCase()}: ${text}`), "");
   out.push(`**Time limit:** ${s.time.text}`, "");
+  for (const [on, label] of [["WATCH", "on a watch"], ["PROPOSAL", "with the buy"], ["FILL", "at the fill"]] as const) {
+    const lines = s.triggers.filter((t) => t.writtenOn === on);
+    if (lines.length) out.push(`**Triggers ${label}:**`, "", ...lines.map((t) => `- ${sentenceOf(t as unknown as Trigger)}. ${t.rationale}`), "");
+  }
   if (s.failureSigns.length) out.push("**When it's failing:**", "", ...s.failureSigns.map((f) => `- ${f}`), "");
   return out;
 }
@@ -127,7 +131,7 @@ export function setupsMarkdown(): string {
     "",
     `**Every setup in the playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.`,
     "",
-    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account can change a setup's numbers in Settings → Playbook (`lib/agent/knowledge/setup-overrides.ts`). How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
+    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",
     "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.",
     "",

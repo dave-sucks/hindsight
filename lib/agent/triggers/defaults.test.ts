@@ -1,8 +1,7 @@
 /**
- * defaults.test.ts — what code writes on a thesis by itself, and the
- * trigger defaults. A stock has triggers and nothing else (2026-11-16): the
- * horizon template writes a held stock's review clock and never a buy, a
- * floor, a target or an "8% below entry" review.
+ * defaults.test.ts — the trigger defaults. A stock has triggers and nothing
+ * else (2026-11-16): code writes nothing on a stock by its horizon, not even
+ * a review clock; a playbook's lines are its templates.
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -11,36 +10,15 @@ import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-nam
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 import {
   applyTriggerDefaults,
-  defaultTriggersForHorizon,
   accountStandingRules,
   scaleInOnPullbackTrigger,
   mergeTriggers,
   resolvedCadenceDays,
-  CADENCE_DAYS_BY_HORIZON,
 } from "./defaults";
 import { accountSeedTriggers } from "./seed-account";
 import { triggersArraySchema } from "./schema";
 import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
-
-const HORIZONS = ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const;
-
-describe("defaultTriggersForHorizon — the review clock and nothing else", () => {
-  for (const horizon of HORIZONS) {
-    it(`HELD ${horizon}: one review clock at the horizon's cadence, stamped DEFAULT, and no price level`, () => {
-      const triggers = defaultTriggersForHorizon(horizon, "HELD");
-      expect(triggers.map((t) => [t.action, t.predicate, t.source])).toEqual([["REVIEW", { watch: "repeat", value: CADENCE_DAYS_BY_HORIZON[horizon] }, "DEFAULT"]]);
-    });
-
-    it(`WATCHING ${horizon}: nothing — a watch carries what its author wrote (DAV-209)`, () => {
-      expect(defaultTriggersForHorizon(horizon, "WATCHING")).toEqual([]);
-    });
-  }
-
-  it("PROMOTED: nothing — the promotion keeps the stock's own triggers", () => {
-    expect(defaultTriggersForHorizon("TARGET", "PROMOTED")).toEqual([]);
-  });
-});
 
 describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
   function mkTrigger(
@@ -156,6 +134,7 @@ describe("accountStandingRules — the account carries adds, never sell rules", 
 
 describe("mergeTriggers", () => {
   it("an agent-authored same-bucket rung replaces the default", () => {
+    const template: Trigger = { id: "tpl-clock", predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "Weekly.", source: "DEFAULT" };
     const agent: Trigger[] = [
       {
         id: "agent-1",
@@ -166,7 +145,7 @@ describe("mergeTriggers", () => {
       },
     ];
     const clock: Trigger = { id: "agent-clock", predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Every two weeks." };
-    const merged = mergeTriggers(defaultTriggersForHorizon("TARGET", "HELD"), [...agent, clock]);
+    const merged = mergeTriggers([template], [...agent, clock]);
     // The analyst's clock wins its bucket; the template adds nothing else.
     expect(merged.map((t) => t.id)).toEqual(["agent-1", "agent-clock"]);
   });

@@ -34,16 +34,25 @@ const REASON = "Under the post-earnings base at $402: below it the reclaim has f
 const migrated = fx.thesis.triggers.map((t) => (t.id === LINE ? { ...t, action: "STOP_WATCHING", predicate: { ...t.predicate, settings: { close: true } } } : t));
 
 /** WST's buy proposal, staged with the analyst's sale and reason, approved through approveProposal; `edits` is Edit & Approve. */
-async function approve(opts: { edits?: { stopLoss: number }; status?: "WATCHING" | "PROMOTED" } = {}): Promise<PrismaDouble> {
+async function approve(opts: { edits?: { stopLoss: number }; status?: "WATCHING" | "PROMOTED"; triggers?: unknown[]; setupId?: string | null; account?: Record<string, unknown>; playbookReadFails?: boolean } = {}): Promise<PrismaDouble> {
   const position = positionRow({ id: fx.proposal.positionId, symbol: "WST", status: "PENDING_APPROVAL", environment: "LIVE", userId: REPLAY_USER_ID, avgCost: fx.proposal.avgCost, quantity: 10, stopLoss: SALE, stopReason: REASON, targetPrice: null });
   const db = prismaDouble({
-    account: [accountRow({ autoStopOnBuy: false, setupOverrides: {} })],
+    account: [accountRow({ autoStopOnBuy: false, setupOverrides: {}, ...opts.account })],
     agentConfig: [agentConfigRow({ autoStopOnBuy: null, autoStopPct: null, tradingEnvironment: "LIVE" })],
-    thesis: [thesisRow({ ...fx.thesis, status: opts.status ?? "WATCHING", triggers: migrated })],
+    thesis: [thesisRow({ ...fx.thesis, status: opts.status ?? "WATCHING", triggers: opts.triggers ?? migrated, ...(opts.setupId !== undefined ? { setupId: opts.setupId } : {}) })],
     position: [position],
     // The double joins nothing: an order carries its position inline, as the approval reads it.
     order: [{ id: "order_WST", positionId: position.id, position, userId: REPLAY_USER_ID, environment: "LIVE", symbol: "WST", side: "BUY", orderType: "MARKET", quantity: 10, status: "AWAITING_APPROVAL", intent: "OPEN", idempotencyKey: "idem-wst-1113", thesisId: fx.thesis.id, triggerIds: [], expiresAt: null, createdAt: new Date("2026-11-13T23:30:32Z") }],
   });
+  if (opts.playbookReadFails) {
+    // Only the playbook read fails; every other account read still answers.
+    const account = db.account as { findUnique: (a?: { select?: { playbooks?: boolean } }) => Promise<unknown> };
+    const read = account.findUnique;
+    account.findUnique = async (a = {}) => {
+      if (a.select?.playbooks) throw new Error("connection reset");
+      return read(a);
+    };
+  }
   jest.useFakeTimers({ now: AT, doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
   try {
     await jest.isolateModulesAsync(async () => {
@@ -103,6 +112,53 @@ describe("WST's buy approved: the watch's lines come off, the approved sale goes
     expect(thesisOf(db)).toMatchObject({ status: "HOLDING", promotedAt: null });
     expect(triggersOf(db).filter((t) => t.action === "STOP_WATCHING" || t.action === "ENTER")).toEqual([]);
     expect(salesOf(db)).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: SALE }, rationale: REASON })]);
+  });
+});
+
+/**
+ * The fill writes the stock's playbook's fill templates as Settings → Playbook
+ * lists them (unseeded: the catalog), and nothing else: no time limit, partial
+ * or beat-and-fade review from code, and no review clock from the horizon.
+ * WST is a Compounder (COMPOUNDER_ACCUMULATION), whose fill templates are
+ * "Review 60 days after the buy", "Add if above 7% from our entry" and
+ * "Review every 30 days".
+ */
+describe("WST's fill writes its playbook's fill templates and the approved sale, nothing else", () => {
+  const added = (db: PrismaDouble, before: Array<{ id: string }>) =>
+    triggersOf(db).filter((t) => !before.some((b) => b.id === t.id)).map((t) => sentenceOf(t)).sort();
+
+  it("as stored: WST already has its 30-day clock and 60-day review, so they stay and the Activity names the templates not written", async () => {
+    const db = await approve();
+    expect(added(db, migrated)).toEqual(["Add if above 7% from our entry", "Sell if below $401.20"]);
+    expect(activity(db)).toEqual(expect.arrayContaining([
+      "Kept Review every 30 days; the playbook's Review every 30 days not written",
+      "Kept Review 60 days after the buy; the playbook's Review 60 days after the buy not written",
+    ]));
+  });
+
+  it("a watch with only its buy and Stop watching line: exactly the three fill templates plus the sale", async () => {
+    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
+    const db = await approve({ triggers: watchOnly });
+    expect(added(db, watchOnly)).toEqual(["Add if above 7% from our entry", "Review 60 days after the buy", "Review every 30 days", "Sell if below $401.20"]);
+    expect(triggersOf(db).filter((t) => t.source === "DEFAULT").every((t) => /entry|after the buy|every 30 days/.test(sentenceOf(t)))).toBe(true);
+  });
+
+  it("a playbook the fill can't read writes none of its templates, never the catalog's over the owner's, and the Activity line says so", async () => {
+    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
+    const owners = { COMPOUNDER_ACCUMULATION: [{ action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Every two weeks.", writtenOn: "FILL" }] };
+    const db = await approve({ triggers: watchOnly, account: { playbooks: owners, playbooksSeededAt: new Date("2026-11-17T00:00:00Z") }, playbookReadFails: true });
+    expect(added(db, watchOnly)).toEqual(["Sell if below $401.20"]);
+    expect(activity(db)).toContain("The playbook couldn't be read, so none of its triggers were written");
+    // Read as it should be, the owner's list is what the fill writes, not the catalog's.
+    const read = await approve({ triggers: watchOnly, account: { playbooks: owners, playbooksSeededAt: new Date("2026-11-17T00:00:00Z") } });
+    expect(added(read, watchOnly)).toEqual(["Review every 14 days", "Sell if below $401.20"]);
+  });
+
+  it("a holding with no playbook gets the sale and no clock from code", async () => {
+    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
+    const db = await approve({ triggers: watchOnly, setupId: null });
+    expect(added(db, watchOnly)).toEqual(["Sell if below $401.20"]);
+    expect(triggersOf(db).some((t) => (t.predicate as { watch?: string }).watch === "repeat")).toBe(false);
   });
 });
 

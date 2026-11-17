@@ -1,28 +1,22 @@
 /**
  * setup-overrides.test.ts — the playbook's numbers as settings (DAV-273).
- * A changed number changes what the next fill writes and what the writer
- * checks; an empty map is the catalog as written; malformed rows are dropped.
+ * A changed number changes what the sale is held to; an empty map is the
+ * catalog as written; malformed rows are dropped. The chase limit, the
+ * partial, the time limit and the beat-and-fade switch are templates now.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { applySetupOverride, parseSetupOverrides, setupNumbers } from "./setup-overrides";
 import { getSetup, setupsForAnalyst } from "./setups";
-import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
 import { validateThesisDecision } from "@/lib/agent/thesis-research/decision";
-
-let n = 0;
-const mintId = () => `t${++n}`;
 
 describe("applySetupOverride", () => {
   it("an empty map is the catalog as written", () => {
     const pead = getSetup("PEAD")!;
     expect(getSetup("PEAD", {})).toEqual(pead);
-    expect(setupNumbers(pead)).toEqual({ stopMaxPct: 8, minAtr: 1, chaseLimitPct: 10, partialAtR: 2, beatAndFadeReview: true, timeTradingDays: 60 });
+    expect(setupNumbers(pead)).toEqual({ stopMaxPct: 8, minAtr: 1 });
   });
-  it("a changed partial changes what IOT's fill writes: 3R on a 7.76% stop is +23.3%", () => {
-    const pead = getSetup("PEAD", { PEAD: { partialAtR: 3, timeTradingDays: 45 } })!;
-    const out = setupExitTriggers({ setup: pead, horizon: "TARGET", entry: 39.83, stop: 36.74, mintId });
-    expect(out[0].predicate).toEqual({ watch: "from_date", is: "after", value: 45, variable: "buy" });
-    expect(out[1].predicate).toEqual({ watch: "move", is: "above", value: 23.3, variable: "entry" });
+  it("a number a template now carries is not an override", () => {
+    expect(parseSetupOverrides({ PEAD: { partialAtR: 3 }, COMPOUNDER_ACCUMULATION: { minAtr: 2 } })).toEqual({ COMPOUNDER_ACCUMULATION: { minAtr: 2 } });
   });
   it("a trade stop cap is the sale's (place_trade, place-trade.sale-rules.replay.test.ts): the Writer's watch line is held to none", () => {
     const decision = {
@@ -44,7 +38,7 @@ describe("applySetupOverride", () => {
   });
   it("null clears a cap; a malformed row is dropped, the rest kept", () => {
     expect(getSetup("PEAD", { PEAD: { stopMaxPct: null } })!.stop.maxPct).toBeNull();
-    expect(parseSetupOverrides({ PEAD: { partialAtR: 3 }, MA_PULLBACK: { partialAtR: "lots" } })).toEqual({ PEAD: { partialAtR: 3 } });
+    expect(parseSetupOverrides({ PEAD: { minAtr: 2 }, MA_PULLBACK: { minAtr: "lots" } })).toEqual({ PEAD: { minAtr: 2 } });
     expect(parseSetupOverrides(null)).toEqual({});
   });
 });

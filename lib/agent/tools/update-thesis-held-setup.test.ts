@@ -1,11 +1,12 @@
 /**
  * update-thesis-held-setup.test.ts — a held stock whose review names its
- * setup gets that setup's own exits (DAV-285).
+ * setup gets that playbook's fill templates (DAV-285), as Settings →
+ * Playbook lists them (unseeded here: the catalog's).
  *
  * Replay: $ABT, Secular Compounder, production 2026-09-17. Bought
  * 2026-09-11 at $103.663, floor $96, target $135, twelve triggers, and
  * `setupId` null — bought before setups were named, like 8 of the 9 held
- * stocks. Only a fill writes a setup's exits, so ABT never got the
+ * stocks. Only a fill writes a playbook's fill templates, so ABT never got the
  * compounder's 60-day business checkpoint, and on main naming its setup
  * stores the id and changes nothing else.
  */
@@ -21,6 +22,7 @@ jest.mock("@/lib/prisma", () => ({
     thesis: { findUnique: mockThesisFindUnique, update: mockThesisUpdate },
     position: { findFirst: mockPositionFindFirst },
     thesisUpdate: { findFirst: mockThesisUpdateFindFirst },
+    account: { findUnique: jest.fn().mockResolvedValue(null) },
   },
 }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({
@@ -209,7 +211,7 @@ function written(): Stored[] | undefined {
   return (mockThesisUpdate.mock.calls[0][0].data as { triggers?: Stored[] }).triggers;
 }
 
-describe("update_thesis — a held stock gets its setup's exits when the review names the setup", () => {
+describe("update_thesis — a held stock gets its playbook's fill templates when the review names the setup", () => {
   beforeEach(() => {
     mockThesisFindUnique.mockReset();
     mockThesisUpdate.mockReset();
@@ -219,7 +221,7 @@ describe("update_thesis — a held stock gets its setup's exits when the review 
     mockWriteThesisUpdate.mockClear();
   });
 
-  it("ABT: naming compounder accumulation writes the 60-day checkpoint counted from the buy, and touches nothing else", async () => {
+  it("ABT: naming compounder accumulation writes the fill templates it lacks (the 60-day checkpoint, the add at 7% from our entry), and touches nothing else", async () => {
     mockThesisFindUnique.mockResolvedValueOnce(abtRow());
     const result = await tool().execute({
       thesis_id: "cmspld5md000504l72u7ft9ve",
@@ -233,19 +235,22 @@ describe("update_thesis — a held stock gets its setup's exits when the review 
 
     const next = written();
     expect(next).toBeDefined();
-    expect(next).toHaveLength(ABT_TRIGGERS.length + 1);
+    expect(next).toHaveLength(ABT_TRIGGERS.length + 2);
     // Every trigger ABT already had is exactly as it was — its own 30-day
     // review clock included — except its sale's stored wait of 0, which a
     // save heals to a day: a sale asks once a day, never more (2026-11-02).
     const healed = ABT_TRIGGERS.map((t) => (t.action === "EXIT" && t.cooldownDays === 0 ? { ...t, cooldownDays: 1 } : t));
     expect(next!.slice(0, ABT_TRIGGERS.length)).toEqual(healed);
-    const added = next![next!.length - 1];
-    expect(added.action).toBe("REVIEW");
-    expect(added.predicate).toEqual({ watch: "from_date", is: "after", value: 60, variable: "buy" });
+    // Its own 30-day clock fills the playbook's clock kind, so that one isn't written.
+    expect(next!.slice(ABT_TRIGGERS.length).map((t) => [t.action, t.predicate])).toEqual([
+      ["REVIEW", { watch: "from_date", is: "after", value: 60, variable: "buy" }],
+      ["ADD", { watch: "move", is: "above", value: 7, variable: "entry" }],
+    ]);
 
-    // One Activity line for it.
+    // One Activity line each, and one for the playbook clock it kept out.
     const audit = mockWriteThesisUpdate.mock.calls[0][0] as { fieldChanges?: { triggerOps?: { to: { text: string }[] } } };
-    expect(audit.fieldChanges?.triggerOps?.to).toHaveLength(1);
+    expect(audit.fieldChanges?.triggerOps?.to).toHaveLength(3);
+    expect(audit.fieldChanges?.triggerOps?.to[2].text).toBe("Kept Review every 30 days; the playbook's Review every 30 days not written");
   });
 
   it("naming the same setup again writes nothing a second time", async () => {

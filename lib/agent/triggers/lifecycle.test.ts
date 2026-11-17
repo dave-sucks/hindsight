@@ -29,7 +29,6 @@ import { sentenceOf } from "./condition";
 import { applyTriggerOps, type TriggerOp } from "./ops";
 import { evaluateTrigger } from "./evaluate";
 import {
-  CADENCE_DAYS_BY_HORIZON,
   reviewCadenceTrigger,
   derivedNextReviewAt,
 } from "./defaults";
@@ -140,15 +139,6 @@ describe("4. we buy it", () => {
 });
 
 describe("5. the review cadence", () => {
-  it("matches the strategy, not one number for everything", () => {
-    expect(CADENCE_DAYS_BY_HORIZON).toEqual({
-      CATALYST: 1,
-      TRADE: 1,
-      TARGET: 7,
-      COMPOUNDER: 30,
-    });
-  });
-
   it("brings a thesis up once its interval has passed", () => {
     const cadence = reviewCadenceTrigger(7).predicate;
     const since = (days: number) => ({
@@ -240,30 +230,18 @@ describe("7. the review date the rest of the app reads", () => {
   const days = (d: Date) =>
     Math.round((d.getTime() - reviewed.getTime()) / 86_400_000);
 
-  it("moves forward when a thesis is reviewed", () => {
-    expect(nextReviewFrom(reviewed, [], "TARGET").getTime()).toBeGreaterThan(
-      reviewed.getTime(),
-    );
+  const clock = [{ predicate: { watch: "repeat", value: 3 } }];
+
+  it("moves forward when a thesis is reviewed — never a date in the past (the overdue-forever bug)", () => {
+    expect(nextReviewFrom(reviewed, clock).getTime()).toBeGreaterThan(reviewed.getTime());
   });
 
-  it("uses the thesis's own cadence when it has one", () => {
-    const own = [{ predicate: { watch: "repeat", value: 3 } }];
-    expect(days(nextReviewFrom(reviewed, own, "COMPOUNDER"))).toBe(3);
+  it("uses the clock on the ladder it is given", () => {
+    expect(days(nextReviewFrom(reviewed, clock))).toBe(3);
   });
 
-  it("falls back to the horizon, which is what it would inherit anyway", () => {
-    expect(days(nextReviewFrom(reviewed, [], "CATALYST"))).toBe(1);
-    expect(days(nextReviewFrom(reviewed, [], "TRADE"))).toBe(1);
-    expect(days(nextReviewFrom(reviewed, [], "TARGET"))).toBe(7);
-    expect(days(nextReviewFrom(reviewed, [], "COMPOUNDER"))).toBe(30);
-  });
-
-  it("never returns a date in the past — the overdue-forever bug", () => {
-    for (const h of ["CATALYST", "TRADE", "TARGET", "COMPOUNDER"] as const) {
-      expect(nextReviewFrom(reviewed, [], h).getTime()).toBeGreaterThan(
-        reviewed.getTime(),
-      );
-    }
+  it("with no clock on the ladder there is no review date: nothing comes from the horizon", () => {
+    expect(nextReviewFrom(reviewed, [])).toBeNull();
   });
 
   it("shows no review date on a watch item with no cadence of its own", () => {
@@ -276,7 +254,6 @@ describe("7. the review date the rest of the app reads", () => {
         lastReviewedAt: null,
         createdAt: new Date("2026-08-01"),
         triggers: [],
-        horizon: "TARGET",
       }),
     ).toBeNull();
   });
@@ -289,23 +266,15 @@ describe("7. the review date the rest of the app reads", () => {
           lastReviewedAt: reviewed,
           createdAt: new Date("2026-08-01"),
           triggers: [reviewCadenceTrigger(7)],
-          horizon: "TARGET",
         }),
       ).toBeNull();
     }
   });
 
-  it("a held row falls back to the horizon when the caller only has raw triggers", () => {
-    // The account's inherited cadence isn't in the raw column; the horizon
-    // fallback hands back the same number the account rule would.
-    const due = derivedNextReviewAt({
-      status: "HOLDING",
-      lastReviewedAt: reviewed,
-      createdAt: new Date("2026-08-01"),
-      triggers: [],
-      horizon: "TARGET",
-    });
-    expect(days(due!)).toBe(CADENCE_DAYS_BY_HORIZON.TARGET);
+  it("a held row with no clock on its ladder has no review date; the account's inherited clock is on the resolved ladder", () => {
+    const held = { status: "HOLDING", lastReviewedAt: reviewed, createdAt: new Date("2026-08-01") };
+    expect(derivedNextReviewAt({ ...held, triggers: [] })).toBeNull();
+    expect(days(derivedNextReviewAt({ ...held, triggers: [reviewCadenceTrigger(7)] })!)).toBe(7);
   });
 });
 
@@ -328,7 +297,7 @@ describe("8. a watchlist seed surfaces for its first research", () => {
     new Date(mintedAt.getTime() + d * 86_400_000);
 
   it("shows its first-research date: createdAt + the 7-day seed cadence", () => {
-    expect(derivedNextReviewAt({ ...seed, horizon: null })).toEqual(
+    expect(derivedNextReviewAt(seed)).toEqual(
       daysLater(7),
     );
   });

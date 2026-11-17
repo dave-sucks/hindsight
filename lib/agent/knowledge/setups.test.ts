@@ -53,8 +53,7 @@ describe("the setup catalog", () => {
     expect(s.sizing.length).toBeGreaterThan(0);
     expect(s.time.text.length).toBeGreaterThan(0);
     expect(s.failureSigns.length).toBeGreaterThan(0);
-    expect(typeof s.manage.beatAndFadeReview).toBe("boolean");
-    expect(s.manage.partialAtR === null || s.manage.partialAtR > 0).toBe(true);
+    expect(Array.isArray(s.triggers)).toBe(true);
   });
 
   it("every ENTRY setup has a condition and a trail for its TRADE and CATALYST horizons; TARGET and COMPOUNDER sell by the analyst's and the account's rules", () => {

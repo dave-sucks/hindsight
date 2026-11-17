@@ -206,8 +206,8 @@ describe("which setting is in force, and off", () => {
     expect(reviewLines()).toEqual([]);
     expect(triggers.find((t) => t.action === "ENTER")).toBeUndefined();
     expect(triggers.filter((t) => (t.predicate as { watch?: string }).watch === "price").map((t) => t.id)).toEqual([TRV_FLOOR.id, "c5b67206-924c-4260-be2a-82918f32bbbd"]);
-    // What the fill adds: the held review clock (a compounder's 30 days) and the setup's own exits.
-    expect(activity()).toEqual(expect.arrayContaining(["Removed: Buy if above $398.70 · only on the close", "Added: Review every 30 days"]));
+    // What the fill adds: its playbook's fill templates (a base breakout's), never a clock from the horizon.
+    expect(activity()).toEqual(expect.arrayContaining(["Removed: Buy if above $398.70 · only on the close", "Added: Review every 7 days", "Added: Review 28 days after the buy"]));
     expect(activity().some((l) => /Sell if|Stop set|Upside set/.test(l))).toBe(false);
   });
 

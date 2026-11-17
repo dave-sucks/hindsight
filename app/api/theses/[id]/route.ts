@@ -386,7 +386,6 @@ export async function GET(
       lastReviewedAt: thesis.lastReviewedAt,
       createdAt: thesis.createdAt,
       triggers,
-      horizon: thesis.horizon,
     }),
     triggers,
     // Owning analyst — the trigger section deep-links an ANALYST-level rung

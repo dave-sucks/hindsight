@@ -2,7 +2,7 @@
 
 **Every setup in the playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, where the buy, the floor and any take-profit go, and when it has failed.
 
-This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account can change a setup's numbers in Settings → Playbook (`lib/agent/knowledge/setup-overrides.ts`). How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
+This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
 
 A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.
 
@@ -29,6 +29,23 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 - trade: Stop to breakeven at +1R; close under the 21-day EMA.
 
 **Time limit:** No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.
+
+**Triggers on a watch:**
+
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it.
+- Review every 7 days. The base can extend and its pivot move.
+- Stop watching if below {baseLow} · only on the close. The base's low.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. Under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8%.
+- Trim 50% if above {priorHigh}. The prior high above the buy, else twice the risk above the buy.
+- Review if above {riskPct} from our entry. One risk: (buy − the sale) ÷ buy. Once it is up one risk, the run raises the sale to the buy price.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Review 28 days after the buy. 20 sessions. No progress in 10–20 sessions is a failed breakout.
 
 **When it's failing:**
 
@@ -61,6 +78,21 @@ A leader that already ran pulls back in an orderly way and surfs its rising shor
 
 **Time limit:** If it hasn't moved in 3–5 sessions, it's wrong; exit.
 
+**Triggers on a watch:**
+
+- Buy if above {flagHigh} · only on the close and at least 1.5× normal volume. The flag's high.
+- Review every 7 days. Re-checks the flag.
+- Stop watching if below {flagLow} · only on the close. The flag's low.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The buy day's low, at most one ADR under the buy.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Review 7 days after the buy. 5 sessions.
+
 **When it's failing:**
 
 - No follow-through in 3–5 days
@@ -90,6 +122,23 @@ A neglected stock reprices on unexpected news with volume many times average; in
 - trade: Close under the 10- or 20-day.
 
 **Time limit:** Partial at 3–5 sessions; the trail decides the rest.
+
+**Triggers on a watch:**
+
+- Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the lines below.
+- Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
+- Review if below {gapDayMid} · only on the close. The gap day's middle. Kept on the holding.
+- Review every 7 days. Moves the levels to the finished gap day.
+- Stop watching if below {gapDayLow} · only on the close. The gap day's low.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The gap day's low, at least 1 ATR under the buy.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Review 7 days after the buy. 5 sessions. After 3–5 sessions of progress, the run takes a partial.
 
 **When it's failing:**
 
@@ -124,6 +173,22 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Time limit:** Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.
 
+**Triggers on a watch:**
+
+- Buy if above {price} · only on the close. Today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised and reaction volume 2×+; not already 10% past the gap, never a beat the stock fell on.
+- Review every 7 days. The first one after day 3 re-writes the stock on the pullback playbook or lets it go.
+- Stop watching if below {gapDayLow} · only on the close. The gap day's low.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy.
+- Trim 50% if above {priorHigh}. The prior high above the buy, else twice the risk above the buy.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Review 60 days after the buy. Hold 30–60 days.
+
 **When it's failing:**
 
 - The gap-day low breaks
@@ -154,6 +219,23 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Time limit:** 10 sessions to reclaim the prior high, else review.
 
+**Triggers on a watch:**
+
+- Buy if within 2% of the 50-day average. The average the stock's pullbacks held (or the 20-day), only while it is rising.
+- Review every 7 days. Re-checks that the average is still rising.
+- Stop watching if below the 50-day average and at least 1.5× normal volume. A close below the 50-day on volume ends the setup. It reads during the day.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy.
+- Trim 50% if above {priorHigh}. The prior high the pullback came from.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Sell if below the 50-day average and at least 1.5× normal volume. The setup is over.
+- Review 14 days after the buy. 10 sessions to reclaim the prior high.
+
 **When it's failing:**
 
 - Closes below the 50-day on heavy volume
@@ -182,6 +264,23 @@ A stock above its 200-day that flushes hard for a few days tends to snap back wi
 
 **Time limit:** Snaps back within 1–5 sessions or it's out.
 
+**Triggers on a watch:**
+
+- Buy if above the 200-day average and below RSI 10 · 2-day rsi. A flush in an uptrend.
+- Review every 7 days. Re-checks the uptrend.
+- Stop watching if below the 200-day average. It reads during the day.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The flush's low.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Sell if below the 200-day average. The uptrend is over.
+- Sell if above RSI 65 · 2-day rsi. The bounce is done.
+- Review 7 days after the buy. 5 sessions.
+
 **When it's failing:**
 
 - Closes below the 200-day
@@ -203,6 +302,10 @@ Stocks near their 52-week high and ahead of the market keep outperforming for up
 **Floor:** From the entry setup used.
 
 **Time limit:** From the entry setup used.
+
+**Triggers on a watch:**
+
+- Review if within 5% of the 52-week high and at least 0 points ahead of the S&P. A screen: the run writes the breakout's, flag's or pullback's lines.
 
 **When it's failing:**
 
@@ -234,6 +337,26 @@ A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, n
 
 **Time limit:** The event, or T+30. A buy that has not filled with 21 days to go is set down — the run-up did not happen, which is this setup's own first failure sign.
 
+**Triggers on a watch:**
+
+- Review 70 days before the event date. While parked: the buying window opens. The run that answers it writes the buy lines and removes this one.
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
+- Buy if within 2% of the 50-day average. Only while the 50-day is rising and the stock's pullbacks held it.
+- Buy if above {high20} · only on the close. The 20-day high, above today's price (the reclaim).
+- Review every 7 days. Moves the reclaim to the latest 20-day high.
+- Stop watching if below {swingLow} · only on the close. The last swing low.
+- Stop watching 21 days before the event date. The window closed with no buy.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The last swing low that day, at least 1 ATR under the buy.
+- Trim 50% if above {priorHigh}. The prior high. Only if the analyst believes it.
+
+**Triggers at the fill:**
+
+- Review every 7 days. The watch's clock, kept on the holding.
+- Sell 7 days before the event date. The run-up sells before the decision. To hold through the event, the run answering the 10-day review removes this line and says why.
+
 **When it's failing:**
 
 - Run-up stalls inside the window
@@ -258,6 +381,14 @@ Three or more insiders buying within a month predicts positive returns over 6–
 **Take profit:** The effect runs 6–12 months; the entry setup's exits apply.
 
 **Time limit:** 6–12 months for the effect; the entry setup's clock for the trade.
+
+**Triggers on a watch:**
+
+- Review if at least 3 insiders buying. A screen: the run writes the breakout's or pullback's lines.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. The lowest insider purchase price, or 12% under the buy if that is higher.
 
 **When it's failing:**
 
@@ -303,6 +434,22 @@ A business bought at conviction size and held through volatility, entered on con
 **Take profit:** A 3–5 year valuation case; trims only at valuation extremes.
 
 **Time limit:** A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop.
+
+**Triggers on a watch:**
+
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume or within 2% of the 50-day average or above the 50-day average. The base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, the buy is at today's price.
+- Review every 30 days. The compounder's own clock.
+- Stop watching if below {low52} · only on the close. The 52-week low.
+
+**Triggers with the buy:**
+
+- Sell if below {sellPrice}. Under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it.
+
+**Triggers at the fill:**
+
+- Review every 30 days. The watch's clock, kept on the holding.
+- Review 60 days after the buy. The business checkpoint.
+- Add if above 7% from our entry. The second half.
 
 **When it's failing:**
 

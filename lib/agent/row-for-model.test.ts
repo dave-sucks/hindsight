@@ -51,7 +51,7 @@ const held = (): Row => ({
     ladderHealth: { gainPct: 3.7, floor: { triggerId: "t_floor", price: 40.8, flooredGainPct: 4.45, isTrail: false, label: "below $40.80" }, flooredGainPct: 4.45, hasTrail: false, nearestRung: { triggerId: "t_target", action: "REVIEW", price: 47, distancePct: 16.0, label: "above $47" }, daysSinceLadderEdit: 1, isUnprotectedGain: false, summary: "+3.7% from entry ($39.06 → $40.51); floor locks +4.4% — below $40.80; no trail; next rung REVIEW above $47 @ $47.00 (+16.0% away); ladder last edited 1d ago" },
     floorRisk: null, triggerState: "EXIT_FIRED", triggerDetail: "below $40.80 (now $40.51)", actionability: "ACTIVE_HOLD", supersededBy: null, staleness: "FRESH", resolvedAt: "2026-10-07T20:30:00.000Z", quoteAgeMs: 0,
   },
-  setup: { id: "PEAD", name: "Post-earnings drift", failureSigns: ["The gap-day low breaks", "Revisions don't follow"], manage: "After +10%: 3 ATR under the high.", time: "Hold 30–60 days.", partialAtR: 2, beatAndFadeReview: true },
+  setup: { id: "PEAD", name: "Post-earnings drift", failureSigns: ["The gap-day low breaks", "Revisions don't follow"], manage: "After +10%: 3 ATR under the high.", time: "Hold 30–60 days." },
   buyBlockedByFull: null,
   heldThroughFloor: null,
   unapprovedExitCount: 0,

@@ -42,9 +42,9 @@ import {
 } from "@/lib/agent/triggers/load-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
-import { getSetup, isNamedSetup } from "@/lib/agent/knowledge/setups";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { heldSetupExitOps } from "@/lib/agent/triggers/setup-exits";
+import { isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
+import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
@@ -619,6 +619,8 @@ export const updateThesis = defineTool({
       args = { ...args, [field]: undefined };
     };
     const opResults: TriggerOpResult[] = [];
+    // A playbook template the setup path left out, and why (lib/agent/knowledge/playbooks.ts).
+    const playbookNotes: Array<{ op: string; id: string; text: string }> = [];
     // A level this call moves while the claim still names the old number:
     // one sentence each in the reply (claim-names-level.ts).
     const claimNotes: string[] = [];
@@ -1342,12 +1344,10 @@ export const updateThesis = defineTool({
       }
     }
 
-    // ── A held stock that just got its setup gets that setup's exits ─────
-    // (DAV-285). Only a fill wrote them, and 8 of the 9 held stocks were
-    // bought before setups were named. Same triggers the fill would have
-    // written, through the same ops core, after the agent's own ops so a
-    // bucket it just filled is left alone. They are not price levels, so the
-    // columns and the check above are untouched — nothing is refused.
+    // ── A held stock that just got its setup gets that playbook's fill lines ─
+    // (DAV-285): the templates the fill writes (lib/agent/knowledge/playbooks),
+    // through the same ops core, after the agent's own ops so a bucket it
+    // just filled is left alone.
     if (
       args.setup_id !== undefined &&
       args.setup_id !== existing.setupId &&
@@ -1356,36 +1356,9 @@ export const updateThesis = defineTool({
       !isTerminalTransition &&
       parseTriggersResilient(existing.triggers).dropped === 0
     ) {
-      const setup = getSetup(args.setup_id, await loadSetupOverrides(ctx.accountId));
       const base = (patch.triggers ?? parseTriggersResilient(existing.triggers).triggers) as Trigger[];
-      const position = ctx.analystId
-        ? await prisma.position.findFirst({
-            where: { analystId: ctx.analystId, symbol: existing.ticker, status: "OPEN" },
-            select: { avgCost: true, openedAt: true },
-            orderBy: { openedAt: "desc" },
-          })
-        : null;
-      const stop = (patch.stopLoss ?? existing.stopLoss) as number | { toString(): string } | null;
-      const exitOps = setup
-        ? heldSetupExitOps({
-            setup,
-            horizon: (patch.horizon ?? existing.horizon) as string | null,
-            entry:
-              position?.avgCost != null
-                ? Number(position.avgCost)
-                : existing.entryPrice != null
-                  ? Number(existing.entryPrice)
-                  : null,
-            stop: stop != null ? Number(stop) : null,
-            direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
-            stored: base,
-            mintId: () => randomUUID(),
-            // The day count runs from the real buy, so the sessions-to-
-            // calendar conversion is measured across the days this stock
-            // actually lived through, not from today.
-            boughtAt: position?.openedAt ?? undefined,
-          })
-        : [];
+      const { ops: exitOps, notWritten } = fillTemplateOps(await loadPlaybook(ctx.accountId, args.setup_id), base);
+      playbookNotes.push(...notWritten);
       if (exitOps.length > 0) {
         const written = applyTriggerOps({
           stored: base,
@@ -1687,7 +1660,7 @@ export const updateThesis = defineTool({
       diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
       BULKY_DIFF_KEYS,
     );
-    const landedOps = acceptedOps(opResults);
+    const landedOps = [...acceptedOps(opResults), ...playbookNotes];
     if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
     const changedFields = Object.keys(fieldChanges);
     Object.assign(fieldChanges, notAppliedChange);

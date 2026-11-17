@@ -7,11 +7,7 @@ import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
 import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import {
-  reviewCadenceTrigger,
-  CADENCE_DAYS_BY_HORIZON,
-} from "@/lib/agent/triggers/defaults";
-import { horizonFor } from "@/lib/agent/triggers/load-levels";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import { HELD_OR_WATCHED } from "@/lib/agent/watchlist-symbols";
 import {
@@ -296,8 +292,8 @@ function buildSeedTriggers(
 export async function sendToThesisWriter(
   analystId: string,
   symbol: string,
-  /** Days, null for no clock, or "horizon" to use the thesis's own default. */
-  reviewCadence: number | null | "horizon",
+  /** Days, or null for no clock: the Writer writes the stock's lines. */
+  reviewCadenceDays: number | null,
   mode: "mint" | "refresh" = "mint",
   existingThesisId: string | null = null,
 ): Promise<{ childRunId: string }> {
@@ -313,20 +309,6 @@ export async function sendToThesisWriter(
   if (!analyst) throw new Error("Analyst not found");
 
   const upper = symbol.toUpperCase();
-  // "horizon" is the Send-to-research button: a name pulled back in by hand
-  // comes back scheduled, on whatever cadence its horizon implies.
-  let reviewCadenceDays: number | null = null;
-  if (reviewCadence === "horizon") {
-    const row = existingThesisId
-      ? await prisma.thesis.findUnique({
-          where: { id: existingThesisId },
-          select: { horizon: true },
-        })
-      : null;
-    reviewCadenceDays = CADENCE_DAYS_BY_HORIZON[horizonFor(row?.horizon ?? null)];
-  } else {
-    reviewCadenceDays = reviewCadence;
-  }
   const sent = await startWriterRun({
     userId,
     accountId,

@@ -2,8 +2,9 @@
 
 /**
  * The playbook's numbers as settings (DAV-273) — read and write an
- * account's per-setup overrides of the setup catalog. OWNER only; the
- * page renders read-only for everyone else.
+ * account's per-setup overrides of the setup catalog — and each playbook's
+ * trigger templates, read-only until the editing form. OWNER only; the page
+ * renders read-only for everyone else.
  */
 
 import { revalidatePath } from "next/cache";
@@ -19,6 +20,8 @@ import {
   type SetupOverride,
   type SetupOverrides,
 } from "@/lib/agent/knowledge/setup-overrides";
+import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
+import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 
 export interface PlaybookSetupView {
   id: SetupId;
@@ -31,8 +34,8 @@ export interface PlaybookSetupView {
   /** The upside rule, where the setup has one that is an action; null when the plan is the buy and the floor. */
   targetText: string | null;
   timeText: string;
-  /** What the time limit is counted in — sessions for the short clocks. */
-  timeUnit: "SESSIONS" | "CALENDAR";
+  /** The triggers the playbook writes on a stock: this account's list, else the catalog's. */
+  templates: Template[];
   /** The numbers in force (the catalog's, with this account's overrides applied). */
   numbers: Required<SetupOverride>;
   /** The catalog's own numbers, for "reset to the playbook". */
@@ -64,7 +67,9 @@ async function caller() {
   return { user, accountId, role };
 }
 
-function view(overrides: SetupOverrides): PlaybookSetupView[] {
+type AccountPlaybooks = { playbooks: unknown; playbooksSeededAt: Date | null } | null;
+
+function view(overrides: SetupOverrides, account: AccountPlaybooks): PlaybookSetupView[] {
   return SETUPS.map((s) => {
     const o = overrides[s.id];
     const applied = applySetupOverride(s, o);
@@ -78,7 +83,7 @@ function view(overrides: SetupOverrides): PlaybookSetupView[] {
       stopText: s.stop.text,
       targetText: s.target?.text ?? null,
       timeText: s.time.text,
-      timeUnit: s.time.unit,
+      templates: playbookTemplates(account, s.id),
       preconditions: s.preconditions,
       failureSigns: s.failureSigns,
       trail: Object.entries(s.trail).map(([horizon, text]) => ({ horizon, text: text as string })),
@@ -91,10 +96,10 @@ function view(overrides: SetupOverrides): PlaybookSetupView[] {
 
 export async function getPlaybookSettings(): Promise<PlaybookSettings> {
   const c = await caller();
-  if (!c) return { canEdit: false, setups: view({}) };
-  const row = await prisma.account.findUnique({ where: { id: c.accountId }, select: { setupOverrides: true } });
+  if (!c) return { canEdit: false, setups: view({}, null) };
+  const row = await prisma.account.findUnique({ where: { id: c.accountId }, select: { setupOverrides: true, playbooks: true, playbooksSeededAt: true } });
   const overrides = parseSetupOverrides(row?.setupOverrides);
-  return { canEdit: c.role === "OWNER", setups: view(overrides) };
+  return { canEdit: c.role === "OWNER", setups: view(overrides, row) };
 }
 
 /**
@@ -118,12 +123,12 @@ export async function savePlaybookSetup(input: { setupId: string; numbers: Setup
     if (v !== defaults[k]) (diff as Record<string, unknown>)[k] = v;
   }
 
-  const row = await prisma.account.findUnique({ where: { id: c.accountId }, select: { setupOverrides: true } });
+  const row = await prisma.account.findUnique({ where: { id: c.accountId }, select: { setupOverrides: true, playbooks: true, playbooksSeededAt: true } });
   const current = parseSetupOverrides(row?.setupOverrides);
   const next: SetupOverrides = { ...current };
   if (Object.keys(diff).length) next[setup.id] = diff;
   else delete next[setup.id];
   await prisma.account.update({ where: { id: c.accountId }, data: { setupOverrides: next as object } });
   revalidatePath("/settings/playbook");
-  return view(next).find((v) => v.id === setup.id)!;
+  return view(next, row).find((v) => v.id === setup.id)!;
 }

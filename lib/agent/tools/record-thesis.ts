@@ -15,12 +15,7 @@ import { RECENTLY_SOLD_WINDOW_DAYS } from "@/lib/agent/sold-review";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
-import {
-  defaultTriggersForHorizon,
-  mergeTriggers,
-  applyTriggerDefaults,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
+import { mergeTriggers, applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
 import { actionProblem } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
@@ -390,8 +385,7 @@ export const recordThesis = defineTool({
       // Some horizon × field combinations are structurally required but
       // were silently defaulted before this gate landed. Make them
       // explicit at write time so the durable thesis row reflects what
-      // the agent actually decided, not what defaultTriggersForHorizon
-      // happened to fall through to.
+      // the agent actually decided, not what a default fell through to.
       //
       //   horizon=CATALYST → catalyst_date REQUIRED. The whole point of
       //                      a CATALYST trade is the dated event; the
@@ -588,8 +582,7 @@ export const recordThesis = defineTool({
           return [];
         }
         // source=AGENT on everything the model supplied. Server-owned — any
-        // value the model fabricated is overwritten. A held stock's review
-        // clock, merged in below, carries source=DEFAULT.
+        // value the model fabricated is overwritten.
         // The model's trigger shape has no id (the definition it reads
         // leaves the server's fields out); the id is minted here.
         const supplied = ((args.triggers ?? []) as Trigger[]).map((t) => ({
@@ -604,10 +597,8 @@ export const recordThesis = defineTool({
         if (!args.horizon) {
           return applyTriggerDefaults(supplied);
         }
-        // A held stock gets its horizon's review clock; a watch gets nothing it wasn't given.
-        const defaults = defaultTriggersForHorizon(args.horizon as Horizon, effectiveStatusForTriggers === "WATCHING" ? "WATCHING" : "HELD");
-        const merged = mergeTriggers(defaults, supplied);
-        return applyTriggerDefaults(merged);
+        // One trigger per kind; nothing is added that wasn't given.
+        return applyTriggerDefaults(mergeTriggers([], supplied));
       })();
 
       // Every buy trigger carries the price it was written at, so a level set

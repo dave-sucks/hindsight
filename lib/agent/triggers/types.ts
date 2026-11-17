@@ -120,7 +120,7 @@ export type Trigger = {
    * from which record the rung is stored on; `source` answers the softer
    * question the popover asks: "where did this number come from?"
    *
-   *   DEFAULT   — minted by a code template in ./defaults
+   *   DEFAULT   — written from a template: the account seed (./defaults) or a playbook's (Settings → Playbook)
    *   AGENT     — authored by the writer / daily / tactical agent
    *   PRINCIPAL — added or edited through the UI
    *

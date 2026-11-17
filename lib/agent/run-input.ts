@@ -618,6 +618,7 @@ export async function buildRunInput(
     `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
   );
 
+  const reviewSources = (await loadLevelSources([config.id]).catch(() => new Map())).get(config.id);
   return {
     portfolioBlock,
     pendingApprovalCount,
@@ -650,16 +651,13 @@ export async function buildRunInput(
         status: t.status,
         horizon: t.horizon,
         coreBelief: t.coreBelief,
-        // Derived, not stored (DAV-221) — the raw trigger list is enough
-        // here: a held row's inherited account cadence matches the horizon
-        // fallback inside the helper.
+        // Derived, not stored (DAV-221), from the resolved ladder: an inherited clock counts.
         reviewDueAt: (() => {
           const due = derivedNextReviewAt({
             status: t.status,
             lastReviewedAt: t.lastReviewedAt,
             createdAt: t.createdAt,
-            triggers: t.triggers,
-            horizon: t.horizon,
+            triggers: resolveThesisLadder(t, reviewSources),
           });
           return due ? due.toISOString() : null;
         })(),

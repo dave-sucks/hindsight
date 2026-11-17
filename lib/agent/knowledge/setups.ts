@@ -21,6 +21,7 @@
 import { etTradingDayDate } from "@/lib/market-hours";
 import { applySetupOverride, type SetupOverrides } from "./setup-overrides";
 import { whenText, type Condition, type When } from "@/lib/agent/triggers/condition";
+import { PLAYBOOK_TEMPLATES, type Template } from "./playbook-templates";
 
 // ── The numbers (DAV-245 ruling 1: playbook defaults accepted) ───────────
 
@@ -144,32 +145,13 @@ export interface Setup {
   sizing: string;
   /** A TRADE or CATALYST holding's exit line. A TARGET or COMPOUNDER holding sells by its analyst's and the account's rules, so it has none. */
   trail: Partial<Record<Horizon, string>>;
-  /**
-   * What a fill writes onto the stock as its own exits (lib/agent/triggers/
-   * setup-exits.ts) — the setup's rules, not the seat's style (the trail
-   * lives on the analyst): a partial sale at this many R, and the
-   * beat-the-market-sold review (a beat with the stock down 3% on the day).
-   * The time limit is `time`, counted from the buy.
-   */
-  manage: { partialAtR: number | null; beatAndFadeReview: boolean };
-  /**
-   * The time limit, in the unit the playbook wrote it in.
-   *
-   * The short ones are SESSIONS — "no progress in 10–20 sessions is a failed
-   * breakout" counts days the market was open, so a long weekend does not
-   * spend the stock's rope. The 60-day checkpoints are CALENDAR: "a 60-day
-   * business checkpoint" is two months of the company's life, not 60 opens.
-   * Nothing here is a time stop; every one of them is a review.
-   *
-   * A trigger's day count from the buy is calendar days, so SESSIONS is
-   * converted against the real NYSE calendar in ONE place — `setupExitTriggers`
-   * in lib/agent/triggers/setup-exits.ts, at the moment the fill writes it.
-   * Never multiply by 7/5: that is wrong by a day around every holiday.
-   */
-  time: { count: number | null; unit: "SESSIONS" | "CALENDAR"; text: string };
+  /** The time limit in words. The review it writes is a fill template in `triggers`. */
+  time: { text: string };
   failureSigns: string[];
   /** The playbook's paragraph, condensed. */
   summary: string;
+  /** The triggers the playbook writes on a stock, the seed of Settings → Playbook (./playbook-templates). */
+  triggers: Template[];
 }
 
 // ── Placeholders the writer fills ─────────────────────────────────────────
@@ -184,6 +166,14 @@ export const PLACEHOLDERS: Record<Placeholder, string> = {
   "{gapDayLow}": "chart.gaps[0].low — the gap-day low, the market's own line",
   "{swingLow}": "chart.swings.lastLow.price",
   "{entry}": "the entry level this plan uses",
+  "{high20}": "chart.range.high20 — the 20-day high",
+  "{baseLow}": "chart.base.low — the base's low",
+  "{priorHigh}": "chart.swings.lastHigh.price — the prior high above the buy",
+  "{low52}": "chart.range.low52w — the 52-week low",
+  "{flagLow}": "chart.range.low20 — the flag's low",
+  "{price}": "chart.price — today's price",
+  "{sellPrice}": "the sale the run names with the buy (place_trade's sell_if_below), by the line's own rule",
+  "{riskPct}": "(buy − the sale) ÷ buy, as a % — one risk",
 };
 
 // ── The catalog ───────────────────────────────────────────────────────────
@@ -300,7 +290,7 @@ export function preCatalystWindowLine(row: BinaryRow, asOf: Date = new Date()): 
 const trendTemplate =
   "Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)";
 
-export const SETUPS: Setup[] = [
+const CATALOG: Omit<Setup, "triggers">[] = [
   {
     id: "BASE_BREAKOUT",
     code: "D1",
@@ -335,10 +325,7 @@ export const SETUPS: Setup[] = [
     trail: {
       TRADE: "Stop to breakeven at +1R; close under the 21-day EMA.",
     },
-    manage: { partialAtR: 2, beatAndFadeReview: true },
     time: {
-      count: 20,
-      unit: "SESSIONS",
       text: "No progress in 10–20 sessions = a failed breakout; exit or re-set. If it gains 20% within 3 weeks of the breakout, hold at least 8 weeks (O'Neil's 8-week rule) instead of selling the partial.",
     },
     failureSigns: [
@@ -379,8 +366,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4); 0.25–1% of account at risk.",
     trail: { TRADE: "Close under the 10-day (aggressive) or 20-day (patient)." },
-    manage: { partialAtR: null, beatAndFadeReview: true },
-    time: { count: 5, unit: "SESSIONS", text: "If it hasn't moved in 3–5 sessions, it's wrong; exit." },
+    time: { text: "If it hasn't moved in 3–5 sessions, it's wrong; exit." },
     failureSigns: ["No follow-through in 3–5 days", "Closes back inside the flag"],
     summary:
       "A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No seat runs this today (DAV-245 ruling 3).",
@@ -415,8 +401,7 @@ export const SETUPS: Setup[] = [
     trail: {
       TRADE: "Close under the 10- or 20-day.",
     },
-    manage: { partialAtR: null, beatAndFadeReview: true },
-    time: { count: 5, unit: "SESSIONS", text: "Partial at 3–5 sessions; the trail decides the rest." },
+    time: { text: "Partial at 3–5 sessions; the trail decides the rest." },
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
     summary:
       "A neglected stock reprices on unexpected news with volume many times average; institutions need weeks to build positions, so real gaps start multi-month moves. Breakaway earnings gaps fill within a month under 30% of the time.",
@@ -456,10 +441,7 @@ export const SETUPS: Setup[] = [
     trail: {
       TRADE: "Close under the 20-day.",
     },
-    manage: { partialAtR: 2, beatAndFadeReview: true },
     time: {
-      count: 60,
-      unit: "CALENDAR",
       text: "Hold 30–60 days; the bulk of the drift is inside ~20 sessions. Out before the next print.",
     },
     failureSigns: [
@@ -510,8 +492,7 @@ export const SETUPS: Setup[] = [
     trail: {
       CATALYST: "The structural stop until the event.",
     },
-    manage: { partialAtR: null, beatAndFadeReview: true },
-    time: { count: 10, unit: "SESSIONS", text: "10 sessions to reclaim the prior high, else review." },
+    time: { text: "10 sessions to reclaim the prior high, else review." },
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
     summary:
       "Buying a confirmed uptrend at a discount with a natural stop — the moving average is where institutions re-buy. MSFT touched its 50-day repeatedly on the way from $418 to $497.",
@@ -541,8 +522,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4). Best used as a scale-in rule on a held compounder.",
     trail: { TRADE: `Close above the 5-day average or RSI(2) > ${RSI2_EXIT_ABOVE}.` },
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: 5, unit: "SESSIONS", text: "Snaps back within 1–5 sessions or it's out." },
+    time: { text: "Snaps back within 1–5 sessions or it's out." },
     failureSigns: ["Closes below the 200-day"],
     summary:
       "A stock above its 200-day that flushes hard for a few days tends to snap back within a week. Not a primary seat — a scale-in rule for a held compounder.",
@@ -568,8 +548,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: null, unit: "SESSIONS", text: "From the entry setup used." },
+    time: { text: "From the entry setup used." },
     failureSigns: ["Relative strength rolls over"],
     summary:
       "Stocks near their 52-week high and ahead of the market keep outperforming for up to 12 months (George & Hwang). A ranking, not a trigger.",
@@ -624,10 +603,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     trail: { CATALYST: "The structural stop until the event; the event is the exit." },
-    manage: { partialAtR: null, beatAndFadeReview: false },
     time: {
-      count: null,
-      unit: "SESSIONS",
       text: `The event, or T+30. A buy that has not filled with ${PRE_CATALYST_ENTRY_CUTOFF_DAYS} days to go is set down — the run-up did not happen, which is this setup's own first failure sign.`,
     },
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
@@ -661,8 +637,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "Risk-based (Part E4).",
     trail: {},
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: null, unit: "SESSIONS", text: "6–12 months for the effect; the entry setup's clock for the trade." },
+    time: { text: "6–12 months for the effect; the entry setup's clock for the trade." },
     failureSigns: ["Insiders sell into the rally"],
     summary:
       "Three or more insiders buying within a month predicts positive returns over 6–12 months — roughly double a single buy.",
@@ -685,8 +660,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     trail: {},
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: null, unit: "SESSIONS", text: "From the entry setup used." },
+    time: { text: "From the entry setup used." },
     failureSigns: ["Revisions turn down"],
     summary: "Rising estimates extend post-earnings drift; the Zacks Rank in one line.",
   },
@@ -717,8 +691,7 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
     trail: {},
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: 60, unit: "CALENDAR", text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
+    time: { text: "A 60-day business checkpoint (is what we said would happen starting to happen?) — a review, never a time stop." },
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],
     summary:
       "A business bought at conviction size and held through volatility, entered on confirmation rather than hope, sold only when the story breaks.",
@@ -744,12 +717,13 @@ export const SETUPS: Setup[] = [
     riskMultiplier: 1,
     sizing: `From the entry setup used; at most ${MAX_NAMES_PER_INDUSTRY} names per industry group.`,
     trail: {},
-    manage: { partialAtR: null, beatAndFadeReview: false },
-    time: { count: null, unit: "SESSIONS", text: "From the entry setup used." },
+    time: { text: "From the entry setup used." },
     failureSigns: ["The group turns Lagging — a review for every name in it"],
     summary: "Stocks move in groups and leadership rotates; three longs in one group are one bet.",
   },
 ];
+
+export const SETUPS: Setup[] = CATALOG.map((s) => ({ ...s, triggers: PLAYBOOK_TEMPLATES[s.id] }));
 
 // ── The analyst's setups (DAV-280) ────────────────────────────────────────
 
@@ -801,11 +775,5 @@ export function fillTemplate(p: TemplatePredicate, fill: (name: Placeholder) => 
 
 /** The template in words, the way a trigger reads ("above {pivot} · only on the close and at least 1.5× …"). */
 export function describeTemplate(p: TemplatePredicate | null): string {
-  if (!p) return "(no condition of its own)";
-  const marks = templatePlaceholders(p);
-  let text = whenText(fillTemplate(p, (name) => 9_900_001 + marks.indexOf(name)));
-  marks.forEach((name, i) => {
-    text = text.replaceAll(`$${9_900_001 + i}`, name).replaceAll(String(9_900_001 + i), name);
-  });
-  return text;
+  return p ? whenText(p as When) : "(no condition of its own)";
 }

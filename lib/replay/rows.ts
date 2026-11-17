@@ -172,6 +172,8 @@ export function accountRow(over: Row = {}): Row {
     name: "Replay Account",
     triggers: [],
     setupOverrides: null,
+    playbooks: {},
+    playbooksSeededAt: null,
     ...over,
   };
 }

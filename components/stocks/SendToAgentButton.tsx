@@ -14,16 +14,15 @@ import { sendToThesisWriter } from "@/lib/actions/watchlist.actions";
 // stock, always in the same place.
 //
 // Until now only agents and the promote dialog could dispatch research, so
-// there was no way to say "go look at this" by hand. The result comes back
-// on the horizon's own review schedule, which is what turns a plain watch
-// into an Agent Watch.
+// there was no way to say "go look at this" by hand. The Writer writes the
+// stock's lines, its review clock among them.
 
 /** The send itself, shared by the button and the header's menu item. */
 export function useSendToAgent(analystId: string, ticker: string, thesisId: string, onSent?: () => void) {
   const [pending, setPending] = useState(false);
   const send = () => {
     setPending(true);
-    sendToThesisWriter(analystId, ticker, "horizon", "refresh", thesisId)
+    sendToThesisWriter(analystId, ticker, null, "refresh", thesisId)
       .then(() => {
         toast.success(`${ticker} sent to the agent — it lands shortly.`);
         onSent?.();
