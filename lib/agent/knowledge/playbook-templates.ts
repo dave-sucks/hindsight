@@ -36,6 +36,11 @@ const onClose = (is: "above" | "below", value: `{${string}}`): TemplatePredicate
 const every = (days: number): TemplatePredicate => ({ watch: "repeat", value: days });
 const afterBuy = (days: number): TemplatePredicate => ({ watch: "from_date", is: "after", value: days, variable: "buy" });
 const sell: TemplatePredicate = { watch: "price", is: "below", value: "{sellPrice}" };
+// A pre-catalyst buy fires only in the run-up: within 70 days before the event (its watch ends 21 days before it).
+const beforeTheEvent = (p: TemplatePredicate): TemplatePredicate => ({
+  match: "all",
+  conditions: [...("match" in p ? p.conditions : [p]), { watch: "from_date", is: "before", value: 70, variable: "event" }],
+});
 const trimAtHigh = (why: string): Template => ({ action: "TRIM", trimPct: 50, predicate: { watch: "price", is: "above", value: "{priorHigh}" }, rationale: why, writtenOn: "PROPOSAL" });
 const clock = (days: number, why: string): Template[] => [
   { action: "REVIEW", predicate: every(days), rationale: why, writtenOn: "WATCH" },
@@ -44,9 +49,9 @@ const clock = (days: number, why: string): Template[] => [
 
 export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   PRE_CATALYST: [
-    { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: onClose("above", "{high20}"), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(breakout), rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(near50), rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(onClose("above", "{high20}")), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
     ...clock(7, "Moves the reclaim to the latest 20-day high."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{swingLow}"), rationale: "The last swing low.", writtenOn: "WATCH" },
     { action: "STOP_WATCHING", predicate: { watch: "from_date", is: "before", value: 21, variable: "event" }, rationale: "The window closed with no buy.", writtenOn: "WATCH" },

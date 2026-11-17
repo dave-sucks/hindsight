@@ -292,9 +292,9 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
-- Buy if within 2% of the 50-day average. Only while the 50-day is rising and the stock's pullbacks held it.
-- Buy if above {high20} · only on the close. The 20-day high, above today's price (the reclaim).
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
+- Buy if within 2% of the 50-day average and within 70 days before the event date. Only while the 50-day is rising and the stock's pullbacks held it.
+- Buy if above {high20} · only on the close and within 70 days before the event date. The 20-day high, above today's price (the reclaim).
 - Review every 7 days. Moves the reclaim to the latest 20-day high.
 - Stop watching if below {swingLow} · only on the close. The last swing low.
 - Stop watching 21 days before the event date. The window closed with no buy.

@@ -59,7 +59,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 
 There are no waits. A filing fires once per filing and an earnings heads-up once per report, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".
 
-**Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers.
+**Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers. A date count before the event can be one of them: it is then a window, the days the other condition may fire in ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). On its own it is a schedule and can't buy.
 
 What happens next is the trigger's **On fire**, in the next section. The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 
@@ -94,7 +94,7 @@ An Auto-buy, Auto-add or Auto-trim is yours alone: you set it on the stock itsel
 
 Every trade, the agent's or an Auto one, goes through your [approval](approvals.md) switch for its side, buys or sales: with it on, it is a proposal you approve, and an Auto trade waits for you like any other. The dialog says so under On fire.
 
-- **On a stock we only watch,** the line that ends the watch is its own action, "Stop watching if below $384 · only on the close": when it fires, on the timing it saved, it retires the thesis on the spot with one line in its Activity, and a buy waiting for your approval goes with it. No agent wakes and nothing is proposed; no money moves. It has no other On fire choice. A "Sell if" line is only on a stock we hold; one on a watch is refused with the fix.
+- **On a stock we only watch,** the line that ends the watch is its own action, "Stop watching if below $384 · only on the close": when it fires, on the timing it saved, it retires the thesis on the spot with one line in its Activity, and a buy waiting for your approval goes with it. No agent wakes and nothing is proposed; no money moves. It has no other On fire choice. A "Sell if" line is only on a stock we hold; one on a watch is refused with the fix, and so is any trigger on our position (a move from our buy price, the high since we bought, days since the buy): it comes with the buy, or at the fill.
 
 Otherwise the stock is now in a [situation](situations.md), which tells the agent how to answer it.
 

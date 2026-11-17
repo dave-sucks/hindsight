@@ -51,6 +51,8 @@ import {
   isLevel,
   levelOf,
   measureOf,
+  POSITION_ON_A_WATCH,
+  readsThePosition,
   reviewClockDays,
   sentenceOf,
   shapeOf,
@@ -226,6 +228,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   // Only the mode an op sets is held to the owner's rule: an agent may move the level of an owner's Auto trigger.
   const setsMode = (action: string, mode: FireMode | undefined) => fireModeProblem(action, mode, { agent: actor === "AGENT" && !input.ownersWord });
   const held = status === "HOLDING";
+  // A watch carries watch triggers: one that reads our position waits for the buy.
+  const onAWatch = (p: unknown) => {
+    const w = shapeOf(p);
+    return !held && w != null && readsThePosition(w) ? POSITION_ON_A_WATCH : null;
+  };
   const stamp = (t: Trigger): Trigger["source"] =>
     actor === "AGENT" ? "AGENT" : actor === "PRINCIPAL" ? "PRINCIPAL" : (t.source ?? "DEFAULT");
   let stored = input.stored;
@@ -357,6 +364,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
+    const watchProblem = onAWatch(predicate);
+    if (watchProblem) return refuse("edit", op.id, `Edit ${name}`, watchProblem);
     let rationale = op.rationale?.trim() || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
     const level = levelOf(predicate);
@@ -427,7 +436,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   };
 
   const doAdd = (trigger: Trigger) => {
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("add", trigger.id || mintId(), `Added: ${describeTrigger(trigger)}`, wrongAction);
     const existing = collision(stored, trigger, direction);
     if (existing) {
@@ -480,7 +489,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target)} → ${describeTrigger(trigger)}`;
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("edit", id, text, wrongAction);
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("edit", id, text, modeProblem);

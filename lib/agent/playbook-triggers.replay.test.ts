@@ -304,7 +304,7 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     fillNow();
     await approveAndFill(order);
     jest.useRealTimers();
-    const owners: Trigger = { id: "owners-review", action: "REVIEW", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Under $300 I look again.", source: "PRINCIPAL", cooldownDays: 1 };
+    const owners: Trigger = { id: "owners-review", action: "REVIEW", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Under $300 I look again.", source: "PRINCIPAL" };
     setTriggers([...stockTriggers(), owners]);
     const before = stockTriggers();
     const position = rows("position").find((p) => p.symbol === T)!;

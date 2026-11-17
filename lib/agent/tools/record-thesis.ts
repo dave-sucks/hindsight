@@ -17,7 +17,7 @@ import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import { mergeTriggers, applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { checkLadder } from "@/lib/agent/triggers/ops";
 import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import { actionProblem } from "@/lib/agent/triggers/condition";
+import { actionProblem, POSITION_ON_A_WATCH, readsThePosition, shapeOf } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -603,6 +603,14 @@ export const recordThesis = defineTool({
       const wrongAction = mergedTriggers.map((t) => actionProblem(t.action, { held: false })).find(Boolean);
       if (wrongAction) {
         return { summary: `Thesis rejected for ${args.ticker}: a sale on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: wrongAction }, sources: [] };
+      }
+      // ...and a watch carries watch triggers: one on our position waits for the buy.
+      const onPosition = mergedTriggers.find((t) => {
+        const w = shapeOf(t.predicate);
+        return w != null && readsThePosition(w);
+      });
+      if (onPosition) {
+        return { summary: `Thesis rejected for ${args.ticker}: a trigger on our position on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: POSITION_ON_A_WATCH }, sources: [] };
       }
 
       // ── The ladder check (shared with update_thesis) ─────────────────

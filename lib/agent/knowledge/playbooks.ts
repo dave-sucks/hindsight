@@ -73,8 +73,8 @@ export function playbookTriggerText(templates: Template[] | null, on: WrittenOn)
   return [
     `${TRIGGER_LIST_NAME[on]}:`,
     ...mine.map((t) => {
-      // A trim's size and a wait the playbook names travel with the buy's triggers (place_trade takes both).
-      const sized = on === "PROPOSAL" ? { ...(t.trimPct != null ? { trimPct: t.trimPct } : {}), ...(t.cooldownDays != null ? { cooldownDays: t.cooldownDays } : {}) } : {};
+      // A trim's size travels with the buy's triggers (place_trade takes it).
+      const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
       const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
       return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
     }),

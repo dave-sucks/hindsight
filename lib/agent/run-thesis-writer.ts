@@ -475,6 +475,11 @@ stock's triggers.`;
     price comes with the buy.
   • Nothing is added for you: a watch carries the triggers you write
     and no others, no review clock included.
+  • A watch gets its playbook's watch triggers, its earnings review and
+    its own looks, and nothing that waits for the buy: never a profit
+    check, a partial sale or a sale-side review, and nothing on our buy
+    price, the high since we bought or the days since the buy (the save
+    refuses those on a watch; they come with the buy or at the fill).
   • Taking the buy off on a refresh (no price worth holding): send
     remove_trigger_ids naming the buy and Stop watching ids from
     EXISTING THESIS, keeping ≥1 REVIEW wake.`;

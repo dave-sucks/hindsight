@@ -28,6 +28,11 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
   an account or analyst rule. The other is refused with the fix, never
   converted (`actionProblem` in `condition/actions.ts`); a ladder reads a sale
   only on a holding and a Stop watching line only on a watch (`resolveLadder`).
+  A trigger on our position (a move from our buy price or the high since we
+  bought, or a date count from the buy: `readsThePosition` in
+  `condition/rules.ts`) is refused at the save on a stock we don't hold, with
+  `POSITION_ON_A_WATCH`: it comes with the buy, or at the fill. A stored one is
+  left as it is.
   An action means the same thing whatever the stock's state.
 - **rationale** — prose the agent reads when it acts.
 - **lastFiredAt / falseAtCloseAt** — its fire state, written by the trigger check: when it last fired, and when a market close last found it false after that (see §6). There are no waits.
@@ -84,7 +89,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 | `filing` | The company filed something with the SEC. Keyed on the 8-K item or the form, never "a 10-Q was filed": `tier:MATERIAL` / `tier:RED` ("at least" — material matches serious too), `item:8.01`, `form:S-3`. Several events are several triggers, one each. Read live off EDGAR — one search per pass for every name carrying a filing trigger, 4-day lookback. **One fire per filing** (the filing IDs are remembered on the trigger, or in `triggerState` for an inherited rule); whatever its fired state, because filings cluster. A serious filing on a HOLDING spawns a tactical run the same day; everything else goes to the next daily review. The tier table is `lib/market-data/sec-events.ts`. | `variable` |
 | `insiders` | At least N distinct insiders bought on the open market (Form 4 code P; grants and exercises excluded) within 30 or 90 days. Read from the snapshot's `insiderBuys` (Finnhub, refreshed 06:30 ET). The fire's audit row names the buyers. | `value`; `settings.days` |
 | `repeat` | The review clock: N days since the last actual review (`lastReviewedAt`), repeating: it fires when due, and the review it asks for starts the next period (that day's close finds it false). | `value` (days) |
-| `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. After the buy, or after the event, it stays true, so it fires once; before the event it is a window, and a close past the event makes it ready for the next one. | `value` (days), `variable` buy / event |
+| `from_date` | N days after the buy (false until held — the playbook's time limits: "sell 20 days after the buy if still held"), or N days before or after the thesis's own `catalystDate` (the FDA decision, the deal close) — read off the thesis, never typed into the trigger. After the buy, or after the event, it stays true, so it fires once; before the event it is a window, and a close past the event makes it ready for the next one. Inside an "and", a count before the event is a window on the other condition (`window` on the entry): it may join one, reads "within N days before the event date", and lets the trigger buy ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). Alone it can't buy. | `value` (days), `variable` buy / event |
 
 **A trail is one number.** Its line is the give-back % off the tracked high,
 computed in ONE function, `lib/agent/triggers/trail.ts` → `trailFireLevel`,

@@ -34,13 +34,13 @@ In the holding tables, "Proposal" means the trigger run fills the price when it 
 
 ### Pre-catalyst run-up (`PRE_CATALYST`): Catalyst Event PM
 
-The stock needs its event date on the thesis.
+The stock needs its event date on the thesis: each buy fires only within 70 days before it, and the watch ends 21 days before it.
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close, at least 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
-| Buy if within 2% of the 50-day average | Only while the 50-day is rising and the stock's pullbacks held it |
-| Buy if above $H on the close | H: the 20-day high, above today's price (the reclaim) |
+| Buy if above $P on the close, at least 1.5× normal volume, below $C, and within 70 days before the event date | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
+| Buy if within 2% of the 50-day average and within 70 days before the event date | Only while the 50-day is rising and the stock's pullbacks held it |
+| Buy if above $H on the close and within 70 days before the event date | H: the 20-day high, above today's price (the reclaim) |
 | Review every 7 days | Moves H to the latest 20-day high |
 | Stop watching if below $L on the close | L: the last swing low |
 | Stop watching 21 days before the event date | The window closed with no buy |

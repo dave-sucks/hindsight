@@ -95,7 +95,6 @@ const placeTradeSchema = z.object({
       .array(
         triggerInputSchema.extend({
           trimPct: z.number().min(1).max(99).optional().describe("A trim's size, as the playbook lists it."),
-          cooldownDays: z.number().int().min(0).max(90).optional().describe("The wait, when the playbook lists one."),
         }),
       )
       .optional()

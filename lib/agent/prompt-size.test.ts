@@ -41,7 +41,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-17: −1,126, YOUR PLAYBOOKS shows each playbook's watch triggers (the sentence, the trigger as written, its reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
   // 2026-11-17: −200, the writer is no longer told to write a buy that is true today a few cents above today's price (a buy fires when it is true).
   // 2026-11-17: +114, each price comes from the chart today and a trigger whose price it doesn't have yet is left out; "a view with no buy names no playbook" goes; the Street is its own rule.
-  writer: 15_729,
+  // 2026-11-17: +356, a watch gets its watch triggers, its earnings review and its own looks, nothing that waits for the buy; the pre-catalyst buys carry "within 70 days before the event date".
+  writer: 16_085,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -72,8 +73,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +8 each, place_trade names the row's playbook_checks (was setup_lines).
   // 2026-11-17: −576 each, the trigger shape has no "any" and no group inside a group (one "all" level), on record_thesis, update_thesis and triggers_with_buy.
   // 2026-11-17: +239 / +224, triggers_with_buy takes a trim's size and a wait, and the field and library texts say playbook.
-  "research-run": 37_435,
-  tactical: 33_383,
+  // 2026-11-17: −114 each, triggers_with_buy takes no wait: there are no waits.
+  "research-run": 37_321,
+  tactical: 33_269,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -85,7 +87,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +8, the same field name.
   // 2026-11-17: −864, the same trigger shape.
   // 2026-11-17: +258, the same.
-  principal: 68_676,
+  // 2026-11-17: −114, the same.
+  principal: 68_562,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

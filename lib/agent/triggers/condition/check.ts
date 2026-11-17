@@ -14,7 +14,7 @@ import type { Condition, Direction, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { variableDef, type VariableDef } from "./variables";
 import { capitalise } from "./words";
-import { isLevel } from "./rules";
+import { isLevel, isWindowIn } from "./rules";
 import { conditionRefusal } from "./range";
 
 export type { CheckContext } from "./measure";
@@ -66,7 +66,8 @@ export function conditionProblem(c: Condition, ctx: CheckContext): string | null
 export function whenProblem(w: When, ctx: CheckContext): string | null {
   if (isGroup(w)) {
     if (w.conditions.length !== 2 || w.conditions.some(isGroup)) return "A trigger built here takes one condition or two.";
-    if (conditionsOf(w).some((c) => measureOf(c).timed)) return "A schedule stands alone. Add it as its own trigger.";
+    if (conditionsOf(w).some((c) => measureOf(c).timed && !isWindowIn(w, c))) return "A schedule stands alone. Add it as its own trigger.";
+    if (conditionsOf(w).every((c) => isWindowIn(w, c))) return "A window needs a condition beside it.";
   }
   for (const c of conditionsOf(w)) {
     const problem = conditionProblem(c, ctx);
@@ -90,7 +91,7 @@ export function addProblem(w: When, level: CheckContext["level"]): string | null
   if (isGroup(w)) {
     if (w.conditions.length !== 2) return "A trigger built by hand takes two conditions.";
     if (w.conditions.some(isGroup)) return "A condition can't itself be two conditions.";
-    if (conditionsOf(w).some((c) => measureOf(c).timed)) return "A day count is a schedule, not a condition — add it as its own trigger.";
+    if (conditionsOf(w).some((c) => measureOf(c).timed && !isWindowIn(w, c))) return "A day count is a schedule, not a condition — add it as its own trigger.";
   }
   return levelProblem(w, { level, held: true });
 }
