@@ -34,14 +34,13 @@ In the holding tables, "Proposal" means the trigger run fills the price when it 
 
 ### Pre-catalyst run-up (`PRE_CATALYST`): Catalyst Event PM
 
-The stock needs its event date on the thesis.
+The stock needs its event date on the thesis: each buy fires only within 70 days before it, and the watch ends 21 days before it.
 
 | On a watch | How the level is picked |
 |---|---|
-| Review 70 days before the event date | While parked: the buying window opens. The run that answers it writes the lines below and removes this one, which is the same kind as the analyst's 10-day review |
-| Buy if above $P on the close, at least 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
-| Buy if within 2% of the 50-day average | Only while the 50-day is rising and the stock's pullbacks held it |
-| Buy if above $H on the close | H: the 20-day high, above today's price (the reclaim) |
+| Buy if above $P on the close, at least 1.5× normal volume, below $C, and within 70 days before the event date | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
+| Buy if within 2% of the 50-day average and within 70 days before the event date | Only while the 50-day is rising and the stock's pullbacks held it |
+| Buy if above $H on the close and within 70 days before the event date | H: the 20-day high, above today's price (the reclaim) |
 | Review every 7 days | Moves H to the latest 20-day high |
 | Stop watching if below $L on the close | L: the last swing low |
 | Stop watching 21 days before the event date | The window closed with no buy |
@@ -104,7 +103,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | On a watch | How the level is picked |
 |---|---|
 | None before the report | The account's "Review if earnings beat" wakes a run at the first open after the report |
-| Buy if above $X on the close | X: today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised, reaction volume 2×+, not already 10% past the gap, and never a beat the stock fell on |
+| Buy if above $M on the close | M: the gap day's middle (the gap held). Written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised, reaction volume 2×+, not already 10% past the gap, and never a beat the stock fell on; already true then, so it fires at the next close |
 | Review every 7 days | The first one after day 3 re-writes the stock on the pullback playbook or lets it go |
 | Stop watching if below $L on the close | L: the gap day's low |
 
@@ -118,7 +117,6 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 *Can't be written:*
 
 - A wake on the session after the report.
-- "The gap held."
 - "Out before the next print" as a sale, because an earnings condition only takes a review.
 - Estimate revisions.
 
@@ -145,9 +143,11 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close and at least 1.5× normal volume, or within 2% of the 50-day average, or above the 50-day average | P: the base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, "Buy if above $X" at today's price |
+| Buy if above $P on the close and at least 1.5× normal volume | P: the base's pivot |
+| Buy if within 2% of the 50-day average | Only while the 50-day is rising |
+| Buy if above the 50-day average | The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now |
 | Review every 30 days | |
-| Stop watching if below $L on the close | L: the 52-week low |
+| Stop watching if below the 200-day average on the close | The uptrend broke; not an accumulation candidate until it's back |
 
 | On a holding | How the level is picked | From |
 |---|---|---|

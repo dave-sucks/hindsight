@@ -33,9 +33,8 @@ const MU_FLOOR = {
   fireMode: "ASK_NOW",
   predicate: { is: "below", value: 850, watch: "price" },
   rationale: "Under the September swing low at $902.60 and below the 38.2% retracement at $878.08, with $850 as the catastrophe line roughly 1.2 ATR below the original $906 buy level.",
-  cooldownDays: 1,
 };
-const MU_REVIEW = { id: "d9b6bc8d-017f-4355-8e8c-fe315084db87", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "below", value: 878, watch: "price" }, rationale: "A close below the 38.2% Fibonacci retracement at $878 is a prompt to re-examine the thesis.", cooldownDays: 1 };
+const MU_REVIEW = { id: "d9b6bc8d-017f-4355-8e8c-fe315084db87", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "below", value: 878, watch: "price" }, rationale: "A close below the 38.2% Fibonacci retracement at $878 is a prompt to re-examine the thesis."};
 const TRV_FLOOR = {
   id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66",
   action: "EXIT",
@@ -43,7 +42,6 @@ const TRV_FLOOR = {
   fireMode: "ASK_NOW",
   predicate: { is: "below", value: 382.4, watch: "price" },
   rationale: "Under the near-term support shelf and below the 20-day average at $367.05? No — the real near-term shelf is the report-day close recovery area just above $383.99 and the open at $370 widened too far. I am using $382.40 just under the recent swing-high-turned-support area so a failed breakout ends the plan quickly.",
-  cooldownDays: 1,
 };
 
 const ROWS: Record<Stock, { horizon: string; setupId: string; triggers: Array<Record<string, unknown>> }> = {
@@ -51,25 +49,25 @@ const ROWS: Record<Stock, { horizon: string; setupId: string; triggers: Array<Re
     horizon: "COMPOUNDER",
     setupId: "MA_PULLBACK",
     triggers: [
-      { id: "9db623d8-7df0-48bb-b9ce-3968664813ae", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 908.72, watch: "price" }, rationale: "Buy if above $908.72.", cooldownDays: 1 },
-      { id: "d7fcd231-5a48-42a0-919b-8efc0ac521b0", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "near", value: 2, watch: "move", variable: "sma50" }, rationale: "Buy if within 2% of the 50-day average.", cooldownDays: 7 },
+      { id: "9db623d8-7df0-48bb-b9ce-3968664813ae", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 908.72, watch: "price" }, rationale: "Buy if above $908.72."},
+      { id: "d7fcd231-5a48-42a0-919b-8efc0ac521b0", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "near", value: 2, watch: "move", variable: "sma50" }, rationale: "Buy if within 2% of the 50-day average."},
       MU_REVIEW,
       MU_FLOOR,
-      { id: "bb928325-0cde-4168-a03c-aca52371fc8f", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 1500, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the primary up-leg lands at $1,523, supporting the $1,500 target.", cooldownDays: 1 },
+      { id: "bb928325-0cde-4168-a03c-aca52371fc8f", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 1500, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the primary up-leg lands at $1,523, supporting the $1,500 target."},
     ],
   },
   IOT: {
     horizon: "TARGET",
     setupId: "NONE",
-    triggers: [{ id: "8fc79e5c-3682-48de-a0d9-03acce291d71", action: "REVIEW", source: "DEFAULT", fireMode: "NEXT_MORNING", predicate: { value: 7, watch: "repeat" }, rationale: "Look at this every 7 days, counting from the last real review.", cooldownDays: 7 }],
+    triggers: [{ id: "8fc79e5c-3682-48de-a0d9-03acce291d71", action: "REVIEW", source: "DEFAULT", fireMode: "NEXT_MORNING", predicate: { value: 7, watch: "repeat" }, rationale: "Look at this every 7 days, counting from the last real review."}],
   },
   TRV: {
     horizon: "COMPOUNDER",
     setupId: "BASE_BREAKOUT",
     triggers: [
-      { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 398.7, watch: "price", settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 },
+      { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 398.7, watch: "price", settings: { close: true } }, rationale: "I buy when it breaks above $398.70."},
       TRV_FLOOR,
-      { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 431.5, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the January-July up-leg is $431.53, which is the cited upside objective for a confirmed breakout from this base.", cooldownDays: 1 },
+      { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 431.5, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the January-July up-leg is $431.53, which is the cited upside objective for a confirmed breakout from this base."},
     ],
   },
 };
@@ -194,7 +192,7 @@ describe("which setting is in force, and off", () => {
 
   it("off: IOT's floor is the ticket's $39.80 and nothing else is written onto it", async () => {
     await approve("IOT", { account: OFF });
-    expect(floors()).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: 39.8 }, cooldownDays: 1 })]);
+    expect(floors()).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: 39.8 }})]);
     expect(reviewLines()).toEqual([]);
     expect(activity()).toEqual(["Stop set: $39.80", "Upside set: $47"]);
   });

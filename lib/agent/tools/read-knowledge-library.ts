@@ -42,7 +42,7 @@ export const readKnowledgeLibrary = defineTool({
     "Podcast builders/editors: use this with topic:'podcast-format' BEFORE suggest_podcast_config to pick a structural format (Daily News Brief, Weekly Roundup, Interview Show, Essay & Analysis, Recap & Reaction, Daily Tracker, Explainer Deep Dive) and adapt it to the user's pitch.",
   schema: z.object({
     topic: z.enum(["archetype", "setup", "source", "signal", "podcast-format"]).describe(
-      "Which catalog to query: 'archetype' for trading styles, 'setup' for buy patterns, 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
+      "Which catalog to query: 'archetype' for trading styles, 'setup' for the playbooks (buy patterns), 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
     ),
     id: z.string().optional().describe(
       "The entry ID (e.g. 'EARNINGS_DRIFT', 'BASE_BREAKOUT', 'SEC_EDGAR', 'INSIDER_BUYING', 'DAILY_NEWS_BRIEF'). Leave empty to list the index.",
@@ -66,8 +66,8 @@ export const readKnowledgeLibrary = defineTool({
     }
     if (args.topic === "setup") {
       return args.id
-        ? `Reading the ${humanize(args.id)} setup`
-        : "Looking at the setup catalog";
+        ? `Reading the ${humanize(args.id)} playbook`
+        : "Looking at the playbooks";
     }
     if (args.topic === "signal") {
       return args.id
@@ -151,7 +151,7 @@ export const readKnowledgeLibrary = defineTool({
       if (!id) {
         const index = setupIndex();
         return {
-          summary: `${index.length} setups: ${previewNames(index.map((x) => x.name))}`,
+          summary: `${index.length} playbooks: ${previewNames(index.map((x) => x.name))}`,
           data: { topic: "setup" as const, mode: "index" as const, count: index.length, index },
           sources: [],
         };
@@ -159,13 +159,13 @@ export const readKnowledgeLibrary = defineTool({
       const entry = getSetup(id, await loadSetupOverrides(ctx.accountId));
       if (!entry) {
         return {
-          summary: `Unknown setup: ${id}`,
+          summary: `Unknown playbook: ${id}`,
           data: {
             topic: "setup" as const,
             mode: "entry" as const,
             found: false,
             id,
-            hint: `Available setups: ${setupIndex().map((x) => x.id).join(", ")}`,
+            hint: `Available playbooks: ${setupIndex().map((x) => x.id).join(", ")}`,
           },
           sources: [],
         };
@@ -173,7 +173,7 @@ export const readKnowledgeLibrary = defineTool({
       // The account's playbook, as Settings → Playbook lists it; unread, none.
       const templates = await loadPlaybook(ctx.accountId, entry.id);
       return {
-        summary: `Loaded the ${entry.name} setup`,
+        summary: `Loaded the ${entry.name} playbook`,
         data: {
           topic: "setup" as const,
           mode: "entry" as const,

@@ -14,7 +14,7 @@ import {
   REPLAY_RUN_ID,
   planTriggers,
 } from "@/lib/replay";
-import { applyTriggerDefaults, defaultCooldownDaysForPredicate } from "@/lib/agent/triggers/defaults";
+import { applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -340,54 +340,3 @@ describe("DAV-332 — a run that owes no checks still completes", () => {
 
 // ── DAV-329 ───────────────────────────────────────────────────────────────
 
-describe("DAV-329 — a state re-asks weekly, a crossing daily", () => {
-  it("below-the-200-day and near-the-52-week-high REVIEW on a week", () => {
-    // ABT sat under its 200-day for nine trading days and the Compounder's
-    // review rule fired all nine.
-    const below200: When = { watch: "price", is: "below", variable: "sma200" };
-    expect(defaultCooldownDaysForPredicate(below200, "REVIEW")).toBe(7);
-    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 5, variable: "high52" } as When, "REVIEW")).toBe(7);
-  });
-
-  it("a SALE on the same state stays daily — a standing order (DAV-229)", () => {
-    // Amended 2026-09-27: this shipped as `ENTER ? 1 : 7`, which put an
-    // EXIT on a weekly clock too. A protective rung asks every day its
-    // condition holds; slowing it turns a declined sell into a silent one.
-    const below200: When = { watch: "price", is: "below", variable: "sma200" };
-    expect(defaultCooldownDaysForPredicate(below200, "EXIT")).toBe(1);
-    expect(defaultCooldownDaysForPredicate(below200, "TRIM")).toBe(1);
-    // No action given, no way to tell a review from a sale: take the safe
-    // one. Under-firing a protective rung is the worse failure, and the
-    // only production caller (`applyTriggerDefaults`) always knows.
-    expect(defaultCooldownDaysForPredicate(below200)).toBe(1);
-  });
-
-  it("a BUY on the same kinds keeps the day: it fires on the crossing, once, by itself", () => {
-    // GD, GEV and SYK buy on "back above the 50-day". A week's cooldown on
-    // a buy swallows the second crossing; it quiets nothing.
-    const above50: When = { watch: "price", is: "above", variable: "sma50" };
-    expect(defaultCooldownDaysForPredicate(above50, "ENTER")).toBe(1);
-    expect(defaultCooldownDaysForPredicate(above50, "REVIEW")).toBe(7);
-    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 5, variable: "high52" } as When, "ENTER")).toBe(1);
-    // The pullback setup's entry is a composite holding a price vs an average.
-    const pullback: When = { match: "all", conditions: [{ watch: "move", is: "near", value: 2, variable: "sma50" }, above50] };
-    expect(defaultCooldownDaysForPredicate(pullback, "ENTER")).toBe(1);
-    expect(defaultCooldownDaysForPredicate(pullback, "REVIEW")).toBe(7);
-
-    // …and that is what the write path stores on a new rung.
-    const written = applyTriggerDefaults([
-      { id: "buy", action: "ENTER", predicate: above50 },
-      { id: "review", action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
-    ] as unknown as Trigger[]);
-    expect(written.map((t) => [t.id, t.cooldownDays])).toEqual([
-      ["buy", 1],
-      ["review", 7],
-    ]);
-  });
-
-  it("a real crossing still asks the day it happens", () => {
-    expect(defaultCooldownDaysForPredicate({ watch: "price", is: "above", value: 100 })).toBe(1);
-    expect(defaultCooldownDaysForPredicate({ watch: "price", is: "above", variable: "high20" })).toBe(1);
-    expect(defaultCooldownDaysForPredicate({ watch: "move", is: "near", value: 2, variable: "sma50" })).toBe(1);
-  });
-});

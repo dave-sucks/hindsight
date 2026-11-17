@@ -52,7 +52,6 @@ const smmt = () =>
         source: "AGENT",
         predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: 17.1, settings: { close: true } }, { watch: "price", is: "above", variable: "sma20" }] },
         rationale: "Reclaim entry: a close above $17.10 and above the 20-day, inside the buy window.",
-        cooldownDays: 1,
         writtenAt: "2026-10-02T18:45:55.686Z",
         writtenPrice: 16.765,
       },
@@ -63,7 +62,6 @@ const smmt = () =>
         source: "AGENT",
         predicate: { watch: "price", is: "below", value: 15.9, settings: { close: true } },
         rationale: "Under the September 29 gap-day low; 1.04 ATR below the $17.10 entry.",
-        cooldownDays: 1,
       },
       {
         id: "95bbcef7-519e-4372-89e8-72f9be753888",
@@ -71,7 +69,6 @@ const smmt = () =>
         source: "AGENT",
         predicate: { watch: "price", is: "above", value: 19.55 },
         rationale: "Gap-day high and the 61.8% retracement bracket the target; 2.04R from $17.10.",
-        cooldownDays: 1,
       },
       {
         id: "b2abd6e2-4207-40aa-b8f4-f217861e7f69",
@@ -79,7 +76,6 @@ const smmt = () =>
         source: "AGENT",
         predicate: { watch: "repeat", value: 7 },
         rationale: "Weekly, with 43 days to the decision.",
-        cooldownDays: 7,
       },
       {
         id: "0bf77aac-99b1-465c-979b-94079264fe21",
@@ -87,7 +83,6 @@ const smmt = () =>
         source: "AGENT",
         predicate: { watch: "from_date", is: "before", value: 14, variable: "event" },
         rationale: "Two weeks before the decision: hold through it, or take the run-up.",
-        cooldownDays: 14,
       },
     ],
   });

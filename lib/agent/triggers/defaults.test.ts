@@ -20,103 +20,6 @@ import { triggersArraySchema } from "./schema";
 import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
-describe("applyTriggerDefaults — cooldownDays:0 hardening", () => {
-  function mkTrigger(
-    overrides: Partial<Trigger> & Pick<Trigger, "action" | "predicate">,
-  ): Trigger {
-    return {
-      id: "test-id",
-      rationale: "test",
-      ...overrides,
-    };
-  }
-
-  it("REVIEW + review clock + cooldownDays:0 → overwrites with the cadence itself", () => {
-    const t = mkTrigger({
-      action: "REVIEW",
-      predicate: { watch: "repeat", value: 14 },
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    // A clock's cooldown is its own interval — anything shorter is a
-    // faster clock wearing the slow one's number.
-    expect(out.cooldownDays).toBe(14);
-  });
-
-  it("REVIEW + price below + cooldownDays:0 → overwrites with per-kind default 1", () => {
-    const t = mkTrigger({
-      action: "REVIEW",
-      predicate: { watch: "price", is: "below", value: 108 },
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(1);
-  });
-
-  it("ENTER + earnings beat + cooldownDays:0 → overwrites with per-kind default 7", () => {
-    const t = mkTrigger({
-      action: "ENTER",
-      predicate: { watch: "surprise", is: "beat", value: 0 },
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(7);
-  });
-
-  it("EXIT + price below + cooldownDays:0 → overwrites with per-kind default 1 (a sale asks once a day)", () => {
-    const t = mkTrigger({
-      action: "EXIT",
-      predicate: { watch: "price", is: "below", value: 213.87 },
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(1);
-  });
-
-  it("EXIT + cooldownDays:0 on price above target → overwrites with per-kind default 1", () => {
-    const t = mkTrigger({
-      action: "EXIT",
-      predicate: { watch: "price", is: "above", value: 268 },
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(1);
-  });
-
-  it("non-zero cooldownDays on any action is preserved (no override)", () => {
-    const t = mkTrigger({
-      action: "REVIEW",
-      predicate: { watch: "repeat", value: 14 },
-      cooldownDays: 3,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(3);
-  });
-
-  it("undefined cooldownDays still gets default (original behavior)", () => {
-    const t = mkTrigger({
-      action: "REVIEW",
-      predicate: { watch: "repeat", value: 14 },
-      // cooldownDays unset
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(14);
-  });
-
-  it("the exact NVDA shape — fills with the cadence", () => {
-    // Verbatim shape from the runaway audit row.
-    const t = mkTrigger({
-      action: "REVIEW",
-      predicate: { watch: "repeat", value: 14 },
-      rationale:
-        "Momentum Breakout trades are days-to-weeks holds; re-check the setup by max hold date and exit if momentum has not followed through.",
-      cooldownDays: 0,
-    });
-    const [out] = applyTriggerDefaults([t]);
-    expect(out.cooldownDays).toBe(14);
-  });
-});
-
 describe("accountStandingRules — the account carries adds, never sell rules", () => {
   it("is the +7% add prompt and nothing else — the −7% add is the Compounder's own (DAV-279)", () => {
     const rules = accountStandingRules();
@@ -141,7 +44,6 @@ describe("mergeTriggers", () => {
         predicate: { watch: "price", is: "below", value: 171 },
         action: "EXIT",
         rationale: "Tighter floor under the new base.",
-        cooldownDays: 0,
       },
     ];
     const clock: Trigger = { id: "agent-clock", predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Every two weeks." };

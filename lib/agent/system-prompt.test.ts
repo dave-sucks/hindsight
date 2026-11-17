@@ -47,7 +47,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
     // The setup's checklist and the filing's reading are guidance now.
-    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("The `setup` line: its failure signs, the manage rule, the time limit.");
+    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("Is the playbook still working? The row's `setup`: its failure signs, the manage rule, the time limit.");
     expect(SITUATIONS.REVIEW_DUE.guidance).toContain("If it watches a filing: read the document first");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
   });

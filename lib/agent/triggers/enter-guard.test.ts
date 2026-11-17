@@ -16,7 +16,6 @@ const ENTER_LONG: Trigger = {
   predicate: { watch: "price", is: "above", value: 100 },
   action: "ENTER",
   rationale: "Entry on breakout",
-  cooldownDays: 1,
 };
 
 const ENTER_SHORT: Trigger = {
@@ -24,7 +23,6 @@ const ENTER_SHORT: Trigger = {
   predicate: { watch: "price", is: "below", value: 50 },
   action: "ENTER",
   rationale: "Short entry on breakdown",
-  cooldownDays: 1,
 };
 
 const EXIT_STOP: Trigger = {
@@ -32,7 +30,6 @@ const EXIT_STOP: Trigger = {
   predicate: { watch: "price", is: "below", value: 80 },
   action: "EXIT",
   rationale: "Stop at $80",
-  cooldownDays: 0,
 };
 
 /** A watch's line: its own action, on the close. */
@@ -48,7 +45,6 @@ const REVIEW_EARNINGS: Trigger = {
   predicate: { watch: "surprise", is: "beat", value: 0 },
   action: "REVIEW",
   rationale: "Earnings beat — re-score",
-  cooldownDays: 7,
 };
 
 const REVIEW_HYGIENE: Trigger = {
@@ -56,7 +52,6 @@ const REVIEW_HYGIENE: Trigger = {
   predicate: { watch: "repeat", value: 14 },
   action: "REVIEW",
   rationale: "Catalyst-window hygiene",
-  cooldownDays: 12,
 };
 
 describe("validateEnterTriggerRequired", () => {
@@ -88,7 +83,6 @@ describe("validateEnterTriggerRequired", () => {
       predicate: { watch: "surprise", is: "beat", value: 0 },
       action: "ENTER",
       rationale: "Entry on catalyst",
-      cooldownDays: 7,
     };
     expect(
       validateEnterTriggerRequired({
@@ -224,7 +218,6 @@ describe("validateEnterTriggerRequired", () => {
       predicate: { watch: "price", is: "above", value: 60 },
       action: "EXIT",
       rationale: "Stop at $60 for SHORT",
-      cooldownDays: 0,
     };
     expect(
       validateEnterTriggerRequired({

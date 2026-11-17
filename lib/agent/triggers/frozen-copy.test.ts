@@ -27,7 +27,7 @@ import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const t = (over: Partial<Trigger> & { predicate: Trigger["predicate"]; action: Trigger["action"] }) =>
-  ({ id: Math.random().toString(36).slice(2), rationale: "", cooldownDays: 1, ...over }) as Trigger;
+  ({ id: Math.random().toString(36).slice(2), rationale: "", ...over }) as Trigger;
 
 // ── The rules above, verbatim from the live account ────────────────────
 const COMPOUNDER: Trigger[] = [

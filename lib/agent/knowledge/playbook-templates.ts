@@ -27,7 +27,6 @@ export interface Template {
   writtenOn: WrittenOn;
   fireMode?: FireMode;
   trimPct?: number;
-  cooldownDays?: number;
 }
 
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
@@ -37,6 +36,11 @@ const onClose = (is: "above" | "below", value: `{${string}}`): TemplatePredicate
 const every = (days: number): TemplatePredicate => ({ watch: "repeat", value: days });
 const afterBuy = (days: number): TemplatePredicate => ({ watch: "from_date", is: "after", value: days, variable: "buy" });
 const sell: TemplatePredicate = { watch: "price", is: "below", value: "{sellPrice}" };
+// A pre-catalyst buy fires only in the run-up: within 70 days before the event (its watch ends 21 days before it).
+const beforeTheEvent = (p: TemplatePredicate): TemplatePredicate => ({
+  match: "all",
+  conditions: [...("match" in p ? p.conditions : [p]), { watch: "from_date", is: "before", value: 70, variable: "event" }],
+});
 const trimAtHigh = (why: string): Template => ({ action: "TRIM", trimPct: 50, predicate: { watch: "price", is: "above", value: "{priorHigh}" }, rationale: why, writtenOn: "PROPOSAL" });
 const clock = (days: number, why: string): Template[] => [
   { action: "REVIEW", predicate: every(days), rationale: why, writtenOn: "WATCH" },
@@ -45,10 +49,9 @@ const clock = (days: number, why: string): Template[] => [
 
 export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   PRE_CATALYST: [
-    { action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 70, variable: "event" }, rationale: "While parked: the buying window opens. The run that answers it writes the buy triggers and removes this one.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: onClose("above", "{high20}"), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(breakout), rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(near50), rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(onClose("above", "{high20}")), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
     ...clock(7, "Moves the reclaim to the latest 20-day high."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{swingLow}"), rationale: "The last swing low.", writtenOn: "WATCH" },
     { action: "STOP_WATCHING", predicate: { watch: "from_date", is: "before", value: 21, variable: "event" }, rationale: "The window closed with no buy.", writtenOn: "WATCH" },
@@ -75,7 +78,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(14), rationale: "10 sessions to reclaim the prior high.", writtenOn: "FILL" },
   ],
   PEAD: [
-    { action: "ENTER", predicate: onClose("above", "{price}"), rationale: "Today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised and reaction volume 2×+; not already 10% past the gap, never a beat the stock fell on.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: onClose("above", "{gapDayMid}"), rationale: "The gap held: a close above the gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "The first one after day 3 re-writes the stock on the pullback playbook or lets it go."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
@@ -94,9 +97,11 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
   COMPOUNDER_ACCUMULATION: [
-    { action: "ENTER", predicate: { match: "any", conditions: [{ match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, near50, { watch: "price", is: "above", variable: "sma50" }] }, rationale: "The base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, the buy is at today's price.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, rationale: "The base's pivot, on volume.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { watch: "price", is: "above", variable: "sma50" }, rationale: "The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.", writtenOn: "WATCH" },
     ...clock(30, "The compounder's own clock."),
-    { action: "STOP_WATCHING", predicate: onClose("below", "{low52}"), rationale: "The 52-week low.", writtenOn: "WATCH" },
+    { action: "STOP_WATCHING", predicate: { watch: "price", is: "below", variable: "sma200", settings: { close: true } }, rationale: "The uptrend broke; not an accumulation candidate until it's back.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "Under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it.", writtenOn: "PROPOSAL" },
     { action: "REVIEW", predicate: afterBuy(60), rationale: "The business checkpoint.", writtenOn: "FILL" },
     { action: "ADD", predicate: { watch: "move", is: "above", value: 7, variable: "entry" }, rationale: "The second half.", writtenOn: "FILL" },

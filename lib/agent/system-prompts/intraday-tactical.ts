@@ -38,7 +38,7 @@ Answer, in order:
 What you can do:
 - Write one update_thesis with trigger_id: your note, which the principal reads on the trade.
 - If you would do something different, say so plainly in the note and why: hold instead of sell, wait instead of buy, a smaller trim. The principal decides on the approval, or on a trade that already went through.
-- Change a level only if the trade left one plainly stale.
+- Change a trigger only if the trade left one plainly stale.
 
 Answered: that one update_thesis.
 
@@ -87,6 +87,8 @@ interface TacticalPromptArgs {
   autoTrade?: { line: string } | null;
   /** The Market and portfolio block (lib/agent/portfolio-block.ts). Empty or null: none. */
   portfolioBlock?: string | null;
+  /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's block (playbooksBlock); REVIEW_DUE says what to do with them. Null: none. */
+  playbooks?: string | null;
 }
 
 /**
@@ -212,7 +214,7 @@ $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
-**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+${args.playbooks ? `${args.playbooks}\n` : ""}**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
@@ -275,21 +277,22 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
      (ticker fell outside this analyst's edge/universe, the original
      premise has broken structurally, the name is no longer worth
      tracking): say so in the note, and on a stock we watch take its buy
-     and floor off by id (remove_trigger_ids) so nothing fires on it; the
+     and Stop watching triggers off by id (remove_trigger_ids) so nothing fires on it; the
      morning run decides whether it stays on the book. A stock we
      hold is sold first with close_position, which retires the thesis itself.
 
 4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the
-   stock's triggers reflect it. After an add, raise the floor (a bigger position
-   must never round-trip into a loss). After a fired gain checkpoint,
-   replace it with the next milestone. After a move that blew through a
-   level, re-set it off the NEW structure the chart gives (the swing low,
-   the breakout price, the average), not a round number. The stock's own exits from its setup (the partial,
-   the beat-that-sold review) were written at the fill; the trail is
-   your analyst's rule and applies on its own.
+   stock's triggers reflect it. After an add, raise the "Sell if below"
+   price (a bigger position must never round-trip into a loss). After a
+   fired gain checkpoint, replace it with the next one. After a move that
+   blew through a trigger's price, re-set it off the NEW structure the
+   chart gives (the swing low, the breakout price, the average), not a
+   round number. The triggers that came with the buy and the playbook's
+   fill triggers were written at the fill; your analyst's and the
+   account's rules apply on their own.
    The trigger ids are on the row's triggers lines. If nothing went stale,
-   leave them. On a stock we hold you can raise the stop, never lower it;
-   if you think it is wrong, say so in the note and name the level.
+   leave them. On a stock we hold you can raise a sale's price, never
+   lower it; if you think it is wrong, say so in the note and name the price.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).

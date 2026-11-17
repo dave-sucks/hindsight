@@ -16,6 +16,7 @@ import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { shapeOf } from "./valid";
+import { isWindowIn, levelOf } from "./rules";
 import { variableDef } from "./variables";
 import { money } from "./words";
 
@@ -39,6 +40,24 @@ export const DEFAULT_TRIM_PCT = 50;
 /** A trim's size, in every On fire mode. */
 export function trimPctOf(t: { trimPct?: number | null }): number {
   return t.trimPct ?? DEFAULT_TRIM_PCT;
+}
+
+/**
+ * Fired, and no market close has found its condition false since: it does
+ * not fire again until one does (the 16:20 ET pass stamps `falseAtCloseAt`).
+ * One that never fired, or whose condition or action changed since it fired
+ * (the change clears `lastFiredAt`), is not.
+ */
+export function firedSinceFalseClose(t: { lastFiredAt?: string | null; falseAtCloseAt?: string | null }): boolean {
+  if (t.lastFiredAt == null) return false;
+  return t.falseAtCloseAt == null || new Date(t.falseAtCloseAt).getTime() <= new Date(t.lastFiredAt).getTime();
+}
+
+/** When a fired trigger can fire again, in words: "after a close back above $150". */
+export function firesAgainWords(t: { predicate: unknown }): string {
+  const w = shapeOf(t.predicate);
+  const level = w ? levelOf(w) : null;
+  return level ? `after a close back ${level.above ? "below" : "above"} ${money(level.value)}` : "after a close where it no longer holds";
 }
 
 /** The action as a trigger says it; a trim names its size: "Trim 30% if". */
@@ -93,8 +112,8 @@ export function conditionText(c: Condition): string {
 }
 
 export function whenText(w: When): string {
-  if (!isGroup(w)) return conditionText(w);
-  return w.conditions.map(whenText).join(w.match === "all" ? " and " : " or ");
+  // A window inside an "and" is the days the others may hold in: "within 70 days before the event date".
+  return conditionsOf(w).map((c) => `${isWindowIn(w, c) ? "within " : ""}${conditionText(c)}`).join(" and ");
 }
 
 /** The whole trigger: "Sell if below $868". A clock has no "if": "Review every 30 days". */
@@ -106,9 +125,9 @@ function labelled(label: string, w: When): string {
   return `${!isGroup(w) && measureOf(w).timed ? label.replace(/ if$/, "") : label} ${whenText(w)}`;
 }
 
-/** A trigger's pill: two halves per condition, with "and" / "or" between conditions. */
-export function pillParts(w: When): { parts: PillPart[]; joiner: "and" | "or" } {
-  return { parts: conditionsOf(w).map(conditionParts), joiner: isGroup(w) && w.match === "any" ? "or" : "and" };
+/** A trigger's pill: two halves per condition, with "and" between conditions. */
+export function pillParts(w: When): PillPart[] {
+  return conditionsOf(w).map(conditionParts);
 }
 
 /**

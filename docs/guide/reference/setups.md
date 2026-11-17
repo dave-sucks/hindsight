@@ -1,8 +1,8 @@
-# Setups
+# Playbooks
 
 **Every playbook, with its rules.** The 12 kinds of trade an analyst can take: what must be true first, the triggers each writes, and when it has failed.
 
-This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
+This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart price the run fills when it writes the trigger. How an analyst picks its playbooks is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).
 
 A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.
 
@@ -152,7 +152,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Triggers on a watch:**
 
-- Buy if above {price} · only on the close. Today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised and reaction volume 2×+; not already 10% past the gap, never a beat the stock fell on.
+- Buy if above {gapDayMid} · only on the close. The gap held: a close above the gap day's middle.
 - Review every 7 days. The first one after day 3 re-writes the stock on the pullback playbook or lets it go.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
 
@@ -292,10 +292,9 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Review 70 days before the event date. While parked: the buying window opens. The run that answers it writes the buy triggers and removes this one.
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
-- Buy if within 2% of the 50-day average. Only while the 50-day is rising and the stock's pullbacks held it.
-- Buy if above {high20} · only on the close. The 20-day high, above today's price (the reclaim).
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
+- Buy if within 2% of the 50-day average and within 70 days before the event date. Only while the 50-day is rising and the stock's pullbacks held it.
+- Buy if above {high20} · only on the close and within 70 days before the event date. The 20-day high, above today's price (the reclaim).
 - Review every 7 days. Moves the reclaim to the latest 20-day high.
 - Stop watching if below {swingLow} · only on the close. The last swing low.
 - Stop watching 21 days before the event date. The window closed with no buy.
@@ -377,9 +376,11 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume or within 2% of the 50-day average or above the 50-day average. The base's pivot; the two 50-day ways in only while the 50-day is rising. When one is already true, the buy is at today's price.
+- Buy if above {pivot} · only on the close and at least 1.5× normal volume. The base's pivot, on volume.
+- Buy if within 2% of the 50-day average. Only while the 50-day is rising.
+- Buy if above the 50-day average. The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.
 - Review every 30 days. The compounder's own clock.
-- Stop watching if below {low52} · only on the close. The 52-week low.
+- Stop watching if below the 200-day average · only on the close. The uptrend broke; not an accumulation candidate until it's back.
 
 **Triggers with the buy:**
 

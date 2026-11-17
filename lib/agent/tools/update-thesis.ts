@@ -45,7 +45,6 @@ import type { ResolvedTrigger } from "@/lib/agent/triggers/levels";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
 import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
-import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import {
   acceptedOps,
   applyTriggerOps,
@@ -319,6 +318,9 @@ const morningRunSchema = updateSchema.omit({
 
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
+/** The Portfolio Manager's door: a note on the stock and nothing else. Its triggers, status and conviction are the stock's analyst's. */
+const isManagerRun = (ctx: { runMode?: string }) => ctx.runMode === "PORTFOLIO_MANAGER";
+const managerRunSchema = updateSchema.pick({ thesis_id: true, rationale: true });
 
 /**
  * The rule this save's line answers, kept on the line as it stands now
@@ -509,7 +511,9 @@ export const updateThesis = defineTool({
         ? triggerRunSchema
         : isMorningRun(ctx)
           ? morningRunSchema
-          : ctx.runMode === "PRINCIPAL_CHAT"
+          : isManagerRun(ctx)
+            ? managerRunSchema
+            : ctx.runMode === "PRINCIPAL_CHAT"
             ? chatSchema
             : updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_REVIEW }),
   ui: "thesis-card" as const,
@@ -571,7 +575,7 @@ export const updateThesis = defineTool({
         catalystDate: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
-        // dropped as redundant can hand its cooldown stamp over.
+        // dropped as redundant can hand its fire stamp over.
         triggerState: true,
         // The review clock's due date, for the line's link to the clock (ruleAnswered).
         lastReviewedAt: true,
@@ -1235,14 +1239,6 @@ export const updateThesis = defineTool({
         const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
         const levelStatus = (patch.status ?? existing.status) as string | null;
         const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
-        // The stamp takes only a fresh server quote — never price_at_time.
-        // A check-only call throws the stamp away, so it doesn't spend a
-        // quote on it: the shared key is the trigger check's first.
-        const writtenPrice = ctx.dryRun
-          ? null
-          : await getStockQuote(existing.ticker)
-              .then((q) => freshQuotePrice(q, new Date()))
-              .catch(() => null);
         const apply = (ops: TriggerOp[]) => applyTriggerOps({
           stored: existingTriggers,
           inherited: inheritedLadder,
@@ -1257,8 +1253,6 @@ export const updateThesis = defineTool({
           // analyst wrote "buy the pullback to $203" and the row stored
           // "buy above $203" against a $258 tape.
           currentPrice: resolvedPriceAtTime,
-          writtenPrice,
-          now: new Date(),
           mintId: () => randomUUID(),
         });
         const applied = apply(triggerOps);
@@ -1330,7 +1324,6 @@ export const updateThesis = defineTool({
           direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
           status: "HOLDING",
           actor: "SYSTEM",
-          now: new Date(),
           mintId: () => randomUUID(),
         });
         opResults.push(...written.results);
@@ -1424,7 +1417,8 @@ export const updateThesis = defineTool({
     // tomorrow, unchanged. This is the other thing: the analyst looked, even
     // if it concluded nothing changed. If a run skips the thesis or crashes,
     // nothing is stamped and it stays due.
-    if (patch.status !== "RETIRED" && patch.status !== "PASSED") {
+    // The Portfolio Manager's note is not the analyst's review: the stock's clock keeps counting.
+    if (patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
       patch.lastReviewedAt = new Date();
     }
 

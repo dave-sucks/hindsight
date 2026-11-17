@@ -28,7 +28,7 @@ import {
   type TimelineUpdate,
   type TitleTrigger,
 } from "@/components/agent/sheets/thesis-timeline-utils";
-import { recentItems, RECENT_ITEMS, type FeedItem } from "@/lib/thesis/activity-feed";
+import { notedItems, recentItems, RECENT_ITEMS, type FeedItem } from "@/lib/thesis/activity-feed";
 
 /** One Activity line, as the callers load it. Any order. */
 export interface ActivityRow {
@@ -65,6 +65,8 @@ export interface UnansweredWord {
 export interface StockContext {
   /** The block, ready to print; null when the feed is empty. */
   text: string | null;
+  /** The Overview's "Agent insights" as lines: the newest Activity lines with a written paragraph. */
+  insights: string[];
   openFires: OpenFire[];
   unansweredDecision: UnansweredWord | null;
   /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
@@ -226,6 +228,7 @@ export function saidBlock(ticker: string, feed: FeedItem[], triggers?: ReadonlyA
 export function buildStockContext(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
   return {
     text: saidBlock(args.ticker, args.feed, args.triggers),
+    insights: notedItems(args.feed).map((i) => saidLine(i, args.triggers).trim()),
     openFires: openFires(args.feed),
     unansweredDecision: unansweredWord(args.feed),
   };

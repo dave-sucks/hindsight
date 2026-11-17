@@ -19,7 +19,6 @@ function exitBelow(level: number, id = "trig-stop"): Trigger {
     predicate: { watch: "price", is: "below", value: level },
     action: "EXIT",
     rationale: "stop",
-    cooldownDays: 0,
   };
 }
 
@@ -29,7 +28,6 @@ function exitAbove(level: number, id = "trig-cover"): Trigger {
     predicate: { watch: "price", is: "above", value: level },
     action: "EXIT",
     rationale: "cover stop",
-    cooldownDays: 0,
   };
 }
 
@@ -39,7 +37,6 @@ function trailExit(pct: number, id = "trig-trail"): Trigger {
     predicate: { watch: "move", is: "below", value: pct, variable: "peak" },
     action: "EXIT",
     rationale: "gain ratchet",
-    cooldownDays: 0,
   };
 }
 
@@ -224,23 +221,6 @@ describe("computeLadderHealth — trailing floors (LONG)", () => {
 });
 
 describe("computeLadderHealth — predicate composition", () => {
-  it("finds a floor inside an OR (any branch fires alone)", () => {
-    const orExit: Trigger = {
-      id: "trig-or",
-      predicate: { match: "any", conditions: [{ watch: "price", is: "below", value: 105 }, { watch: "price", is: "above", value: 140 }] },
-      action: "EXIT",
-      rationale: "stop or take-profit",
-    };
-    const h = computeLadderHealth({
-      ...baseLong,
-      avgCost: 100,
-      currentPrice: 112,
-      triggers: [orExit],
-    })!;
-    expect(h.floor?.price).toBe(105);
-    expect(h.flooredGainPct).toBeCloseTo(5);
-  });
-
   it("does NOT count a level inside an AND (conditional, not standalone protection)", () => {
     const andExit: Trigger = {
       id: "trig-and",

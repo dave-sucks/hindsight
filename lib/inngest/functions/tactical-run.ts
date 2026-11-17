@@ -19,7 +19,6 @@
 
 import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { inngest } from "@/lib/inngest/client";
-import { enterAlreadyChecked, rearmBuyAfterPass } from "@/lib/agent/triggers/rearm";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs } from "ai";
@@ -44,7 +43,6 @@ import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-wr
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { answers, firedTrigger } from "@/lib/proposals/staged";
-import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
@@ -52,7 +50,9 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { preCatalystWindowLine, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -100,13 +100,6 @@ function directExitReason(
 ): "STOP" | "TARGET" {
   return autoSellCloseReason(trigger.predicate, direction);
 }
-
-// How long after a REJECTED close proposal to keep suppressing re-fires of
-// the same EXIT/TRIM trigger. A reject means "I've seen the stop, I'm
-// holding" — re-proposing on the next 5-min tick would just spawn a
-// reject-loop. After this window the trigger can re-surface if the position
-// is still in breach. Tunable.
-const EXIT_RECHECK_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // ── Inngest function ───────────────────────────────────────────────────
 
@@ -281,17 +274,15 @@ export const tacticalRun = inngest.createFunction(
     }
 
     // ── Suppress redundant close runs while an exit is already queued ────────
-    // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
-    // original design closed the position immediately, dropping it from the
-    // evaluator's ACTIVE-only scan before the next 5-min tick ever arrived.
-    // Trade-as-proposal broke that assumption: the close now sits in
-    // AWAITING_APPROVAL while the human decides, so the position stays OPEN and
-    // the stop re-fires every tick — each fire a full GPT-5.5 tactical run
-    // (NVDA 12x / IREN 8x / NVTS 5x on 2026-06-04, ~25 runs / ~$25 in an hour).
+    // A sale trigger once fired on every tick while its close sat in
+    // AWAITING_APPROVAL: each fire a full tactical run (NVDA 12x / IREN 8x /
+    // NVTS 5x on 2026-06-04, ~25 runs / ~$25 in an hour). A trigger now fires
+    // once until a close finds it false; this still folds a second sale
+    // trigger's fire into the close already queued.
     //
-    // If a close for this position is already awaiting approval — or was
-    // rejected within the snooze window (the human explicitly chose to hold) —
-    // a fresh tactical run has nothing to do. Bail BEFORE create-run and the
+    // If a close for this position is already awaiting approval or sent, a
+    // fresh tactical run has nothing to do. A declined sale holds nothing back:
+    // a trigger that fires after it is a new break and gets its run. Bail BEFORE create-run and the
     // agent call so zero GPT-5.5 cost is incurred. Only matters when approval
     // toggles are ON; with auto-execute the position closes on the first fire
     // and never reaches a second tick, so this is a no-op there.
@@ -301,17 +292,9 @@ export const tacticalRun = inngest.createFunction(
           where: {
             positionId: position.id,
             intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
-            OR: [
-              // A sale proposed and not expired, or sent to Alpaca (PENDING) and
-              // awaiting fill. The five-minute check already skips these unstamped; this is the backstop.
-              ...saleUnderWay(new Date()),
-              {
-                status: "REJECTED",
-                updatedAt: {
-                  gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS),
-                },
-              },
-            ],
+            // A sale proposed and not expired, or sent to Alpaca (PENDING) and
+            // awaiting fill. The five-minute check already skips these unstamped; this is the backstop.
+            OR: saleUnderWay(new Date()),
           },
           select: { id: true, status: true },
         }),
@@ -348,53 +331,6 @@ export const tacticalRun = inngest.createFunction(
         }),
       );
       if (queuedBuy) return { skipped: "buy-already-queued", thesisId: fired.thesisId, orderId: queuedBuy.id };
-    }
-
-    // ── Suppress duplicate buy-checks on the same trigger (GAPS P1-37) ──────
-    // When a stock crosses its buy price and the analyst examines it and
-    // decides NOT to buy, the trigger stays armed — and every subsequent fire
-    // (5-min evaluator tick, a second overlapping trigger)
-    // wakes ANOTHER full GPT-5.5 session that re-reads the same thesis and
-    // reaches the same "no" (CAPR ~5×, CEG 4× over 2026-07-20→21 — ~9 wasted
-    // runs in two days, every one blocked by the same below-bar conviction
-    // score). If a tactical run for THIS SAME trigger already completed
-    // within the snooze window, bail before create-run — zero cost.
-    //
-    // This does NOT touch the standing-order ruling ("a trigger fires every
-    // day its condition is true — never engineer repeats away"). That ruling
-    // protects ALERTS the principal sees. A declined buy-check produced no
-    // proposal and nothing on the principal's screen — this suppresses only
-    // the duplicate MACHINE dispatch. The trigger keeps firing and recording,
-    // the daily run still sees it as fired work the next morning, and a run
-    // that decides TO buy still produces the approval card. A FAILED prior
-    // run does not snooze (a crash deserves a retry); post-#525 an agent that
-    // declines durably is taught to move the trigger to the level it would
-    // actually accept, which ends the refires at the source — this snooze
-    // catches the same-day multi-path duplicates in the meantime.
-    if (trigger.action === "ENTER") {
-      const recentEnterCheck = await step.run("check-recent-enter-run", async () =>
-        prisma.researchRun.findFirst({
-          where: {
-            agentConfigId: agentConfig.id,
-            mode: "INTRADAY_TACTICAL",
-            status: "COMPLETE",
-            createdAt: { gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS) },
-            parameters: { path: ["triggerId"], equals: trigger.id },
-          },
-          select: { id: true, createdAt: true },
-        }),
-      );
-      // A buy the last run passed on because the price had slipped back
-      // under its level was left armed (DAV-343); its re-fire is checked.
-      if (recentEnterCheck && enterAlreadyChecked(recentEnterCheck, trigger)) {
-        return {
-          skipped: "enter-already-checked",
-          thesisId: fired.thesisId,
-          triggerId: trigger.id,
-          priorRunId: recentEnterCheck.id,
-          priorRunAt: recentEnterCheck.createdAt,
-        };
-      }
     }
 
     // ── On fire "Auto": decided before the run row, so the row can say a
@@ -449,7 +385,7 @@ export const tacticalRun = inngest.createFunction(
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: price-below (price/time)").
       const summary = sentenceOf(trigger as Trigger);
-      // A co-fired protective trigger gets its own audit row — the record
+      // A co-fired trigger gets its own audit row — the record
       // says both fired — but shares this one run.
       // The rows carry what fired and the price; the analyst's note answers them.
       for (const co of coFired) {
@@ -622,10 +558,6 @@ export const tacticalRun = inngest.createFunction(
             if (!out.ok) return { tool: call.tool, error: out.error ?? "the trade tool failed" };
             tried = { tool: call.tool, summary: out.summary ?? null };
           }
-          const usedOnce = await useOnce({ thesisId: thesis.id, triggerId: trigger.id, runId: run.id, priceAtTime: fired.firedPrice ?? null }).catch((err) => {
-            console.error(`[tactical-run] could not take used-once trigger ${trigger.id} off ${thesis.ticker}:`, err instanceof Error ? err.message : err);
-            return false;
-          });
           // The order the tool made on this stock since the run began; none when it was refused. (manage_position
           // writes its decision row only on a fill, so an approval-held trim or add has none to look up by.)
           const made = await prisma.order.findFirst({
@@ -633,7 +565,7 @@ export const tacticalRun = inngest.createFunction(
             orderBy: { createdAt: "desc" },
             select: { id: true },
           });
-          return { ...tried, usedOnce, orderId: made?.id ?? null };
+          return { ...tried, orderId: made?.id ?? null };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);
@@ -729,6 +661,11 @@ export const tacticalRun = inngest.createFunction(
         situations: auto ? null : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
         portfolioBlock,
+        // A review on a stock we only watch may be a playbook's way in: the Writer's playbooks block.
+        playbooks:
+          !auto && trigger.action === "REVIEW" && !position
+            ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
+            : null,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run
@@ -1092,30 +1029,6 @@ export const tacticalRun = inngest.createFunction(
       await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
 
-    // ── A pass on a wobble doesn't spend the buy (DAV-343) ─────────────
-    // AAPL 09-30: fired at $331.47, the run read $330.83 and passed, and the
-    // buy was used up for the day. When the pass was because the price was
-    // back under the level, the next check past it fires the buy again.
-    const rearm =
-      trigger.action === "ENTER" && !auto && outcome.closedOut
-        ? await step.run("rearm-buy-after-pass", async () => {
-            try {
-              return await rearmBuyAfterPass({
-                runId: run.id,
-                runStartedAt: new Date(run.createdAt),
-                thesisId: thesis.id,
-                trigger,
-              });
-            } catch (err) {
-              console.error(
-                `[tactical-run] thesis=${thesis.id} re-arm check failed:`,
-                err instanceof Error ? err.message : err,
-              );
-              return null;
-            }
-          })
-        : null;
-
     return {
       runId: run.id,
       thesisId: thesis.id,
@@ -1124,7 +1037,6 @@ export const tacticalRun = inngest.createFunction(
       action: trigger.action,
       ...(auto ? { fireMode: "DO_IT" as const, auto } : {}),
       ...outcome,
-      ...(rearm ? { rearm } : {}),
     };
   },
 );

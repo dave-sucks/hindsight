@@ -12,7 +12,7 @@ import type { Trigger } from "./triggers/types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
 const trig = (id: string, action: string, predicate: unknown): Trigger =>
-  ({ id, action, predicate, rationale: "r", cooldownDays: 0 }) as unknown as Trigger;
+  ({ id, action, predicate, rationale: "r"}) as unknown as Trigger;
 const below = (v: number) => ({ watch: "price", is: "below", value: v });
 const dayDrop = (v: number) => ({ watch: "move", is: "below", value: v, variable: "prev_close" });
 const fire = (triggerId: string, hoursAgo = 2) => ({ type: "TRIGGER_FIRED", timestamp: new Date(NOW.getTime() - hoursAgo * 3_600_000), triggerId, runId: null });
@@ -153,8 +153,10 @@ describe("the situations for a person: the sheet's flag line", () => {
   });
 });
 
-// The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15; the buy's triggers_with_buy, 11-17).
-const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_210, REVIEW_DUE: 7_130, NOTE_TO_ANSWER: 3_240 };
+// The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15; the buy's triggers_with_buy, 11-17;
+// the buy passed on and left as it is fires again only after a close finds it false, and a review that is a playbook's way in, 11-17;
+// a pullback buy that touched without the reversal is re-priced to a close above today's high, 11-17).
+const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_480, REVIEW_DUE: 7_640, NOTE_TO_ANSWER: 3_240 };
 const capOf = (code: string) => CAP[code as SituationCode] ?? 2_200;
 
 describe("the guidance: each situation's text, once", () => {
@@ -297,6 +299,8 @@ describe("the live book after the close, replayed", () => {
   const LISTED_BY_A_PLAN_CHECK = new Set(["SMCI", "SYK", "GD"]);
   // MU's ADD_OR_WINNER came from three quarters of the way to its target, which went with the target (2026-11-16).
   const NEAR_TARGET = new Set(["MU"]);
+  // MU's floor had fired and no close has found it false since: a sale that fired stays on the morning's list (2026-11-17).
+  const FIRED_SALE = new Set(["MU"]);
   it.each(stocks.map((s) => [s.ticker, s] as const))("%s: listed as main listed it, with main's lead and its situations", (_t, s) => {
     // Anything that reads the wall clock reads the recorded day.
     jest.useFakeTimers({ now: new Date(s.in.now) });
@@ -308,7 +312,8 @@ describe("the live book after the close, replayed", () => {
     expect(listsTheStock(src)).toBe(s.listed && !LISTED_BY_A_PLAN_CHECK.has(s.ticker));
     // Recorded before the merge (2026-11-15): each saved code is the one it is now.
     const codes = s.codes.filter((c) => !DELETED.has(c) && !(c === "ADD_OR_WINNER" && NEAR_TARGET.has(s.ticker)));
-    expect(situationsFor(src)).toEqual([...new Set(codes.map((c) => MERGED_CODE[c] ?? c))]);
+    const expected = [...new Set(codes.map((c) => MERGED_CODE[c] ?? c))];
+    expect(situationsFor(src)).toEqual(FIRED_SALE.has(s.ticker) && !expected.includes("PROTECTIVE_SALE") ? [...expected, "PROTECTIVE_SALE"] : expected);
   });
 });
 

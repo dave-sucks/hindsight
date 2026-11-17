@@ -16,11 +16,11 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 
 const ANET_ID = "cmt0zqjmc000504l5zq6djk32";
 const TRIGGERS = [
-  { id: "09a4a3f1-6a7d-4e39-9506-9f5cf0c50ed2", action: "EXIT", fireMode: "ASK_NOW", predicate: { is: "below", value: 184.5, watch: "price" }, rationale: "Hard stop at $175.99.", cooldownDays: 1 },
-  { id: "61c7c342-b7b5-47fc-8939-680fa3da5c9e", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 215, watch: "price" }, rationale: "Target $215 hit. Decide: close at target or trail higher with confidence intact.", cooldownDays: 1 },
-  { id: "f57a2801-773b-463b-ba5c-957d9989060d", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "beat", value: 0, watch: "surprise" }, rationale: "Beat — possibly a reason to extend the target.", cooldownDays: 7 },
-  { id: "8bfc23b7-ab85-4034-a86b-6ebc3cb7a9c6", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "miss", value: 3, watch: "surprise" }, rationale: "Miss ≥ 3% — re-evaluate target.", cooldownDays: 7 },
-  { id: "df7e2d95-dd24-422c-a506-d8728ed686ba", action: "EXIT", fireMode: "DO_IT", predicate: { is: "below", value: 4, watch: "move", variable: "peak" }, rationale: "Gave back 4% from the high.", cooldownDays: 1 },
+  { id: "09a4a3f1-6a7d-4e39-9506-9f5cf0c50ed2", action: "EXIT", fireMode: "ASK_NOW", predicate: { is: "below", value: 184.5, watch: "price" }, rationale: "Hard stop at $175.99."},
+  { id: "61c7c342-b7b5-47fc-8939-680fa3da5c9e", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 215, watch: "price" }, rationale: "Target $215 hit. Decide: close at target or trail higher with confidence intact."},
+  { id: "f57a2801-773b-463b-ba5c-957d9989060d", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "beat", value: 0, watch: "surprise" }, rationale: "Beat — possibly a reason to extend the target."},
+  { id: "8bfc23b7-ab85-4034-a86b-6ebc3cb7a9c6", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "miss", value: 3, watch: "surprise" }, rationale: "Miss ≥ 3% — re-evaluate target."},
+  { id: "df7e2d95-dd24-422c-a506-d8728ed686ba", action: "EXIT", fireMode: "DO_IT", predicate: { is: "below", value: 4, watch: "move", variable: "peak" }, rationale: "Gave back 4% from the high."},
 ];
 const ANET = { id: ANET_ID, ticker: "ANET", direction: "LONG", horizon: "TARGET", setupId: null, triggers: TRIGGERS, analystId: REPLAY_ANALYST_ID };
 const sales = (ts: unknown) => (ts as Trigger[]).filter((t) => t.action === "EXIT");

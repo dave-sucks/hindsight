@@ -120,7 +120,6 @@ function thesisRow(over: Record<string, unknown>) {
         action: "ENTER",
         predicate: { watch: "price", is: "above", value: 100 },
         rationale: "the plan's buy",
-        cooldownDays: 1,
       },
     ],
     catalystDate: null,
@@ -313,7 +312,6 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
             action: "EXIT",
             predicate: { watch: "price", is: "below", value: 90 },
             rationale: "protective floor",
-            cooldownDays: 0,
           },
         ],
       }),
@@ -389,14 +387,12 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
             action: "EXIT",
             predicate: { watch: "price", is: "below", value: 90 },
             rationale: "protective floor",
-            cooldownDays: 0,
           },
           {
             id: "trig-cadence",
             action: "REVIEW",
             predicate: { watch: "repeat", value: 7 },
             rationale: "weekly look",
-            cooldownDays: 7,
           },
         ],
       }),
@@ -481,7 +477,7 @@ describe("get_theses — a stock with no setup named, and a buy that fired into 
       targetPrice: 480,
       stopLoss: 395,
       setupId: "COMPOUNDER_ACCUMULATION",
-      triggers: [{ id: "enter", action: "ENTER", predicate: { watch: "price", is: "above", value: 418 }, rationale: "Buy above $418.", lastFiredAt: fired, cooldownDays: 7 }],
+      triggers: [{ id: "enter", action: "ENTER", predicate: { watch: "price", is: "above", value: 418 }, rationale: "Buy above $418.", lastFiredAt: fired}],
     });
     const eme = thesisRow({ id: "t_EME", ticker: "EME", setupId: "COMPOUNDER_ACCUMULATION" });
     mockThesisFindMany.mockResolvedValue([...holds, etn, eme]);

@@ -5,23 +5,20 @@
  * rule are written by an analyst or the owner, one trigger at a time, never
  * stamped from code. A playbook's lines are its templates, listed in
  * Settings → Playbook (lib/agent/knowledge/playbooks.ts). What code still
- * writes: the account's standing rules, and each trigger's cooldown and fire
- * mode when none is named.
+ * writes: the account's standing rules, and each trigger's fire mode when
+ * none is named.
  *
  * IDs are auto-assigned via randomUUID() — stable for the life of the
- * trigger so cooldown stamps survive subsequent merges.
+ * trigger so its fire history survives subsequent merges.
  */
 
 import { shapeOf } from "./condition/valid";
-import { defaultCooldownDays, reviewClockDays } from "./condition/rules";
+import { reviewClockDays } from "./condition/rules";
 import { randomUUID } from "node:crypto";
 import type { Trigger } from "./types";
 import { triggerSlot } from "./condition/slot";
-import { flooredCooldownDays } from "./state-cooldown";
 import { withFireMode } from "./fire-mode";
 import type { When } from "@/lib/agent/triggers/condition";
-
-export { isStatePredicate, STATE_PREDICATE_MIN_COOLDOWN_DAYS } from "./state-cooldown";
 
 const createId = () => randomUUID();
 
@@ -55,8 +52,6 @@ function scaleInOnStrengthTrigger(): Trigger {
     predicate: { watch: "move", is: "above", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Up ${SCALE_IN_MOVE_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
-    // 3-day cooldown so a multi-day run doesn't re-propose an add every session.
-    cooldownDays: 3,
   };
 }
 
@@ -81,7 +76,6 @@ export function scaleInOnPullbackTrigger(): Trigger {
     predicate: { watch: "move", is: "below", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Down ${SCALE_IN_MOVE_PCT}% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.`,
-    cooldownDays: 3,
   };
 }
 
@@ -120,7 +114,6 @@ export function reviewCadenceTrigger(days: number): Trigger {
       days === 1
         ? `Look at this every day.`
         : `Look at this every ${days} days, counting from the last real review.`,
-    cooldownDays: days,
   };
 }
 
@@ -183,107 +176,9 @@ export function templateNotes(): string[] {
   return [...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
 }
 
-// ── Cooldown defaults ──────────────────────────────────────────────────
-//
-// Triggers without a `cooldownDays` value used to fire forever — the
-// `shouldFire` gate only enforces cooldown when both `cooldownDays` and
-// `lastFiredAt` are set, so an unset cooldown silently disabled rate
-// limiting. Observed in production: agent-supplied earnings-beat trigger
-// on AMZN with no cooldown fired 10 tactical runs over 12.5 hours on a
-// single earnings signal that the router (correctly) re-evaluated each
-// time a new intel batch landed.
-//
-// We now apply a sane per-predicate-kind default at write time in
-// record_thesis / update_thesis. The values mirror the conventions
-// already baked into the horizon templates above (EARNINGS_*: 7,
-// price and chart kinds: 1, etc.) so behavior of a default-minted trigger doesn't
-// change — these only kick in when an agent-supplied trigger is
-// missing the field.
-
-/**
- * Default cooldown (days) for a predicate when the agent didn't specify
- * one. Mirrors the conventions in the horizon templates: earnings-class
- * predicates rate-limit at the quarterly cycle (7d caps the
- * "earnings-beat aftershocks" window); filings/news/price predicates
- * rate-limit at 1 day so they don't fan out on every quote tick or
- * intel batch; a review cadence rate-limits at its own interval.
- */
-export function defaultCooldownDaysForPredicate(
-  p: When,
-  action?: Trigger["action"],
-): number {
-  // Each measure carries its own default (./condition/measures): no cooldown
-  // on a filing (one fire per filing), 7 on a beat/miss, 30 on a report
-  // window or an insider cluster, a day on price and chart lines, a week on a
-  // state a review asks about (DAV-329), a week on a gain milestone (it
-  // latches), one fire per gap, and a schedule's own interval.
-  const w = shapeOf(p);
-  return w == null ? 1 : defaultCooldownDays(w, action ?? "");
-}
-
-/**
- * Fill in `cooldownDays` on every trigger in the array that doesn't
- * already have one. Pure; returns a fresh array. Call this in the write
- * path (record_thesis / update_thesis) before persistence so disk state
- * always has cooldown bookkeeping.
- *
- * `cooldownDays: 0` is not a wait, on any action. A sticky condition (a
- * price level, vs-average, RSI, the review clock, AND/OR composites of
- * the same) stays true once true, and a 5-min check re-fires it every
- * pass until something intervenes. Treat `0` as "needs default" and
- * overwrite with the per-predicate cooldown; `effectiveCooldownDays` then
- * floors a trade at a day.
- *
- * Background: 2026-06-02 NVDA tactical runaway — agent-supplied
- * `update_thesis` triggers stamped `cooldownDays: 0` on a review
- * 14d REVIEW, the old `!= null` check walked past it, and the loop
- * fired 15 times in 70 min before manual hotfix. Until 2026-11-02 an
- * EXIT at 0 was allowed, on the theory that a waiting sale drops the
- * repeats; a run that holds leaves nothing waiting, and CEG's sale woke
- * a run at 9:30, 9:35 and 9:40.
- */
-/**
- * The cooldown a rung actually fires on — the one number `shouldFire` uses.
- *
- * Three layers:
- *   1. What is written on the rung.
- *   2. The per-predicate default, when nothing is written, or when a 0 is
- *      written (a 0 means "nag every five minutes").
- *   3. A FLOOR: a week on a review of a state, a day on any trade.
- *
- * Layer 3 is the DAV-329 fix and it has to be a floor, not a default:
- * #719 set the default for vs-average to 7 and it changed nothing, because
- * the Secular Compounder's "below the 200-day → review" rule carries an
- * explicit `cooldownDays: 1`, and a written 1 beats any default. ABT sat
- * under its 200-day from 09-15 to 09-25 and that rule fired all nine
- * trading days. Without the floor the only fix is deleting and re-adding
- * the rule by hand.
- *
- * Only a REVIEW is floored. A BUY on one of these reads the price, so it
- * fires on the crossing already; a week's cooldown there wouldn't quiet a
- * nag, it would swallow the second crossing, and GD, GEV and SYK all buy
- * on "back above the 50-day". A SALE — EXIT or TRIM — keeps DAV-229's
- * standing-order semantics untouched: a protective rung asks every day its
- * condition holds, and a decline means "did nothing today". Slowing one
- * down to weekly would turn a declined sell into a silent one.
- */
-export function effectiveCooldownDays(trigger: Trigger): number {
-  // A wait of zero is not a wait: it reads as unset, and the floor below keeps a trade to once a day.
-  const isInvalidZero = trigger.cooldownDays === 0;
-  const written =
-    trigger.cooldownDays != null && !isInvalidZero
-      ? trigger.cooldownDays
-      : defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
-
-  return flooredCooldownDays(trigger, written);
-}
-
-/** Also writes each trigger's fire mode down: the one it names, else its action's default (./fire-mode). */
+/** Every write path saves each trigger with its fire mode: the one it names, else its action's default (./fire-mode). */
 export function applyTriggerDefaults(triggers: Trigger[]): Trigger[] {
-  return triggers.map((t) => {
-    const needsDefault = t.cooldownDays == null || t.cooldownDays === 0;
-    return withFireMode(needsDefault ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) } : t);
-  });
+  return triggers.map((t) => withFireMode(t));
 }
 
 /**

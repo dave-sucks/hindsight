@@ -240,8 +240,9 @@ export function tradeLine(props: Omit<TradeSummaryProps, "look">) {
 function ProposalTriggers({ sentences }: { sentences: readonly string[] }) {
   return (
     <ul className="pt-1 text-sm text-muted-foreground tabular-nums">
-      {sentences.map((s) => (
-        <li key={s}>{s}</li>
+      {/* Two triggers can read the same: keyed by place, not by sentence. */}
+      {sentences.map((s, i) => (
+        <li key={`${i}:${s}`}>{s}</li>
       ))}
     </ul>
   );

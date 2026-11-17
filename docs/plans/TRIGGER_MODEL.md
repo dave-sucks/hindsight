@@ -83,6 +83,8 @@ picks what to lead with.
 
 ### Grid 1 — standing triggers stamped on every HOLDING (`defaults.ts`)
 
+(History. Since 2026-11-17 there are no waits: a trigger fires when it becomes true and again after a close finds it false, `docs/TRIGGERS.md` §6.)
+
 | Rung | Condition | Action → route | Cooldown | Evaluated by |
 |---|---|---|---|---|
 | Hard stop | price below stop | EXIT → tactical | 0 (re-fires) | 5-min cron |

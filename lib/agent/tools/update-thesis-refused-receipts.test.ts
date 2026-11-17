@@ -82,11 +82,11 @@ function vst() {
     lastReviewedAt: null,
     researchUpdatedAt: new Date(),
     triggers: [
-      { id: CADENCE, predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
-      { id: BUY, predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "Only revisit as a buy above $165.", source: "AGENT", cooldownDays: 1 },
+      { id: CADENCE, predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT"},
+      { id: BUY, predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "Only revisit as a buy above $165.", source: "AGENT"},
       // The watch's floor, as the 2026-11-16 migration stores it.
-      { id: FLOOR, predicate: { watch: "price", is: "below", value: 132, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT", cooldownDays: 1 },
-      { id: TARGET, predicate: { watch: "price", is: "above", value: 240 }, action: "REVIEW", rationale: "Target $240.00 — decide here.", source: "AGENT", cooldownDays: 1 },
+      { id: FLOOR, predicate: { watch: "price", is: "below", value: 132, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT"},
+      { id: TARGET, predicate: { watch: "price", is: "above", value: 240 }, action: "REVIEW", rationale: "Target $240.00 — decide here.", source: "AGENT"},
     ],
     triggerState: {},
   };
@@ -110,7 +110,7 @@ beforeEach(() => {
 });
 
 /** VST as a holding: its sale, its upside review and its clock. A buy can't sit on a stock we own. */
-const HELD_SALE = { id: FLOOR, predicate: { watch: "price", is: "below", value: 132 }, action: "EXIT", rationale: "Sell if below $132.", source: "AGENT", cooldownDays: 1 };
+const HELD_SALE = { id: FLOOR, predicate: { watch: "price", is: "below", value: 132 }, action: "EXIT", rationale: "Sell if below $132.", source: "AGENT"};
 const held = () => ({ ...vst(), status: "HOLDING", triggers: vst().triggers.filter((t) => t.id !== BUY && t.id !== FLOOR).concat([HELD_SALE]) });
 const ADD_A_BUY = { add_triggers: [{ predicate: { watch: "price", is: "above", value: 170 }, action: "ENTER", rationale: "Buy the reclaim of $170." }] };
 

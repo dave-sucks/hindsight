@@ -133,13 +133,20 @@ describe("applyTriggerOps — edits", () => {
     expect(out.triggers[0].rationale).toBe("Exit below $969 — the protective line raised on 8/24.");
   });
 
-  it("fired state survives an edit — the id does not change", () => {
-    const fired = { ...buy, lastFiredAt: "2026-09-08T14:00:00.000Z", cooldownDays: 1 };
+  it("an edit keeps the id; a new number is a new trigger to fire, so its fire state starts fresh", () => {
+    const fired = { ...buy, lastFiredAt: "2026-09-08T14:00:00.000Z", falseAtCloseAt: "2026-09-07T20:20:00.000Z" };
     const out = watch([{ op: "edit", id: "buy", value: 190, rationale: "Confirmation is above the repair range now." }], [fired, target, floor]);
     const next = out.triggers.find((t) => t.id === "buy")!;
-    expect(next.lastFiredAt).toBe("2026-09-08T14:00:00.000Z");
+    expect(next.lastFiredAt).toBeUndefined();
+    expect(next.falseAtCloseAt).toBeUndefined();
     expect(next.predicate).toEqual({ watch: "price", is: "above", value: 190 });
     expect(next.rationale).toBe("Confirmation is above the repair range now.");
+  });
+
+  it("an edit that changes only how it fires keeps its fire state", () => {
+    const fired = { ...buy, lastFiredAt: "2026-09-08T14:00:00.000Z" };
+    const out = watch([{ op: "edit", id: "buy", fireMode: "NEXT_MORNING" }], [fired, target, floor]);
+    expect(out.triggers.find((t) => t.id === "buy")!.lastFiredAt).toBe("2026-09-08T14:00:00.000Z");
   });
 
   it("a level edit on a trigger with a different kind of number is refused", () => {

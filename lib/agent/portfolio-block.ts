@@ -23,7 +23,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
-import { snapshotText } from "@/lib/portfolio/snapshot";
+import { snapshotText, watchingText } from "@/lib/portfolio/snapshot";
 import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
 
@@ -50,8 +50,15 @@ function withinTime<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Which parts a reader gets beyond the standing four: `watching` adds the
+ * Watching block (every stock we watch, a line each); `portfolioDigest: false`
+ * leaves the 8 PM digest out, for a reader that must form its own view.
+ */
+export interface BlockArgs { accountId: string; environment: string; now?: Date; waitMs?: number; watching?: boolean; portfolioDigest?: boolean }
+
 /** The block's text for one book. Never throws. */
-export async function loadPortfolioBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
+export async function loadPortfolioBlock(args: BlockArgs): Promise<string> {
   try {
     return await readBlock(args);
   } catch (err) {
@@ -60,7 +67,7 @@ export async function loadPortfolioBlock(args: { accountId: string; environment:
   }
 }
 
-async function readBlock(args: { accountId: string; environment: string; now?: Date; waitMs?: number }): Promise<string> {
+async function readBlock(args: BlockArgs): Promise<string> {
   const now = args.now ?? new Date();
   const environment = args.environment === "LIVE" ? "LIVE" : "PAPER";
   const wait = args.waitMs ?? SNAPSHOT_WAIT_MS;
@@ -72,7 +79,7 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
     prisma.marketDigest
       .findFirst({ where: { accountId: args.accountId, environment }, orderBy: { date: "desc" }, select: { digest: true, createdAt: true } })
       .catch(() => null),
-    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), wait).catch((err) => {
+    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now, watching: args.watching }), wait).catch((err) => {
       console.warn(`[portfolio-block] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
       return null;
     }),
@@ -97,6 +104,8 @@ async function readBlock(args: { accountId: string; environment: string; now?: D
   }
   parts.push("", "### Portfolio snapshot");
   parts.push(snapshot && snapshot !== "timeout" ? snapshotText(snapshot) : "The portfolio snapshot couldn't be read for this request.");
+  if (args.watching && snapshot && snapshot !== "timeout") parts.push("", "### Watching", watchingText(snapshot));
+  if (args.portfolioDigest === false) return parts.join("\n");
   parts.push("");
   const fresh = digest && now.getTime() - digest.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
   if (digest && fresh) {

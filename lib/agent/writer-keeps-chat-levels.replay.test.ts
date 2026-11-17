@@ -13,7 +13,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const THESIS = "cmv9nm3xo000o06l3om8r7ath";
 const BUY = "9db623d8-7df0-48bb-b9ce-3968664813ae";
-const t = (id: string, action: string, predicate: Record<string, unknown>) => ({ id, action, source: "AGENT", predicate, rationale: "(as set)", cooldownDays: action === "EXIT" ? 0 : 1 });
+const t = (id: string, action: string, predicate: Record<string, unknown>) => ({ id, action, source: "AGENT", predicate, rationale: "(as set)"});
 const row = [
   t(BUY, "ENTER", { watch: "price", is: "above", value: 906 }),
   t("d7fcd231-5a48-42a0-919b-8efc0ac521b0", "ENTER", { watch: "move", is: "near", value: 2, variable: "sma50" }),

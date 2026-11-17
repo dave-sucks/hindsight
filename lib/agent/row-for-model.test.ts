@@ -33,8 +33,8 @@ const held = (): Row => ({
   researchAge: { daysOld: 2, freshness: "fresh", horizonThreshold: 30 },
   context: "WHAT'S BEEN SAID ON $IOT\nLast look: morning run, 10-06 08:00.",
   triggers: [
-    { id: "t_floor", says: "Sell if below $40.80", rationale: "Under the breakout shelf.", fireMode: "ASK_NOW", cooldownDays: 1, lastFiredAt: "2026-10-07T14:40:15.751Z", setBy: "AGENT" },
-    { id: "t_target", says: "Review if above $47", rationale: "The objective.", cooldownDays: 1, setBy: "PRINCIPAL" },
+    { id: "t_floor", says: "Sell if below $40.80", rationale: "Under the breakout shelf.", fireMode: "ASK_NOW", lastFiredAt: "2026-10-07T14:40:15.751Z", setBy: "AGENT" },
+    { id: "t_target", says: "Review if above $47", rationale: "The objective.", setBy: "PRINCIPAL" },
   ],
   inheritedTriggers: [
     { id: "a_trail", says: "Sell if 12% below the high since we bought", rationale: "Protect the gain.", level: "ANALYST" },

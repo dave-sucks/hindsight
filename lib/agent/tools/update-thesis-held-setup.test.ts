@@ -234,9 +234,10 @@ describe("update_thesis — a held stock gets its playbook's fill templates when
     expect(next).toBeDefined();
     expect(next).toHaveLength(ABT_TRIGGERS.length + 2);
     // Every trigger ABT already had is exactly as it was — its own 30-day
-    // review clock included — except its sale's stored wait of 0, which a
-    // save heals to a day: a sale asks once a day, never more (2026-11-02).
-    const healed = ABT_TRIGGERS.map((t) => (t.action === "EXIT" && t.cooldownDays === 0 ? { ...t, cooldownDays: 1 } : t));
+    // review clock included — except the stored waits, which a save drops:
+    // there are no waits (2026-11-17).
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const healed = ABT_TRIGGERS.map(({ cooldownDays, ...t }) => t);
     expect(next!.slice(0, ABT_TRIGGERS.length)).toEqual(healed);
     // Its own 30-day clock fills the playbook's clock kind, so that one isn't written.
     expect(next!.slice(ABT_TRIGGERS.length).map((t) => [t.action, t.predicate])).toEqual([

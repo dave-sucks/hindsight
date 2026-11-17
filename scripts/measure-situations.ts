@@ -23,7 +23,7 @@ import { isAgentAnswer } from "@/lib/agent/stock-context";
 import { changedTheRow } from "@/lib/agent/fire-streak";
 import { situationsFor, situationsTap, type SituationSources } from "@/lib/agent/situations";
 
-const TRIGGER_FIELDS = ["id", "action", "predicate", "cooldownDays", "lastFiredAt", "rearmedAt", "firedFilings", "firedReports", "level"];
+const TRIGGER_FIELDS = ["id", "action", "predicate", "cooldownDays", "lastFiredAt", "firedFilings", "firedReports", "level"];
 const pick = (o: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ?? null);
 const leadOf = (f: { kind: string; triggerId?: string; action?: string } | null | undefined) =>

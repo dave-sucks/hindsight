@@ -51,12 +51,18 @@ interface Options {
   earlier?: Row[];
 }
 
+/**
+ * MU's "Review if below $95" is left off: since a review fires when it is true (2026-11-17) it is due
+ * on its own at this read, and these cases are about the card and the note.
+ */
+const MU_PRICE_REVIEW = "d9b6bc8d-017f-4355-8e8c-fe315084db87";
+
 function seed(c: Case, { card = true, activity = c.activity, earlier = [] }: Options = {}): Record<string, Row[]> {
   const id = c.thesis.id;
   const order = (o: Row): Row => ({ userId: REPLAY_USER_ID, accountId: REPLAY_ACCOUNT_ID, orderType: "MARKET", rejectionMessage: null, ...dated(o, ["createdAt", "expiresAt", "updatedAt"]), thesisId: id, positionId: c.order.positionId, environment: "LIVE", symbol: c.thesis.ticker, side: "SELL", intent: "CLOSE", closeReason: "STOP" });
   return {
     agentConfig: [agentConfigRow({ id: c.analyst.id, name: c.analyst.name })],
-    thesis: [thesisRow({ ...dated(c.thesis, ["createdAt", "lastReviewedAt", "researchUpdatedAt"]), analystId: c.analyst.id })],
+    thesis: [thesisRow({ ...dated(c.thesis, ["createdAt", "lastReviewedAt", "researchUpdatedAt"]), analystId: c.analyst.id, triggers: ((c.thesis.triggers ?? []) as Row[]).filter((t) => t.id !== MU_PRICE_REVIEW) })],
     position: [positionRow({ ...dated(c.position, ["openedAt"]), analystId: c.analyst.id, symbol: c.thesis.ticker, environment: "LIVE" })],
     order: [...(card ? [order(c.order)] : []), ...earlier.map(order)],
     thesisUpdate: activity.map((u) => thesisUpdateRow({ ...dated(u, ["timestamp"]), thesisId: id })),

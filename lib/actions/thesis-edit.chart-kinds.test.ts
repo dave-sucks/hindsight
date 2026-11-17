@@ -36,7 +36,6 @@ describe("the Add-trigger dialog's chart conditions", () => {
     });
     expect(t.predicate).toEqual(p);
     expect(t.source).toBe("PRINCIPAL");
-    expect(t.cooldownDays).toBeGreaterThan(0);
   });
 
   it("the chart conditions can also be account / analyst standing rules; a typed price can't", () => {

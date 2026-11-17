@@ -59,11 +59,13 @@ export async function withdrawOnTheClose(args: {
   /** The close pass's context: the day's close as the price. */
   ctx: EvaluationContext;
   proposals: TriggerProposal[];
+  /** Whether everything a trigger reads loaded: one that can't be read waits for another close. */
+  readable?: (t: Trigger) => boolean;
 }): Promise<Array<{ id: string; reason: string }>> {
   const out: Array<{ id: string; reason: string }> = [];
   for (const p of args.proposals) {
     const behind = p.triggerIds.map((id) => args.ladder.find((t) => t.id === id)).filter((t): t is Trigger => t != null);
-    if (behind.length === 0 || behind.some((t) => evaluateTrigger(t.predicate, args.ctx))) continue;
+    if (behind.length === 0 || behind.some((t) => args.readable?.(t) === false || evaluateTrigger(t.predicate, args.ctx))) continue;
     const reason = backPast(behind[0], args.ctx);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.order.updateMany({ where: { id: p.id, status: "AWAITING_APPROVAL" }, data: { status: "WITHDRAWN", withdrawnReason: reason } });

@@ -7,8 +7,9 @@
  * principal's trigger popover and a buy fill all send ops through
  * `applyTriggerOps`; nothing hands a thesis a whole new list any more. Two consequences the old replace-all contract could never give:
  *
- *   - an edited trigger keeps its id, so its fired / cooldown state carries
- *     by construction (no reconciliation, no id re-adoption, no handoff);
+ *   - an edited trigger keeps its id (no reconciliation, no id re-adoption,
+ *     no handoff); a changed condition or action clears when it fired, so it
+ *     fires when it is true;
  *   - every op is its own line in the Activity feed — "Entry $183 → $190",
  *     "Removed: sell below $110" — because the ops ARE the change, not a
  *     diff of two lists guessed at afterwards.
@@ -50,6 +51,10 @@ import {
   isLevel,
   levelOf,
   measureOf,
+  settingDefs,
+  waitsForClose,
+  POSITION_ON_A_WATCH,
+  readsThePosition,
   reviewClockDays,
   sentenceOf,
   shapeOf,
@@ -57,7 +62,6 @@ import {
 } from "./condition";
 import { applyTriggerDefaults } from "./defaults";
 import { defaultNote } from "./note";
-import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
   levelSlotOf,
@@ -89,15 +93,15 @@ export type TriggerOp =
       /** An Auto-trim: the % it sells. */
       trimPct?: number;
       rationale?: string;
-      cooldownDays?: number;
       /** A price level fires only on the 16:20 close pass; false = intraday. Absent = as it was. */
       close?: boolean;
     }
   | { op: "remove"; id: string }
   /**
    * Swap a trigger's condition, action and fire mode in one step (the trigger
-   * dialog's Save). Kept in the same slot, it keeps its id, history and
-   * cooldown; moved to another slot, it is a new trigger with a new id.
+   * dialog's Save). Kept in the same slot, it keeps its id and history (a
+   * changed condition starts its fire state fresh); moved to another slot, it
+   * is a new trigger with a new id.
    */
   | { op: "replace"; id: string; trigger: Trigger }
   /**
@@ -147,10 +151,6 @@ export interface ApplyTriggerOpsInput {
   ownersWord?: boolean;
   /** Live quote — decides which side a re-levelled buy trigger compares on. */
   currentPrice?: number | null;
-  /** Stamped on buy and review triggers this call writes (./written-price). Defaults to `currentPrice`. */
-  writtenPrice?: number | null;
-  /** The write time stamped with it. Defaults to now. */
-  now?: Date;
   mintId: () => string;
 }
 
@@ -203,24 +203,6 @@ function fmtValue(field: "level" | "pct" | "days", v: number): string {
   return field === "level" ? money(v) : field === "pct" ? `${v}%` : `${v} days`;
 }
 
-/**
- * A new buy whose price is already true where it is written never crosses, so it never fires until the
- * price leaves and comes back (HPE 2026-09-09: "above $54.75" written at $57.08). In an "any" group one
- * true price part makes the buy true; an "all" group is true only when every part is a price level
- * true at the price (SMMT 10-02: "above $17.10 and above the 20-day" can still cross). A group inside
- * a group is never refused. Null when the price is unknown or the buy can still cross.
- */
-export function buyAlreadyTrue(t: Pick<Trigger, "action" | "predicate">, price: number | null | undefined): string | null {
-  const w = t.action === "ENTER" && price != null && price > 0 ? shapeOf(t.predicate) : null;
-  const parts = !w ? [] : isGroup(w) ? w.conditions : [w];
-  if (parts.some(isGroup)) return null;
-  const levels = parts.map((c) => levelOf(c));
-  const holds = (l: ReturnType<typeof levelOf>) => !!l && (l.above ? price! > l.value : price! < l.value);
-  const level = w && isGroup(w) && w.match === "all" ? (levels.every(holds) ? levels[0] : null) : levels.find(holds);
-  if (!level) return null;
-  return `A buy ${level.above ? "above" : "below"} ${money(level.value)} is already true at ${money(price!)}, so it never crosses and never fires. To buy now, set it at or a few cents past ${money(price!)} (is: above); for a pullback, write is: below at a level under ${money(price!)}.`;
-}
-
 /** The trigger an add would collide with: same price slot, else same bucket. */
 export function collision(
   stored: Trigger[],
@@ -235,11 +217,24 @@ export function collision(
 
 const MAX_TRIGGERS = 20;
 
+/** A trigger as new to fire: when it fired and when a close last found it false are cleared (firedFilings and firedReports stay: once per filing, once per report). */
+function freshFire(t: Trigger): Trigger {
+  const { lastFiredAt: _f, falseAtCloseAt: _c, ...rest } = t;
+  void _f;
+  void _c;
+  return rest;
+}
+
 export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOutput {
   const { direction, status, actor, inherited = [], currentPrice, mintId } = input;
   // Only the mode an op sets is held to the owner's rule: an agent may move the level of an owner's Auto trigger.
   const setsMode = (action: string, mode: FireMode | undefined) => fireModeProblem(action, mode, { agent: actor === "AGENT" && !input.ownersWord });
   const held = status === "HOLDING";
+  // A watch carries watch triggers: one that reads our position waits for the buy.
+  const onAWatch = (p: unknown) => {
+    const w = shapeOf(p);
+    return !held && w != null && readsThePosition(w) ? POSITION_ON_A_WATCH : null;
+  };
   const stamp = (t: Trigger): Trigger["source"] =>
     actor === "AGENT" ? "AGENT" : actor === "PRINCIPAL" ? "PRINCIPAL" : (t.source ?? "DEFAULT");
   let stored = input.stored;
@@ -357,12 +352,14 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         // Moving the number never changes when it fires (DAV-247 review).
         next = withBasisOf(subject, next);
       }
-      predicate = group ? { ...group, conditions: group.conditions.map((c: When, i: number) => (i === op.part ? next : c)) } : next;
+      predicate = group ? { ...group, conditions: group.conditions.map((c, i) => (i === op.part ? next : c)) } : next;
     }
     // ...unless the caller says when it fires: the edit's own `close`, or
-    // the fill level's basis. It applies to a price level only.
+    // the fill level's basis. It applies to a typed price or an average only.
     const close = op.close ?? meta.close;
-    const closeNotApplied = close !== undefined && (isGroup(predicate) || !isLevel(predicate));
+    // The close setting goes where the save takes it: a typed price or an average (the measure's own rule).
+    const closeFits = (c: Condition) => settingDefs(c).some((d) => d.key === "close") && measureOf(c).fits({ ...c, settings: { ...c.settings, close: true } });
+    const closeNotApplied = close !== undefined && (isGroup(predicate) || !closeFits(predicate as Condition));
     if (close !== undefined && !closeNotApplied) {
       const { settings, ...plain } = predicate as Condition;
       const { close: _old, ...rest } = settings ?? {};
@@ -371,6 +368,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = Object.keys(kept).length ? { ...plain, settings: kept } : plain;
     }
     const action = op.action ?? target.action;
+    const watchProblem = onAWatch(predicate);
+    if (watchProblem) return refuse("edit", op.id, `Edit ${name}`, watchProblem);
     let rationale = op.rationale?.trim() || target.rationale;
     const slot = levelSlotOf({ ...target, predicate, action }, direction);
     const level = levelOf(predicate);
@@ -389,10 +388,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       rationale,
       ...(fireMode !== undefined ? { fireMode } : {}),
       ...(op.trimPct !== undefined ? { trimPct: op.trimPct } : {}),
-      ...(op.cooldownDays !== undefined ? { cooldownDays: op.cooldownDays } : {}),
       source: stamp(target),
     };
-    const next = stored.map((t) => (t.id === op.id ? edited : t));
+    // A changed condition or action is a new trigger to fire: it fires when it is true.
+    const changed = !samePredicate(target.predicate, predicate) || action !== target.action;
+    const next = stored.map((t) => (t.id === op.id ? (changed ? freshFire(edited) : edited) : t));
 
     const parts: string[] = [];
     if (wanted && current && wanted.value !== current.value) {
@@ -405,20 +405,18 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       parts.push(line);
     }
-    const onClose = (p: When) => levelOf(p)?.close === true;
+    const onClose = (p: When) => waitsForClose(p);
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
     if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode })}`);
     if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: size ${trimPctOf(target)}% → ${op.trimPct}%`);
-    if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
-      parts.push(`${name}: cooldown ${op.cooldownDays} days`);
     if (parts.length === 0 && rationale !== target.rationale)
       parts.push(`${name}: wording updated`);
     // Said, not dropped: "on the close" means nothing to a trigger that isn't
     // a price level. Alone, it comes back by id with the reason (a no-op the
     // save would drop unseen); with other changes, it rides on their line.
-    const notOnClose = `${name}: on the close is for a price level, so its timing is as it was`;
+    const notOnClose = `${name}: on the close is for a typed price or an average, so its timing is as it was`;
     if (parts.length === 0) {
       if (closeNotApplied) return refuse("edit", op.id, `${name}: timing as it was`, `${notOnClose}.`);
       return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", { unchanged: true });
@@ -442,7 +440,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   };
 
   const doAdd = (trigger: Trigger) => {
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("add", trigger.id || mintId(), `Added: ${describeTrigger(trigger)}`, wrongAction);
     const existing = collision(stored, trigger, direction);
     if (existing) {
@@ -462,7 +460,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           rationale: trigger.rationale,
           ...(trigger.fireMode !== undefined ? { fireMode: trigger.fireMode } : {}),
           ...(trigger.trimPct !== undefined ? { trimPct: trigger.trimPct } : {}),
-          ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
           ...(close !== undefined ? { close } : {}),
         },
         { above: typed ? levelOf(typed)?.above : undefined },
@@ -472,9 +469,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const text = `Added: ${describeTrigger(trigger)}`;
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
-    // An agent's new buy has to be able to cross; the owner's is the owner's.
-    const dead = actor === "AGENT" ? buyAlreadyTrue(trigger, currentPrice) : null;
-    if (dead) return refuse("add", id, text, dead);
     const above = inheritedByBucket.get(triggerSlot(trigger));
     if (above && samePredicate(above.predicate, trigger.predicate) && fireModeOf(above) === fireModeOf(trigger)) {
       return refuse(
@@ -499,7 +493,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
     const text = `Changed: ${describeTrigger(target)} → ${describeTrigger(trigger)}`;
-    const wrongAction = actionProblem(trigger.action, { held });
+    const wrongAction = actionProblem(trigger.action, { held }) ?? onAWatch(trigger.predicate);
     if (wrongAction) return refuse("edit", id, text, wrongAction);
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("edit", id, text, modeProblem);
@@ -516,10 +510,9 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       return refuse("edit", id, text, "Nothing to change — the trigger already says this.", { unchanged: true });
     }
     // The history belongs to the condition. Same slot: a new value for the
-    // same rule keeps its id, its fire history and its cooldown. Another
-    // slot: a different rule, so a new id and a clean history (inherited
-    // rules keep theirs per stock under the id, so a reused id would carry
-    // the old cooldown along).
+    // same rule keeps its id (a changed condition starts its fire state
+    // fresh, below). Another slot: a different rule, so a new id and a clean
+    // history (inherited rules keep theirs per stock under the id).
     let replaced: Trigger;
     if (sameSlot) {
       const was = numberOf(target.predicate);
@@ -542,12 +535,15 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         rationale: (renumbered && sent) || (moved ?? target.rationale),
         source: stamp(trigger),
       };
+      // A changed condition or action is a new trigger to fire: it fires when it is true.
+      if (!samePredicate(target.predicate, trigger.predicate) || target.action !== trigger.action) replaced = freshFire(replaced);
     } else {
       const { lastFiredAt: _f, firedFilings: _ff, firedReports: _fr, ...fresh } = trigger;
       void _f;
       void _ff;
       void _fr;
-      replaced = { ...fresh, id: mintId(), source: stamp(trigger) };
+      // A playbook's trigger edited into another kind is still the playbook's: the fill takes it off with the rest.
+      replaced = { ...fresh, id: mintId(), source: stamp(trigger), ...(target.playbook ? { playbook: target.playbook } : {}) };
     }
     const next = stored.map((t) => (t.id === id ? replaced : t));
     const blocked = ratchetReason(next);
@@ -632,17 +628,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   }
 
   const changed = results.some((r) => r.ok);
-  return {
-    triggers: changed
-      ? stampWrittenPrice(
-          input.stored,
-          applyTriggerDefaults(stored),
-          input.writtenPrice !== undefined ? input.writtenPrice : currentPrice,
-          input.now ?? new Date(),
-        )
-      : stored,
-    results,
-  };
+  return { triggers: changed ? applyTriggerDefaults(stored) : stored, results };
 }
 
 // ── The one check after all ops ─────────────────────────────────────────

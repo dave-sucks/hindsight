@@ -27,6 +27,7 @@
  */
 
 import { z } from "zod";
+import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
 import { forHeldStock } from "@/lib/agent/analyst-scope";
@@ -249,6 +250,7 @@ export const managePosition = defineTool({
           const needsApproval = await approvalRequired({
             accountId: ctx.accountId,
             intent: "PARTIAL_CLOSE",
+            always: isManagerRun(ctx),
             environment: position.environment as "PAPER" | "LIVE",
           });
 
@@ -749,6 +751,7 @@ export const managePosition = defineTool({
               positionId: position.id,
               orderId: order.id,
               intent: "ADD",
+              always: isManagerRun(ctx),
               environment: position.environment as "PAPER" | "LIVE",
               rationale: args.reason ?? null,
               triggerIds: answers(ctx.firedTrigger, ticker, "BUY"),

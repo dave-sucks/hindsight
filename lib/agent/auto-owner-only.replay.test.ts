@@ -5,8 +5,8 @@
  */
 import { replayTool, thesisRow, positionRow } from "@/lib/replay";
 
-const ADD = { id: "1aba586f-cd45-4bbd-82da-d651f1e2802a", action: "ADD", fireMode: "ASK_NOW", source: "AGENT", predicate: { watch: "move", is: "above", value: 10, variable: "prev_close" }, rationale: "Up 10% in a day on a live position: evaluate adding if the move is thesis-confirming.", cooldownDays: 1 };
-const FLOOR = { id: "21976408-e091-49d6-9411-649feba59fdf", action: "EXIT", fireMode: "ASK_NOW", source: "AGENT", predicate: { watch: "price", is: "below", value: 196 }, rationale: "The floor stays at $196.", cooldownDays: 1 };
+const ADD = { id: "1aba586f-cd45-4bbd-82da-d651f1e2802a", action: "ADD", fireMode: "ASK_NOW", source: "AGENT", predicate: { watch: "move", is: "above", value: 10, variable: "prev_close" }, rationale: "Up 10% in a day on a live position: evaluate adding if the move is thesis-confirming."};
+const FLOOR = { id: "21976408-e091-49d6-9411-649feba59fdf", action: "EXIT", fireMode: "ASK_NOW", source: "AGENT", predicate: { watch: "price", is: "below", value: 196 }, rationale: "The floor stays at $196."};
 
 async function setAuto(runMode: string, triggerId: string) {
   const { result, db } = await replayTool("update-thesis", "updateThesis", {

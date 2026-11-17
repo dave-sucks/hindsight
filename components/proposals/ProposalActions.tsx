@@ -505,8 +505,8 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                       <div className="grid gap-1.5">
                         <Label>Comes with the buy</Label>
                         <ul className="text-sm text-muted-foreground tabular-nums">
-                          {editWithBuy.map((t) => (
-                            <li key={t}>{t}</li>
+                          {editWithBuy.map((t, i) => (
+                            <li key={`${i}:${t}`}>{t}</li>
                           ))}
                         </ul>
                         <p className="text-xs text-muted-foreground">Change these on the stock once the buy fills.</p>

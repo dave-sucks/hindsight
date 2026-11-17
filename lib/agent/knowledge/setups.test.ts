@@ -104,7 +104,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     const r = await tool.execute({ topic: "setup" }, opts);
     expect(r.ok).toBe(true);
     expect(r.data.count).toBe(12);
-    expect(r.summary).toMatch(/^12 setups:/);
+    expect(r.summary).toMatch(/^12 playbooks:/);
   });
 
   it("returns a full entry with readable content: the playbook's words, then its triggers", async () => {
@@ -112,7 +112,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.data.found).toBe(true);
     const content = String(r.data.content);
     expect(content).toContain("Post-earnings drift (D4)");
-    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {price} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{price}","settings":{"close":true}}} — Today\'s price');
+    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {gapDayMid} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{gapDayMid}","settings":{"close":true}}} — The gap held: a close above the gap day\'s middle.');
     expect(content).toContain("The triggers that come with the buy:\n- Sell if below {sellPrice}: ");
     expect(content).toContain('- Review 60 days after the buy: {"action":"REVIEW","predicate":{"watch":"from_date","is":"after","value":60,"variable":"buy"}} — Hold 30–60 days.');
     expect(content).not.toMatch(/^(Stop|Target|Trail|Time|  Condition):/m);

@@ -131,14 +131,19 @@ describe.each(["PRAX", "AAOI"] as const)("%s: the filing trigger the save refuse
 
 describe("a trigger of two conditions holding a filing and a line", () => {
   const c = F.PRAX;
-  const group = { match: "any", conditions: [{ watch: "filing", value: "tier:RED" }, { watch: "price", is: "below", value: "sma50" }] };
-  const call = { ...asWritten(c.decision), triggers: [...asWritten(c.decision).triggers.filter((t) => t.predicate.watch !== "filing"), { action: "REVIEW", fireMode: "ASK_NOW", predicate: group, rationale: "A red-tier filing, or a break of the 50-day: look again." }] };
+  const withGroup = (match: string) => ({ ...asWritten(c.decision), triggers: [...asWritten(c.decision).triggers.filter((t) => t.predicate.watch !== "filing"), { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match, conditions: [{ watch: "filing", value: "tier:RED" }, { watch: "price", is: "below", value: "sma50" }] }, rationale: "A red-tier filing under the 50-day: look again." }] });
 
   it("saves whole, each condition converted once (until 2026-11-13 the Writer dropped it as not a condition)", async () => {
-    expect(await submitAndSave("PRAX", c, call)).toContainEqual({
-      match: "any",
+    expect(await submitAndSave("PRAX", c, withGroup("all"))).toContainEqual({
+      match: "all",
       conditions: [{ watch: "filing", variable: "tier:RED" }, { watch: "price", is: "below", variable: "sma50" }],
     });
+  });
+
+  it("an \"or\" is handed back by the SDK, saying either one is two triggers (2026-11-17)", async () => {
+    const sdk = await sdkParse(c, { ...c.decision, triggers: withGroup("any").triggers });
+    expect(sdk.success).toBe(false);
+    expect((sdk as { error: Error }).error.message).toContain("is two triggers");
   });
 });
 

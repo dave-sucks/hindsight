@@ -55,27 +55,26 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   schedule: Repeat,
 };
 
-/** What the form edits: the action, one condition or two, what it does on fire, and a trim's size. */
+/** What the form edits: the action, one condition or two (both must hold), what it does on fire, and a trim's size. */
 export interface Draft {
   action: TriggerAction;
   conditions: Condition[];
-  match: "all" | "any";
   fireMode: FireMode;
   trimPct: number;
 }
 
+/** One condition, or two that must both hold. */
 export function whenOf(d: Draft): When {
-  return d.conditions.length === 1 ? d.conditions[0] : { match: d.match, conditions: d.conditions };
+  return d.conditions.length === 1 ? d.conditions[0] : { match: "all", conditions: d.conditions };
 }
 
 /** A stored trigger as a draft, or null when the form can't show it (a removed kind, or more than two conditions). */
 export function draftOf(t: Trigger): Draft | null {
   const w = shapeOf(t.predicate);
-  if (!w || (isGroup(w) && (w.conditions.length !== 2 || w.conditions.some(isGroup)))) return null;
+  if (!w || (isGroup(w) && w.conditions.length !== 2)) return null;
   return {
     action: t.action as TriggerAction,
     conditions: conditionsOf(w),
-    match: isGroup(w) ? w.match : "all",
     fireMode: fireModeOf(t),
     trimPct: trimPctOf(t),
   };

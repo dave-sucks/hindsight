@@ -1,7 +1,6 @@
 /**
  * The trigger rules every measure answers on its catalog entry, combined for
- * a whole condition or group: the default cooldown, the weekly floor on a
- * state review, the label a protective sale closes with, the close-only
+ * a whole condition or group: the label a protective sale closes with, the close-only
  * reading of a watched stock's floor, and what the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
@@ -13,25 +12,6 @@ import type { Line, LineContext, Source } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { variableDef } from "./variables";
-
-/**
- * Days between fires when the trigger names none. A group of one measure's
- * conditions (a rule naming several filings) is one rule and keeps its
- * measure's; a mix takes its slowest condition's, at least a day.
- */
-export function defaultCooldownDays(w: When, action: string): number {
-  if (!isGroup(w)) return measureOf(w).cooldownDays(w, action);
-  const days = w.conditions.map((x) => defaultCooldownDays(x, action));
-  const first = w.conditions[0];
-  const oneMeasure = first != null && !isGroup(first) && w.conditions.every((x) => !isGroup(x) && x.watch === first.watch);
-  return oneMeasure ? Math.max(...days) : Math.max(1, ...days);
-}
-
-/** A state, not a moment ("below the 200-day"). A group is one only when every condition is. */
-export function isState(w: When): boolean {
-  if (isGroup(w)) return w.conditions.length > 0 && w.conditions.every(isState);
-  return measureOf(w).state?.(w) === true;
-}
 
 /** The label a protective sale closes with (a typed price, or a % from a close, our entry or the high); null for a judgment sale the agent labels itself. */
 export function protectiveCloseReason(w: When, direction: string | null): "STOP" | "TARGET" | null {
@@ -87,10 +67,27 @@ export function reviewClockDays(w: When): number | null {
   return !isGroup(w) && measureOf(w).clock === true && w.value != null ? w.value : null;
 }
 
-/** Read off the quote, the position and the daily snapshot alone: no earnings calendar, no filings, no schedule. A group only when every condition is. */
-export function readsTheTape(w: When): boolean {
-  return conditionsOf(w).every((c) => measureOf(c).timed !== true && !readsSource(c, "earnings") && !readsSource(c, "filings"));
+/** A window inside an "and": it bounds the others and reads only the stock's own date. */
+export function isWindowIn(w: When, c: Condition): boolean {
+  return isGroup(w) && measureOf(c).window?.(c) === true;
 }
+
+/** Read off the quote, the position and the daily snapshot alone: no earnings calendar, no filings, no schedule. A group only when every condition is (a window inside it aside). */
+export function readsTheTape(w: When): boolean {
+  const read = conditionsOf(w).filter((c) => !isWindowIn(w, c));
+  return read.length > 0 && read.every((c) => measureOf(c).timed !== true && !readsSource(c, "earnings") && !readsSource(c, "filings"));
+}
+
+/**
+ * A trigger that reads our position: a move from our buy price or from the high since we
+ * bought, or a date count from the buy. It means nothing until we own the stock.
+ */
+export function readsThePosition(w: When): boolean {
+  return conditionsOf(w).some((c) => fromPosition(c) || measureOf(c).fromTheBuy?.(c) === true);
+}
+
+export const POSITION_ON_A_WATCH =
+  "The move from our buy price, the high since we bought and the days since the buy exist only once we own the stock, so a trigger on them can't go on a stock we only watch: it comes with the buy, or at the fill.";
 
 /** How soon a protective sale fires, lower first: a typed floor nearer the price, a smaller %. Null when it has no number. */
 export function tightness(w: When, isLong: boolean): number | null {

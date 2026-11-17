@@ -22,7 +22,6 @@ const TRAIL = {
   fireMode: "ASK_NOW",
   predicate: { is: "below", value: 12, watch: "move", settings: { startOnceUpPct: 10 }, variable: "peak" },
   rationale: "Gave back 12% from the high, once the position had been up 10% — bank the run.",
-  cooldownDays: 0,
 };
 
 /** The stored row before 10-06: the monitor's highest reading was 239.43 (10-05, 15:00 ET). */

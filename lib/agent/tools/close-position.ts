@@ -219,7 +219,8 @@ export const closePosition = defineTool({
         ctx.runId,
         beliefSurvived,
         // A trigger run woken by this stock's sale: the proposal stays open while that trigger holds.
-        { triggerIds: answers(ctx.firedTrigger, ticker, "SELL"), proposedPrice: quote?.c != null && quote.c > 0 ? quote.c : null },
+        // The Portfolio Manager's sale waits for the owner whatever the switches say.
+        { triggerIds: answers(ctx.firedTrigger, ticker, "SELL"), proposedPrice: quote?.c != null && quote.c > 0 ? quote.c : null, ...(ctx.runMode === "PORTFOLIO_MANAGER" ? { propose: true } : {}) },
       );
       const expiresAt = outcome.kind === "proposed" ? (outcome.proposal.expiresAt?.toISOString() ?? null) : null;
 

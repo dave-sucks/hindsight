@@ -10,6 +10,10 @@ import type { AlpacaCredentials } from "@/lib/alpaca";
 
 type Book = "PAPER" | "LIVE";
 
+/** Runs made for the whole account, with no analyst of their own: each write acts for the stock's own analyst. */
+const ACCOUNT_WIDE: ReadonlySet<string> = new Set(["PRINCIPAL_CHAT", "PORTFOLIO_MANAGER"]);
+export const accountWide = (ctx: Pick<ToolContext, "runMode">): boolean => ACCOUNT_WIDE.has(ctx.runMode ?? "");
+
 /** A thesis's analyst: the pinned one, else the analyst of the run that wrote it. */
 export const analystOf = (t: { researchRun?: { agentConfigId?: string | null } | null }, pinned?: string | null): string | null =>
   pinned ?? t.researchRun?.agentConfigId ?? null;
@@ -26,9 +30,9 @@ export async function analystScope(
   return { ...analystToolSettings(ac, watchlist), analystId: ac.id, runEnvironment, alpacaCreds: creds ?? undefined };
 }
 
-/** The chat acting for this analyst (in this book, else the analyst's). Any other run, or the same analyst, is unchanged. */
+/** An account-wide run acting for this analyst (in this book, else the analyst's). Any other run, or the same analyst, is unchanged. */
 export async function forTheStock(ctx: ToolContext, analystId: string | null, book?: Book): Promise<ToolContext> {
-  if (ctx.runMode !== "PRINCIPAL_CHAT" || !analystId || analystId === ctx.analystId) return ctx;
+  if (!accountWide(ctx) || !analystId || analystId === ctx.analystId) return ctx;
   const ac = await prisma.agentConfig.findFirst({ where: { id: analystId, accountId: ctx.accountId } });
   return ac ? { ...ctx, ...(await analystScope(ac, ctx.userId, book)) } : ctx;
 }
@@ -36,7 +40,7 @@ export async function forTheStock(ctx: ToolContext, analystId: string | null, bo
 // The Master Chat sells for the stock's holder: the one open position's analyst, in
 // that position's book. Two holders: a question naming both.
 export async function forHeldStock(ctx: ToolContext, ticker: string): Promise<{ ctx: ToolContext; question?: string }> {
-  if (ctx.runMode !== "PRINCIPAL_CHAT" || ctx.analystId) return { ctx };
+  if (!accountWide(ctx) || ctx.analystId) return { ctx };
   const open = await prisma.position.findMany({
     where: { accountId: ctx.accountId, symbol: ticker, status: "OPEN" },
     select: { analystId: true, environment: true, analyst: { select: { name: true } } },

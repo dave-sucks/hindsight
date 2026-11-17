@@ -1,0 +1,295 @@
+{
+ "about": "ACN, Secular Compounder, production 2026-11-17: the thesis the Writer minted at 05:02 ET, its triggers as stored (one buy of three conditions joined by 'or') and as the 2026-11-21 migration leaves them (its dry run on a copy of production: three buys, new ids, the stored waits dropped), and the 2026-11-16 indicator snapshot. Notes not kept.",
+ "thesis": {
+  "id": "cmwk87rgp000008l6k0b14ek5",
+  "status": "WATCHING",
+  "ticker": "ACN",
+  "createdAt": "2026-11-17T05:02:47.497",
+  "direction": "LONG",
+  "catalystDate": null
+ },
+ "analyst": {
+  "id": "cmmqxola3000004lbj7c11bfn",
+  "name": "Secular Compounder"
+ },
+ "stored": [
+  {
+   "id": "31a27e9e-417b-410d-bb5e-42d73d9c9e23",
+   "action": "ENTER",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "match": "any",
+    "conditions": [
+     {
+      "match": "all",
+      "conditions": [
+       {
+        "is": "above",
+        "value": 271.76,
+        "watch": "price",
+        "settings": {
+         "close": true
+        }
+       },
+       {
+        "value": 1.5,
+        "watch": "volume"
+       }
+      ]
+     },
+     {
+      "is": "near",
+      "value": 2,
+      "watch": "move",
+      "variable": "sma50"
+     },
+     {
+      "is": "above",
+      "watch": "price",
+      "variable": "sma50"
+     }
+    ]
+   },
+   "rationale": "(not kept)",
+   "cooldownDays": 1
+  },
+  {
+   "id": "12ca69fd-6263-45af-98f4-eb39b3f174ac",
+   "action": "REVIEW",
+   "source": "AGENT",
+   "fireMode": "NEXT_MORNING",
+   "playbook": "WATCH",
+   "predicate": {
+    "value": 30,
+    "watch": "repeat"
+   },
+   "rationale": "(not kept)",
+   "cooldownDays": 30
+  },
+  {
+   "id": "359625ec-f61e-49f6-82b8-0add351bb62b",
+   "action": "STOP_WATCHING",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "is": "below",
+    "value": 118.15,
+    "watch": "price",
+    "settings": {
+     "close": true
+    }
+   },
+   "rationale": "(not kept)",
+   "cooldownDays": 1
+  },
+  {
+   "id": "506fd98d-310e-422d-b4ff-fae7bdf246a1",
+   "action": "REVIEW",
+   "source": "AGENT",
+   "fireMode": "NEXT_MORNING",
+   "predicate": {
+    "is": "before",
+    "value": 7,
+    "watch": "report"
+   },
+   "rationale": "(not kept)",
+   "cooldownDays": 30
+  }
+ ],
+ "migrated": [
+  {
+   "id": "db81bf82-4bcd-a41b-5170-bbcc461237bd",
+   "action": "ENTER",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "match": "all",
+    "conditions": [
+     {
+      "is": "above",
+      "value": 271.76,
+      "watch": "price",
+      "settings": {
+       "close": true
+      }
+     },
+     {
+      "value": 1.5,
+      "watch": "volume"
+     }
+    ]
+   },
+   "rationale": "(not kept)"
+  },
+  {
+   "id": "50f8bcdb-f49c-ed8f-2327-82da1eb6f927",
+   "action": "ENTER",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "is": "near",
+    "value": 2,
+    "watch": "move",
+    "variable": "sma50"
+   },
+   "rationale": "(not kept)"
+  },
+  {
+   "id": "3dffef90-dead-03c2-0afd-b2e0160f2cae",
+   "action": "ENTER",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "is": "above",
+    "watch": "price",
+    "variable": "sma50"
+   },
+   "rationale": "(not kept)"
+  },
+  {
+   "id": "12ca69fd-6263-45af-98f4-eb39b3f174ac",
+   "action": "REVIEW",
+   "source": "AGENT",
+   "fireMode": "NEXT_MORNING",
+   "playbook": "WATCH",
+   "predicate": {
+    "value": 30,
+    "watch": "repeat"
+   },
+   "rationale": "(not kept)"
+  },
+  {
+   "id": "359625ec-f61e-49f6-82b8-0add351bb62b",
+   "action": "STOP_WATCHING",
+   "source": "AGENT",
+   "fireMode": "ASK_NOW",
+   "playbook": "WATCH",
+   "predicate": {
+    "is": "below",
+    "value": 118.15,
+    "watch": "price",
+    "settings": {
+     "close": true
+    }
+   },
+   "rationale": "(not kept)"
+  },
+  {
+   "id": "506fd98d-310e-422d-b4ff-fae7bdf246a1",
+   "action": "REVIEW",
+   "source": "AGENT",
+   "fireMode": "NEXT_MORNING",
+   "predicate": {
+    "is": "before",
+    "value": 7,
+    "watch": "report"
+   },
+   "rationale": "(not kept)"
+  }
+ ],
+ "snapshot": {
+  "sma": {
+   "20": 251.94,
+   "50": 217.91,
+   "150": 184.2,
+   "200": 190.26
+  },
+  "asOf": "2026-11-16",
+  "gaps": [],
+  "atr14": 9.52,
+  "low20": 232.57,
+  "closes": [
+   186.53,
+   186.93,
+   181.38,
+   187.38,
+   189.61,
+   189.76,
+   188.09,
+   187.68,
+   193.12,
+   186.72,
+   179.03,
+   175.8,
+   177.91,
+   183.9,
+   195,
+   193.4,
+   189.64,
+   190.29,
+   181.29,
+   186.11,
+   183.72,
+   183.52,
+   177.41,
+   176.11,
+   174.47,
+   177.12,
+   183.37,
+   212.3,
+   198.9,
+   195.05,
+   193.4,
+   196.64,
+   208.36,
+   209.06,
+   214.87,
+   213.56,
+   214.96,
+   224.92,
+   229.68,
+   236.93,
+   239.12,
+   240.26,
+   258.74,
+   249.37,
+   247.23,
+   235.16,
+   243.4,
+   247.22,
+   258.24,
+   260.94,
+   254.56,
+   264.27,
+   265.16,
+   260.5,
+   254.37,
+   258.51,
+   253.66,
+   249.95,
+   250.49,
+   247.7
+  ],
+  "high20": 271.76,
+  "low52w": 118.15,
+  "high52w": 291.09,
+  "rsVsSpy": {
+   "1M": 10.9,
+   "3M": 46.8,
+   "6M": 39.3
+  },
+  "insiderBuys": [
+   {
+    "date": "2026-10-26",
+    "name": "Sweet Julie Spellman",
+    "price": 245.987,
+    "shares": 12200,
+    "lowPrice": 245.1063
+   },
+   {
+    "date": "2026-10-26",
+    "name": "Price Paula A",
+    "price": 249.81,
+    "shares": 800,
+    "lowPrice": 249.8097
+   }
+  ],
+  "volumeAvg20": 5550847
+ }
+}

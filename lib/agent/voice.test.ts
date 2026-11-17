@@ -111,7 +111,7 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/proposals/thesis-flips.ts", ["Bought on your approval", "Profit-take. Position closed", "Protective exit on price", "Position closed. Reason:", "Close proposal approved. Reason:"]],
     ["lib/inngest/functions/reconcile-orders.ts", ["Now that we own it, the buy price on the thesis is what we paid", "The automatic stop moves with it"]],
     ["lib/agent/record-buy-blocked.ts", ["Nothing is wrong with the plan; the analyst has no room"]],
-    ["lib/agent/triggers/use-once.ts", ["is a one-time order: it came off the stock"]],
+    ["lib/agent/triggers/filled.ts", ["is a one-time order: it came off the stock"]],
     ["lib/agent/triggers/stop-watching.ts", ["was removed: ", "re-price it if the setup comes back"]],
     ["lib/trading/after-buy.ts", ["the next run will set it"]],
     ["lib/actions/thesis-edit.ts", ["You added this trigger:", "You changed this trigger to:", "You removed this trigger:", "Removed in the cleanup of copied rules:"]],
@@ -244,7 +244,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   it("the trigger run and the morning run are not told to narrate their triggers", () => {
     expect(SAMPLE_PROMPTS.tactical()).not.toMatch(/Floor stays \$X|RE-LADDER|Not acting\s+yet: <reason>|validation (HOLDS|FAILS)/);
     // PLTR's case, 1 of 3 runs, once "Floor stays $X" went: it tried to move a held stock's sale line down.
-    expect(SAMPLE_PROMPTS.tactical()).toContain("On a stock we hold you can raise the stop, never lower it;\n   if you think it is wrong, say so in the note and name the level.");
+    expect(SAMPLE_PROMPTS.tactical()).toContain("On a stock we hold you can raise a sale's price, never\n   lower it; if you think it is wrong, say so in the note and name the price.");
     expect(SAMPLE_PROMPTS.daily()).not.toContain("what triggered it");
   });
 });

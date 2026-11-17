@@ -44,7 +44,6 @@ const iotThesis = (over: Record<string, unknown> = {}) =>
         predicate: { watch: "price", is: "below", value: FLOOR },
         action: "EXIT",
         rationale: "Protective floor.",
-        cooldownDays: 0,
         fireMode: "DO_IT",
         source: "PRINCIPAL",
       },

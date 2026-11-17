@@ -46,26 +46,6 @@ function measureSection(m: MeasureDef): string[] {
     out.push("");
   }
 
-  // The usual rest, then any action that differs: "review 7 days, the rest 1 day".
-  const restOf = (c: Condition) => {
-    const rests = actions.map((a) => m.cooldownDays(c, a));
-    const usual = rests.find((n) => rests.filter((x) => x === n).length * 2 > rests.length) ?? rests[0];
-    const odd = actions.flatMap((a, i) => (rests[i] === usual ? [] : [`${ACTION_WORD[a]} ${days(rests[i])}`]));
-    return odd.length ? `${odd.join(", ")}, the rest ${days(usual)}` : days(usual);
-  };
-  const cool = restOf(fresh);
-  out.push(`**Rest period for a plain condition, when none is set:** ${cool}.`, "");
-  // A variable that changes the rest (our entry: a week) gets its own line.
-  const other = new Map<string, string[]>();
-  for (const v of m.variables?.options ?? []) {
-    const r = restOf({ ...fresh, variable: v.id });
-    if (r !== cool) other.set(r, [...(other.get(r) ?? []), `\`${v.id}\``]);
-  }
-  if (other.size) {
-    for (const [r, ids] of other) out.push(`- From ${ids.join(", ")}: ${r}.`);
-    out.push("");
-  }
-
   const examples = TRIGGER_TYPE_DOCS.flatMap((t) => t.examples).filter((e) => !("match" in e.when) && e.when.watch === m.id);
   if (examples.length) {
     out.push("**Examples:**", "");
@@ -84,7 +64,7 @@ export function triggerMeasuresMarkdown(): string {
     "",
     "## The shape",
     "",
-    "A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: \"all\" | \"any\", conditions: [...] }` for two or more. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.",
+    "A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: \"all\", conditions: [...] }` for two or more that must all hold. Either of two is two triggers. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.",
     "",
     "Actions are `ENTER` (buy), `ADD`, `TRIM`, `EXIT` (sell) and `REVIEW`. Every trigger reads as one sentence, from `describe.ts`.",
     "",
@@ -122,11 +102,11 @@ function setupSection(s: Setup): string[] {
 
 export function setupsMarkdown(): string {
   const out: string[] = [
-    "# Setups",
+    "# Playbooks",
     "",
     `**Every playbook, with its rules.** The ${SETUPS.length} kinds of trade an analyst can take: what must be true first, the triggers each writes, and when it has failed.`,
     "",
-    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart level the run fills when it writes the line. How an analyst picks its setups is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
+    "This file is built from `SETUPS` in `lib/agent/knowledge/setups.ts`; don't edit it by hand. These are the defaults: an account sees each playbook's triggers in Settings → Playbook (`lib/agent/knowledge/playbooks.ts`; the seed is `playbook-templates.ts`), and can change its sell distance numbers there (`setup-overrides.ts`). A `{name}` in a trigger is a chart price the run fills when it writes the trigger. How an analyst picks its playbooks is [Analysts](../concepts/analysts.md); how the Writer uses one is [the Writer](../agents/writer.md).",
     "",
     "A buy pattern carries its own buy condition. A screen only finds stocks; its buy comes from one of the buy patterns it names.",
     "",

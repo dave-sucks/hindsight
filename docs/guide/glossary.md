@@ -44,11 +44,10 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Target:** only ever Wall Street's number, the analysts' 12-month price target. Hindsight sets none of its own; an upside rule is a take-profit trigger. See [Price targets](concepts/price-targets.md).
 - **Buy level:** the price a watched stock's buy trigger waits for.
 - **Fire:** a trigger coming true. It's written into Activity with the price that fired it.
-- **On the cross:** how a buy fires, and a review that watches the price: once, on the day the price reaches its level, never every day it stays there.
-- **Standing order:** how a sale, an add or a trim fires, and a review that doesn't watch the price: again each time its rest period ends, while its condition holds. A sale asks every day until the stock is sold.
+- **Fires like an order:** every trigger fires when it becomes true, then again only after a market close finds it false. A trade it leads to uses it up: it comes off the stock when the order fills.
 - **Review clock:** a review that repeats, like "Review every 30 days". When it comes round, the stock is due a fresh look.
 - **On fire:** what a trigger does when it comes true: Auto (the trade, no agent: Auto-sell, Auto-trim, Auto-buy, Auto-add), Send to Agent (a trigger run), or Flag for Review (the next morning run; never a sale or a trim).
-- **Rest period:** how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day: a day for a price line or the trail, a week for an add, trim or review on the move from our entry. A sale asks daily whatever it watches. A trigger's popover shows it.
+- **Fired:** a trigger that came true and hasn't been found false at a close since. Its card says so: "Fired Nov 18 · fires again after a close back above $150". There are no waits.
 - **Inherited rule:** a trigger that comes from the analyst or the account, not the thesis. Never copied onto the thesis; the closest rule wins.
 - **Close pass:** the 4:20 PM check for levels that read the day's closing price.
 - **Chart numbers:** the averages, highs, volume, RSI, strength and gaps worked out at 6:30 every morning, which every check that day reads.

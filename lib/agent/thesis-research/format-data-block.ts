@@ -392,8 +392,7 @@ function buildPriceStructure(s: StockDataInput): string {
   }
 
   lines.push(
-    `(These chart numbers are where the prices in your playbook's triggers come from. ` +
-      `If the playbook's buy is already true today, write the buy a few cents above today's price so it fires on the next tick.)`,
+    `(These chart numbers are where the prices in your playbook's triggers come from.)`,
   );
   return lines.join("\n");
 }

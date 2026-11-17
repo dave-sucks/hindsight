@@ -1,0 +1,137 @@
+/**
+ * The Portfolio Manager: one run per traded book, Tuesday and Thursday at
+ * 10:00 AM ET (lib/inngest/functions/portfolio-manager.ts). The same agent as
+ * every other door, with its own job (./prompt.ts). It is given the Market
+ * and portfolio block every agent gets, with the Watching block, and asks
+ * get_theses for the stocks it weighs. It has no analyst: each
+ * write acts for the stock's own analyst (lib/agent/analyst-scope.ts), and
+ * every trade goes through the approval switch like any run's. Its last
+ * reply is its write-up, kept on the run as a RunEvent and read first by its
+ * next run.
+ */
+import { generateText, stepCountIs, type ToolSet } from "ai";
+import { prisma } from "@/lib/prisma";
+import { MODES } from "@/lib/agent/modes";
+import { modelFor } from "@/lib/agent/model";
+import { createResearchTools } from "@/lib/agent/tools";
+import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
+import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
+import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
+import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
+import type { RunStep } from "@/lib/agent/run-thread";
+import { buildPortfolioManagerPrompt } from "@/lib/agent/portfolio-manager/prompt";
+import { withRunLimits } from "@/lib/agent/portfolio-manager/limits";
+
+export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
+/** The RunEvent that keeps a run's write-up. */
+export const WRITEUP_EVENT = "portfolio_writeup";
+/** The morning runs' model. */
+export const MANAGER_MODEL = MODES["research-run"].model;
+const MAX_STEPS = 40;
+const CALL_MS = 770_000;
+
+/** What it may call. get_theses by ticker, a limited number of stocks a run (./limits.ts); its save is a note. */
+export const MANAGER_TOOLS = [
+  "get_theses",
+  "get_stock_data",
+  "update_thesis",
+  "place_trade",
+  "manage_position",
+  "close_position",
+  "dispatch_thesis_research",
+] as const;
+
+export interface ManagerBook {
+  accountId: string;
+  environment: "PAPER" | "LIVE";
+  userId: string;
+}
+
+const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
+
+/** Its first message: the day and its own last write-up. The account, its holdings and the watchlist are in the Market and portfolio block. */
+export async function managerMessage(book: ManagerBook, now: Date): Promise<string> {
+  const last = await prisma.runEvent
+    .findFirst({
+      where: { type: WRITEUP_EVENT, run: { accountId: book.accountId, environment: book.environment, mode: MANAGER_RUN_MODE } },
+      orderBy: { createdAt: "desc" },
+      select: { message: true, createdAt: true },
+    })
+    .catch(() => null);
+  return [`${day(now)}, the ${book.environment} account.`, "", "## Your last write-up", last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first."].join("\n");
+}
+
+export interface ManagerResult {
+  /** Its last reply, or null when the run ended with none. */
+  writeup: string | null;
+  firstMessage: string;
+  messages: unknown[];
+  steps: RunStep[];
+  toolCalls: Array<{ tool: string; input: unknown }>;
+  usage: TokenUsage;
+  /** Input tokens of each model request, in order. */
+  requests: number[];
+  error?: string;
+}
+
+/**
+ * The run's model call. Saves nothing itself beyond what its tools save: the
+ * job keeps the thread and the write-up. `tools` lets a dry run swap the
+ * writes for ones that save nothing. Never throws.
+ */
+export async function runPortfolioManager(
+  book: ManagerBook,
+  runId: string | null,
+  opts: { now?: Date; tools?: (real: ToolSet) => ToolSet } = {},
+): Promise<ManagerResult> {
+  const now = opts.now ?? new Date();
+  const [firstMessage, portfolioBlock, alpacaCreds] = await Promise.all([
+    managerMessage(book, now),
+    // The same block every agent gets, with the Watching block and without the 8 PM digest's view of the waiting proposals.
+    loadPortfolioBlock({ accountId: book.accountId, environment: book.environment, now, watching: true, portfolioDigest: false }),
+    resolveAlpacaCredentials(book.userId, book.environment),
+  ]);
+  const every = createResearchTools({
+    runId: runId ?? "",
+    userId: book.userId,
+    accountId: book.accountId,
+    runMode: MANAGER_RUN_MODE,
+    runEnvironment: book.environment,
+    alpacaCreds: alpacaCreds ?? undefined,
+  }) as ToolSet;
+  const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
+  // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
+  const real = withRunLimits(opts.tools ? opts.tools(Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet) : (Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet), tickerOf);
+  const usage = emptyTokenUsage();
+  const requests: number[] = [];
+  const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
+  try {
+    const { steps, response, text } = await generateText({
+      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager" }),
+      system: buildPortfolioManagerPrompt(portfolioBlock),
+      prompt: firstMessage,
+      tools: real,
+      providerOptions: { openai: { strictJsonSchema: true, ...(runId ? { promptCacheKey: runId } : {}) } },
+      // The same refused call three times ends the loop (repeat-refusal.ts).
+      stopWhen: [stepCountIs(MAX_STEPS), repeatRefusalGuard.stopWhen],
+      prepareStep: repeatRefusalGuard.prepareStep,
+      abortSignal: AbortSignal.timeout(CALL_MS),
+      onStepFinish({ usage: u }) {
+        addTokenUsage(usage, u);
+        requests.push(u?.inputTokens ?? 0);
+      },
+    });
+    const writeup = text?.trim() || null;
+    return done({
+      writeup,
+      messages: response.messages,
+      steps: steps as unknown as RunStep[],
+      toolCalls: steps.flatMap((s) => (s.toolCalls ?? []).map((c) => ({ tool: c.toolName, input: c.input }))),
+      ...(writeup ? {} : { error: "The run ended without its write-up." }),
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn(`[portfolio-manager] the run failed: ${error}`);
+    return done({ error });
+  }
+}

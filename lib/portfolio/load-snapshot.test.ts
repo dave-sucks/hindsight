@@ -11,8 +11,16 @@ jest.mock("@/lib/prisma", () => ({
     position: { findMany: jest.fn(async () => [{ symbol: "CEG", analystId: "a1" }]) },
     agentConfig: { findMany: jest.fn(async () => [{ id: "a1", name: "Analyst One" }]) },
     order,
+    thesis: {
+      findMany: jest.fn(async () => [
+        { ticker: "CEG", status: "HOLDING", conviction: "HIGH", createdAt: new Date("2026-06-01T14:00:00Z"), researchRun: { agentConfig: { name: "Analyst One" } } },
+        { ticker: "WST", status: "WATCHING", conviction: "MEDIUM", coreBelief: "West compounds as margins recover. More follows.", triggers: [], createdAt: new Date("2026-08-12T14:00:00Z"), researchRun: { agentConfig: { name: "Analyst One" } } },
+      ]),
+    },
   },
 }));
+// Sixty closes at $250: CEG at $274.73 is +9.9% over 5 and 20 sessions.
+jest.mock("@/lib/market-data/load-indicators", () => ({ loadIndicatorSnapshots: jest.fn(async () => new Map([["CEG", { closes: Array(60).fill(250) }]])) }));
 jest.mock("@/lib/auth/account", () => ({ getOwnerUserId: jest.fn(async () => "user_owner") }));
 jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: jest.fn(async () => ({ keyId: "k", secretKey: "s", baseUrl: "https://broker.test" })) }));
 jest.mock("@/lib/alpaca", () => ({
@@ -107,5 +115,15 @@ describe("New York's midnight", () => {
     expect(nyMidnight("2026-07-01").toISOString()).toBe("2026-07-01T04:00:00.000Z");
     expect(nyMidnight("2026-03-08").toISOString()).toBe("2026-03-08T05:00:00.000Z");
     expect(nyMidnight("2026-11-01").toISOString()).toBe("2026-11-01T04:00:00.000Z");
+  });
+
+  it("puts the conviction and the 5- and 20-day moves on a holding, and loads the watchlist only when asked", async () => {
+    const plain = await loadPortfolioSnapshot({ accountId: "acct", environment: "LIVE", now: NOW });
+    expect(plain!.holdings[0]).toMatchObject({ ticker: "CEG", conviction: "HIGH" });
+    expect(plain!.holdings[0].move5dPct).toBeCloseTo(9.89, 1);
+    expect(plain!.watching).toBeUndefined();
+    getLiveQuotes.mockResolvedValue({ CEG: { quote: { c: 274.73, pc: 267.76, t: CLOSE_AT } }, WST: { quote: { c: 415, pc: 410, dp: 1.2, t: CLOSE_AT } } });
+    const withWatching = await loadPortfolioSnapshot({ accountId: "acct", environment: "LIVE", now: NOW, watching: true });
+    expect(withWatching!.watching).toEqual([{ ticker: "WST", price: 415, dayPct: 1.2, move5dPct: null, move20dPct: null, conviction: "MEDIUM", analyst: "Analyst One", since: "2026-08-12T14:00:00.000Z", buyIf: [], belief: "West compounds as margins recover." }]);
   });
 });

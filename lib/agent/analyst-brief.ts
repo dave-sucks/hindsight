@@ -121,7 +121,7 @@ export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | nul
     `## Analyst: ${analyst.name || "Research Analyst"}`,
     ...(analyst.analystPrompt ? [analyst.analystPrompt] : []),
     ["Rules:", ...rules].join("\n"),
-    ...(setups.length ? [["Setups:", ...setups.map((s) => `- ${playbookChecks(s)[0]}`)].join("\n")] : []),
+    ...(setups.length ? [["Playbooks:", ...setups.map((s) => `- ${playbookChecks(s)[0]}`)].join("\n")] : []),
   ].join("\n\n");
 }
 

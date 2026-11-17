@@ -6,7 +6,7 @@ This file is built from `MEASURES` in `lib/agent/triggers/condition/catalog.ts` 
 
 ## The shape
 
-A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all" | "any", conditions: [...] }` for two or more. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.
+A trigger is an action and a condition. A condition is one shape everywhere (the form, the save, the agents' tools): `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions: [...] }` for two or more that must all hold. Either of two is two triggers. `watch` names the measure below; the rest are that measure's own fields. Anything else in a trigger list reads as a removed condition.
 
 Actions are `ENTER` (buy), `ADD`, `TRIM`, `EXIT` (sell) and `REVIEW`. Every trigger reads as one sentence, from `describe.ts`.
 
@@ -40,10 +40,6 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 **Settings:**
 
 - `close`: When it is checked, default false
-
-**Rest period for a plain condition, when none is set:** 1 day.
-
-- From `sma20`, `sma50`, `sma150`, `sma200`, `street_avg`, `street_high`, `street_low`: review 7 days, the rest 1 day.
 
 **Examples:**
 
@@ -88,10 +84,6 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 - `street_high`: Street high target
 - `street_low`: Street low target
 
-**Rest period for a plain condition, when none is set:** 1 day.
-
-- From `entry`: sell 1 day, the rest 7 days.
-
 **Examples:**
 
 - "Buy if within 2% of the 20-day average". Buy the pullback, not the spike: the setup is true near a rising average.
@@ -126,8 +118,6 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 `watch: "volume"` · value: more than 0× and up to 50× · actions: buy, add, trim, sell, stop watching, review · reads: snapshot, volume
 
-**Rest period for a plain condition, when none is set:** 1 day.
-
 **Examples:**
 
 - "Review if at least 2× normal volume". Twice the normal volume means someone knows something. Look before it moves.
@@ -143,8 +133,6 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 **Settings:**
 
 - `period`: RSI length, default 14
-
-**Rest period for a plain condition, when none is set:** 1 day.
 
 **Examples:**
 
@@ -162,8 +150,6 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 - `window`: Measured over, default 3M
 
-**Rest period for a plain condition, when none is set:** 7 days.
-
 **Examples:**
 
 - "Review if at least 5 points ahead of the S&P". Leading the market by 5 points over three months: a leader worth a closer look.
@@ -175,8 +161,6 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 ### Gap up
 
 `watch: "gap"` · value: more than 0% and up to 100% · actions: buy, add, trim, sell, stop watching, review · reads: snapshot
-
-**Rest period for a plain condition, when none is set:** 1 day.
 
 **Examples:**
 
@@ -193,8 +177,6 @@ Before a report, after a report, and what the report said. Read from the earning
 ### Report date
 
 `watch: "report"` · is: `before` / `after` · value: a whole number from 1 to 14 days · actions: review · reads: earnings
-
-**Rest period for a plain condition, when none is set:** 30 days.
 
 **Examples:**
 
@@ -213,8 +195,6 @@ Before a report, after a report, and what the report said. Read from the earning
 ### Result
 
 `watch: "surprise"` · is: `miss` / `beat` · value: 0% or more · actions: review · reads: earnings
-
-**Rest period for a plain condition, when none is set:** 7 days.
 
 **Examples:**
 
@@ -267,8 +247,6 @@ What the company tells the SEC, and what its insiders buy. Read live from SEC ED
 - `form:424B5`: Shares or bonds offered (424B5)
 - `form:S-3`: Registration to sell shares or bonds (S-3)
 
-**Rest period for a plain condition, when none is set:** none.
-
 **Examples:**
 
 - "Review if it files something material with the SEC". Anything material: a deal, a departure, a guidance change.
@@ -297,8 +275,6 @@ What the company tells the SEC, and what its insiders buy. Read live from SEC ED
 
 - `days`: Look-back, a whole number from 1 to 90 days, default 30
 
-**Rest period for a plain condition, when none is set:** 30 days.
-
 **Examples:**
 
 - "Review if at least 3 insiders buying · in the last 90 days". Three insiders buying with their own money is a signal worth reading.
@@ -314,8 +290,6 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
 ### Repeat
 
 `watch: "repeat"` · value: a whole number from 1 to 365 days · actions: review · a clock, stands alone
-
-**Rest period for a plain condition, when none is set:** none.
 
 **Examples:**
 
@@ -333,8 +307,6 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
 
 - `buy`: The buy
 - `event`: The event date
-
-**Rest period for a plain condition, when none is set:** none.
 
 **Examples:**
 
