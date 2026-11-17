@@ -294,11 +294,16 @@ when this shipped (2026-11-14), so nothing was migrated.
   trim would fire on every stock under it. None is stored (2026-10-22).
 
 **A trade a trigger leads to uses it up**, like a filled order, in every mode.
-When the order fills, the trigger comes off the stock through `applyTriggerOps`
-(actor SYSTEM) with one Activity line, "Its order filled, so it came off: Trim 30%
-if above $150" (`takeOffFilled`, `lib/agent/triggers/filled.ts`, called on the
-fill of a trim or an add; a buy's fill already takes off the buy triggers, and a
-sale closes the position). Only the stock's own triggers come off: an analyst or
+When a trim fills, the stock's trim triggers behind it come off through
+`applyTriggerOps` (actor SYSTEM) with one Activity line, "Its order filled, so it
+came off: Trim 30% if above $150" (`takeOffFilled`, `lib/agent/triggers/filled.ts`,
+on every trim or add fill; an add's add triggers). Behind it: the ones its
+proposal named (`Order.triggerIds`), and any of the stock's own of that action
+that fired and haven't been found false at a close since (a trim the morning run
+or chat made). Never another action: a trim answering a floor's fire leaves the
+floor. A buy's fill already takes off the buy triggers, and a sale closes the
+position. The row is locked (`FOR UPDATE`) before the list is read, as in the
+close pass's stamp. Only the stock's own triggers come off: an analyst or
 account rule stays, and is ready again after a close finds it false. A declined,
 expired or withdrawn proposal uses nothing up: the trigger has fired, and fires
 again only after a close finds it false.
@@ -387,10 +392,18 @@ how you buy now. A buy or add never fires on a stale quote; a filing fires once
 per filing and a heads-up once per report, whatever the fired state. Two buys on
 one stock true on the same pass fold into one trigger run, as a sale and a trim
 do (`lib/agent/triggers/co-fire.ts`). The daily run's `TRIGGER_MATCHING_NOW`
-asks the check's question ("true now, and ready") of a buy, an add or a review;
-of a sale or trim it asks only "true now", so a sale that fired stays on the
-morning list (PROTECTIVE_SALE) every day it holds, declined or not, until a new
-sale price is set or the price is back.
+asks the check's question ("true now, and ready") of a buy, an add or a review.
+A sale or trim is listed when it has fired and no close has found it false since
+(the close pass read it with every input; the morning read has no position or
+chart numbers, so it can't re-read a trail or an average), or, never fired, when
+it reads true now. So a sale that fired stays on the morning list
+(PROTECTIVE_SALE) every day, declined or not, until a new sale price is set or a
+close goes back past it. A declined sale holds nothing back: a trigger that fires
+after it gets its run. A buy or add fire is held back unstamped while a buy or
+add waits on the stock (proposed or sent), as a sale's is; the run's
+`buy-already-queued` skip is a backstop. On the close, a trigger is read (to make
+it ready, or to withdraw its card) only with every input it reads in hand,
+yesterday's close included for the day's move.
 
 Deleted 2026-11-17: the crossing (a buy or a review fired only when its
 condition was false at the prior close, DAV-229), the written price a buy

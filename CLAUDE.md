@@ -38,13 +38,14 @@ when written, or when its condition or action is changed, fires at the next
 check); after a fire it does not fire again until a market close (the 16:20 ET
 pass) finds its condition false (`falseAtCloseAt`, inline on the stock's own,
 in `Thesis.triggerState` for an inherited rule), never on a 5-minute check. A
-trade it leads to uses it up: when the order fills, the trigger comes off the
-stock with one Activity line (`lib/agent/triggers/filled.ts`; a sale closes the
-position); a declined, expired or withdrawn proposal does not. There are no
+trade it leads to uses it up: when a trim or add fills, the stock's own trim or
+add triggers behind it (named on the order, or fired and not found false since)
+come off with one Activity line (`lib/agent/triggers/filled.ts`; never another
+action; a sale closes the position); a declined, expired or withdrawn proposal does not. There are no
 waits. A filing fires once per filing, a heads-up once per report, and a buy or
 add never fires on a stale quote — see `shouldFire` in
 `lib/agent/triggers/evaluate.ts`. A sale that fired stays on the morning list
-(PROTECTIVE_SALE) every day it holds. "Either one" is two triggers:
+(PROTECTIVE_SALE) until a close finds it false. "Either one" is two triggers:
 two conditions together are "and" only, one level deep. The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),

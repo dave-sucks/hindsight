@@ -164,7 +164,7 @@ describe("ASML 10-22 → 10-23: a floor that fired does not fire again while the
     }
   });
 
-  it("once a close went back above $1835 it fires again; a sale REJECTED in the last 4 hours still holds the run back", async () => {
+  it("once a close went back above $1835 it fires again, and a sale declined 45 minutes earlier holds nothing back: the run reaches the analyst", async () => {
     const db = book("ASML", "REJECTED");
     (db.store.thesis[0].triggers as Array<Record<string, unknown>>)[0].falseAtCloseAt = "2026-10-22T20:20:05.000Z";
     (db.store.order[0] as Record<string, unknown>).updatedAt = new Date("2026-10-23T13:00:00Z");
@@ -172,7 +172,9 @@ describe("ASML 10-22 → 10-23: a floor that fired does not fire again while the
     expect(fired(sent)).toEqual([["ASML", ASML_FLOOR.id, 1567.19]]);
     expect(floor(db)).toBe("2026-10-23T13:45:17.000Z");
     const run = await trigger(db, "2026-10-23T13:45:30Z", sent[0].data);
-    expect(run.returned).toMatchObject({ skipped: "close-already-queued", reason: "REJECTED" });
+    // Until 2026-11-17 a decline in the last four hours skipped the run after the fire was stamped: the break was spent until a close.
+    expect(run.returned.skipped).toBeUndefined();
+    expect(run.modelCalls).toBeGreaterThan(0);
   });
 });
 
@@ -210,11 +212,11 @@ describe("NVDA, its sale declined: the floor fires once, and the morning keeps l
     expect(floor(db)).toBe(NVDA_FLOOR.lastFiredAt);
   });
 
-  it("fired and held with no sale proposed: still on the morning list, as long as it holds", async () => {
+  it("fired and held with no sale proposed: on the morning list until a close finds it false, whatever the price that morning", async () => {
     const db = book("NVDA");
     db.store.order.length = 0;
     expect(await morning(db, "2026-10-26T12:01:00Z", 212.975)).toContain("PROTECTIVE_SALE");
-    expect(await morning(db, "2026-10-26T12:01:00Z", 236.5)).not.toContain("PROTECTIVE_SALE");
+    expect(await morning(db, "2026-10-26T12:01:00Z", 236.5)).toContain("PROTECTIVE_SALE");
   });
 
   it("a close back above $236 makes it ready; the next break fires it and the run reaches the analyst", async () => {

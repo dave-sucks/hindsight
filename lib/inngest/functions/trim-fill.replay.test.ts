@@ -4,6 +4,11 @@
  * line. MU as held 2026-10-22 (Secular Compounder, 11 shares at $911.415), with its real "Trim if above $1090"
  * set Auto at 30%. The evaluator, the trigger run and the fill are the real handlers on one database double; the
  * trade tool is the edge.
+ *
+ * A fill takes off only triggers of its own action (2026-11-17 fix round): CEG's "Sell if below $280" (as stored,
+ * fired 11-17 at 10:35 ET; 51 shares at $282.01) answered by a trim stays on the stock. A trim made outside a
+ * trigger run (the morning run's, no triggerIds) uses up the stock's own trim that fired and hasn't been found
+ * false at a close since.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
 
@@ -69,14 +74,15 @@ const muBook = () =>
   });
 
 /** The trim's proposal, approved and sent (as approveProposal leaves it), then filled by the reconcile job. */
-async function fill(db: PrismaDouble, at: Date) {
-  db.store.order = [...((db.store.order ?? []) as Array<Record<string, unknown>>), { id: "mu_trim", userId: "u", environment: "LIVE", positionId: "cmv9o0nhe000006lbmypszfe7", symbol: "MU", side: "SELL", quantity: 3, alpacaOrderId: "a1", idempotencyKey: "k1", intent: "PARTIAL_CLOSE", closeReason: null, closeSource: "agent", status: "PENDING", thesisId: MU, triggerIds: [TRIM.id], createdAt: at }];
-  const order = (db.store.order as Array<Record<string, unknown>>).find((o) => o.id === "mu_trim")!;
+async function fill(db: PrismaDouble, at: Date, over: Record<string, unknown> = {}, price = 1095.5) {
+  const row = { id: "mu_trim", userId: "u", environment: "LIVE", positionId: "cmv9o0nhe000006lbmypszfe7", symbol: "MU", side: "SELL", quantity: 3, alpacaOrderId: "a1", idempotencyKey: "k1", intent: "PARTIAL_CLOSE", closeReason: null, closeSource: "agent", status: "PENDING", thesisId: MU, triggerIds: [TRIM.id], createdAt: at, ...over };
+  db.store.order = [...((db.store.order ?? []) as Array<Record<string, unknown>>), row];
+  const order = (db.store.order as Array<Record<string, unknown>>).find((o) => o.id === row.id)!;
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: () => ({}), send: jest.fn() } }));
     const { __test__ } = await import("@/lib/inngest/functions/reconcile-orders");
-    await __test__.applyFillByIntent(order as never, 1095.5, 3, at);
+    await __test__.applyFillByIntent(order as never, price, Number(row.quantity), at);
   });
   jest.dontMock("@/lib/prisma");
   jest.dontMock("@/lib/inngest/client");
@@ -103,6 +109,35 @@ describe("MU: the Auto-trim fires once, and its fill uses it up", () => {
     await triggerRun(db, (await pass(db, new Date("2026-10-22T15:00:00Z"), 1095))[0]);
     await fill(db, new Date("2026-10-22T15:10:00Z"));
     expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([FLOOR.id]);
+    const lines = (db.store.thesisUpdate as Array<{ type: string; summary: string }>).filter((u) => u.type === "UPDATED").map((u) => u.summary);
+    expect(lines).toEqual(["Its order filled, so it came off: Trim 30% if above $1090"]);
+  });
+});
+
+describe("a fill takes off only triggers of its own action", () => {
+  const CEG = "cmqb2ku1a000q04l6jtquuqr6";
+  const CEG_FLOOR = { id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", action: "EXIT", source: "PRINCIPAL", fireMode: "ASK_NOW", predicate: { is: "below", value: 280, watch: "price" }, lastFiredAt: "2026-11-17T14:35:01.542Z", rationale: "(as set)" };
+  const cegBook = () =>
+    prismaDouble({
+      thesis: [thesisRow({ id: CEG, ticker: "CEG", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", triggers: [CEG_FLOOR], researchRun: { agentConfigId: SECULAR, agentConfig: { name: "Secular Compounder", setupIds: [], enabled: true } } })],
+      position: [positionRow({ id: "cmsrk43d7000604jxyc6s7u4r", symbol: "CEG", analystId: SECULAR, environment: "LIVE", quantity: 51, avgCost: 282.006094117647, peakPrice: 308.075 })],
+      agentConfig: [agentConfigRow({ id: SECULAR, name: "Secular Compounder", accountId: REPLAY_ACCOUNT_ID, tradingEnvironment: "LIVE", triggers: [], enabled: true })],
+      account: [accountRow({ triggers: [], requireApprovalSellsLive: true })],
+    });
+
+  it("CEG: a trim answering the $280 floor's fire fills, and the floor stays", async () => {
+    const db = cegBook();
+    await fill(db, new Date("2026-11-17T15:10:00Z"), { id: "ceg_trim", positionId: "cmsrk43d7000604jxyc6s7u4r", symbol: "CEG", quantity: 25, thesisId: CEG, triggerIds: [CEG_FLOOR.id] }, 272.1);
+    expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([CEG_FLOOR.id]);
+    expect(((db.store.thesisUpdate ?? []) as Array<{ summary: string }>).filter((u) => /came off/.test(u.summary))).toEqual([]);
+  });
+
+  it("MU: the morning run's trim (no triggerIds) uses up the trim that fired; the floor and a trim that hasn't fired stay", async () => {
+    const db = muBook();
+    const fresh = { ...TRIM, id: "trim-not-fired", predicate: { watch: "price", is: "above", value: 1200 } };
+    (db.store.thesis[0] as { triggers: unknown[] }).triggers = [FLOOR, { ...TRIM, lastFiredAt: "2026-10-22T15:00:00.000Z" }, fresh];
+    await fill(db, new Date("2026-10-23T14:10:00Z"), { id: "mu_morning_trim", triggerIds: [] });
+    expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([FLOOR.id, "trim-not-fired"]);
     const lines = (db.store.thesisUpdate as Array<{ type: string; summary: string }>).filter((u) => u.type === "UPDATED").map((u) => u.summary);
     expect(lines).toEqual(["Its order filled, so it came off: Trim 30% if above $1090"]);
   });

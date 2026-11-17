@@ -47,14 +47,14 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close.
 
-> **Triggers work like orders.** A trigger fires when it becomes true; one already true when you write it, or change its condition, fires at the next check. After that it fires again only once a market close (4:20 PM) has found it false: a stock wobbling around the line all day fires it once. A trade it leads to uses it up: when the order fills, the trigger comes off the stock. A proposal you decline, or one that expires or is withdrawn, uses nothing up.
+> **Triggers work like orders.** A trigger fires when it becomes true; one already true when you write it, or change its condition, fires at the next check. After that it fires again only once a market close (4:20 PM) has found it false: a stock wobbling around the line all day fires it once. A trade it leads to uses it up: when a trim or add fills, its trim or add triggers that fired come off the stock (never a sale's). A proposal you decline, or one that expires or is withdrawn, uses nothing up.
 
 | | How often it fires |
 |---|---|
 | Buy | When it becomes true, then again after a close where it no longer holds. Two buys on one stock true on the same check start one run. The fill takes every buy off. |
 | Add | When it becomes true, then again after a close where it no longer holds. Its fill takes it off. |
 | Trim | When it becomes true, then again after a close where it no longer holds. Its fill takes it off. |
-| Sell | When it becomes true, then again after a close back on the other side. Until then the stock is on the morning run's list every day the price is past the line, declined or not, until a new sale price is set. While a sale waits for your approval nothing new starts; it waits until you answer it or the stock closes back past the line (4:20 PM). |
+| Sell | When it becomes true, then again after a close back on the other side. Until then the stock is on the morning run's list every day, declined or not, until a new sale price is set or a close goes back past the line. While a sale waits for your approval nothing new starts; it waits until you answer it or the stock closes back past the line (4:20 PM). |
 | Review | When it becomes true, then again after a close where it no longer holds. A review clock fires when due; the review starts the next period. |
 
 There are no waits. A filing fires once per filing and an earnings heads-up once per report, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".

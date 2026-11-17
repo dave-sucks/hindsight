@@ -132,3 +132,25 @@ describe("ACN, the first check after the deploy", () => {
     expect(sent.some((e) => e.triggerId === PIVOT_BUY.id)).toBe(false);
   });
 });
+
+describe("ACN, a buy waiting: another buy's fire is held back unstamped, not swallowed", () => {
+  const proposal = (status: string) => ({ id: "acn_buy", userId: "u", environment: "LIVE", positionId: "acn_pos", symbol: "ACN", side: "BUY", quantity: 10, intent: "OPEN", status, thesisId: fx.thesis.id, triggerIds: [ABOVE_50_BUY.id], expiresAt: null, createdAt: TUESDAY_0935, updatedAt: TUESDAY_0935 });
+
+  it("the 50-day buy fired and its proposal waits; at $220 the near-the-50-day buy is true, and nothing is sent or stamped", async () => {
+    const db = book();
+    await check(db, TUESDAY_0935, CLOSE_1116);
+    db.store.order = [proposal("AWAITING_APPROVAL")];
+    expect(await check(db, new Date("2026-11-18T16:05:00Z"), 220)).toEqual([]);
+    const near = (db.store.thesis[0].triggers as Array<{ id: string; lastFiredAt?: string }>).find((t) => t.id === NEAR_50_BUY.id)!;
+    expect(near.lastFiredAt).toBeUndefined();
+  });
+
+  it("once the waiting buy is declined, the next pass fires it", async () => {
+    const db = book();
+    await check(db, TUESDAY_0935, CLOSE_1116);
+    db.store.order = [proposal("AWAITING_APPROVAL")];
+    await check(db, new Date("2026-11-18T16:05:00Z"), 220);
+    (db.store.order[0] as Record<string, unknown>).status = "REJECTED";
+    expect(await check(db, new Date("2026-11-18T16:10:00Z"), 220)).toEqual([expect.objectContaining({ triggerId: NEAR_50_BUY.id, action: "ENTER" })]);
+  });
+});

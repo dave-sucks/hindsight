@@ -86,7 +86,7 @@ import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { firedSinceFalseClose, readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
@@ -541,14 +541,19 @@ export function computeNeedsAction(
   //    + time-based predicates. Same `shouldFire` the trigger evaluator
   //    runs every 5 minutes, so a trigger that fired and hasn't been found
   //    false at a close since isn't listed again. A sale or a trim is: one
-  //    true now stays on the list every morning until a close takes it back
-  //    or its price moves, so a sale the principal declined doesn't go
-  //    silent. Every trigger true now, in ladder order; the first can lead.
+  //    that fired stays on the list every morning until a close finds it
+  //    false (the close pass read it with every input in hand; this read has
+  //    no position or chart numbers, so it never re-reads a trail or an
+  //    average), or its price is changed, so a declined sale doesn't go
+  //    silent; one that hasn't fired is listed when it reads true now.
+  //    Every trigger listed, in ladder order; the first can lead.
   const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
-    if (!isPriceOrTimePredicate(trigger.predicate)) continue;
     const sale = trigger.action === "EXIT" || trigger.action === "TRIM";
-    const read = sale ? (t: typeof trigger, c: EvaluationContext) => ({ fires: conditionHolds(t, c) }) : shouldFire;
+    if (!(sale && firedSinceFalseClose(trigger)) && !isPriceOrTimePredicate(trigger.predicate)) continue;
+    const read = sale
+      ? (t: typeof trigger, c: EvaluationContext) => ({ fires: firedSinceFalseClose(t) || conditionHolds(t, c) })
+      : shouldFire;
     const result = read(trigger, {
       latestQuote: latestQuote ?? undefined,
       // During the session a "closes above $X" level is not true yet — it

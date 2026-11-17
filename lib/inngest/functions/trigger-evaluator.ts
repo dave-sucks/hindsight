@@ -134,6 +134,12 @@ function isPriceSidePredicate(p: When): boolean {
  * (what to load, which pass). One that can't be read is left out here; the
  * check reports it, with its stock, when it reaches it.
  */
+/** Reads the move from yesterday's close: on the close it needs that close in hand. */
+function readsTheDaysMove(p: When): boolean {
+  const w = shapeOf(p);
+  return w != null && conditionsOf(w).some((c) => c.watch === "move" && c.variable === "prev_close");
+}
+
 function shapeForLoading(p: When) {
   try {
     return shapeOf(p);
@@ -353,7 +359,9 @@ function readsThePosition(p: When): boolean {
  */
 async function stampFalseAtClose(args: { thesisId: string; firedTriggerIds: string[]; firedInheritedTriggerIds: string[]; now: Date }): Promise<void> {
   const at = args.now.toISOString();
+  // The row is locked before it is read: a fill's take-off writes the same list.
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Thesis" WHERE id = ${args.thesisId} FOR UPDATE`;
     const row = await tx.thesis.findUnique({ where: { id: args.thesisId }, select: { triggers: true, triggerState: true } });
     if (!row) return;
     const own = new Set(args.firedTriggerIds);
@@ -593,6 +601,18 @@ export const triggerEvaluator = inngest.createFunction(
               })
             ).map((o) => o.positionId),
       );
+      // A buy or an add waiting on a stock (proposed, or sent): its buy and add fires are held back unstamped, as a sale's are.
+      const buyWaiting = new Set(
+        (
+          await prisma.order.findMany({
+            where: {
+              intent: { in: ["OPEN", "ADD"] },
+              AND: [{ OR: saleUnderWay(now) }, { OR: [{ thesisId: { in: candidates.map((c) => c.thesis.id) } }, ...(heldIds.length ? [{ positionId: { in: heldIds } }] : [])] }],
+            },
+            select: { thesisId: true, positionId: true },
+          })
+        ).flatMap((o) => [o.thesisId, o.positionId].filter((x): x is string => x != null)),
+      );
       const quoteResults = uniqueTickers.map((ticker) => {
         const { quote: q, error } = liveQuotes[ticker.toUpperCase()] ?? { quote: null };
         if (!q) {
@@ -770,22 +790,26 @@ export const triggerEvaluator = inngest.createFunction(
           now,
         };
 
+        // On the close a trigger is read only with everything it reads in hand: an input that didn't load is not a false.
+        const read = (t: Trigger) =>
+          (!needsIndicators(t.predicate) || indicators.has(thesis.ticker)) &&
+          (!needsStreet(t.predicate) || street.has(thesis.ticker)) &&
+          (!(needsEarningsData(t.predicate) || needsUpcomingEarnings(t.predicate)) || !earnings.error) &&
+          (!needsFilings(t.predicate) || !filingsRead.error) &&
+          (!readsThePosition(t.predicate) || posInfo != null) &&
+          // The day's move needs yesterday's close: with no quote and no snapshot close it reads 0, not false.
+          (!readsTheDaysMove(t.predicate) || prevForClose != null);
+
         // The close pass takes down a trigger's proposal whose triggers no longer hold on the close.
         if (session === "CLOSE" && waiting.length > 0) {
-          await withdrawOnTheClose({ ladder: all, ctx, proposals: waiting }).catch((e) =>
+          await withdrawOnTheClose({ ladder: all, ctx, proposals: waiting, readable: read }).catch((e) =>
             console.error(`[trigger-evaluator] ${thesis.ticker}: the close-pass proposal check failed; it waits for tomorrow's close.`, e),
           );
         }
 
         // A fired trigger is ready again once a close finds its condition false, read
-        // with everything it reads in hand: an input that didn't load is not a false.
+        // with everything it reads in hand.
         if (session === "CLOSE" && fired.length > 0) {
-          const read = (t: Trigger) =>
-            (!needsIndicators(t.predicate) || indicators.has(thesis.ticker)) &&
-            (!needsStreet(t.predicate) || street.has(thesis.ticker)) &&
-            (!(needsEarningsData(t.predicate) || needsUpcomingEarnings(t.predicate)) || !earnings.error) &&
-            (!needsFilings(t.predicate) || !filingsRead.error) &&
-            (!readsThePosition(t.predicate) || posInfo != null);
           const falseNow = fired.filter((t) => {
             try {
               return read(t) && !conditionHolds(t, ctx);
@@ -821,7 +845,9 @@ export const triggerEvaluator = inngest.createFunction(
         };
         // A sale fire while a sale already waits is dropped unstamped, so it asks again once that proposal is answered, withdrawn or expired.
         const sale = (t: Trigger) => t.action === "EXIT" || t.action === "TRIM";
-        const fires = posInfo && saleWaiting.has(posInfo.id) ? matched.filter((t) => !sale(t)) : matched;
+        const buy = (t: Trigger) => t.action === "ENTER" || t.action === "ADD";
+        const buyHeld = buyWaiting.has(thesis.id) || (posInfo != null && buyWaiting.has(posInfo.id));
+        const fires = matched.filter((t) => !(sale(t) && posInfo && saleWaiting.has(posInfo.id)) && !(buy(t) && buyHeld));
         if (fires.length === 0) continue;
         await stampLastFiredAt({
           thesisId: thesis.id,

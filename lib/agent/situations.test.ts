@@ -298,6 +298,8 @@ describe("the live book after the close, replayed", () => {
   const LISTED_BY_A_PLAN_CHECK = new Set(["SMCI", "SYK", "GD"]);
   // MU's ADD_OR_WINNER came from three quarters of the way to its target, which went with the target (2026-11-16).
   const NEAR_TARGET = new Set(["MU"]);
+  // MU's floor had fired and no close has found it false since: a sale that fired stays on the morning's list (2026-11-17).
+  const FIRED_SALE = new Set(["MU"]);
   it.each(stocks.map((s) => [s.ticker, s] as const))("%s: listed as main listed it, with main's lead and its situations", (_t, s) => {
     // Anything that reads the wall clock reads the recorded day.
     jest.useFakeTimers({ now: new Date(s.in.now) });
@@ -309,7 +311,8 @@ describe("the live book after the close, replayed", () => {
     expect(listsTheStock(src)).toBe(s.listed && !LISTED_BY_A_PLAN_CHECK.has(s.ticker));
     // Recorded before the merge (2026-11-15): each saved code is the one it is now.
     const codes = s.codes.filter((c) => !DELETED.has(c) && !(c === "ADD_OR_WINNER" && NEAR_TARGET.has(s.ticker)));
-    expect(situationsFor(src)).toEqual([...new Set(codes.map((c) => MERGED_CODE[c] ?? c))]);
+    const expected = [...new Set(codes.map((c) => MERGED_CODE[c] ?? c))];
+    expect(situationsFor(src)).toEqual(FIRED_SALE.has(s.ticker) && !expected.includes("PROTECTIVE_SALE") ? [...expected, "PROTECTIVE_SALE"] : expected);
   });
 });
 

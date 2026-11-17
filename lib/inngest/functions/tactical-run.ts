@@ -99,13 +99,6 @@ function directExitReason(
   return autoSellCloseReason(trigger.predicate, direction);
 }
 
-// How long after a REJECTED close proposal to keep suppressing re-fires of
-// the same EXIT/TRIM trigger. A reject means "I've seen the stop, I'm
-// holding" — re-proposing on the next 5-min tick would just spawn a
-// reject-loop. After this window the trigger can re-surface if the position
-// is still in breach. Tunable.
-const EXIT_RECHECK_SNOOZE_MS = 4 * 60 * 60 * 1000; // 4 hours
-
 // ── Inngest function ───────────────────────────────────────────────────
 
 export const tacticalRun = inngest.createFunction(
@@ -285,9 +278,9 @@ export const tacticalRun = inngest.createFunction(
     // once until a close finds it false; this still folds a second sale
     // trigger's fire into the close already queued.
     //
-    // If a close for this position is already awaiting approval — or was
-    // rejected within the snooze window (the human explicitly chose to hold) —
-    // a fresh tactical run has nothing to do. Bail BEFORE create-run and the
+    // If a close for this position is already awaiting approval or sent, a
+    // fresh tactical run has nothing to do. A declined sale holds nothing back:
+    // a trigger that fires after it is a new break and gets its run. Bail BEFORE create-run and the
     // agent call so zero GPT-5.5 cost is incurred. Only matters when approval
     // toggles are ON; with auto-execute the position closes on the first fire
     // and never reaches a second tick, so this is a no-op there.
@@ -297,17 +290,9 @@ export const tacticalRun = inngest.createFunction(
           where: {
             positionId: position.id,
             intent: { in: ["CLOSE", "PARTIAL_CLOSE"] },
-            OR: [
-              // A sale proposed and not expired, or sent to Alpaca (PENDING) and
-              // awaiting fill. The five-minute check already skips these unstamped; this is the backstop.
-              ...saleUnderWay(new Date()),
-              {
-                status: "REJECTED",
-                updatedAt: {
-                  gte: new Date(Date.now() - EXIT_RECHECK_SNOOZE_MS),
-                },
-              },
-            ],
+            // A sale proposed and not expired, or sent to Alpaca (PENDING) and
+            // awaiting fill. The five-minute check already skips these unstamped; this is the backstop.
+            OR: saleUnderWay(new Date()),
           },
           select: { id: true, status: true },
         }),

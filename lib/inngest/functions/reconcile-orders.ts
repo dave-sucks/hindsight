@@ -471,9 +471,9 @@ async function applyFillByIntent(
   // actually committed (DAV-304). Here rather than at the two call sites
   // above: one place that knows a fill landed.
   if (handled) await maybeEvaluateClosedPosition(order);
-  // A filled trim or add uses up the triggers its proposal answered.
-  if (handled && (order.intent === "PARTIAL_CLOSE" || order.intent === "ADD") && order.thesisId && order.triggerIds?.length) {
-    await takeOffFilled({ thesisId: order.thesisId, triggerIds: order.triggerIds, priceAtTime: fillPrice }).catch((err) =>
+  // A filled trim or add uses up its trim or add triggers: the ones its proposal answered, and the stock's own that fired.
+  if (handled && (order.intent === "PARTIAL_CLOSE" || order.intent === "ADD") && order.thesisId) {
+    await takeOffFilled({ thesisId: order.thesisId, intent: order.intent, triggerIds: order.triggerIds ?? [], priceAtTime: fillPrice }).catch((err) =>
       console.error(`[reconcile-orders] order ${order.id} filled; its triggers could not be taken off:`, err instanceof Error ? err.message : err),
     );
   }

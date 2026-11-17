@@ -35,8 +35,8 @@ Where it goes is the trigger's On fire, the same three choices on every trigger 
 Several rules stop one move from waking the desk twice:
 
 - **Together:** a stop and a trail firing in one pass fold into one run, which sees both, and so do two buys on one stock. Each still gets its own Activity line. Adds and reviews never fold, and a buy never folds with a sale.
-- **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't mark it fired, so it fires on the first check after that proposal is answered, withdrawn or expired, if it still holds. A proposal a trigger made has no 24 hours: it waits, or the 4:20 PM pass withdraws it on a close back past the line. Any other proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined in the last four hours also starts nothing; that fire is still marked.
-- **A buy already waiting** starts nothing.
+- **A sale already waiting:** if a sale of the position is waiting for you or already sent, the check skips the fire and doesn't mark it fired, so it fires on the first check after that proposal is answered, withdrawn or expired, if it still holds. A proposal a trigger made has no 24 hours: it waits, or the 4:20 PM pass withdraws it on a close back past the line. Any other proposal past its 24 hours counts as gone even before it is marked expired. A sale you declined holds nothing back: a trigger that fires after it starts its run.
+- **A buy already waiting:** while a buy or an add waits on the stock (for you, or sent), its buy and add fires are skipped unmarked, so one fires on the first check after that proposal is answered, if it still holds.
 
 ## The high the trails use
 
