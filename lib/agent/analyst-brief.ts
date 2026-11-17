@@ -11,7 +11,7 @@
  * the two doors that show it; the job, the stock and the house rules are each
  * door's own.
  *
- * A setup is written once, by `setupLines`. The brief takes its first line;
+ * A playbook is written once, by `playbookChecks`. The brief takes its first sentence;
  * the writer takes all of them, with the playbook's watch triggers.
  *
  * Pure and safe in the browser: modes.ts, which client components import,
@@ -84,11 +84,11 @@ function chosenSetups(analyst: BriefAnalyst): Setup[] {
  * One playbook's words, written once, in two cuts. "all" (the writer's
  * block): what it is, what must be true, how a buy is confirmed, and what
  * failure looks like. The brief takes the first of them. "decision" (a row's
- * `setup_lines`): what a fire checks, from the confirmation on. Its buy and
+ * `playbook_checks`): what a fire checks, from the confirmation on. Its buy and
  * every other trigger are the playbook's templates, which each door prints
  * beside these (playbookTriggerText).
  */
-export function setupLines(setup: Setup, cut: "all" | "decision" = "all"): string[] {
+export function playbookChecks(setup: Setup, cut: "all" | "decision" = "all"): string[] {
   const confirm = setup.entry.confirmation.length ? setup.entry.confirmation.join("; ") : "the level holding";
   const chase = setup.entry.chaseLimitPct != null ? `; not more than ${setup.entry.chaseLimitPct}% past the buy trigger's price` : "";
   return [
@@ -121,7 +121,7 @@ export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | nul
     `## Analyst: ${analyst.name || "Research Analyst"}`,
     ...(analyst.analystPrompt ? [analyst.analystPrompt] : []),
     ["Rules:", ...rules].join("\n"),
-    ...(setups.length ? [["Setups:", ...setups.map((s) => `- ${setupLines(s)[0]}`)].join("\n")] : []),
+    ...(setups.length ? [["Setups:", ...setups.map((s) => `- ${playbookChecks(s)[0]}`)].join("\n")] : []),
   ].join("\n\n");
 }
 

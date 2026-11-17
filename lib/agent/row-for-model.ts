@@ -72,7 +72,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   supersededBy: "review",
   street: ["BUY_ARRIVES", "ADD_OR_WINNER"],
   setup: ["BUY_ARRIVES"],
-  setup_lines: ["BUY_ARRIVES"],
+  playbook_checks: ["BUY_ARRIVES"],
   assumptions: "review",
   would_prove_it_wrong: ["PROTECTIVE_SALE"],
   catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER"],
@@ -374,7 +374,7 @@ function sectionText(v: unknown): string | string[] | null {
 }
 
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
-function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLinesOn = false): Row {
+function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false): Row {
   const held = row.status === "HOLDING";
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
@@ -406,9 +406,9 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
   put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
   put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
   put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
-  // The lines a fire checks for the stock's horizon (setupLines' decision cut), in place of the compact line: on the full row, and on the trigger run's row (whatever its situation).
-  const lines = size === "full" || setupLinesOn ? strings(obj(row.setup)?.lines) : [];
-  if (lines.length) { if (setupLinesOn) sent.add("setup_lines"); put("setup_lines", lines); }
+  // What a fire checks, and on a watch the triggers that come with the buy (playbook_checks), in place of the compact line: on the full row, and on the trigger run's row (whatever its situation).
+  const lines = size === "full" || playbookChecksOn ? strings(obj(row.setup)?.lines) : [];
+  if (lines.length) { if (playbookChecksOn) sent.add("playbook_checks"); put("playbook_checks", lines); }
   else put("setup", setupLine(row));
   // The facts a situation's text refers to, by the names it uses.
   put("buyBlockedByFull", row.buyBlockedByFull);
@@ -437,11 +437,11 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, setupLine
  * or the full row for a named read (`sizeFor`). The screen and a saved run
  * keep the whole row.
  *
- * `setupLines` is the trigger run's door (step 10): its stock is the short
- * row with the lines a fire checks for the stock's horizon (`setup_lines`,
- * setupLines' decision cut) in place of the compact setup line. Every other
+ * `playbookChecks` is the trigger run's door (step 10): its stock is the short
+ * row with what a fire checks and, on a watch, the triggers that come with the
+ * buy (`playbook_checks`) in place of the compact setup line. Every other
  * short row is unchanged; the full row always carries them.
  */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; setupLines?: boolean }): string | Row {
-  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.setupLines);
+export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean }): string | Row {
+  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.playbookChecks);
 }

@@ -90,7 +90,7 @@ Mistakes:
 
 ## Buy level reached
 
-`BUY_ARRIVES` · rank 3 of 8 · the row adds `buyBlockedByFull`, `street`, `setup`, `setup_lines`, `catalyst`, `variant_view` · sent to every run
+`BUY_ARRIVES` · rank 3 of 8 · the row adds `buyBlockedByFull`, `street`, `setup`, `playbook_checks`, `catalyst`, `variant_view` · sent to every run
 
 A buy trigger fired on a watched stock, whether or not the analyst has a free slot.
 
@@ -100,12 +100,12 @@ When: a buy trigger fired or is true now on a stock we watch. If the analyst is 
 Answer, in order:
 1. What is the story right now: the company's news, its sector, the market (get_stock_data, one web_search)? Does it support buying today? A buy into bad news is a fade. Where the average target sits against the price (`street`).
 2. Does the price still hold the level? If it touched and slipped back, say so.
-3. Did the setup confirm? By the setup (the row's `setup` line, or its `setup_lines`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
+3. Did the playbook's buy confirm? By the playbook (the row's `setup` line, or its `playbook_checks`): a breakout needs a close above the level on volume (technicals.today.volumeVsAvg20); a pullback needs the touch to hold (a close above the prior day's high); an earnings gap needs the gap to hold; a compounder needs the thesis intact; a pre-catalyst buy is never the day before the event. With no setup, the price holding is the confirmation. Outside market hours, leave volume out.
 4. Did the principal decline this buy (`said`), with nothing they named changed since? Then say so and pass.
 5. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (`variant_view`).
 
 What you can do:
-- Buy, only when every check above holds: place_trade (it sizes the buy) with the triggers that come with the buy in the stock's playbook (`setup_lines`), each price from the chart and each with its reason: its "Sell if below" as `sell_if_below` and `sell_reason`, the rest in `triggers_with_buy`. No playbook: only the sell price, under structure on the chart. Then one update_thesis. The stock's "Stop watching if below" ends the watch and is not the sell price.
+- Buy, only when every check above holds: place_trade (it sizes the buy) with the triggers that come with the buy in the stock's playbook (`playbook_checks`), each price from the chart and each with its reason: its "Sell if below" as `sell_if_below` and `sell_reason`, the rest in `triggers_with_buy`. No playbook: only the sell price, under structure on the chart. Then one update_thesis. The stock's "Stop watching if below" ends the watch and is not the sell price.
 - Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
 
@@ -182,7 +182,7 @@ Mistakes:
 
 ## Review due
 
-`REVIEW_DUE` · rank 6 of 8 · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `setup_lines`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
+`REVIEW_DUE` · rank 6 of 8 · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to every run
 
 A review trigger fired or the review clock came round: on the price, a report, a filing, or a watch with no view yet.
 

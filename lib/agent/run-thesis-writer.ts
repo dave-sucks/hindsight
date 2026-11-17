@@ -46,7 +46,7 @@ import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
-import { analystBrief, setupLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { analystBrief, playbookChecks, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
@@ -354,7 +354,7 @@ export interface WriterResearchPromptOpts {
    * absent → no block.
    */
   setupRecord?: string[];
-  /** The playbooks this analyst writes on (setupsForAnalyst) — the prompt lists each in full (setupLines), with its watch triggers. */
+  /** The playbooks this analyst writes on (setupsForAnalyst) — the prompt lists each in full (playbookChecks), with its watch triggers. */
   setups?: Setup[];
   /** The account's playbooks (loadPlaybooks); null when they couldn't be read, and then no trigger is written from one. */
   playbooks?: ((setupId: string) => Template[]) | null;
@@ -528,7 +528,7 @@ rationale — the next daily run executes it, not you.
 YOUR PLAYBOOKS — the ones you write a stock's triggers from
 ═══════════════════════════════════════════════════════════════════
 ${setups
-  .map((s) => [...setupLines(s), ...playbookTriggerText(opts.playbooks ? opts.playbooks(s.id) : null, "WATCH")].join("\n  "))
+  .map((s) => [...playbookChecks(s), ...playbookTriggerText(opts.playbooks ? opts.playbooks(s.id) : null, "WATCH")].join("\n  "))
   .join("\n\n")}
 `
     : "";

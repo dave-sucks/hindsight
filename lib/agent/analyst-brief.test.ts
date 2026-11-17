@@ -15,7 +15,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
-import { analystBrief, setupLines, universeLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { analystBrief, playbookChecks, universeLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
@@ -99,9 +99,9 @@ describe("the Catalyst Event PM's brief", () => {
         ].join("\n"),
         [
           "Setups:",
-          `- ${setupLines(getSetup("PRE_CATALYST")!)[0]}`,
-          `- ${setupLines(getSetup("BASE_BREAKOUT")!)[0]}`,
-          `- ${setupLines(getSetup("MA_PULLBACK")!)[0]}`,
+          `- ${playbookChecks(getSetup("PRE_CATALYST")!)[0]}`,
+          `- ${playbookChecks(getSetup("BASE_BREAKOUT")!)[0]}`,
+          `- ${playbookChecks(getSetup("MA_PULLBACK")!)[0]}`,
         ].join("\n"),
       ].join("\n\n"),
     );
@@ -179,9 +179,9 @@ describe("every door reads the same brief, once", () => {
 
 describe("the writer names a setup by id from the same lines", () => {
   const prompt = DOORS.writer();
-  it("its full block is setupLines, every one, then the playbook's watch triggers, for each playbook it writes on", () => {
+  it("its full block is playbookChecks, every one, then the playbook's watch triggers, for each playbook it writes on", () => {
     for (const id of CATALYST.setupIds) {
-      const lines = [...setupLines(getSetup(id)!), ...playbookTriggerText(PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES], "WATCH")];
+      const lines = [...playbookChecks(getSetup(id)!), ...playbookTriggerText(PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES], "WATCH")];
       expect(prompt).toContain(lines.join("\n  "));
       expect(lines[0].startsWith(`${id} — `)).toBe(true);
     }
@@ -192,17 +192,17 @@ describe("the writer names a setup by id from the same lines", () => {
     for (const word of ["Stop: ", "Take profit: ", "Manage", "Time: "]) expect([word, prompt.includes(word)]).toEqual([word, false]);
   });
   it("the brief's line for a setup is the full block's first line", () => {
-    const first = setupLines(getSetup("MA_PULLBACK")!)[0];
+    const first = playbookChecks(getSetup("MA_PULLBACK")!)[0];
     expect(analystBrief(CATALYST).split("\n")).toContain(`- ${first}`);
     expect(prompt.split("\n")).toContain(first);
   });
 });
 
-describe("setupLines", () => {
+describe("playbookChecks", () => {
   const pullback = getSetup("MA_PULLBACK")!;
   it("two cuts of one text: the brief's first sentence, the writer's all, what a row's fire checks", () => {
-    const all = setupLines(pullback);
-    const decision = setupLines(pullback, "decision");
+    const all = playbookChecks(pullback);
+    const decision = playbookChecks(pullback, "decision");
     expect(all[0]).toBe(`MA_PULLBACK — ${pullback.name}: ${pullback.summary}`);
     expect(all[1]).toBe(`Needs: ${pullback.preconditions.join("; ")}`);
     expect(decision).toEqual(all.slice(2));
@@ -210,7 +210,7 @@ describe("setupLines", () => {
     expect(decision.at(-1)).toMatch(/^Failure looks like: /);
   });
   it("carries the confirmation and the failure signs the trigger run reads, and no trigger rule in words", () => {
-    const lines = setupLines(pullback);
+    const lines = playbookChecks(pullback);
     expect(lines).toContain(`Failure looks like: ${pullback.failureSigns.join("; ")}`);
     expect(lines.find((l) => l.startsWith("Confirm a buy by: "))).toContain(pullback.entry.confirmation.join("; "));
     expect(lines.filter((l) => /^(Entry|Stop|Take profit|Manage|Time)/.test(l))).toEqual([]);

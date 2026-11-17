@@ -94,7 +94,7 @@ const placeTradeSchema = z.object({
     triggers_with_buy: z
       .array(triggerInputSchema)
       .optional()
-      .describe("The stock's playbook's other triggers that come with the buy (in its setup_lines), each price from the chart and each with its reason: its Trim (\"Trim 50% if above $X\") and any review it lists. The owner sees each on the proposal, and they go on the stock when the buy fills. Leave it out when the stock has no playbook."),
+      .describe("The stock's playbook's other triggers that come with the buy (in its playbook_checks), each price from the chart and each with its reason: its Trim (\"Trim 50% if above $X\") and any review it lists. The owner sees each on the proposal, and they go on the stock when the buy fills. Leave it out when the stock has no playbook."),
     // Principal chat only. Inside a run these two fields are not in the
     // schema at all — the analyst's rules size every buy, and a size the
     // model typed ($11,222 on PLTR, 2026-09-25) is what killed a fired buy.
@@ -118,7 +118,7 @@ const withSale = <T extends z.ZodObject>(schema: T) =>
     sell_if_below: z
       .number()
       .positive()
-      .describe("The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in setup_lines), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."),
+      .describe("The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in playbook_checks), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."),
     sell_reason: z.string().min(1).describe("Why the sell price sits there, in one sentence: the structure it is under. It becomes the note on the holding's \"Sell if below\" trigger."),
   });
 

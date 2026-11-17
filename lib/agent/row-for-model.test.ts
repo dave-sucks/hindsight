@@ -250,21 +250,21 @@ describe("the research sections a read loads with include_research", () => {
 
 describe("the trigger run's door (step 10): the short row with the setup's lines", () => {
   const withLines = () => ({ ...held(), ...research, setup: { ...(held().setup as Row), lines: ["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."] } });
-  it("carries setup_lines in place of the compact setup line, the whole view, and nothing else of the full row", () => {
-    const row = rowForModel(withLines(), { named: true, size: "short", setupLines: true }) as Row;
-    expect(row.setup_lines).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
+  it("carries playbook_checks in place of the compact setup line, the whole view, and nothing else of the full row", () => {
+    const row = rowForModel(withLines(), { named: true, size: "short", playbookChecks: true }) as Row;
+    expect(row.playbook_checks).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
     expect(row).not.toHaveProperty("setup");
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     for (const k of ["history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
     expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
   });
-  it("every other short row is unchanged: the compact setup line, no setup_lines", () => {
+  it("every other short row is unchanged: the compact setup line, no playbook_checks", () => {
     const row = rowForModel(withLines(), { named: false, size: "short" }) as Row;
     expect(row.setup).toBe((rowForModel(held(), { named: false, size: "short" }) as Row).setup);
-    expect(row).not.toHaveProperty("setup_lines");
+    expect(row).not.toHaveProperty("playbook_checks");
   });
   it("the full row always carries them", () => {
-    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).setup_lines).toHaveLength(3);
+    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).playbook_checks).toHaveLength(3);
   });
 });
 
