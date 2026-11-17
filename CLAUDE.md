@@ -382,7 +382,6 @@ plus `get_stock_data`.
 - /stocks/[symbol] — TradingView chart + stock detail
 - /intelligence — read-only view of the kept signal history (Findings +
   Health). No pipeline trigger, no monitor editing — the jobs are deleted.
-  /intelligence/ingest is the paste-a-thesis path.
 - /docs — the guide (docs/guide/ markdown), its own shell; /how-it-works — the tour and The Framework; /agent-workflow redirects
 - /settings — app settings
 
@@ -397,7 +396,7 @@ plus `get_stock_data`.
 - /api/research/trigger — Inngest manual trigger
 - /api/chat/run-followup — post-run discussion with trade tools
 - /api/intelligence/* — read-only signal history (signals, batches, routes,
-  health) + sync-health + thesis-ingest. email-ingest is a 200-and-drop stub
+  health) + sync-health. email-ingest is a 200-and-drop stub
   so Resend stops retrying. The trigger, monitors and coverage routes are
   deleted.
 - /api/quotes — Finnhub quote fallback
