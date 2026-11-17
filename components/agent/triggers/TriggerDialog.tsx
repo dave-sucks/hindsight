@@ -16,6 +16,7 @@ import {
   TRIGGER_TYPES,
   actionLabel,
   allowedActions,
+  conditionsOf,
   defaultCooldownDays,
   measureOf,
   typeDef,
@@ -136,7 +137,9 @@ export function TriggerDialog({
   const trimProblem = trimSize && !(Number.isFinite(draft.trimPct) && draft.trimPct >= 1 && draft.trimPct <= 99) ? "A trim sells 1% to 99% of the position." : null;
   // The wait shown is the one saved, or typed, else the condition's default; it follows the condition until one is.
   const wait = draft.cooldownDays ?? defaultCooldownDays(w, action);
-  const waitProblem = !(Number.isInteger(wait) && wait >= 0 && wait <= 90) ? "A trigger waits 0 to 90 days." : null;
+  // 0 only on a filing, where it means once per filing.
+  const filing = conditionsOf(w).every((c) => c.watch === "filing");
+  const waitProblem = !Number.isInteger(wait) || wait > 90 ? "A trigger waits a whole number of days, up to 90." : wait < (filing ? 0 : 1) ? "A trigger waits at least 1 day." : null;
   const problem = whenProblem(w, ctx) ?? trimProblem ?? waitProblem;
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const setCondition = (i: number, c: Draft["conditions"][number]) =>
