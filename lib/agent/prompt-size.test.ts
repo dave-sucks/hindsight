@@ -29,7 +29,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   daily: 9_440,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
-  tactical: 14_960,
+  // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
+  tactical: 15_025,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -39,7 +40,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
   // 2026-11-17: −1,126, YOUR PLAYBOOKS shows each playbook's watch triggers (the sentence, the trigger as written, its reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
   // 2026-11-17: −200, the writer is no longer told to write a buy that is true today a few cents above today's price (a buy fires when it is true).
-  writer: 15_615,
+  // 2026-11-17: +114, each price comes from the chart today and a trigger whose price it doesn't have yet is left out; "a view with no buy names no playbook" goes; the Street is its own rule.
+  writer: 15_729,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -69,8 +71,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +6,201 each, place_trade's triggers_with_buy takes the playbook's other triggers that come with the buy, in the trigger shape (+5,667), and a trigger may say it is one of the playbook's watch triggers (playbook, on record_thesis and update_thesis).
   // 2026-11-17: +8 each, place_trade names the row's playbook_checks (was setup_lines).
   // 2026-11-17: −576 each, the trigger shape has no "any" and no group inside a group (one "all" level), on record_thesis, update_thesis and triggers_with_buy.
-  "research-run": 37_196,
-  tactical: 33_159,
+  // 2026-11-17: +239 / +224, triggers_with_buy takes a trim's size and a wait, and the field and library texts say playbook.
+  "research-run": 37_435,
+  tactical: 33_383,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -81,7 +84,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +6,511, the same triggers_with_buy and playbook fields.
   // 2026-11-17: +8, the same field name.
   // 2026-11-17: −864, the same trigger shape.
-  principal: 68_418,
+  // 2026-11-17: +258, the same.
+  principal: 68_676,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

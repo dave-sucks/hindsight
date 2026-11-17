@@ -529,7 +529,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       void _f;
       void _ff;
       void _fr;
-      replaced = { ...fresh, id: mintId(), source: stamp(trigger) };
+      // A playbook's trigger edited into another kind is still the playbook's: the fill takes it off with the rest.
+      replaced = { ...fresh, id: mintId(), source: stamp(trigger), ...(target.playbook ? { playbook: target.playbook } : {}) };
     }
     const next = stored.map((t) => (t.id === id ? replaced : t));
     const blocked = ratchetReason(next);

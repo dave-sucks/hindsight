@@ -104,7 +104,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
-    expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
+    expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy price reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
     // A watch: what a fire checks, then the playbook's triggers that come with the buy.
     expect(row.playbook_checks).toEqual([...playbookChecks(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(PLAYBOOK_TEMPLATES.MA_PULLBACK, "PROPOSAL")]);

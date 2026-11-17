@@ -216,3 +216,104 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
   });
 
 });
+
+
+/**
+ * #1003 fixed forward (2026-11-17), on the same AAPL rows: a playbook trigger
+ * edited on the watch is still the playbook's at the fill; a trim size the
+ * owner set reaches the fill; a trigger that comes with the buy never
+ * overwrites the owner's; a sale back to watch keeps what doesn't need a
+ * position and writes nothing.
+ */
+describe("AAPL 2026-11-13, fixed forward", () => {
+  afterEach(() => jest.useRealTimers());
+  const fillNow = () => jest.useFakeTimers({ now: new Date("2026-11-13T15:00:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  const setTriggers = (triggers: Trigger[]) => (store = { ...store, thesis: rows("thesis").map((t) => (t.ticker === T ? { ...t, triggers } : t)) });
+  const buy = () => fx.aapl.thesis.triggers.find((t) => t.action === "ENTER")!;
+  const proposeWith = async (args: Record<string, unknown>) => {
+    const r = await replayTool("place-trade", "placeTrade", {
+      seed: store,
+      args,
+      ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy().id, action: buy().action, ticker: T } },
+      quotes: { [T]: BUY },
+    });
+    expect(r.refused).toBe(false);
+    store = r.db.store as StoreSeed;
+    return rows("order").find((o) => o.symbol === T && o.intent === "OPEN")!;
+  };
+  const sale = { sell_if_below: SALE, sell_reason: fx.aapl.named.stop_basis };
+
+  it("a watch trigger of the playbook's, edited (its number, or into another kind by the owner), still comes off at the fill", async () => {
+    const { applyTriggerOps } = await import("@/lib/agent/triggers/ops");
+    const ops = [
+      { op: "edit" as const, id: WATCH_CLOCK.id, value: 14, rationale: "Every 14 days." },
+      { op: "replace" as const, id: WATCH_CLOCK.id, trigger: { id: "", action: "REVIEW" as const, predicate: { watch: "report" as const, is: "before" as const, value: 5 }, rationale: "Five days before the report." } },
+    ];
+    for (const op of ops) {
+      seed();
+      const edited = applyTriggerOps({ stored: stockTriggers(), ops: [op], direction: "LONG", status: "WATCHING", actor: op.op === "edit" ? "AGENT" : "PRINCIPAL", mintId: () => "clock-edited" });
+      expect(edited.results[0]).toMatchObject({ ok: true });
+      const was = edited.triggers.find((t) => t.id === edited.results[0].id)!;
+      expect(was.playbook).toBe("WATCH");
+      setTriggers(edited.triggers);
+      const order = await propose();
+      fillNow();
+      await approveAndFill(order);
+      jest.useRealTimers();
+      expect(stockTriggers().some((t) => t.id === was.id)).toBe(false);
+    }
+  });
+
+  it("a trim size the owner set on the playbook reaches the fill: the run is shown it, sends it, and the fill writes it", async () => {
+    seed();
+    const { playbookTriggerText } = await import("@/lib/agent/knowledge/playbooks");
+    // Settings → Playbook: the owner set BASE_BREAKOUT's Trim to 30%.
+    const templates = PLAYBOOK_TEMPLATES.BASE_BREAKOUT.map((t) => (t.action === "TRIM" ? { ...t, trimPct: 30 } : t));
+    expect(playbookTriggerText(templates, "PROPOSAL").join("\n")).toContain('"trimPct":30');
+    let schema!: z.ZodTypeAny;
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
+      const { placeTrade } = await import("@/lib/agent/tools/place-trade");
+      schema = (placeTrade({ runMode: "INTRADAY_TACTICAL" } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
+    });
+    const parsed = schema.parse({ ...fx.aapl.placeTrade, ...sale, triggers_with_buy: [{ ...TRIGGERS_WITH_BUY[0], trimPct: 30 }, TRIGGERS_WITH_BUY[1]] }) as Record<string, unknown> & { triggers_with_buy: Array<{ trimPct?: number }> };
+    expect(parsed.triggers_with_buy[0].trimPct).toBe(30);
+    const order = await proposeWith(parsed);
+    fillNow();
+    await approveAndFill(order);
+    expect(triggerFor(`Trim 30% if above $${TRIM}`)).toMatchObject({ action: "TRIM", trimPct: 30, playbook: "PROPOSAL" });
+  });
+
+  it("a trigger that comes with the buy never overwrites one the owner wrote: his stays, and the fill's line names the one not written", async () => {
+    seed();
+    // The owner wrote the review above $406.68 himself; the buy brings a review above a price too.
+    setTriggers(stockTriggers().map((t) => (t.action === "REVIEW" && (t.predicate as { value?: number }).value === 406.68 ? { ...t, source: "PRINCIPAL" as const } : t)));
+    const order = await proposeWith({ ...fx.aapl.placeTrade, ...sale, triggers_with_buy: [...TRIGGERS_WITH_BUY, { action: "REVIEW", predicate: { watch: "price", is: "above", value: 420 }, rationale: "Near the old high: look again." }] });
+    fillNow();
+    await approveAndFill(order);
+    expect(triggerFor("Review if above $406.68")).toMatchObject({ source: "PRINCIPAL" });
+    expect(triggerFor("Review if above $420")).toBeUndefined();
+    const line = rows("thesisUpdate").find((u) => u.type === "STATUS_CHANGED" && String(u.summary).includes("HOLDING"))!;
+    const said = (line.fieldChanges as { triggerOps: { to: Array<{ text: string }> } }).triggerOps.to.map((o) => o.text);
+    expect(said).toContain("Kept your Review if above $406.68; the buy's Review if above $420 not written");
+  });
+
+  it("sold back to watch: the owner's review and the holding's clock stay, what needs a position comes off, and nothing is written", async () => {
+    seed();
+    const order = await propose();
+    fillNow();
+    await approveAndFill(order);
+    jest.useRealTimers();
+    const owners: Trigger = { id: "owners-review", action: "REVIEW", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Under $300 I look again.", source: "PRINCIPAL", cooldownDays: 1 };
+    setTriggers([...stockTriggers(), owners]);
+    const before = stockTriggers();
+    const position = rows("position").find((p) => p.symbol === T)!;
+    await onStore(430, async () =>
+      (await import("@/lib/proposals/thesis-flips")).closeThesisForPosition({ analystId: REPLAY_ANALYST_ID, ticker: T, positionId: String(position.id), closeReason: "TARGET", rationale: null, priceAtTime: 430 }),
+    );
+    expect(thesis().status).toBe("WATCHING");
+    expect(triggerSentences(thesis()).sort()).toEqual(["Review every 7 days", "Review if above $406.68", "Review if below $300"].sort());
+    // Nothing new: every trigger left was on the holding, as it was.
+    for (const t of stockTriggers()) expect(before).toContainEqual(t);
+  });
+});

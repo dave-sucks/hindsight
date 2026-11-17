@@ -508,14 +508,20 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   has triggers and nothing else). `record_thesis` takes a whole `triggers`
   list — a mint is a new list by definition — and adds nothing to a watch (a
   held mint gets its horizon's review clock).
-- **A buy fill** removes the buy and Stop watching lines, writes "Sell if
-  below $X" at the order's approved sell price (`Position.stopLoss`: the
-  analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as the
-  line's note; a price you set in Edit & Approve or on the Trade ticket is
-  yours), and adds the held review clock and the setup's exits when their
-  buckets are missing (`armHeldLadderOnFill`). A watch's line never becomes
-  the sale. Never a rewrite: the analyst's other lines and reviews survive
-  the fill, and nothing is stamped from the fill price. An Auto-buy names no
+- **A buy fill** removes every buy, every Stop watching trigger and every
+  trigger marked `playbook: "WATCH"` (an edited one keeps its mark), writes
+  "Sell if below $X" at the order's approved sell price (`Position.stopLoss`:
+  the analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as
+  the trigger's note; a price you set in Edit & Approve or on the Trade
+  ticket is yours), the triggers that came with the buy (`Position.buyTriggers`,
+  with a trim's size and a wait as the playbook lists them), and the
+  playbook's fill triggers where the stock has none of that kind
+  (`armHeldLadderOnFill`). A trigger that comes with the buy where you wrote
+  one of the same kind is not written: yours stays, and the fill's Activity
+  line names the one not written; one the save refuses gets its line too. A
+  watch's trigger never becomes the sale. Never a rewrite: the analyst's
+  other triggers and reviews survive the fill, and nothing is stamped from
+  the fill price. An Auto-buy names no
   sale, so it writes none: the holding sells by its analyst's and the
   account's rules. The one automatic floor is **stop when buying** (`lib/trading/auto-stop.ts`), a
   setting on the account (Settings → Triggers) that an analyst may override
@@ -533,6 +539,12 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   wider of the stock's floor and the setting's line (`sizingStop`,
   `lib/agent/position-sizing.ts`), so a loss at the sale floor stays inside
   the risk per trade. An add to a holding never moves the lines.
+- **A sale back to watch** (a profit-take, or a sale whose agent said the
+  belief survived): the triggers that need a position come off (a sale, a
+  trim, an add, and any measured from the buy: our entry, the high since we
+  bought, days after the buy); the rest stay as written, yours and the
+  holding's review clock included, and nothing is written
+  (`closeThesisForPosition`).
 - **Stop watching:** a STOP_WATCHING line on a stock we only watch, fired on
   its saved timing (§7), retires the thesis as dropped with one Activity line
   and withdraws a buy waiting for approval; its triggers are left as they

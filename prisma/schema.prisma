@@ -1028,7 +1028,7 @@ model Order {
   // Sold-name continuity Half A (GAPS P1-35). The closing agent's attestation
   // at propose time: did the thesis's BELIEF survive this exit, or did the
   // exit happen because the belief broke? true → the paired thesis recycles to
-  // WATCHING (held-side triggers cleared, 1-day review cadence stamped)
+  // WATCHING (the triggers that need a position cleared, the rest kept)
   // instead of going terminal, so
   // a name stopped out on PRICE stays on the radar for a reclaim. false/null →
   // terminal RETIRED(SOLD), today's behavior. Lives on Order because LIVE

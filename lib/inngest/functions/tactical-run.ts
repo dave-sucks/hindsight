@@ -50,7 +50,9 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
+import { preCatalystWindowLine, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -659,6 +661,11 @@ export const tacticalRun = inngest.createFunction(
         situations: auto ? null : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
         portfolioBlock,
+        // A review on a stock we only watch may be a playbook's way in: the Writer's playbooks block.
+        playbooks:
+          !auto && trigger.action === "REVIEW" && !position
+            ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
+            : null,
       });
 
       // Build the kickoff message so the chat replay shows WHY this run

@@ -12,10 +12,10 @@
 import { buildTacticalSystemPrompt, stockFromRead } from "./intraday-tactical";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
-import { getSetup } from "@/lib/agent/knowledge/setups";
+import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
-import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
+import { playbookTemplates, playbookTriggerText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -155,7 +155,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     const declined = { floorPrice: 1835, declined: 1, lapsed: 0, rejectMessage: null, recentLow: 1785.74 };
     const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
     expect(prompt).toContain(`"heldThroughFloor": ${JSON.stringify(declined, null, 2).replace(/\n/g, "\n  ")}`);
-    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the floor, the recent low and their note");
+    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the sale's price, the recent low and their note");
   });
 
   it("no declined sale: nothing prints", () => {
@@ -177,7 +177,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
 
   it("the re-ladder duty re-sets off the chart, not a prose list or a deleted Manage line", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs());
-    expect(prompt).toContain("re-set it off the NEW structure the chart gives (the swing low,\n   the breakout price, the average), not a round number.");
+    expect(prompt).toContain("re-set it off the NEW structure the\n   chart gives (the swing low, the breakout price, the average), not a\n   round number.");
     expect(prompt).not.toContain("Manage line");
     expect(prompt).not.toContain("Set levels like an analyst");
   });
@@ -277,5 +277,26 @@ describe("the trigger run's situation words (step 12, part 2)", () => {
   it("the morning run's and the chat's keep the verbs", () => {
     const text = Object.values(guidanceFor(ALL)).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([word, text.includes(word)]).toEqual([word, true]);
+  });
+});
+
+describe("buildTacticalSystemPrompt — a watch's review gets the Writer's playbooks block (2026-11-17)", () => {
+  const review: Trigger = { id: "ep-gap", action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below." };
+  const block = playbooksBlock(setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), (id) => playbookTemplates(null, id));
+
+  it("prints the same block the Writer reads, and how to write a playbook's watch triggers from it", () => {
+    const prompt = buildTacticalSystemPrompt(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
+    expect(prompt).toContain(block);
+    expect(prompt).toContain('write that playbook\'s watch triggers with update_thesis add_triggers and name it (setup_id): each with "playbook": "WATCH"');
+    expect(prompt).toContain("A trigger whose price the chart doesn't have yet is left out.");
+  });
+
+  it("a playbook that couldn't be read says so, and the run writes none from it", () => {
+    const unread = playbooksBlock(setupsForAnalyst(["EPISODIC_PIVOT"]), null);
+    expect(buildTacticalSystemPrompt(makeArgs({ trigger: review, position: null, playbooks: unread }))).toContain("The playbook couldn't be read: write no trigger from it.");
+  });
+
+  it("any other run gets none", () => {
+    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain("YOUR PLAYBOOKS");
   });
 });

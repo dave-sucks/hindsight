@@ -44,9 +44,9 @@ import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
-import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
+import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
-import { analystBrief, playbookChecks, type BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
@@ -445,19 +445,17 @@ stock's triggers.`;
     opts.mode === "refresh" && opts.existingThesis?.status === "PROMOTED";
 
   const triggerBlock = isHeldRefresh
-    ? `TRIGGERS — YOU ARE REFRESHING A HELD THESIS (open position):
+    ? `TRIGGERS — YOU ARE REFRESHING A STOCK WE HOLD (open position):
   • Legal actions: EXIT, REVIEW, TRIM, ADD. NEVER ENTER —
     we already own it.
-  • At least one EXIT on the floor ({ watch: "price", is: "below",
-    value } for LONG, is: "above" for SHORT) — that's the automated
-    stop-loss path.
-  • Most refreshes need no trigger ops at all.
-  • PROTECTIVE LEVELS ONLY TIGHTEN on a stock we own. Move the floor
-    trigger (edit_triggers, by its id above) up, never down. A looser
-    floor is refused by itself — the rest of the refresh still lands. If
-    you believe the floor is wrong, keep it and say so in the rationale
-    with the number you'd suggest — that reaches the principal; you
-    cannot move it.`
+  • It carries its "Sell if below" trigger already. Most refreshes need
+    no trigger ops at all.
+  • A SALE'S PRICE ONLY TIGHTENS on a stock we own. Move the "Sell if
+    below" trigger (edit_triggers, by its id above) up, never down. A
+    looser one is refused by itself — the rest of the refresh still
+    lands. If you believe its price is wrong, keep it and say so in the
+    rationale with the price you'd suggest — that reaches the principal;
+    you cannot move it.`
     : isPromotedRefresh
       ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
   • The paper position was force-closed at promotion. Legal actions:
@@ -520,18 +518,8 @@ rationale — the next daily run executes it, not you.
 `
     : "";
 
-  const setups = opts.setups ?? [];
-  // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
-  const setupsBlock = setups.length
-    ? `
-═══════════════════════════════════════════════════════════════════
-YOUR PLAYBOOKS — the ones you write a stock's triggers from
-═══════════════════════════════════════════════════════════════════
-${setups
-  .map((s) => [...playbookChecks(s), ...playbookTriggerText(opts.playbooks ? opts.playbooks(s.id) : null, "WATCH")].join("\n  "))
-  .join("\n\n")}
-`
-    : "";
+  // Each playbook's words, then its watch triggers as Settings → Playbook lists them. A stock we own writes none of them.
+  const setupsBlock = isHeldRefresh ? "" : playbooksBlock(opts.setups ?? [], opts.playbooks ?? null);
 
   return `${analystBrief(opts.analyst)}
 
@@ -600,30 +588,28 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. The research decides it, never the
      chart. PASS is a valid, gradeable outcome — use it when the research
      doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • THE PLAYBOOK WRITES THE TRIGGERS. Once the research gives you a
+${isHeldRefresh ? `   • WE OWN THIS STOCK. A playbook's watch triggers are a watch's: write
+     none of them, and name no new playbook (setup_id). The holding's
+     triggers came with the buy and at the fill; edit them by id only
+     where the research changed one.
+` : `   • THE PLAYBOOK WRITES THE TRIGGERS. Once the research gives you a
      view, name the playbook that fits (setup_id) and write every one of
      its watch triggers (YOUR PLAYBOOKS), each with "playbook": "WATCH",
      exactly as listed: the trigger it shows, its action, condition and
      fireMode as they are ("within 2% of the 50-day average" stays that,
      never a price; no fireMode where it shows none), and every {chart
-     number} replaced by its price from the Price structure block
-     (chart.), never a round number, never a feel. Each gets its reason,
-     with the price in it. A stock has triggers and nothing else:
+     number} replaced by its price from this stock's chart today (the
+     Price structure block, chart.), never a round number, never a feel. A
+     trigger whose price the chart doesn't have yet (an episodic pivot's
+     buy before its gap) is left out, and the playbook's review that wakes
+     a run is written instead. Each gets its reason, with the price in it.
+     A stock has triggers and nothing else:
        – a "Stop watching if below" trigger's reason opens with what a
          close below it would say about core_belief, in one plain
          sentence, then the chart, with the price. It never sells: the
          holding's sell price comes with the buy;
        – a trigger of your own (an earnings review, a price you'd look
          again at) goes next to them, without "playbook";
-       – THE STREET (the Analyst Coverage block: targets low / average /
-         high, the rating split, EPS revisions) informs every price and
-         sets none; "target" means the Street's number, never ours. In
-         conviction_rationale say where the price sits against the
-         Street's average and high. A buy where the average target sits
-         under the price needs its reason there. An average target far
-         above the price with estimates revised up in the last 4 weeks is
-         a reason for conviction; a wide low–high spread says the Street
-         is unsettled, not that the midpoint is right.
      If no playbook fits, name none: the view stays with no buy (NO PRICE
      WORTH WAITING FOR YET, below) — not a PASS, and not a buy at an
      invented price.
@@ -640,11 +626,19 @@ every field; the judgment rules:
      clock unless you give it one, so a view saved with no buy, no trigger
      and no review can never come back. "I want to buy the pullback rather
      than buy here" IS a playbook: write it on MA_PULLBACK. Put the when
-     ("price this after the January readout") in the rationale. A view
-     with no buy names no playbook (no setup_id).
+     ("price this after the January readout") in the rationale.
      PASS is for a view the research does not support — not for a view
      that isn't ready to price. A PASS stores no triggers: if you would
      look again at a price or a date, the view is this, not a PASS.
+`}   • THE STREET (the Analyst Coverage block: targets low / average /
+     high, the rating split, EPS revisions) informs every price and sets
+     none; "target" means the Street's number, never ours. In
+     conviction_rationale say where the price sits against the Street's
+     average and high. A buy where the average target sits under the price
+     needs its reason there. An average target far above the price with
+     estimates revised up in the last 4 weeks is a reason for conviction; a
+     wide low–high spread says the Street is unsettled, not that the
+     midpoint is right.
    • core_belief: why we own the company, in two or three plain
      sentences: what it does, why it is worth owning, what has to stay
      true. Never a stock price, a price path, a price target or "within

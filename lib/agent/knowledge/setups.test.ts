@@ -104,7 +104,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     const r = await tool.execute({ topic: "setup" }, opts);
     expect(r.ok).toBe(true);
     expect(r.data.count).toBe(12);
-    expect(r.summary).toMatch(/^12 setups:/);
+    expect(r.summary).toMatch(/^12 playbooks:/);
   });
 
   it("returns a full entry with readable content: the playbook's words, then its triggers", async () => {

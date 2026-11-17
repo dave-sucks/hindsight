@@ -236,23 +236,12 @@ describe("closeOpenPosition — P1-18 paired-thesis flip", () => {
 
     expect(result.kind).toBe("closed");
 
-    // Routed HOLDING → WATCHING (not RETIRED); held-only triggers cleared
-    // and a 1-day review cadence stamped (DAV-221 — replaces the old
-    // due-date write) so the next run sets a fresh re-entry trigger.
+    // Routed HOLDING → WATCHING (not RETIRED). The thesis carries no triggers
+    // here, so none are left, and none is written (2026-11-17: no code-written clock).
     expect(mockThesisUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "thesis-1" },
-        data: expect.objectContaining({
-          status: "WATCHING",
-          retiredReason: null,
-          triggers: [
-            expect.objectContaining({
-              predicate: { watch: "repeat", value: 1 },
-              action: "REVIEW",
-              source: "DEFAULT",
-            }),
-          ],
-        }),
+        data: expect.objectContaining({ status: "WATCHING", retiredReason: null, triggers: [] }),
       }),
     );
 

@@ -38,7 +38,6 @@ The stock needs its event date on the thesis.
 
 | On a watch | How the level is picked |
 |---|---|
-| Review 70 days before the event date | While parked: the buying window opens. The run that answers it writes the lines below and removes this one, which is the same kind as the analyst's 10-day review |
 | Buy if above $P on the close, at least 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
 | Buy if within 2% of the 50-day average | Only while the 50-day is rising and the stock's pullbacks held it |
 | Buy if above $H on the close | H: the 20-day high, above today's price (the reclaim) |

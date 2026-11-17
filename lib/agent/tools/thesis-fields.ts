@@ -62,14 +62,14 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
       .describe(
         "How the trade ends, and how often a holding is reviewed: CATALYST (a dated event; needs catalyst_date; daily), TARGET (a move over weeks to months; weekly), " +
-          "TRADE (a short setup, days to weeks; daily), COMPOUNDER (business quality, months to years; monthly). Changing it later leaves the stock's triggers as they are.",
+          "TRADE (a short trade, days to weeks; daily), COMPOUNDER (business quality, months to years; monthly). Changing it later leaves the stock's triggers as they are.",
       ),
-    setup_id: z.enum(SETUP_IDS).describe("The setup the triggers are written on. The trigger run confirms a buy by it and results are grouped by it."),
+    setup_id: z.enum(SETUP_IDS).describe("The playbook the triggers are written on. The trigger run confirms a buy by it and results are grouped by it."),
     setup_id_or_none: z
       .enum([...SETUP_IDS, NO_SETUP_FITS])
       .describe(
-        "The setup the triggers are written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no setup fits; say why in the rationale. " +
-          "On a stock we hold, naming a setup writes that setup's exit triggers, one Activity line each.",
+        "The playbook the triggers are written on. The trigger run confirms a buy by it and results are grouped by it. NONE: no playbook fits; say why in the rationale. " +
+          "On a stock we hold, naming a playbook writes its triggers written at the fill, one Activity line each.",
       ),
     catalyst_date: z.string().datetime().describe("When the dated event lands, as the company announced it (ISO timestamp). Required when horizon is CATALYST."),
     catalyst_day: z.string().describe("When the dated event lands, as the company announced it (YYYY-MM-DD). Required when horizon is CATALYST."),

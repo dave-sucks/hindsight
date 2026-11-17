@@ -22,14 +22,15 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   acceptedOps,
   addedTriggerRationale,
   applyTriggerOps,
+  collision,
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
+import { conditionsOf, fromPosition, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
 import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
@@ -145,12 +146,22 @@ export async function armHeldLadderOnFill(opts: {
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
     // At the fill, the playbook's watch triggers come off and its holding triggers go on. A trigger written by hand stays.
     const watchTriggers = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING" || t.playbook === "WATCH";
-    const buyTriggers = opts.buyTriggers ?? [];
+    // A trigger that comes with the buy never overwrites one the owner wrote: his stays, and the line says which wasn't written.
+    const kept = stored.filter((t) => !watchTriggers(t));
+    const ownersOf = (t: Trigger) => {
+      const there = collision(kept, t, watchingThesis.direction);
+      return there?.source === "PRINCIPAL" ? there : undefined;
+    };
+    const buyTriggers = (opts.buyTriggers ?? []).filter((t) => !ownersOf(t));
+    const notWritten = (opts.buyTriggers ?? []).flatMap((t) => {
+      const his = ownersOf(t);
+      return his ? [{ op: "kept" as const, id: his.id, text: `Kept your ${sentenceOf(his)}; the buy's ${sentenceOf(t)} not written` }] : [];
+    });
     // The playbook's fill triggers, read against the triggers left and the ones the buy brings.
     // A playbook that can't be read writes none, and the Activity line says so.
     const playbook = fillTemplateOps(
       watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
-      [...stored.filter((t) => !watchTriggers(t)), ...buyTriggers],
+      [...kept, ...buyTriggers],
     );
     // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
     // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
@@ -192,6 +203,10 @@ export async function armHeldLadderOnFill(opts: {
       : null;
     const nextTriggers = stopped?.triggers ?? applied.triggers;
     const results = [...applied.results, ...(stopped?.results ?? [])];
+    // A trigger that came with the buy and was refused still gets its line: nothing vanishes.
+    const refusedWithBuy = applied.results
+      .filter((r) => !r.ok && r.op === "add" && buyTriggers.some((t) => t.id === r.id))
+      .map((r) => ({ op: "kept" as const, id: r.id, text: `Not written: ${r.text.replace(/^Added: /, "")} (${r.reason})` }));
     for (const r of stopped?.results ?? []) if (!r.ok) console.warn(`[armHeldLadderOnFill] ${opts.ticker}: stop when buying not set — ${r.reason}`);
 
     await prisma.thesis.update({
@@ -216,7 +231,7 @@ export async function armHeldLadderOnFill(opts: {
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
           status: { from: watchingThesis.status, to: "HOLDING" },
-          triggerOps: { from: null, to: [...acceptedOps(results), ...playbook.notWritten] },
+          triggerOps: { from: null, to: [...acceptedOps(results), ...notWritten, ...refusedWithBuy, ...playbook.notWritten] },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,
@@ -351,33 +366,29 @@ export async function closeThesisForPosition(opts: {
         researchRun: { agentConfigId: opts.analystId },
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, status: true },
+      select: { id: true, status: true, triggers: true },
     });
     if (!activeThesis) return;
 
     const ctxSuffix = opts.summaryContext ? ` ${opts.summaryContext}` : "";
 
     // ── Re-entry radar (docs/plans/SCALE_INTO_WINNERS.md PR5) ──────────────
-    // A take-profit on a name we still believe in returns to WATCHING rather
-    // than terminal RETIRED, so the daily run keeps it on the radar and can
-    // re-enter on a pullback. (A RETIRED/SOLD row is DEAD — excluded from
-    // get_theses' default book, re-mintable only by Discovery.) Held-only
-    // triggers (stop EXIT, scale-in rungs) are cleared since there is no
-    // position; a 1-day review cadence flags it so the next run sets a fresh
-    // re-entry trigger or archives it. Only profit-takes route here — stops,
-    // invalidations, and risk exits stay RETIRED via the branch below.
+    // A take-profit, or a sale whose closing agent attested the belief
+    // survived (P1-35), returns the stock to WATCHING rather than terminal
+    // RETIRED, so a run can buy it again on a reclaim. Only what needs a
+    // position comes off: a sale, a trim, an add, and any trigger measured
+    // from the buy (our entry, the high since we bought, days after the
+    // buy). Everything else stays as written, the owner's and the holding's
+    // review clock included, and nothing is written here.
     if (shouldRecycleToWatching(opts.closeReason, opts.beliefSurvived)) {
-      // Two flavors land here: a profit-take (TARGET), and a protective exit
-      // the closing agent attested the belief survived (P1-35). They get the
-      // same mechanism — held-side rungs cleared (no position, so they are
-      // meaningless) and a 1-day review-clock stamped so the next daily
-      // run MUST resolve it: arm a reclaim entry trigger, or archive it.
-      // The cadence trigger replaces the old due-date write (DAV-221) —
-      // a bare `triggers: []` on a WATCHING row would leave it invisible
-      // forever, since watch items only come due on their own cadence.
-      // Re-entry always runs through an ENTER trigger on a reclaim, never
-      // an auto-rebuy at the stop-out price.
       const isProfitTake = isProfitTakeReentry(opts.closeReason);
+      const needsPosition = (t: Trigger) => {
+        const w = shapeOf(t.predicate);
+        return t.action === "EXIT" || t.action === "TRIM" || t.action === "ADD" ||
+          (w != null && conditionsOf(w).some((c) => fromPosition(c) || (c.watch === "from_date" && c.variable === "buy")));
+      };
+      // The stored list as it is, so a trigger this code can't parse isn't dropped by the rewrite.
+      const held = (Array.isArray(activeThesis.triggers) ? activeThesis.triggers : []) as unknown as Trigger[];
       await prisma.thesis.update({
         where: { id: activeThesis.id },
         data: {
@@ -385,9 +396,7 @@ export async function closeThesisForPosition(opts: {
           retiredReason: null,
           closedAt: new Date(),
           closeReason: opts.closeReason,
-          triggers: [
-            { ...reviewCadenceTrigger(1), source: "DEFAULT" },
-          ] as object[],
+          triggers: held.filter((t) => !needsPosition(t)) as unknown as object,
         },
       });
       await writeThesisUpdate({

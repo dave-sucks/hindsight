@@ -44,7 +44,6 @@ const clock = (days: number, why: string): Template[] => [
 
 export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   PRE_CATALYST: [
-    { action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 70, variable: "event" }, rationale: "While parked: the buying window opens. The run that answers it writes the buy triggers and removes this one.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: onClose("above", "{high20}"), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
