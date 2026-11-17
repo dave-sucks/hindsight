@@ -116,7 +116,7 @@ export const WRITER_KEYS = ["stock", "belief", "triggers", "company"] as const;
 
 /** The quiet line for the page's CRWD row, as rowForModel builds it (pinned to the builder by lib/docs/read-cases.test.ts). */
 export const EXAMPLE_LINE =
-  "CRWD · held · LONG · PEAD · entry $404.10 · proposal waiting: sell 14 sh, placed 10-16 09:31 ET, expires 10-17 09:31 ET · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
+  "CRWD · held · LONG · PEAD · paid $404.10 · proposal waiting: sell 14 sh, placed 10-16 09:31 ET, expires 10-17 09:31 ET · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -143,7 +143,7 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
   { id: "position", label: "Position", value: "Bought 14 shares at $404.10 on Oct 15, now $418.20 (+3.5%)", keys: ["position"] },
   { id: "proposal_waiting", label: "Proposal waiting", value: "sell 14 sh, placed 10-16 09:31 ET, expires 10-17", keys: ["proposal_waiting"] },
   { id: "chart", label: "Chart numbers", value: "20d $402 · 50d $388 · 200d $351 · RSI 64 · vs the S&P +9% over 3M", keys: ["chart"] },
-  { id: "situations", label: "Situations", value: "ADD_OR_WINNER (add or near target) · REVIEW_DUE (review due) · fired again, 3rd day", keys: ["situations", "repeat"] },
+  { id: "situations", label: "Situations", value: "ADD_OR_WINNER (add) · REVIEW_DUE (review due) · fired again, 3rd day", keys: ["situations", "repeat"] },
   { id: "triggers", label: "The plan: every trigger, as a sentence", value: "Sell if below $384 on the close · Review if above 10% from our entry · Review if above the Street's average target · Review if within 5 days before earnings · Review every 30 days", keys: ["triggers"] },
   { id: "floor_risk", label: "Floor risk and flags", value: "At the $384 floor, 14 shares lose $281, 0.3% of the account", keys: ["floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
   { id: "belief", label: "Core thesis", value: "The platform keeps taking share as security budgets consolidate; what has to stay true is net new ARR above $200M a quarter.", keys: ["belief"] },

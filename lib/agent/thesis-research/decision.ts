@@ -20,9 +20,8 @@ import { z } from "zod";
 import { jsonSchema, zodSchema, type Schema } from "ai";
 import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { riskReward as rewardToRisk } from "@/lib/agent/thesis-shape";
 import { applyTriggerOps } from "@/lib/agent/triggers/ops";
-import { canonicalLevels, levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
@@ -142,8 +141,6 @@ export interface DecisionValidationResult {
   ok: boolean;
   errors: string[];
   decision?: ValidatedThesisDecision;
-  /** Realized reward/risk for LONG/SHORT decisions. */
-  riskReward?: number;
 }
 
 /**
@@ -185,12 +182,8 @@ export function validateThesisDecision(
   // The buy and the floor are triggers. A view is priced when the decision
   // writes a buy or a floor; an unpriced view (no buy, ≥1 REVIEW wake —
   // DAV-224) is legal: "bullish, entry window opens in January" used to be
-  // unwritable, so BMRN came back with today's quote as its buy level. The
-  // ordering of the levels is the save's check (checkDecisionAgainstSave).
-  const levels = decisionLevels(d, opts);
-  const { entry, stop, target, priced } = levels;
-  const riskReward =
-    directional && entry != null && stop != null && target != null ? (rewardToRisk(d.direction as "LONG" | "SHORT", entry, target, stop) ?? undefined) : undefined;
+  // unwritable, so BMRN came back with today's quote as its buy level.
+  const { entry, priced } = decisionBuy(d, opts);
 
   // ── The setup and how its numbers were derived (DAV-249) ─────────────
   // In-loop: the writer repairs in one step. Nothing
@@ -362,7 +355,6 @@ export function validateThesisDecision(
   return {
     ok: true,
     errors: [],
-    riskReward,
     decision: {
       ...d,
       triggers: parsedTriggers,
@@ -374,14 +366,15 @@ export function validateThesisDecision(
 }
 
 /**
- * The buy, the floor and the upside level the decision leaves on the stock,
- * read off its triggers (a refresh's edits applied to the stored ones), and
- * whether the decision itself writes a buy or a floor. Pure.
+ * The price of the buy trigger the decision leaves on the stock, when it is
+ * at a typed price (a refresh's edits applied to the stored ones), for the
+ * setup's chase limit; and whether the decision itself writes a buy or a
+ * Stop watching line. Pure.
  */
-export function decisionLevels(
+export function decisionBuy(
   d: ThesisDecisionInput,
   opts: Pick<DecisionValidationOpts, "mode" | "existingStatus" | "existingTriggers">,
-): { entry: number | null; stop: number | null; target: number | null; priced: boolean } {
+): { entry: number | null; priced: boolean } {
   const direction = d.direction === "PASS" ? null : d.direction;
   const status = opts.mode === "refresh" ? (opts.existingStatus ?? "WATCHING") : "WATCHING";
   let n = 0;
@@ -416,8 +409,9 @@ export function decisionLevels(
     }).triggers;
     priced = adds.some(sets) || edits.some((e) => stored.some((t) => t.id === e.id && sets(t)));
   }
-  const { columns } = canonicalLevels({ triggers: list.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })), direction, status });
-  return { entry: status === "HOLDING" ? null : columns.entryPrice, stop: columns.stopLoss, target: columns.targetPrice, priced };
+  // A buy trigger's own price, when it has one (a chart condition has none).
+  const entry = status === "HOLDING" ? null : (list.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null);
+  return { entry, priced };
 }
 
 /**

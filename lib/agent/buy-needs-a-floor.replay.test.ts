@@ -2,8 +2,7 @@
  * A buy needs a floor, not a target (2026-11-04). The house sets no target
  * of its own, so the reward/risk floor had nothing of ours to measure: the
  * stored plan the 2:1 rule was written for is legal, and the row's Street
- * line says how much room there is to the Street's average against the
- * floor's distance instead. Fixtures: ETN's and PLTR's real rows as
+ * line is Wall Street's numbers alone (its room ratio went 2026-11-16). Fixtures: ETN's and PLTR's real rows as
  * get_theses read them on 2026-11-04 (activity text and history left out).
  */
 import type { z } from "zod";
@@ -11,33 +10,26 @@ import etn from "@/lib/agent/__fixtures__/row-etn-2026-11-04.json";
 import pltr from "@/lib/agent/__fixtures__/row-pltr-2026-11-04.json";
 import cogt from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
 import { rowForModel } from "@/lib/agent/row-for-model";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { checkLadder } from "@/lib/agent/triggers/ops";
-import { oldLevelFieldsAsTriggerOps, planTriggers, replayTool, thesisRow } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, planTriggers, replayTool, triggerSentences, thesisRow } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "@/lib/agent/run-thesis-writer";
 
 type Row = Record<string, unknown>;
 
 describe("the plan the 2:1 rule was written for (PLTR as stored, 183 / 190 / 110)", () => {
-  it("is legal on every write path: the shape rule and the ladder check both pass it, as the agent", () => {
-    expect(validateThesisShape({ direction: "LONG", entryPrice: 183, targetPrice: 190, stopLoss: 110 })).toMatchObject({ ok: true, riskReward: expect.closeTo(0.1, 1) });
+  it("is legal on every write path: the ladder check passes it, as the agent", () => {
     const check = checkLadder({ triggers: planTriggers({ entry: 183, target: 190, stop: 110 }) as unknown as Trigger[], direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: 183, targetPrice: 190, stopLoss: 110 } });
+    expect(check).toEqual({ ok: true });
   });
 });
 
-describe("the room to the Street average, on the real rows", () => {
-  it("ETN, watched (buy $410, floor $358.50, Street avg $511.57): 2.0× from the buy level, on the street line", () => {
-    const short = rowForModel(etn as Row, { named: false, size: "short" }) as Row;
-    expect(String(short.street)).toContain("room to the Street average is 2.0× the floor's distance from the buy level");
-    expect(String(short.street)).not.toMatch(/\d:1/);
-  });
-
-  it("PLTR, held (price $171.92 under its $196 floor): the line says the price is past the floor, no ratio", () => {
-    const short = rowForModel(pltr as Row, { named: false, size: "short" }) as Row;
-    expect(String(short.street)).toContain("the price is past the floor");
+describe("the Street line on the real rows is Wall Street's numbers alone (the room ratio went 2026-11-16)", () => {
+  it.each([["ETN", etn], ["PLTR", pltr]])("%s: no ratio against a floor of ours", (_t, row) => {
+    const short = rowForModel(row as Row, { named: false, size: "short" }) as Row;
+    expect(String(short.street)).toMatch(/avg \$/);
+    expect(String(short.street)).not.toMatch(/room|floor|\d:1/);
   });
 });
 
@@ -84,7 +76,10 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
     expect(r.result.data?.error).toBeUndefined();
     expect(String(r.result.summary)).not.toMatch(/missing|Upside set/);
     const row = r.db.store.thesis[0];
-    expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", entryPrice: 36.95, stopLoss: 34.91, targetPrice: null });
+    expect(row).toMatchObject({ direction: "LONG", status: "WATCHING" });
+    const said = triggerSentences(row).join(" | ");
+    expect(said).toMatch(/Buy if above \$36\.95/);
+    expect(said).toMatch(/Stop watching if below \$34\.91/);
     const actions = (row.triggers as Trigger[]).map((t) => t.action);
     expect(actions).toContain("ENTER");
     expect(actions).toContain("STOP_WATCHING");

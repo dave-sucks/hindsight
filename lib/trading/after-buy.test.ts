@@ -31,21 +31,20 @@ beforeEach(() => {
 });
 
 describe("researchOwed", () => {
-  it("owes nothing when the thesis has a view, a floor and a target", () => {
-    expect(researchOwed({ noView: false, floor: 95, target: 120 })).toBeNull();
+  it("owes nothing when the thesis has a view and a sale", () => {
+    expect(researchOwed({ noView: false, hasSale: true })).toBeNull();
   });
-  it("owes the plan when either level is missing", () => {
-    expect(researchOwed({ noView: false, floor: null, target: 120 })?.missing).toBe("floor");
-    expect(researchOwed({ noView: false, floor: 95, target: null })?.missing).toBe("target");
+  it("owes the sale when the stock has none", () => {
+    expect(researchOwed({ noView: false, hasSale: false })?.missing).toBe("sale");
   });
   it("owes the research when there was no view", () => {
-    expect(researchOwed({ noView: true, floor: 95, target: 120 })?.missing).toBe("research");
+    expect(researchOwed({ noView: true, hasSale: true })?.missing).toBe("research");
   });
 });
 
 describe("sendWriterAfterBuy", () => {
-  it("starts the writer for a researched thesis with no floor, keeping its levels", async () => {
-    thesisFindUnique.mockResolvedValue({ stopLoss: null, targetPrice: 120 });
+  it("starts the writer for a researched thesis with no sale, keeping its triggers", async () => {
+    thesisFindUnique.mockResolvedValue({ triggers: [] });
     startWriterRun.mockResolvedValue({ childRunId: "c1" });
 
     await expect(sendWriterAfterBuy(BUY)).resolves.toBe(true);
@@ -54,21 +53,21 @@ describe("sendWriterAfterBuy", () => {
         mode: "refresh",
         existingThesisId: "t1",
         keepLevels: true,
-        reason: "Bought by hand; set its floor and target.",
+        reason: "Bought by hand; set its sale.",
       }),
     );
     expect(writeThesisUpdate).not.toHaveBeenCalled();
   });
 
-  it("sends no writer when the thesis has both levels", async () => {
-    thesisFindUnique.mockResolvedValue({ stopLoss: 95, targetPrice: 120 });
+  it("sends no writer when the thesis has its sale", async () => {
+    thesisFindUnique.mockResolvedValue({ triggers: [{ id: "s1", action: "EXIT", predicate: { watch: "price", is: "below", value: 95 }, rationale: "x" }] });
 
     await expect(sendWriterAfterBuy(BUY)).resolves.toBe(false);
     expect(startWriterRun).not.toHaveBeenCalled();
   });
 
   it("writes one Activity line when the writer can't be started", async () => {
-    thesisFindUnique.mockResolvedValue({ stopLoss: null, targetPrice: null });
+    thesisFindUnique.mockResolvedValue({ triggers: [] });
     startWriterRun.mockRejectedValue(new Error("inngest down"));
 
     await expect(sendWriterAfterBuy(BUY)).resolves.toBe(false);

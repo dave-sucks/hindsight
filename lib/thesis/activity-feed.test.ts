@@ -232,7 +232,7 @@ describe("a review's verdict and the line it answers: one title on the page, the
     expect(reviewTitle(row, TRIGGERS)).toEqual({ primary: "Sale review", secondary: "below 6% from the high since we bought · weaker" });
     expect(reviewTitle(row)).toEqual({ primary: "Review", secondary: "· weaker" });
     // A line with its own title keeps it, with the word after it.
-    expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "target $80.00 → $95.00 · weaker" });
+    expect(titleSegments({ ...row, type: "UPDATED", fieldChanges: { targetPrice: { from: 80, to: 95 } } })).toEqual({ primary: "Updated", secondary: "upside $80.00 → $95.00 · weaker" });
   });
 
   it("a note stamped with the proposal it wrote up gives the Proposed step its verdict", () => {

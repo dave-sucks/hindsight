@@ -12,8 +12,6 @@
  *   • header   — logo + name + status pill
  *   • price    — live current price + day change (PriceChange)
  *   • holding  — "Holding N shares · avg entry $X" + P&L  (ACTIVE only)
- *   • gauge    — PriceGauge (stop · entry · target), the same one the
- *                sheet renders in its Price Targets block
  *   • belief   — coreBelief (3-line clamp). Falls back to snapshot text
  *                then to the pass_reason / reasoning_summary on prop
  *                for legacy theses with no V2 fields.
@@ -32,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { StockLogo } from "@/components/StockLogo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PriceChange } from "@/components/ui/price-change";
-import { PriceGauge } from "@/components/ui/gauge";
 import { ThesisSheet, type ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
 import { getThesisStatusDisplay } from "@/lib/thesis-status";
 import { useThesisCardData } from "@/lib/hooks/use-thesis-card-data";
@@ -62,9 +59,6 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   // Live state takes precedence; prop snapshot is the fallback for the
   // inline-during-run case and for /triggers errors.
   const status = state?.status ?? thesis.status;
-  const entryPrice = state?.entryPrice ?? thesis.entry_price ?? null;
-  const targetPrice = state?.targetPrice ?? thesis.target_price ?? null;
-  const stopLoss = state?.stopLoss ?? thesis.stop_loss ?? null;
   const position = state?.position ?? null;
   const positionPnl = quote?.positionPnl ?? null;
 
@@ -72,7 +66,6 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
   // P1-24: a pass is status=PASSED. The live `status` (from /triggers, falling
   // back to the prop snapshot) is authoritative.
   const isPass = status === "PASSED";
-  const hasGauge = entryPrice != null && (targetPrice != null || stopLoss != null);
   const isHolding = status === "HOLDING" && position != null;
 
   const belief =
@@ -148,24 +141,6 @@ export function ThesisMiniCard({ thesis }: { thesis: ThesisCardData }) {
           </div>
         )}
 
-        {/* ── Price gauge (stop · entry · target) ─────────────────── */}
-        {/* Reuses the same PriceGauge primitive the sheet's Price
-            Targets block renders, so the card and the sheet show the
-            same visual for the same data. */}
-        {hasGauge && (
-          <div className="pt-1">
-            <PriceGauge
-              entry={entryPrice!}
-              target={targetPrice}
-              stop={stopLoss}
-              current={quote?.currentPrice ?? null}
-            />
-            <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums mt-1">
-              <span>{stopLoss != null ? `Stop ${fmtPrice(stopLoss)}` : ""}</span>
-              <span>{targetPrice != null ? `Target ${fmtPrice(targetPrice)}` : ""}</span>
-            </div>
-          </div>
-        )}
 
         {/* ── Core belief body ────────────────────────────────────── */}
         {belief && (

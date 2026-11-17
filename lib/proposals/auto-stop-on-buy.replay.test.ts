@@ -14,7 +14,7 @@
  *   on the floor.
  */
 
-import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, type PrismaDouble } from "@/lib/replay";
+import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, type PrismaDouble, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 let db: PrismaDouble;
@@ -117,7 +117,8 @@ describe("no floor: the sale floor is added on the line", () => {
     await approve("IOT", { account: ON8 }, { stop: null });
     expect(floors()).toEqual([saleAt(38.83)]);
     expect(reviewLines()).toEqual([]);
-    expect(thesis()).toMatchObject({ status: "HOLDING", stopLoss: 38.83 });
+    expect(thesis()).toMatchObject({ status: "HOLDING" });
+    expect(triggerSentences(thesis())).toContain("Sell if below $38.83");
     expect(position()).toMatchObject({ stopLoss: 38.83 });
     expect(activity()).toContain("Added: Sell if below $38.83");
   });
@@ -143,7 +144,7 @@ describe("a tighter floor an analyst or a template set: it becomes the review li
     // The review carries the floor's own words; the sale floor kept the floor's id.
     expect(reviewLines()[0].rationale).toMatch(/\$39\.80/);
     expect(floor.id).not.toBe(reviewLines()[0].id);
-    expect(thesis()).toMatchObject({ stopLoss: 38.83 });
+    expect(triggerSentences(thesis())).toContain("Sell if below $38.83");
     expect(position()).toMatchObject({ stopLoss: 38.83 });
   });
 

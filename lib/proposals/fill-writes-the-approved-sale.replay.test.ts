@@ -88,7 +88,7 @@ describe("WST's buy approved: the watch's lines come off, the approved sale goes
 
   it("approved as proposed: the buy and the Stop watching line come off; Sell if below $401.20 goes on, the analyst's, with its reason", async () => {
     const db = await approve();
-    expect(thesisOf(db)).toMatchObject({ status: "HOLDING", stopLoss: SALE });
+    expect(thesisOf(db)).toMatchObject({ status: "HOLDING" });
     expect(triggersOf(db).filter((t) => t.id === BUY || t.id === LINE || t.action === "STOP_WATCHING" || t.action === "ENTER")).toEqual([]);
     expect(salesOf(db)).toEqual([expect.objectContaining({ predicate: { watch: "price", is: "below", value: SALE }, rationale: REASON, source: "AGENT" })]);
     expect(sentenceOf(salesOf(db)[0])).toBe("Sell if below $401.20");

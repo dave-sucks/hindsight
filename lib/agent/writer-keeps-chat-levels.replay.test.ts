@@ -82,7 +82,7 @@ describe("MU 10:56:57 — the writer's refresh for the chat", () => {
 
   it("a refresh the chat did not ask for (a morning run's) sends its edits as written: the $982 add lands on the buy, and its own edit puts $906 back", async () => {
     const { result, db } = await replay(await save());
-    expect(opsOn(result, BUY).map((o) => o.text)).toEqual(["Entry $906 → $982", "Entry $982 → $906"]);
+    expect(opsOn(result, BUY).map((o) => o.text)).toEqual(["Buy $906 → $982", "Buy $982 → $906"]);
     const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;
     expect(buy.predicate.value).toBe(906);
   }, LOAD_MS);

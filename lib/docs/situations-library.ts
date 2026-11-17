@@ -13,7 +13,7 @@ const PLAIN: Record<SituationCode, string> = {
   PROMOTED_AWAITING: "A stock just moved from paper to live money and needs a decision this run.",
   PROTECTIVE_SALE: "A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.",
   BUY_ARRIVES: "A buy trigger fired on a watched stock, whether or not the analyst has a free slot.",
-  ADD_OR_WINNER: "An add trigger fired, or a holding is three quarters of the way to its target.",
+  ADD_OR_WINNER: "An add trigger fired on a holding.",
   PROTECTION: "A gain with too little floor under it, or a floor that would lose too much of the account.",
   REVIEW_DUE: "A review trigger fired or the review clock came round: on the price, a report, a filing, or a watch with no view yet.",
   NOTE_TO_ANSWER: "You left a note or made a decision since the analyst's last answer, or a note is pinned on the stock (the Market Reviewer's or yours).",

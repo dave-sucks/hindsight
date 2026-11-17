@@ -178,33 +178,15 @@ export const closePosition = defineTool({
         };
       }
 
-      // ── The plan and the tape, for the label (DAV-263) ─────────────────
-      // A close no protective fire woke keeps the agent's label only when the
-      // tape backs it: SRRK 2026-09-14 08:00 was stored "TARGET" at $55.41
-      // with the target at $65 and the stop at $56.40. The thesis columns are
-      // the plan as it stands (the ladder's read model); the position's own
-      // levels are the fallback for a row from before the thesis carried
-      // them. One quote; its age doesn't matter for "was the level reached",
-      // and no quote means no correction — a correction never guesses.
-      const heldThesis = ctx.analystId
-        ? await prisma.thesis.findFirst({
-            where: { ticker, status: "HOLDING", researchRun: { agentConfigId: ctx.analystId } },
-            select: { targetPrice: true, stopLoss: true },
-          })
-        : null;
+      // ── The label (DAV-263) ────────────────────────────────────────────
+      // STOP or TARGET only when the trigger that woke this run says so; any
+      // other sale is the agent's call.
       const quote = await getStockQuote(ticker).catch(() => null);
       const enforced = enforceCloseReason({
         declared: args.reason,
         protective: ctx.protectiveExitReason,
         triggerLabel: ctx.protectiveExitTriggerLabel,
         beliefSurvived: args.belief_survived,
-        levels: {
-          direction: position.direction as "LONG" | "SHORT",
-          price: quote?.c != null && quote.c > 0 ? quote.c : null,
-          targetPrice:
-            heldThesis?.targetPrice != null ? Number(heldThesis.targetPrice) : position.targetPrice ?? null,
-          stopLoss: heldThesis?.stopLoss != null ? Number(heldThesis.stopLoss) : position.stopLoss ?? null,
-        },
       });
       // The model's own words for this exit, for narration + audit strings.
       const intent = enforced.declared;

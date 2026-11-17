@@ -7,9 +7,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { usedOnceLine } from "./fire-mode";
-import type { ResolvedTrigger } from "./levels";
 import { acceptedOps, applyTriggerOps } from "./ops";
-import { canonicalLevels } from "./price-levels";
 import { parseTriggersResilient } from "./schema";
 import type { Trigger } from "./types";
 
@@ -22,11 +20,7 @@ export async function useOnce(args: { thesisId: string; triggerId: string; runId
   if (!used) return false;
   const applied = applyTriggerOps({ stored, ops: [{ op: "remove", id: used.id }], direction: thesis.direction, status: thesis.status, actor: "SYSTEM", mintId: () => randomUUID() });
   if (!applied.results[0]?.ok) return false;
-  const held = thesis.status === "HOLDING";
-  // The entry column is a cache of the buy trigger: with the buy gone from a watched stock, it follows.
-  const levels = applied.triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })) as ResolvedTrigger[];
-  const entry = used.action === "ENTER" && !held ? { entryPrice: canonicalLevels({ triggers: levels, direction: thesis.direction, status: thesis.status }).columns.entryPrice } : {};
-  await prisma.thesis.update({ where: { id: thesis.id }, data: { triggers: applied.triggers as unknown as object[], ...entry } });
+  await prisma.thesis.update({ where: { id: thesis.id }, data: { triggers: applied.triggers as unknown as object[] } });
   const line = usedOnceLine(used);
   await writeThesisUpdate({
     thesisId: thesis.id,

@@ -11,7 +11,7 @@ const good = {
   horizon: "COMPOUNDER",
   triggers: [
     { predicate: { watch: "price", is: "below", value: 280 }, action: "ENTER", rationale: "I buy the pullback to $280." },
-    { predicate: { watch: "price", is: "below", value: 245 }, action: "EXIT", rationale: "Below $245 the custom-silicon ramp is not showing up." },
+    { predicate: { watch: "price", is: "below", value: 245, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $245 the custom-silicon ramp is not showing up." },
   ],
   core_belief: "Custom-silicon plus networking compounds datacenter revenue past 2028.",
   key_assumptions: ["Hyperscaler AI capex stays high", "VMware margin holds near 90%"],

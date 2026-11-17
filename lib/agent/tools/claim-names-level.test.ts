@@ -14,7 +14,13 @@ const MU = {
     "A major HBM customer (Nvidia, AMD) publicly reduces or delays memory commitments under the strategic customer agreements",
   ],
 };
-const levels = (entryPrice: number | null, targetPrice: number | null, stopLoss: number | null) => ({ entryPrice, targetPrice, stopLoss });
+/** A price trigger by id: the same id before and after is the same trigger, moved. */
+const at = (id: string, action: string, is: "above" | "below", value: number) => ({ id, action, predicate: { watch: "price", is, value }, rationale: "x" }) as never;
+const mu = (floor: number, upside = 1100, buy?: number) => [
+  ...(buy != null ? [at("buy", "ENTER", "below", buy)] : []),
+  at("floor", "EXIT", "below", floor),
+  at("up", "REVIEW", "above", upside),
+];
 
 describe("dollar figures in a claim", () => {
   it("reads prices, leaves out sizes and percentages", () => {
@@ -25,30 +31,34 @@ describe("dollar figures in a claim", () => {
   });
 });
 
-describe("a moved level the claim still names", () => {
+describe("a moved trigger the claim still names", () => {
   it("MU 09-23: the floor leaves $969; what-proves-it-wrong still names it", () => {
-    expect(claimNamesOldLevel({ before: levels(895.935, 1100, 969), after: levels(895.935, 1100, 1041), ...MU })).toEqual([
-      "Your what-proves-it-wrong line still names $969; the floor is now $1,041.",
+    expect(claimNamesOldLevel({ before: mu(969), after: mu(1041), ...MU })).toEqual([
+      'Your what-proves-it-wrong line still names $969; the trigger now reads "Sell if below $1041".',
     ]);
   });
-  it("the target leaves $1,100; the belief names it", () => {
-    expect(claimNamesOldLevel({ before: levels(895.935, 1100, 1041), after: levels(895.935, 1150, 1041), ...MU })).toEqual([
-      "Your belief still names $1,100; the target is now $1,150.",
+  it("the upside line leaves $1,100; the belief names it", () => {
+    expect(claimNamesOldLevel({ before: mu(1041, 1100), after: mu(1041, 1150), ...MU })).toEqual([
+      'Your belief still names $1,100; the trigger now reads "Review if above $1150".',
     ]);
   });
   it("within half a percent counts; further off does not", () => {
-    expect(claimNamesOldLevel({ before: levels(null, null, 965.5), after: levels(null, null, 1000), ...MU })).toHaveLength(1);
-    expect(claimNamesOldLevel({ before: levels(null, null, 960), after: levels(null, null, 1000), ...MU })).toEqual([]);
+    expect(claimNamesOldLevel({ before: mu(965.5), after: mu(1000), ...MU })).toHaveLength(1);
+    expect(claimNamesOldLevel({ before: mu(960), after: mu(1000), ...MU })).toEqual([]);
   });
-  it("nothing moved, or the claim names none of the old numbers, or the claim was rewritten with the move: no line", () => {
-    expect(claimNamesOldLevel({ before: levels(895.935, 1100, 969), after: levels(895.935, 1100, 969), ...MU })).toEqual([]);
-    expect(claimNamesOldLevel({ before: levels(895.935, 1100, 1041), after: levels(895.935, 1100, 1060), ...MU })).toEqual([]);
-    expect(claimNamesOldLevel({ before: levels(895.935, 1100, 969), after: levels(895.935, 1100, 1041), coreBelief: MU.coreBelief, invalidationConds: ["MU closes below the $1,041 floor"] })).toEqual([]);
-    expect(claimNamesOldLevel({ before: levels(null, null, null), after: levels(100, 130, 90), coreBelief: "a buy at $100", invalidationConds: [] })).toEqual([]);
+  it("nothing moved, or the claim names none of the old numbers, or the claim was rewritten with the move, or the trigger is new: no line", () => {
+    expect(claimNamesOldLevel({ before: mu(969), after: mu(969), ...MU })).toEqual([]);
+    expect(claimNamesOldLevel({ before: mu(1041), after: mu(1060), ...MU })).toEqual([]);
+    expect(claimNamesOldLevel({ before: mu(969), after: mu(1041), coreBelief: MU.coreBelief, invalidationConds: ["MU closes below the $1,041 floor"] })).toEqual([]);
+    expect(claimNamesOldLevel({ before: [], after: mu(90, 130, 100), coreBelief: "a buy at $100", invalidationConds: [] })).toEqual([]);
   });
-  it("a watched stock's buy level is said as the buy level", () => {
-    expect(claimNamesOldLevel({ before: levels(100, 130, 90), after: levels(104, 130, 90), coreBelief: "Enter at $100 on the pullback.", invalidationConds: [] })).toEqual([
-      "Your belief still names $100; the buy level is now $104.",
+  it("a watched stock's buy and its Stop watching line are each said as the trigger now reads", () => {
+    expect(claimNamesOldLevel({ before: mu(90, 130, 100), after: mu(90, 130, 104), coreBelief: "Enter at $100 on the pullback.", invalidationConds: [] })).toEqual([
+      'Your belief still names $100; the trigger now reads "Buy if below $104".',
+    ]);
+    const watch = (v: number) => [at("out", "STOP_WATCHING", "below", v)];
+    expect(claimNamesOldLevel({ before: watch(90), after: watch(92), coreBelief: "Out below $90 on a close", invalidationConds: [] })).toEqual([
+      'Your belief still names $90; the trigger now reads "Stop watching if below $92".',
     ]);
   });
 });

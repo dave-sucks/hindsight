@@ -26,6 +26,7 @@ import {
   accountRow,
   REPLAY_ANALYST_ID,
   type PrismaDouble,
+  triggerSentences,
 } from "@/lib/replay";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { FloorRisk } from "@/lib/agent/floor-risk";
@@ -65,7 +66,6 @@ function seed0930(floor: number) {
     thesis: [
       thesisRow({
         ...fx.thesisBefore,
-        stopLoss: floor,
         triggers,
         createdAt: new Date(fx.thesisBefore.createdAt),
         lastReviewedAt: new Date(fx.thesisBefore.lastReviewedAt),
@@ -195,9 +195,6 @@ describe("CEG 2026-08-13 — the fill at $280.33 with June's $220 floor", () => 
         thesisRow({
           ...fx.thesisBefore,
           status: "WATCHING",
-          entryPrice: 255,
-          stopLoss: 220,
-          targetPrice: 360,
           triggers: fx.fill0813.triggersBefore,
           createdAt: new Date(fx.thesisBefore.createdAt),
           lastReviewedAt: FILL_AT,
@@ -225,7 +222,8 @@ describe("CEG 2026-08-13 — the fill at $280.33 with June's $220 floor", () => 
     } finally {
       jest.useRealTimers();
     }
-    expect(db.store.thesis[0]).toMatchObject({ status: "HOLDING", entryPrice: 280.33, stopLoss: 220 });
+    expect(db.store.thesis[0]).toMatchObject({ status: "HOLDING" });
+    expect(triggerSentences(db.store.thesis[0])).toContain("Sell if below $220");
 
     const { result } = await read(
       {

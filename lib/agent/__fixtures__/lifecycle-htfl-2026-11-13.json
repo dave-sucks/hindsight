@@ -1,0 +1,32 @@
+{
+  "_note": "HTFL's Writer mint on 2026-11-13 18:46 ET (THESIS_WRITER run cmwfbv2ia000508l4qnbi09q8, PEAD Specialist), read-only from production: the accepted submit_thesis call (toolu_013kWzTfwBC2mwJ3DDZyK7oW), verbatim. It was written before level fields went, so it names its buy, Stop watching line and upside line as entry_price / stop_loss / target_price; the replay sends them as the triggers they stand for (lib/replay/old-level-fields.ts). The price is the one the buy trigger was written at (writtenPrice).",
+  "run": { "id": "cmwfbv2ia000508l4qnbi09q8", "analystId": "cmnhxpjio000004jvox6kl6c7", "ticker": "HTFL", "price": 49.26 },
+  "decision": {
+    "horizon": "TARGET",
+    "setup_id": "MA_PULLBACK",
+    "direction": "LONG",
+    "rationale": "HeartFlow dropped 17% today despite reporting one of its cleanest quarters yet — revenue up 57%, guidance raised by $15M at the midpoint, gross margin expanding to 83.8% — and three sell-side firms raising targets to $68–$70 this morning. The drop is explained by CEO insider selling of roughly $2M around the report and a broader tech selloff, not a fundamental miss. The beat-sold-down pattern disqualifies a post-earnings drift entry, so I'm writing this on the 50-day pullback: the stock is now sitting just below its rising 50-day ($51.94), which is exactly where this setup belongs. The analysts who cover this stock just told you it's worth $68–$70; the consensus figure on the screen ($48.50) is a pre-earnings artifact that will be revised upward in coming days. I want to buy the drift back to the 50-day, not chase the gap, and the trigger is a close back above that average on volume.",
+    "stop_loss": 46.5,
+    "conviction": "HIGH",
+    "stop_basis": "A close below $46.50 — the last swing low from October 8 — would mean the stock fully retraced the entire post-summer rally and the 50-day failed to hold as institutional support; that is a business re-pricing, not a digest of one day's insider sale. The level is $5.44 below the entry at $51.94, or 1.6 ATRs of room, which is enough to avoid getting shaken out on a normal volatile day in a stock with a 6.8% daily range.",
+    "core_belief": "HeartFlow is the established standard of care for non-invasive CAD diagnosis, with a permanent Medicare CPT code for its core product and a second CPT code for Plaque Analysis that is now covered by 82% of U.S. insured lives. Revenue is growing at 50%+ with gross margins above 83% because every new case is software-only with near-zero marginal cost. What has to stay true: payer coverage continues expanding or holds, case volume growth stays above 40%, and the company reaches operating cash flow breakeven on its stated mid-2028 timeline without a dilutive equity raise.",
+    "entry_price": 51.94,
+    "target_basis": "The prior swing high of $60.56 from October 29 is the first partial — roughly 1.6× the risk from entry. This is below the standard 2× minimum I'd want, but the full analyst consensus of $68–$70 makes the total upside 3–3.3× risk; I'm trimming a third at $60.56 and trailing the rest toward the new street target. At the partial I'll reassess whether the momentum justifies running it toward $68.",
+    "target_price": 60.56,
+    "variant_view": "Analysts show a consensus target of $48.50, which is below the current price — a number that makes the stock look uninvestable. But that figure predates today's upgrade wave, where Stifel, Wells Fargo, Baird, and Canaccord all moved to $68–$70 this morning. The real post-earnings street view is a cluster at $68–$70, implying 35–40% upside from here. The market is pricing in fear from insider selling; I think the business momentum — 57% revenue growth, four consecutive guidance raises, Plaque coverage now at 82% of lives — is durable enough that the gap fills on a 30–60 day horizon.",
+    "entry_on_close": true,
+    "key_assumptions": [
+      "U.S. revenue case volume growth stays at or above 40% year-over-year, checked in the Q4 2026 10-Q (expected early February 2027).",
+      "Plaque Analysis payer coverage holds at or above 80% of U.S. insured lives, confirmed in each 10-Q filing.",
+      "Full-year 2026 revenue lands within the raised guidance range of $262–$264 million, checked at the Q4 earnings report.",
+      "No material adverse change to CMS reimbursement rates for FFR-CT (CPT 75580) in the 2027 OPPS final rule, expected by late November 2026."
+    ],
+    "conviction_rationale": "The business is accelerating at every level — case volume, revenue, gross margin, and guidance — and the sell-side just moved its targets from the high $30s to $68–$70 in a single morning, which means the consensus number on the screen is roughly 40% below where the informed analysts now stand. I'm HIGH rather than STRONG because the stock was sold hard on what should have been a celebration, CEO insider selling is a real overhang, and the market backdrop is cautious enough that the half-size rule is live. My first partial target at the prior high ($60.56) is 1.6× risk, which is under 2×, but the real street target of $68–$70 is 3–3.3× risk — I'm trimming at $60.56 and trailing the rest toward where the new analyst consensus sits.",
+    "invalidation_conditions": [
+      "Revenue growth decelerates below 35% in any single quarter, reported in the quarterly 10-Q — this would signal the case volume ramp is plateauing.",
+      "Full-year 2026 guidance cut at the Q4 report, which would mean the second half underperformed the raise.",
+      "CMS finalizes a reimbursement cut of 10% or more on FFR-CT in the 2027 OPPS final rule, which would directly reduce the per-case economics and force ASP renegotiations with commercial payers.",
+      "Plaque Analysis coverage drops below 75% of U.S. lives or a major national payer reverses its coverage policy, disclosed in a press release or 8-K."
+    ]
+  }
+}

@@ -324,7 +324,10 @@ model's chosen `reason` through `enforceCloseReason`
 (`lib/agent/triggers/enforce-close-reason.ts`). When the run was woken by a
 protective/price EXIT trigger, the stored `Position.closeReason` /
 `Order.closeReason` is that trigger's STOP/TARGET tag, whatever the model
-called it. The sale is **auto-corrected, never refused** — a mismatch writes a
+called it. With no trigger fired, the sale is the agent's or the owner's: a
+STOP or TARGET it declared is stored `MANUAL`, since only a fired trigger
+makes a sale a stop or a target (the price against a level no longer
+decides it, 2026-11-16). The sale is **auto-corrected, never refused** — a mismatch writes a
 plain-English note into the tool's reply and the run's event (`label_note`,
 `declared_reason`), never onto the sale's reason, which is the analyst's words. This matters
 because the label is what several rules read: the held-through-floor context in
@@ -530,14 +533,14 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
   ratchet, DAV-185); the principal is exempt.
 - After all ops, ONE check on the derived plan: ordering everywhere, and a
   buy trigger where a floor or target is armed. A stop above the buy price is
-  refused for anyone. There is no reward/risk floor (gone 2026-11-04): the
-  house sets no target of its own, so under twice the floor's distance the
-  agent says why in its note, and the row's Street line says how much room
-  there is to the Street's average against that distance.
+  refused for anyone. There is no reward/risk (gone 2026-11-04, its ratio
+  2026-11-16): the house sets no target of its own.
 
-The plan columns (`entryPrice` / `targetPrice` / `stopLoss`) are recomputed from
-the resulting triggers and mirrored onto the open `Position`, so the chart,
-run-summary, and evaluator never drift. The Activity feed shows the ops the
+Nothing stores a level, and nothing sums the triggers into one: the agents
+read each trigger as its sentence, and the chart draws one line per price
+trigger labelled with its sentence (`priceLines`). The sale or upside trigger
+an owner's edit moves is mirrored onto the open `Position` (the trade's own
+sell price). The Activity feed shows the ops the
 caller sent — "Entry $183 → $190", "Removed: Sell if below $110" — stored verbatim
 on the row's `fieldChanges.triggerOps`.
 

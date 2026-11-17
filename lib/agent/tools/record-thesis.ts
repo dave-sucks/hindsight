@@ -17,6 +17,7 @@ import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import { mergeTriggers, applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
 import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
+import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { actionProblem } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -574,7 +575,7 @@ export const recordThesis = defineTool({
 
       // ── The triggers ──────────────────────────────────────────────────
       // Built before the row hits the DB so the ladder check below can
-      // refuse a list that can't stand (levels out of order).
+      // refuse a list that can't stand (a holding with no sale, or a buy).
       let mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
@@ -618,9 +619,8 @@ export const recordThesis = defineTool({
       }
 
       // ── The ladder check (shared with update_thesis) ─────────────────
-      // The levels in order (a LONG's floor under its buy, its upside line
-      // above both). The columns are a cache of the
-      // result (DAV-195 L3): a level on a thesis is whatever its triggers say.
+      // A held stock carries a sale and no buy (validateEnterTriggerRequired).
+      // A level on a thesis is whatever its triggers say; nothing stores it.
       const ladder = checkLadder({
         triggers: mergedTriggers,
         direction: args.direction === "PASS" ? null : args.direction,
@@ -630,12 +630,15 @@ export const recordThesis = defineTool({
       if (!ladder.ok) {
         console.warn(`[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${ladder.error}.`);
         return {
-          summary: `Thesis rejected for ${args.ticker}: its levels are out of order.`,
+          summary: `Thesis rejected for ${args.ticker}: ${ladder.message}`,
           data: { thesis_id: null, status: "FAILED" as const, note: ladder.message },
           sources: [],
         };
       }
-      const derivedLevelColumns = ladder.columns;
+      // A buy trigger's own price, when it has one: the re-buy-after-a-sale guard below reads it.
+      const buyLevel = mergedTriggers.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null;
+      // What the stock cost when this was written, for the Activity rows below.
+      const priceNow = freshForStamp ?? quoteForEntrySide ?? null;
 
       // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
       // The agent may pass either the legacy plain-string args
@@ -697,11 +700,6 @@ export const recordThesis = defineTool({
         accountId: ctx.accountId,
         ticker: args.ticker,
         direction: directionToStore,
-        // Derived from the trigger list (the ladder check above). A level on
-        // a thesis is whatever the triggers say it is.
-        entryPrice: derivedLevelColumns.entryPrice,
-        targetPrice: derivedLevelColumns.targetPrice,
-        stopLoss: derivedLevelColumns.stopLoss,
         // Legacy holdDuration column — derived from horizon. The arg was
         // dropped from the zod schema in PR-4 (was a token waste, agents
         // routinely confused it with `horizon`). Column drops in PR-5.
@@ -941,8 +939,8 @@ export const recordThesis = defineTool({
             if (
               args.direction !== "PASS" &&
               exitPrice != null &&
-              derivedLevelColumns.entryPrice != null &&
-              derivedLevelColumns.entryPrice >= exitPrice &&
+              buyLevel != null &&
+              buyLevel >= exitPrice &&
               ackMissing
             ) {
               const exitLine =
@@ -959,7 +957,7 @@ export const recordThesis = defineTool({
                   prior_exit: priorExit,
                   note:
                     `NOT a failure — a guard, not a verdict. ${exitLine}. ` +
-                    `Your buy ($${derivedLevelColumns.entryPrice.toFixed(2)}) is at or above that exit — the classic "re-buy the dip you just sold" shape (this is how XENE was sold at $66.53 and re-bought at $68.84 twenty hours later). ` +
+                    `Your buy ($${buyLevel.toFixed(2)}) is at or above that exit — the classic "re-buy the dip you just sold" shape (this is how XENE was sold at $66.53 and re-bought at $68.84 twenty hours later). ` +
                     `A RETIRED row here means the exit was NOT judged a belief-intact price stop (those recycle to WATCHING) — the belief was judged broken, or nobody attested. ` +
                     `If this mint is genuinely a NEW setup, retry the same record_thesis call with acknowledge_prior_exit: "<one line engaging with the exit — what is different now, and why this entry level rather than a confirmed reclaim>". ` +
                     `Otherwise set the buy at a reclaim level below/at structure, or skip the mint.`,
@@ -1151,12 +1149,9 @@ export const recordThesis = defineTool({
         rationale: narrativeText,
         signalIds: sourceSignalIds,
         runId: ctx.runId,
-        // A soft watch has no entry price — that is the whole point of it —
-        // so it stamps what the stock cost when we started watching. Every
-        // other path keeps the value it has always written.
-        priceAtTime: passKeepsWatch
-          ? (freshForStamp ?? quoteForEntrySide ?? null)
-          : derivedLevelColumns.entryPrice,
+        // What the stock cost when we started watching: the coverage row is
+        // measured from it (a buy level is not a price the stock traded at).
+        priceAtTime: priceNow,
       });
 
       // Transition parent thesis lifecycle. A parent already passed or retired
@@ -1195,7 +1190,7 @@ export const recordThesis = defineTool({
               runId: ctx.runId,
               // Same moment as the new thesis — capture current price so
               // the parent's terminal-state row carries context.
-              priceAtTime: derivedLevelColumns.entryPrice,
+              priceAtTime: priceNow,
             });
           } else {
             await prisma.thesis.update({
@@ -1213,7 +1208,7 @@ export const recordThesis = defineTool({
                 retiredReason: { from: null, to: "REPLACED" },
               },
               runId: ctx.runId,
-              priceAtTime: derivedLevelColumns.entryPrice,
+              priceAtTime: priceNow,
             });
           }
         } catch (parentErr) {
@@ -1264,9 +1259,6 @@ export const recordThesis = defineTool({
                 snapshot: snapshotPayload,
                 bull_case: bullCasePayload,
                 bear_case: bearCasePayload,
-                entry_price: derivedLevelColumns.entryPrice,
-                target_price: derivedLevelColumns.targetPrice,
-                stop_loss: derivedLevelColumns.stopLoss,
                 // PR-4: hold_duration arg was dropped from the schema —
                 // derive from horizon for the event payload.
                 hold_duration: holdDurationFromHorizon(args.horizon),

@@ -103,7 +103,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     ? await prisma.thesis.findMany({
         where: { id: { in: thesisIds } },
         select: {
-          id: true, ticker: true, status: true, direction: true, horizon: true, targetPrice: true,
+          id: true, ticker: true, status: true, direction: true, horizon: true,
           triggers: true, triggerState: true, createdAt: true, lastReviewedAt: true,
           paperTenureDays: true, paperRealizedPnl: true, paperReviewCount: true, promotedAt: true,
           researchRun: { select: { agentConfigId: true } },
@@ -381,7 +381,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
         avgCost: pos && Number.isFinite(pos.avgCost) ? pos.avgCost : null,
         peakPrice: pos?.peakPrice ?? null,
         quantity: pos && pos.quantity > 0 ? pos.quantity : null,
-        structure: structure.get(t.ticker.toUpperCase()) ?? null, targetPrice: t.targetPrice ?? null,
+        structure: structure.get(t.ticker.toUpperCase()) ?? null,
         paperTenureDays: t.paperTenureDays ?? null,
         paperRealizedPnl: t.paperRealizedPnl != null ? Number(t.paperRealizedPnl) : null,
         paperReviewCount: t.paperReviewCount ?? null, promotedAt: t.promotedAt ?? null,

@@ -54,11 +54,6 @@ export interface ResolvedEnvelope {
    * non-held rows or when avgCost/quote is unavailable. (SCALE_INTO_WINNERS.md)
    */
   unrealizedGainPct: number | null;
-  /**
-   * Fraction of the entry→target distance covered for HOLDING rows (≥1 = past
-   * target). The at-a-glance "how close to the decision point." Null otherwise.
-   */
-  progressToTarget: number | null;
 
   /**
    * Ladder-health block for HOLDING rows (Game Plan PR-B): gain% from entry,
@@ -103,8 +98,6 @@ export interface ResolverThesisInput {
   // P1-24 B4: null when the thesis is an unresearched watchlist seed.
   // The resolver doesn't branch on direction, so null is a pure pass-through.
   direction: string | null;
-  /** Thesis target price — feeds progress-to-target for HOLDING rows. */
-  targetPrice?: number | null;
   /** Paired open Position's blended avgCost — feeds P&L for HOLDING rows. */
   avgCost?: number | null;
   /** Paired open Position's share count — with avgCost, the loss at the floor (DAV-344). */
@@ -267,14 +260,11 @@ export function buildResolvedEnvelope(args: {
   }
 
   // ── P&L on a held row ─────────────────────────────────────────────
-  // Gain% and how far along to the target, inline, so the agent doesn't have
-  // to join get_portfolio_context by ticker. These two numbers are all that
-  // survived winner-signal.ts, which was deleted with the RUNNING_WINNER
-  // flag: the flag re-implemented as a morning calculation what the account's
-  // "review if up 10% from entry" trigger already does, and fires first in
-  // every realistic case. The NUMBERS are still worth showing — an agent that
-  // can see "+212%" on a row does not need a flag to find it interesting.
-  const winner = holdingPnl(thesis, currentPrice);
+  // Gain% inline, so the agent doesn't have to join get_portfolio_context by
+  // ticker. All that survived winner-signal.ts (deleted with the
+  // RUNNING_WINNER flag); "how far to the target" went with the target
+  // (a stock has triggers and nothing else, 2026-11-16).
+  const unrealizedGainPct = holdingGainPct(thesis, currentPrice);
 
   // ── Ladder health (HOLDING rows only — Game Plan PR-B) ────────────
   // Same shared-pure-module pattern as the winner signal above: the
@@ -296,8 +286,7 @@ export function buildResolvedEnvelope(args: {
 
   return {
     currentPrice,
-    unrealizedGainPct: winner.unrealizedGainPct,
-    progressToTarget: winner.progressToTarget,
+    unrealizedGainPct,
     ladderHealth,
     floorRisk: ladderHealth
       ? floorTooFar({
@@ -359,35 +348,15 @@ export function buildSupersessionMap(
   return byTicker;
 }
 
-/**
- * Gain % and progress-to-target for a held row. Both null when the inputs
- * can't support the math (not held, no fill price, no live quote).
- *
- * `progressToTarget` is the fraction of the entry→target distance covered:
- * 0 at entry, 1 at target, >1 past it. Null when the target sits on the wrong
- * side of entry, because the distance is then meaningless rather than zero.
- */
-function holdingPnl(
-  thesis: { status: string | null; direction: string | null; avgCost?: number | null; targetPrice?: number | null },
+/** Gain % on a held row; null when not held, no fill price, or no live quote. */
+function holdingGainPct(
+  thesis: { status: string | null; direction: string | null; avgCost?: number | null },
   currentPrice: number | null,
-): { unrealizedGainPct: number | null; progressToTarget: number | null } {
-  const none = { unrealizedGainPct: null, progressToTarget: null };
-  const { avgCost, targetPrice } = thesis;
-  if (thesis.status !== "HOLDING") return none;
-  if (avgCost == null || avgCost <= 0) return none;
-  if (currentPrice == null || currentPrice <= 0) return none;
-
-  const short = thesis.direction === "SHORT";
-  const gained = short ? avgCost - currentPrice : currentPrice - avgCost;
-  const distance =
-    targetPrice != null && targetPrice > 0
-      ? short
-        ? avgCost - targetPrice
-        : targetPrice - avgCost
-      : null;
-
-  return {
-    unrealizedGainPct: (gained / avgCost) * 100,
-    progressToTarget: distance != null && distance > 0 ? gained / distance : null,
-  };
+): number | null {
+  const { avgCost } = thesis;
+  if (thesis.status !== "HOLDING") return null;
+  if (avgCost == null || avgCost <= 0) return null;
+  if (currentPrice == null || currentPrice <= 0) return null;
+  const gained = thesis.direction === "SHORT" ? avgCost - currentPrice : currentPrice - avgCost;
+  return (gained / avgCost) * 100;
 }

@@ -50,7 +50,6 @@ export async function GET(
       ticker: true,
       status: true,
       direction: true,
-      targetPrice: true,
       triggers: true,
       catalystDate: true,
       createdAt: true,

@@ -12,6 +12,8 @@
  */
 
 import type { Row } from "@/lib/replay/prisma-double";
+import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 export const REPLAY_USER_ID = "user_replay";
 export const REPLAY_ACCOUNT_ID = "account_replay";
@@ -61,9 +63,6 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
     analystConsensus: null,
     insiderTechnical: null,
     researchData: null,
-    entryPrice: 100,
-    targetPrice: 130,
-    stopLoss: 90,
     triggers: [],
     triggerState: {},
     conviction: "MEDIUM",
@@ -191,4 +190,9 @@ export function planTriggers(p: { entry: number; target: number; stop: number; d
     // A watch's floor is its Stop watching line, on the close (2026-11-16): it ends the watch and never sells.
     { id: "plan_floor", action: "STOP_WATCHING", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop, settings: { close: true } }, rationale: "The floor.", cooldownDays: 1 },
   ];
+}
+
+/** A stored thesis row's triggers, each as its sentence: what every reader shows (nothing stores a level). */
+export function triggerSentences(row: Row): string[] {
+  return ((row.triggers as Trigger[] | undefined) ?? []).map((t) => sentenceOf(t));
 }

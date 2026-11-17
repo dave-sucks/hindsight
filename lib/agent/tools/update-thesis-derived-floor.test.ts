@@ -60,9 +60,6 @@ function etnRow() {
     status: "WATCHING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 375,
-    targetPrice: 490,
-    stopLoss: 355,
     triggers: ladder(375),
     triggerState: {},
     researchRun: { agentConfigId: "analyst_1" },
@@ -90,6 +87,10 @@ beforeEach(() => {
   mockThesisUpdate.mockClear();
 });
 
+/** The buy trigger's price in a saved patch's triggers (nothing stores a buy column). */
+const buyOf = (data: { triggers?: unknown }) =>
+  ((data.triggers ?? []) as Array<{ action: string; predicate: { value?: number } }>).find((t) => t.action === "ENTER")?.predicate.value;
+
 describe("update_thesis — the floor covers a buy level moved through its trigger (DAV-241)", () => {
   it("a buy level moved through the trigger that leaves the plan under 2:1 lands (the ratio is not a rule, 2026-11-04)", async () => {
     mockThesisFindUnique.mockResolvedValue(etnRow());
@@ -101,7 +102,7 @@ describe("update_thesis — the floor covers a buy level moved through its trigg
     });
     expect(result.data.ok).toBe(true);
     expect(((result.data.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
-    expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.entryPrice === 432)).toBe(true);
+    expect(mockThesisUpdate.mock.calls.some(([a]) => buyOf(a.data) === 432)).toBe(true);
   });
 
   it("lets the same resend through when the derived plan clears the floor", async () => {
@@ -114,7 +115,6 @@ describe("update_thesis — the floor covers a buy level moved through its trigg
     });
     expect(result.ok).toBe(true);
     expect(mockThesisUpdate).toHaveBeenCalled();
-    const data = mockThesisUpdate.mock.calls[0][0].data as { entryPrice?: number };
-    expect(data.entryPrice).toBe(380);
+    expect(buyOf(mockThesisUpdate.mock.calls[0][0].data)).toBe(380);
   });
 });

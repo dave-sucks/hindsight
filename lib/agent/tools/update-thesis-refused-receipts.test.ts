@@ -72,9 +72,6 @@ function vst() {
     status: "WATCHING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 165,
-    targetPrice: 240,
-    stopLoss: 132,
     coreBelief: "AI power demand re-rates contracted generation.",
     keyAssumptions: ["a", "b"],
     invalidationConds: ["c", "d"],
@@ -112,6 +109,11 @@ beforeEach(() => {
   mockThesisFindUnique.mockResolvedValue(vst());
 });
 
+/** VST as a holding: its sale, its upside review and its clock. A buy can't sit on a stock we own. */
+const HELD_SALE = { id: FLOOR, predicate: { watch: "price", is: "below", value: 132 }, action: "EXIT", rationale: "Sell if below $132.", source: "AGENT", cooldownDays: 1 };
+const held = () => ({ ...vst(), status: "HOLDING", triggers: vst().triggers.filter((t) => t.id !== BUY && t.id !== FLOOR).concat([HELD_SALE]) });
+const ADD_A_BUY = { add_triggers: [{ predicate: { watch: "price", is: "above", value: 170 }, action: "ENTER", rationale: "Buy the reclaim of $170." }] };
+
 describe("update_thesis — a refused call claims no change (DAV-258)", () => {
   it("VST 09-11: removing only the buy lands now — the floor that stays is a Stop watching line, which needs no buy", async () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
@@ -119,15 +121,17 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
     expect((result.data?.trigger_ops as TriggerOpResult[]).every((o) => o.ok)).toBe(true);
   });
 
-  it("a call the ladder check refuses (the floor edited above the buy) is refused whole, and every op says it did not land", async () => {
-    const result = await run({ remove_trigger_ids: [CADENCE], edit_triggers: [{ id: FLOOR, value: 170, rationale: "Above the reclaim." }] });
+  it("a call the ladder check refuses (a buy added to a stock we own) is refused whole, and every op says it did not land", async () => {
+    mockThesisFindUnique.mockResolvedValue(held());
+    const result = await run({ remove_trigger_ids: [CADENCE], ...ADD_A_BUY });
     // The trigger changes are refused together; the note lands as a review.
     expect(result.data?.ok).toBe(true);
     expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To take them all off") })]);
     expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
 
     const ops = result.data?.trigger_ops as TriggerOpResult[];
-    expect(ops.map((o) => o.id).sort()).toEqual([FLOOR, CADENCE].sort());
+    expect(ops).toHaveLength(2);
+    expect(ops.map((o) => o.op).sort()).toEqual(["add", "remove"]);
     for (const op of ops) {
       expect(op.ok).toBe(false);
       expect(op.reason).toContain("Not applied");
@@ -135,12 +139,14 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
   });
 
   it("the refusal names the exact set-down call, and following it lands", async () => {
-    const refused = await run({ remove_trigger_ids: [CADENCE], edit_triggers: [{ id: FLOOR, value: 170, rationale: "Above the reclaim." }] });
+    mockThesisFindUnique.mockResolvedValue(held());
+    const refused = await run({ remove_trigger_ids: [CADENCE], ...ADD_A_BUY });
     const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
     expect(message).toContain("To take them all off");
-    // Buy, floor and target by id — not the review cadence, which survives a set-down.
+    // The price lines by id, the sale among them — not the review cadence, which survives a set-down.
     const named = [...message.matchAll(/"([0-9a-f-]{36})"/g)].map((m) => m[1]);
-    expect(named.sort()).toEqual([BUY, FLOOR, TARGET].sort());
+    expect(named).toContain(FLOOR);
+    expect(named).not.toContain(CADENCE);
 
     mockThesisUpdate.mockClear();
     const followed = await run({ remove_trigger_ids: named });

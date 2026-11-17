@@ -153,7 +153,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
       opts,
     );
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeCloseTo(2.03, 2);
+    expect("riskReward" in v).toBe(false);
   });
 
   it("inside the window the check is silent, and a held name is never sent back for it", () => {
@@ -224,6 +224,6 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       opts,
     );
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeCloseTo(6.15, 1);
+    expect("riskReward" in v).toBe(false);
   });
 });

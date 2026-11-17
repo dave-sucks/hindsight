@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
@@ -78,12 +78,8 @@ export async function promoteThesisOnApproval(opts: {
  *
  * ONE implementation, two callers: `place_trade` (paper, immediate fill) and
  * `promoteThesisOnApproval` (live, on the principal's approval). They used to
- * be two ~50-line copies, and the copies drifted: DAV-195 L3 taught the
- * place_trade copy to recompute the displayed levels from the new triggers and
- * the approval copy never got it — so on the path every live trade actually
- * takes, the ladder regenerated while `entryPrice` / `targetPrice` / `stopLoss`
- * kept their watching-era values. That is the SNOW drift, reintroduced on
- * every live fill. Collapsed 2026-08-27 (DAV-220).
+ * be two ~50-line copies, and the copies drifted (DAV-220, collapsed
+ * 2026-08-27).
  *
  * What it does — as trigger ops, never a rewrite (DAV-242; DAV-234 is
  * what a rewrite cost: ASML's $2,800 target and four reviews, gone on the
@@ -102,8 +98,6 @@ export async function promoteThesisOnApproval(opts: {
  *     lists them (lib/agent/knowledge/playbooks.ts); one whose kind the stock
  *     already has is not written, and its Activity line says so. No playbook,
  *     nothing: the analyst's and the account's rules apply by inheritance
- *   - recomputes the displayed level columns FROM the resulting triggers
- *   - stamps entryPrice with the FILL price: once held, entry is a fact
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
  *     one line per op
  *
@@ -113,7 +107,7 @@ export async function promoteThesisOnApproval(opts: {
 export async function armHeldLadderOnFill(opts: {
   analystId: string;
   ticker: string;
-  /** The fill, or on an approval the price then (the fill corrects it). Becomes Thesis.entryPrice. */
+  /** The fill, or on an approval the price then (the fill corrects it). Stop when buying measures from it. */
   fillPrice: number;
   /** Null leaves the thesis's own target / floor trigger as it is. */
   targetPrice: number | null;
@@ -188,34 +182,20 @@ export async function armHeldLadderOnFill(opts: {
     const results = [...applied.results, ...(stopped?.results ?? [])];
     for (const r of stopped?.results ?? []) if (!r.ok) console.warn(`[armHeldLadderOnFill] ${opts.ticker}: stop when buying not set — ${r.reason}`);
 
-    // DAV-195 L3 — the columns are a read model of the ladder. Recompute them
-    // here or the sheet shows the price you PLANNED to sell at while a
-    // different one is armed.
-    const heldLevels = canonicalLevels({
-      triggers: nextTriggers.map((x) => ({
-        ...x,
-        level: "THESIS" as const,
-        inherited: false,
-      })),
-      direction: watchingThesis.direction,
-      status: "HOLDING",
-      avgCost: opts.fillPrice,
-    });
-
     await prisma.thesis.update({
       where: { id: watchingThesis.id },
       data: {
         status: "HOLDING",
         promotedAt: null,
         triggers: nextTriggers as unknown as object,
-        entryPrice: opts.fillPrice,
-        targetPrice: heldLevels.columns.targetPrice,
-        stopLoss: heldLevels.columns.stopLoss,
       },
     });
     // A floor the setting moved is mirrored onto the position, as an owner's edit is.
     if (stopped?.results.some((r) => r.ok)) {
-      await prisma.position.updateMany({ where: { id: opts.positionId }, data: { stopLoss: heldLevels.columns.stopLoss } });
+      // The sale the setting wrote is its first op; its price is the position's sell price.
+      const sale = stopOps[0];
+      const floor = sale && (sale.op === "add" || sale.op === "replace") ? typedPriceOf(sale.trigger) : null;
+      await prisma.position.updateMany({ where: { id: opts.positionId }, data: { stopLoss: floor } });
     }
     await prisma.thesisUpdate.create({
       data: {
@@ -228,6 +208,8 @@ export async function armHeldLadderOnFill(opts: {
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,
+        // The price the buy was made at: stop when buying set its sale under it, and the fill moves it from here.
+        priceAtTime: opts.fillPrice,
       },
     });
   } catch (err) {

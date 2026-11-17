@@ -118,9 +118,6 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     status: "WATCHING",
     direction: "LONG",
     horizon: "TARGET",
-    entryPrice: 186,
-    targetPrice: 215,
-    stopLoss: 172,
     triggers: planTriggers,
     triggerState: {},
     researchRun: { agentConfigId: "analyst_1" },
@@ -166,10 +163,9 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
     // The wakes survive.
     expect(triggers.filter((t) => t.action === "REVIEW")).toHaveLength(2);
-    // Derive-on-write clears the cached plan columns with the plan.
-    expect(data.targetPrice).toBeNull();
-    expect(data.stopLoss).toBeNull();
-    expect(data.entryPrice).toBeNull();
+    // No price line is left on the stock, and nothing stores one.
+    expect(triggers.some((t) => t.action === "ENTER" || t.action === "EXIT" || t.action === "STOP_WATCHING")).toBe(false);
+    expect(data).not.toHaveProperty("entryPrice");
     // Not a direction change — the analyst's stance stays on record.
     expect(data.direction).toBeUndefined();
   });
@@ -238,9 +234,6 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     mockThesisFindUnique.mockResolvedValue(
       makeRow({
         direction: null,
-        entryPrice: null,
-        targetPrice: null,
-        stopLoss: null,
         horizon: null,
         triggers: [
           {

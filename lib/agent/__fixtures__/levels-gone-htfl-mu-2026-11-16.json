@@ -1,0 +1,37 @@
+{
+  "_note": "HTFL (WATCHING) and MU (HOLDING) as production held them on 2026-11-16, read-only: the thesis rows with their triggers, MU's open position, and the three level columns as they still sit on the rows until the drop migration. Rationales are kept; free text beyond them is not.",
+  "htfl": {
+    "id": "cmwfbybem000c08l48pa4poty",
+    "ticker": "HTFL",
+    "status": "WATCHING",
+    "direction": "LONG",
+    "horizon": "TARGET",
+    "setupId": "MA_PULLBACK",
+    "analystId": "cmnhxpjio000004jvox6kl6c7",
+    "oldColumns": { "entryPrice": 51.94, "targetPrice": 60.56, "stopLoss": 46.5 },
+    "triggers": [
+      { "id": "d77215da-f228-46ab-b517-40c48081a7f8", "action": "ENTER", "source": "DEFAULT", "fireMode": "ASK_NOW", "predicate": { "is": "above", "value": 51.94, "watch": "price", "settings": { "close": true } }, "rationale": "Entry trigger — price broke above $51.94. Validate setup and consider INITIATE.", "writtenAt": "2026-11-13T18:48:34.358Z", "cooldownDays": 1, "writtenPrice": 49.26 },
+      { "id": "336c94a6-5302-4554-9167-b4925bd10f9b", "action": "STOP_WATCHING", "source": "DEFAULT", "fireMode": "ASK_NOW", "predicate": { "is": "below", "value": 46.5, "watch": "price", "settings": { "close": true } }, "rationale": "A close below $46.50 — the last swing low from October 8 — would mean the stock fully retraced the entire post-summer rally.", "cooldownDays": 1 },
+      { "id": "dd66e22e-9eeb-4756-8d79-ef86be4d0000", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "is": "above", "value": 60.56, "watch": "price" }, "rationale": "The prior swing high of $60.56 from October 29 is the first partial.", "cooldownDays": 1 }
+    ]
+  },
+  "mu": {
+    "id": "cmv9nm3xo000o06l3om8r7ath",
+    "ticker": "MU",
+    "status": "HOLDING",
+    "direction": "LONG",
+    "horizon": "COMPOUNDER",
+    "setupId": "COMPOUNDER_ACCUMULATION",
+    "analystId": "cmmqxola3000004lbj7c11bfn",
+    "oldColumns": { "entryPrice": 911.415, "targetPrice": null, "stopLoss": 804 },
+    "position": { "id": "cmv9o0nhe000006lbmypszfe7", "environment": "LIVE", "quantity": 11, "avgCost": 911.415, "openedAt": "2026-10-15T15:06:54.928Z", "peakPrice": 990, "stopLoss": 804 },
+    "triggers": [
+      { "id": "010f32d9-158a-4105-b9bb-2e4f47d81ebb", "action": "REVIEW", "source": "AGENT", "fireMode": "NEXT_MORNING", "predicate": { "is": "before", "value": 14, "watch": "report" }, "rationale": "Q1 FY2027 earnings expected around December 9, 2026 — flag for review 14 days before.", "cooldownDays": 30 },
+      { "id": "d9b6bc8d-017f-4355-8e8c-fe315084db87", "action": "REVIEW", "source": "AGENT", "fireMode": "NEXT_MORNING", "predicate": { "is": "below", "value": 878, "watch": "price" }, "rationale": "A close below the 38.2% Fibonacci retracement at $878 is a prompt to re-examine the thesis.", "lastFiredAt": "2026-11-13T14:35:02.516Z", "cooldownDays": 1 },
+      { "id": "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "action": "EXIT", "source": "PRINCIPAL", "fireMode": "DO_IT", "predicate": { "is": "below", "value": 804, "watch": "price" }, "rationale": "Sell if below $804. You set this.", "lastFiredAt": "2026-11-13T14:45:11.360Z", "cooldownDays": 1 },
+      { "id": "445048fe-f79b-45e1-8aac-30abba7b6deb", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "value": 30, "watch": "repeat" }, "rationale": "Look at this every 30 days, counting from the last real review.", "cooldownDays": 30 },
+      { "id": "978117be-a4b6-4470-9f6d-b42ec959a916", "action": "REVIEW", "source": "DEFAULT", "fireMode": "NEXT_MORNING", "predicate": { "is": "after", "value": 14, "watch": "from_date", "variable": "buy" }, "rationale": "10 sessions after the buy — 14 calendar days from this one.", "lastFiredAt": "2026-11-12T15:15:07.327Z", "cooldownDays": 14 }
+    ]
+  },
+  "quotes": { "HTFL": 49.5, "MU": 930 }
+}

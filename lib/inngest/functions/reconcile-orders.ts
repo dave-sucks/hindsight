@@ -40,7 +40,7 @@ import {
 } from "@/lib/proposals/position-lock";
 import { randomUUID } from "node:crypto";
 import { acceptedOps, applyTriggerOps } from "@/lib/agent/triggers/ops";
-import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { autoStopFillOps, loadAutoStop } from "@/lib/trading/auto-stop";
@@ -335,14 +335,9 @@ async function applyFillByIntent(
             data: { avgCost: fillPrice, quantity: fillQty, initialQty: fillQty },
           });
         }
-        // The paired thesis's buy price becomes a fact here — what the fill
-        // actually cost. The approval seam never stamps it: at approve time
-        // promoteThesisOnApproval flips status and regenerates triggers only,
-        // so the column keeps the watching-era planned price forever (PBH
-        // planned $51.68 / paid $52.975, ANET planned $186.45 / paid $183.83,
-        // found 2026-08-26). place_trade's synchronous-fill path stamps it
-        // inline; this is the same stamp for fills that land via reconcile.
-        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, fillPrice, position.id);
+        // Stop when buying put its sale under the price the buy was approved
+        // at; the fill moves it under what was paid.
+        await moveStopWhenBuyingToFill(tx, position.analystId, position.symbol, fillPrice, position.id);
         await tx.positionEvent.create({
           data: {
             positionId: position.id,
@@ -453,9 +448,6 @@ async function applyFillByIntent(
             priceAt: fillPrice,
           },
         });
-        // An add moves what the position cost on average — keep the thesis
-        // buy price on the same number the protective math measures from.
-        await restampThesisEntryOnFill(tx, position.analystId, position.symbol, newAvg, null);
         break;
       }
 
@@ -482,21 +474,20 @@ type TransactionClient = Omit<
 >;
 
 /**
- * Stamp the paired HOLDING thesis's buy price with what the fill actually
- * cost. Once you own it, the buy price is a fact, not a plan — the sheet and
- * the agent's read of the thesis must show the paid number, the same one the
- * protective math measures from (the evaluator reads Position.avgCost live).
+ * Stop when buying wrote the holding's sale a set % under the price the buy
+ * was approved at; once the fill lands, that sale moves to the same % under
+ * what was paid (lib/trading/auto-stop.ts). Nothing else on the stock moves:
+ * what we paid is the position's, never the thesis's.
  *
- * Idempotent and fail-soft: no matching thesis, or a price already within a
- * cent, writes nothing.
+ * Idempotent and fail-soft: no matching thesis, no such sale, or the same
+ * price, writes nothing.
  */
-async function restampThesisEntryOnFill(
+async function moveStopWhenBuyingToFill(
   tx: TransactionClient,
   analystId: string,
   symbol: string,
   paidPrice: number,
-  /** The opening buy's position, null for an add: its stop-when-buying floor follows the fill. */
-  openedPositionId: string | null,
+  positionId: string,
 ): Promise<void> {
   const thesis = await tx.thesis.findFirst({
     where: {
@@ -505,38 +496,32 @@ async function restampThesisEntryOnFill(
       researchRun: { agentConfigId: analystId },
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, ticker: true, entryPrice: true, direction: true, triggers: true },
+    select: { id: true, ticker: true, direction: true, triggers: true },
   });
   if (!thesis) return;
-  if (thesis.entryPrice != null && Math.abs(thesis.entryPrice - paidPrice) <= 0.01) {
-    return;
-  }
-  // Stop when buying: its floor moves to the line under what was paid.
-  const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
-  const stopOps =
-    openedPositionId && thesis.entryPrice != null
-      ? autoStopFillOps({ triggers: stored, direction: thesis.direction, boughtAt: thesis.entryPrice, paid: paidPrice, setting: await loadAutoStop(analystId) })
-      : [];
-  const moved = stopOps.length
-    ? applyTriggerOps({ stored, ops: stopOps, direction: thesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() })
-    : null;
-  const stopLoss = moved
-    ? canonicalLevels({ triggers: moved.triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })), direction: thesis.direction, status: "HOLDING", avgCost: paidPrice }).columns.stopLoss
-    : undefined;
-  await tx.thesis.update({
-    where: { id: thesis.id },
-    data: { entryPrice: paidPrice, ...(moved ? { triggers: moved.triggers as unknown as object, stopLoss } : {}) },
+  // The price the buy was made at is on the row that made the stock a holding (armHeldLadderOnFill).
+  const promoted = await tx.thesisUpdate.findFirst({
+    where: { thesisId: thesis.id, tradeId: positionId, type: "STATUS_CHANGED" },
+    orderBy: { timestamp: "desc" },
+    select: { priceAtTime: true },
   });
-  if (moved && openedPositionId) await tx.position.update({ where: { id: openedPositionId }, data: { stopLoss } });
+  const boughtAt = promoted?.priceAtTime != null ? Number(promoted.priceAtTime) : null;
+  if (boughtAt == null || Math.abs(boughtAt - paidPrice) <= 0.01) return;
+  const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
+  const stopOps = autoStopFillOps({ triggers: stored, direction: thesis.direction, boughtAt, paid: paidPrice, setting: await loadAutoStop(analystId) });
+  if (!stopOps.length) return;
+  const moved = applyTriggerOps({ stored, ops: stopOps, direction: thesis.direction, status: "HOLDING", actor: "SYSTEM", mintId: () => randomUUID() });
+  // The sale it moved: its new price is the position's sell price.
+  const op = stopOps[0];
+  const stopLoss = op && (op.op === "add" || op.op === "replace") ? typedPriceOf(op.trigger) : null;
+  await tx.thesis.update({ where: { id: thesis.id }, data: { triggers: moved.triggers as unknown as object } });
+  await tx.position.update({ where: { id: positionId }, data: { stopLoss } });
   await tx.thesisUpdate.create({
     data: {
       thesisId: thesis.id,
       type: "UPDATED",
-      summary: `${thesis.ticker} buy price set to what was paid — $${paidPrice.toFixed(2)}`,
-      fieldChanges: {
-        entryPrice: { from: thesis.entryPrice, to: paidPrice },
-        ...(moved ? { triggerOps: { from: null, to: acceptedOps(moved.results) } } : {}),
-      },
+      summary: `${thesis.ticker} stop when buying moved under what was paid — $${paidPrice.toFixed(2)}`,
+      fieldChanges: { triggerOps: { from: null, to: acceptedOps(moved.results) } },
       priceAtTime: paidPrice,
     },
   });

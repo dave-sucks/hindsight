@@ -11,7 +11,7 @@
  * migration stores a watch's (STOP_WATCHING, on the close): the fill takes it
  * off with the buy, and the ticket's stop is the holding's sale.
  */
-import { prismaDouble, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, REPLAY_ACCOUNT_ID, REPLAY_USER_ID, type PrismaDouble } from "@/lib/replay";
+import { prismaDouble, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, REPLAY_ACCOUNT_ID, REPLAY_USER_ID, type PrismaDouble, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const AT = new Date("2026-10-22T14:00:05Z"); // 10:00 ET
@@ -37,7 +37,7 @@ async function desk(use: (m: typeof import("@/lib/trading/manual-order")) => Pro
     account: [accountRow({ autoStopOnBuy: true, autoStopPct: 8, setupOverrides: {} })],
     agentConfig: [agentConfigRow({ name: "Secular Compounder", tradingEnvironment: "LIVE", minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, riskPct: 1 })],
     thesis: [
-      thesisRow({ id: "thesis_TRV", ticker: "TRV", status: "WATCHING", direction: "LONG", horizon: "COMPOUNDER", setupId: "BASE_BREAKOUT", entryPrice: 398.7, stopLoss: 382.4, targetPrice: 431.5, triggers: ROW }),
+      thesisRow({ id: "thesis_TRV", ticker: "TRV", status: "WATCHING", direction: "LONG", horizon: "COMPOUNDER", setupId: "BASE_BREAKOUT", triggers: ROW }),
     ],
   });
   // The double joins nothing: an order carries its position inline, as the approval reads it.
@@ -89,7 +89,8 @@ const below = (db: PrismaDouble, action: string) =>
 describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)", () => {
   it("a typed $390 stop, tighter than the line: it is his sell line, as he set it, and no review line is made from it", async () => {
     const db = await tradeTicket(390);
-    expect(thesis(db)).toMatchObject({ status: "HOLDING", stopLoss: 390 });
+    expect(thesis(db)).toMatchObject({ status: "HOLDING" });
+    expect(triggerSentences(thesis(db))).toContain("Sell if below $390");
     expect(below(db, "EXIT")).toEqual([
       expect.objectContaining({ predicate: { is: "below", value: 390, watch: "price" }, source: "PRINCIPAL", rationale: "Sell if below $390. You set this." }),
     ]);
@@ -104,7 +105,7 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
     expect(below(db, "EXIT")).toEqual([
       expect.objectContaining({ predicate: { is: "below", value: 367.03, watch: "price" }, fireMode: "DO_IT", source: "PRINCIPAL" }),
     ]);
-    expect(thesis(db)).toMatchObject({ stopLoss: 367.03 });
+    expect(triggerSentences(thesis(db))).toContain("Sell if below $367.03");
     expect((db.store.position as Array<Record<string, unknown>>)[0]).toMatchObject({ stopLoss: 367.03 });
   });
 
@@ -117,13 +118,13 @@ describe("TRV bought from the Trade button, stop when buying on at 8% ($367.03)"
 });
 
 describe("the Trade ticket on TRV, a stock we only watch", () => {
-  it("starts with no sell price: the row's hidden stopLoss ($382.40, its Stop watching line) is not offered as a stop", async () => {
+  it("starts with no sell price and no target: its Stop watching line ($382.40) is not offered as a stop", async () => {
     let lane: Record<string, unknown> | undefined;
     const db = await desk(async ({ getTradeTicket }) => {
       const ticket = await getTradeTicket({ userId: REPLAY_USER_ID, accountId: REPLAY_ACCOUNT_ID, ticker: "TRV", environment: "LIVE" });
       lane = ticket.lanes.find((l) => l.analystId === REPLAY_ANALYST_ID)?.buy as Record<string, unknown> | undefined;
     });
-    expect(thesis(db)).toMatchObject({ status: "WATCHING", stopLoss: 382.4 });
-    expect(lane).toEqual({ kind: "OPEN", thesisId: "thesis_TRV", needsResearch: false, targetPrice: 431.5 });
+    expect(thesis(db)).toMatchObject({ status: "WATCHING" });
+    expect(lane).toEqual({ kind: "OPEN", thesisId: "thesis_TRV", needsResearch: false });
   });
 });

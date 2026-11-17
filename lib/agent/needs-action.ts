@@ -270,13 +270,11 @@ export interface NeedsActionInput {
      */
     positionOpenedAt?: Date | null;
     /**
-     * Paired open Position's blended avgCost + the thesis target price, for
-     * HOLDING rows only. Feed the RUNNING_WINNER computation (progress-to-
-     * target + unrealized gain). Null when not held, no target, or the caller
-     * didn't resolve a position. See lib/agent/winner-signal.ts.
+     * Paired open Position's blended avgCost, for HOLDING rows only. Feeds
+     * the UNPROTECTED_GAIN computation. Null when not held or the caller
+     * didn't resolve a position.
      */
     avgCost?: number | null;
-    targetPrice?: number | null;
     /**
      * Paired open Position's water mark (high LONG / low SHORT), raised
      * by the five-minute trigger check. Feeds the trail floor math
@@ -610,9 +608,9 @@ export function computeNeedsAction(
   // its own MIN_GAIN floor was added to suppress. It was a trigger
   // re-implemented as a morning calculation, permanently second.
   //
-  // What replaced it is not another flag: resolved.unrealizedGainPct and
-  // resolved.progressToTarget sit on every held row the agent reads, so a
-  // stock up 212% is visible without anything pre-deciding that it matters.
+  // What replaced it is not another flag: resolved.unrealizedGainPct sits on
+  // every held row the agent reads, so a stock up 212% is visible without
+  // anything pre-deciding that it matters.
 
   // 5) REVIEW_DUE — the review cadence elapsed OR coming due within the
   //    next 24h. The 24h look-ahead is load-bearing: the morning daily-run

@@ -13,6 +13,7 @@ export {
   accountRow,
   daysAgo,
   planTriggers,
+  triggerSentences,
   REPLAY_ACCOUNT_ID,
   REPLAY_ANALYST_ID,
   REPLAY_RUN_ID,

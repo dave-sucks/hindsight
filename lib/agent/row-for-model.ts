@@ -205,11 +205,11 @@ function researchLine(row: Row, size: RowSize): string {
 
 // ── The one line ───────────────────────────────────────────────────────────
 
-/** A quiet stock: the stock and its stance, the price, the buy it waits on, the next review, the id. The levels are the triggers; a quiet row names none. */
+/** A quiet stock: the stock and its stance, the price, what we paid on a holding, the next review, the id. Its triggers are on its full row. */
 function line(row: Row): string {
   const held = row.status === "HOLDING";
   const price = num(row.currentPrice);
-  const entry = num(row.entryPrice);
+  const paid = held ? (num(row.paid) ?? num(obj(row.position)?.avgCost)) : null;
   const review = date(row.reviewDueAt);
   const catalyst = date(row.catalystDate);
   const { noClaim, failedOn } = writeUp(row);
@@ -220,7 +220,7 @@ function line(row: Row): string {
     noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
     str(row.setupId) ?? str(row.horizon),
     price != null ? money(price) : null,
-    entry != null ? `${held ? "entry" : "buy"} ${money(entry)}` : noBuy(row) ? "no buy" : null,
+    paid != null ? `paid ${money(paid)}` : null,
     // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
     proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
     review ? `review ${etDay(review)}` : null,
@@ -311,8 +311,6 @@ function priceLine(row: Row): string | null {
   return `${money(current)}${dp != null ? `, ${pct(dp)} today` : ""}${at ? ` (${etStamp(at)})` : ""}`;
 }
 
-/** A watched stock with a view and no buy level: nothing to buy on (step 12, part 3). */
-const noBuy = (row: Row) => row.status === "WATCHING" && str(row.direction) != null && num(row.entryPrice) == null;
 /** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 

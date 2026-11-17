@@ -134,7 +134,6 @@ function research(): WriterResearchPhaseOutput {
     ok: true,
     noteText: "## Snapshot\nDOCU drift note.",
     decision: v.decision as ValidatedThesisDecision,
-    riskReward: null,
     threadMessages: [],
     userPrompt: "GROUND-TRUTH DATA — DOCU",
     systemPrompt: "You are the PEAD Specialist.",

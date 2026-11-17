@@ -31,7 +31,6 @@ function sources(i: NeedsActionInput, over: Partial<SituationSources> = {}): Sit
     triggers: i.thesis.triggers,
     status: i.thesis.status ?? "HOLDING",
     actionability: null,
-    progressToTarget: null,
     buyBlockedByFull: false,
     unansweredDecision: false,
     ...over,
@@ -71,9 +70,9 @@ describe("the work-flag list", () => {
 });
 
 describe("the situations a stock is in", () => {
-  it("MU 10-07: a fired review and a holding three quarters of the way to its target", () => {
+  it("MU 10-07: a fired review; nearing an upside line is no situation of its own (no target of our own, 2026-11-16)", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
-    expect(situationsFor(sources(i, { progressToTarget: 0.8 }))).toEqual(["REVIEW_DUE", "ADD_OR_WINNER"]);
+    expect(situationsFor(sources(i))).toEqual(["REVIEW_DUE"]);
   });
 
   it("ABT 10-07: a fired review on a watch, and the principal's word unanswered", () => {
@@ -132,11 +131,11 @@ describe("the situations a stock is in", () => {
 });
 
 describe("the situations for a person: the sheet's flag line", () => {
-  it("MU 10-07: the fired review is the lead's; near target follows it", () => {
+  it("MU 10-07: the fired review is the lead's; a note to answer follows it", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
-    expect(situationLabels(sources(i, { progressToTarget: 0.8 }))).toEqual([
+    expect(situationLabels(sources(i, { unansweredDecision: true }))).toEqual([
       { code: "REVIEW_DUE", name: "review due", lead: true },
-      { code: "ADD_OR_WINNER", name: "add or near upside", lead: false },
+      { code: "NOTE_TO_ANSWER", name: "a note to answer", lead: false },
     ]);
   });
   it("a sale on an earnings trigger: both codes are the lead's", () => {
@@ -244,7 +243,7 @@ describe("listsTheStock: today's rule", () => {
   it("what did not list a stock still does not; a catalyst date behind us no longer does (2026-11-13)", () => {
     expect(listsTheStock(sources(watch))).toBe(false);
     expect(listsTheStock(sources(watch, { actionability: "STALE_PAST_CATALYST" }))).toBe(false);
-    expect(listsTheStock(sources(input({}), { progressToTarget: 0.9 }))).toBe(false);
+    expect(listsTheStock(sources(input({})))).toBe(false);
     expect(listsTheStock(sources(watch, { actionability: "WAIT_FOR_TRIGGER" }))).toBe(false);
   });
 });
@@ -296,6 +295,8 @@ describe("the live book after the close, replayed", () => {
   // said, and three stocks a plan check alone listed are quiet now.
   const DELETED = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED"]);
   const LISTED_BY_A_PLAN_CHECK = new Set(["SMCI", "SYK", "GD"]);
+  // MU's ADD_OR_WINNER came from three quarters of the way to its target, which went with the target (2026-11-16).
+  const NEAR_TARGET = new Set(["MU"]);
   it.each(stocks.map((s) => [s.ticker, s] as const))("%s: listed as main listed it, with main's lead and its situations", (_t, s) => {
     // Anything that reads the wall clock reads the recorded day.
     jest.useFakeTimers({ now: new Date(s.in.now) });
@@ -306,7 +307,8 @@ describe("the live book after the close, replayed", () => {
     const src: SituationSources = { ...s.src, needs, triggers: i.thesis.triggers };
     expect(listsTheStock(src)).toBe(s.listed && !LISTED_BY_A_PLAN_CHECK.has(s.ticker));
     // Recorded before the merge (2026-11-15): each saved code is the one it is now.
-    expect(situationsFor(src)).toEqual([...new Set(s.codes.filter((c) => !DELETED.has(c)).map((c) => MERGED_CODE[c] ?? c))]);
+    const codes = s.codes.filter((c) => !DELETED.has(c) && !(c === "ADD_OR_WINNER" && NEAR_TARGET.has(s.ticker)));
+    expect(situationsFor(src)).toEqual([...new Set(codes.map((c) => MERGED_CODE[c] ?? c))]);
   });
 });
 

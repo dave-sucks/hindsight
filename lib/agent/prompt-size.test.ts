@@ -26,7 +26,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
   // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
-  daily: 9_483,
+  daily: 9_440,
   tactical: 14_902,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
@@ -34,12 +34,12 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +90, the writer writes the buy and the floor as triggers (no entry / target / stop fields), and a watch's floor stops watching it.
   // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
   // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
-  writer: 17_382,
+  writer: 17_122,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
   // 2026-11-16: +1, the same situation texts.
-  chat: 35_964,
+  chat: 35_929,
 };
 
 /**

@@ -294,9 +294,6 @@ export const getTheses = defineTool({
         bearCase: true,
         keyAssumptions: true,
         invalidationConds: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
         triggers: true,
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
         // overlays it so cooldown reads the same at every level.
@@ -517,15 +514,11 @@ export const getTheses = defineTool({
         const r = writerRunByThesis.get(t.id);
         return r ? { status: r.status, startedAt: r.startedAt.toISOString() } : null;
       })(),
-      entryPrice: t.entryPrice,
-      targetPrice: t.targetPrice,
-      stopLoss: t.stopLoss,
-      // The live price belongs NEXT TO the plan numbers, even on a quiet
-      // row. Without it the roster line reads "buy at $262 · waiting for
-      // trigger" on a stock trading at $184 — plan numbers with nothing to
-      // judge them against, which is how KLAC/SNPS/NTNX sat mis-priced for
-      // months (2026-08-23 audit). One number per row; the resolver already
-      // fetched it, so this costs a fetch of nothing.
+      // What we paid, on a holding. A quiet row names no trigger: the full
+      // row (get_theses(tickers: [...])) has them, each as its sentence.
+      paid: t.status === "HOLDING" ? (load.positions.get(t.id)?.avgCost ?? null) : null,
+      // The live price, even on a quiet row: one number per row; the
+      // resolver already fetched it, so this costs a fetch of nothing.
       currentPrice: resolvedByThesisId.get(t.id)?.currentPrice ?? null,
       proposals: load.proposals.get(t.id) ?? [],
       // Derived, not stored (DAV-221): last actual look + the cadence on
@@ -640,9 +633,9 @@ export const getTheses = defineTool({
         reasoning_summary: getThesisSnapshotText(t),
         thesis_bullets: getThesisBullCaseBullets(t),
         risk_flags: getThesisBearCaseBullets(t),
-        entry_price: t.entryPrice ?? null,
-        target_price: t.targetPrice ?? null,
-        stop_loss: t.stopLoss ?? null,
+        // The stock's own triggers, each as its sentence, and what we paid on a holding.
+        triggers: t.triggers.map((x) => x.says),
+        paid: t.status === "HOLDING" ? (load.positions.get(t.id)?.avgCost ?? null) : null,
         hold_duration: undefined,
         signal_types: [],
         company_name: null,

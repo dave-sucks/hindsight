@@ -19,6 +19,9 @@ import { getLatestPrices } from "@/lib/alpaca";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import type { ToolUIItem } from "@/lib/agent/tool-result";
+import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 /** Display tag per intent — TRIM reads better than PARTIAL_CLOSE in a chip. */
 const INTENT_TAG: Record<string, string> = {
@@ -117,9 +120,7 @@ export const listProposals = defineTool({
               direction: true,
               status: true,
               horizon: true,
-              entryPrice: true,
-              targetPrice: true,
-              stopLoss: true,
+              triggers: true,
               snapshot: true,
               updatedAt: true,
               researchRun: { select: { agentConfigId: true } },
@@ -229,9 +230,8 @@ export const listProposals = defineTool({
               direction: thesis.direction,
               status: thesis.status,
               horizon: thesis.horizon,
-              entryPrice: thesis.entryPrice,
-              targetPrice: thesis.targetPrice,
-              stopLoss: thesis.stopLoss,
+              // The stock's own triggers, each as its sentence.
+              triggers: (parseTriggersResilient(thesis.triggers).triggers as Trigger[]).map((t) => sentenceOf(t)),
               snapshot: getThesisSnapshotText(thesis),
             }
           : null,

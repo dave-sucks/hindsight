@@ -28,7 +28,7 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
+import { priceLines } from "@/lib/agent/triggers/price-levels";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
@@ -72,9 +72,6 @@ export async function GET(
       invalidReason: true,
       retiredReason: true,
       horizon: true,
-      entryPrice: true,
-      targetPrice: true,
-      stopLoss: true,
       catalystDate: true,
       lastReviewedAt: true,
       triggers: true,
@@ -358,20 +355,9 @@ export async function GET(
     invalidReason: thesis.invalidReason,
     retiredReason: thesis.retiredReason,
     horizon: thesis.horizon,
-    entryPrice: thesis.entryPrice,
-    targetPrice: thesis.targetPrice,
-    stopLoss: thesis.stopLoss,
-    // The levels actually in force, read off the resolved trigger list —
-    // the columns above are a cache and, until the L6 backfill runs, can
-    // still name a price nothing enforces. The card renders THIS and flags
-    // any column with no trigger behind it. See LEVELS_AS_TRIGGERS.md.
-    levels: canonicalLevels({
-      triggers,
-      direction: thesis.direction,
-      status: thesis.status,
-      avgCost: position?.avgCost ?? null,
-      peakPrice: position?.peakPrice ?? null,
-    }),
+    // One chart line per trigger at a typed price, labelled with its own
+    // sentence. Nothing stores a level: a stock has triggers and nothing else.
+    priceLines: priceLines(triggers),
     catalystDate: thesis.catalystDate,
     // When an analyst last actually looked. Stored (schema:321) and, until
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was

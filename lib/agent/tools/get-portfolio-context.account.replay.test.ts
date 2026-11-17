@@ -9,8 +9,8 @@
  * open risk. The same read now covers the whole account when no analyst is
  * given, names each position's analyst, and filters by analyst when one is.
  *
- * The stop is the thesis's: MU's position row still said 969 that evening
- * while its plan's floor was 1048.
+ * Its triggers are not here: they are on get_theses, each as its sentence
+ * (a stock has triggers and nothing else, 2026-11-16).
  *
  * Through the real get_portfolio_context execute, on that evening's book.
  */
@@ -43,8 +43,6 @@ const seed = () => ({
       ticker: p.symbol,
       status: "HOLDING",
       direction: "LONG",
-      stopLoss: p.thesisStop,
-      targetPrice: p.thesisTarget,
       researchRun: { agentConfigId: p.analystId, agentConfig: { name: p.analyst, setupIds: [] } },
     }),
   ),
@@ -68,7 +66,7 @@ const snapshot = buildSnapshot({
 type Read = {
   summary?: string;
   data: {
-    positions: Array<{ symbol: string; analyst: string | null; stopLoss: number | null; unrealizedPnlPct: number }>;
+    positions: Array<{ symbol: string; analyst: string | null; unrealizedPnlPct: number }>;
     capitalSummary: { cash: number; totalEquity: number; slotsRemaining: number | null } | null;
     digest: { date: string; narrative: string } | null;
   };
@@ -86,14 +84,13 @@ async function read(ctx: Record<string, unknown>): Promise<Read> {
 }
 
 describe("get_portfolio_context — the account", () => {
-  it("with no analyst selected: every position on the account, each with its analyst, gain and stop", async () => {
+  it("with no analyst selected: every position on the account, each with its analyst and gain", async () => {
     const r = await read({ analystId: undefined });
     expect(r.summary).not.toMatch(/unavailable/i);
     expect(r.data.positions.map((p) => p.symbol).sort()).toEqual(["CEG", "CORT", "MU", "NVDA"]);
     expect(new Set(r.data.positions.map((p) => p.analyst))).toEqual(new Set(["PEAD Specialist", "Secular Compounder", "Catalyst Event PM"]));
     const ceg = r.data.positions.find((p) => p.symbol === "CEG")!;
     expect(ceg.unrealizedPnlPct).toBeLessThan(0);
-    expect(ceg.stopLoss).toBe(248);
   });
 
   it("the cash and the equity come with it, and not the digest (every request's Market and portfolio block carries it); no analyst, so no position limit", async () => {
@@ -104,9 +101,11 @@ describe("get_portfolio_context — the account", () => {
     expect(r.data).not.toHaveProperty("digest");
   });
 
-  it("the stop is the plan's: MU reads 1048, not the position row's 969", async () => {
+  it("a position carries no stop or target of its own reading: no 969 off the position row, no 1048 off a cache", async () => {
     const r = await read({ analystId: undefined });
-    expect(r.data.positions.find((p) => p.symbol === "MU")!.stopLoss).toBe(1048);
+    const mu = r.data.positions.find((p) => p.symbol === "MU")! as Record<string, unknown>;
+    expect(mu).not.toHaveProperty("stopLoss");
+    expect(mu).not.toHaveProperty("targetPrice");
   });
 
   it("with an analyst: only that analyst's positions", async () => {

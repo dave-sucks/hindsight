@@ -84,9 +84,7 @@ export async function PATCH(
 /**
  * DELETE /api/theses/[id]/triggers/[triggerId]
  *
- * Removes the trigger from the thesis's `triggers[]`. Leaves
- * Thesis.stopLoss/targetPrice intact (deleting the trigger removes the
- * automated action, not the documented level). Pure DB.
+ * Removes the trigger from the thesis's `triggers[]`. Pure DB.
  */
 export async function DELETE(
   _req: Request,

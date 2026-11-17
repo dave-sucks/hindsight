@@ -31,9 +31,6 @@ export interface ThesisRowData {
   // P1-24: LONG | SHORT | null (a pass/seed stores direction=null).
   direction: string | null;
   reasoningSummary: string;
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
   /**
    * Trade horizon (CATALYST / TRADE / TARGET / COMPOUNDER). Drives the
    * derived hold-duration label rendered on the card. Optional only because
@@ -153,9 +150,7 @@ interface RowBanner {
  *   Holding  → "Holding N shares, avg cost $X, now trading at $Y"   [+$gain ↗ %]
  *   Pending  → "Proposed: Buy N shares at $X"
  *   Won/Loss → "Bought N shares at $X, closed at $Y"        [+$gain ↗ %]
- *   Watching → "buy above $target"   (not a trade — light inline line)
- *   Pass     → "@ $entry"            (reads "Pass @ $40.35")
- *   terminal → "@ $entry"
+ *   Watching / Pass / terminal → the status alone: a stock's triggers are on its sheet, nowhere else
  *
  * When a position exists the badge is the TRADE status (Holding/Won/Loss) —
  * the thesis "Active" status is implied by holding a position, so it's not
@@ -231,7 +226,7 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
     return {
       label: "Pass",
       dotClass: "bg-muted-foreground/40",
-      sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
+      sentence: null,
       gain: null,
       isTrade: false,
     };
@@ -249,35 +244,28 @@ function buildRowBanner(t: ThesisRowData): RowBanner | null {
       label: agentWatched ? "Agent Watch" : d.label,
       dotClass: d.dotClass,
       agentWatched,
-      sentence:
-        t.targetPrice != null && t.targetPrice > 0
-          ? `buy above ${$(t.targetPrice)}`
-          : null,
+      sentence: null,
       gain: null,
       isTrade: false,
     };
   }
 
   if (status === "HOLDING" || status === "PROMOTED") {
-    // Trade-eligible coverage with no position open yet — show the target
-    // as the next step, not a stale "@ entry".
+    // Trade-eligible coverage with no position on the row: the status alone.
     return {
       label: d.label,
       dotClass: d.dotClass,
-      sentence:
-        t.targetPrice != null && t.targetPrice > 0
-          ? `target ${$(t.targetPrice)}`
-          : null,
+      sentence: null,
       gain: null,
       isTrade: false,
     };
   }
 
-  // INVALIDATED / ARCHIVED / SUPERSEDED — the price the thesis referenced.
+  // INVALIDATED / ARCHIVED / SUPERSEDED — the status alone.
   return {
     label: d.label,
     dotClass: d.dotClass,
-    sentence: t.entryPrice != null ? `@ ${$(t.entryPrice)}` : null,
+    sentence: null,
     gain: null,
     isTrade: false,
   };
@@ -291,7 +279,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
   const banner = buildRowBanner(t);
 
   const deltaPct = t.priceChange?.percent
-    ?? (t.currentPrice && t.entryPrice && t.entryPrice > 0 ? ((t.currentPrice - t.entryPrice) / t.entryPrice) * 100 : null);
+    ?? (t.currentPrice && t.position && t.position.avgCost > 0 ? ((t.currentPrice - t.position.avgCost) / t.position.avgCost) * 100 : null);
 
   return (
     <div className="rounded-xl border bg-background overflow-hidden">
@@ -325,10 +313,7 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
               ticker={t.ticker}
               candles={t.candles}
               direction={t.direction === "SHORT" ? "SHORT" : "LONG"}
-              entryPrice={t.entryPrice ?? null}
               avgCost={t.position?.avgCost ?? null}
-              targetPrice={t.targetPrice ?? null}
-              stopLoss={t.stopLoss ?? null}
               current={t.currentPrice ?? null}
               addedAt={t.createdAt ?? null}
               enteredAt={t.position?.openedAt ?? null}
@@ -415,9 +400,6 @@ export function ThesisRow({ thesis: t, showTicker = true }: ThesisRowProps) {
         reasoning_summary={t.reasoningSummary}
         thesis_bullets={t.thesisBullets}
         risk_flags={t.riskFlags}
-        entry_price={t.entryPrice}
-        target_price={t.targetPrice}
-        stop_loss={t.stopLoss}
         hold_duration={
           t.horizon ? holdDurationFromHorizon(t.horizon) : t.holdDuration
         }

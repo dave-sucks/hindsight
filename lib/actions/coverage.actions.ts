@@ -179,7 +179,7 @@ export async function getCoverageData(
       orderBy: { updatedAt: "desc" },
       take: 100,
       select: {
-        id: true, ticker: true, direction: true, entryPrice: true,
+        id: true, ticker: true, direction: true,
         createdAt: true, updatedAt: true,
         researchRun: { select: { agentConfig: { select: { name: true } } } },
         // The EARLIEST event carrying a price — what the stock cost when the
@@ -198,7 +198,7 @@ export async function getCoverageData(
       orderBy: { updatedAt: "desc" },
       take: 100,
       select: {
-        id: true, ticker: true, direction: true, entryPrice: true, updatedAt: true,
+        id: true, ticker: true, direction: true, updatedAt: true,
         researchRun: { select: { agentConfig: { select: { name: true } } } },
         updates: {
           where: { type: { in: ["STATUS_CHANGED", "UPDATED", "REVIEWED"] } },
@@ -412,11 +412,10 @@ export async function getCoverageData(
   // ── Watching ───────────────────────────────────────────────────────────────
   const watching: CoverageRow[] = watchingTheses.map((t) => {
     const current = prices[t.ticker] ?? null;
-    // The price when the watch opened — NOT `entryPrice`, which is the planned
-    // buy level (a cache of the ENTER trigger) and is absent on 22 of 28
-    // watched names, because most carry only REVIEW triggers. This column is
-    // "what have I missed since I started watching", so it measures from a
-    // price someone observed. See lib/thesis/watch-anchor.ts.
+    // The price when the watch opened, never a buy level (most watched names
+    // carry only REVIEW triggers, and a buy is not a price the stock traded
+    // at). This column is "what have I missed since I started watching", so
+    // it measures from a price someone observed. See lib/thesis/watch-anchor.ts.
     // On a return, the transition row IS the opening event — its own price if
     // it carries one, otherwise that day's close. The thesis's first-ever
     // priced row belongs to the previous watch and must not be reached for.
@@ -466,7 +465,7 @@ export async function getCoverageData(
     seenPass.add(t.ticker);
     const current = prices[t.ticker] ?? null;
     const last = t.updates[0];
-    const anchor = last?.priceAtTime ?? t.entryPrice ?? null;
+    const anchor = last?.priceAtTime ?? null;
     const sinceDollar = current != null && anchor != null ? current - anchor : null;
     const sincePct =
       sinceDollar != null && anchor != null && anchor !== 0 ? (sinceDollar / anchor) * 100 : null;

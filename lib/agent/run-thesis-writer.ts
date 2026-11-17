@@ -603,10 +603,6 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. The research decides it, never the
      chart. PASS is a valid, gradeable outcome — use it when the research
      doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • UNDER 2×, SAY WHY. Reward against risk is not a floor: when the room
-     from the buy to the Street's average target (on the Analyst Coverage
-     block) is under twice the distance to the floor, say in the note why
-     the trade is still worth taking.
    • THE SETUP SETS THE TRIGGERS. Once the research gives you a view, name
      the setup (setup_id) from YOUR SETUPS, then write its triggers, every
      number from its rules and the Price structure block — never a round
@@ -819,7 +815,6 @@ export interface WriterResearchPhaseOutput {
   noteText: string;
   /** The validated decision object, JSON-safe. Null when never accepted. */
   decision: ValidatedThesisDecision | null;
-  riskReward: number | null;
   /** Serialized ModelMessages for the replay thread (user turn excluded). */
   threadMessages: unknown[];
   /** The user prompt (data block + task) for the replay thread. */
@@ -842,7 +837,6 @@ export async function writerResearchPhase(
     ok: false,
     noteText: "",
     decision: null,
-    riskReward: null,
     threadMessages: [],
     userPrompt: "",
     stepCount: 0,
@@ -946,7 +940,6 @@ Write the research note now, then call submit_thesis.`;
     const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer" });
 
     let accepted: ValidatedThesisDecision | null = null;
-    let acceptedRR: number | null = null;
     let submitAttempts = 0;
     let lastRejected: { raw: unknown; errors: string[] } | null = null;
 
@@ -961,7 +954,7 @@ Write the research note now, then call submit_thesis.`;
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
         currentPrice,
-        // A refresh's edits are read against the stored triggers (decisionLevels).
+        // A refresh's edits are read against the stored triggers (decisionBuy).
         existingTriggers: existingThesis?.triggers,
         setups: seatSetups,
         chart: pullOutput.pull?.chart ?? null,
@@ -977,9 +970,8 @@ Write the research note now, then call submit_thesis.`;
             : null,
         }),
       onAttempt: () => ++submitAttempts,
-      onAccept: (d, rr) => {
+      onAccept: (d) => {
         accepted = d;
-        acceptedRR = rr;
       },
     });
 
@@ -1129,10 +1121,7 @@ Write the research note now, then call submit_thesis.`;
       });
       submitAttempts += repaired.attempts;
       capturedMessages.push(...repaired.messages);
-      if (repaired.decision) {
-        accepted = repaired.decision;
-        acceptedRR = repaired.riskReward;
-      }
+      if (repaired.decision) accepted = repaired.decision;
     }
 
     // Read the closure-mutated flags into locals. TS's control-flow
@@ -1140,13 +1129,11 @@ Write the research note now, then call submit_thesis.`;
     // (microsoft/TypeScript#9998), so without the assertion `accepted`
     // stays narrowed to its `null` initializer here.
     const finalDecision = accepted as ValidatedThesisDecision | null;
-    const finalRR = acceptedRR as number | null;
 
     const result: WriterResearchPhaseOutput = {
       ok: finalDecision !== null,
       noteText,
       decision: finalDecision,
-      riskReward: finalRR,
       threadMessages: capturedMessages as unknown[],
       userPrompt,
       systemPrompt,
@@ -1175,7 +1162,6 @@ Write the research note now, then call submit_thesis.`;
         searchCount,
         submitAttempts,
         direction: finalDecision?.direction ?? null,
-        riskReward: finalRR,
       },
     );
     await recordTokenUsage(args.childRunId, tokenUsage, modeConfig.model);
@@ -1400,7 +1386,7 @@ export function buildWriterSaveCall(
     return levelSlotOf((asStored.success ? asStored.data : t) as Trigger, existing?.direction ?? null);
   };
   const keeps = (t: unknown) => { const slot = slotOf(t); return slot != null && kept.has(slot); };
-  const word = { ENTRY: "buy", FLOOR: "floor", TARGET: "upside line" } as const;
+  const word = { ENTRY: "buy", FLOOR: existing?.status === "HOLDING" ? "floor" : "Stop watching line", TARGET: "upside line" } as const;
   const own = (d.add_triggers ?? []).filter(keeps).map((t) => `${word[slotOf(t)!]} $${(t.predicate as { value?: number }).value}`);
   return {
     toolName: "update_thesis",
@@ -1604,7 +1590,7 @@ export async function saveWhatCan(
 export function makeSubmitThesisTool(opts: {
   validate: Parameters<typeof validateThesisDecision>[1];
   check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>;
-  onAccept: (d: ValidatedThesisDecision, riskReward: number | null) => void;
+  onAccept: (d: ValidatedThesisDecision) => void;
   onAttempt: () => number;
   /** The last refused submit, kept so the repair step can hand it back. */
   onReject?: (raw: unknown, errors: string[]) => void;
@@ -1669,7 +1655,7 @@ export function makeSubmitThesisTool(opts: {
           instruction: "This refuses the whole decision, not one field. Fix it and call submit_thesis again. Do NOT rewrite the research note.",
         };
       }
-      opts.onAccept(kept.decision, v.riskReward ?? null);
+      opts.onAccept(kept.decision);
       const without = kept.decision.dropped ?? [];
       return {
         accepted: true,
@@ -1727,12 +1713,11 @@ async function resubmitWithFeedback(input: {
   previous: unknown;
   /** The refusal, in the refuser's own words. */
   feedback: string;
-}): Promise<{ decision: ValidatedThesisDecision | null; riskReward: number | null; attempts: number; messages: ModelMessage[] }> {
+}): Promise<{ decision: ValidatedThesisDecision | null; attempts: number; messages: ModelMessage[] }> {
   const { args, pullOutput, analyst, existing } = input;
-  if (!input.systemPrompt) return { decision: null, riskReward: null, attempts: 0, messages: [] };
+  if (!input.systemPrompt) return { decision: null, attempts: 0, messages: [] };
   const T = args.ticker.toUpperCase();
   let accepted: ValidatedThesisDecision | null = null;
-  let acceptedRR: number | null = null;
   let attempts = 0;
   const messages: ModelMessage[] = [];
   const submit = makeSubmitThesisTool({
@@ -1754,9 +1739,8 @@ async function resubmitWithFeedback(input: {
         existing: existing ? { direction: existing.direction, status: existing.status } : null,
       }),
     onAttempt: () => ++attempts,
-    onAccept: (d, rr) => {
+    onAccept: (d) => {
       accepted = d;
-      acceptedRR = rr;
     },
   });
   const modeConfig = MODES["thesis-writer"];
@@ -1793,7 +1777,7 @@ async function resubmitWithFeedback(input: {
       err instanceof Error ? err.message : err,
     );
   }
-  return { decision: accepted as ValidatedThesisDecision | null, riskReward: acceptedRR as number | null, attempts, messages };
+  return { decision: accepted as ValidatedThesisDecision | null, attempts, messages };
 }
 
 export async function writerPersistPhase(
@@ -1911,7 +1895,7 @@ export async function writerPersistPhase(
         args.childRunId,
         thesisId ? "Thesis persisted" : "Persist refused",
         thesisId
-          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}${research.riskReward ? `, R/R ${research.riskReward.toFixed(2)}:1` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}${d.dropped?.length ? ` Saved without: ${d.dropped.map((x) => `${x.why} (${x.reason})`).join("; ")}.` : ""}`
+          ? `${args.mode === "mint" ? "record_thesis" : "update_thesis"} landed (${d.direction}${d.conviction ? `, ${d.conviction}` : ""}).${notApplied ? ` Not applied: ${notApplied}` : ""}${d.dropped?.length ? ` Saved without: ${d.dropped.map((x) => `${x.why} (${x.reason})`).join("; ")}.` : ""}`
           : persistError ?? "unknown",
         { ticker: T, thesisId, mode: args.mode },
       );
@@ -1978,7 +1962,6 @@ export async function writerPersistPhase(
           sectionCount: research.sectionCount,
           submitAttempts: research.submitAttempts,
           pullErrors: pullOutput.pull?.pullErrors ?? [],
-          riskReward: research.riskReward,
           ...(finalStatus === "FAILED"
             ? { error: persistError ?? research.error ?? "unknown", failedAt: new Date().toISOString() }
             : {}),

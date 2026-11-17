@@ -16,7 +16,7 @@
  */
 import type { z } from "zod";
 import raw from "@/lib/agent/__fixtures__/prax-trigger-run-levels-2026-11-16.json";
-import { replayTool, thesisRow, thesisUpdateRow, type Row } from "@/lib/replay";
+import { replayTool, thesisRow, thesisUpdateRow, type Row, triggerSentences } from "@/lib/replay";
 
 type Trigger = { id: string; predicate: unknown };
 const fx = raw as unknown as {
@@ -26,7 +26,9 @@ const fx = raw as unknown as {
   calls: Array<{ runId: string; input: Record<string, unknown> }>;
 };
 const [BUY, FLOOR, TARGET] = ["fd8ac088-1fba-4b7f-b792-c24727b2a7a9", "525fe4a5-37a2-46fe-83cd-269ba2e78ea3", "4710e772-f65f-4f81-810a-0ff74b206096"];
-const LEVELS = { entryPrice: 351.75, targetPrice: 392, stopLoss: 236 };
+/** The three prices the stock's buy, upside and line-under-the-price triggers carry. */
+const PRICES = ["$351.75", "$392", "$236"];
+const hasPrices = (row: Row) => { const said = triggerSentences(row).join(" | "); return PRICES.every((p) => said.includes(p)); };
 
 /** The save's schema as a door hands it to the model: what the door lacks is stripped from the call. */
 async function door(runMode: string): Promise<z.ZodTypeAny> {
@@ -78,7 +80,8 @@ describe("PRAX 2026-11-16: the trigger runs' saves, verbatim", () => {
       for (const id of [BUY, FLOOR, TARGET]) {
         expect((row.triggers as Trigger[]).find((t) => t.id === id)?.predicate).toEqual(fx.thesisBefore.triggers.find((t) => t.id === id)?.predicate);
       }
-      expect(row).toMatchObject({ status: "WATCHING", ...LEVELS });
+      expect(row).toMatchObject({ status: "WATCHING" });
+      expect(hasPrices(row)).toBe(true);
       expect((r.db.store.thesisUpdate ?? []).filter((u) => u.type !== "TRIGGER_FIRED" && u.runId !== fx.morningLine.runId)).toEqual([
         expect.objectContaining({ rationale: call.input.rationale }),
       ]);
@@ -89,7 +92,7 @@ describe("PRAX 2026-11-16: the trigger runs' saves, verbatim", () => {
     const r = await save({ ...fx.calls[1].input, remove_trigger_ids: [BUY, FLOOR, TARGET] });
     expect(r.refused).toBe(false);
     expect(removals(r).map((o) => o.id).sort()).toEqual([BUY, FLOOR, TARGET].sort());
-    expect(r.db.store.thesis[0]).toMatchObject({ entryPrice: null, targetPrice: null, stopLoss: null });
+    expect(triggerSentences(r.db.store.thesis[0]).filter((t) => PRICES.some((p) => t.includes(p)))).toEqual([]);
   });
 });
 
@@ -106,7 +109,7 @@ describe("every door reads an empty level the same way", () => {
       expect(r.crashed).toBe(false);
       expect(removals(r)).toEqual([]);
       expect(ids(r.db.store.thesis[0])).toEqual(expect.arrayContaining([BUY, FLOOR, TARGET]));
-      expect(r.db.store.thesis[0]).toMatchObject(LEVELS);
+      expect(hasPrices(r.db.store.thesis[0])).toBe(true);
     });
   }
 });
