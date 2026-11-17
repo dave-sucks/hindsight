@@ -528,7 +528,7 @@ rationale — the next daily run executes it, not you.
   const setupsBlock = setups.length
     ? `
 ═══════════════════════════════════════════════════════════════════
-YOUR SETUPS — every LONG/SHORT stock's triggers are written on one of these
+YOUR SETUPS — the playbooks you write a stock's triggers on
 ═══════════════════════════════════════════════════════════════════
 ${setups
   .map((s) => setupLines(s).join("\n  "))
@@ -603,10 +603,10 @@ every field; the judgment rules:
    • direction: LONG / SHORT / PASS. The research decides it, never the
      chart. PASS is a valid, gradeable outcome — use it when the research
      doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-   • THE SETUP SETS THE TRIGGERS. Once the research gives you a view, name
-     the setup (setup_id) from YOUR SETUPS, then write its triggers, every
-     number from its rules and the Price structure block — never a round
-     number, never a feel. A stock has triggers and nothing else:
+   • THE SETUP SETS THE TRIGGERS. Once the research gives you a view, write
+     the triggers of the setup that fits (setup_id), every number from its
+     rules and the Price structure block — never a round number, never a
+     feel. A stock has triggers and nothing else:
        – the buy (an ENTER trigger): the level the setup's entry rule
          gives (the base pivot for a breakout, the moving average for a
          pullback). When the setup's condition is already true today, set
@@ -614,8 +614,7 @@ every field; the judgment rules:
          now; it fires on the first tick through it and becomes the
          ordinary approval-gated proposal. A breakout fires only on the
          close (settings: { close: true }); an intraday poke fails about
-         half the time. Never more than the setup's chase limit past its
-         pivot.
+         half the time.
        – where the setup is over (a STOP_WATCHING trigger on a typed
          price, settings: { close: true }): the structure the setup names
          (the base's low, the last swing low, the gap day's low). A close
@@ -636,13 +635,12 @@ every field; the judgment rules:
          above the price with estimates revised up in the last 4 weeks is
          a reason for conviction; a wide low–high spread says the Street
          is unsettled, not that the midpoint is right.
-     If no setup fits the chart today, the view stays with no buy (NO
-     LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a buy at
-     an invented level.
-   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). When the
-     window has closed or the structure it names isn't there, the next
-     setup on your list applies: a stock past its post-earnings window in
-     an uptrend is written on MA_PULLBACK — a buy at the rising 20- or
+     If no setup fits and no level is honest, the view stays with no buy
+     (NO LEVEL WORTH WAITING FOR YET, below) — not a PASS, and not a buy
+     at an invented level.
+   • A SETUP HAS A WINDOW AND PRECONDITIONS (its Needs line). A stock
+     past its post-earnings window in an uptrend is written on
+     MA_PULLBACK — a buy at the rising 20- or
      50-day, a Stop watching line where the pullback fails (a close under
      that average), a take-profit at the prior high. A REVIEW at the price you would buy
      is a buy you did not write: make it the buy, or PASS and say why the
@@ -954,8 +952,6 @@ Write the research note now, then call submit_thesis.`;
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
         currentPrice,
-        // A refresh's edits are read against the stored triggers (decisionBuy).
-        existingTriggers: existingThesis?.triggers,
         setups: seatSetups,
         chart: pullOutput.pull?.chart ?? null,
       },
@@ -1726,7 +1722,6 @@ async function resubmitWithFeedback(input: {
       mode: args.mode,
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
-      existingTriggers: existing?.triggers,
       setups: setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId)),
       chart: pullOutput.pull?.chart ?? null,
     },

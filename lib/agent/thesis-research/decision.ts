@@ -20,9 +20,6 @@ import { z } from "zod";
 import { jsonSchema, zodSchema, type Schema } from "ai";
 import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { applyTriggerOps } from "@/lib/agent/triggers/ops";
-import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import type { Trigger } from "@/lib/agent/triggers/types";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
@@ -120,20 +117,12 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** The stored triggers on a refresh, with ids: a refresh's edits are read against them. */
-  existingTriggers?: Trigger[];
-  /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
+  /** The setups this seat may write on (setupsForSeat): the reply to a view with nothing on it names MA_PULLBACK when it is one. */
   setups?: Setup[];
-  /** Chart numbers from the pull, for the stop-distance, chase and window checks. */
+  /** The 20- and 50-day averages from the pull, for naming the pullback in that reply. */
   chart?: {
-    atr14: number | null;
-    pivot: number | null;
-    brokenOut: boolean | null;
-    /** The 20- and 50-day averages, for naming the pullback when a windowed setup no longer applies. */
     sma20?: { value: number; rising: boolean } | null;
     sma50?: { value: number; rising: boolean } | null;
-    /** Days since the last report (the report day is 0); null when the calendar has none. */
-    daysSinceReport?: number | null;
   } | null;
 }
 
@@ -145,7 +134,7 @@ export interface DecisionValidationResult {
 
 /**
  * The writer's own rules for a submit_thesis call: what a decision must say
- * (belief, conviction, setup, the chart checks on its buy and floor).
+ * (belief, conviction, the chart checks on its buy).
  * The save's rules are NOT copied here — the submit step runs record_thesis /
  * update_thesis itself in check-only mode right after this
  * (checkDecisionAgainstSave in run-thesis-writer.ts). A copy drifted twice:
@@ -179,59 +168,11 @@ export function validateThesisDecision(
   // visible and editable, unlike a column that fed a template once at mint
   // and then drifted from it.
 
-  // The buy and the floor are triggers. A view is priced when the decision
-  // writes a buy or a floor; an unpriced view (no buy, ≥1 REVIEW wake —
-  // DAV-224) is legal: "bullish, entry window opens in January" used to be
-  // unwritable, so BMRN came back with today's quote as its buy level.
-  const { entry, priced } = decisionBuy(d, opts);
-
-  // ── The setup and how its numbers were derived (DAV-249) ─────────────
-  // In-loop: the writer repairs in one step. Nothing
-  // downstream refuses on these.
-  const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
-  // The setup prices a view; it never decides one. An unpriced view needs none.
-  if (directional && opts.setups) {
-    if (!d.setup_id && priced) {
-      errors.push(`setup_id: required with a buy or a floor — pick the setup that gives them: ${opts.setups.map((s) => s.id).join(", ")}. If none fits today, write no buy and keep the view with the review that brings it back.`);
-    } else if (d.setup_id && !setup) {
-      errors.push(`setup_id: ${d.setup_id} isn't one of this seat's setups (${opts.setups.map((s) => s.id).join(", ")}). Pick one of those, or omit it on a view with no buy.`);
-    }
-  }
-  // A setup with a window, chosen after the window closed, does not apply.
-  // Said in-loop with the setup that does apply — the pullback — priced from
-  // the chart. HPE 2026-09-15: PEAD 13 days after the print; the drift
-  // rules could place no stop, so the view went unpriced with a review at
-  // the very level a pullback would buy.
-  const window = setup?.entry.windowDays;
-  const since = opts.chart?.daysSinceReport;
-  if (directional && !held && setup && window && since != null && since > window[1]) {
-    const pullback = opts.setups?.find((s) => s.id === "MA_PULLBACK");
-    const candidates = [
-      { label: "20-day", ma: opts.chart?.sma20 },
-      { label: "50-day", ma: opts.chart?.sma50 },
-    ];
-    const averages = candidates
-      .filter((c) => c.ma != null && c.ma.rising)
-      .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
-    const next = pullback
-      ? averages.length
-        ? ` Write it on MA_PULLBACK: a buy at ${averages.join(" or ")}, and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.`
-        : " Write it on MA_PULLBACK (a buy at a rising 20- or 50-day, a Stop watching line where the pullback fails) if the trend allows — or keep the view with no buy (no setup_id) and the review that brings it back."
-      : " Pick a setup that applies, or keep the view with no buy (no setup_id) and the review that brings it back.";
-    errors.push(
-      `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
-    );
-  }
-  // The setup's sale rules (minimum ATR, widest %) are read on the sale the buy names (place_trade's
-  // saleRuleProblem), never on a watch's Stop watching line: that line never sells.
-  if (directional && priced && entry != null && entry > 0) {
-    const pivot = opts.chart?.pivot;
-    if (!held && setup?.entry.chaseLimitPct != null && pivot != null && pivot > 0 && d.direction === "LONG" && entry > pivot * (1 + setup.entry.chaseLimitPct / 100)) {
-      errors.push(
-        `buy: $${entry} is ${(((entry - pivot) / pivot) * 100).toFixed(1)}% past the base pivot $${pivot.toFixed(2)}; ${setup.name}'s chase limit is ${setup.entry.chaseLimitPct}%. Buy within the limit, write the buy on a pullback setup, or PASS.`,
-      );
-    }
-  }
+  // The setup is whatever the decision names: no check reads it. A buy may be
+  // saved with no setup, and a setup off the seat's list is accepted as named.
+  // A buy's chase cap is in the trigger itself ("… and below $C"), and the
+  // setup's sale rules are read on the sale the buy names (place_trade's
+  // saleRuleProblem), never on a watch's Stop watching line.
 
   if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
@@ -288,7 +229,6 @@ export function validateThesisDecision(
   // leaves zero wakes. Said here, in the writer's loop, with the level it
   // said it was waiting for — never a refusal at the save.
   if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
-    const atr = opts.chart?.atr14;
     const averages = [
       { label: "20-day", ma: opts.chart?.sma20 },
       { label: "50-day", ma: opts.chart?.sma50 },
@@ -298,8 +238,8 @@ export function validateThesisDecision(
     const canPullback = opts.setups?.some((s) => s.id === "MA_PULLBACK") ?? false;
     const waitingFor =
       canPullback && averages.length
-        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, a floor ${atr != null ? `1 ATR ($${atr.toFixed(2)})` : "1 ATR"} under it until the pullback low prints. `
-        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with its floor. ";
+        ? `Write what you are waiting for as triggers: on MA_PULLBACK, a buy at ${averages.join(" or ")}, and a Stop watching line where the setup is over. `
+        : "Write the level you are waiting for (the pullback to a rising average, the gap-day low holding) as a buy trigger, with a Stop watching line where the setup is over. ";
     errors.push(
       `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. ${waitingFor}If no level is honest yet, send \`triggers\` with the wake that brings it back: a REVIEW at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
     );
@@ -363,55 +303,6 @@ export function validateThesisDecision(
       ...(dropped.length ? { dropped } : {}),
     },
   };
-}
-
-/**
- * The price of the buy trigger the decision leaves on the stock, when it is
- * at a typed price (a refresh's edits applied to the stored ones), for the
- * setup's chase limit; and whether the decision itself writes a buy or a
- * Stop watching line. Pure.
- */
-export function decisionBuy(
-  d: ThesisDecisionInput,
-  opts: Pick<DecisionValidationOpts, "mode" | "existingStatus" | "existingTriggers">,
-): { entry: number | null; priced: boolean } {
-  const direction = d.direction === "PASS" ? null : d.direction;
-  const status = opts.mode === "refresh" ? (opts.existingStatus ?? "WATCHING") : "WATCHING";
-  let n = 0;
-  const asStored = (t: unknown): Trigger[] => {
-    const read = triggerInputSchema.safeParse(t);
-    return read.success ? [{ ...(read.data as unknown as Trigger), id: `decision-${n++}` }] : [];
-  };
-  const sets = (t: Trigger) => {
-    const slot = levelSlotOf(t, direction);
-    return slot === "ENTRY" || slot === "FLOOR";
-  };
-  let list: Trigger[];
-  let priced: boolean;
-  if (opts.mode === "mint") {
-    list = ((d.triggers ?? []) as unknown[]).flatMap(asStored);
-    priced = list.some(sets);
-  } else {
-    const stored = opts.existingTriggers ?? [];
-    const adds = ((d.add_triggers ?? []) as unknown[]).flatMap(asStored);
-    const edits = (d.edit_triggers ?? []).filter((e) => editNumber(e).value !== undefined);
-    list = applyTriggerOps({
-      stored,
-      ops: [
-        ...(d.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-        ...adds.map((trigger) => ({ op: "add" as const, trigger })),
-        ...edits.map((e) => ({ op: "edit" as const, id: e.id, ...editNumber(e), rationale: e.rationale })),
-      ],
-      direction,
-      status,
-      actor: "SYSTEM",
-      mintId: () => `decision-${n++}`,
-    }).triggers;
-    priced = adds.some(sets) || edits.some((e) => stored.some((t) => t.id === e.id && sets(t)));
-  }
-  // A buy trigger's own price, when it has one (a chart condition has none).
-  const entry = status === "HOLDING" ? null : (list.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null);
-  return { entry, priced };
 }
 
 /**

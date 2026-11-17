@@ -66,7 +66,6 @@ function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
     mode: "refresh",
     existingStatus: "WATCHING",
     currentPrice: fx.currentPrice,
-    existingTriggers: before as never,
     setups: setupsForAnalyst(fx.analyst.setupIds),
     chart: null,
   });
