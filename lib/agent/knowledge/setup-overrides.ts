@@ -1,14 +1,10 @@
 /**
- * setup-overrides.ts — the playbook's numbers as settings (DAV-273).
- *
- * The setup catalog (setups.ts) ships the playbook's numbers as code:
- * the trade stop cap, the minimum ATR, the chase limit, the partial at N R,
- * the beat-that-sold review, the time limit. Dave's standing requirement is that the app is
- * customizable from a place he can see, so those numbers are also
- * settings: an account carries per-setup overrides, edited on
- * /settings/playbook, and every reader of the catalog applies them
- * through getSetup(id, overrides). The catalog is the default, never the
- * store; an empty override map is the playbook as written.
+ * setup-overrides.ts — the playbook's sell-distance numbers as settings
+ * (DAV-273). An account carries per-setup overrides of the widest sale and
+ * the closest one (in ATR), and every reader of the catalog applies them
+ * through getSetup(id, overrides). The chase limit, the partial, the time
+ * limit and the beat-and-fade review are trigger templates now
+ * (./playbooks). An empty override map is the playbook as written.
  *
  * Pure: the shape, the validation, and the merge. The loader is in
  * ./load-setup-overrides (prisma).
@@ -23,21 +19,6 @@ export const setupOverrideSchema = z
     stopMaxPct: z.number().positive().max(50).nullable().optional(),
     /** A stop closer than this many ATR is inside the noise. */
     minAtr: z.number().min(0).max(5).optional(),
-    /** Do not buy more than this far past the level, %. Null = no chase rule. */
-    chaseLimitPct: z.number().positive().max(25).nullable().optional(),
-    /** The fill writes a partial sale at this many R. Null = none. */
-    partialAtR: z.number().positive().max(10).nullable().optional(),
-    /** The fill writes the beat-the-market-sold review. */
-    beatAndFadeReview: z.boolean().optional(),
-    /**
-     * The fill writes a review this long after the buy. Null = none.
-     *
-     * The unit is the setup's own (`setup.time.unit`) — sessions for the
-     * short breakout clocks, calendar days for the 60-day checkpoints — and
-     * the settings screen says which beside the box. The stored key keeps
-     * its old name so accounts that already set one are not orphaned.
-     */
-    timeTradingDays: z.number().int().positive().max(365).nullable().optional(),
   })
   .strict();
 
@@ -65,28 +46,15 @@ export function applySetupOverride(setup: Setup, o: SetupOverride | undefined): 
   if (!o) return setup;
   return {
     ...setup,
-    entry: { ...setup.entry, chaseLimitPct: o.chaseLimitPct !== undefined ? o.chaseLimitPct : setup.entry.chaseLimitPct },
     stop: {
       ...setup.stop,
       maxPct: o.stopMaxPct !== undefined ? o.stopMaxPct : setup.stop.maxPct,
       minAtr: o.minAtr ?? setup.stop.minAtr,
     },
-    manage: {
-      partialAtR: o.partialAtR !== undefined ? o.partialAtR : setup.manage.partialAtR,
-      beatAndFadeReview: o.beatAndFadeReview ?? setup.manage.beatAndFadeReview,
-    },
-    time: { ...setup.time, count: o.timeTradingDays !== undefined ? o.timeTradingDays : setup.time.count },
   };
 }
 
 /** The numbers a setup exposes as settings, read back off a (possibly overridden) setup. */
 export function setupNumbers(s: Setup): Required<SetupOverride> {
-  return {
-    stopMaxPct: s.stop.maxPct,
-    minAtr: s.stop.minAtr,
-    chaseLimitPct: s.entry.chaseLimitPct,
-    partialAtR: s.manage.partialAtR,
-    beatAndFadeReview: s.manage.beatAndFadeReview,
-    timeTradingDays: s.time.count,
-  };
+  return { stopMaxPct: s.stop.maxPct, minAtr: s.stop.minAtr };
 }

@@ -535,7 +535,6 @@ export const getTheses = defineTool({
         lastReviewedAt: t.lastReviewedAt,
         createdAt: t.createdAt,
         triggers: ladderByThesisId.get(t.id) ?? [],
-        horizon: t.horizon,
       }),
       catalystDate: t.catalystDate,
       // Resolved ladder, not the stored column — a thesis protected

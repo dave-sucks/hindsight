@@ -62,6 +62,8 @@ function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
   let text: string;
   if (vars?.mode === "replace" && chip) text = chip;
   else if (v.none) text = chip ?? v.placeholder;
+  // A playbook template's chart level ("{pivot}") reads as written (lib/agent/knowledge/playbook-templates).
+  else if (typeof (c.value as unknown) === "string") text = String(c.value);
   else if ((c.value ?? 0) === 0 && v.zero) text = v.zero;
   else {
     const n = c.value ?? 0;

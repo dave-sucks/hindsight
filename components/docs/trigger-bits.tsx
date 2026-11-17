@@ -18,6 +18,8 @@ export interface PillSpec {
   level?: "THESIS" | "ANALYST" | "ACCOUNT";
   /** Its On fire; unset reads as the action's default. */
   fireMode?: FireMode;
+  /** A trim's size; unset is half. */
+  trimPct?: number;
 }
 
 function asTrigger(p: PillSpec, i: number): Trigger {
@@ -30,6 +32,7 @@ function asTrigger(p: PillSpec, i: number): Trigger {
     level,
     inherited: level !== "THESIS",
     fireMode: p.fireMode,
+    trimPct: p.trimPct,
   };
 }
 

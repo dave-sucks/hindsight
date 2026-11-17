@@ -46,8 +46,8 @@ Triggers are edited one at a time (DAV-242): `update_thesis` takes
 only way a trigger changes. **A stock has triggers and nothing else
 (2026-11-16):** no plan, no price target of our own ("target" is Wall
 Street's number, the StreetConsensus card), no level fields on any save, and
-no template that stamps a buy, floor or target (`defaultTriggersForHorizon`
-writes only a held stock's review clock). "The buy" and "the floor" are names
+no code that stamps a buy, floor, target or review clock: a playbook's lines
+are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook). "The buy" and "the floor" are names
 for kinds of trigger. **A trigger means what it says, whatever the stock's
 state (2026-11-16):** "Stop watching if below $X" is its own action
 (`STOP_WATCHING`), only on a stock we watch; fired on its saved timing it
@@ -799,7 +799,8 @@ When you spot something new, file it there — not here.)
 - lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
 - lib/agent/triggers/types.ts — the Trigger type
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
-- lib/agent/triggers/defaults.ts — a held stock's horizon review clock (`defaultTriggersForHorizon`) + accountStandingRules() (the account's add prompts) + cooldown defaults
+- lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts) + cooldown defaults
+- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded); the fill writes its FILL templates (`fillTemplateOps`)
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer

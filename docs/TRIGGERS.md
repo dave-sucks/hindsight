@@ -97,15 +97,11 @@ trigger carries is a visible field in the trigger form, or it doesn't exist.
 A stored trigger still carrying one of those keys reads without it
 (`declaredOnly` in `condition/catalog.ts`).
 
-**A day count is always calendar days — the catalog is not.** A setup's short
-time limits are written in sessions ("no progress in 10–20 sessions is a failed
-breakout"); its 60-day checkpoints are calendar days. The conversion happens in
-ONE place, `setupExitTriggers` in `lib/agent/triggers/setup-exits.ts`, at the
-moment a fill writes the trigger, and it walks the real NYSE calendar via
-`sessionsToCalendarDays` rather than multiplying by 7/5 — which is wrong by a
-day around every holiday. The trigger's sentence names both units. ABT's 10
-sessions from its 2026-09-11 buy is 14 calendar days; written straight through
-it was 10, and the review asked "has it reclaimed the prior high?" on session five.
+**A day count is always calendar days.** A playbook's short time limits are
+said in sessions ("no progress in 10–20 sessions is a failed breakout"); its
+fill template stores them as calendar days, written as listed (5 sessions = 7
+days, 10 = 14, 20 = 28; `lib/agent/knowledge/playbook-templates.ts`), so what
+fires is what Settings → Playbook shows. Nothing converts a count at the fill.
 
 **Two conditions.** The dialog takes a second condition and posts
 `{ match: "all", conditions: [a, b] }` — "earnings beat and down 3% on the day

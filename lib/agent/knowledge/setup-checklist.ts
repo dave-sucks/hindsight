@@ -17,9 +17,6 @@ export interface SetupChecklist {
   manage: string | null;
   /** The time limit, in words. */
   time: string;
-  /** What the fill wrote onto the stock from this setup: a partial at this many R, the beat-that-sold review. */
-  partialAtR: number | null;
-  beatAndFadeReview: boolean;
   /** The lines a fire checks, for this horizon (setupLines' decision cut): a row's `setup_lines`. */
   lines: string[];
 }
@@ -40,8 +37,6 @@ export function setupChecklist(
     // A horizon with no line of its own gets none, never another horizon's.
     manage: h ? (s.trail[h] ?? null) : (Object.values(s.trail)[0] ?? null),
     time: s.time.text,
-    partialAtR: s.manage.partialAtR,
-    beatAndFadeReview: s.manage.beatAndFadeReview,
     lines: setupLines(s, h, "decision"),
   };
 }

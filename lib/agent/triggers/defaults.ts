@@ -3,10 +3,10 @@
  *
  * A stock has triggers and nothing else: its buy, its floor and any upside
  * rule are written by an analyst or the owner, one trigger at a time, never
- * stamped from a template. What code still writes: a held stock's review
- * clock, keyed off its horizon (the morning run looks at a holding on that
- * schedule), the account's standing rules, and each trigger's cooldown and
- * fire mode when none is named.
+ * stamped from code. A playbook's lines are its templates, listed in
+ * Settings → Playbook (lib/agent/knowledge/playbooks.ts). What code still
+ * writes: the account's standing rules, and each trigger's cooldown and fire
+ * mode when none is named.
  *
  * IDs are auto-assigned via randomUUID() — stable for the life of the
  * trigger so cooldown stamps survive subsequent merges.
@@ -27,7 +27,7 @@ const createId = () => randomUUID();
 
 export type Horizon = "CATALYST" | "TARGET" | "TRADE" | "COMPOUNDER";
 
-/** HELD gets the horizon's review clock; a stock we watch (or a promoted one) gets nothing. */
+/** Which of a stock's states a trigger list is read in. */
 export type ThesisState = "HELD" | "WATCHING" | "PROMOTED";
 
 // ── The add prompts ────────────────────────────────────────────────────
@@ -107,10 +107,9 @@ export function accountStandingRules(): Trigger[] {
  * picks the name up on that schedule; without one, nothing touches it until
  * one of its own triggers fires.
  *
- * On a watch a clock is chosen, never stamped: whoever creates the thesis
- * decides how often to look at it, or that nobody should, by including a
- * review-clock trigger or leaving it out. A position we own is reviewed on
- * its horizon's schedule by default (defaultTriggersForHorizon).
+ * A clock is chosen, never stamped: whoever writes the stock's lines (the
+ * owner, an analyst, or its playbook's templates) decides how often to look
+ * at it. A holding with none inherits the account's.
  */
 export function reviewCadenceTrigger(days: number): Trigger {
   return {
@@ -125,14 +124,6 @@ export function reviewCadenceTrigger(days: number): Trigger {
   };
 }
 
-/** Days between reviews by horizon. Was HORIZON_REVIEW_DAYS. */
-export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
-  CATALYST: 1,
-  TRADE: 1,
-  TARGET: 7,
-  COMPOUNDER: 30,
-};
-
 /**
  * When this thesis is next due, given when it was last actually looked at.
  *
@@ -141,51 +132,34 @@ export const CADENCE_DAYS_BY_HORIZON: Record<Horizon, number> = {
  * deleted (DAV-195 L7) and every thesis past its last written date read as
  * overdue forever. A value derived at read time cannot freeze.
  *
- * Cadence comes from the thesis's own review trigger when it has one, and
- * from its horizon otherwise — which is exactly what the account rule would
- * hand it, so an inheriting thesis gets the same answer without resolving
- * the whole cascade on the hottest write path in the app.
+ * The cadence is the clock on the list it is given (the resolved ladder, so
+ * an inherited account clock counts); with none there is no review date.
  */
 export function nextReviewFrom(
   lastReviewedAt: Date,
   triggers: Array<{ predicate: When }> | null | undefined,
-  horizon: Horizon | null,
-): Date {
-  const own = resolvedCadenceDays(triggers ?? []);
-  const days = own ?? CADENCE_DAYS_BY_HORIZON[horizon ?? "TARGET"];
-  return new Date(lastReviewedAt.getTime() + days * 86_400_000);
+): Date | null {
+  const days = resolvedCadenceDays(triggers ?? []);
+  return days == null ? null : new Date(lastReviewedAt.getTime() + days * 86_400_000);
 }
 
 /**
  * The review date every reporting surface shows, derived at read time.
  *
- * Null when there is no scheduled review: terminal rows, and WATCHING rows
- * with no clock of their own (DAV-209 — a watched name is reviewed iff it
- * carries a clock; inventing one from the horizon would display a review
- * that will never fire). Everything else falls through to `nextReviewFrom`, whose
- * horizon fallback matches what a held row inherits from the account rule
- * even when the caller only has the thesis's own trigger list.
+ * Null when there is no scheduled review: terminal rows, and any row whose
+ * resolved ladder carries no clock (DAV-209 — inventing one would display a
+ * review that will never fire).
  */
 export function derivedNextReviewAt(thesis: {
   status: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
-  /** Trigger list — resolved ladder where the caller has one, else the raw column. */
+  /** The resolved ladder, so a clock inherited from the analyst or the account counts. */
   triggers: unknown;
-  horizon: string | null;
 }): Date | null {
   if (thesis.status === "RETIRED" || thesis.status === "PASSED") return null;
-  const triggers = Array.isArray(thesis.triggers)
-    ? (thesis.triggers as Array<{ predicate: When }>)
-    : [];
-  if (thesis.status === "WATCHING" && resolvedCadenceDays(triggers) == null) {
-    return null;
-  }
-  return nextReviewFrom(
-    thesis.lastReviewedAt ?? thesis.createdAt,
-    triggers,
-    (thesis.horizon ?? null) as Horizon | null,
-  );
+  const triggers = Array.isArray(thesis.triggers) ? (thesis.triggers as Array<{ predicate: When }>) : [];
+  return nextReviewFrom(thesis.lastReviewedAt ?? thesis.createdAt, triggers);
 }
 
 /** The cadence in force on a resolved ladder; null when nothing sets one. */
@@ -202,19 +176,6 @@ export function resolvedCadenceDays(
     if (days != null && days > 0) return days;
   }
   return null;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────
-
-/**
- * What code writes on a thesis by its horizon: a held stock's review clock
- * (a CATALYST or TRADE daily, a TARGET weekly, a COMPOUNDER monthly), source
- * DEFAULT. A stock we watch, or a promoted one, gets nothing: its triggers are
- * the ones its analyst wrote. No buy, floor or target is ever stamped here.
- */
-export function defaultTriggersForHorizon(horizon: Horizon, state: ThesisState = "HELD"): Trigger[] {
-  if (state !== "HELD") return [];
-  return [{ ...reviewCadenceTrigger(CADENCE_DAYS_BY_HORIZON[horizon]), source: "DEFAULT" as const }];
 }
 
 /** Every note the code in this file writes. Older rows carry them with no source, so note.ts matches the words. */

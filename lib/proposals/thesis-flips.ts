@@ -22,12 +22,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { canonicalLevels } from "@/lib/agent/triggers/price-levels";
-import {
-  defaultTriggersForHorizon,
-  reviewCadenceTrigger,
-  type Horizon,
-} from "@/lib/agent/triggers/defaults";
-import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   acceptedOps,
@@ -36,9 +31,8 @@ import {
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { setupExitTriggers } from "@/lib/agent/triggers/setup-exits";
-import { getSetup } from "@/lib/agent/knowledge/setups";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
+import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
+import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
@@ -104,10 +98,10 @@ export async function promoteThesisOnApproval(opts: {
  *     upside level goes to the order's target when it names one
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
- *   - adds the horizon's held review clock when its bucket is missing. Sell
- *     rules and scale-ins are the
- *     analyst's and the account's rules and apply by inheritance, so
- *     editing them reaches every holding instead of none
+ *   - writes the stock's playbook's fill templates as Settings → Playbook
+ *     lists them (lib/agent/knowledge/playbooks.ts); one whose kind the stock
+ *     already has is not written, and its Activity line says so. No playbook,
+ *     nothing: the analyst's and the account's rules apply by inheritance
  *   - recomputes the displayed level columns FROM the resulting triggers
  *   - stamps entryPrice with the FILL price: once held, entry is a fact
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
@@ -140,30 +134,18 @@ export async function armHeldLadderOnFill(opts: {
       prisma.thesis.findFirst({
         where: { ticker: opts.ticker, status, researchRun: { agentConfigId: opts.analystId } },
         orderBy: { createdAt: "desc" },
-        select: { id: true, status: true, direction: true, horizon: true, setupId: true, accountId: true, catalystDate: true, triggers: true },
+        select: { id: true, status: true, direction: true, setupId: true, accountId: true, catalystDate: true, triggers: true },
       });
     const watchingThesis = (await find("PROMOTED")) ?? (await find("WATCHING"));
     if (!watchingThesis) return;
 
-    const horizon = watchingThesis.horizon as Horizon | null;
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
-    // A held stock's review clock, keyed off its horizon — nothing else from a template.
-    const heldClock = horizon ? defaultTriggersForHorizon(horizon, "HELD") : [];
-    // The stock's own exits from the setup it was bought on (DAV-254): the
-    // time limit counted from this buy, a partial at N R, the beat-the-
-    // market-sold review. Seat style (the trail) stays on the analyst.
-    const setup = watchingThesis.setupId
-      ? getSetup(watchingThesis.setupId, await loadSetupOverrides(watchingThesis.accountId))
-      : undefined;
-    const setupExits = setup
-      ? setupExitTriggers({
-          setup,
-          horizon,
-          entry: opts.fillPrice,
-          stop: opts.stopLoss,
-          mintId: () => randomUUID(),
-        })
-      : [];
+    // The playbook's fill templates, read against the lines left once the buy and Stop watching lines come off.
+    const watchLines = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING";
+    const playbook = fillTemplateOps(
+      watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
+      stored.filter((t) => !watchLines(t)),
+    );
     // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
     // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
     const chooser = opts.stopIsOwners ? "PRINCIPAL" : opts.stopReason?.trim() ? "AGENT" : null;
@@ -172,19 +154,14 @@ export async function armHeldLadderOnFill(opts: {
         ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, rationale: chooser === "PRINCIPAL" ? addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) : opts.stopReason?.trim() }]
         : [];
     const ops: TriggerOp[] = [
-      ...stored.filter((t) => t.action === "ENTER" || t.action === "STOP_WATCHING").map((t) => ({ op: "remove" as const, id: t.id })),
+      ...stored.filter(watchLines).map((t) => ({ op: "remove" as const, id: t.id })),
       ...(chooser ? [] : floorOp),
       ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-      ...heldClock.map((t) => ({ op: "add" as const, trigger: t })),
-      ...setupExits.map((t) => ({ op: "add" as const, trigger: t })),
+      ...playbook.ops,
     ];
-    // A clock or setup exit whose bucket the analyst already filled is left
-    // alone: the add would become an edit of theirs, and the fill must not
-    // move a level the analyst chose.
-    const taken = new Set(stored.map(triggerSlot));
     const system = applyTriggerOps({
       stored,
-      ops: ops.filter((o) => o.op !== "add" || !taken.has(triggerSlot(o.trigger))),
+      ops,
       direction: watchingThesis.direction,
       status: "HOLDING",
       actor: "SYSTEM",
@@ -246,7 +223,7 @@ export async function armHeldLadderOnFill(opts: {
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
           status: { from: watchingThesis.status, to: "HOLDING" },
-          triggerOps: { from: null, to: acceptedOps(results) },
+          triggerOps: { from: null, to: [...acceptedOps(results), ...playbook.kept] },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,

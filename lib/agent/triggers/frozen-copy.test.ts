@@ -21,7 +21,7 @@ import {
   sharedRationalesAcross,
   triggerValue,
 } from "@/lib/agent/triggers/frozen-copy";
-import { defaultTriggersForHorizon } from "@/lib/agent/triggers/defaults";
+import { SETUPS } from "@/lib/agent/knowledge/setups";
 import { accountSeedTriggers } from "@/lib/agent/triggers/seed-account";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -163,26 +163,16 @@ describe("DAV-322 — the copies come off", () => {
 });
 
 /**
- * The other half: the template that made them has to stop.
- *
- * Checked as an invariant over every horizon rather than one example,
- * because the bug was one horizon's template quietly carrying a rung the
- * account already had. A new horizon added later gets caught by this.
+ * The other half: the template that made them has to stop. Code stamps no
+ * line on a holding by its horizon any more; a playbook's fill templates are
+ * the stock's own rule, listed in Settings → Playbook.
  */
 describe("DAV-322 — a new holding is not given a copy in the first place", () => {
-  it("8. no horizon's held template stamps a rung the account already carries", () => {
+  it("8. no playbook's fill template is a copy of an account rule", () => {
     const accountBuckets = new Set(accountSeedTriggers().map(triggerSlot));
-    for (const horizon of ["COMPOUNDER", "TARGET", "TRADE", "CATALYST"] as const) {
-      const stamped = defaultTriggersForHorizon(horizon, "HELD");
-      const clash = stamped.filter((s) => accountBuckets.has(triggerSlot(s)));
-      // The review clock is the one shared bucket that is legitimately the
-      // thesis's own — a CATALYST name reviews on its own schedule, not the
-      // account's 7 days. Everything else is the account's to own.
-      const notTheClock = clash.filter((c) => shapeName(c.predicate) !== "repeat");
-      expect({ horizon, stamped: notTheClock.map(triggerSlot) }).toEqual({
-        horizon,
-        stamped: [],
-      });
+    for (const setup of SETUPS) {
+      const fills = setup.triggers.filter((t) => t.writtenOn === "FILL" && shapeName(t.predicate) !== "repeat");
+      expect({ setup: setup.id, copies: fills.filter((t) => accountBuckets.has(triggerSlot(t as never))).length }).toEqual({ setup: setup.id, copies: 0 });
     }
   });
 });
