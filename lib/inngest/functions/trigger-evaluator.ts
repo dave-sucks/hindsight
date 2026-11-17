@@ -26,9 +26,9 @@
 // The close pass: ticks from 16:20 to 16:34 ET on a trading day evaluate
 // only rungs carrying a `basis: "close"` price level, with the day's close
 // as the price. The 5-minute passes never fire those — "closes above the
-// pivot" is not an intraday poke. A watched stock's sale line is one of them
-// whatever it stores: we stop watching on a close below it, never an
-// intraday dip (watchedFloorOnClose, DAV-337). Cooldown makes the three
+// pivot" is not an intraday poke. A trigger fires on the timing it saved:
+// a Stop watching line saved "only on the close" ends a watch on a close
+// below it, never an intraday dip (DAV-337). Cooldown makes the three
 // close ticks fire at most once. It also takes down a proposal a trigger made
 // when none of its triggers holds on the close (lib/proposals/trigger-proposals.ts).
 //
@@ -61,7 +61,6 @@ import {
 } from "@/lib/agent/triggers/earnings";
 import type { EarningsWindow } from "@/lib/agent/triggers/earnings";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
-import { watchedFloorOnClose } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { waitsForMorning } from "@/lib/agent/triggers/fire-mode";
 import { stopWatching } from "@/lib/agent/triggers/stop-watching";
@@ -515,13 +514,11 @@ export const triggerEvaluator = inngest.createFunction(
         .map((thesis) => ({
           thesis,
           analystId: thesis.researchRun.agentConfigId,
-          // A watched stock's sale line reads the close (DAV-337): a morning
-          // dip through it doesn't end the watch.
           ladder: resolveThesisLadder(
             thesis,
             levelSources.get(thesis.researchRun.agentConfigId ?? ""),
             `thesis=${thesis.id}`,
-          ).map((t) => watchedFloorOnClose(t, thesis)),
+          ),
         }))
         // A paused analyst's stock keeps only a held stock's sales.
         .map((c) =>
@@ -797,9 +794,9 @@ export const triggerEvaluator = inngest.createFunction(
           ),
           now,
         });
-        // A sale line on a stock we only watch stops watching it: retired, one
-        // Activity line, no run and no approval (no money moves).
-        const stop = thesis.status === "WATCHING" ? fires.find((t) => t.action === "EXIT") : undefined;
+        // A Stop watching line ends the watch: retired, one Activity line, no
+        // run and no approval (no money moves).
+        const stop = thesis.status === "WATCHING" ? fires.find((t) => t.action === "STOP_WATCHING") : undefined;
         if (stop && (await stopWatching({ thesisId: thesis.id, trigger: stop, priceAtTime: latestQuote?.price ?? null })).retired) continue;
         for (const t of fires) {
           const action = t.action;
@@ -831,13 +828,13 @@ export const triggerEvaluator = inngest.createFunction(
                       })
                     : null;
 
-          // A sale on a stock we don't hold and can't stop watching (a promoted
-          // row) starts no run: the fire is written down for the morning run.
-          if (action === "EXIT" && thesis.status !== "HOLDING") {
+          // A Stop watching line on a row it can't retire (a promoted one)
+          // starts no run: the fire is written down for the morning run.
+          if (action === "STOP_WATCHING") {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",
-              summary: sentenceOf(t, false),
+              summary: sentenceOf(t),
               triggerId: t.id,
               ...ruleOnTheLine(t),
               signalIds: [],
@@ -874,7 +871,7 @@ export const triggerEvaluator = inngest.createFunction(
             action,
             firedPrice: latestQuote?.price ?? null,
             firedContext,
-            sentence: sentenceOf(t, thesis.status === "HOLDING"),
+            sentence: sentenceOf(t),
           });
         }
       }

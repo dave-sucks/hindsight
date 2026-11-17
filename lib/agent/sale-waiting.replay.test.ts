@@ -163,7 +163,7 @@ describe("MU 10-13 14:00:57 UTC: the 10-12 sale has expired, so the sale is back
 
 describe("NVDA 10-09 08:00 ET: the fired $236 sale was its only work, and that sale was waiting", () => {
   it("the row is the read's: each trigger says what the read showed", () => {
-    expect(nv.thesis.triggers.map((t) => sentenceOf(t, true))).toEqual(nv.says);
+    expect(nv.thesis.triggers.map((t) => sentenceOf(t))).toEqual(nv.says);
     expect(nv.readSituations).toEqual(["PROTECTIVE_SALE"]);
   });
 

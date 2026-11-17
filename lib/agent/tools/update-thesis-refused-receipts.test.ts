@@ -8,6 +8,10 @@
  * reply carried `{ op: "remove", ok: true, text: "Removed: buy above $165" }`.
  * The analyst believed it, removed the floor and target in its next call, and
  * VST was left with the one trigger it meant to delete.
+ *
+ * Since 2026-11-16 a watch's floor is its Stop watching line and needs no
+ * buy, so that call lands. A call the ladder check still refuses whole (a
+ * floor edited above the buy) is the one the receipts are pinned on.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -83,7 +87,8 @@ function vst() {
     triggers: [
       { id: CADENCE, predicate: { watch: "repeat", value: 30 }, action: "REVIEW", rationale: "Monthly review.", source: "DEFAULT", cooldownDays: 7 },
       { id: BUY, predicate: { watch: "price", is: "above", value: 165 }, action: "ENTER", rationale: "Only revisit as a buy above $165.", source: "AGENT", cooldownDays: 1 },
-      { id: FLOOR, predicate: { watch: "price", is: "below", value: 132 }, action: "EXIT", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT", cooldownDays: 1 },
+      // The watch's floor, as the 2026-11-16 migration stores it.
+      { id: FLOOR, predicate: { watch: "price", is: "below", value: 132, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Floor — sell if the price drops to $132.00.", source: "DEFAULT", cooldownDays: 1 },
       { id: TARGET, predicate: { watch: "price", is: "above", value: 240 }, action: "REVIEW", rationale: "Target $240.00 — decide here.", source: "AGENT", cooldownDays: 1 },
     ],
     triggerState: {},
@@ -108,15 +113,21 @@ beforeEach(() => {
 });
 
 describe("update_thesis — a refused call claims no change (DAV-258)", () => {
-  it("VST 09-11: removing only the buy is refused, and every op says it did not land", async () => {
+  it("VST 09-11: removing only the buy lands now — the floor that stays is a Stop watching line, which needs no buy", async () => {
     const result = await run({ remove_trigger_ids: [BUY, CADENCE] });
+    expect(result.data?.refused_fields).toBeUndefined();
+    expect((result.data?.trigger_ops as TriggerOpResult[]).every((o) => o.ok)).toBe(true);
+  });
+
+  it("a call the ladder check refuses (the floor edited above the buy) is refused whole, and every op says it did not land", async () => {
+    const result = await run({ remove_trigger_ids: [CADENCE], edit_triggers: [{ id: FLOOR, value: 170, rationale: "Above the reclaim." }] });
     // The trigger changes are refused together; the note lands as a review.
     expect(result.data?.ok).toBe(true);
     expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers", reason: expect.stringContaining("To take them all off") })]);
     expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
 
     const ops = result.data?.trigger_ops as TriggerOpResult[];
-    expect(ops.map((o) => o.id).sort()).toEqual([BUY, CADENCE].sort());
+    expect(ops.map((o) => o.id).sort()).toEqual([FLOOR, CADENCE].sort());
     for (const op of ops) {
       expect(op.ok).toBe(false);
       expect(op.reason).toContain("Not applied");
@@ -124,7 +135,7 @@ describe("update_thesis — a refused call claims no change (DAV-258)", () => {
   });
 
   it("the refusal names the exact set-down call, and following it lands", async () => {
-    const refused = await run({ remove_trigger_ids: [BUY, CADENCE] });
+    const refused = await run({ remove_trigger_ids: [CADENCE], edit_triggers: [{ id: FLOOR, value: 170, rationale: "Above the reclaim." }] });
     const message = String((refused.data?.refused_fields as Array<{ field: string; reason: string }>).find((f) => f.field === "triggers")?.reason);
     expect(message).toContain("To take them all off");
     // Buy, floor and target by id — not the review cadence, which survives a set-down.

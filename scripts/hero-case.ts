@@ -198,7 +198,7 @@ function savedRowFromOldCase(p: Record<string, any>): Record<string, unknown> {
     coreBelief: t.coreBelief, keyAssumptions: t.keyAssumptions, invalidationConds: t.invalidationConds,
     entryPrice: t.entryPrice, targetPrice: t.targetPrice, stopLoss: t.stopLoss,
     position: held ? { quantity: p.position.quantity, avgCost: p.position.avgCost, peakPrice: p.position.peakPrice ?? null } : null,
-    triggers: ((t.allTriggers ?? []) as Trigger[]).map((x) => ({ id: x.id, says: sentenceOf(x, held), rationale: x.rationale })),
+    triggers: ((t.allTriggers ?? []) as Trigger[]).map((x) => ({ id: x.id, says: sentenceOf(x), rationale: x.rationale })),
     snapshot: t.snapshotText ? { text: t.snapshotText } : null,
     bullCase: { bullets: ((t.bullCaseBullets ?? []) as string[]).map((text) => ({ text })) },
     bearCase: { bullets: ((t.bearCaseBullets ?? []) as string[]).map((text) => ({ text })) },

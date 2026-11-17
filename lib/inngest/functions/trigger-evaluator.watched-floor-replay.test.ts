@@ -1,7 +1,9 @@
 /**
- * trigger-evaluator.watched-floor-replay.test.ts — a watched stock's sale
- * line ("Stop watching if below $359.87") ends the watch on a close below
- * it, never a morning dip (DAV-337), and retires the thesis as dropped.
+ * trigger-evaluator.watched-floor-replay.test.ts — a watched stock's Stop
+ * watching line ("Stop watching if below $359.87 · only on the close") ends
+ * the watch on a close below it, never a morning dip (DAV-337), and retires
+ * the thesis as dropped. The timing is the line's own saved setting: nothing
+ * reads it on the close at check time, so one saved intraday fires intraday.
  *
  * TRV, Secular Compounder. Plan written 23:02 ET on 2026-09-28: buy $372.51
  * on the reclaim of the 50-day, floor $359.87, target $425. The floor sat
@@ -12,7 +14,8 @@
  *
  * This runs the evaluator's own cron handler — the real ladder resolution,
  * the real check, the real set-down write — against TRV's rows as that tick
- * found them (lib/agent/__fixtures__/trv-watched-floor-2026-09-29.json), at
+ * found them (lib/agent/__fixtures__/trv-watched-floor-2026-09-29.json), its
+ * floor stored as the 2026-11-16 migration stores it (STOP_WATCHING, on the close), at
  * the real times. Only the edges are doubled: the database, the quote, the
  * day's bar, the earnings calendar, the SEC read and the chart snapshot.
  */
@@ -41,6 +44,10 @@ const TICK_0930 = new Date(fx.setDown.at); // 09:30:27 ET, when production set t
 const CLOSE_PASS = new Date("2026-09-29T20:20:00Z"); // 16:20 ET
 const PLAN_IDS = fx.setDown.removed.map((r) => r.id); // buy, floor, target
 
+/** TRV's triggers as the migration stores a watch's: its floor (a sale, in the fixture) becomes its Stop watching line, on the close unless `close` is false. */
+const watched = (close = true): Trig[] =>
+  fx.thesisBefore.triggers.map((t) => (t.action === "EXIT" ? { ...t, action: "STOP_WATCHING", predicate: { ...t.predicate, ...(close ? { settings: { close: true } } : {}) } } : t));
+
 interface Tick {
   db: PrismaDouble;
   sent: Array<{ name: string; data: Record<string, unknown> }>;
@@ -56,7 +63,8 @@ async function tick(
   price: number,
   opts: { held?: boolean; triggers?: Trig[]; prior?: number; order?: Record<string, unknown>[]; position?: Record<string, unknown>[] } = {},
 ): Promise<Tick> {
-  const triggers = opts.triggers ?? (opts.held ? fx.thesisBefore.triggers.filter((t) => t.action !== "ENTER") : fx.thesisBefore.triggers);
+  // Held: the buy is gone and the floor is the holding's sale, as the fill writes it.
+  const triggers = opts.triggers ?? (opts.held ? fx.thesisBefore.triggers.filter((t) => t.action !== "ENTER") : watched());
   const prior = opts.prior ?? PRIOR_CLOSE;
   const db = prismaDouble({
     thesis: [
@@ -172,7 +180,7 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     expect(rows[0]).toMatchObject({
       type: "TRIGGER_FIRED",
       triggerId: fx.setDown.triggerId,
-      triggerAction: "EXIT",
+      triggerAction: "STOP_WATCHING",
       priceAtTime: 358.9,
       summary: "Stop watching if below $359.87 · only on the close",
       fieldChanges: { status: { from: "WATCHING", to: "RETIRED" }, retiredReason: { from: null, to: "DROPPED" } },
@@ -180,12 +188,21 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
     expect(trv(t)).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED", closeReason: "Stop watching if below $359.87 · only on the close" });
     // Nothing is taken off the stock and nothing is stamped on it: its triggers are as they were.
     expect(idsOf(t)).toEqual(fx.thesisBefore.triggers.map((x) => x.id));
+    expect((trv(t).triggers as Trig[]).find((x) => x.id === fx.setDown.triggerId)?.action).toBe("STOP_WATCHING");
     // No run and no approval: no money moves.
     expect(t.sent).toEqual([]);
     expect(t.db.store.order ?? []).toEqual([]);
   });
 
-  it("on a stock we hold, the same floor is a sale and still fires intraday", async () => {
+  it("a Stop watching line saved intraday fires intraday: the 09:30 dip retires the watch, because that is what it says", async () => {
+    const t = await tick(TICK_0930, fx.setDown.price, { triggers: watched(false) });
+    expect(t.result).toMatchObject({ session: "INTRADAY" });
+    expect(audit(t)).toEqual([expect.objectContaining({ type: "TRIGGER_FIRED", triggerAction: "STOP_WATCHING", summary: "Stop watching if below $359.87" })]);
+    expect(trv(t)).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED" });
+    expect(t.sent).toEqual([]);
+  });
+
+  it("on a stock we hold, its sale is a Sell line and fires intraday", async () => {
     const t = await tick(TICK_0930, fx.setDown.price, { held: true });
     expect(t.sent).toEqual([
       expect.objectContaining({
@@ -201,12 +218,12 @@ describe("TRV 2026-09-29 — a watched plan and a floor just under the price", (
 /**
  * A pullback buy waiting for approval when the watch ends. The buy ("below
  * $100") is still true at an $89 close, so the close pass keeps its proposal
- * (withdrawOnTheClose); the $90 sale line closes below, the watch retires, and
+ * (withdrawOnTheClose); the $90 Stop watching line closes below, the watch retires, and
  * the waiting buy goes with it: WITHDRAWN, its staged position CANCELLED.
  */
 describe("a buy waiting for approval when its watch ends", () => {
   const BUY = { id: "buy-100", action: "ENTER", predicate: { watch: "price", is: "below", value: 100 }, rationale: "I buy the pullback to $100." };
-  const LINE = { id: "line-90", action: "EXIT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Below $90 the base has failed." };
+  const LINE = { id: "line-90", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 90, settings: { close: true } }, rationale: "Below $90 the base has failed." };
   const waiting = {
     order: [{ id: "ord-buy", userId: REPLAY_ACCOUNT_ID, positionId: "pos-buy", thesisId: fx.thesisBefore.id, symbol: "TRV", side: "BUY", intent: "OPEN", status: "AWAITING_APPROVAL", triggerIds: [BUY.id], quantity: 10, orderType: "MARKET", createdAt: new Date("2026-09-29T15:00:00Z") }],
     position: [positionRow({ id: "pos-buy", analystId: fx.analyst.id, symbol: "TRV", status: "PENDING_APPROVAL", avgCost: 99, quantity: 10 })],

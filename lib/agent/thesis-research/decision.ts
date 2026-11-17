@@ -220,29 +220,18 @@ export function validateThesisDecision(
     const averages = candidates
       .filter((c) => c.ma != null && c.ma.rising)
       .map((c) => `$${c.ma!.value.toFixed(2)} (the rising ${c.label})`);
-    const atr = opts.chart?.atr14;
     const next = pullback
       ? averages.length
-        ? ` Write it on MA_PULLBACK: a buy at ${averages.join(" or ")}, a floor ${atr != null ? `1 ATR ($${atr.toFixed(2)}) under it` : "1 ATR under it"} until the pullback low prints — or keep the view with no buy (no setup_id) and the review that brings it back.`
-        : " Write it on MA_PULLBACK (a buy at a rising 20- or 50-day, a floor 1 ATR under it) if the trend allows — or keep the view with no buy (no setup_id) and the review that brings it back."
+        ? ` Write it on MA_PULLBACK: a buy at ${averages.join(" or ")}, and a Stop watching line where the pullback fails (a close under that average) — or keep the view with no buy (no setup_id) and the review that brings it back.`
+        : " Write it on MA_PULLBACK (a buy at a rising 20- or 50-day, a Stop watching line where the pullback fails) if the trend allows — or keep the view with no buy (no setup_id) and the review that brings it back."
       : " Pick a setup that applies, or keep the view with no buy (no setup_id) and the review that brings it back.";
     errors.push(
       `setup_id: ${setup.name} applies days ${window[0]}–${window[1]} after the report; the last report was ${since} days ago, so it no longer does.${next}`,
     );
   }
-  if (directional && priced && entry != null && stop != null && entry > 0 && stop > 0) {
-    const atr = opts.chart?.atr14;
-    const dist = Math.abs(entry - stop);
-    if (!held && setup && atr != null && atr > 0 && dist < setup.stop.minAtr * atr) {
-      errors.push(
-        `floor: $${stop} is ${(dist / atr).toFixed(2)} ATR from the $${entry} buy (ATR $${atr.toFixed(2)}). ${setup.name} needs the floor at least ${setup.stop.minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least $${(setup.stop.minAtr * atr).toFixed(2)} from the buy, or PASS.`,
-      );
-    }
-    if (!held && setup?.stop.maxPct != null && d.horizon === "TRADE" && (dist / entry) * 100 > setup.stop.maxPct) {
-      errors.push(
-        `floor: $${stop} is ${((dist / entry) * 100).toFixed(1)}% from the buy; a TRADE on ${setup.name} caps it at ${setup.stop.maxPct}%. If structure needs a wider floor, the position is smaller — not the floor wider. Tighten it, or use a longer horizon.`,
-      );
-    }
+  // The setup's sale rules (minimum ATR, widest %) are read on the sale the buy names (place_trade's
+  // saleRuleProblem), never on a watch's Stop watching line: that line never sells.
+  if (directional && priced && entry != null && entry > 0) {
     const pivot = opts.chart?.pivot;
     if (!held && setup?.entry.chaseLimitPct != null && pivot != null && pivot > 0 && d.direction === "LONG" && entry > pivot * (1 + setup.entry.chaseLimitPct / 100)) {
       errors.push(
@@ -352,16 +341,15 @@ export function validateThesisDecision(
       // record/update enforce, surfaced here so the repair is one step.
       const actions = new Set(parsed.data.map((t) => t.action));
       if (held) {
-        if (actions.has("ENTER")) {
-          errors.push("triggers: this thesis is HOLDING (position open) — ENTER triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
+        if (actions.has("ENTER") || actions.has("STOP_WATCHING")) {
+          errors.push("triggers: this thesis is HOLDING (position open) — ENTER and STOP_WATCHING triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
         }
       } else {
-        // Mint, WATCHING refresh, PROMOTED refresh: no position exists. A
-        // floor (EXIT) is legal: on a stock we watch it stops watching it.
-        const forbidden = ["TRIM", "ADD"].filter((a) => actions.has(a as never));
+        // Mint, WATCHING refresh, PROMOTED refresh: no position exists, so nothing to sell.
+        const forbidden = ["TRIM", "ADD", "EXIT"].filter((a) => actions.has(a as never));
         if (forbidden.length > 0) {
           errors.push(
-            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, EXIT (the floor: on a watch it stops watching) and REVIEW.`,
+            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, STOP_WATCHING ("Stop watching if below $X": it ends the watch, never sells) and REVIEW.`,
           );
         }
       }

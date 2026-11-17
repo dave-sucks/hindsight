@@ -32,7 +32,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
   // 2026-11-16: +90, the writer writes the buy and the floor as triggers (no entry / target / stop fields), and a watch's floor stops watching it.
-  writer: 17_073,
+  // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
+  // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
+  writer: 17_382,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -57,14 +59,18 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-14: +87 each, get_portfolio_context names the day's move, the value, day and lifetime, and that they are the portfolio snapshot's.
   // 2026-11-16: +69 each, update_thesis says an empty level stays as it is and a level is removed by id in remove_trigger_ids.
   // 2026-11-16: −1,332 / −1,219, the entry / target / stop fields and their reasons leave update_thesis; a level is a trigger edit by id.
-  "research-run": 30_877,
-  tactical: 26_857,
+  // 2026-11-16: +669 each, place_trade takes sell_if_below and sell_reason (the holding's sale comes with the buy), and the trigger action says EXIT is a holding's and STOP_WATCHING a watch's.
+  // 2026-11-16: +17, a watch's lines are its buy and its Stop watching line (update_thesis's ARCHIVED words); the triggers, not a floor, hold the price.
+  "research-run": 31_563,
+  tactical: 27_526,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
   // 2026-11-16: +69, the same update_thesis description.
   // 2026-11-16: −2,509, the same fields leave update_thesis and record_thesis.
-  principal: 61_920,
+  // 2026-11-16: +822, the same place_trade fields and trigger action text.
+  // 2026-11-16: +21, the same field words.
+  principal: 62_763,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

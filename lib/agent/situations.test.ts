@@ -155,7 +155,7 @@ describe("the situations for a person: the sheet's flag line", () => {
 });
 
 // The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15).
-const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 2_850, REVIEW_DUE: 7_130, NOTE_TO_ANSWER: 3_240 };
+const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_035, REVIEW_DUE: 7_130, NOTE_TO_ANSWER: 3_240 };
 const capOf = (code: string) => CAP[code as SituationCode] ?? 2_200;
 
 describe("the guidance: each situation's text, once", () => {
@@ -349,14 +349,14 @@ describe("the words per run (step 12, part 2)", () => {
       for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
     }
   });
-  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and floor off by id and the morning run decides", () => {
+  it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and the Stop watching line off by id and the morning run decides", () => {
     const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) {
       expect([word, text.includes(word)]).toEqual([word, false]);
       expect([word, promoted.includes(word)]).toEqual([word, false]);
     }
-    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and floor off by id (remove_trigger_ids) and say so in the note; the morning run decides");
+    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and its Stop watching line off by id (remove_trigger_ids) and say so in the note; the morning run decides");
     expect(guidanceFor(["PROMOTED_AWAITING"], "INTRADAY_TACTICAL").PROMOTED_AWAITING).toContain("the stock stays promoted and the morning run decides");
   });
   it("the morning run and the chat keep the verbs", () => {

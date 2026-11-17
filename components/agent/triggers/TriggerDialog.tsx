@@ -22,7 +22,7 @@ import {
   type TriggerType,
 } from "@/lib/agent/triggers/condition";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
-import { DEFAULT_TRIM_PCT, defaultFireMode } from "@/lib/agent/triggers/fire-mode";
+import { DEFAULT_TRIM_PCT, defaultFireMode, fireModeWords } from "@/lib/agent/triggers/fire-mode";
 import type { Trigger } from "@/lib/types/thesis-sheet";
 import { ConditionFields, FieldLabel, OnFireSelect, TYPE_ICON, TrimSizeField, draftOf, useTriggerRequest, whenOf, type Draft, type Level } from "./TriggerFields";
 
@@ -112,7 +112,6 @@ export function TriggerDialog({
 }: AddProps & { open: boolean; onOpenChange: (open: boolean) => void; type: TriggerType; trigger?: Trigger }) {
   const standing = level !== "THESIS";
   const ctx = { level, held };
-  const sells = held || standing;
   const first = () => (trigger ? draftOf(trigger) : null) ?? freshDraft(type, level, held);
   const [draft, setDraft] = useState<Draft>(first);
   const { pending, err, setErr, send } = useTriggerRequest(() => {
@@ -162,12 +161,12 @@ export function TriggerDialog({
               disabled={pending}
             >
               <SelectTrigger width="full" aria-label="Action">
-                <SelectValue>{actionLabel(action, sells)}</SelectValue>
+                <SelectValue>{actionLabel(action)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {actions.map((a) => (
                   <SelectItem key={a} value={a}>
-                    {actionLabel(a, sells)}
+                    {actionLabel(a)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -211,7 +210,14 @@ export function TriggerDialog({
 
           {trimSize ? <TrimSizeField trimPct={draft.trimPct} onTrimPct={(trimPct) => update({ trimPct })} disabled={pending} /> : null}
           {trimProblem ? <p className="text-xs text-muted-foreground">{trimProblem}</p> : null}
-          <OnFireSelect action={action} standing={standing} value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} />
+          {action === "STOP_WATCHING" ? (
+            <div className="space-y-1.5">
+              <FieldLabel>On fire</FieldLabel>
+              <p className="text-sm text-muted-foreground">{fireModeWords({ action })}. No money moves.</p>
+            </div>
+          ) : (
+            <OnFireSelect action={action} standing={standing} value={draft.fireMode} onChange={(fireMode) => update({ fireMode })} disabled={pending} />
+          )}
           {err ? <p className="text-xs text-destructive">{err}</p> : null}
         </div>
 

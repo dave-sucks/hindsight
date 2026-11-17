@@ -34,7 +34,7 @@ Every thesis is researched by the Writer. A stock reaches it when [Discovery](..
 
 The Writer reads the numbers, the filings and the web, and comes back with one of three answers:
 
-- **Watch it, with a buy.** A buy trigger and a floor (and a take-profit where the setup has one), priced from the setup's rules and the chart. On a stock we watch the floor reads "Stop watching if below $X": a close below it retires the watch. The thesis is **Watching**, and with a review clock the sheet calls it an **Agent Watch**: the analyst looks at it again on that schedule.
+- **Watch it, with a buy.** A buy trigger and the place it would stop watching (and a take-profit where the setup has one), priced from the setup's rules and the chart. A watch has no floor: its "Stop watching if below $X · only on the close" line retires the watch on a close below, and it never sells. The thesis is **Watching**, and with a review clock the sheet calls it an **Agent Watch**: the analyst looks at it again on that schedule.
 - **Watch it, with no buy yet.** Strong but not ready to price. It waits on a wake, like a price or a date, that brings it back for a fresh look.
 - **Pass.** Saved as **Passed**, with what would change the verdict, so the stock isn't pitched again without a reason.
 
@@ -42,7 +42,7 @@ The Writer reads the numbers, the filings and the web, and comes back with one o
 
 While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. On the live account, nothing fills until you approve it.
 
-When the broker takes the buy, the thesis becomes **Holding**. It keeps its triggers: the buy comes off, the watch's floor becomes the holding's sale line, and a holding's review clock and its setup's exits are added. Nothing is stamped from the fill price. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
+When the broker takes the buy, the thesis becomes **Holding**. It keeps its other triggers: the buy and the Stop watching line come off, "Sell if below" goes on at the price you approved on the proposal (the analyst's, or yours from Edit & Approve or the Trade ticket), and a holding's review clock and its setup's exits are added. Nothing is stamped from the fill price. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
 
 ## When an agent looks at it
 
@@ -106,7 +106,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 29, chat 18, a morning run 15, a trigger run 9.
 
 #### Status changes
-The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` removes the buy, writes the order's own floor and upside levels onto their triggers (the row's own, or yours from the ticket), applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, stamps the entry with the fill price, adds the held review clock (`defaultTriggersForHorizon`, the only thing it writes from the horizon) and the setup's exits, and leaves the sell rules inherited. A watch's sale line firing on the close retires it as DROPPED (`stopWatching`, `lib/agent/triggers/stop-watching.ts`). A sale retires it as SOLD, unless it was a profit-take or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
+The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` removes the buy and the Stop watching lines, writes the order's own sale ("Sell if below" at its `stopLoss`, with the analyst's `stopReason` as its note, or yours from the ticket) and upside level onto their triggers, applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, stamps the entry with the fill price, adds the held review clock (`defaultTriggersForHorizon`, the only thing it writes from the horizon) and the setup's exits, and leaves the sell rules inherited. A watch's Stop watching line firing retires it as DROPPED (`stopWatching`, `lib/agent/triggers/stop-watching.ts`). A sale retires it as SOLD, unless it was a profit-take or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with a one-day review.
 
 #### Floors
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers or loosens a protective level on a stock we hold.

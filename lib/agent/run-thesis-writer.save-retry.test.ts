@@ -9,11 +9,11 @@
  * kept, the stock keeps the plan it had, and the run's record names what was
  * not applied. The one save-time retry is left for a save refused whole.
  *
- * Replay: DOCU's 2026-09-15 decision with its floor kept (the buy level
- * removed, the $57.50 sell left behind — a sale with no buy, which the save's
- * plan rule refuses) reaching the save. DOCU's real decision took the floor
- * off too; the $76 review it kept is a wake since the QB ruling of
- * 2026-09-29 (DAV-335), so that call is the fix.
+ * Replay: DOCU's 2026-09-15 decision with its floor kept and turned into a
+ * sale (an edit to action EXIT on a stock we only watch, which the save
+ * refuses by id) reaching the save, on the row as the 2026-11-16 migration
+ * stores it. DOCU's real decision took the floor off; the $76 review it kept
+ * is a wake since the QB ruling of 2026-09-29 (DAV-335).
  * FIVE's original case (explanations over a 240-character cap) is no longer
  * a refusal: the cap is gone (DAV-316).
  */
@@ -90,6 +90,10 @@ const analystRow = {
 
 const storedRow = {
   ...fx.thesis,
+  // The watch's floor as the 2026-11-16 migration stores it.
+  triggers: (fx.thesis.triggers as Array<{ action: string; predicate: Record<string, unknown> }>).map((t) =>
+    t.action === "EXIT" ? { ...t, action: "STOP_WATCHING", predicate: { ...t.predicate, settings: { close: true } } } : t,
+  ),
   userId: "user_1",
   accountId: "account_1",
   retiredReason: null,
@@ -109,18 +113,20 @@ const storedRow = {
   researchUpdatedAt: new Date(),
 };
 
-/** The refused decision: DOCU's, with its floor ($57.50 sell) kept and no buy. */
-const halfPlan = {
+/** The refused decision: DOCU's, with its floor ($57.50) kept and turned into a sale. */
+const FLOOR = "85cba008-4f4a-46a9-92eb-b152195d51ed";
+const floorAsSale = {
   ...fx.submit,
-  remove_trigger_ids: fx.submit.remove_trigger_ids.filter((id) => !id.startsWith("85cba008")),
+  remove_trigger_ids: fx.submit.remove_trigger_ids.filter((id) => id !== FLOOR),
+  edit_triggers: [...(fx.submit.edit_triggers ?? []), { id: FLOOR, action: "EXIT" as const, rationale: "Sell below $57.50." }],
 };
 
 function research(): WriterResearchPhaseOutput {
-  const v = validateThesisDecision(halfPlan, {
+  const v = validateThesisDecision(floorAsSale, {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
-    existingTriggers: fx.thesis.triggers as never,
+    existingTriggers: storedRow.triggers as never,
     setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]),
     chart: null,
   });
@@ -152,15 +158,18 @@ beforeEach(() => {
   );
 });
 
-it("DOCU: the save keeps the research, refuses the half plan by name, and the stock keeps its plan — no retry", async () => {
+it("DOCU: the save keeps the research, refuses the sale by id, lands the rest, and the floor stays the watch's line — no retry", async () => {
   const result = await writerPersistPhase(args, pullOutput, research(), Date.now());
 
   expect(mockGenerateText).not.toHaveBeenCalled();
   expect(result.status).toBe("COMPLETE");
   expect(result.thesisId).toBe(fx.thesis.id);
   expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
-  expect(mockThesisUpdate.mock.calls[0][0].data.triggers).toBeUndefined();
+  const saved = mockThesisUpdate.mock.calls[0][0].data.triggers as Array<{ id: string; action: string }>;
+  expect(saved.find((t) => t.id === FLOOR)?.action).toBe("STOP_WATCHING");
+  expect(saved.some((t) => t.action === "ENTER")).toBe(false);
   const events = mockRunEventCreate.mock.calls.map((c) => c[0].data as { title: string; message: string });
   expect(events.map((e) => e.title)).not.toContain("Save refused — retrying once");
-  expect(events.find((e) => e.title === "Thesis persisted")?.message).toMatch(/Not applied: triggers — .*no buy to reach it from/);
+  // A refused op comes back on the call by id (trigger_ops), not as a refused field.
+  expect(events.find((e) => e.title === "Thesis persisted")?.message).toBe("update_thesis landed (LONG, MEDIUM).");
 });

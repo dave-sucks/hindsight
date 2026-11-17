@@ -87,6 +87,6 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
     expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", entryPrice: 36.95, stopLoss: 34.91, targetPrice: null });
     const actions = (row.triggers as Trigger[]).map((t) => t.action);
     expect(actions).toContain("ENTER");
-    expect(actions).toContain("EXIT");
+    expect(actions).toContain("STOP_WATCHING");
   });
 });

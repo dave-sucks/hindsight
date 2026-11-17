@@ -139,7 +139,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
 
     it("declares the WATCHING trigger block", () => {
       expect(prompt).toContain("WATCHING thesis (no position");
-      expect(prompt).toContain("NEVER TRIM/ADD");
+      expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
       expect(prompt).toContain("Stop watching if below $X");
     });
 

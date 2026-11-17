@@ -184,7 +184,7 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
       levelSources,
       `thesis=${id}`,
     ) as Array<Trigger & { level?: string }>;
-    const inheritedTriggers = ladder.filter((x) => (x.level ?? "THESIS") !== "THESIS").map((x) => ({ ...triggerForAgent(x, held), level: x.level }));
+    const inheritedTriggers = ladder.filter((x) => (x.level ?? "THESIS") !== "THESIS").map((x) => ({ ...triggerForAgent(x), level: x.level }));
 
     // The situations as of `at`: the flag math over the inputs then.
     const activity = updates.filter((u) => u.thesisId === id && u.timestamp <= at);

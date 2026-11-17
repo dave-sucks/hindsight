@@ -14,7 +14,7 @@
  *   canonicalLevels  read  — what the card, the chart and the columns show
  *   levelSlotOf      read  — which slot a price trigger sits in (a buy, the floor, an upside rule)
  *   levelLabelState  read  — what the card says for one slot
- *   isPlanLevel      read  — a buy, a sale or an upside review at a price
+ *   isPlanLevel      read  — a buy, a sale, a Stop watching line or an upside review at a price
  *
  * Floor vs target is the SIDE, never the magnitude. A trigger can't say
  * "exit at 100" — every price predicate carries a direction:
@@ -169,7 +169,8 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
     entry = e ? { ...e, slot: "ENTRY" } : null;
   }
 
-  const floors = all.filter((l) => l.side === "DOWNSIDE" && l.action === "EXIT");
+  // The line under the price that ends what we have: a sale on a holding, the end of a watch on a watch.
+  const floors = all.filter((l) => l.side === "DOWNSIDE" && (l.action === "EXIT" || l.action === "STOP_WATCHING"));
   const floor = firstToFire(floors, long);
   // On a stock we only watch, a review with no buy behind it is a wake, not
   // the target (isPlanLevelOnList). "A buy" is an ENTER on the list, priced
@@ -210,14 +211,15 @@ export function canonicalLevels(input: LevelInputs): CanonicalLevels {
 
 /**
  * Which slot an absolute price trigger occupies, if any: the buy (ENTER), the
- * floor (a downside EXIT) or the upside rule (an upside EXIT or REVIEW). One
+ * floor (a downside EXIT on a holding, STOP_WATCHING on a watch) or the
+ * upside rule (an upside EXIT or REVIEW). One
  * trigger per slot is the rule every write path keeps.
  */
 export function levelSlotOf(t: Trigger, direction: string | null): LevelSlot | null {
   const level = typedLevel(t, direction);
   if (!level) return null;
   if (t.action === "ENTER") return "ENTRY";
-  if (level.side === "DOWNSIDE") return t.action === "EXIT" ? "FLOOR" : null;
+  if (level.side === "DOWNSIDE") return t.action === "EXIT" || t.action === "STOP_WATCHING" ? "FLOOR" : null;
   return t.action === "EXIT" || t.action === "REVIEW" ? "TARGET" : null;
 }
 
@@ -275,7 +277,7 @@ export function levelLabelState(
 export function isPlanLevel(t: Trigger, direction: string | null): boolean {
   const level = typedLevel(t, direction);
   if (!level) return false;
-  if (t.action === "ENTER" || t.action === "EXIT") return true;
+  if (t.action === "ENTER" || t.action === "EXIT" || t.action === "STOP_WATCHING") return true;
   if (t.action !== "REVIEW") return false;
   return level.side === "UPSIDE";
 }
@@ -366,9 +368,7 @@ export function rationaleFor(
       : `I short when it rallies to ${p}.`;
   }
   if (slot === "FLOOR") {
-    // On a thesis we don't own, "sell" is meaningless — a sale line there
-    // stops watching the stock. Write the wording that matches what actually
-    // happens (DAV-226).
+    // On a thesis we don't own, the floor is a Stop watching line (DAV-226).
     if (!held) {
       return long
         ? `Below ${p} the setup is wrong, so I stop watching it.`

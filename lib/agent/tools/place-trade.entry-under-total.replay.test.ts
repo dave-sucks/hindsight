@@ -25,7 +25,7 @@ it("TRV is capped at the $20,000 most in one stock, not the $25,000 largest trad
       account: [accountRow({ requireApprovalBuysPaper: true, requireApprovalBuysLive: true })],
     },
     ctx: { runMode: "INTRADAY_TACTICAL", runEnvironment: "PAPER", ...LIMITS, maxOpenPositions: 10 },
-    args: { ticker: "TRV", direction: "LONG", entry_price: 398.7, thesis_id: "thesis_TRV" },
+    args: { ticker: "TRV", direction: "LONG", entry_price: 398.7, sell_if_below: 382.4, sell_reason: "Under the swing high turned support.", thesis_id: "thesis_TRV" },
     quotes: { TRV: 398.7 },
   });
   expect([refused, refusal]).toEqual([false, null]);

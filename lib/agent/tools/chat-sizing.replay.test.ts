@@ -43,7 +43,7 @@ describe("a scoped chat's new buy, sized by the rules", () => {
     ...seedBase(),
     thesis: [thesisRow({ id: "t_buy", ticker: "AAA", status: "WATCHING", direction: "LONG", conviction: "MEDIUM", entryPrice: 100, targetPrice: 200, stopLoss: 50, analystId: REPLAY_ANALYST_ID, triggers: planTriggers({ entry: 100, target: 200, stop: 50 }) })],
   });
-  const buy = { ticker: "AAA", direction: "LONG", entry_price: 100, target_price: 200, stop_loss: 50, thesis_id: "t_buy" };
+  const buy = { ticker: "AAA", direction: "LONG", entry_price: 100, sell_if_below: 50, sell_reason: "Under the base.", thesis_id: "t_buy" };
 
   it("is lifted to the analyst's smallest trade, $3,000", async () => {
     const { refused, result, db } = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: chat, args: buy, quotes: { AAA: 100 } });

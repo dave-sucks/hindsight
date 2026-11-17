@@ -46,9 +46,14 @@ const fx = raw as unknown as {
 
 const REVIEW_146 = "Added: Review if above $146 · only on the close";
 
+/** VST's triggers before the call, its watch's floor as the 2026-11-16 migration stores it (STOP_WATCHING, on the close). */
+const before: Trigger[] = fx.thesisBefore.triggers.map((t) =>
+  t.action === "EXIT" ? ({ ...t, action: "STOP_WATCHING", predicate: { ...(t.predicate as object), settings: { close: true } } } as unknown as Trigger) : t,
+);
+
 /** The thesis as the writer's call found it, on the Compounder's rules. */
 const seed = () => ({
-  thesis: [thesisRow({ ...fx.thesisBefore, analystId: REPLAY_ANALYST_ID })],
+  thesis: [thesisRow({ ...fx.thesisBefore, triggers: before, analystId: REPLAY_ANALYST_ID })],
   agentConfig: [
     agentConfigRow({ setupIds: fx.analyst.setupIds, triggers: fx.analyst.triggers }),
   ],
@@ -61,7 +66,7 @@ function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
     mode: "refresh",
     existingStatus: "WATCHING",
     currentPrice: fx.currentPrice,
-    existingTriggers: fx.thesisBefore.triggers as never,
+    existingTriggers: before as never,
     setups: setupsForAnalyst(fx.analyst.setupIds),
     chart: null,
   });
@@ -122,7 +127,7 @@ describe("the fixture is the production call", () => {
       ...(fx.submit.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: { ...t, id: "" } as unknown as Trigger })),
       ...(fx.submit.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
     ];
-    let stored = fx.thesisBefore.triggers;
+    let stored = before;
     const lines: Array<{ op: string; id: string; text: string }> = [];
     for (const op of ops) {
       const out = applyTriggerOps({
@@ -145,7 +150,7 @@ describe("the fixture is the production call", () => {
       "Removed: review every 30 days": "Removed: Review every 30 days",
       "Removed: buy above $146": "Removed: Buy if above $146 · only on the close",
       "Removed: Price below $132 → review": "Removed: Review if below $132",
-      "Removed: sell below $132": "Removed: Stop watching if below $132",
+      "Removed: sell below $132": "Removed: Stop watching if below $132 · only on the close",
       "Removed: review above $146": "Removed: Review if above $146",
     };
     // Two of its adds asked for "only on the close" and landed on a trigger

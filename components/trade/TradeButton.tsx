@@ -93,7 +93,7 @@ export function TradeButton({
   const [target, setTarget] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  // Stop and target sit behind "Price targets", closed until asked for.
+  // The sell price and target sit behind "Sell price", closed until asked for.
   const [levelsOpen, setLevelsOpen] = useState(false);
 
   async function loadTicket(): Promise<TradeTicket | null> {
@@ -135,7 +135,8 @@ export function TradeButton({
     setLaneId(lane?.analystId ?? null);
     setShares("");
     setQtyMode("shares");
-    setStop(lane?.buy.kind === "OPEN" && lane.buy.stopLoss != null ? lane.buy.stopLoss.toFixed(2) : "");
+    // A stock we don't hold has no sale to start from: the ticket's sell price starts empty.
+    setStop("");
     setTarget(lane?.buy.kind === "OPEN" && lane.buy.targetPrice != null ? lane.buy.targetPrice.toFixed(2) : "");
     setSendError(null);
     setLevelsOpen(false);
@@ -193,8 +194,6 @@ export function TradeButton({
   const planned = plan?.ok ? plan : null;
 
   const isLive = ticket?.environment === "LIVE";
-  // A new holding with no stop typed and none on its thesis: unprotected until the writer lands.
-  const noFloorYet = isOpenBuy && lane?.buy.kind === "OPEN" && !stop.trim() && lane.buy.stopLoss == null;
   const sellsAll = planned?.intent === "CLOSE";
   const sentence = planned
     ? `${side === "BUY" ? "Buy" : "Sell"} ${sellsAll ? "all " : ""}${planned.shares} ${shareWord(planned.shares)} of ${ticker}`
@@ -426,11 +425,11 @@ export function TradeButton({
                           <Collapsible open={levelsOpen} onOpenChange={setLevelsOpen}>
                             <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm font-light outline-none focus-visible:underline">
                               <span>
-                                Price targets
+                                Sell price
                                 {!levelsOpen && (stop.trim() || target.trim()) ? (
                                   <span className="text-muted-foreground tabular-nums">
                                     {" · "}
-                                    {[stop.trim() && `stop $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
+                                    {[stop.trim() && `sell below $${stop.trim()}`, target.trim() && `target $${target.trim()}`].filter(Boolean).join(", ")}
                                   </span>
                                 ) : null}
                               </span>
@@ -441,7 +440,7 @@ export function TradeButton({
                             <CollapsibleContent className="pb-2">
                               <div className="grid grid-cols-2 gap-3">
                                 <div className="grid gap-1.5">
-                                  <Label htmlFor="trade-stop">Stop (optional)</Label>
+                                  <Label htmlFor="trade-stop">Sell if below (optional)</Label>
                                   <Input
                                     id="trade-stop"
                                     type="number"
@@ -502,7 +501,7 @@ export function TradeButton({
                 <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
                 {isOpenBuy ? (
                   <>
-                    <InfoRow label="Stop" mono border={false} valueClassName="font-normal" value={levelLine(stop, lane?.buy.kind === "OPEN" ? lane.buy.stopLoss : null)} />
+                    <InfoRow label="Sell if below" mono border={false} valueClassName="font-normal" value={levelLine(stop, null)} />
                     <InfoRow label="Target" mono border={false} valueClassName="font-normal" value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
                   </>
                 ) : null}
@@ -513,7 +512,6 @@ export function TradeButton({
               ) : (
                 <p className="text-xs text-muted-foreground">
                   A market order: fills at the {ticket.marketOpen ? "next available price" : "next open"}.
-                  {noFloorYet ? " No floor yet; the analyst sets it right after the buy." : ""}
                 </p>
               )}
             </div>

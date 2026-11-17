@@ -32,6 +32,7 @@ export const AUTO_OWNER_ONLY = "Only the owner can make a buy, add or trim Auto.
 export const AUTO_STANDING_SALE_ONLY = "Account and analyst rules can be Auto only for a sale. Set Auto on the stock's own trigger.";
 export const SALE_CANT_WAIT = "A sale can't wait for the morning. Choose Auto-sell or Send to Agent.";
 export const TRIM_CANT_WAIT = "A trim can't wait for the morning. Choose Send to Agent.";
+export const STOP_WATCHING_ONE_WAY = "A Stop watching line stops watching when it fires; it has no other On fire choice.";
 
 /**
  * Why a trigger can't take this mode, or null. `standing`: an account or analyst rule. `agent`: an agent sets
@@ -39,6 +40,7 @@ export const TRIM_CANT_WAIT = "A trim can't wait for the morning. Choose Send to
  * A sale or trim is never Flag for Review: a stop that waits until tomorrow morning isn't a stop.
  */
 export function fireModeProblem(action: string, mode: FireMode | null | undefined, who: { standing?: boolean; agent?: boolean } = {}): string | null {
+  if (action === "STOP_WATCHING") return mode === "DO_IT" || mode === "NEXT_MORNING" ? STOP_WATCHING_ONE_WAY : null;
   if (mode === "NEXT_MORNING") return action === "EXIT" ? SALE_CANT_WAIT : action === "TRIM" ? TRIM_CANT_WAIT : null;
   if (mode !== "DO_IT") return null;
   if (action === "REVIEW") return AUTO_REVIEW;
@@ -91,13 +93,12 @@ export function approvalLine(
 }
 
 /** The Activity line when an Auto buy, add or trim is used and comes off the stock: "Used once: Trim 30% if above $150 (Auto-trim)". */
-export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }, held: boolean): string {
-  return `Used once: ${sentenceOf(t, held)} (${fireModeLabel("DO_IT", t.action)})`;
+export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }): string {
+  return `Used once: ${sentenceOf(t)} (${fireModeLabel("DO_IT", t.action)})`;
 }
 
 /** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
-export function fireModeWords(t: { action: string; fireMode?: FireMode | null }, sells = true): string {
-  // A sale on a stock we don't own stops watching it when it fires, whatever is set.
-  if (t.action === "EXIT" && !sells) return "Stops watching when it fires";
+export function fireModeWords(t: { action: string; fireMode?: FireMode | null }): string {
+  if (t.action === "STOP_WATCHING") return "Stops watching when it fires";
   return fireModeLabel(fireModeOf(t), t.action);
 }

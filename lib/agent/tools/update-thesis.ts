@@ -86,7 +86,7 @@ const F = thesisFields();
 /** What change_status does, worded once. */
 const STATUS_RETIRE =
   "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
-  "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock and keep watching it, keep it WATCHING and remove its buy and floor by id instead, when it has them. ";
+  "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock and keep watching it, keep it WATCHING and remove its buy and its Stop watching line by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
 
@@ -225,7 +225,7 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   const levels = stored.filter((t) => isPlanLevelOnList(t, stored, direction));
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
-  const words = levels.map((t) => describeTrigger(t, false)).join(", ");
+  const words = levels.map((t) => describeTrigger(t)).join(", ");
   return `To take them all off, remove them in one call: remove_trigger_ids: [${ids}] (${words}).`;
 }
 
@@ -888,7 +888,7 @@ export const updateThesis = defineTool({
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
           `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and a floor (action EXIT) in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and where the setup is over (action STOP_WATCHING, "Stop watching if below $X") in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
           `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
           `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
           `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
@@ -946,7 +946,7 @@ export const updateThesis = defineTool({
         // it, and the stock got an accidental copy of the buy it already had.
         const has = (action: string) =>
           existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
-        if (!has("EXIT")) missing.push("a floor (one sell trigger, action EXIT, in add_triggers)");
+        if (!has("STOP_WATCHING")) missing.push("where the setup is over (one Stop watching line, action STOP_WATCHING, in add_triggers)");
         if (!has("ENTER")) missing.push("a buy (one buy trigger, action ENTER, in add_triggers)");
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
@@ -1459,14 +1459,22 @@ export const updateThesis = defineTool({
           patch.retiredReason = null;
           patch.closedAt = null;
           patch.closeReason = null;
+          // Watched again, it has nothing to sell: its Sell lines come off with the status, each a line in
+          // Activity (a sale exists only on a holding, 2026-11-16).
+          const list = parseTriggersResilient(patch.triggers ?? existing.triggers).triggers as unknown as Trigger[];
+          const sales = list.filter((t) => t.action === "EXIT");
+          if (sales.length) {
+            patch.triggers = list.filter((t) => t.action !== "EXIT") as unknown as object;
+            opResults.push(...sales.map((t) => ({ op: "remove" as const, id: t.id, ok: true, text: `Removed: ${describeTrigger(t)}` })));
+          }
           // The level columns are a cache of the triggers. Sold, the entry
           // was the fill; watched again, it is the buy trigger's level, or
           // nothing when there is none (DOCU 2026-10-07 kept its $67.73 fill
           // as a "buy" after its new plan was refused). Read once more as a
           // watched stock when no trigger op landed to read them.
-          if (patch.triggers === undefined) {
+          if (patch.triggers === undefined || sales.length) {
             const { columns } = canonicalLevels({
-              triggers: parseTriggersResilient(existing.triggers).triggers as unknown as ResolvedTrigger[],
+              triggers: parseTriggersResilient(patch.triggers ?? existing.triggers).triggers as unknown as ResolvedTrigger[],
               direction: existing.direction,
               status: "WATCHING",
             });

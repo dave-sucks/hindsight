@@ -140,9 +140,9 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
 
   it("does not refuse with 'research is stale' on a LONG thesis (advances past former gate site)", async () => {
     // The old gate fired at the directionCheck site, before Guardrail 3.
-    // Provide args that fail Guardrail 3 (target below entry on a LONG)
-    // and observe the rejection message: it is the invalid-shape one,
-    // not the staleness one.
+    // Provide args that fail Guardrail 3 (a sale above entry on a LONG)
+    // and observe the rejection message: it is the sale's, not the
+    // staleness one.
     mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 90, stop: 80 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
 
@@ -150,8 +150,8 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
       ticker: "NVDA",
       direction: "LONG",
       entry_price: 100,
-      target_price: 90, // invalid for LONG — fails Guardrail 3
-      stop_loss: 80,
+      sell_if_below: 105, // invalid for LONG — fails Guardrail 3
+      sell_reason: "Under the base.",
       thesis_id: "thesis_stale_watching",
       notional: 5000,
     });
@@ -159,7 +159,7 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     expect(result.data.success).toBe(false);
     expect(result.data.tickers[0].tag).not.toBe("Stale");
     expect(String(result.summary)).not.toMatch(/research is/i);
-    expect(String(result.summary)).toMatch(/levels out of order/i);
+    expect(String(result.summary)).toMatch(/the sale is past the price/i);
   });
 
   it("succeeds (uncertain Alpaca submit → success:true, PENDING) on what would have been a stale-research refusal", async () => {
@@ -302,7 +302,7 @@ describe("place_trade — Guardrail 0: unresearched-seed direction gate (P1-24 B
 
   it("does NOT block a committed LONG thesis at Guardrail 0 (positive control)", async () => {
     // A committed LONG must advance PAST Guardrail 0. We feed an invalid
-    // target/stop so it fails at the LATER shape guard — proving the
+    // sale so it fails at the LATER sale guard — proving the
     // direction gate let it through rather than rejecting on direction.
     mockThesisFindUnique.mockResolvedValueOnce({ direction: "LONG", status: "WATCHING", triggers: planTriggers({ entry: 100, target: 90, stop: 80 }) });
     mockPositionFindFirst.mockResolvedValueOnce(null);
@@ -311,19 +311,19 @@ describe("place_trade — Guardrail 0: unresearched-seed direction gate (P1-24 B
       ticker: "NVDA",
       direction: "LONG",
       entry_price: 100,
-      target_price: 90, // invalid for LONG — trips the later shape guard
-      stop_loss: 80,
+      sell_if_below: 105, // invalid for LONG — trips the later sale guard
+      sell_reason: "Under the base.",
       thesis_id: "thesis_committed_long",
       notional: 5000,
     });
 
     expect(result.data.success).toBe(false);
-    // The rejection is the shape guard, NOT the direction-commitment gate.
+    // The rejection is the sale guard, NOT the direction-commitment gate.
     expect(String(result.summary)).not.toMatch(/no committed direction/i);
     expect(String(result.data.message ?? "")).not.toMatch(
       /not committed to LONG\/SHORT/i,
     );
-    expect(String(result.summary)).toMatch(/levels out of order/i);
+    expect(String(result.summary)).toMatch(/the sale is past the price/i);
   });
 });
 
@@ -677,8 +677,8 @@ describe("place_trade — sized by risk when no size is given (DAV-251)", () => 
       ticker: "ABC",
       direction: "LONG",
       entry_price: 100,
-      target_price: 130,
-      stop_loss: 90,
+      sell_if_below: 90,
+      sell_reason: "Under the pivot's base.",
       thesis_id: "thesis_abc",
       entry_rationale: "Closed above the pivot on 1.8× volume.",
     });

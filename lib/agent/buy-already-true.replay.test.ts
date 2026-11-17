@@ -24,7 +24,7 @@ const buy = (is: "above" | "below", value: number) => ({
   predicate: { watch: "price", is, value },
   rationale: "Entry at $54.75, just above the SMA20 on a bounce.",
 });
-const FLOOR = { action: "EXIT", predicate: { watch: "price", is: "below", value: 50.35 }, rationale: "Below the 50-day SMA ($50.50) the support is broken." };
+const FLOOR = { action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 50.35, settings: { close: true } }, rationale: "Below the 50-day SMA ($50.50) the support is broken." };
 
 /** The 09-09 submit_thesis, its entry and stop written as triggers. */
 const decision = (entry: ReturnType<typeof buy>) =>

@@ -177,16 +177,16 @@ export function accountRow(over: Row = {}): Row {
 }
 
 /**
- * A plan as the row stores it: a buy, a target and a floor trigger at these
- * prices. place_trade reads the target and the floor off a thesis's triggers
- * (step 12, part 3), not off its level columns, so a row a buy is tested on
- * carries them.
+ * A watch as the row stores it: a buy, an upside review and a Stop watching
+ * line at these prices. A buy names its own sale (place_trade's
+ * sell_if_below); these are the stock's own lines.
  */
 export function planTriggers(p: { entry: number; target: number; stop: number; direction?: "LONG" | "SHORT" }): Row[] {
   const long = p.direction !== "SHORT";
   return [
     { id: "plan_buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.entry }, rationale: "The buy.", cooldownDays: 1 },
     { id: "plan_target", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.target }, rationale: "The target.", cooldownDays: 1 },
-    { id: "plan_floor", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop }, rationale: "The floor.", cooldownDays: 0 },
+    // A watch's floor is its Stop watching line, on the close (2026-11-16): it ends the watch and never sells.
+    { id: "plan_floor", action: "STOP_WATCHING", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop, settings: { close: true } }, rationale: "The floor.", cooldownDays: 1 },
   ];
 }

@@ -1,12 +1,13 @@
 /**
- * Stop watching — what a sale line does on a stock we only watch.
+ * Stop watching — what a STOP_WATCHING trigger does.
  *
- * On a WATCHING thesis a sell trigger reads "Stop watching if below $X" (or
- * whatever its condition is). When it fires, on the close (watchedFloorOnClose),
- * the thesis retires as dropped: status RETIRED, reason DROPPED, one Activity
- * line naming the trigger. No run starts and nothing waits for approval: no
- * money moves, and a buy still waiting for approval is withdrawn with it. On a
- * stock we hold, the same trigger is a sale.
+ * "Stop watching if below $X" (or whatever its condition is) is its own
+ * action, on a stock we only watch. When it fires, on the timing it saved
+ * (`settings.close`: only on the close), the thesis retires as dropped:
+ * status RETIRED, reason DROPPED, one Activity line naming the trigger. No
+ * run starts and nothing waits for approval: no money moves, and a buy still
+ * waiting for approval is withdrawn with it. It never sells: a holding's sale
+ * is a "Sell if" line (EXIT), written at the fill from the approved price.
  *
  * It replaced setting "the plan" down (removing the buy, floor and target and
  * leaving the stock on watch): a stock has its triggers and nothing else, so a
@@ -19,7 +20,7 @@ import { ruleOnTheLine, writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "./types";
 
 /**
- * Retire a WATCHING thesis because one of its sale lines fired. Anything not
+ * Retire a WATCHING thesis because one of its Stop watching lines fired. Anything not
  * WATCHING (a holding, a promoted row, one already retired) is left alone and
  * comes back `retired: false`, so the caller writes the fire down instead.
  */
@@ -30,7 +31,7 @@ export async function stopWatching(args: {
 }): Promise<{ retired: boolean }> {
   const thesis = await prisma.thesis.findUnique({ where: { id: args.thesisId }, select: { id: true, status: true } });
   if (thesis?.status !== "WATCHING") return { retired: false };
-  const line = sentenceOf(args.trigger, false);
+  const line = sentenceOf(args.trigger);
   const now = new Date();
   const count = await prisma.$transaction(async (tx) => {
     const { count: n } = await tx.thesis.updateMany({

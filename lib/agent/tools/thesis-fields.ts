@@ -95,7 +95,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .array(z.string())
       .describe(
         "Specific things you could observe in the business that would prove the thesis wrong, each a reading and where it is read (a guidance cut at the next report, gross margin under 70% in the 10-Q, the largest customer leaving), two or more on LONG or SHORT. " +
-          "Never a stock price, an average, a high or low, or a gap, with or without volume: the floor holds the price. Exits are graded against them; on a PASS they are what would change your mind.",
+          "Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price. Exits are graded against them; on a PASS they are what would change your mind.",
       ),
     conviction: z
       .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])

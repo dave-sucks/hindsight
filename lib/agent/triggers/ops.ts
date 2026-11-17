@@ -24,6 +24,9 @@
  *     that is there;
  *   - an agent's level / pct / days edit carries a rationale, so the
  *     sentence can never disagree with the number again;
+ *   - a sale ("Sell if", EXIT) is for a stock we hold and "Stop watching
+ *     if" (STOP_WATCHING) for one we don't: the other is refused with the
+ *     fix, never converted (./condition/actions);
  *   - on a stock we own, an agent may only tighten a protective sell level
  *     (the ratchet, DAV-185) — the principal is exempt, as before;
  *   - after all ops the list is checked once (`checkLadder`): ordering
@@ -40,6 +43,7 @@ import { defaultFireMode, fireModeOf, fireModeProblem, fireModeWords, trimPctOf,
 import { triggerSlot } from "./condition/slot";
 import { samePredicate } from "./condition/stored";
 import {
+  actionProblem,
   conditionSentence,
   conditionsOf,
   isGroup,
@@ -166,17 +170,17 @@ const SLOT_LABEL: Record<LevelSlot, string> = {
 const money = (n: number) => `$${n % 1 === 0 ? n : n.toFixed(2)}`;
 
 /** "Entry", "Stop", "Upside", "Review cadence", or the condition in words. */
-function nameOf(t: Trigger, direction: string | null, sells: boolean): string {
+function nameOf(t: Trigger, direction: string | null): string {
   const slot = levelSlotOf(t, direction);
   if (slot) return SLOT_LABEL[slot];
   const w = shapeOf(t.predicate);
   if (w && reviewClockDays(w) != null) return "Review cadence";
-  return sentenceOf(t, sells);
+  return sentenceOf(t);
 }
 
-/** The trigger in words, as every surface says it: "Buy if above $183". `sells` is false on a stock we don't own. */
-export function describeTrigger(t: Trigger, sells = true): string {
-  return sentenceOf(t, sells);
+/** The trigger in words, as every surface says it: "Buy if above $183". */
+export function describeTrigger(t: Trigger): string {
+  return sentenceOf(t);
 }
 
 /** A note for a trigger the owner set without one: the trigger in words (note.ts). */
@@ -309,7 +313,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     const subject = (child ?? (group ? null : tw)) as Condition | null;
     const current = subject?.value != null ? { field: fieldOf(subject), value: subject.value } : null;
     const wanted = op.value !== undefined && subject ? { field: fieldOf(subject), value: op.value } : op.value !== undefined ? { field: "pct" as const, value: op.value } : null;
-    const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction, held);
+    const name = slotForText ? SLOT_LABEL[slotForText] : nameOf(target, direction);
 
     const moves = !!(wanted && current && wanted.value !== current.value);
     if (wanted) {
@@ -330,6 +334,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         );
       }
     }
+    const wrongAction = op.action ? actionProblem(op.action, { held }) : null;
+    if (wrongAction) return refuse("edit", op.id, `Edit ${name}`, wrongAction);
     // A new action with no mode named takes that action's default, as the dialog does.
     const fireMode = op.fireMode ?? (op.action && op.action !== target.action ? defaultFireMode(op.action) : undefined);
     const modeProblem = fireModeProblem(op.action ?? target.action, fireMode ?? target.fireMode) ?? setsMode(op.action ?? target.action, fireMode);
@@ -374,8 +380,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         moveNumberInText(target.rationale, wanted.field, current.value, wanted.value) ??
         (slot && level ? rationaleFor(slot, wanted.value, direction, held, level.above) : target.rationale);
     } else if (actor === "SYSTEM" && slot && level && target.source === "DEFAULT") {
-      // A buy fill re-reads a template floor / upside level for a stock we now
-      // own ("I stop watching it" → "I sell at").
+      // A buy fill re-reads a template level for a stock we now own.
       rationale = rationaleFor(slot, level.value, direction, held, level.above);
     }
     const edited: Trigger = {
@@ -405,7 +410,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
-    if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode }, held)}`);
+    if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode })}`);
     if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: size ${trimPctOf(target)}% → ${op.trimPct}%`);
     if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
       parts.push(`${name}: cooldown ${op.cooldownDays} days`);
@@ -430,7 +435,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const doRemove = (id: string) => {
     const target = stored.find((t) => t.id === id);
     if (!target) return refuse("remove", id, `Remove trigger ${id}`, notStored(id));
-    const text = `Removed: ${describeTrigger(target, held)}`;
+    const text = `Removed: ${describeTrigger(target)}`;
     const next = stored.filter((t) => t.id !== id);
     const blocked = ratchetReason(next);
     if (blocked) return refuse("remove", id, text, blocked);
@@ -438,6 +443,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   };
 
   const doAdd = (trigger: Trigger) => {
+    const wrongAction = actionProblem(trigger.action, { held });
+    if (wrongAction) return refuse("add", trigger.id || mintId(), `Added: ${describeTrigger(trigger)}`, wrongAction);
     const existing = collision(stored, trigger, direction);
     if (existing) {
       // One trigger per bucket: the add becomes an edit of the one that is
@@ -463,7 +470,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       );
     }
     const id = trigger.id || mintId();
-    const text = `Added: ${describeTrigger(trigger, held)}`;
+    const text = `Added: ${describeTrigger(trigger)}`;
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("add", id, text, modeProblem);
     // An agent's new buy has to be able to cross; the owner's is the owner's.
@@ -492,11 +499,13 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     if (!target) return refuse("edit", id, `Change trigger ${id}`, notStored(id));
     const sameSlot = triggerSlot(target) === triggerSlot(trigger);
     const clash = sameSlot ? undefined : stored.find((s) => s.id !== id && triggerSlot(s) === triggerSlot(trigger));
-    const text = `Changed: ${describeTrigger(target, held)} → ${describeTrigger(trigger, held)}`;
+    const text = `Changed: ${describeTrigger(target)} → ${describeTrigger(trigger)}`;
+    const wrongAction = actionProblem(trigger.action, { held });
+    if (wrongAction) return refuse("edit", id, text, wrongAction);
     const modeProblem = setsMode(trigger.action, trigger.fireMode);
     if (modeProblem) return refuse("edit", id, text, modeProblem);
     if (clash) {
-      return refuse("edit", id, text, `This stock already has "${describeTrigger(clash, held)}". Edit that one instead.`);
+      return refuse("edit", id, text, `This stock already has "${describeTrigger(clash)}". Edit that one instead.`);
     }
     if (
       sameSlot &&
@@ -598,7 +607,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     refuse(
       "edit",
       id,
-      `Edit and remove: ${t ? describeTrigger(t, held) : `trigger ${id}`}`,
+      `Edit and remove: ${t ? describeTrigger(t) : `trigger ${id}`}`,
       "Edited and removed in the same call — say which: send the edit or the removal, not both.",
     );
   }

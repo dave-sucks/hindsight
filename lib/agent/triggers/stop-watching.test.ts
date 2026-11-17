@@ -1,13 +1,17 @@
 /**
- * A sale line on a stock we only watch: "Stop watching if below $225". It
- * reads the close, never a dip (DAV-337), and a fire retires the thesis as
- * dropped with one Activity line (stopWatching). The evaluator's own replay
- * is lib/inngest/functions/trigger-evaluator.watched-floor-replay.test.ts.
+ * "Stop watching if below $225" is its own action (STOP_WATCHING), on a
+ * stock we only watch, and "Sell if" (EXIT) only on one we hold. Each says
+ * what it does whatever the stock's state, and the other is refused with the
+ * fix, never converted. Its timing is its own saved setting; nothing reads it
+ * on the close at check time. A fire retires the thesis as dropped with one
+ * Activity line (stopWatching); the evaluator's replay is
+ * lib/inngest/functions/trigger-evaluator.watched-floor-replay.test.ts.
  */
 
-import { watchedFloorOnClose } from "./types";
-import { sentenceOf } from "./condition";
+import { actionProblem, allowedActions, SELL_ON_A_WATCH, sentenceOf, STOP_WATCHING_IS_THE_STOCKS, STOP_WATCHING_ON_A_HOLDING } from "./condition";
 import { isPlanLevel, isPlanLevelOnList } from "./price-levels";
+import { applyTriggerOps } from "./ops";
+import { resolveLadder } from "./levels";
 import type { Trigger, TriggerAction } from "./types";
 import type { Condition, When } from "@/lib/agent/triggers/condition";
 
@@ -22,51 +26,64 @@ function t(
   return { id, predicate, action, rationale: "test" };
 }
 
-const HELD = { status: "HOLDING", direction: "LONG" };
-const WATCH = { status: "WATCHING", direction: "LONG" };
-const WATCH_SHORT = { status: "WATCHING", direction: "SHORT" };
-
-describe("a sale line reads by whether we own the stock", () => {
-  it("on a watch it stops watching; on a holding it sells, with the same condition", () => {
-    expect(sentenceOf(t(below(225), "EXIT"), false)).toBe("Stop watching if below $225");
-    expect(sentenceOf(t(below(225), "EXIT"), true)).toBe("Sell if below $225");
-    // A judgment exit on a watch says the same: there is nothing to sell.
-    expect(sentenceOf(t({ watch: "surprise", is: "miss", value: 0 }, "EXIT"), false)).toMatch(/^Stop watching if/);
+describe("each action says what it does, whatever the stock's state", () => {
+  it("Stop watching is its own words, and its timing is the one it saved", () => {
+    expect(sentenceOf(t(below(225), "STOP_WATCHING"))).toBe("Stop watching if below $225");
+    expect(sentenceOf(t({ ...below(46.5), settings: { close: true } }, "STOP_WATCHING"))).toBe("Stop watching if below $46.50 · only on the close");
+    expect(sentenceOf(t(below(225), "EXIT"))).toBe("Sell if below $225");
   });
 });
 
-describe("watchedFloorOnClose — a watch ends on a close, never a dip (DAV-337)", () => {
-  // TRV 2026-09-29: floor $359.87, opened $359.51, back to $363.83 that
-  // morning. The five-minute check reads this; the evaluator replay is
-  // lib/inngest/functions/trigger-evaluator.watched-floor-replay.test.ts.
-  const floor = t(below(359.87), "EXIT", "floor");
-
-  it("a watched stock's floor reads the day's close", () => {
-    expect(watchedFloorOnClose(floor, WATCH)).toEqual({ ...floor, predicate: { ...below(359.87), settings: { close: true } } });
-    expect(watchedFloorOnClose(t(above(80), "EXIT"), WATCH_SHORT).predicate).toEqual({ ...above(80), settings: { close: true } });
+describe("a sale is for a holding, Stop watching for a watch", () => {
+  it("the other is refused with the fix", () => {
+    expect(actionProblem("EXIT", { held: false })).toBe(SELL_ON_A_WATCH);
+    expect(SELL_ON_A_WATCH).toContain("STOP_WATCHING");
+    expect(actionProblem("STOP_WATCHING", { held: true })).toBe(STOP_WATCHING_ON_A_HOLDING);
+    expect(actionProblem("STOP_WATCHING", { held: false, standing: true })).toBe(STOP_WATCHING_IS_THE_STOCKS);
+    expect([actionProblem("EXIT", { held: true }), actionProblem("STOP_WATCHING", { held: false }), actionProblem("EXIT", { held: false, standing: true })]).toEqual([null, null, null]);
   });
 
-  it("a held stock's floor is a sale and keeps its own timing", () => {
-    expect(watchedFloorOnClose(floor, HELD)).toBe(floor);
+  it("the form's action menu offers Stop watching on a watch and Sell on a holding", () => {
+    expect(allowedActions(below(225), { held: false, standing: false })).toEqual(["ENTER", "STOP_WATCHING", "REVIEW"]);
+    expect(allowedActions(below(225), { held: true, standing: false })).toEqual(["ADD", "TRIM", "EXIT", "REVIEW"]);
+    expect(allowedActions(below(225), { held: false, standing: true })).not.toContain("STOP_WATCHING");
   });
 
-  it("the buy, the target and the reviews keep their timing", () => {
-    for (const x of [t(above(372.51), "ENTER"), t(above(425), "REVIEW"), t(below(340), "REVIEW")]) {
-      expect(watchedFloorOnClose(x, WATCH)).toBe(x);
-    }
-  });
-
-  it("a two-condition sell reads its price condition on the close; the other condition is untouched", () => {
-    const both = t({ match: "all", conditions: [below(359.87), { watch: "volume", value: 1.5 }] }, "EXIT");
-    expect(watchedFloorOnClose(both, WATCH).predicate).toEqual({
-      match: "all",
-      conditions: [{ ...below(359.87), settings: { close: true } }, { watch: "volume", value: 1.5 }],
+  it("an agent's sale on a watch is refused by id with the fix, and the rest of the call lands", () => {
+    const out = applyTriggerOps({
+      stored: [],
+      ops: [
+        { op: "add", trigger: t(below(225), "EXIT", "sale") },
+        { op: "add", trigger: t({ ...below(225), settings: { close: true } }, "STOP_WATCHING", "stop") },
+      ],
+      direction: "LONG",
+      status: "WATCHING",
+      actor: "AGENT",
+      mintId: () => "minted",
     });
+    expect(out.results.map((r) => [r.id, r.ok, r.reason ?? null])).toEqual([
+      ["sale", false, SELL_ON_A_WATCH],
+      ["stop", true, null],
+    ]);
+    expect(out.triggers.map((x) => [x.id, x.action])).toEqual([["stop", "STOP_WATCHING"]]);
   });
 
-  it("a floor already on the close is returned as it is", () => {
-    const onClose = t({ ...below(359.87), settings: { close: true } }, "EXIT");
-    expect(watchedFloorOnClose(onClose, WATCH)).toBe(onClose);
+  it("an edit can't turn a watch's line into a sale", () => {
+    const out = applyTriggerOps({
+      stored: [t(below(225), "STOP_WATCHING", "stop")],
+      ops: [{ op: "edit", id: "stop", action: "EXIT" }],
+      direction: "LONG",
+      status: "WATCHING",
+      actor: "PRINCIPAL",
+      mintId: () => "minted",
+    });
+    expect(out.results[0]).toMatchObject({ ok: false, reason: SELL_ON_A_WATCH });
+  });
+
+  it("a ladder reads a sale only on a holding and a Stop watching line only on a watch", () => {
+    const list = [t(below(90), "EXIT", "sale"), t(below(90), "STOP_WATCHING", "stop")];
+    expect(resolveLadder({ thesis: list, state: "HELD" }).map((x) => x.id)).toEqual(["sale"]);
+    expect(resolveLadder({ thesis: list, state: "WATCHING" }).map((x) => x.id)).toEqual(["stop"]);
   });
 });
 
@@ -74,6 +91,7 @@ describe("isPlanLevel — a buy, a sale or an upside review at a price", () => {
   it("counts the buy, the floor and an upside review", () => {
     expect(isPlanLevel(t(above(262), "ENTER"), "LONG")).toBe(true);
     expect(isPlanLevel(t(below(225), "EXIT"), "LONG")).toBe(true);
+    expect(isPlanLevel(t(below(225), "STOP_WATCHING"), "LONG")).toBe(true);
     expect(isPlanLevel(t(above(320), "REVIEW"), "LONG")).toBe(true);
   });
 
@@ -98,7 +116,7 @@ describe("isPlanLevel — a buy, a sale or an upside review at a price", () => {
 
   it("does not count an upside review when the list has no buy — that is a wake", () => {
     const wake = t(above(146), "REVIEW", "wake");
-    const floor = t(below(132), "EXIT", "floor");
+    const floor = t(below(132), "STOP_WATCHING", "floor");
     expect(isPlanLevelOnList(wake, [wake, floor], "LONG")).toBe(false);
     expect(isPlanLevelOnList(floor, [wake, floor], "LONG")).toBe(true);
     // With a buy on the list, the same review counts.

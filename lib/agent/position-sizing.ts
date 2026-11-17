@@ -26,6 +26,8 @@
  * ~$7k and costs ~$1,000 at the stop. Playbook E4.
  */
 
+import type { Setup } from "@/lib/agent/knowledge/setups";
+
 import {
   BINARY_RISK_MULTIPLIER,
   PORTFOLIO_HEAT_PCT,
@@ -283,4 +285,22 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
     line = `${shares} shares, ${$(notional)}, sized by risk: ${math}.`;
   }
   return { shares, notional, riskDollars, riskPctOfEquity, formulaNotional, clampedBy, line };
+}
+
+/**
+ * The setup's rules for the holding's sale, read on `sell_if_below` (until 2026-11-16 they were read on a
+ * watch's line, which never sells): at least the setup's minimum ATR from the buy, and on a TRADE at most
+ * its widest %. The account's setup overrides apply. Null when the sale keeps them or the ATR is unknown.
+ */
+export function saleRuleProblem(p: { setup: Setup; horizon: string | null; entry: number; stop: number; atr: number | null }): string | null {
+  const dist = Math.abs(p.entry - p.stop);
+  const $ = (n: number) => `$${n.toFixed(2)}`;
+  const { minAtr, maxPct } = p.setup.stop;
+  if (p.atr != null && p.atr > 0 && dist < minAtr * p.atr) {
+    return `the sale ${$(p.stop)} is ${(dist / p.atr).toFixed(2)} ATR from the ${$(p.entry)} buy (ATR ${$(p.atr)}). ${p.setup.name} needs it at least ${minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least ${$(minAtr * p.atr)} from the buy`;
+  }
+  if (maxPct != null && p.horizon === "TRADE" && (dist / p.entry) * 100 > maxPct) {
+    return `the sale ${$(p.stop)} is ${((dist / p.entry) * 100).toFixed(1)}% from the buy; a TRADE on ${p.setup.name} caps it at ${maxPct}%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it`;
+  }
+  return null;
 }

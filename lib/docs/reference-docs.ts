@@ -5,20 +5,19 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { DIALOG_ACTIONS, TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_TYPE_DOCS } from "./trigger-examples";
 
-const ACTIONS: readonly TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "REVIEW"];
-const ACTION_WORD: Partial<Record<TriggerAction, string>> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", REVIEW: "review" };
+const ACTION_WORD: Record<TriggerAction, string> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", STOP_WATCHING: "stop watching", REVIEW: "review" };
 
 const days = (n: number) => (n === 0 ? "none" : n === 1 ? "1 day" : `${n} days`);
 
 function measureSection(m: MeasureDef): string[] {
   const fresh = m.fresh() as Condition;
-  const actions = m.actions ?? ACTIONS;
+  const actions = m.actions ?? DIALOG_ACTIONS;
   const range = valueRange(fresh);
   const facts: string[] = [
     `\`watch: "${m.id}"\``,

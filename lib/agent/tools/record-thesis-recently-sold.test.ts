@@ -86,7 +86,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     current_price: 65,
     triggers: [
       { predicate: { watch: "price", is: "above", value: entry_price }, action: "ENTER", rationale: "The buy." },
-      { predicate: { watch: "price", is: "below", value: stop_loss }, action: "EXIT", rationale: "The floor." },
+      { predicate: { watch: "price", is: "below", value: stop_loss, settings: { close: true } }, action: "STOP_WATCHING", rationale: "The floor." },
       { predicate: { watch: "price", is: "above", value: target_price }, action: "REVIEW", rationale: "Take profit." },
     ],
     core_belief: "XENE re-rates on the next pipeline readout within 90 days.",
