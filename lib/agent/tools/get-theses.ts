@@ -46,7 +46,7 @@ import {
 } from "@/lib/agent/thesis-narrative";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
-import { isManagerRun, managerPick, managerReadSchema, managerRow } from "@/lib/agent/portfolio-manager/card";
+import { isManagerRun, managerPick, managerReadSchema } from "@/lib/agent/portfolio-manager/stocks-a-run";
 
 const STATUS_VALUES = [
   "HOLDING",
@@ -119,7 +119,7 @@ export const getTheses = defineTool({
   description:
     "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
   schema,
-  // The Portfolio Manager opens stocks by name, a limited number a run (portfolio-manager/card.ts).
+  // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/stocks-a-run.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
   ui: "thesis-card" as const,
   // The cards are the "Read theses" carousel: the same rows again in the
@@ -140,9 +140,10 @@ export const getTheses = defineTool({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { cards, ...rest } = data;
     if (isManagerRun(ctx)) {
-      const m = (rest.manager ?? {}) as { full?: boolean; note?: string };
+      // The same rows by the same field rules: a holding with the fields a sale's decision reads, a watch with a buy's. No situation text: its job is its own.
       const rows = Array.isArray(rest.theses) ? (rest.theses as Array<Record<string, unknown>>) : [];
-      return { ...result, data: { ...(rest.notes ? { notes: rest.notes } : {}), stocks: rows.map((r) => managerRow(r, m.full === true)), ...(m.note ? { note: m.note } : {}) } };
+      const note = (rest.manager as { note?: string } | undefined)?.note;
+      return { ...result, data: { theses: rows.map((r) => rowForModel(r, { named: false, size: "short", fieldsOf: [r.status === "HOLDING" ? "PROTECTIVE_SALE" : "BUY_ARRIVES"] })), ...(note ? { note } : {}) } };
     }
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
@@ -192,11 +193,11 @@ export const getTheses = defineTool({
   },
 
   execute: async (args, ctx) => {
-    let manager: { full: boolean; note?: string } | null = null;
+    let manager: { note?: string } | null = null;
     if (isManagerRun(ctx)) {
-      const pick = managerPick(ctx, args as { tickers?: string[]; full?: boolean });
-      if (pick.refused) return { summary: pick.refused, data: { count: 0, theses: [], manager: { full: pick.full, note: pick.refused } }, sources: [] };
-      manager = { full: pick.full, note: pick.note };
+      const pick = managerPick(ctx, args);
+      if (pick.refused) return { summary: pick.refused, data: { count: 0, theses: [], manager: { note: pick.refused } }, sources: [] };
+      manager = { note: pick.note };
       args = { tickers: pick.tickers };
     }
     if (!ctx.analystId && !ctx.userId) {

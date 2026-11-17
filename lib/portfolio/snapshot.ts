@@ -30,6 +30,23 @@ export interface SnapshotHolding {
   /** The broker's own value of the holding: used only when the app has no price. */
   brokerValue?: number | null;
   analyst: string | null;
+  /** The 5- and 20-day moves (the measures a trigger reads) and the thesis's conviction; left off the line when not loaded. */
+  move5dPct?: number | null;
+  move20dPct?: number | null;
+  conviction?: string | null;
+}
+
+/** A stock we watch, for the Watching block. */
+export interface SnapshotWatch {
+  ticker: string;
+  price: number | null;
+  dayPct: number | null;
+  move5dPct: number | null;
+  move20dPct: number | null;
+  conviction: string | null;
+  analyst: string | null;
+  /** When we started watching (ISO). */
+  since: string;
 }
 
 export interface SnapshotTrade {
@@ -73,6 +90,8 @@ export interface SnapshotInputs {
   /** Stocks with a fill on `day` whose price wasn't recorded: their day can't be worked out. */
   unrecordedFills?: string[];
   waiting: SnapshotProposal[];
+  /** The stocks we watch; loaded only for a reader that gets the Watching block. */
+  watching?: SnapshotWatch[];
 }
 
 type Change = { dollars: number; pct: number };
@@ -102,6 +121,7 @@ export interface PortfolioSnapshot {
   holdings: HoldingLine[];
   trades: SnapshotTrade[];
   waiting: SnapshotProposal[];
+  watching?: SnapshotWatch[];
   /** Holdings with no price: valued at the broker's figure, so the value is not exact. */
   unpriced: string[];
 }
@@ -178,6 +198,7 @@ export function buildSnapshot(i: SnapshotInputs): PortfolioSnapshot {
     holdings: lines,
     trades: i.trades,
     waiting: i.waiting,
+    ...(i.watching ? { watching: i.watching } : {}),
     unpriced,
   };
 }
@@ -208,8 +229,14 @@ const gist = (note: string) => {
   return cut ? head.slice(0, cut) : `${head.slice(0, head.lastIndexOf(" "))}…`;
 };
 
+/** The fields a holding's line and a watch's line share: the 5- and 20-day moves and the conviction. */
+function movesAndConviction(x: { move5dPct?: number | null; move20dPct?: number | null; conviction?: string | null }): string {
+  const moves = [x.move5dPct != null ? `5-day ${signedPct(x.move5dPct)}` : null, x.move20dPct != null ? `20-day ${signedPct(x.move20dPct)}` : null].filter(Boolean).join(", ");
+  return `${moves ? ` · ${moves}` : ""}${x.conviction ? ` · conviction ${x.conviction}` : ""}`;
+}
+
 function holdingLine(h: HoldingLine, dayName: string): string {
-  const who = h.analyst ? ` · ${h.analyst}` : "";
+  const who = `${movesAndConviction(h)}${h.analyst ? ` · ${h.analyst}` : ""}`;
   if (h.price == null) return `- ${h.ticker}: ${shares(h.shares)}, bought at ${usd(h.avgCost, true)}; no price, valued at the broker's ${usd(h.value)}${who}`;
   let day: string;
   if (h.noTradeThatDay) day = `no trade on ${dayName}`;
@@ -225,6 +252,25 @@ function holdingLine(h: HoldingLine, dayName: string): string {
 /** When the snapshot's prices are from: "Wed, Nov 11 at the close", or the time while the market is open. */
 export function snapshotWhen(s: Pick<PortfolioSnapshot, "day" | "live" | "at">): string {
   return s.live ? `${dayLabel(s.day)}, ${etTime(new Date(s.at))} ET (market open, latest prices)` : `${dayLabel(s.day)} at the close`;
+}
+
+/** The Watching block: every stock we watch, one line each, in the holdings' style. */
+export function watchingText(s: Pick<PortfolioSnapshot, "watching" | "waiting">): string {
+  const watching = s.watching ?? [];
+  if (!watching.length) return "Watching: none.";
+  const buyWaiting = new Set(s.waiting.filter((p) => p.side === "BUY").map((p) => p.ticker));
+  return [
+    `Watching (${watching.length}):`,
+    ...watching.map(
+      (w) =>
+        `- ${w.ticker}: ${w.price != null ? usd(w.price, true) : "no price"}` +
+        (w.dayPct != null ? ` · day ${signedPct(w.dayPct)}` : "") +
+        movesAndConviction(w) +
+        (w.analyst ? ` · ${w.analyst}` : "") +
+        ` · watching since ${dayLabel(nyDay(new Date(w.since))).replace(/^\w+, /, "")}` +
+        (buyWaiting.has(w.ticker) ? " · a buy proposal is waiting" : ""),
+    ),
+  ].join("\n");
 }
 
 /** The snapshot as every reader gets it: plain lines, no ids. */

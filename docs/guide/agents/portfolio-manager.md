@@ -1,6 +1,6 @@
 # Portfolio Manager
 
-**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it reads every stock you hold and watch in a line each, opens the few it may act on, and leaves a write-up plus, at most, three proposals for you.
+**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it goes through every stock you hold and watch, gets the thesis on the few it is weighing a trade on, and leaves a write-up plus, at most, three proposals for you.
 
 Every trade it proposes waits for your approval, like any run's. It never rewrites a stock's case or its conviction, and it never sizes a trade: code does.
 
@@ -8,30 +8,23 @@ Every trade it proposes waits for your approval, like any run's. It never rewrit
 Model: gpt-5.4
 Starts: Tue and Thu · 10:00 AM ET
 Steps: up to 40
-Tools: a read by name, stock data, web search, a note, the trades, a research request
+Tools: theses by ticker, stock data, a note, the trades, a research request
 Saves: a write-up, notes on stocks, proposals, research requests
 ```
 
 ## What it's given
 
-- **Its job**, then the house rules and the same [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) every agent gets.
-- **The book in a line each**, written by code: what we own, biggest first, then what we watch. A line reads:
-
-```
-- NVDA · held, 14.2% of the account · since bought −12.3% · today −1.1%, 5 days −4.0%, 20 days −9.8% · against the S&P over a month −6.2 points · conviction HIGH · Secular Compounder · last look 3 days ago · AI data-centre demand keeps outrunning supply.
-```
-
-  The line also says what you have already been asked and said: a trade waiting for you, trades you declined or let lapse in the last three weeks and how often, the Market Reviewer's newest note (stronger or weaker, and its impact), and your own newest note.
+- **Its job**, then the house rules.
+- **The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) every agent gets**, with two settings of its own: it also gets the Watching block (every stock you watch, a line each), and it does not get the 8 PM portfolio digest, so its view of the proposals waiting for you is its own.
 - **Its own last write-up**, so it remembers what it was weighing.
+
+It is given nothing in a format of its own. Your holdings are the snapshot's holdings; your watches are the Watching block.
 
 ## What it asks for
 
-It has no read of the whole book. It opens stocks by name, in two sizes, and the tool holds the limits:
+It asks `get_theses` for stocks by ticker, the tool every agent uses, and the same field rules decide what comes back: a holding with the fields a sale's decision reads (what would prove it wrong among them), a watch with the fields a buy's reads (Wall Street's view and the playbook's triggers that come with the buy). It does not get the long bull and bear cases; those go to the analyst on the stock's review.
 
-- **The card**, for up to 8 stocks a run: the belief, what would prove it wrong, the reason for the conviction, the triggers, the newest three Activity lines, the position and any proposal waiting.
-- **The full case**, for up to 3 stocks a run, only for a stock it is about to buy or add to: the whole case, the chart numbers, Wall Street's view and the playbook's triggers that come with the buy.
-
-A ninth stock is refused. On the live book on 2026-11-17 a run with no trade read about 66,000 tokens in three requests, the largest 26,000.
+It may ask about 8 stocks in a run, and the tool holds that limit: a run told a limit in its job text asked for the whole account anyway. It has no web search. The Market Reviewer reads the news each morning and its notes are on each stock's Activity; a thesis that looks out of date goes to research.
 
 ## The question it asks
 
@@ -58,7 +51,7 @@ Its note on the stock, written right after the trade call, is the reason you rea
 - Its note on a stock is not the analyst's review: the stock's review clock keeps counting.
 - Doing nothing is a normal result.
 
-These are instructions in its job text. What it can open and what its save can change are limits in its tools.
+These are instructions in its job text. How many stocks it can ask about and what its save can change are limits in its tools.
 
 ## Its write-up
 
@@ -71,10 +64,10 @@ Its last reply, kept on the run: where the money is, the ranking, what it did, o
 `portfolio-manager` at 10:00 AM ET, Tue and Thu, one run per traded book, mode `PORTFOLIO_MANAGER` (`lib/inngest/functions/portfolio-manager.ts`). The run takes no messages afterwards (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`).
 
 #### The run
-`runPortfolioManager` (`lib/agent/portfolio-manager/run.ts`): the job text (`prompt.ts`), the book table (`book-table.ts`), and `MANAGER_TOOLS`: `get_theses`, `get_stock_data`, `web_search`, `update_thesis`, `place_trade`, `manage_position`, `close_position`, `dispatch_thesis_research`.
+`runPortfolioManager` (`lib/agent/portfolio-manager/run.ts`): the job text (`prompt.ts`), `loadPortfolioBlock` with `watching: true` and `portfolioDigest: false`, and `MANAGER_TOOLS`: `get_theses`, `get_stock_data`, `update_thesis`, `place_trade`, `manage_position`, `close_position`, `dispatch_thesis_research`.
 
-#### Its read and its save
-`get_theses` on its run takes tickers and `full`, counts the stocks opened against the run and builds the card or the full case (`lib/agent/portfolio-manager/card.ts`). `update_thesis` on its run has two fields, the thesis and the note. The flags on a line are `bookFlags` (`book-table.ts`).
+#### Its theses and its save
+`get_theses` on its run takes tickers and counts them against the run (`lib/agent/portfolio-manager/stocks-a-run.ts`); each row is built by `rowForModel` with `fieldsOf` a sale's situation on a holding and a buy's on a watch (`ROW_FIELDS`, `lib/agent/row-for-model.ts`). `update_thesis` on its run has two fields, the thesis and the note.
 
 #### Acting for the stock's analyst
 It has no analyst of its own. Each write acts for the stock's own analyst, under that analyst's sizes and limits, the way the unpinned chat does (`accountWide`, `lib/agent/analyst-scope.ts`). Unlike the chat it has none of the owner's powers: no size field, no reason field, no lowering a floor.

@@ -12,6 +12,8 @@ import { getAccount, getAllPositions, getFundingActivities } from "@/lib/alpaca"
 import { netContributedTotal } from "@/lib/portfolio/contributions";
 import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
 import { isMarketOpen } from "@/lib/market-hours";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { movePctOverSessions, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { buildSnapshot, type PortfolioSnapshot, type SnapshotProposal } from "@/lib/portfolio/snapshot";
 import { PROPOSED } from "@/lib/proposals/staged";
 
@@ -37,7 +39,8 @@ export function nyMidnight(day: string): Date {
   return new Date(`${day}T05:00:00Z`);
 }
 
-export async function loadPortfolioSnapshot(args: { accountId: string; environment: "PAPER" | "LIVE"; now?: Date }): Promise<PortfolioSnapshot | null> {
+/** `watching` also loads the stocks we watch, for a reader that gets the Watching block. */
+export async function loadPortfolioSnapshot(args: { accountId: string; environment: "PAPER" | "LIVE"; now?: Date; watching?: boolean }): Promise<PortfolioSnapshot | null> {
   const { accountId, environment } = args;
   const now = args.now ?? new Date();
   const userId = await getOwnerUserId(accountId);
@@ -97,6 +100,23 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
   const proposals: SnapshotProposal[] = [];
   for (const w of waiting) proposals.push(await proposalHistory(w, { accountId, environment }, names));
 
+  // Each stock's thesis (its conviction, and on a watch when we started) and its chart numbers.
+  const theses = await prisma.thesis
+    .findMany({
+      where: { status: { in: args.watching ? ["HOLDING", "WATCHING"] : ["HOLDING"] }, researchRun: { agentConfig: { accountId, tradingEnvironment: environment } } },
+      select: { ticker: true, status: true, conviction: true, createdAt: true, researchRun: { select: { agentConfig: { select: { name: true } } } } },
+      orderBy: { createdAt: "asc" },
+    })
+    // The account's numbers never wait on these: a holding's line is whole without them.
+    .catch(() => []);
+  const heldThesis = new Map(theses.filter((t) => t.status === "HOLDING").map((t) => [t.ticker.toUpperCase(), t]));
+  const watched = new Map(theses.filter((t) => t.status === "WATCHING" && !held.includes(t.ticker.toUpperCase())).map((t) => [t.ticker.toUpperCase(), t]));
+  const [charts, watchQuotes] = await Promise.all([
+    loadIndicatorSnapshots([...held, ...watched.keys()], now).catch(() => new Map<string, IndicatorSnapshot>()),
+    watched.size ? getLiveQuotes([...watched.keys()], { caller: "other", creds, now }) : Promise.resolve({} as Record<string, LiveQuoteResult>),
+  ]);
+  const move = (t: string, price: number | null, sessions: number) => (price != null && charts.get(t) ? movePctOverSessions(charts.get(t)!, price, sessions) : null);
+
   const unrecordedFills = [...new Set(fills.filter((f) => f.filledPrice == null).map((f) => f.symbol.toUpperCase()))];
 
   return buildSnapshot({
@@ -122,8 +142,22 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
         noTradeThatDay: stale || undefined,
         brokerValue: Number.isFinite(parseFloat(p.market_value)) ? parseFloat(p.market_value) : null,
         analyst: holderOf.get(t) ?? null,
+        move5dPct: move(t, price, 5),
+        move20dPct: move(t, price, 20),
+        conviction: heldThesis.get(t)?.conviction ?? null,
       };
     }),
+    ...(args.watching
+      ? {
+          watching: [...watched.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([t, th]) => {
+              const q = watchQuotes[t]?.quote;
+              const price = q && q.c > 0 ? q.c : null;
+              return { ticker: t, price, dayPct: price != null ? q!.dp : null, move5dPct: move(t, price, 5), move20dPct: move(t, price, 20), conviction: th.conviction, analyst: th.researchRun?.agentConfig?.name ?? null, since: th.createdAt.toISOString() };
+            }),
+        }
+      : {}),
     trades: fills
       .filter((f) => f.filledPrice != null)
       .map((f) => {

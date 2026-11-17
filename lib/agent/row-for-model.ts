@@ -374,14 +374,14 @@ function sectionText(v: unknown): string | string[] | null {
 }
 
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
-function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false): Row {
+function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false, fieldsOf?: readonly SituationCode[]): Row {
   const held = row.status === "HOLDING";
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
   const codes = list<SituationCode>(row.situations);
   const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
   const out: Row = {};
-  const sent = rowKeysFor(codes, { size, named });
+  const sent = rowKeysFor(fieldsOf ?? codes, { size, named });
   const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
 
   put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
@@ -441,7 +441,11 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
  * row with what a fire checks and, on a watch, the triggers that come with the
  * buy (`playbook_checks`) in place of the compact setup line. Every other
  * short row is unchanged; the full row always carries them.
+ *
+ * `fieldsOf` sends the fields those situations' decisions read (ROW_FIELDS),
+ * whatever situation the stock is in: the Portfolio Manager weighs a sale on
+ * a holding and a buy on a watch with no trigger having fired.
  */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean }): string | Row {
-  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.playbookChecks);
+export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; fieldsOf?: readonly SituationCode[] }): string | Row {
+  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.playbookChecks, opts.fieldsOf);
 }

@@ -1,8 +1,9 @@
 /**
  * The Portfolio Manager: one run per traded book, Tuesday and Thursday at
  * 10:00 AM ET (lib/inngest/functions/portfolio-manager.ts). The same agent as
- * every other door, with its own job (./prompt.ts) and the whole book in a
- * line each as its first message (./book-table.ts). It has no analyst: each
+ * every other door, with its own job (./prompt.ts). It is given the Market
+ * and portfolio block every agent gets, with the Watching block, and asks
+ * get_theses for the stocks it weighs. It has no analyst: each
  * write acts for the stock's own analyst (lib/agent/analyst-scope.ts), and
  * every trade goes through the approval switch like any run's. Its last
  * reply is its write-up, kept on the run as a RunEvent and read first by its
@@ -14,13 +15,10 @@ import { MODES } from "@/lib/agent/modes";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
-import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
-import { FLAG_DAYS, bookFlags, bookTable } from "@/lib/agent/portfolio-manager/book-table";
 import { buildPortfolioManagerPrompt } from "@/lib/agent/portfolio-manager/prompt";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
@@ -31,11 +29,10 @@ export const MANAGER_MODEL = MODES["research-run"].model;
 const MAX_STEPS = 40;
 const CALL_MS = 770_000;
 
-/** What it may call. Its read opens stocks by name, a limited number a run (./card.ts); its save is a note. */
+/** What it may call. get_theses by ticker, a limited number of stocks a run (./stocks-a-run.ts); its save is a note. */
 export const MANAGER_TOOLS = [
   "get_theses",
   "get_stock_data",
-  "web_search",
   "update_thesis",
   "place_trade",
   "manage_position",
@@ -51,41 +48,16 @@ export interface ManagerBook {
 
 const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
 
-/** Its first message: the book in a line each, then its own last write-up. */
+/** Its first message: the day and its own last write-up. The account, its holdings and the watchlist are in the Market and portfolio block. */
 export async function managerMessage(book: ManagerBook, now: Date): Promise<string> {
-  const since = new Date(now.getTime() - FLAG_DAYS * 86_400_000);
-  const [theses, snapshot, last, orders, notes] = await Promise.all([
-    prisma.thesis.findMany({
-      where: { userId: book.userId, status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
-      select: { ticker: true, status: true, conviction: true, coreBelief: true, lastReviewedAt: true, catalystDate: true, researchRun: { select: { agentConfig: { select: { name: true } } } } },
-      orderBy: [{ researchUpdatedAt: "desc" }, { id: "asc" }],
-    }),
-    loadPortfolioSnapshot({ accountId: book.accountId, environment: book.environment, now }).catch(() => null),
-    prisma.runEvent
-      .findFirst({
-        where: { type: WRITEUP_EVENT, run: { accountId: book.accountId, environment: book.environment, mode: MANAGER_RUN_MODE } },
-        orderBy: { createdAt: "desc" },
-        select: { message: true, createdAt: true },
-      })
-      .catch(() => null),
-    prisma.order.findMany({
-      where: { userId: book.userId, environment: book.environment, createdAt: { gte: since }, status: { in: ["AWAITING_APPROVAL", "REJECTED", "EXPIRED"] } },
-      select: { symbol: true, side: true, intent: true, status: true, createdAt: true },
-    }),
-    prisma.sharedNote.findMany({
-      where: { userId: book.userId, audience: "STOCKS", createdAt: { gte: since } },
-      select: { author: true, tickers: true, body: true, impact: true, effect: true, createdAt: true },
-    }),
-  ]);
-  const charts = await loadIndicatorSnapshots(theses.map((t) => t.ticker.toUpperCase()), now).catch(() => new Map());
-  return [
-    `${day(now)}, the ${book.environment} book.`,
-    "",
-    bookTable(theses.map((t) => ({ ...t, analyst: t.researchRun?.agentConfig?.name ?? null })), snapshot, charts, now, bookFlags(orders, notes)),
-    "",
-    "## Your last write-up",
-    last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first.",
-  ].join("\n");
+  const last = await prisma.runEvent
+    .findFirst({
+      where: { type: WRITEUP_EVENT, run: { accountId: book.accountId, environment: book.environment, mode: MANAGER_RUN_MODE } },
+      orderBy: { createdAt: "desc" },
+      select: { message: true, createdAt: true },
+    })
+    .catch(() => null);
+  return [`${day(now)}, the ${book.environment} account.`, "", "## Your last write-up", last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first."].join("\n");
 }
 
 export interface ManagerResult {
@@ -114,7 +86,8 @@ export async function runPortfolioManager(
   const now = opts.now ?? new Date();
   const [firstMessage, portfolioBlock, alpacaCreds] = await Promise.all([
     managerMessage(book, now),
-    loadPortfolioBlock({ accountId: book.accountId, environment: book.environment, now }),
+    // The same block every agent gets, with the Watching block and without the 8 PM digest's view of the waiting proposals.
+    loadPortfolioBlock({ accountId: book.accountId, environment: book.environment, now, watching: true, portfolioDigest: false }),
     resolveAlpacaCredentials(book.userId, book.environment),
   ]);
   const every = createResearchTools({
