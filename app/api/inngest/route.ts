@@ -28,6 +28,7 @@ import { proposalExpiry } from "@/lib/inngest/functions/proposal-expiry";
 // docs/plans/PORTFOLIO_DIGEST.md (Feature A).
 import { portfolioDigest } from "@/lib/inngest/functions/portfolio-digest";
 import { marketReviewer } from "@/lib/inngest/functions/market-reviewer";
+import { portfolioManager } from "@/lib/inngest/functions/portfolio-manager";
 // The approval email; an Auto trade's waits for the analyst's write-up.
 import { proposalPendingEmail } from "@/lib/inngest/functions/proposal-pending-email";
 
@@ -112,6 +113,8 @@ export const { GET, POST, PUT } = serve({
     portfolioDigest,
     // 7:30 AM ET: the Market Reviewer researches the market and saves the market digest.
     marketReviewer,
+    // Tue and Thu 10:00 AM ET: the Portfolio Manager reads the whole book and may propose trades.
+    portfolioManager,
     proposalPendingEmail,
   ],
 });

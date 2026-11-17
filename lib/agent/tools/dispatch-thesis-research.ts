@@ -140,7 +140,10 @@ export const dispatchThesisResearch = defineTool({
     // Verify the analyst exists + belongs to this account before inserting
     // the child run row. The FK on ResearchRun.agentConfigId is SetNull, so
     // a bogus id wouldn't fail at insert — it'd just orphan the run.
-    const analystId = namesAnalyst(ctx) ? args.analyst_id : ctx.analystId;
+    // The Portfolio Manager has no analyst: a refresh goes to the analyst whose thesis it is.
+    const thesisAnalyst = async () =>
+      (await prisma.thesis.findFirst({ where: { id: args.existing_thesis_id ?? "", userId: ctx.userId }, select: { researchRun: { select: { agentConfigId: true } } } }))?.researchRun?.agentConfigId;
+    const analystId = namesAnalyst(ctx) ? args.analyst_id : (ctx.analystId ?? (ctx.runMode === "PORTFOLIO_MANAGER" ? await thesisAnalyst() : undefined));
     const analyst = await prisma.agentConfig.findFirst({
       where: { id: analystId ?? "", accountId: ctx.accountId },
       select: {
