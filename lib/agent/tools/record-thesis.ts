@@ -1156,6 +1156,7 @@ export const recordThesis = defineTool({
         thesisId: thesis.id,
         type: "CREATED",
         summary: createdSummary,
+        fieldChanges: { status: { from: null, to: thesis.status } },
         rationale: narrativeText,
         signalIds: sourceSignalIds,
         runId: ctx.runId,
@@ -1170,9 +1171,10 @@ export const recordThesis = defineTool({
       // Transition parent thesis lifecycle. A parent already passed or retired
       // keeps its status: the link is the history (a refresh sent as new
       // research on a passed stock, dispatch_thesis_research 11-13).
-      const parentDone = resolvedParentId
-        ? ["PASSED", "RETIRED"].includes((await prisma.thesis.findUnique({ where: { id: resolvedParentId }, select: { status: true } }))?.status ?? "")
-        : false;
+      const parentStatus = resolvedParentId
+        ? (await prisma.thesis.findUnique({ where: { id: resolvedParentId }, select: { status: true } }))?.status ?? null
+        : null;
+      const parentDone = ["PASSED", "RETIRED"].includes(parentStatus ?? "");
       if (resolvedParentId && !parentDone) {
         try {
           if (args.direction === "PASS") {
@@ -1196,7 +1198,7 @@ export const recordThesis = defineTool({
               // The analyst's words, or none.
               ...(narrativeText ? { rationale: narrativeText.slice(0, 500) } : {}),
               fieldChanges: {
-                status: { from: "HOLDING", to: "RETIRED" },
+                status: { from: parentStatus, to: "RETIRED" },
                 retiredReason: { from: null, to: "INVALIDATED" },
               },
               runId: ctx.runId,
@@ -1216,7 +1218,7 @@ export const recordThesis = defineTool({
               summary: `Replaced by newer ${args.direction} thesis on ${args.ticker}`,
               rationale: narrativeText,
               fieldChanges: {
-                status: { from: "HOLDING", to: "RETIRED" },
+                status: { from: parentStatus, to: "RETIRED" },
                 retiredReason: { from: null, to: "REPLACED" },
               },
               runId: ctx.runId,

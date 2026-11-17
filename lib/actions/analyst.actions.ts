@@ -688,7 +688,7 @@ export async function createAnalystFromBuilder(
           thesisId: t.id,
           type: "CREATED",
           summary: `Builder-seeded ${t.ticker} on analyst creation (awaiting first research)`,
-          fieldChanges: {},
+          fieldChanges: { status: { from: null, to: "WATCHING" } },
           runId: builderRun.id,
         })),
       });
@@ -922,7 +922,7 @@ export async function updateAnalystFromBuilder(
               type: "CREATED",
               // A title, never a paragraph: the reason is the seed's snapshot.
               summary: `Editor added ${w.symbol} to watchlist (awaiting first research)`,
-              fieldChanges: {},
+              fieldChanges: { status: { from: null, to: "WATCHING" } },
               runId: editorRun.id,
             },
           });

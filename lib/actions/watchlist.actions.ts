@@ -465,6 +465,7 @@ export async function addWatchlistItem(
       reviewCadenceDays != null
         ? `Added ${upper} to watchlist (reviewed every ${reviewCadenceDays}d)`
         : `Added ${upper} to watchlist (no review schedule)`,
+    fieldChanges: { status: { from: null, to: thesis.status } },
     runId,
   });
 

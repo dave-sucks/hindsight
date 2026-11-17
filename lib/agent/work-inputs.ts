@@ -39,7 +39,6 @@ import type { FireStreakUpdate } from "@/lib/agent/fire-streak";
 import type { FloorStructure } from "@/lib/agent/floor-risk";
 import type { NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { PROPOSED } from "@/lib/proposals/staged";
 
 export interface WorkContext {
   userId?: string;
@@ -347,13 +346,13 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
     console.warn("[work-inputs] activity scan failed; open fires read from the newest line only:", err);
   }
 
-  // Each stock's proposals (every order that went through the approval seam
-  // carries its thesis since 2026-08-18): their steps join the stock's feed,
-  // so the agent reads a proposed, declined or expired sale as the owner
-  // sees it. Newest first; a dozen a stock covers the window the scan does.
+  // Each stock's orders (every order carries its thesis since 2026-08-18):
+  // their steps join the stock's feed, so the agent reads a proposed,
+  // declined or expired sale, and a fill, as the owner sees it. Newest
+  // first; a dozen a stock covers the window the scan does.
   try {
     const orders = await prisma.order.findMany({
-      where: { thesisId: { in: liveIds }, ...PROPOSED },
+      where: { thesisId: { in: liveIds } },
       orderBy: { createdAt: "desc" },
       take: Math.min(12 * liveIds.length, 600),
       select: { ...FEED_ORDER_SELECT, thesisId: true },
