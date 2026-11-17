@@ -31,12 +31,12 @@ describe("applySetupOverride", () => {
       scoring: { trendStrength: { score: 2, note: "x" }, relativeStrength: { score: 2, note: "x" }, entryQuality: { score: 2, note: "x" }, catalystFreshness: { score: 2, note: "x" } },
       conviction: "MEDIUM" as const, conviction_rationale: "Honest middle; the guide raise is real and the stop is under structure.",
     };
-    const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]) });
+    const asWritten = validateThesisDecision(decision, { mode: "mint" });
     expect(asWritten.errors).toEqual([]);
-    expect(getSetup("PEAD", { PEAD: { stopMaxPct: 12 } })!.stop.maxPct).toBe(12);
+    expect(getSetup("PEAD", { PEAD: { stopMaxPct: 12 } })!.sale.maxPct).toBe(12);
   });
   it("null clears a cap; a malformed row is dropped, the rest kept", () => {
-    expect(getSetup("PEAD", { PEAD: { stopMaxPct: null } })!.stop.maxPct).toBeNull();
+    expect(getSetup("PEAD", { PEAD: { stopMaxPct: null } })!.sale.maxPct).toBeNull();
     expect(parseSetupOverrides({ PEAD: { minAtr: 2 }, MA_PULLBACK: { minAtr: "lots" } })).toEqual({ PEAD: { minAtr: 2 } });
     expect(parseSetupOverrides(null)).toEqual({});
   });

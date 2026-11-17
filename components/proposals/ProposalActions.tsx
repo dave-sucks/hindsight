@@ -108,23 +108,24 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
   const [rejectDirection, setRejectDirection] = useState<"LONG" | "SHORT" | null>(null);
   const [trigRefresh, setTrigRefresh] = useState(0);
   // "Edit details" — fetch the proposal's current values on open, let the
-  // principal change shares (OPEN/ADD) + target/stop (OPEN), then approve with
+  // principal change shares (OPEN/ADD) + the sell price (OPEN), then approve with
   // the edits applied before the Alpaca submit.
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editIntent, setEditIntent] = useState<string>("OPEN");
   const [editShares, setEditShares] = useState("");
-  const [editTarget, setEditTarget] = useState("");
   const [editStop, setEditStop] = useState("");
+  /** The triggers that come with the buy, as sentences: shown, never edited here. */
+  const [editWithBuy, setEditWithBuy] = useState<string[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
 
   // One read of the proposal context, shared by Edit & Approve (reads
-  // intent/quantity/target/stop) and Reject (reads thesisId/direction).
+  // intent/quantity/sell price) and Reject (reads thesisId/direction).
   async function fetchProposalCtx(): Promise<{
     intent?: string;
     quantity?: number | null;
-    targetPrice?: number | null;
     stopLoss?: number | null;
+    triggersWithBuy?: string[];
     thesisId?: string | null;
     thesisDirection?: string | null;
   }> {
@@ -141,8 +142,8 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
       const ctx = await fetchProposalCtx();
       setEditIntent(ctx.intent ?? "OPEN");
       setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
-      setEditTarget(ctx.targetPrice != null ? String(ctx.targetPrice) : "");
       setEditStop(ctx.stopLoss != null ? String(ctx.stopLoss) : "");
+      setEditWithBuy(ctx.triggersWithBuy ?? []);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -163,9 +164,7 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
       body.quantity = q;
     }
     if (editIntent === "OPEN") {
-      const t = Number(editTarget);
       const s = Number(editStop);
-      if (Number.isFinite(t) && t > 0) body.targetPrice = t;
       if (Number.isFinite(s) && s > 0) body.stopLoss = s;
     }
     try {
@@ -501,19 +500,20 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                 </div>
                 {editIntent === "OPEN" ? (
                   <>
+                    {/* The triggers that come with the buy, shown; they are edited on the stock after the fill. */}
+                    {editWithBuy.length ? (
+                      <div className="grid gap-1.5">
+                        <Label>Comes with the buy</Label>
+                        <ul className="text-sm text-muted-foreground tabular-nums">
+                          {editWithBuy.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs text-muted-foreground">Change these on the stock once the buy fills.</p>
+                      </div>
+                    ) : null}
                     <div className="grid gap-1.5">
-                      <Label htmlFor="proposal-edit-target">Target price</Label>
-                      <Input
-                        id="proposal-edit-target"
-                        type="number"
-                        inputMode="decimal"
-                        value={editTarget}
-                        onChange={(e) => setEditTarget(e.target.value)}
-                        disabled={pending === "approve"}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="proposal-edit-stop">Stop price</Label>
+                      <Label htmlFor="proposal-edit-stop">Sell if below</Label>
                       <Input
                         id="proposal-edit-stop"
                         type="number"

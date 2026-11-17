@@ -46,15 +46,14 @@ export function applySetupOverride(setup: Setup, o: SetupOverride | undefined): 
   if (!o) return setup;
   return {
     ...setup,
-    stop: {
-      ...setup.stop,
-      maxPct: o.stopMaxPct !== undefined ? o.stopMaxPct : setup.stop.maxPct,
-      minAtr: o.minAtr ?? setup.stop.minAtr,
+    sale: {
+      maxPct: o.stopMaxPct !== undefined ? o.stopMaxPct : setup.sale.maxPct,
+      minAtr: o.minAtr ?? setup.sale.minAtr,
     },
   };
 }
 
 /** The numbers a setup exposes as settings, read back off a (possibly overridden) setup. */
 export function setupNumbers(s: Setup): Required<SetupOverride> {
-  return { stopMaxPct: s.stop.maxPct, minAtr: s.stop.minAtr };
+  return { stopMaxPct: s.sale.maxPct, minAtr: s.sale.minAtr };
 }

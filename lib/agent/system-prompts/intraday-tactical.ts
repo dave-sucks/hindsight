@@ -91,7 +91,7 @@ interface TacticalPromptArgs {
 
 /**
  * The trigger run's stock, from its get_theses read (step 10): the short row
- * every door reads, with the setup's decision lines (`setup_lines`), and the
+ * every door reads, with what its playbook's buy checks (`playbook_checks`), and the
  * situations it lists with the guidance the trigger run can answer. The full
  * row is one get_theses call away. Null when the read did not return the stock.
  */
@@ -107,7 +107,7 @@ export function stockFromRead(
   // The notes every run reads once at the top (the account's and the
   // analyst's, lib/agent/shared-notes.ts) ride on the one row this run prints.
   const notes = (read?.data as { notes?: string[] } | undefined)?.notes;
-  const short = rowForModel(row, { named: true, size: "short", setupLines: true }) as Record<string, unknown>;
+  const short = rowForModel(row, { named: true, size: "short", playbookChecks: true }) as Record<string, unknown>;
   return {
     row: notes?.length ? { ...short, notes_to_the_account: notes } : short,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
@@ -284,9 +284,7 @@ ${situationsBlock}   - Override is allowed when you have a specific reason (e.g.
    must never round-trip into a loss). After a fired gain checkpoint,
    replace it with the next milestone. After a move that blew through a
    level, re-set it off the NEW structure the chart gives (the swing low,
-   the breakout level, the average) using the Manage line in the row's
-   setup_lines —
-   not a round number. The stock's own exits from its setup (the partial,
+   the breakout price, the average), not a round number. The stock's own exits from its setup (the partial,
    the beat-that-sold review) were written at the fill; the trail is
    your analyst's rule and applies on its own.
    The trigger ids are on the row's triggers lines. If nothing went stale,

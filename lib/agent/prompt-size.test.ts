@@ -27,7 +27,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
   // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
   daily: 9_440,
-  tactical: 14_902,
+  // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
+  tactical: 14_848,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -35,7 +36,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
   // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
   // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
-  writer: 16_941,
+  // 2026-11-17: −1,126, YOUR PLAYBOOKS shows each playbook's watch triggers (the sentence, the trigger as written, its reason) instead of the entry, stop, target, trail and time prose, and the trigger rules point at them.
+  writer: 15_815,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -62,8 +64,10 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: −1,332 / −1,219, the entry / target / stop fields and their reasons leave update_thesis; a level is a trigger edit by id.
   // 2026-11-16: +669 each, place_trade takes sell_if_below and sell_reason (the holding's sale comes with the buy), and the trigger action says EXIT is a holding's and STOP_WATCHING a watch's.
   // 2026-11-16: +17, a watch's lines are its buy and its Stop watching line (update_thesis's ARCHIVED words); the triggers, not a floor, hold the price.
-  "research-run": 31_563,
-  tactical: 27_526,
+  // 2026-11-17: +6,201 each, place_trade's triggers_with_buy takes the playbook's other triggers that come with the buy, in the trigger shape (+5,667), and a trigger may say it is one of the playbook's watch triggers (playbook, on record_thesis and update_thesis).
+  // 2026-11-17: +8 each, place_trade names the row's playbook_checks (was setup_lines).
+  "research-run": 37_772,
+  tactical: 33_735,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -71,7 +75,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-16: −2,509, the same fields leave update_thesis and record_thesis.
   // 2026-11-16: +822, the same place_trade fields and trigger action text.
   // 2026-11-16: +21, the same field words.
-  principal: 62_763,
+  // 2026-11-17: +6,511, the same triggers_with_buy and playbook fields.
+  // 2026-11-17: +8, the same field name.
+  principal: 69_282,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

@@ -9,8 +9,8 @@
 1. **The levels don't change.** Account → Analyst → Stock: an analyst's trigger overrides the account's of the same kind, and a stock's overrides both. Same kind means the same measure, direction, variable and action, whatever the number.
 2. **A playbook is chosen per thesis.** The Writer picks it from the analyst's list. It's saved on the thesis and shown there. A playbook is a stored list of trigger templates, which you edit in Settings → Playbook with the same trigger form the analyst's Triggers tab uses. Its templates write ordinary stock triggers, exactly as if you added them by hand. Changing a playbook later doesn't change stocks already written. The tables below are the templates each playbook starts with.
 3. **On a watch there are three kinds of trigger:** Buy if, Review if, and Stop watching if. Stop watching is its own stored action: it ends the watch and never sells. When it mints the thesis, the Writer fills the watch templates' prices from the chart.
-4. **The buy proposal.** The trigger run fills the holding's sell prices from the playbook's templates: "Sell if below $S", plus the take-profit if the playbook has one. Each price comes with its reason. `place_trade` takes them, and the size is the risk for the trade ÷ (buy − S). You see them on the proposal and change them in Edit & Approve. An agent's buy needs the stock's playbook; a stock with none is a pass, or gets a playbook first. Your own Trade ticket is unchanged.
-5. **At the fill**, the buy lines, Stop watching lines and buying-window reviews come off. The approved sell lines go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a line of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
+4. **The buy proposal.** The trigger run fills the holding's sell prices from the playbook's templates: "Sell if below $S", plus the take-profit if the playbook has one. Each price comes with its reason. `place_trade` takes them, and the size is the risk for the trade ÷ (buy − S). You see each as its trigger on the proposal and change the sell price in Edit & Approve; the others you edit on the stock after the fill (the owner, 2026-11-17). An agent's buy needs the stock's playbook; a stock with none is a pass, or gets a playbook first. Your own Trade ticket is unchanged.
+5. **At the fill**, the playbook's watch triggers come off and its holding triggers go on: the buy triggers, the Stop watching triggers and every trigger the Writer wrote from the playbook's watch triggers (each is marked) come off; a trigger written by hand stays. The approved sell triggers go on, along with the playbook's holding templates exactly as Settings → Playbook lists them. If the stock already has a trigger of the same kind, the fill leaves it, and the Activity line names the template it didn't write. A template with a fixed number is written as listed at the fill. Any number that depends on the chart or the buy is filled by the run in the proposal.
 6. **After a sale back to watch**, the Sell lines come off and the watch templates go on again.
 
 **Writing the lines.**
@@ -30,7 +30,7 @@
 
 ## The six playbooks the analysts use
 
-In the holding tables, "Proposal" means the trigger run fills the price when it proposes the buy. "Template" means the fill writes the line as listed. "Kept" means a watch line that stays through the fill.
+In the holding tables, "Proposal" means the trigger run fills the price when it proposes the buy. "Template" means the fill writes the trigger as listed. "Kept" means the holding has the watch's trigger too: the fill takes every watch trigger off, so a kept clock is written again at the fill and any other kept trigger comes with the buy (its price named by the run).
 
 ### Pre-catalyst run-up (`PRE_CATALYST`): Catalyst Event PM
 
@@ -188,10 +188,9 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
    - **One reader.** The Writer, the trigger run, the fill and `update_thesis` all read the one list. `update_thesis` is included because it writes the exits when a review names the setup on a stock we hold (`heldSetupExitOps`). Nothing else writes a playbook trigger.
 3. **The writers use the list.**
    - The Writer writes the watch templates.
-   - The trigger run fills the proposal templates when it proposes the buy: "Sell if below $S", now read from the playbook's template, plus the take-profit and the breakout's one-risk review. `place_trade` takes each price with its reason, and the proposal and Edit & Approve show them.
+   - The trigger run fills the proposal templates when it proposes the buy: "Sell if below $S", now read from the playbook's template, plus the take-profit and the breakout's one-risk review. `place_trade` takes each price with its reason, and the proposal shows each as its trigger.
    - The fill removes the buying-window reviews. It writes the approved take-profit with its template's action ("Trim 50% if above", where today a new upper price lands as a review), and writes the fill templates.
    - A sale back to watch removes the Sell lines and writes the watch templates.
-4. **Delete "stop when buying"** (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
 
 **Rough size, in net app code:**
 
@@ -200,7 +199,6 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
 | 1 | Small | About +260 / −180, plus a one-time data update for 9 lines |
 | 2 | Large, the bulk | About +700 / −900. Adds a column, the seed and the form reuse; deletes `setup-exits.ts`, about 300 lines of `setups.ts` prose and manage fields, the overrides a template now carries, and the horizon clock |
 | 3 | Medium | About +350 / −200 |
-| 4 | Small, a deletion | About −300 |
 
 ## Checked against recent trades
 
@@ -214,4 +212,4 @@ These lines were replayed on real daily prices against the last five sales, thre
 
 1. **The take-profit for the breakout, PEAD and the pullback** is at the prior high above the buy, or twice the risk above the buy when there is no prior high.
 2. **A pre-catalyst trade sells 7 days before the event date.**
-3. **"Stop when buying" is deleted.** The "Sell if below" approved on the proposal is the one sell line a buy brings.
+3. **"Stop when buying" stays:** the owner's switch in Settings → Triggers. When on, it applies at the fill after the approved sell price is written.

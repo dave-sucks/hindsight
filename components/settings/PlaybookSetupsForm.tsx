@@ -252,18 +252,14 @@ function SetupSheet({
         <div className="space-y-6 px-4 pb-6">
           {/* ── The playbook's words — read-only ───────────────────────── */}
           <div className="space-y-4">
-            <PlaybookBlock label="Entry">{setup.entryText}</PlaybookBlock>
-            <PlaybookBlock label="Stop">{setup.stopText}</PlaybookBlock>
-            {setup.targetText ? <PlaybookBlock label="Target">{setup.targetText}</PlaybookBlock> : null}
-            <PlaybookBlock label="Time">{setup.timeText}</PlaybookBlock>
             {setup.preconditions.length > 0 ? (
               <PlaybookBlock label="Only when">
                 <Bullets items={setup.preconditions} />
               </PlaybookBlock>
             ) : null}
-            {setup.trail.length > 0 ? (
-              <PlaybookBlock label="Trailing a winner">
-                <Bullets items={setup.trail.map((t) => `${titleCase(t.horizon)} — ${t.text}`)} />
+            {setup.confirmation.length > 0 ? (
+              <PlaybookBlock label="A buy is confirmed by">
+                <Bullets items={setup.confirmation} />
               </PlaybookBlock>
             ) : null}
             {setup.failureSigns.length > 0 ? (

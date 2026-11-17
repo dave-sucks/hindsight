@@ -29,12 +29,14 @@ import {
   podcastFormatIndex,
   getSetup,
   setupIndex,
-  describeTemplate,
 } from "@/lib/agent/knowledge";
+import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
+import { WRITTEN_ON, type Template } from "@/lib/agent/knowledge/playbook-templates";
 
 export const readKnowledgeLibrary = defineTool({
   description:
-    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), the setup catalog (buy patterns: entry condition, stop, target, trail, time limit), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
+    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), the playbooks (buy patterns: what must be true, how a buy is confirmed, and the triggers each one writes), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
     "Call with {topic:'archetype'|'setup'|'source'|'signal'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
     "Trading builders/editors: use this BEFORE suggest_config to ground in a real archetype. " +
     "Podcast builders/editors: use this with topic:'podcast-format' BEFORE suggest_podcast_config to pick a structural format (Daily News Brief, Weekly Roundup, Interview Show, Essay & Analysis, Recap & Reaction, Daily Tracker, Explainer Deep Dive) and adapt it to the user's pitch.",
@@ -168,14 +170,16 @@ export const readKnowledgeLibrary = defineTool({
           sources: [],
         };
       }
+      // The account's playbook, as Settings → Playbook lists it; unread, none.
+      const templates = await loadPlaybook(ctx.accountId, entry.id);
       return {
         summary: `Loaded the ${entry.name} setup`,
         data: {
           topic: "setup" as const,
           mode: "entry" as const,
           found: true,
-          entry,
-          content: formatSetupText(entry),
+          entry: { ...entry, triggers: templates },
+          content: formatSetupText(entry, templates),
         },
         sources: [],
       };
@@ -372,7 +376,7 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
   return lines.join("\n").trim();
 }
 
-function formatSetupText(entry: NonNullable<SetupEntry>): string {
+function formatSetupText(entry: NonNullable<SetupEntry>, templates: Template[] | null): string {
   const lines: string[] = [];
   lines.push(`${entry.name} (${entry.code})`);
   lines.push(entry.summary);
@@ -383,21 +387,13 @@ function formatSetupText(entry: NonNullable<SetupEntry>): string {
   lines.push("Must be true first:");
   entry.preconditions.forEach((p) => lines.push(`  • ${p}`));
   lines.push("");
-  lines.push(`Entry: ${entry.entry.text}`);
-  lines.push(`  Condition: ${describeTemplate(entry.entry.template)}`);
-  if (entry.entry.entryVia?.length) lines.push(`  Entered via: ${entry.entry.entryVia.join(", ")}`);
-  entry.entry.confirmation.forEach((c) => lines.push(`  Confirm: ${c}`));
-  if (entry.entry.chaseLimitPct != null) lines.push(`  Chase limit: ${entry.entry.chaseLimitPct}% past the level`);
-  lines.push("");
-  lines.push(`Stop: ${entry.stop.text}`);
-  if (entry.target) lines.push(`Target: ${entry.target.text}`);
+  if (entry.entry.entryVia?.length) lines.push(`Entered via: ${entry.entry.entryVia.join(", ")}`);
+  entry.entry.confirmation.forEach((c) => lines.push(`Confirm: ${c}`));
+  if (entry.entry.chaseLimitPct != null) lines.push(`Chase limit: ${entry.entry.chaseLimitPct}% past the buy trigger's price`);
   lines.push(`Size: ${entry.sizing}${entry.riskMultiplier !== 1 ? ` (risk × ${entry.riskMultiplier})` : ""}`);
-  const trail = Object.entries(entry.trail);
-  if (trail.length) {
-    lines.push("Trail:");
-    trail.forEach(([h, t]) => lines.push(`  ${humanizeToken(h)}: ${t}`));
-  }
-  lines.push(`Time: ${entry.time.text}`);
+  lines.push("");
+  lines.push("Its triggers (Settings → Playbook):");
+  for (const on of templates == null ? (["WATCH"] as const) : WRITTEN_ON) lines.push(...playbookTriggerText(templates, on));
   lines.push("");
   lines.push("Failure looks like:");
   entry.failureSigns.forEach((f) => lines.push(`  • ${f}`));

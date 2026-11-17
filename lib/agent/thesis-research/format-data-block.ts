@@ -392,8 +392,8 @@ function buildPriceStructure(s: StockDataInput): string {
   }
 
   lines.push(
-    `(These are the levels your setup's entry, stop and target come from. ` +
-      `A setup already true today is an entry at or a few cents past the live price.)`,
+    `(These chart numbers are where the prices in your playbook's triggers come from. ` +
+      `If the playbook's buy is already true today, write the buy a few cents above today's price so it fires on the next tick.)`,
   );
   return lines.join("\n");
 }

@@ -37,6 +37,7 @@ import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import type { StreetFacts } from "@/lib/market-data/street-consensus";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
+import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 import { soldReview, RECENTLY_SOLD_WINDOW_DAYS, type SoldReview } from "@/lib/agent/sold-review";
 import {
   getThesisBearCaseBullets,
@@ -469,6 +470,8 @@ export const getTheses = defineTool({
     const resolvedByThesisId = facts.resolved;
     const blockedByThesisId = facts.blocked;
     const setupOverrides = facts.setupOverrides;
+    // The account's playbooks: a watch's row carries the triggers that come with its buy.
+    const playbookOf = await loadPlaybooks(ctx.accountId);
     const resolverNow = facts.now;
     const situationsOf = (id: string): SituationCode[] => {
       const src = facts.sources.get(id);
@@ -566,11 +569,10 @@ export const getTheses = defineTool({
         // rows; `triggerDetail` shows trigger state vs current price;
         // `supersededBy` flags rows killed by a newer sister thesis.
         resolved: resolvedByThesisId.get(t.id) ?? null,
-        // The setup the plan was written on, compact (DAV-253): a held
-        // name's review runs its setup's checklist — failure signs, the
-        // horizon's manage rule, the time limit — instead of the horizon
-        // glossary. Null on rows written before setups were named.
-        setup: setupChecklist(t.setupId, t.horizon, setupOverrides),
+        // The playbook the stock was written on, compact (DAV-253): its failure
+        // signs and confirmation, and on a watch the playbook's triggers that
+        // come with the buy. Null on rows written before playbooks were named.
+        setup: t.setupId ? setupChecklist(t.setupId, { overrides: setupOverrides, held: t.status === "HOLDING", templates: playbookOf ? playbookOf(t.setupId) : null }) : null,
         // Its buy fired (or is live) and the analyst is full: the portfolio
         // decision, on the row (DAV-286). Null otherwise.
         buyBlockedByFull: blockedByThesisId.get(t.id)?.text ?? null,

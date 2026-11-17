@@ -29,11 +29,8 @@ export interface PlaybookSetupView {
   name: string;
   summary: string;
   horizons: string[];
-  entryText: string;
-  stopText: string;
-  /** The upside rule, where the setup has one that is an action; null when the plan is the buy and the floor. */
-  targetText: string | null;
-  timeText: string;
+  /** What confirms a buy on the day. */
+  confirmation: string[];
   /** The triggers the playbook writes on a stock: this account's list, else the catalog's. */
   templates: Template[];
   /** The numbers in force (the catalog's, with this account's overrides applied). */
@@ -46,8 +43,6 @@ export interface PlaybookSetupView {
   preconditions: string[];
   /** What says it failed. */
   failureSigns: string[];
-  /** How a winner is trailed, per horizon. */
-  trail: Array<{ horizon: string; text: string }>;
 }
 
 export interface PlaybookSettings {
@@ -79,14 +74,10 @@ function view(overrides: SetupOverrides, account: AccountPlaybooks): PlaybookSet
       name: s.name,
       summary: s.summary,
       horizons: s.horizons,
-      entryText: s.entry.text,
-      stopText: s.stop.text,
-      targetText: s.target?.text ?? null,
-      timeText: s.time.text,
+      confirmation: s.entry.confirmation,
       templates: playbookTemplates(account, s.id),
       preconditions: s.preconditions,
       failureSigns: s.failureSigns,
-      trail: Object.entries(s.trail).map(([horizon, text]) => ({ horizon, text: text as string })),
       numbers: setupNumbers(applied),
       defaults: setupNumbers(s),
       overridden: o ? (Object.keys(o) as Array<keyof SetupOverride>) : [],

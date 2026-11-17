@@ -96,8 +96,8 @@ describe("the row a situation builds (CEG, held)", () => {
   });
   it("the trigger run's row carries the setup's lines whatever its situation", () => {
     const withLines = { ...saved(["PROTECTIVE_SALE"]), setup: { ...(fixture as Row).setup as Row, lines: ["Entry: the gap day's close.", "Stop: under the gap day's low."] } };
-    const row = rowForModel(withLines, { named: true, size: "short", setupLines: true }) as Row;
-    expect(row.setup_lines).toHaveLength(2);
+    const row = rowForModel(withLines, { named: true, size: "short", playbookChecks: true }) as Row;
+    expect(row.playbook_checks).toHaveLength(2);
     expect(row).not.toHaveProperty("bull_case");
   });
 });

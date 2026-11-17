@@ -33,7 +33,7 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
         direction: "LONG",
         row: rowForModel(
           { id: "thesis_1", ticker: "HPE", status: "HOLDING", direction: "LONG", horizon: "TARGET", coreBelief: "Belief.", keyAssumptions: ["a"], invalidationConds: ["b"], entryPrice: 53, targetPrice: 70, stopLoss: 50, position: { quantity: 60, avgCost: 53.1, peakPrice: 62.7 }, triggers: [{ id: trailTrigger.id, says: sentenceOf(trailTrigger), rationale: trailTrigger.rationale }], situations: ["PROTECTIVE_SALE"] },
-          { named: true, size: "short", setupLines: true },
+          { named: true, size: "short", playbookChecks: true },
         ),
       },
       trigger: trailTrigger, position: { peakPrice: 62.7 },

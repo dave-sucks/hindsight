@@ -47,7 +47,10 @@ only way a trigger changes. **A stock has triggers and nothing else
 (2026-11-16):** no plan, no price target of our own ("target" is Wall
 Street's number, the StreetConsensus card), no level fields on any save, and
 no code that stamps a buy, floor, target or review clock: a playbook's lines
-are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook). "The buy" and "the floor" are names
+are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook):
+the Writer writes its watch triggers, each marked `playbook: "WATCH"`, and
+the run that proposes the buy names the triggers that come with the buy;
+every price is the agent's, from the chart. "The buy" and "the floor" are names
 for kinds of trigger. **A trigger means what it says, whatever the stock's
 state (2026-11-16):** "Stop watching if below $X" is its own action
 (`STOP_WATCHING`), only on a stock we watch; fired on its saved timing it
@@ -55,9 +58,16 @@ retires the thesis as DROPPED with one Activity line, no run and no approval
 (`lib/agent/triggers/stop-watching.ts`). "Sell if" (`EXIT`) is only on a stock
 we hold; the other is refused with the fix, never converted (`actionProblem`,
 `condition/actions.ts`). The holding's sale comes with the buy: `place_trade`
-takes `sell_if_below` + `sell_reason`, the pending position holds it, and the
-fill removes the buy and Stop watching lines and writes "Sell if below" at the
-approved price (`armHeldLadderOnFill`).
+takes `sell_if_below` + `sell_reason` and the playbook's other triggers that
+come with the buy as `triggers_with_buy` (its Trim, a review), saved as they
+are on the pending position (`stopLoss`, `buyTriggers`,
+`lib/proposals/buy-triggers.ts`; `targetPrice` stays empty) and shown on the
+card as their sentences; Edit & Approve changes only the sell price. At the
+fill, the playbook's watch triggers come off and its holding triggers go on:
+the buy, the Stop watching triggers and every `playbook: "WATCH"` trigger
+come off, a trigger written by hand stays, "Sell if below" and the triggers
+that came with the buy go on, then the playbook's fill triggers
+(`armHeldLadderOnFill`).
 Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
@@ -440,7 +450,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 ### Action Tools
 12. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
 13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED / ARCHIVED (→ stored as RETIRED + retiredReason) and WATCHING; there is NO PASS alias — a researched decline on a committed watch is `record_thesis(direction: 'PASS')`, the chat's tool, and a holding is sold with close_position; the ACTIVE/CLOSED verbs were removed). **A save is a patch (2026-10-08, #808):** a value equal to what is stored is dropped before any rule reads it; a field that cannot be applied comes back by name in `data.refused_fields` and the rest of the call lands; a whole-call refusal remains only for a missing or foreign thesis, a terminal row and a seed's commitment. The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
-14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row. Every model call names the holding's sale (`sell_if_below`, `sell_reason`): it is held to the setup's sale rules (`saleRuleProblem`), sizes the buy, and the pending Position holds it (`stopLoss`, `stopReason`); nothing is read off the stock's triggers.
+14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row. Every model call names the holding's sell price (`sell_if_below`, `sell_reason`): it is held to the playbook's sale rules (`saleRuleProblem`), sizes the buy, and the pending Position holds it (`stopLoss`, `stopReason`); nothing is read off the stock's triggers. The playbook's other triggers that come with the buy come as `triggers_with_buy` (`Position.buyTriggers`, saved as named), written at the fill.
 15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
 16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
 17. record_run_summary — persist run summary + ranked picks + decision rationale. It does NOT run the narration→execution gate: that moved to complete_run's preflight on 2026-05-23 (P0-12), so an agent that self-corrects before the end of the run isn't marked FAILED for the attempt.
@@ -802,7 +812,7 @@ When you spot something new, file it there — not here.)
 - lib/agent/triggers/types.ts — the Trigger type
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
 - lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts) + cooldown defaults
-- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded); the fill writes its FILL templates (`fillTemplateOps`)
+- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded, read by `loadPlaybooks`, null when unread); `playbookTriggerText` prints the watch triggers for the Writer and the triggers that come with the buy for a watch's row; the fill writes the triggers written at the fill (`fillTemplateOps`)
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note), and with no fire a declared STOP/TARGET is stored MANUAL; THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer

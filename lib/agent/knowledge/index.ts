@@ -56,7 +56,6 @@ export {
   setupsForAnalyst,
   getSetup,
   setupIndex,
-  describeTemplate,
   type Setup,
   type SetupId,
 } from "./setups";

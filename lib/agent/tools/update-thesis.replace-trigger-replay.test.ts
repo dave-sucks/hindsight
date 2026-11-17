@@ -66,8 +66,6 @@ function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
     mode: "refresh",
     existingStatus: "WATCHING",
     currentPrice: fx.currentPrice,
-    setups: setupsForAnalyst(fx.analyst.setupIds),
-    chart: null,
   });
   expect(v.errors).toEqual([]);
   return v.decision as ValidatedThesisDecision;
