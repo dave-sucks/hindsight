@@ -141,6 +141,7 @@ export async function armHeldLadderOnFill(opts: {
 
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
     // The playbook's fill templates, read against the lines left once the buy and Stop watching lines come off.
+    // A playbook that can't be read writes none, and the Activity line says so.
     const watchLines = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING";
     const playbook = fillTemplateOps(
       watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
@@ -223,7 +224,7 @@ export async function armHeldLadderOnFill(opts: {
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
           status: { from: watchingThesis.status, to: "HOLDING" },
-          triggerOps: { from: null, to: [...acceptedOps(results), ...playbook.kept] },
+          triggerOps: { from: null, to: [...acceptedOps(results), ...playbook.notWritten] },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,

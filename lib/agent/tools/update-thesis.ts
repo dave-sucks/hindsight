@@ -619,6 +619,8 @@ export const updateThesis = defineTool({
       args = { ...args, [field]: undefined };
     };
     const opResults: TriggerOpResult[] = [];
+    // A playbook template the setup path left out, and why (lib/agent/knowledge/playbooks.ts).
+    const playbookNotes: Array<{ op: string; id: string; text: string }> = [];
     // A level this call moves while the claim still names the old number:
     // one sentence each in the reply (claim-names-level.ts).
     const claimNotes: string[] = [];
@@ -1355,7 +1357,8 @@ export const updateThesis = defineTool({
       parseTriggersResilient(existing.triggers).dropped === 0
     ) {
       const base = (patch.triggers ?? parseTriggersResilient(existing.triggers).triggers) as Trigger[];
-      const exitOps = fillTemplateOps(await loadPlaybook(ctx.accountId, args.setup_id), base).ops;
+      const { ops: exitOps, notWritten } = fillTemplateOps(await loadPlaybook(ctx.accountId, args.setup_id), base);
+      playbookNotes.push(...notWritten);
       if (exitOps.length > 0) {
         const written = applyTriggerOps({
           stored: base,
@@ -1657,7 +1660,7 @@ export const updateThesis = defineTool({
       diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
       BULKY_DIFF_KEYS,
     );
-    const landedOps = acceptedOps(opResults);
+    const landedOps = [...acceptedOps(opResults), ...playbookNotes];
     if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
     const changedFields = Object.keys(fieldChanges);
     Object.assign(fieldChanges, notAppliedChange);

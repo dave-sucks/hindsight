@@ -127,7 +127,7 @@ describe("an account's playbooks", () => {
   it("the fill writes its fill templates; one whose kind the stock has is kept out and named", () => {
     let n = 0;
     const has: Trigger = { id: "clock", predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Every two weeks." };
-    const { ops, kept } = fillTemplateOps(PLAYBOOK_TEMPLATES.COMPOUNDER_ACCUMULATION, [has], () => `t${++n}`);
+    const { ops, notWritten: kept } = fillTemplateOps(PLAYBOOK_TEMPLATES.COMPOUNDER_ACCUMULATION, [has], () => `t${++n}`);
     expect(ops.map((o) => (o.op === "add" ? sentenceOf(o.trigger) : o.op))).toEqual(["Review 60 days after the buy", "Add if above 7% from our entry"]);
     expect(kept).toEqual([{ op: "kept", id: "clock", text: "Kept Review every 14 days; the playbook's Review every 30 days not written" }]);
   });

@@ -247,9 +247,10 @@ describe("update_thesis — a held stock gets its playbook's fill templates when
       ["ADD", { watch: "move", is: "above", value: 7, variable: "entry" }],
     ]);
 
-    // One Activity line each.
+    // One Activity line each, and one for the playbook clock it kept out.
     const audit = mockWriteThesisUpdate.mock.calls[0][0] as { fieldChanges?: { triggerOps?: { to: { text: string }[] } } };
-    expect(audit.fieldChanges?.triggerOps?.to).toHaveLength(2);
+    expect(audit.fieldChanges?.triggerOps?.to).toHaveLength(3);
+    expect(audit.fieldChanges?.triggerOps?.to[2].text).toBe("Kept Review every 30 days; the playbook's Review every 30 days not written");
   });
 
   it("naming the same setup again writes nothing a second time", async () => {

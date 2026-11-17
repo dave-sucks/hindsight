@@ -48,21 +48,25 @@ export function playbookTemplates(account: { playbooks: unknown; playbooksSeeded
   return parseList(stored);
 }
 
+export const PLAYBOOK_UNREAD = "The playbook couldn't be read, so none of its triggers were written";
+
 /**
  * A fill's lines from the playbook: each fill template as an ordinary stock
  * trigger, except where the stock already has a line of the same kind. That
- * one is left as it is, and `kept` says which template wasn't written.
+ * one is left as it is, and `notWritten` says which template wasn't written.
+ * A playbook that couldn't be read (null) writes nothing and says so.
  */
-export function fillTemplateOps(templates: Template[], stored: Trigger[], mintId: () => string = randomUUID): { ops: TriggerOp[]; kept: Array<{ op: "kept"; id: string; text: string }> } {
+export function fillTemplateOps(templates: Template[] | null, stored: Trigger[], mintId: () => string = randomUUID): { ops: TriggerOp[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
+  if (templates == null) return { ops: [], notWritten: [{ op: "kept", id: "", text: PLAYBOOK_UNREAD }] };
   const taken = new Map(stored.map((t) => [triggerSlot(t), t]));
   const ops: TriggerOp[] = [];
-  const kept: Array<{ op: "kept"; id: string; text: string }> = [];
+  const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
   for (const { writtenOn, predicate, ...rest } of templates) {
     if (writtenOn !== "FILL") continue;
     const trigger: Trigger = { ...rest, id: mintId(), predicate: predicate as Trigger["predicate"], source: "DEFAULT" };
     const there = taken.get(triggerSlot(trigger));
-    if (there) kept.push({ op: "kept", id: there.id, text: `Kept ${sentenceOf(there)}; the playbook's ${sentenceOf(trigger)} not written` });
+    if (there) notWritten.push({ op: "kept", id: there.id, text: `Kept ${sentenceOf(there)}; the playbook's ${sentenceOf(trigger)} not written` });
     else ops.push({ op: "add", trigger });
   }
-  return { ops, kept };
+  return { ops, notWritten };
 }
