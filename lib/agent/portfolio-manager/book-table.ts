@@ -16,7 +16,7 @@ export interface BookThesis {
   analyst: string | null;
 }
 
-const BELIEF_CHARS = 160;
+const BELIEF_CHARS = 110;
 const pct = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? null : `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1)}%`);
 const belief = (text: string | null) => {
   const t = text?.replace(/\s+/g, " ").trim();
@@ -31,8 +31,52 @@ const moveOver = (closes: number[] | undefined, days: number) => {
 };
 const shortDay = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
+export interface BookOrder { symbol: string; side: string; intent: string | null; status: string; createdAt: Date }
+export interface BookNote { author: string; tickers: string[]; body: string; impact: string | null; effect: string | null; createdAt: Date }
+
+/** How far back a declined or lapsed trade and a note stay on the line. */
+export const FLAG_DAYS = 21;
+const NOTE_CHARS = 140;
+const tradeWord = (o: BookOrder) => (o.side === "SELL" ? (o.intent === "PARTIAL_CLOSE" ? "trim" : "sale") : o.intent === "ADD" ? "add" : "buy");
+
+/**
+ * What has already been asked and said on each stock, for its line: a trade
+ * waiting for the owner, the trades they declined or let lapse, the Market
+ * Reviewer's newest note and the owner's newest note.
+ */
+export function bookFlags(orders: BookOrder[], notes: BookNote[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (ticker: string, flag: string) => out.set(ticker.toUpperCase(), [...(out.get(ticker.toUpperCase()) ?? []), flag]);
+  const groups = new Map<string, BookOrder[]>();
+  for (const o of [...orders].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())) {
+    const outcome = o.status === "AWAITING_APPROVAL" ? "waits" : o.status === "REJECTED" ? "declined" : o.status === "EXPIRED" ? "lapsed" : null;
+    if (!outcome) continue;
+    const k = `${o.symbol.toUpperCase()}|${tradeWord(o)}|${outcome}`;
+    groups.set(k, [...(groups.get(k) ?? []), o]);
+  }
+  for (const [k, os] of groups) {
+    const [ticker, word, outcome] = k.split("|");
+    const a = word === "add" ? "an add" : `a ${word}`;
+    const times = os.length > 1 ? `${os.length} times, last ` : "";
+    add(ticker, outcome === "waits" ? `${a} waits for the owner since ${shortDay(os[0].createdAt)}` : outcome === "declined" ? `the owner declined ${a} ${times}${shortDay(os[0].createdAt)}` : `${a} lapsed unanswered ${times}${shortDay(os[0].createdAt)}`);
+  }
+  const said = new Set<string>();
+  for (const n of [...notes].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())) {
+    const owner = n.author === "OWNER";
+    for (const ticker of n.tickers) {
+      const k = `${ticker.toUpperCase()}|${owner}`;
+      if (said.has(k)) continue;
+      said.add(k);
+      const body = n.body.replace(/\s+/g, " ").trim();
+      const cut = body.length > NOTE_CHARS ? `${body.slice(0, NOTE_CHARS).trimEnd()}…` : body;
+      add(ticker, owner ? `the owner's note ${shortDay(n.createdAt)}: "${cut}"` : `Market Reviewer ${shortDay(n.createdAt)}: ${[n.effect, n.impact ? `${n.impact} impact` : null].filter(Boolean).join(", ") || "a note"}`);
+    }
+  }
+  return out;
+}
+
 /** One line per stock: its holding's thesis when two analysts cover it. */
-export function bookTable(theses: BookThesis[], snapshot: PortfolioSnapshot | null, charts: Map<string, IndicatorSnapshot>, now: Date): string {
+export function bookTable(theses: BookThesis[], snapshot: PortfolioSnapshot | null, charts: Map<string, IndicatorSnapshot>, now: Date, flags: Map<string, string[]> = new Map()): string {
   const rows = new Map<string, BookThesis>();
   for (const t of theses) {
     const k = t.ticker.toUpperCase();
@@ -57,6 +101,7 @@ export function bookTable(theses: BookThesis[], snapshot: PortfolioSnapshot | nu
       t.analyst,
       looked != null ? `last look ${looked === 0 ? "today" : `${looked} day${looked === 1 ? "" : "s"} ago`}` : "never reviewed",
       t.catalystDate && t.catalystDate.getTime() > now.getTime() ? `catalyst ${shortDay(t.catalystDate)}` : null,
+      ...(flags.get(ticker) ?? []),
       belief(t.coreBelief),
     ]
       .filter(Boolean)

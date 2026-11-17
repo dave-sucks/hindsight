@@ -319,9 +319,9 @@ const morningRunSchema = updateSchema.omit({
 
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
-/** The Portfolio Manager's door: the morning save, less the conviction that is the stock's analyst's to set. */
+/** The Portfolio Manager's door: a note on the stock and nothing else. Its triggers, status and conviction are the stock's analyst's. */
 const isManagerRun = (ctx: { runMode?: string }) => ctx.runMode === "PORTFOLIO_MANAGER";
-const managerRunSchema = morningRunSchema.omit({ conviction: true, conviction_rationale: true });
+const managerRunSchema = updateSchema.pick({ thesis_id: true, rationale: true });
 
 /**
  * The rule this save's line answers, kept on the line as it stands now

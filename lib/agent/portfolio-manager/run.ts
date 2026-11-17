@@ -20,7 +20,7 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
-import { bookTable } from "@/lib/agent/portfolio-manager/book-table";
+import { FLAG_DAYS, bookFlags, bookTable } from "@/lib/agent/portfolio-manager/book-table";
 import { buildPortfolioManagerPrompt } from "@/lib/agent/portfolio-manager/prompt";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
@@ -31,12 +31,10 @@ export const MANAGER_MODEL = MODES["research-run"].model;
 const MAX_STEPS = 40;
 const CALL_MS = 770_000;
 
-/** What it may call: the analyst's reads and writes. No note in the owner's name, no new coverage, no close-out tools. */
+/** What it may call. Its read opens stocks by name, a limited number a run (./card.ts); its save is a note. */
 export const MANAGER_TOOLS = [
   "get_theses",
   "get_stock_data",
-  "get_earnings_data",
-  "get_sec_filings",
   "web_search",
   "update_thesis",
   "place_trade",
@@ -55,7 +53,8 @@ const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month
 
 /** Its first message: the book in a line each, then its own last write-up. */
 export async function managerMessage(book: ManagerBook, now: Date): Promise<string> {
-  const [theses, snapshot, last] = await Promise.all([
+  const since = new Date(now.getTime() - FLAG_DAYS * 86_400_000);
+  const [theses, snapshot, last, orders, notes] = await Promise.all([
     prisma.thesis.findMany({
       where: { userId: book.userId, status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
       select: { ticker: true, status: true, conviction: true, coreBelief: true, lastReviewedAt: true, catalystDate: true, researchRun: { select: { agentConfig: { select: { name: true } } } } },
@@ -69,12 +68,20 @@ export async function managerMessage(book: ManagerBook, now: Date): Promise<stri
         select: { message: true, createdAt: true },
       })
       .catch(() => null),
+    prisma.order.findMany({
+      where: { userId: book.userId, environment: book.environment, createdAt: { gte: since }, status: { in: ["AWAITING_APPROVAL", "REJECTED", "EXPIRED"] } },
+      select: { symbol: true, side: true, intent: true, status: true, createdAt: true },
+    }),
+    prisma.sharedNote.findMany({
+      where: { userId: book.userId, audience: "STOCKS", createdAt: { gte: since } },
+      select: { author: true, tickers: true, body: true, impact: true, effect: true, createdAt: true },
+    }),
   ]);
   const charts = await loadIndicatorSnapshots(theses.map((t) => t.ticker.toUpperCase()), now).catch(() => new Map());
   return [
     `${day(now)}, the ${book.environment} book.`,
     "",
-    bookTable(theses.map((t) => ({ ...t, analyst: t.researchRun?.agentConfig?.name ?? null })), snapshot, charts, now),
+    bookTable(theses.map((t) => ({ ...t, analyst: t.researchRun?.agentConfig?.name ?? null })), snapshot, charts, now, bookFlags(orders, notes)),
     "",
     "## Your last write-up",
     last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first.",
@@ -89,6 +96,8 @@ export interface ManagerResult {
   steps: RunStep[];
   toolCalls: Array<{ tool: string; input: unknown }>;
   usage: TokenUsage;
+  /** Input tokens of each model request, in order. */
+  requests: number[];
   error?: string;
 }
 
@@ -118,7 +127,8 @@ export async function runPortfolioManager(
   }) as ToolSet;
   const real = Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet;
   const usage = emptyTokenUsage();
-  const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, ...out });
+  const requests: number[] = [];
+  const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
   try {
     const { steps, response, text } = await generateText({
       model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager" }),
@@ -132,6 +142,7 @@ export async function runPortfolioManager(
       abortSignal: AbortSignal.timeout(CALL_MS),
       onStepFinish({ usage: u }) {
         addTokenUsage(usage, u);
+        requests.push(u?.inputTokens ?? 0);
       },
     });
     const writeup = text?.trim() || null;

@@ -36,6 +36,7 @@ async function main() {
   for (const c of out.toolCalls) console.log(`- ${c.tool} ${WRITES.includes(c.tool) ? JSON.stringify(c.input, null, 2) : JSON.stringify(c.input)}`);
   console.log("\n===== WRITE-UP =====\n" + (out.writeup ?? `(none) ${out.error ?? ""}`));
   console.log("\n===== TOKENS =====\n" + JSON.stringify(out.usage));
+  console.log(`Each request's input: ${out.requests.join(", ")} (largest ${Math.max(0, ...out.requests)})`);
 }
 
 main().then(
