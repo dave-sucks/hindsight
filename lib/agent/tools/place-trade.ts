@@ -12,7 +12,7 @@ import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
-import { analystOf, forTheStock } from "@/lib/agent/analyst-scope";
+import { accountWide, analystOf, forTheStock } from "@/lib/agent/analyst-scope";
 import { prisma } from "@/lib/prisma";
 import { placeMarketOrder, getOrder, getLatestPrice, getAccount } from "@/lib/alpaca";
 import { isExcluded } from "@/lib/agent/universe";
@@ -150,8 +150,8 @@ export const placeTrade = defineTool({
     // which bypasses the duplicate check and hits Alpaca with a 422.
     const ticker = args.ticker.toUpperCase().trim();
 
-    // The chat buys for the thesis's own analyst, under its rules, pinned or not (analyst-scope.ts).
-    if (isPrincipalChat(ctx)) {
+    // An account-wide run buys for the thesis's own analyst, under its rules, pinned or not (analyst-scope.ts).
+    if (accountWide(ctx)) {
       const owner = await prisma.thesis.findFirst({ where: { id: args.thesis_id, userId: ctx.userId }, select: { researchRun: { select: { agentConfigId: true } } } });
       ctx = await forTheStock(ctx, owner ? analystOf(owner) : null);
     }

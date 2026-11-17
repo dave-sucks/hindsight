@@ -92,6 +92,7 @@ const REFS: Record<DocSlug, { title: string; icon: LucideIcon }> = {
   chat: { title: "chat", icon: MessageCircle },
   "market-reviewer": { title: "the Market Reviewer", icon: Newspaper },
   "portfolio-digest": { title: "the Portfolio Digest", icon: FileText },
+  "portfolio-manager": { title: "the Portfolio Manager", icon: FileText },
   "analyst-builder": { title: "the analyst builder", icon: UserRound },
   theses: { title: "theses", icon: FileText },
   triggers: { title: "triggers", icon: Zap },

@@ -29,6 +29,7 @@ export type DocSlug =
   | "market-reviewer"
   | "chat"
   | "portfolio-digest"
+  | "portfolio-manager"
   | "analyst-builder"
   | "analysts"
   | "theses"
@@ -62,6 +63,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "market-reviewer", title: "Market Reviewer", group: "Agents", icon: Newspaper, blurb: "Every weekday at 7:30, researches the market itself and writes the market digest and notes on the stocks it touches." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
   { slug: "portfolio-digest", title: "The Portfolio Digest", group: "Agents", icon: FileText, blurb: "At 8 PM, your account's day, written from one snapshot of your portfolio." },
+  { slug: "portfolio-manager", title: "Portfolio Manager", group: "Agents", icon: FileText, blurb: "Twice a week, reads the whole account and decides where the money belongs." },
   { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
   { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },

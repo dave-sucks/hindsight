@@ -319,6 +319,9 @@ const morningRunSchema = updateSchema.omit({
 
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
+/** The Portfolio Manager's door: the morning save, less the conviction that is the stock's analyst's to set. */
+const isManagerRun = (ctx: { runMode?: string }) => ctx.runMode === "PORTFOLIO_MANAGER";
+const managerRunSchema = morningRunSchema.omit({ conviction: true, conviction_rationale: true });
 
 /**
  * The rule this save's line answers, kept on the line as it stands now
@@ -509,7 +512,9 @@ export const updateThesis = defineTool({
         ? triggerRunSchema
         : isMorningRun(ctx)
           ? morningRunSchema
-          : ctx.runMode === "PRINCIPAL_CHAT"
+          : isManagerRun(ctx)
+            ? managerRunSchema
+            : ctx.runMode === "PRINCIPAL_CHAT"
             ? chatSchema
             : updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_REVIEW }),
   ui: "thesis-card" as const,
@@ -1424,7 +1429,8 @@ export const updateThesis = defineTool({
     // tomorrow, unchanged. This is the other thing: the analyst looked, even
     // if it concluded nothing changed. If a run skips the thesis or crashes,
     // nothing is stamped and it stays due.
-    if (patch.status !== "RETIRED" && patch.status !== "PASSED") {
+    // The Portfolio Manager's note is not the analyst's review: the stock's clock keeps counting.
+    if (patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
       patch.lastReviewedAt = new Date();
     }
 
