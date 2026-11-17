@@ -315,5 +315,12 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     expect(triggerSentences(thesis()).sort()).toEqual(["Review every 7 days", "Review if above $406.68", "Review if below $300"].sort());
     // Nothing new: every trigger left was on the holding, as it was.
     for (const t of stockTriggers()) expect(before).toContainEqual(t);
+    // The CLOSED row names each one that came off.
+    const closed = rows("thesisUpdate").find((u) => u.type === "CLOSED")!;
+    const removed = before.filter((t) => !stockTriggers().some((x) => x.id === t.id));
+    expect(removed.length).toBeGreaterThan(0);
+    expect((closed.fieldChanges as { triggerOps: { to: Array<{ op: string; id: string; text: string }> } }).triggerOps.to).toEqual(
+      removed.map((t) => ({ op: "remove", id: t.id, text: `Removed: ${sentenceOf(t)}` })),
+    );
   });
 });

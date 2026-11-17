@@ -543,8 +543,8 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   belief survived): the triggers that need a position come off (a sale, a
   trim, an add, and any measured from the buy: our entry, the high since we
   bought, days after the buy); the rest stay as written, yours and the
-  holding's review clock included, and nothing is written
-  (`closeThesisForPosition`).
+  holding's review clock included, and nothing is written; the CLOSED
+  Activity row names each one that came off (`closeThesisForPosition`).
 - **Stop watching:** a STOP_WATCHING line on a stock we only watch, fired on
   its saved timing (§7), retires the thesis as dropped with one Activity line
   and withdraws a buy waiting for approval; its triggers are left as they

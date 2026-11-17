@@ -284,11 +284,13 @@ describe("buildTacticalSystemPrompt — a watch's review gets the Writer's playb
   const review: Trigger = { id: "ep-gap", action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below." };
   const block = playbooksBlock(setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), (id) => playbookTemplates(null, id));
 
-  it("prints the same block the Writer reads, and how to write a playbook's watch triggers from it", () => {
+  it("prints the same block the Writer reads; what to do with it is REVIEW_DUE's, the one copy", () => {
     const prompt = buildTacticalSystemPrompt(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
     expect(prompt).toContain(block);
-    expect(prompt).toContain('write that playbook\'s watch triggers with update_thesis add_triggers and name it (setup_id): each with "playbook": "WATCH"');
-    expect(prompt).toContain("A trigger whose price the chart doesn't have yet is left out.");
+    expect(prompt).not.toContain("a playbook's way in");
+    const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
+    expect(due).toContain('If it is a playbook\'s way in on a stock we watch (its note says the run writes the triggers): write that playbook\'s watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH"');
+    expect(due).toContain("one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS");
   });
 
   it("a playbook that couldn't be read says so, and the run writes none from it", () => {

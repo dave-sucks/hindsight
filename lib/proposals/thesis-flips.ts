@@ -389,6 +389,7 @@ export async function closeThesisForPosition(opts: {
       };
       // The stored list as it is, so a trigger this code can't parse isn't dropped by the rewrite.
       const held = (Array.isArray(activeThesis.triggers) ? activeThesis.triggers : []) as unknown as Trigger[];
+      const removed = held.filter(needsPosition);
       await prisma.thesis.update({
         where: { id: activeThesis.id },
         data: {
@@ -410,6 +411,8 @@ export async function closeThesisForPosition(opts: {
         fieldChanges: {
           status: { from: activeThesis.status, to: "WATCHING" },
           ...(isProfitTake ? {} : { beliefSurvived: { from: null, to: true } }),
+          // Each trigger that came off, one Activity line each, as the fill names its ops.
+          ...(removed.length ? { triggerOps: { from: null, to: removed.map((t) => ({ op: "remove", id: t.id, text: `Removed: ${sentenceOf(t)}` })) } } : {}),
         },
         runId: opts.runId,
         priceAtTime: opts.priceAtTime ?? null,

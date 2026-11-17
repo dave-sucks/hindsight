@@ -87,7 +87,7 @@ interface TacticalPromptArgs {
   autoTrade?: { line: string } | null;
   /** The Market and portfolio block (lib/agent/portfolio-block.ts). Empty or null: none. */
   portfolioBlock?: string | null;
-  /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's block (playbooksBlock). Null: none. */
+  /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's block (playbooksBlock); REVIEW_DUE says what to do with them. Null: none. */
   playbooks?: string | null;
 }
 
@@ -214,14 +214,7 @@ $${stock.ticker}, its row (get_theses)
 ═══════════════════════════════════════════════════════════════════
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
 
-${
-    args.playbooks
-      ? `${args.playbooks}
-When this review is a playbook's way in (its note says the run writes the triggers), write that playbook's watch triggers with update_thesis add_triggers and name it (setup_id): each with "playbook": "WATCH", exactly as listed, every {chart number} replaced by its price from this stock's chart today. A trigger whose price the chart doesn't have yet is left out.
-
-`
-      : ""
-  }**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+${args.playbooks ? `${args.playbooks}\n` : ""}**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
 
 **Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
