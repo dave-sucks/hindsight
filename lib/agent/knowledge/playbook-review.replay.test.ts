@@ -16,6 +16,7 @@ import { prismaDouble, thesisRow, agentConfigRow, accountRow, REPLAY_ACCOUNT_ID,
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { fillTemplate } from "@/lib/agent/knowledge/setups";
 import { resolveLadder } from "@/lib/agent/triggers/levels";
+import { applyTriggerOps } from "@/lib/agent/triggers/ops";
 import { sentenceOf, type When } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
@@ -138,5 +139,23 @@ describe("3. A watch's list has no analyst or account rule on our position", () 
   it("the stock's own triggers are read as stored: a watch's own 'Review 60 days after the buy' stays on its list", () => {
     const withOwn = [...own, rule("own-after-buy", { is: "after", value: 60, watch: "from_date", variable: "buy" })];
     expect(resolveLadder({ thesis: withOwn, analyst: [], account: [], state: "WATCHING", direction: "LONG" }).map((t) => t.id)).toContain("own-after-buy");
+  });
+});
+
+describe("4. edit_triggers sets 'only on the close' on an average, as the save does", () => {
+  // V's own "Review if below the 200-day average", as stored on 2026-11-17.
+  const review = { id: "ee9ddbea-391f-446c-8672-744a31ba6ad7", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", rationale: "(as set)", predicate: { is: "below", watch: "price", variable: "sma200" } } as unknown as Trigger;
+  const edit = (t: Trigger, close: boolean) => applyTriggerOps({ stored: [t], ops: [{ op: "edit", id: t.id, close }], direction: "LONG", status: "HOLDING", actor: "AGENT", mintId: () => "x" });
+
+  it("V's 200-day review: on the close", () => {
+    const out = edit(review, true);
+    expect(out.results[0]).toMatchObject({ ok: true });
+    expect(out.triggers[0].predicate).toEqual({ is: "below", watch: "price", variable: "sma200", settings: { close: true } });
+    expect(sentenceOf(out.triggers[0])).toBe("Review if below the 200-day average · only on the close");
+  });
+
+  it("a high still can't wait for the close: the timing is as it was", () => {
+    const high = { ...review, id: "high", predicate: { is: "above", watch: "price", variable: "high52" } } as unknown as Trigger;
+    expect(edit(high, true).results[0]).toMatchObject({ ok: false, reason: expect.stringMatching(/on the close is for a typed price or an average/) });
   });
 });

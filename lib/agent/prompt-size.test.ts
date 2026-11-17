@@ -74,8 +74,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: −576 each, the trigger shape has no "any" and no group inside a group (one "all" level), on record_thesis, update_thesis and triggers_with_buy.
   // 2026-11-17: +239 / +224, triggers_with_buy takes a trim's size and a wait, and the field and library texts say playbook.
   // 2026-11-17: −114 each, triggers_with_buy takes no wait: there are no waits.
-  "research-run": 37_321,
-  tactical: 33_269,
+  // 2026-11-17: +14 each, an edit's "close" is for a typed price or an average.
+  "research-run": 37_335,
+  tactical: 33_283,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -88,7 +89,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: −864, the same trigger shape.
   // 2026-11-17: +258, the same.
   // 2026-11-17: −114, the same.
-  principal: 68_562,
+  // 2026-11-17: +14, the same.
+  principal: 68_576,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

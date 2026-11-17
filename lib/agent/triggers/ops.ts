@@ -51,6 +51,8 @@ import {
   isLevel,
   levelOf,
   measureOf,
+  settingDefs,
+  waitsForClose,
   POSITION_ON_A_WATCH,
   readsThePosition,
   reviewClockDays,
@@ -353,9 +355,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       predicate = group ? { ...group, conditions: group.conditions.map((c, i) => (i === op.part ? next : c)) } : next;
     }
     // ...unless the caller says when it fires: the edit's own `close`, or
-    // the fill level's basis. It applies to a price level only.
+    // the fill level's basis. It applies to a typed price or an average only.
     const close = op.close ?? meta.close;
-    const closeNotApplied = close !== undefined && (isGroup(predicate) || !isLevel(predicate));
+    // The close setting goes where the save takes it: a typed price or an average (the measure's own rule).
+    const closeFits = (c: Condition) => settingDefs(c).some((d) => d.key === "close") && measureOf(c).fits({ ...c, settings: { ...c.settings, close: true } });
+    const closeNotApplied = close !== undefined && (isGroup(predicate) || !closeFits(predicate as Condition));
     if (close !== undefined && !closeNotApplied) {
       const { settings, ...plain } = predicate as Condition;
       const { close: _old, ...rest } = settings ?? {};
@@ -401,7 +405,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       parts.push(line);
     }
-    const onClose = (p: When) => levelOf(p)?.close === true;
+    const onClose = (p: When) => waitsForClose(p);
     if (onClose(predicate) !== onClose(tw)) parts.push(`${name}: ${onClose(predicate) ? "fires on the close" : "fires intraday"}`);
     if (op.action && op.action !== target.action)
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
@@ -412,7 +416,7 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
     // Said, not dropped: "on the close" means nothing to a trigger that isn't
     // a price level. Alone, it comes back by id with the reason (a no-op the
     // save would drop unseen); with other changes, it rides on their line.
-    const notOnClose = `${name}: on the close is for a price level, so its timing is as it was`;
+    const notOnClose = `${name}: on the close is for a typed price or an average, so its timing is as it was`;
     if (parts.length === 0) {
       if (closeNotApplied) return refuse("edit", op.id, `${name}: timing as it was`, `${notOnClose}.`);
       return refuse("edit", op.id, `${name}: no change`, "Nothing to change — the trigger already has these values.", { unchanged: true });
