@@ -31,8 +31,9 @@ Same condition, same action — different mode. That's the whole model.
 "target" is Wall Street's number, data a rule can watch (`street_avg`,
 `street_high`, `street_low`, from below only), never a floor. A stock's plan
 is its buy, its floor and, where the setup has one, an upside rule, usually a
-review. The `entryPrice` / `targetPrice` / `stopLoss` columns are a cache of
-those triggers, never a second source (2026-11-04).
+review. The `entryPrice` / `targetPrice` / `stopLoss` columns were a cache of
+those triggers, never a second source (2026-11-04); they are dropped, and
+nothing on the thesis stores a level.
 
 ## 2. REVIEW is not a special case
 

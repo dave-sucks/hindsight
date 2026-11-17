@@ -49,23 +49,20 @@ ASML shows `financials(empty)`).
 ## 4. Book shape — every held and watched name
 
 ```sql
-WITH th AS (SELECT t.ticker, t.status, t.direction, t."entryPrice" e, t."targetPrice" tg, t."stopLoss" s, COALESCE(t.triggers,'[]'::jsonb) tr FROM "Thesis" t WHERE t.status IN ('HOLDING','WATCHING'))
-SELECT ticker, status, e, tg, s,
+WITH th AS (SELECT t.ticker, t.status, t.direction, COALESCE(t.triggers,'[]'::jsonb) tr FROM "Thesis" t WHERE t.status IN ('HOLDING','WATCHING'))
+SELECT ticker, status,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action'='ENTER') AS n_enter,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action'='EXIT') AS n_exit,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->>'action' IN ('ADD','TRIM')) AS n_pos,
  (SELECT count(*) FROM jsonb_array_elements(tr) x WHERE x->'predicate'->>'kind'='REVIEW_CADENCE') AS n_clock,
- CASE WHEN direction='LONG' AND e>s THEN round(((tg-e)/(e-s))::numeric,2) END AS rr,
  (SELECT count(*) FROM "Position" p WHERE p.symbol=th.ticker AND p.status='OPEN') AS open_pos
 FROM th ORDER BY status, ticker;
 ```
 Bad, by column:
-- WATCHING with `rr < 2` — a plan under the floor (the gate should have refused it; find the write path that let it through).
 - WATCHING with `n_enter > 1` — two buy triggers on one stock.
 - WATCHING with `n_pos > 0` — a scale-in/trim rung on a name we don't own (read side drops it, but it shouldn't be stored).
 - HOLDING with `n_exit = 0` — an owned name with no sell rung.
 - HOLDING with `open_pos = 0`, or WATCHING with `open_pos = 1` — position/thesis desync.
-- A stop **above** entry on a WATCHING row (fine on HOLDING — that's a ratcheted stop).
 
 ## 5. Positions and theses agree
 
