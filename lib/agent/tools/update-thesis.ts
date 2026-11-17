@@ -882,7 +882,7 @@ export const updateThesis = defineTool({
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
           `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + a buy (action ENTER) and where the setup is over (action STOP_WATCHING, "Stop watching if below $X") in add_triggers + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
+          `  • \`direction: "LONG"\` + horizon + a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one) on the stock or in add_triggers, and a Stop watching line (action STOP_WATCHING, "Stop watching if below $X") if its playbook has one, + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
           `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
           `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
           `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
@@ -933,15 +933,19 @@ export const updateThesis = defineTool({
       if (args.direction === "LONG" || args.direction === "SHORT") {
         const missing: string[] = [];
         if (!args.horizon) missing.push("horizon");
-        // The buy and the floor may already be on the stock, or come in this
-        // call; the buy may be a chart condition. SMMT 2026-10-02: the buy was
-        // "closes above $17.10 and above the 20-day" (an AND trigger); this
-        // rule demanded a buy price anyway, the chat sent $17.10 to satisfy
-        // it, and the stock got an accidental copy of the buy it already had.
+        // A watch needs a next action, not a buy price: a buy (ENTER) or a
+        // review (REVIEW) that can lead to one, already on the stock or in this
+        // call. A Stop watching line is optional (a playbook may start with
+        // only a review: PEAD waits for the report). The buy may be a chart
+        // condition. SMMT 2026-10-02: the buy was "closes above $17.10 and
+        // above the 20-day" (an AND trigger); the old rule demanded a buy price
+        // anyway, the chat sent $17.10 to satisfy it, and the stock got an
+        // accidental copy of the buy it already had.
         const has = (action: string) =>
           existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
-        if (!has("STOP_WATCHING")) missing.push("where the setup is over (one Stop watching line, action STOP_WATCHING, in add_triggers)");
-        if (!has("ENTER")) missing.push("a buy (one buy trigger, action ENTER, in add_triggers)");
+        if (!has("ENTER") && !has("REVIEW")) {
+          missing.push("a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one, in add_triggers; a Stop watching line is optional)");
+        }
         if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
         if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
         if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
