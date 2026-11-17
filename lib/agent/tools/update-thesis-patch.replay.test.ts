@@ -199,15 +199,14 @@ describe("refuse the field, land the call", () => {
 });
 
 describe("a call where nothing can land is still refused whole", () => {
-  it("a seed's commitment missing its floor: refused, nothing written", async () => {
+  it("a seed's commitment missing its next action (no buy, no review): refused, nothing written", async () => {
     const s = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, triggers: [] });
     const r = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [s] },
       args: {
         thesis_id: "t_seed", rationale: "Committing to a long after the first read.", direction: "LONG", horizon: "TARGET",
         add_triggers: [
-          { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "The breakout above $100." },
-          { predicate: { watch: "price", is: "above", value: 130 }, action: "REVIEW", rationale: "At $130, take profit or let it run." },
+          { predicate: { watch: "price", is: "below", value: 95, settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below $95 the setup is over." },
         ],
         core_belief: "It drifts up.", key_assumptions: ["a", "b"], invalidation_conditions: ["c", "d"],
         conviction: "MEDIUM", conviction_rationale: "Probably works.",

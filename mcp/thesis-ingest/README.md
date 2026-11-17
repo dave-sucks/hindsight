@@ -45,7 +45,7 @@ In Claude Desktop, research a name for one of the analysts (Secular Compounder, 
 Event PM, PEAD Specialist, Momentum Breakout — see `docs/prompts/INGEST_THESIS.md`), then
 ask it to *"save this as a thesis for the Secular Compounder."* It calls `save_thesis`;
 on success you get the `thesis_id`, on rejection the exact validation reason to fix and
-retry. Send `triggers`: the buy (`ENTER`) and where the setup is over (`STOP_WATCHING`, never `EXIT`). Nothing is generated for the thesis.
+retry. Send `triggers`: a next action (a buy, `ENTER`, or a review, `REVIEW`, that brings the stock back to one), plus where the setup is over (`STOP_WATCHING`, never `EXIT`) when its playbook has one. Nothing is generated for the thesis.
 
 ## Smoke test (against a local dev server)
 ```bash

@@ -89,7 +89,7 @@ const saveThesisInput = {
   direction: z
     .enum(["LONG", "SHORT", "PASS"])
     .describe(
-      "LONG/SHORT need the belief, conviction and triggers below. PASS = researched, decided not to trade (documents the decline); only ticker + reasoning_summary needed.",
+      "LONG/SHORT need the belief, conviction and a next action in triggers below. PASS = researched, decided not to trade (documents the decline); only ticker + reasoning_summary needed.",
     ),
   horizon: z
     .enum(["CATALYST", "TARGET", "TRADE", "COMPOUNDER"])
@@ -101,7 +101,7 @@ const saveThesisInput = {
     .array(z.object({ predicate: z.record(z.string(), z.unknown()), action: z.enum(["ENTER", "STOP_WATCHING", "REVIEW"]), rationale: z.string() }))
     .optional()
     .describe(
-      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. Where the setup is over: { predicate: { watch: 'price', is: 'below', value, settings: { close: true } }, action: 'STOP_WATCHING', rationale } — it reads 'Stop watching if below $X · only on the close', ends the watch and never sells. Never send EXIT: a sale is for a stock we hold, and the holding's sale comes later, with the buy proposal. A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
+      "The stock's triggers. A LONG/SHORT needs a next action: a buy (ENTER), or a review (REVIEW, at a price, at a date or after the report) that brings the stock back to a buy decision; never invent a buy price to have one. A view that fits no playbook carries no setup_id and a review that brings it back. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. Where the setup is over, when the playbook has one: { predicate: { watch: 'price', is: 'below', value, settings: { close: true } }, action: 'STOP_WATCHING', rationale } — it reads 'Stop watching if below $X · only on the close', ends the watch and never sells. Never send EXIT: a sale is for a stock we hold, and the holding's sale comes later, with the buy proposal. A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
     ),
   core_belief: z
     .string()
@@ -162,7 +162,7 @@ server.registerTool(
     description:
       "Mint a WATCHING thesis in the Hindsight paper-trading platform from a finished research decision. " +
       "The platform validates the input (taxonomy, trigger shape, conviction gates) and persists it, with the " +
-      "triggers you send (the buy and where the setup is over) — at zero model cost. Use after you've researched a name for one of the analysts. " +
+      "triggers you send (a next action, plus where the setup is over when the playbook has one) — at zero model cost. Use after you've researched a name for one of the analysts. " +
       "On rejection, the error explains exactly what to fix; " +
       "correct the fields and call again.",
     inputSchema: saveThesisInput,

@@ -63,17 +63,22 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 > - `direction` is `"LONG"`, `"SHORT"`, or `"PASS"` — UPPERCASE. If the setup points the wrong
 >   way for this analyst's edge, output `direction:"PASS"` (documents the decline) — do NOT
 >   force a trade.
-> - **For `LONG`/`SHORT` ALL of these are required:** `horizon`, `triggers` (a buy, action
->   `ENTER`, and where the setup is over, action `STOP_WATCHING`), `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
+> - **For `LONG`/`SHORT` ALL of these are required:** `horizon`, `triggers` (a next
+>   action, see below), `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
 >   `conviction`, `conviction_rationale`, `target_size_pct`.
 > - **A stock has triggers and nothing else:** no price fields, no target of our own ("target"
->   is Wall Street's number). The buy is `is: "below"` for a pullback, `"above"` for a
->   breakout. Where the setup is over is a `STOP_WATCHING` line, `"is": "below"` the buy on a
->   LONG, with `"settings": { "close": true }`. It reads "Stop watching if below $X · only on
->   the close": a close below it ends the watch. It never sells, and **never send `EXIT`**:
->   a sale is for a stock we hold, and the new thesis is only a watch. The holding's sale
->   comes later, with the buy proposal, never in this JSON. A `REVIEW` above the buy is
->   optional. Nothing is generated for you.
+>   is Wall Street's number). **A watch needs a next action, not a buy price:** a buy
+>   (`ENTER`: `is: "below"` for a pullback, `"above"` for a breakout, or a chart condition), or a
+>   review (`REVIEW`, at a price, at a date, or after the report) that brings the stock back
+>   to a buy decision. Some playbooks start with only a review: PEAD waits for the report, and
+>   a pre-catalyst stock waits for its window. Never invent a buy price to have one.
+> - **A view that fits no playbook** carries no `setup_id` and a review that brings it back.
+> - **Where the setup is over** is a `STOP_WATCHING` line, when the playbook has one:
+>   `"is": "below"` the buy on a LONG, with `"settings": { "close": true }`. It reads "Stop
+>   watching if below $X · only on the close": a close below it ends the watch. It never
+>   sells, and **never send `EXIT`**: a sale is for a stock we hold, and the new thesis is
+>   only a watch. The holding's sale comes later, with the buy proposal, never in this JSON.
+>   Nothing is generated for you.
 > - **`variant_view` is required when `conviction` is `STRONG` or `HIGH`.** If you can't state a
 >   real variant view, your conviction is `MEDIUM` — don't inflate it.
 > - **`horizon`** is `CATALYST` | `TARGET` | `TRADE` | `COMPOUNDER`. Conditional requireds:
@@ -136,7 +141,8 @@ LONG-only. Buying the drift, not the gap-day reaction.
 beats, sideways/down guides, names already gapped 10%+ (edge is gone).
 **Timing:** entry **1-3 days after** the print (not on it); target a 60-day drift window; the
 setup is over at **−8%** (the Stop watching line) or a volume reversal candle. The buy trigger = the drift-entry level you're waiting
-for — above or below the tape, never on it; put the 60-day window in `key_assumptions` and
+for — above or below the tape, never on it; before the print there is no buy yet, so the next action is a
+`REVIEW` after the report (`{ "watch": "report", "is": "after", "value": 1 }`); put the 60-day window in `key_assumptions` and
 (optionally) `max_hold_days`-via-`TRADE` if you prefer a hard time-exit.
 **Conviction → size:** STRONG ~3 · HIGH ~2.5 · MEDIUM ~2 · LOW ~1.5 (small book; cap $3k).
 Don't hold into the next print. All sectors.
