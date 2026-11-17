@@ -10,7 +10,6 @@ import etn from "@/lib/agent/__fixtures__/row-etn-2026-11-04.json";
 import pltr from "@/lib/agent/__fixtures__/row-pltr-2026-11-04.json";
 import cogt from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
 import { rowForModel } from "@/lib/agent/row-for-model";
-import { validateThesisShape } from "@/lib/agent/thesis-shape";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { checkLadder } from "@/lib/agent/triggers/ops";
 import { oldLevelFieldsAsTriggerOps, planTriggers, replayTool, triggerSentences, thesisRow } from "@/lib/replay";
@@ -20,8 +19,7 @@ import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } 
 type Row = Record<string, unknown>;
 
 describe("the plan the 2:1 rule was written for (PLTR as stored, 183 / 190 / 110)", () => {
-  it("is legal on every write path: the shape rule and the ladder check both pass it, as the agent", () => {
-    expect(validateThesisShape({ direction: "LONG", buy: 183, upside: 190, floor: 110 })).toEqual({ ok: true });
+  it("is legal on every write path: the ladder check passes it, as the agent", () => {
     const check = checkLadder({ triggers: planTriggers({ entry: 183, target: 190, stop: 110 }) as unknown as Trigger[], direction: "LONG", status: "WATCHING", actor: "AGENT" });
     expect(check).toEqual({ ok: true });
   });

@@ -22,7 +22,7 @@ describe("the buy fill's level op", () => {
 
   it("switching the buy to close-only at the same level is one edit", () => {
     const out = run([{ op: "level", slot: "ENTRY", price: 264.5, basis: "close" }]);
-    expect(out.results[0]).toMatchObject({ ok: true, text: "Entry: fires on the close" });
+    expect(out.results[0]).toMatchObject({ ok: true, text: "Buy: fires on the close" });
     expect(out.triggers.find((t) => t.id === "buy")!.predicate).toEqual({ watch: "price", is: "above", value: 264.5, settings: { close: true } });
   });
 });

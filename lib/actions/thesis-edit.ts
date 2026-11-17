@@ -265,7 +265,6 @@ async function runPrincipalOp(
     direction: thesis.direction,
     status: thesis.status,
     actor: "PRINCIPAL",
-    avgCost: thesis.position?.avgCost,
   });
   if (!check.ok) throw new ThesisEditError("INVALID", check.message);
 

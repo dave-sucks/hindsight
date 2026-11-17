@@ -51,11 +51,10 @@ type ThesisChartProps = {
 
 /**
  * One annotated price chart shared across the thesis sheet, the thesis cards,
- * and the trade detail page. Horizontal Entry/Target/Stop lines on every
- * surface; vertical "started watching" / "entered" markers only on the full
- * variant (the card's short fixed window usually predates entry). Degrades to
- * nothing when there's no candle data, and renders nothing
- * when there's neither a chart nor any price levels to show.
+ * and the trade detail page. One horizontal line per price trigger, labelled
+ * with its sentence, and "Paid" on a holding; vertical "Watching" / "Bought" /
+ * "Sold" markers only on the full variant (the card's short fixed window
+ * usually predates the buy). Renders nothing with neither a chart nor a line.
  */
 export function ThesisChart({
   ticker,
@@ -206,7 +205,7 @@ export function ThesisChart({
   // simply appear only when the watch/entry date lands inside it.
   const verticalMarkers = [
     addedAt ? { date: addedAt.slice(0, 10), color: WATCH, label: 'Watching' } : null,
-    enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Entry' } : null,
+    enteredAt ? { date: enteredAt.slice(0, 10), color: ENTRY, label: 'Bought' } : null,
     soldAt ? { date: soldAt.slice(0, 10), color: SOLD, label: 'Sold' } : null,
   ].filter((m): m is NonNullable<typeof m> => m !== null);
 

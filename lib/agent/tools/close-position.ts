@@ -18,9 +18,6 @@ import { getAccount } from "@/lib/alpaca";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 import { answers } from "@/lib/proposals/staged";
-import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
-import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import type { Trigger } from "@/lib/agent/triggers/types";
 
 export const closePosition = defineTool({
   description:
@@ -181,38 +178,15 @@ export const closePosition = defineTool({
         };
       }
 
-      // ── The plan and the tape, for the label (DAV-263) ─────────────────
-      // A close no protective fire woke keeps the agent's label only when the
-      // tape backs it: SRRK 2026-09-14 08:00 was stored "TARGET" at $55.41
-      // with the upside line at $65 and the sale at $56.40. The stock's own
-      // triggers are its levels as they stand; the position's approved sell
-      // price is the fallback for a stock with no sale trigger. One quote;
-      // its age doesn't matter for "was the level reached", and no quote
-      // means no correction — a correction never guesses.
-      const heldThesis = ctx.analystId
-        ? await prisma.thesis.findFirst({
-            where: { ticker, status: "HOLDING", researchRun: { agentConfigId: ctx.analystId } },
-            select: { direction: true, triggers: true },
-          })
-        : null;
-      // The price of the stock's own trigger in a slot (one per slot), when it has one at a typed price.
-      const heldTriggers = heldThesis ? (parseTriggersResilient(heldThesis.triggers).triggers as Trigger[]) : [];
-      const inSlot = (slot: "FLOOR" | "TARGET") => {
-        const t = heldTriggers.find((x) => levelSlotOf(x, heldThesis?.direction ?? null) === slot);
-        return t ? typedPriceOf(t) : null;
-      };
+      // ── The label (DAV-263) ────────────────────────────────────────────
+      // STOP or TARGET only when the trigger that woke this run says so; any
+      // other sale is the agent's call.
       const quote = await getStockQuote(ticker).catch(() => null);
       const enforced = enforceCloseReason({
         declared: args.reason,
         protective: ctx.protectiveExitReason,
         triggerLabel: ctx.protectiveExitTriggerLabel,
         beliefSurvived: args.belief_survived,
-        levels: {
-          direction: position.direction as "LONG" | "SHORT",
-          price: quote?.c != null && quote.c > 0 ? quote.c : null,
-          upside: inSlot("TARGET") ?? position.targetPrice ?? null,
-          floor: inSlot("FLOOR") ?? position.stopLoss ?? null,
-        },
       });
       // The model's own words for this exit, for narration + audit strings.
       const intent = enforced.declared;

@@ -954,7 +954,7 @@ Write the research note now, then call submit_thesis.`;
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
         currentPrice,
-        // A refresh's edits are read against the stored triggers (decisionLevels).
+        // A refresh's edits are read against the stored triggers (decisionBuy).
         existingTriggers: existingThesis?.triggers,
         setups: seatSetups,
         chart: pullOutput.pull?.chart ?? null,

@@ -1257,35 +1257,10 @@ export const updateThesis = defineTool({
           now: new Date(),
           mintId: () => randomUUID(),
         });
-        // Held: the buy is the fill. The open Position's avgCost is the
-        // record of what we own at what price (the 2026-05-12 AMD shape — a
-        // $420 planned entry, a $446 fill, and a $434 stop refused against
-        // the plan).
-        const held = levelStatus === "HOLDING";
-        let avgCost: number | null | undefined;
-        const checkOf = async (triggers: Trigger[]) => {
-          if (avgCost === undefined) {
-            const openPosition =
-              held && ctx.analystId
-                ? await prisma.position.findFirst({
-                    where: { analystId: ctx.analystId, symbol: existing.ticker, status: "OPEN" },
-                    select: { avgCost: true },
-                    orderBy: { openedAt: "desc" },
-                  })
-                : null;
-            avgCost = openPosition?.avgCost != null ? Number(openPosition.avgCost) : null;
-          }
-          return checkLadder({
-            triggers,
-            inherited: inheritedLadder,
-            direction: levelDirection,
-            status: levelStatus,
-            actor: "AGENT",
-            avgCost,
-          });
-        };
         const applied = apply(triggerOps);
-        const check = applied.results.some((r) => r.ok) ? await checkOf(applied.triggers) : null;
+        const check = applied.results.some((r) => r.ok)
+          ? checkLadder({ triggers: applied.triggers, inherited: inheritedLadder, direction: levelDirection, status: levelStatus, actor: "AGENT" })
+          : null;
         // An op that changes nothing is a no-op here, not a refusal.
         opResults.push(...applied.results.filter((r) => !r.unchanged));
 

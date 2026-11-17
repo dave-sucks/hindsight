@@ -1078,7 +1078,7 @@ export function ThesisBody({
     <div className="min-w-0">
     <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
       {/* ── Price chart (annotated), the first thing in the column ─── */}
-      {/* Full price line with Entry/Target/Stop lines + "Watching"/"Entry"
+      {/* Full price line with one line per price trigger and "Paid" on a holding, + "Watching"/"Bought"
           markers. Its selected range's move prints in the price row above,
           not inside the chart. */}
       {!isPass && candlesLoading ? (

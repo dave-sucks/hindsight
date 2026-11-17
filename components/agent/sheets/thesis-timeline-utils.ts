@@ -603,9 +603,9 @@ const SCALAR_LINES: Array<{
   label: string;
   fmt: (v: unknown) => string;
 }> = [
-  { key: "targetPrice", label: "Target", fmt: fmtLevel },
-  { key: "stopLoss", label: "Stop", fmt: fmtLevel },
-  { key: "entryPrice", label: "Entry", fmt: fmtLevel },
+  { key: "targetPrice", label: "Upside", fmt: fmtLevel },
+  { key: "stopLoss", label: "Floor", fmt: fmtLevel },
+  { key: "entryPrice", label: "Buy", fmt: fmtLevel },
   { key: "conviction", label: "Conviction", fmt: fmtPlain },
   { key: "horizon", label: "Horizon", fmt: fmtPlain },
 ];
@@ -666,8 +666,8 @@ function askedFor(field: string, to: unknown): string {
   if (field === "direction") return to === "PASS" ? "pass" : word ? `flip to ${word}` : "direction change";
   if (field === "conviction") return word ? `conviction ${word}` : "conviction";
   if (field === "entry_price") return `buy at${price}`;
-  if (field === "target_price") return `target${price}`;
-  if (field === "stop_loss") return `stop${price}`;
+  if (field === "target_price") return `upside line${price}`;
+  if (field === "stop_loss") return `floor${price}`;
   if (field === "triggers") return "trigger changes";
   return field.replace(/_/g, " ");
 }

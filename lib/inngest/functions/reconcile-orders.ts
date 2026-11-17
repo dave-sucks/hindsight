@@ -329,8 +329,6 @@ async function applyFillByIntent(
 
     switch (intent) {
       case "OPEN": {
-        // What the buy was priced at until now: the approval's price then, or place_trade's quote.
-        const boughtAt = position.avgCost;
         if (position.status === "OPEN" && Math.abs(position.avgCost - fillPrice) > 0.01) {
           await tx.position.update({
             where: { id: position.id },
@@ -339,7 +337,7 @@ async function applyFillByIntent(
         }
         // Stop when buying put its sale under the price the buy was approved
         // at; the fill moves it under what was paid.
-        await moveStopWhenBuyingToFill(tx, position.analystId, position.symbol, boughtAt, fillPrice, position.id);
+        await moveStopWhenBuyingToFill(tx, position.analystId, position.symbol, fillPrice, position.id);
         await tx.positionEvent.create({
           data: {
             positionId: position.id,
@@ -488,8 +486,6 @@ async function moveStopWhenBuyingToFill(
   tx: TransactionClient,
   analystId: string,
   symbol: string,
-  /** The price the sale was set under: the position's avgCost before the fill. */
-  boughtAt: number,
   paidPrice: number,
   positionId: string,
 ): Promise<void> {
@@ -502,7 +498,15 @@ async function moveStopWhenBuyingToFill(
     orderBy: { createdAt: "desc" },
     select: { id: true, ticker: true, direction: true, triggers: true },
   });
-  if (!thesis || Math.abs(boughtAt - paidPrice) <= 0.01) return;
+  if (!thesis) return;
+  // The price the buy was made at is on the row that made the stock a holding (armHeldLadderOnFill).
+  const promoted = await tx.thesisUpdate.findFirst({
+    where: { thesisId: thesis.id, tradeId: positionId, type: "STATUS_CHANGED" },
+    orderBy: { timestamp: "desc" },
+    select: { priceAtTime: true },
+  });
+  const boughtAt = promoted?.priceAtTime != null ? Number(promoted.priceAtTime) : null;
+  if (boughtAt == null || Math.abs(boughtAt - paidPrice) <= 0.01) return;
   const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
   const stopOps = autoStopFillOps({ triggers: stored, direction: thesis.direction, boughtAt, paid: paidPrice, setting: await loadAutoStop(analystId) });
   if (!stopOps.length) return;

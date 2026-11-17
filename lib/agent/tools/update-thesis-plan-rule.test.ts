@@ -1,12 +1,11 @@
 /**
- * update-thesis-plan-rule.test.ts — the one price-plan rule on the
- * update path (2026-09-02).
+ * update-thesis-plan-rule.test.ts — a level edit on the update path is
+ * saved as written.
  *
- * The shape gate used to run only when target_price or stop_loss changed,
- * so an entry-only edit could produce entry == target (PLTR, 2026-08-27:
- * entry 183 → 190 against a $190 target, nothing objected). And the 2:1
- * floor ran only inside the writer loop, never here or in record_thesis.
- * Both now go through validateThesisShape on any level edit.
+ * There was a price-plan rule here: a buy, floor and upside line had to sit
+ * in order (PLTR, 2026-08-27: a buy moved onto its $190 upside line), and a
+ * 2:1 floor ran in the Writer. Both are gone (2026-11-04, 2026-11-16): each
+ * trigger means what it says, and nothing checks one against another.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -122,13 +121,12 @@ beforeEach(() => {
 const priceIn = (data: { triggers?: unknown }, id: string) =>
   ((data.triggers ?? []) as Array<{ id: string; predicate: { value?: number } }>).find((t) => t.id === id)?.predicate.value;
 
-describe("update_thesis — the plan rule runs on any level edit", () => {
-  it("refuses the 08-27 PLTR edit: moving only the entry onto the target", async () => {
+describe("update_thesis — a level edit is saved as written (no order rule)", () => {
+  it("the 08-27 PLTR edit lands: a buy moved onto the upside review is two triggers, each meaning what it says (no order rule since 2026-11-16)", async () => {
     const result = await run({ edit_triggers: [{ id: "enter-1", value: 190, rationale: "Onto the upside line." }] });
-    // The entry is refused with the plan message; the rest of the call lands.
     expect(result.data?.ok).toBe(true);
-    expect(result.data?.refused_fields).toEqual([expect.objectContaining({ field: "triggers" })]);
-    expect(mockThesisUpdate.mock.calls.every(([a]) => Object.keys(a.data).every((k) => k === "lastReviewedAt"))).toBe(true);
+    expect(result.data?.refused_fields).toBeUndefined();
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "enter-1") === 190)).toBe(true);
   });
 
   it("accepts an entry edit that leaves the plan under 2:1 (the ratio is not a rule, 2026-11-04)", async () => {
@@ -184,9 +182,9 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       }),
     );
     mockPositionFindFirst.mockResolvedValueOnce({ avgCost: 160 });
-    // Raising the floor toward the fill leaves reward 30 / risk ~0 — no R/R
-    // question on a held name, only ordering.
-    const result = await run({ stop_loss: 158 });
-    expect(result.data?.error).not.toBe("invalid_thesis_shape");
+    // The floor ratchets up, $15 over the $160 fill: no question of reward or order.
+    const result = await run({ edit_triggers: [{ id: "floor-1", value: 175, rationale: "Under the new shelf." }] });
+    expect(result.data?.error).toBeUndefined();
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "floor-1") === 175)).toBe(true);
   });
 });

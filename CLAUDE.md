@@ -804,7 +804,7 @@ When you spot something new, file it there — not here.)
 - lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
 - lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts) + cooldown defaults
 - lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded); the fill writes its FILL templates (`fillTemplateOps`)
-- lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note); THESIS_INVALIDATED stays distinct via belief_survived
+- lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note), and with no fire a declared STOP/TARGET is stored MANUAL; THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
 - lib/actions/thesis-edit.ts — UI add / edit / delete / fire-mode write paths

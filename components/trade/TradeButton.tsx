@@ -449,7 +449,7 @@ export function TradeButton({
                                   />
                                 </div>
                                 <div className="grid gap-1.5">
-                                  <Label htmlFor="trade-target">Target (optional)</Label>
+                                  <Label htmlFor="trade-target">Review if above (optional)</Label>
                                   <Input
                                     id="trade-target"
                                     type="number"
@@ -501,7 +501,7 @@ export function TradeButton({
                 {isOpenBuy ? (
                   <>
                     <InfoRow label="Sell if below" mono border={false} valueClassName="font-normal" value={levelLine(stop)} />
-                    <InfoRow label="Target" mono border={false} valueClassName="font-normal" value={levelLine(target)} />
+                    <InfoRow label="Review if above" mono border={false} valueClassName="font-normal" value={levelLine(target)} />
                   </>
                 ) : null}
               </div>

@@ -208,6 +208,8 @@ export async function armHeldLadderOnFill(opts: {
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,
+        // The price the buy was made at: stop when buying set its sale under it, and the fill moves it from here.
+        priceAtTime: opts.fillPrice,
       },
     });
   } catch (err) {

@@ -182,10 +182,8 @@ export function validateThesisDecision(
   // The buy and the floor are triggers. A view is priced when the decision
   // writes a buy or a floor; an unpriced view (no buy, ≥1 REVIEW wake —
   // DAV-224) is legal: "bullish, entry window opens in January" used to be
-  // unwritable, so BMRN came back with today's quote as its buy level. The
-  // ordering of the levels is the save's check (checkDecisionAgainstSave).
-  const levels = decisionLevels(d, opts);
-  const { entry, priced } = levels;
+  // unwritable, so BMRN came back with today's quote as its buy level.
+  const { entry, priced } = decisionBuy(d, opts);
 
   // ── The setup and how its numbers were derived (DAV-249) ─────────────
   // In-loop: the writer repairs in one step. Nothing
@@ -368,11 +366,12 @@ export function validateThesisDecision(
 }
 
 /**
- * The buy, the floor and the upside level the decision leaves on the stock,
- * read off its triggers (a refresh's edits applied to the stored ones), and
- * whether the decision itself writes a buy or a floor. Pure.
+ * The price of the buy trigger the decision leaves on the stock, when it is
+ * at a typed price (a refresh's edits applied to the stored ones), for the
+ * setup's chase limit; and whether the decision itself writes a buy or a
+ * Stop watching line. Pure.
  */
-export function decisionLevels(
+export function decisionBuy(
   d: ThesisDecisionInput,
   opts: Pick<DecisionValidationOpts, "mode" | "existingStatus" | "existingTriggers">,
 ): { entry: number | null; priced: boolean } {

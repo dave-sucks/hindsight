@@ -68,7 +68,7 @@ describe("applyTriggerOps — one trigger per bucket", () => {
       },
     ]);
     expect(out.results).toEqual([
-      { op: "edit", id: "buy", ok: true, text: "Entry $183 → $175" },
+      { op: "edit", id: "buy", ok: true, text: "Buy $183 → $175" },
     ]);
     const buys = out.triggers.filter((t) => t.action === "ENTER");
     expect(buys).toHaveLength(1);
@@ -115,7 +115,7 @@ describe("applyTriggerOps — one trigger per bucket", () => {
 describe("applyTriggerOps — edits", () => {
   it("an agent's level edit without a rationale is refused, by id", () => {
     const out = watch([{ op: "edit", id: "buy", value: 190 }]);
-    expect(out.results[0]).toMatchObject({ op: "edit", id: "buy", ok: false, text: "Entry $183 → $190" });
+    expect(out.results[0]).toMatchObject({ op: "edit", id: "buy", ok: false, text: "Buy $183 → $190" });
     expect(out.results[0].reason).toMatch(/rationale/);
     expect(out.triggers).toEqual([buy, target, stopLine, clock]);
   });
@@ -214,7 +214,7 @@ describe("applyTriggerOps — plan levels as ops", () => {
       currentPrice: 190,
       mintId,
     });
-    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Entry set: $175" });
+    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Buy set: $175" });
     expect(out.triggers.find((t) => t.id === "new-1")).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "below", value: 175 } });
   });
 
@@ -318,13 +318,12 @@ describe("checkLadder — the one check after all ops", () => {
     expect(check).toEqual({ ok: true });
   });
 
-  it("ordering applies to anyone", () => {
+  it("no order of a buy, floor and upside line is checked: each trigger means what it says (2026-11-16)", () => {
     const under: Trigger[] = [buy, { ...target, predicate: { watch: "price", is: "above", value: 490 } }, { ...stopLine, predicate: { watch: "price", is: "below", value: 355 } }];
     const moved = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "buy", value: 432 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
     expect(checkLadder({ triggers: moved.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" }).ok).toBe(true);
-    // A stop above the buy price is nonsense for anyone.
-    const inverted = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "floor", value: 400 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
-    expect(checkLadder({ triggers: inverted.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toMatchObject({ ok: false, error: "invalid_thesis_shape" });
+    const crossed = applyTriggerOps({ stored: under, ops: [{ op: "edit", id: "floor", value: 400 }], direction: "LONG", status: "WATCHING", actor: "PRINCIPAL", mintId });
+    expect(checkLadder({ triggers: crossed.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toEqual({ ok: true });
   });
 
   it("passes a legal list, and hands back no level of its own (nothing stores one)", () => {
@@ -344,7 +343,6 @@ describe("checkLadder — the one check after all ops", () => {
       direction: "LONG",
       status: "HOLDING",
       actor: "AGENT",
-      avgCost: 100,
     });
     expect(check.ok).toBe(true);
   });

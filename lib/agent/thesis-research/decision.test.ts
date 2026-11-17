@@ -117,7 +117,7 @@ describe("validateThesisDecision — price ordering; no reward/risk is reported"
     expect("riskReward" in v).toBe(false);
   });
 
-  it("leaves the order of the levels to the save's own check (checkDecisionAgainstSave; thesis-shape.test.ts)", () => {
+  it("checks no order of the levels: each trigger means what it says (2026-11-16)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: levels(100, 105, 125) }, mintOpts);
     expect(v.errors.join(" ")).not.toContain("ordering");
   });

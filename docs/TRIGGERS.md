@@ -324,7 +324,10 @@ model's chosen `reason` through `enforceCloseReason`
 (`lib/agent/triggers/enforce-close-reason.ts`). When the run was woken by a
 protective/price EXIT trigger, the stored `Position.closeReason` /
 `Order.closeReason` is that trigger's STOP/TARGET tag, whatever the model
-called it. The sale is **auto-corrected, never refused** — a mismatch writes a
+called it. With no trigger fired, the sale is the agent's or the owner's: a
+STOP or TARGET it declared is stored `MANUAL`, since only a fired trigger
+makes a sale a stop or a target (the price against a level no longer
+decides it, 2026-11-16). The sale is **auto-corrected, never refused** — a mismatch writes a
 plain-English note into the tool's reply and the run's event (`label_note`,
 `declared_reason`), never onto the sale's reason, which is the analyst's words. This matters
 because the label is what several rules read: the held-through-floor context in

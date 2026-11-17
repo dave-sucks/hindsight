@@ -575,7 +575,7 @@ export const recordThesis = defineTool({
 
       // ── The triggers ──────────────────────────────────────────────────
       // Built before the row hits the DB so the ladder check below can
-      // refuse a list that can't stand (levels out of order).
+      // refuse a list that can't stand (a holding with no sale, or a buy).
       let mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
@@ -619,9 +619,8 @@ export const recordThesis = defineTool({
       }
 
       // ── The ladder check (shared with update_thesis) ─────────────────
-      // The levels in order (a LONG's Stop watching line under its buy, its
-      // upside line above both). A level on a thesis is whatever its triggers
-      // say; nothing stores it.
+      // A held stock carries a sale and no buy (validateEnterTriggerRequired).
+      // A level on a thesis is whatever its triggers say; nothing stores it.
       const ladder = checkLadder({
         triggers: mergedTriggers,
         direction: args.direction === "PASS" ? null : args.direction,
@@ -631,7 +630,7 @@ export const recordThesis = defineTool({
       if (!ladder.ok) {
         console.warn(`[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} REJECTED — ${ladder.error}.`);
         return {
-          summary: `Thesis rejected for ${args.ticker}: its levels are out of order.`,
+          summary: `Thesis rejected for ${args.ticker}: ${ladder.message}`,
           data: { thesis_id: null, status: "FAILED" as const, note: ladder.message },
           sources: [],
         };

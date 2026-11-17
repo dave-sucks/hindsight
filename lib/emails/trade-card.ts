@@ -90,7 +90,7 @@ export interface TradeCardData {
   /** Whose decision this is. */
   analystName: string;
 
-  /** BUY = entry/add; SELL = exit/trim. Drives Bought/Sold/Shorted/Covered verb + Target vs Exit row. */
+  /** BUY = entry/add; SELL = exit/trim. Drives Bought/Sold/Shorted/Covered verb + the Sell if below vs Exit row. */
   action: TradeAction;
   /** PROPOSAL pre-fills "Est." prefixes + the yellow Proposed badge. EXECUTED uses past tense. */
   tense: TradeTense;
@@ -113,9 +113,9 @@ export interface TradeCardData {
   exitPrice?: number;
   /** Live mid quote — shown on the right of the stock row. Defaults to entry/exit when omitted. */
   currentPrice?: number | null;
-  /** For BUY only — fills the "Target" row. */
+  /** Unused on the card: the house sets no target of its own. */
   targetPrice?: number | null;
-  /** For BUY only — fills the "Stop loss" row. */
+  /** For BUY only — the order's own sell price, the "Sell if below" row. */
   stopLoss?: number | null;
 
   /** Always rendered. For BUY = qty * entry; for SELL = qty * exit. Caller computes. */
@@ -270,7 +270,8 @@ export function renderTradeCard(d: TradeCardData): string {
   rows.push({ label: "Direction", value: d.direction === "LONG" ? "Long" : "Short" });
   rows.push({ label: "Shares", value: d.qty.toLocaleString() });
   rows.push({
-    label: isProposal ? "Est. entry" : "Entry",
+    // What we paid, or on a proposal the price the buy is estimated at.
+    label: isProposal && !isSell ? "Est. price" : "Paid",
     value: fmtPrice(d.entryPrice),
   });
   if (isSell) {
@@ -278,14 +279,9 @@ export function renderTradeCard(d: TradeCardData): string {
       label: isProposal ? "Est. exit" : "Exit",
       value: d.exitPrice != null ? fmtPrice(d.exitPrice) : "—",
     });
-  } else {
-    rows.push({
-      label: "Target",
-      value: d.targetPrice != null ? fmtPrice(d.targetPrice) : "—",
-    });
-    if (d.stopLoss != null) {
-      rows.push({ label: "Stop loss", value: fmtPrice(d.stopLoss), color: C.negative });
-    }
+  } else if (d.stopLoss != null) {
+    // The order's own sell price, said as the trigger it becomes. "Target" is Wall Street's word.
+    rows.push({ label: "Sell if below", value: fmtPrice(d.stopLoss), color: C.negative });
   }
   rows.push({
     label: `${estPrefix}Market value`,

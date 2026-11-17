@@ -63,11 +63,10 @@ const RULE_DEFS = {
     // in the refusal; their prompts no longer say it a third time.
     markers: { chat: "only tighten" },
   },
-  LEVEL_ORDER: {
-    says: "A stock's buy, floor and upside line sit in order against each other and the live price (long: floor < buy < upside line).",
-    refusal: "invalid_thesis_shape — names the levels and which is out of order.",
-    // The trigger run and the writer read the order in the refusal.
-    markers: { daily: "buy, floor and upside level", chat: "buy, floor and upside level" },
+  SALE_SIDE: {
+    says: "A holding's sale sits on the far side of the price: below it for a LONG, above it for a SHORT. place_trade refuses one at or past the price or the expected entry.",
+    refusal: "the sale is past the price — names the sale, the price and the side it must sit on.",
+    markers: { daily: "sale on the far side of the price", chat: "sale on the far side of the price" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",
@@ -121,9 +120,9 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("company_name", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("exchange", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("direction", "CHOSEN"),
-    f("entry_price", "JUDGED", { rule: "LEVEL_ORDER", note: "The market order's expected price; it sizes the buy." }),
+    f("entry_price", "JUDGED", { rule: "SALE_SIDE", note: "The market order's expected price; it sizes the buy." }),
     // The holding's sale comes with the buy (2026-11-16): a watch's line ends the watch and is never the sale.
-    f("sell_if_below", "JUDGED", { rule: "LEVEL_ORDER", note: "Below the price for a LONG; sizes the buy; the pending position holds it, and the fill writes it as Sell if below." }),
+    f("sell_if_below", "JUDGED", { rule: "SALE_SIDE", note: "Below the price for a LONG; sizes the buy; the pending position holds it, and the fill writes it as Sell if below." }),
     f("sell_reason", "TEXT", { note: "The note on the holding's Sell if below line." }),
     f("thesis_id", "IDENTITY"),
     f("entry_rationale", "TEXT"),
@@ -134,7 +133,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("symbol", "IDENTITY"),
     f("action", "CHOSEN"),
     f("reason", "TEXT"),
-    f("close_pct", "JUDGED", { rule: "LEVEL_ORDER", note: "A percent of the position; clamped to 1–100." }),
+    f("close_pct", "JUDGED", { rule: "SALE_SIDE", note: "A percent of the position; clamped to 1–100." }),
     f("close_reason", "CHOSEN"),
     f("add_notional", "COMPUTED", { principalOnly: true, note: "An add is half the entry's risk, capped (DAV-317)." }),
   ],

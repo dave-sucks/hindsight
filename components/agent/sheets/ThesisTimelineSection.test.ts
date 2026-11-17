@@ -226,7 +226,7 @@ describe("titleSegments — the rest of the grammar", () => {
       ),
     ).toEqual({
       primary: "Updated",
-      secondary: "target $80.00 → $95.00, stop $54.00 → $62.00",
+      secondary: "upside $80.00 → $95.00, floor $54.00 → $62.00",
     });
     expect(
       titleSegments(
@@ -510,7 +510,7 @@ describe("toRow — one shape for every item", () => {
         rationale: "Target heal.",
       }),
     });
-    expect(updated.title.secondary).toBe("target $120.00 → $130.00");
+    expect(updated.title.secondary).toBe("upside $120.00 → $130.00");
     expect(updated.chips).toEqual([]); // the duplicate sub-row is gone
   });
 
@@ -739,7 +739,7 @@ describe("what a call asked for and did not get", () => {
       { kind: "not-applied", text: "Not applied: back to watching — the position is still open" },
     ]);
     expect(notAppliedLines(row({ fieldChanges: { notApplied: { from: null, to: [{ field: "target_price", to: 2400, why: "you set it by hand at 8:05 AM" }] } } }))).toEqual([
-      { kind: "not-applied", text: "Not applied: target $2400 — you set it by hand at 8:05 AM" },
+      { kind: "not-applied", text: "Not applied: upside line $2400 — you set it by hand at 8:05 AM" },
     ]);
   });
 
