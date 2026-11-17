@@ -244,7 +244,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 export function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
   return (
     <>
-      <span className={cn("text-sm tabular-nums", pnlColor(dollar))}>
+      <span className={cn("text-xs tabular-nums", pnlColor(dollar))}>
         {dollar >= 0 ? "+" : ""}${Math.abs(dollar).toFixed(2)}
       </span>
       <PnlBadge value={pct} format="percent" className="text-xs" />
