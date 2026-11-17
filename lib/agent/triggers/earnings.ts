@@ -59,18 +59,14 @@ export interface EarningsReport {
 /**
  * How far back to look for reports.
  *
- * THIS VALUE IS LOAD-BEARING FOR DE-DUPLICATION. A report stays visible in
- * the window for its whole length, so the same quarter is a match on every
- * evaluation pass inside it. What stops a re-fire is the per-trigger
- * cooldown, which is 7 days for both earnings kinds (the code default in
- * ./defaults, and the stored value on 56 of the 57 live earnings triggers).
- * Window < cooldown ⇒ at most one fire per report; cooldown ≪ a quarter ⇒
- * the next report still fires. Keep this comfortably under 7 if you change
- * it, and don't raise it without re-checking the stored cooldowns.
+ * A report stays visible in the window for its whole length, so the same
+ * quarter is a match on every pass inside it. A trigger fires once, when it
+ * becomes true, and again only after a close finds it false: here, the first
+ * close after the report leaves the window. So one fire per report, and the
+ * next report fires again.
  *
  * 5 rather than 3: the Tuesday after a Monday holiday looks back to the
- * prior Thursday, so a Friday after-close report is still inside the
- * window. Still two days short of the 7-day cooldown.
+ * prior Thursday, so a Friday after-close report is still inside the window.
  */
 export const EARNINGS_LOOKBACK_DAYS = 5;
 

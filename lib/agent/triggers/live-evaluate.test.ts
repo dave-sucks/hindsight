@@ -17,7 +17,7 @@ const AT = new Date("2026-10-06T12:00:30Z");
 const PRINT = { p: 70.69, t: "2026-10-06T11:49:19.680Z" };
 const MONDAY = { t: "2026-10-05T04:00:00Z", o: 69.02, h: 70.81, l: 68.91, c: 70.03, v: 1_000_000 };
 const FRIDAY = { t: "2026-10-02T04:00:00Z", o: 69.84, h: 70.38, l: 68.28, c: 69.01, v: 1_000_000 };
-const LEVEL = { id: "between", action: "REVIEW", predicate: { watch: "price", is: "above", value: 70.5 }, rationale: "Between the close and the print.", cooldownDays: 1 };
+const LEVEL = { id: "between", action: "REVIEW", predicate: { watch: "price", is: "above", value: 70.5 }, rationale: "Between the close and the print."};
 
 async function matchesAt(at: Date, snapshot: Record<string, unknown>) {
   const db = prismaDouble({

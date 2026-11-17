@@ -6,7 +6,7 @@ import fixture from "./__fixtures__/on-fire-migration-2026-10-22.json";
 import { statSync } from "fs";
 import { triggerSchema, parseTriggersResilient } from "./schema";
 import { applyTriggerDefaults } from "./defaults";
-import { approvalLine, defaultFireMode, doItTrade, fireModeLabel, fireModeOf, fireModeProblem, fireModeWords, STOP_WATCHING_ONE_WAY, usedOnceLine, waitsForMorning, type FireMode } from "./fire-mode";
+import { approvalLine, defaultFireMode, doItTrade, fireModeLabel, fireModeOf, fireModeProblem, fireModeWords, STOP_WATCHING_ONE_WAY, waitsForMorning, type FireMode } from "./fire-mode";
 import type { Trigger } from "./types";
 import { applyTriggerOps, type TriggerOp } from "./ops";
 import { autoSellCloseReason } from "./types";
@@ -70,8 +70,8 @@ describe("a new trigger names none: one default", () => {
   });
 
   it("one it names is kept; a sale's cooldown of 0 reads as a day (2026-11-02)", () => {
-    const [out] = applyTriggerDefaults([{ id: "t", action: "EXIT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "x", cooldownDays: 0, fireMode: "ASK_NOW" }]);
-    expect(out).toMatchObject({ fireMode: "ASK_NOW", cooldownDays: 1 });
+    const [out] = applyTriggerDefaults([{ id: "t", action: "EXIT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "x", fireMode: "ASK_NOW" }]);
+    expect(out).toMatchObject({ fireMode: "ASK_NOW"});
   });
 });
 
@@ -105,13 +105,7 @@ describe("what each mode does", () => {
     expect(doItTrade({ action: "EXIT", fireMode: "ASK_NOW" }, true)).toBeNull();
   });
 
-  it("a sale saved with a wait of 0 is saved at a day whatever its On fire", () => {
-    // CEG's Send-to-Agent sale at 0 woke a run every five minutes (2026-11-02).
-    const floor: Trigger = { id: "f", action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "x", cooldownDays: 0 };
-    for (const fireMode of ["NEXT_MORNING", "ASK_NOW", "DO_IT"] as const) {
-      expect(applyTriggerDefaults([{ ...floor, fireMode }])[0].cooldownDays).toBe(1);
-    }
-  });
+
 });
 
 describe("the words", () => {
@@ -130,11 +124,6 @@ describe("the words", () => {
     expect(fireModeProblem("STOP_WATCHING", "ASK_NOW")).toBeNull();
   });
 
-  it("an Auto-trim used once says what was used: MU's real trim, set Auto at 30%", () => {
-    const trim = { action: "TRIM" as const, predicate: { watch: "price" as const, is: "above" as const, value: 1090 }, trimPct: 30 };
-    expect(usedOnceLine(trim)).toBe("Used once: Trim 30% if above $1090 (Auto-trim)");
-  });
-
   it("says a trade waits for approval when the switch for its side is on (production: all four on)", () => {
     const on = { requireApprovalBuysLive: true, requireApprovalSellsLive: true, requireApprovalBuysPaper: true, requireApprovalSellsPaper: true };
     expect(approvalLine("EXIT", on)).toBe("Waits for your approval.");
@@ -145,7 +134,7 @@ describe("the words", () => {
 });
 
 describe("an agent's trigger ops (TRV, watched, 2026-10-22)", () => {
-  const floor: Trigger = { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4 }, rationale: "Under the support shelf.", cooldownDays: 1 };
+  const floor: Trigger = { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4 }, rationale: "Under the support shelf."};
   const run = (ops: TriggerOp[]) => applyTriggerOps({ stored: [floor], ops, direction: "LONG", status: "WATCHING", actor: "AGENT", mintId: () => "new" });
 
   it("a review set to Auto is refused by id, and the rest of the call lands: an agent may make a sale Auto", () => {
@@ -159,7 +148,7 @@ describe("an agent's trigger ops (TRV, watched, 2026-10-22)", () => {
   });
 
   it("an agent can't make TRV's buy Auto, unless it acts on the owner's word (his chat)", () => {
-    const buy: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 };
+    const buy: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70."};
     const edit = (ownersWord: boolean) => applyTriggerOps({ stored: [floor, buy], ops: [{ op: "edit", id: buy.id, fireMode: "DO_IT" }], direction: "LONG", status: "WATCHING", actor: "AGENT", ownersWord, mintId: () => "new" });
     expect(edit(false).results[0]).toMatchObject({ ok: false, reason: "Only the owner can make a buy, add or trim Auto. Use Send to Agent, or Flag for Review on a buy or an add." });
     expect(edit(true).results[0]).toMatchObject({ ok: true });

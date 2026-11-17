@@ -102,19 +102,19 @@ describe("AIR, 2026-09-18 — the calendar says the 21st, the company says the 2
   it("still fires for the real report after firing for a phantom one", () => {
     const read = reconcileUpcomingReport(CALENDAR_AIR, AIR_CATALYST_DATE);
     // The trigger as the phantom fire left it: stamped 09-18, no memory of
-    // which report it fired for. A 30-day cooldown runs to 2026-10-18.
+    // which report it fired for, and no close has found it false since.
     const stamped = headsUp({ lastFiredAt: "2026-09-18T13:30:00.000Z" });
     const onTheDay = shouldFire(stamped, ctxOn("2026-09-26", read.report));
     expect(onTheDay.fires).toBe(true);
 
-    // Once it has fired FOR 09-29, the cooldown does its real job: the
-    // approach is true every day and the heads-up stays quiet.
+    // Once it has fired FOR 09-29, the heads-up doesn't hold for that report
+    // again: the approach stays quiet.
     const remembered = headsUp({
       lastFiredAt: "2026-09-26T13:30:00.000Z",
       firedReports: ["2026-09-29"],
     });
     const nextDay = shouldFire(remembered, ctxOn("2026-09-27", read.report));
-    expect(nextDay).toEqual({ fires: false, reason: "cooldown" });
+    expect(nextDay).toEqual({ fires: false, reason: "no-match" });
   });
 });
 

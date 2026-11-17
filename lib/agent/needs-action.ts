@@ -80,7 +80,7 @@
  * Pure function. Caller supplies all data; no DB, no clock, no fetches.
  */
 
-import { shouldFire } from "@/lib/agent/triggers/evaluate";
+import { conditionHolds, shouldFire, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
@@ -539,15 +539,17 @@ export function computeNeedsAction(
 
   // 2) TRIGGER_MATCHING_NOW — server-side eval against the fresh quote
   //    + time-based predicates. Same `shouldFire` the trigger evaluator
-  //    runs every 5 minutes; we just want the run-start snapshot too.
-  //    Cooldown gating respected — a match within the cooldown window
-  //    returns false from shouldFire, which is correct (the cron will
-  //    re-fire when cooldown expires). Every trigger true now, in ladder
-  //    order; the first is the one that can lead.
+  //    runs every 5 minutes, so a trigger that fired and hasn't been found
+  //    false at a close since isn't listed again. A sale or a trim is: one
+  //    true now stays on the list every morning until a close takes it back
+  //    or its price moves, so a sale the principal declined doesn't go
+  //    silent. Every trigger true now, in ladder order; the first can lead.
   const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
     if (!isPriceOrTimePredicate(trigger.predicate)) continue;
-    const result = shouldFire(trigger, {
+    const sale = trigger.action === "EXIT" || trigger.action === "TRIM";
+    const read = sale ? (t: typeof trigger, c: EvaluationContext) => ({ fires: conditionHolds(t, c) }) : shouldFire;
+    const result = read(trigger, {
       latestQuote: latestQuote ?? undefined,
       // During the session a "closes above $X" level is not true yet — it
       // waits for the close pass. Outside it, the last price IS a close.

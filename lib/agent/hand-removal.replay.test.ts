@@ -44,7 +44,7 @@ const REMOVED_BUY = "Buy if below 6% from the close 5 days ago";
 const toRow = (l: Line): ActivityRow & { id: string; summary: string } => ({ ...l, timestamp: new Date(l.timestamp) });
 const rowsBefore = (iso: string) => fx.updates.filter((u) => new Date(u.timestamp).getTime() < new Date(iso).getTime()).map(toRow);
 /** A listed trigger as the thesis stores it. */
-const stored = (t: Listed) => ({ id: t.id, action: t.action, predicate: t.predicate, rationale: t.rationale, cooldownDays: t.cooldownDays, source: t.setBy }) as unknown as Trigger;
+const stored = (t: Listed) => ({ id: t.id, action: t.action, predicate: t.predicate, rationale: t.rationale, source: t.setBy }) as unknown as Trigger;
 const ladder = (key: "morning1007" | "morning1008") => fx.at[key].triggers.map(stored);
 const line = (pred: (l: Line) => boolean) => toRow(fx.updates.find(pred)!);
 const removal1006 = line((u) => u.summary.startsWith("You removed a trigger on ABT: Buy if below 6%"));

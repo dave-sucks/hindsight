@@ -78,25 +78,28 @@ export type TriggerAction =
   | "STOP_WATCHING";
 
 export type Trigger = {
-  /** Stable cuid — same id across thesis updates so cooldown can be tracked. */
+  /** Stable cuid — same id across thesis updates so its fire history can be tracked. */
   id: string;
   /** The condition (./condition): stored and read in this shape since the cutover. */
   predicate: When;
   action: TriggerAction;
   /** The trigger's note: the owner reads it, and so does the agent acting on a fire. "A guidance cut means the multiple compresses, so I sell." */
   rationale: string;
-  /** The wait: days after a fire before it can fire again. Every write path saves one (./defaults). */
-  cooldownDays?: number;
-  /** Set by the trigger evaluator; read for cooldown gating. */
+  /** When it last fired. Set by the trigger evaluator; cleared when its condition or action is changed. */
   lastFiredAt?: string; // ISO timestamp
+  /**
+   * When a market close (the 16:20 ET pass) last found its condition false
+   * after it fired. A trigger fires when it becomes true, and once fired it
+   * fires again only after a close like this (./evaluate). Evaluator-stamped.
+   */
+  falseAtCloseAt?: string; // ISO timestamp
   /** filing only, evaluator-stamped: the filing IDs this trigger has fired on. */
   firedFilings?: string[];
   /**
    * before-earnings only, evaluator-stamped: the report dates this heads-up
-   * has already fired for. A heads-up is once per REPORT, and the cooldown
-   * is what enforces that inside one window — so a fire for a different date
-   * is never in cooldown (DAV-293: a wrong calendar date fired the heads-up
-   * on 09-21 and the 7-day cooldown then swallowed the real one).
+   * has already fired for. A heads-up is once per REPORT: it doesn't hold for
+   * a report it fired for, and one for a new date fires (DAV-293: a wrong
+   * calendar date fired the heads-up on 09-21, and the real 09-29 must still fire).
    */
   firedReports?: string[];
   /** On fire: DO_IT, ASK_NOW or NEXT_MORNING (./fire-mode). Every stored trigger names one. */

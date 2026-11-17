@@ -46,26 +46,6 @@ function measureSection(m: MeasureDef): string[] {
     out.push("");
   }
 
-  // The usual rest, then any action that differs: "review 7 days, the rest 1 day".
-  const restOf = (c: Condition) => {
-    const rests = actions.map((a) => m.cooldownDays(c, a));
-    const usual = rests.find((n) => rests.filter((x) => x === n).length * 2 > rests.length) ?? rests[0];
-    const odd = actions.flatMap((a, i) => (rests[i] === usual ? [] : [`${ACTION_WORD[a]} ${days(rests[i])}`]));
-    return odd.length ? `${odd.join(", ")}, the rest ${days(usual)}` : days(usual);
-  };
-  const cool = restOf(fresh);
-  out.push(`**Rest period for a plain condition, when none is set:** ${cool}.`, "");
-  // A variable that changes the rest (our entry: a week) gets its own line.
-  const other = new Map<string, string[]>();
-  for (const v of m.variables?.options ?? []) {
-    const r = restOf({ ...fresh, variable: v.id });
-    if (r !== cool) other.set(r, [...(other.get(r) ?? []), `\`${v.id}\``]);
-  }
-  if (other.size) {
-    for (const [r, ids] of other) out.push(`- From ${ids.join(", ")}: ${r}.`);
-    out.push("");
-  }
-
   const examples = TRIGGER_TYPE_DOCS.flatMap((t) => t.examples).filter((e) => !("match" in e.when) && e.when.watch === m.id);
   if (examples.length) {
     out.push("**Examples:**", "");

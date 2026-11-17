@@ -43,7 +43,6 @@ const LADDER = [
     predicate: { watch: "price", is: "above", value: 418 },
     rationale:
       "Buy on a clean breakout above the recent repair range near $418, which would confirm the pullback has ended and the secular datacenter/electrical thesis is re-asserting.",
-    cooldownDays: 1,
     lastFiredAt: FIRED_AT.toISOString(),
   },
   {
@@ -52,7 +51,6 @@ const LADDER = [
     source: "DEFAULT",
     predicate: { watch: "price", is: "below", value: 355 },
     rationale: "Floor — sell if the price drops to $355.00. Below this the plan is wrong.",
-    cooldownDays: 1,
   },
   {
     id: "96d88edd-0439-4d85-9995-c86256c55692",
@@ -60,7 +58,6 @@ const LADDER = [
     source: "DEFAULT",
     predicate: { watch: "price", is: "above", value: 560 },
     rationale: "Target $560.00 — decide here: take it, trim it, or raise the target.",
-    cooldownDays: 1,
   },
   {
     id: "721b083f-6ca8-47c6-bd1c-60cc63d7759c",
@@ -68,7 +65,6 @@ const LADDER = [
     source: "DEFAULT",
     predicate: { watch: "repeat", value: 30 },
     rationale: "Look at this every 30 days, counting from the last real review.",
-    cooldownDays: 30,
   },
 ];
 

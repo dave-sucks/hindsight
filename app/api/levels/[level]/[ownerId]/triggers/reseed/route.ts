@@ -64,7 +64,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ level:
       await addLevelTrigger(
         "ANALYST",
         ownerId,
-        { action: t.action, predicate: t.predicate, fireMode: t.fireMode, rationale: t.rationale, cooldownDays: t.cooldownDays },
+        { action: t.action, predicate: t.predicate, fireMode: t.fireMode, rationale: t.rationale },
         { accountId: r.accountId, actorUserId: r.user.id },
       );
       added.push(describeSeatRule(t));

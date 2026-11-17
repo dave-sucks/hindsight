@@ -24,7 +24,8 @@ import {
   triggerLabel,
   triggerText,
   trimPctOf,
-  waitWords,
+  firedSinceFalseClose,
+  firesAgainWords,
   type PillPart,
 } from "@/lib/agent/triggers/condition";
 import { levelBadgeLabel, levelScopeLabel } from "@/lib/agent/triggers/format";
@@ -148,14 +149,13 @@ function TriggerCard({
   const home =
     trigger.level === "ANALYST" && analystId ? `/analysts/${analystId}` : trigger.level === "ACCOUNT" ? "/settings/triggers" : null;
   const overrides = trigger.overrides ? shapeOf(trigger.overrides.predicate) : null;
-  const wait = trigger.cooldownDays ?? null;
-  const timed = w != null && !isGroup(w) && measureOf(w).timed === true;
+
   const readsStreet = w != null && conditionsOf(w).some((c) => c.variable?.startsWith("street_") === true);
   const facts = [
     readsStreet && streetMissing ? "No Street data: this can't fire until a Street row arrives" : null,
     trigger.lastFiredAt ? `Fired ${fmtFiredAt(trigger.lastFiredAt)}` : null,
-    // A schedule's wait is its own interval, so saying it again would repeat the number.
-    wait && !timed ? waitWords(wait) : null,
+    // Fired and still true at every close since: when it can fire again.
+    firedSinceFalseClose(trigger) ? `fires again ${firesAgainWords(trigger)}` : null,
     fireModeWords(trigger),
   ].filter(Boolean);
 

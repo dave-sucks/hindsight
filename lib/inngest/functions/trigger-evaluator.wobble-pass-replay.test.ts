@@ -1,14 +1,14 @@
 /**
- * trigger-evaluator.wobble-pass-replay.test.ts — a buy fires when it is true,
- * then waits the day saved on it (2026-11-17: the crossing rule and the buy
- * re-arm are deleted; the wait is the only thing that stops a repeat).
+ * trigger-evaluator.wobble-pass-replay.test.ts — a buy fires when it becomes
+ * true, and again only after a market close finds it false (2026-11-17). No
+ * five-minute check makes it ready: a stock wobbling around its line all day
+ * fires it once.
  *
  * AAPL, Secular Compounder, 2026-09-30. At 09:30:22 ET the 5-minute check
  * fired the buy above $331 at $331.47. Twenty seconds later the trigger run
- * (cmuo57v4i000804jt4sad97p2) read $330.83 and passed. AAPL closed $333.02.
- * Under the crossing rule the buy could never fire again: every later prior
- * close sat above $331. Now it fires the next day it is true once its day is
- * up: 2026-10-01, the 09:40 check, $331.64 (the 09:40 bar's open, sip).
+ * (cmuo57v4i000804jt4sad97p2) read $330.83 and passed. AAPL closed $333.02,
+ * still above $331, so on 2026-10-01 (the 09:40 check, $331.64, sip) it does
+ * not fire again. Only a close under $331 makes it ready.
  *
  * Replayed through the evaluator's own cron handler on one database. AAPL's
  * row, its analyst's and account's rules, the run's rows and the tape (Alpaca,
@@ -122,34 +122,42 @@ const OCT_1_0940 = { at: new Date("2026-10-01T13:40:20Z"), price: 331.64 };
 
 describe("the fixture is the production case", () => {
   it("the buy fired at $331.47, the run passed at $330.83, and the price was $332.42 at the next check", () => {
-    expect(BUY).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "above", value: 331 }, cooldownDays: 1 });
+    expect(BUY).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "above", value: 331 }});
     expect(fx.tape.fire.price).toBeCloseTo(331.47, 2);
     expect(PASS).toMatchObject({ triggerId: BUY.id, priceAtTime: 330.83 });
     expect(fx.tape.nextCheck.price).toBeGreaterThan(331);
   });
 });
 
-describe("AAPL 2026-09-30 — the buy fires when it is true, then waits its day", () => {
-  it("fires at 09:30 at $331.47; the 09:35 check at $332.42 sends nothing, its day isn't up", async () => {
+describe("AAPL 2026-09-30 — the buy fires once, however it wobbles", () => {
+  it("fires at 09:30 at $331.47; through the day under and back over $331 it sends nothing more", async () => {
     const db = book();
     expect(await check(db, FIRE_AT, fx.tape.fire.price)).toEqual([
       expect.objectContaining({ data: expect.objectContaining({ action: "ENTER", firedPrice: fx.tape.fire.price }) }),
     ]);
     expect(await check(db, NEXT_CHECK, fx.tape.nextCheck.price)).toEqual([]);
-  });
-
-  it("fires again on 10-01 at 09:40 at $331.64, though the prior close ($333.02) was already above $331", async () => {
-    const db = book();
-    await check(db, FIRE_AT, fx.tape.fire.price);
-    const refire = await check(db, OCT_1_0940.at, OCT_1_0940.price, OCT_1);
-    expect(refire).toEqual([expect.objectContaining({ data: expect.objectContaining({ action: "ENTER", firedPrice: OCT_1_0940.price }) })]);
+    for (const [at, p] of [["2026-09-30T14:05:20Z", 330.6], ["2026-09-30T14:40:20Z", 331.9], ["2026-09-30T16:15:20Z", 330.2], ["2026-09-30T18:00:20Z", 332.4]] as const) {
+      expect(await check(db, new Date(at), p)).toEqual([]);
+    }
     const buy = (db.store.thesis[0].triggers as Trigger[]).find((t) => t.id === BUY.id)!;
-    expect(buy.lastFiredAt).toBe(OCT_1_0940.at.toISOString());
+    expect(buy).toMatchObject({ lastFiredAt: FIRE_AT.toISOString() });
+    expect(buy.falseAtCloseAt).toBeUndefined();
   });
 
-  it("under $331 the next day, nothing fires", async () => {
+  it("closed $333.02, still above $331: 10-01 at 09:40 ($331.64) fires nothing", async () => {
     const db = book();
     await check(db, FIRE_AT, fx.tape.fire.price);
-    expect(await check(db, new Date("2026-10-01T13:35:20Z"), 330.9, OCT_1)).toEqual([]);
+    expect(await check(db, new Date("2026-09-30T20:20:05Z"), 333.02)).toEqual([]);
+    expect((db.store.thesis[0].triggers as Trigger[]).find((t) => t.id === BUY.id)!.falseAtCloseAt).toBeUndefined();
+    expect(await check(db, OCT_1_0940.at, OCT_1_0940.price, OCT_1)).toEqual([]);
+  });
+
+  it("had it closed under $331, that close makes it ready and the next check above $331 fires it", async () => {
+    const db = book();
+    await check(db, FIRE_AT, fx.tape.fire.price);
+    expect(await check(db, new Date("2026-09-30T20:20:05Z"), 330.4)).toEqual([]);
+    expect((db.store.thesis[0].triggers as Trigger[]).find((t) => t.id === BUY.id)!.falseAtCloseAt).toBe("2026-09-30T20:20:05.000Z");
+    const refire = await check(db, OCT_1_0940.at, OCT_1_0940.price, { priorClose: 330.4, open: 330 });
+    expect(refire).toEqual([expect.objectContaining({ data: expect.objectContaining({ action: "ENTER", firedPrice: OCT_1_0940.price }) })]);
   });
 });

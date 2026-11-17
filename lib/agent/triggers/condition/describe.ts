@@ -16,6 +16,7 @@ import type { PillPart } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { shapeOf } from "./valid";
+import { levelOf } from "./rules";
 import { variableDef } from "./variables";
 import { money } from "./words";
 
@@ -41,9 +42,22 @@ export function trimPctOf(t: { trimPct?: number | null }): number {
   return t.trimPct ?? DEFAULT_TRIM_PCT;
 }
 
-/** The wait saved on a trigger, as the dialog and the popover say it: "Waits 7 days before it can fire again". */
-export function waitWords(days: number): string {
-  return `Waits ${days} ${days === 1 ? "day" : "days"} before it can fire again`;
+/**
+ * Fired, and no market close has found its condition false since: it does
+ * not fire again until one does (the 16:20 ET pass stamps `falseAtCloseAt`).
+ * One that never fired, or whose condition or action changed since it fired
+ * (the change clears `lastFiredAt`), is not.
+ */
+export function firedSinceFalseClose(t: { lastFiredAt?: string | null; falseAtCloseAt?: string | null }): boolean {
+  if (t.lastFiredAt == null) return false;
+  return t.falseAtCloseAt == null || new Date(t.falseAtCloseAt).getTime() <= new Date(t.lastFiredAt).getTime();
+}
+
+/** When a fired trigger can fire again, in words: "after a close back above $150". */
+export function firesAgainWords(t: { predicate: unknown }): string {
+  const w = shapeOf(t.predicate);
+  const level = w ? levelOf(w) : null;
+  return level ? `after a close back ${level.above ? "below" : "above"} ${money(level.value)}` : "after a close where it no longer holds";
 }
 
 /** The action as a trigger says it; a trim names its size: "Trim 30% if". */

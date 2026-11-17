@@ -718,7 +718,7 @@ export const recordThesis = defineTool({
         variantView: args.variant_view ?? null,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final
-        // array (defaults + agent + cooldown) BEFORE the row hits the
+        // array (defaults + agent) BEFORE the row hits the
         // DB. See the build block above for the templating rules.
         triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,

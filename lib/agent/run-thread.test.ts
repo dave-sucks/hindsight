@@ -87,8 +87,8 @@ const ceg = () =>
     stopLoss: 220,
     snapshot: { text: "Nuclear baseload under long contracts; the research text the card repeats.", citations: [] },
     triggers: [
-      { id: "t_buy", action: "ENTER", predicate: { watch: "price", is: "above", value: 250 }, rationale: "Buy the reclaim.", cooldownDays: 1 },
-      { id: "t_rev", action: "REVIEW", predicate: { watch: "repeat", value: 1 }, rationale: "Daily.", cooldownDays: 1 },
+      { id: "t_buy", action: "ENTER", predicate: { watch: "price", is: "above", value: 250 }, rationale: "Buy the reclaim."},
+      { id: "t_rev", action: "REVIEW", predicate: { watch: "repeat", value: 1 }, rationale: "Daily."},
     ],
   });
 

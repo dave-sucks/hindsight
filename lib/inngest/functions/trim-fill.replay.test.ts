@@ -1,15 +1,16 @@
 /**
- * An Auto-trim is a one-time order: it fires, the trim is tried, and the trigger comes off the stock with one
- * Activity line, so the next day's pass finds nothing to fire. MU as held 2026-10-22 (Secular Compounder,
- * 11 shares at $911.415), with its real "Trim if above $1090" set Auto at 30%. Both handlers are the real ones on
- * one database double; the trade tool is the edge.
+ * A trade a trigger led to uses it up, like a filled order (2026-11-17): the trim fires once, its proposal waits
+ * with the trigger still on the stock, and when the trim's order fills the trigger comes off with one Activity
+ * line. MU as held 2026-10-22 (Secular Compounder, 11 shares at $911.415), with its real "Trim if above $1090"
+ * set Auto at 30%. The evaluator, the trigger run and the fill are the real handlers on one database double; the
+ * trade tool is the edge.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const MU = "cmv9nm3xo000o06l3om8r7ath";
-const TRIM = { id: "18b08c22-febd-434c-b8b6-bd6f7b2b94a6", action: "TRIM", fireMode: "DO_IT", trimPct: 30, source: "PRINCIPAL", predicate: { watch: "price", is: "above", value: 1090 }, rationale: "Trim into strength as $MU approaches the upper end of the current target path.", cooldownDays: 1 };
-const FLOOR = { id: "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 850 }, rationale: "$850 as the catastrophe line.", cooldownDays: 1 };
+const TRIM = { id: "18b08c22-febd-434c-b8b6-bd6f7b2b94a6", action: "TRIM", fireMode: "DO_IT", trimPct: 30, source: "PRINCIPAL", predicate: { watch: "price", is: "above", value: 1090 }, rationale: "Trim into strength as $MU approaches the upper end of the current target path."};
+const FLOOR = { id: "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 850 }, rationale: "$850 as the catastrophe line."};
 
 const NOT_FAKED = ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] as const;
 
@@ -67,14 +68,22 @@ const muBook = () =>
     account: [accountRow({ triggers: [], requireApprovalSellsLive: true })],
   });
 
-describe("MU: an Auto-trim is used once", () => {
-  it("left on the stock, it would fire again the next day (the check below means something)", async () => {
-    const db = muBook();
-    expect((await pass(db, new Date("2026-10-22T15:00:00Z"), 1095)).map((e) => e.triggerId)).toEqual([TRIM.id]);
-    expect((await pass(db, new Date("2026-10-23T15:00:00Z"), 1096)).map((e) => e.triggerId)).toEqual([TRIM.id]);
+/** The trim's proposal, approved and sent (as approveProposal leaves it), then filled by the reconcile job. */
+async function fill(db: PrismaDouble, at: Date) {
+  db.store.order = [...((db.store.order ?? []) as Array<Record<string, unknown>>), { id: "mu_trim", userId: "u", environment: "LIVE", positionId: "cmv9o0nhe000006lbmypszfe7", symbol: "MU", side: "SELL", quantity: 3, alpacaOrderId: "a1", idempotencyKey: "k1", intent: "PARTIAL_CLOSE", closeReason: null, closeSource: "agent", status: "PENDING", thesisId: MU, triggerIds: [TRIM.id], createdAt: at }];
+  const order = (db.store.order as Array<Record<string, unknown>>).find((o) => o.id === "mu_trim")!;
+  await jest.isolateModulesAsync(async () => {
+    jest.doMock("@/lib/prisma", () => ({ prisma: db }));
+    jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: () => ({}), send: jest.fn() } }));
+    const { __test__ } = await import("@/lib/inngest/functions/reconcile-orders");
+    await __test__.applyFillByIntent(order as never, 1095.5, 3, at);
   });
+  jest.dontMock("@/lib/prisma");
+  jest.dontMock("@/lib/inngest/client");
+}
 
-  it("fires, trims 30% with no agent deciding (then one write-up), comes off the stock with one line, and the next day's pass fires nothing", async () => {
+describe("MU: the Auto-trim fires once, and its fill uses it up", () => {
+  it("fires, trims 30% with no agent deciding (then one write-up); the trigger stays while the trim waits, and the next day's pass fires nothing", async () => {
     const db = muBook();
     const fired = await pass(db, new Date("2026-10-22T15:00:00Z"), 1095);
     expect(fired.map((e) => e.triggerId)).toEqual([TRIM.id]);
@@ -82,13 +91,19 @@ describe("MU: an Auto-trim is used once", () => {
     const run = await triggerRun(db, fired[0]);
     expect(run.modelCalls).toBe(1);
     expect(run.calls).toEqual([{ tool: "manage_position", args: expect.objectContaining({ symbol: "MU", action: "partial_close", close_pct: 30 }) }]);
+    // Proposed, not filled: nothing is used up.
+    expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([FLOOR.id, TRIM.id]);
 
-    const stored = (db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id);
-    expect(stored).toEqual([FLOOR.id]);
-    const lines = (db.store.thesisUpdate as Array<{ type: string; summary: string }>).filter((u) => u.type === "UPDATED").map((u) => u.summary);
-    expect(lines).toEqual(["Used once: Trim 30% if above $1090 (Auto-trim)"]);
-
-    // A day later, past its one-day rest, the price still above $1090: nothing left to fire.
+    // A day later, the price still above $1090: no close has found it false, so it doesn't fire again.
     expect(await pass(db, new Date("2026-10-23T15:00:00Z"), 1096)).toEqual([]);
+  });
+
+  it("when the trim fills, the trigger comes off the stock with one line", async () => {
+    const db = muBook();
+    await triggerRun(db, (await pass(db, new Date("2026-10-22T15:00:00Z"), 1095))[0]);
+    await fill(db, new Date("2026-10-22T15:10:00Z"));
+    expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([FLOOR.id]);
+    const lines = (db.store.thesisUpdate as Array<{ type: string; summary: string }>).filter((u) => u.type === "UPDATED").map((u) => u.summary);
+    expect(lines).toEqual(["Its order filled, so it came off: Trim 30% if above $1090"]);
   });
 });

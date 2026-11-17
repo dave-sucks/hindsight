@@ -27,7 +27,6 @@ export interface Template {
   writtenOn: WrittenOn;
   fireMode?: FireMode;
   trimPct?: number;
-  cooldownDays?: number;
 }
 
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };

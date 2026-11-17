@@ -52,7 +52,6 @@ describe("AMD (RETIRED): one review-date trigger among five readable ones", () =
   it("the read drops that one trigger, says so once, and keeps the other five as stored", () => {
     const r = parseTriggersResilient(raw);
     expect(r.dropped).toBe(1);
-    expect(r.clamped).toBe(0);
     expect(r.triggers.map((t) => t.id)).toEqual(others.map((t) => t.id));
     expect(r.triggers.map((t) => t.predicate)).toEqual(others.map((t) => t.predicate));
     expect(r.triggers.map((t) => t.lastFiredAt ?? null)).toEqual(others.map((t) => (t as { lastFiredAt?: string }).lastFiredAt ?? null));

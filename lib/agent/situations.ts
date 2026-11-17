@@ -136,7 +136,7 @@ What you can do:
 - Or tighten the line: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id).
 - Two sales fired together: one decision covers both (all, some or none).
 
-Answered: a sale or trim, the line tightened, or a note saying why you hold. It asks again tomorrow while the price is past the line.
+Answered: a sale or trim, the line tightened, or a note saying why you hold. While the price stays past the line the stock is on this list every morning; the trigger itself fires again, with a new card, only after a close back on the other side.
 
 The note: why the stock fell, from what you found, and whether that changes why we own it; then the sale, the trim or why you hold, in one sentence. Not which day of the drop it is, nor a recount of the line.
 
@@ -161,7 +161,7 @@ What you can do:
 - Re-price: edit_triggers on the buy's id, at a level from the chart's structure.
 - Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
 
-Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again after its wait while it still holds: re-price it or take it off when today's no would be tomorrow's no.
+Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again only after a close finds it false: re-price it or take it off when today's no would stay no.
 
 The note: what is going on with the company and why now is the time to buy or not; then the buy, the new buy price, or the buy taken off, in one sentence.
 
@@ -252,7 +252,7 @@ If it watches a filing: read the document first (get_sec_filings with \`read\` o
 
 If it is a watch with no view yet: there are no triggers to review, and its claim is the writer's: the save carries no belief fields and refuses a call on a stock with no direction, so never write the claim yourself.
 - With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your update_thesis after it comes only when you change something (a level moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.
-- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one update_thesis for what you still owe it, if anything. Or re-arm it: update_thesis with edit_triggers moving the wakes to the levels that matter now, adding a review clock (add_triggers watching "repeat") only if the stock has earned one, and saying why. Or let it go: update_thesis with change_status ARCHIVED. One of the three answers it. If you leave the wake as it is, it asks again after its wait while it still holds, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
+- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one update_thesis for what you still owe it, if anything. Or re-arm it: update_thesis with edit_triggers moving the wakes to the levels that matter now, adding a review clock (add_triggers watching "repeat") only if the stock has earned one, and saying why. Or let it go: update_thesis with change_status ARCHIVED. One of the three answers it. If you leave the wake as it is, it fires again only after a close finds it false, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
   },
   NOTE_TO_ANSWER: {
     name: "a note to answer",

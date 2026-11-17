@@ -7,8 +7,9 @@
  * principal's trigger popover and a buy fill all send ops through
  * `applyTriggerOps`; nothing hands a thesis a whole new list any more. Two consequences the old replace-all contract could never give:
  *
- *   - an edited trigger keeps its id, so its fired / cooldown state carries
- *     by construction (no reconciliation, no id re-adoption, no handoff);
+ *   - an edited trigger keeps its id (no reconciliation, no id re-adoption,
+ *     no handoff); a changed condition or action clears when it fired, so it
+ *     fires when it is true;
  *   - every op is its own line in the Activity feed — "Entry $183 → $190",
  *     "Removed: sell below $110" — because the ops ARE the change, not a
  *     diff of two lists guessed at afterwards.
@@ -88,15 +89,15 @@ export type TriggerOp =
       /** An Auto-trim: the % it sells. */
       trimPct?: number;
       rationale?: string;
-      cooldownDays?: number;
       /** A price level fires only on the 16:20 close pass; false = intraday. Absent = as it was. */
       close?: boolean;
     }
   | { op: "remove"; id: string }
   /**
    * Swap a trigger's condition, action and fire mode in one step (the trigger
-   * dialog's Save). Kept in the same slot, it keeps its id, history and
-   * cooldown; moved to another slot, it is a new trigger with a new id.
+   * dialog's Save). Kept in the same slot, it keeps its id and history (a
+   * changed condition starts its fire state fresh); moved to another slot, it
+   * is a new trigger with a new id.
    */
   | { op: "replace"; id: string; trigger: Trigger }
   /**
@@ -211,6 +212,14 @@ export function collision(
 }
 
 const MAX_TRIGGERS = 20;
+
+/** A trigger as new to fire: when it fired and when a close last found it false are cleared (firedFilings and firedReports stay: once per filing, once per report). */
+function freshFire(t: Trigger): Trigger {
+  const { lastFiredAt: _f, falseAtCloseAt: _c, ...rest } = t;
+  void _f;
+  void _c;
+  return rest;
+}
 
 export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOutput {
   const { direction, status, actor, inherited = [], currentPrice, mintId } = input;
@@ -366,10 +375,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       rationale,
       ...(fireMode !== undefined ? { fireMode } : {}),
       ...(op.trimPct !== undefined ? { trimPct: op.trimPct } : {}),
-      ...(op.cooldownDays !== undefined ? { cooldownDays: op.cooldownDays } : {}),
       source: stamp(target),
     };
-    const next = stored.map((t) => (t.id === op.id ? edited : t));
+    // A changed condition or action is a new trigger to fire: it fires when it is true.
+    const changed = !samePredicate(target.predicate, predicate) || action !== target.action;
+    const next = stored.map((t) => (t.id === op.id ? (changed ? freshFire(edited) : edited) : t));
 
     const parts: string[] = [];
     if (wanted && current && wanted.value !== current.value) {
@@ -388,8 +398,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       parts.push(`${name}: ${target.action.toLowerCase()} → ${op.action.toLowerCase()}`);
     if (fireMode && fireMode !== fireModeOf(target)) parts.push(`${name}: ${fireModeWords({ action, fireMode })}`);
     if (op.trimPct !== undefined && op.trimPct !== trimPctOf(target)) parts.push(`${name}: size ${trimPctOf(target)}% → ${op.trimPct}%`);
-    if (op.cooldownDays !== undefined && op.cooldownDays !== target.cooldownDays)
-      parts.push(`${name}: waits ${op.cooldownDays} ${op.cooldownDays === 1 ? "day" : "days"}`);
     if (parts.length === 0 && rationale !== target.rationale)
       parts.push(`${name}: wording updated`);
     // Said, not dropped: "on the close" means nothing to a trigger that isn't
@@ -439,7 +447,6 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
           rationale: trigger.rationale,
           ...(trigger.fireMode !== undefined ? { fireMode: trigger.fireMode } : {}),
           ...(trigger.trimPct !== undefined ? { trimPct: trigger.trimPct } : {}),
-          ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
           ...(close !== undefined ? { close } : {}),
         },
         { above: typed ? levelOf(typed)?.above : undefined },
@@ -485,16 +492,14 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       samePredicate(target.predicate, trigger.predicate) &&
       target.action === trigger.action &&
       fireModeOf(target) === fireModeOf(trigger) &&
-      trimPctOf(target) === trimPctOf(trigger) &&
-      (trigger.cooldownDays === undefined || trigger.cooldownDays === target.cooldownDays)
+      trimPctOf(target) === trimPctOf(trigger)
     ) {
       return refuse("edit", id, text, "Nothing to change — the trigger already says this.", { unchanged: true });
     }
     // The history belongs to the condition. Same slot: a new value for the
-    // same rule keeps its id, its fire history and its cooldown. Another
-    // slot: a different rule, so a new id and a clean history (inherited
-    // rules keep theirs per stock under the id, so a reused id would carry
-    // the old cooldown along).
+    // same rule keeps its id (a changed condition starts its fire state
+    // fresh, below). Another slot: a different rule, so a new id and a clean
+    // history (inherited rules keep theirs per stock under the id).
     let replaced: Trigger;
     if (sameSlot) {
       const was = numberOf(target.predicate);
@@ -514,10 +519,11 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
         action: trigger.action,
         fireMode: trigger.fireMode,
         trimPct: trigger.trimPct,
-        ...(trigger.cooldownDays !== undefined ? { cooldownDays: trigger.cooldownDays } : {}),
         rationale: (renumbered && sent) || (moved ?? target.rationale),
         source: stamp(trigger),
       };
+      // A changed condition or action is a new trigger to fire: it fires when it is true.
+      if (!samePredicate(target.predicate, trigger.predicate) || target.action !== trigger.action) replaced = freshFire(replaced);
     } else {
       const { lastFiredAt: _f, firedFilings: _ff, firedReports: _fr, ...fresh } = trigger;
       void _f;

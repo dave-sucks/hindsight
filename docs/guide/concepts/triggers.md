@@ -47,24 +47,17 @@ A tighter floor you set yourself is left exactly as it is, including a stop you 
 
 Triggers are checked every five minutes while the market is open, plus a pass at 4:20 PM for levels that read the close.
 
-> **A trigger fires when it is true, then waits.** Every trigger, a buy, a review, a sale, an add or a trim, fires on the first check its condition holds, and again once its wait is over, for as long as it stays true. A buy written at a price the stock is already past fires on the next check. An Auto-buy, Auto-add or Auto-trim comes off the stock once used.
+> **Triggers work like orders.** A trigger fires when it becomes true; one already true when you write it, or change its condition, fires at the next check. After that it fires again only once a market close (4:20 PM) has found it false: a stock wobbling around the line all day fires it once. A trade it leads to uses it up: when the order fills, the trigger comes off the stock. A proposal you decline, or one that expires or is withdrawn, uses nothing up.
 
 | | How often it fires |
 |---|---|
-| Buy | On the first check it holds, then again each time its wait ends, while it holds. An Auto-buy fires once. Two buys on one stock true on the same check start one run. |
-| Add | Again each time its wait ends, while its condition holds. An Auto-add fires once. |
-| Trim | Again each time its wait ends, while its condition holds. An Auto-trim fires once. |
-| Sell | **Every day** its condition holds, until the stock is sold, in every On fire mode. While a sale waits for your approval it starts nothing new; it waits until you answer it or the stock closes back past the line (4:20 PM). Declined, it asks again. |
-| Review | Again each time its wait ends, while its condition holds. |
+| Buy | When it becomes true, then again after a close where it no longer holds. Two buys on one stock true on the same check start one run. The fill takes every buy off. |
+| Add | When it becomes true, then again after a close where it no longer holds. Its fill takes it off. |
+| Trim | When it becomes true, then again after a close where it no longer holds. Its fill takes it off. |
+| Sell | When it becomes true, then again after a close back on the other side. Until then the stock is on the morning run's list every day the price is past the line, declined or not, until a new sale price is set. While a sale waits for your approval nothing new starts; it waits until you answer it or the stock closes back past the line (4:20 PM). |
+| Review | When it becomes true, then again after a close where it no longer holds. A review clock fires when due; the review starts the next period. |
 
-**The wait** is how long a trigger stays quiet after it fires, so one condition doesn't ask fifty times a day. It is saved on the trigger: the trigger's dialog shows it ("Waits 7 days before it can fire again") and you can change it. A new trigger gets its kind's:
-
-- **A day:** a price line, a day's move, a gap, volume, RSI and the trail.
-- **A week:** the move from our entry (a sale on it asks daily, like every sale), a beat or a miss, strength against the S&P, and a review of an average like "below the 200-day" or of the 52-week high.
-- **A month:** an earnings window and insider buying.
-- **Once per filing** for a filing, and **its own interval** for a schedule.
-
-A trigger's popover shows its wait and when it last fired. A wait of 0 is only for a filing; on anything else it is saved as the kind's.
+There are no waits. A filing fires once per filing and an earnings heads-up once per report, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".
 
 **Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers.
 
@@ -81,10 +74,10 @@ Where each fire goes, and how what the agent writes comes back to the stock:
 | | Auto | Send to Agent | Flag for Review |
 |---|---|---|---|
 | What happens | The trade, with no agent deciding, then the analyst's write-up of it. With your approval switch on, it comes to you as a proposal right away | A trigger run starts within minutes: one stock, one decision | Goes on the stock's list; the next morning run answers it |
-| Buy | ✓ one-time; only you set it | ✓ default | ✓ |
-| Add | ✓ one-time; only you set it | ✓ default | ✓ |
-| Trim | ✓ one-time, sells its size; only you | ✓ default | — (a trim can't wait for the morning) |
-| Sell | ✓ asks again every day until sold; agents may set it | ✓ default | — (a sale can't wait for the morning) |
+| Buy | ✓ only you set it | ✓ default | ✓ |
+| Add | ✓ only you set it | ✓ default | ✓ |
+| Trim | ✓ sells its size; only you | ✓ default | — (a trim can't wait for the morning) |
+| Sell | ✓ agents may set it | ✓ default | — (a sale can't wait for the morning) |
 | Review | — (a review is asking) | ✓ the same day | ✓ default |
 
 What a trigger does when it comes true, the same three choices on every trigger but a sale or a trim, which has two:
@@ -97,7 +90,7 @@ What a trigger does when it comes true, the same three choices on every trigger 
 
 Left unset, a review is Flag for Review and everything else is Send to Agent. Auto is always chosen: the stop set when buying and a new analyst's trailing sale are Auto-sells.
 
-An Auto-buy, Auto-add or Auto-trim is yours alone: you set it on the stock itself, or chat sets it at your word, never as an account or analyst rule. It is a one-time order: once it fires and its trade is tried (proposed, sent or refused), it comes off the stock, with a line in Activity ("Used once: Trim 30% if above $150 (Auto-trim)"). An Auto-sell keeps asking every day, like any sale, and an agent may set one.
+An Auto-buy, Auto-add or Auto-trim is yours alone: you set it on the stock itself, or chat sets it at your word, never as an account or analyst rule. Like every trigger, it comes off the stock when its order fills, with a line in Activity ("Its order filled, so it came off: Trim 30% if above $150"). An agent may set an Auto-sell.
 
 Every trade, the agent's or an Auto one, goes through your [approval](approvals.md) switch for its side, buys or sales: with it on, it is a proposal you approve, and an Auto trade waits for you like any other. The dialog says so under On fire.
 
@@ -122,10 +115,10 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 `trigger-evaluator.ts`: every 5 minutes in market hours, plus a close pass 16:20–16:34 ET. Chart measures read the 06:30 `TickerIndicators` snapshot.
 
 #### Fire semantics
-`shouldFire` in `lib/agent/triggers/evaluate.ts`: a trigger fires when its condition holds and it is not inside its saved wait (`cooldownDays`). A sale fire on a position whose sale is still waiting is dropped before its rest starts (`saleUnderWay`, `lib/proposals/position-lock.ts`).
+`shouldFire` in `lib/agent/triggers/evaluate.ts`: a trigger fires when its condition holds and it has not fired since a close last found it false (`firedSinceFalseClose`, `lastFiredAt` against `falseAtCloseAt`); a filing and a heads-up read once per event (`oncePerEvent`). The close pass stamps `falseAtCloseAt` on each fired trigger whose condition is false on the close, with every input it reads loaded (`stampFalseAtClose`, `trigger-evaluator.ts`); an inherited rule's is in `Thesis.triggerState`. A change to the condition or action clears both (`freshFire`, `ops.ts`). A sale fire on a position whose sale is still waiting is dropped unstamped (`saleUnderWay`, `lib/proposals/position-lock.ts`). The morning read's `TRIGGER_MATCHING_NOW` reads a sale or trim on its condition alone (`conditionHolds`), so it stays listed while it holds.
 
 #### On fire
-`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review, refused on an `EXIT` or `TRIM` by `fireModeProblem`), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same; an Auto buy, add or trim comes off the stock once used (`useOnce`).
+`fireMode` in `lib/agent/triggers/fire-mode.ts`: `DO_IT` (Auto), `ASK_NOW` (Send to Agent) or `NEXT_MORNING` (Flag for Review, refused on an `EXIT` or `TRIM` by `fireModeProblem`), stamped on every write. An Auto trade is the tool an agent would call (`doItCall`, `lib/agent/triggers/do-it.ts`), so the approval switch, sizing and checks are the same. A trim's or add's fill takes its triggers off the stock (`takeOffFilled`, `lib/agent/triggers/filled.ts`, from `lib/inngest/functions/reconcile-orders.ts`).
 
 #### Write path
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared by `update_thesis`, the trigger editor and the buy going through (`armHeldLadderOnFill`, which removes the buy and Stop watching triggers and every trigger marked `playbook: "WATCH"`, writes "Sell if below" at the approved price and the triggers that came with the buy (`Position.buyTriggers`, `lib/proposals/buy-triggers.ts`), and adds the playbook's fill templates through `fillTemplateOps` in `lib/agent/knowledge/playbooks.ts`; a template whose kind the stock already has is not written, and the Activity line names it). A new thesis's list is `triggers` on `record_thesis`. Which action fits which stock is `actionProblem` in `condition/actions.ts`, read by every write path and the dialog's action menu (`allowedActions`).
@@ -139,8 +132,8 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 #### Stop when buying
 `autoStopOps` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels: the sale floor `DO_IT` and the owner's, the review line `ASK_NOW` in the price-below review slot. An approval prices it off the live price then (`approveProposal`, `lib/proposals/execute.ts`); the fill moves it to the line under the price paid (`autoStopFillOps`, applied by `restampThesisEntryOnFill` in `lib/inngest/functions/reconcile-orders.ts`). Sizing: `sizingStop` in `lib/agent/position-sizing.ts`, called by `place_trade` and `manage_position`'s add. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).
 
-#### The wait
-Each measure's default `cooldownDays`, in its catalog entry, saved on every write by `applyTriggerDefaults` in `lib/agent/triggers/defaults.ts` (none named, or a 0 on anything but a filing); a row saved before that reads the default (`effectiveCooldownDays`). The dialog's field is `WaitField` in `TriggerFields.tsx`; a same-slot replace keeps the wait unless it names one. The popover's line is `TriggerPill.tsx`.
+#### The card
+The card's line is `TriggerPill.tsx`, its words `firesAgainWords` in `condition/describe.ts`.
 
 #### Reference
 `docs/TRIGGERS.md` · `docs/plans/TRIGGER_MODEL.md` · `docs/plans/TRIGGER_TYPES.md`

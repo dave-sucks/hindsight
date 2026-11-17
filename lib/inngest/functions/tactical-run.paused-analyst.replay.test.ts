@@ -7,9 +7,9 @@ import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 
 const MOMENTUM = "cmmofy6t3000004l7858o1xma";
-const FLOOR = { id: "22efb89a-f05c-4b5a-97ab-ec40a4abc244", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256.5 }, rationale: "Tight stop at $256.5. Trade-horizon — get out fast on invalidation.", cooldownDays: 0 };
-const TARGET = { id: "0e314b2e-72d9-462d-85e3-00be5039432d", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 330 }, rationale: "Target $330 hit. Trade plan executed; close.", cooldownDays: 0 };
-const REVIEW = { id: "f83c2f9f-a06b-45d0-b122-cc52c02f300d", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "surprise", is: "beat", value: 0 }, rationale: "Beat — possibly the catalyst.", cooldownDays: 7 };
+const FLOOR = { id: "22efb89a-f05c-4b5a-97ab-ec40a4abc244", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 256.5 }, rationale: "Tight stop at $256.5. Trade-horizon — get out fast on invalidation."};
+const TARGET = { id: "0e314b2e-72d9-462d-85e3-00be5039432d", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 330 }, rationale: "Target $330 hit. Trade plan executed; close."};
+const REVIEW = { id: "f83c2f9f-a06b-45d0-b122-cc52c02f300d", action: "REVIEW", fireMode: "ASK_NOW", predicate: { watch: "surprise", is: "beat", value: 0 }, rationale: "Beat — possibly the catalyst."};
 
 const book = (triggers: Record<string, unknown>[], enabled = false) => ({
   thesis: [

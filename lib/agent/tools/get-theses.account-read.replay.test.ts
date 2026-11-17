@@ -19,7 +19,7 @@ const PEAD = "an_pead";
 const COMP = "an_comp";
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
 const onAnalyst = (id: string, name: string) => ({ agentConfigId: id, agentConfig: { name, setupIds: [] } });
-const trail = { id: "pead_trail", action: "EXIT", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, rationale: "The analyst's trail.", cooldownDays: 0 };
+const trail = { id: "pead_trail", action: "EXIT", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, rationale: "The analyst's trail."};
 
 function seed() {
   return {
@@ -33,7 +33,7 @@ function seed() {
       // The Compounder passed on NVDA after the PEAD analyst bought it: its own row only, never the PEAD one's.
       thesisRow({ id: "t_nvda_comp_pass", ticker: "NVDA", status: "PASSED", direction: null, createdAt: days(5), updatedAt: days(5), researchRun: onAnalyst(COMP, "Secular Compounder") }),
       // A watched stock whose buy is live and already awaiting approval.
-      thesisRow({ id: "t_mu_pead", ticker: "MU", status: "WATCHING", entryPrice: 110, targetPrice: 150, stopLoss: 100, triggers: [{ id: "mu_buy", action: "ENTER", predicate: { watch: "price", is: "below", value: 110 }, rationale: "The buy level.", cooldownDays: 1 }], createdAt: days(20), updatedAt: days(3), researchRun: onAnalyst(PEAD, "PEAD Specialist") }),
+      thesisRow({ id: "t_mu_pead", ticker: "MU", status: "WATCHING", entryPrice: 110, targetPrice: 150, stopLoss: 100, triggers: [{ id: "mu_buy", action: "ENTER", predicate: { watch: "price", is: "below", value: 110 }, rationale: "The buy level."}], createdAt: days(20), updatedAt: days(3), researchRun: onAnalyst(PEAD, "PEAD Specialist") }),
     ],
     position: [
       positionRow({ id: "p_nvda_pead", analystId: PEAD, symbol: "NVDA", quantity: 10, avgCost: 200, peakPrice: 260, openedAt: days(30) }),

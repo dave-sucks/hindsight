@@ -34,13 +34,10 @@ const EMPTY_SOURCES: LevelSources = { analyst: [], account: [] };
 export function parseLevelTriggers(raw: unknown, label: string): Trigger[] {
   if (raw == null) return [];
   // Rung-by-rung, not all-or-nothing: one bad field used to discard the
-  // entire ladder (GD/ASML/ETN lost 8/8/6 rungs each to a single
-  // out-of-range cooldown). See parseTriggersResilient.
-  const { triggers, clamped, dropped } = parseTriggersResilient(raw);
-  if (clamped > 0 || dropped > 0) {
-    console.warn(
-      `[trigger-levels] ${label}: repaired ${clamped} rung(s) with an out-of-range cooldown, dropped ${dropped} unparseable rung(s); ${triggers.length} kept`,
-    );
+  // entire ladder (GD/ASML/ETN lost 8/8/6 rungs each). See parseTriggersResilient.
+  const { triggers, dropped } = parseTriggersResilient(raw);
+  if (dropped > 0) {
+    console.warn(`[trigger-levels] ${label}: dropped ${dropped} unparseable rung(s); ${triggers.length} kept`);
   }
   return triggers as Trigger[];
 }
@@ -152,7 +149,7 @@ export function resolveThesisLadder(
     // without a position at any level.
     state: thesisStateFor(thesis.status),
     direction: thesis.direction ?? null,
-    // resolveLadder only wants the cooldown stamp; `side` is the
+    // resolveLadder only wants the fire stamp; `side` is the
     // evaluator's business.
     triggerState: Object.fromEntries(
       Object.entries(parseTriggerState(thesis.triggerState)).map(
@@ -169,13 +166,18 @@ export function resolveThesisLadder(
         ([id, e]) => [id, e.firedReports] as const,
       ),
     ),
+    falseAtCloseState: Object.fromEntries(
+      Object.entries(parseTriggerState(thesis.triggerState)).map(
+        ([id, e]) => [id, e.falseAtCloseAt] as const,
+      ),
+    ),
   });
 }
 
 /**
  * Per-thesis, per-trigger bookkeeping held in `Thesis.triggerState`.
  *
- *   firedAt — cooldown stamp for an INHERITED rung. It can't live on the
+ *   firedAt — fire stamp for an INHERITED rung. It can't live on the
  *             rung because that rung is shared by every thesis under its
  *             level (thesis-level rungs keep `lastFiredAt` inline).
  *
@@ -186,6 +188,8 @@ export interface TriggerStateEntry {
   firedFilings?: string[];
   /** before-earnings: the report dates this inherited heads-up has fired for. */
   firedReports?: string[];
+  /** When a close last found this inherited rule false on this stock, after it fired. */
+  falseAtCloseAt?: string;
 }
 
 /**
@@ -195,7 +199,7 @@ export interface TriggerStateEntry {
  *
  * Accepts the original bare-string shape (`{ [id]: ISO }`) and lifts it
  * to `{ firedAt }` — rows stamped before the object shape parse correctly
- * rather than silently losing their cooldown.
+ * rather than silently losing their fire history.
  */
 export function parseTriggerState(
   raw: unknown,
@@ -208,7 +212,7 @@ export function parseTriggerState(
       continue;
     }
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown };
+      const e = v as { firedAt?: unknown; firedFilings?: unknown; firedReports?: unknown; falseAtCloseAt?: unknown };
       const entry: TriggerStateEntry = {};
       if (typeof e.firedAt === "string") entry.firedAt = e.firedAt;
       if (Array.isArray(e.firedFilings)) {
@@ -217,7 +221,8 @@ export function parseTriggerState(
       if (Array.isArray(e.firedReports)) {
         entry.firedReports = e.firedReports.filter((x): x is string => typeof x === "string");
       }
-      if (entry.firedAt !== undefined || entry.firedFilings !== undefined || entry.firedReports !== undefined) {
+      if (typeof e.falseAtCloseAt === "string") entry.falseAtCloseAt = e.falseAtCloseAt;
+      if (entry.firedAt !== undefined || entry.firedFilings !== undefined || entry.firedReports !== undefined || entry.falseAtCloseAt !== undefined) {
         out[k] = entry;
       }
     }

@@ -60,7 +60,7 @@ export class ThesisEditError extends Error {
  *
  * Shared by the thesis write path (below) and the account/analyst write
  * path (./level-triggers): both run the same Zod gate, the same fire-mode
- * rule, the same cooldown discipline and the same `source` stamp.
+ * rule, the same fire-mode default and the same `source` stamp.
  */
 export function buildPrincipalTrigger(input: {
   action: TriggerAction;
@@ -69,7 +69,6 @@ export function buildPrincipalTrigger(input: {
   fireMode?: FireMode;
   trimPct?: number;
   rationale?: string;
-  cooldownDays?: number;
   /** Fallback prose when the caller supplies no rationale. */
   defaultRationale: string;
   /** An account or analyst rule: Auto only on a sale. */
@@ -82,7 +81,6 @@ export function buildPrincipalTrigger(input: {
     predicate: input.predicate,
     action: input.action,
     rationale: input.rationale?.trim() || input.defaultRationale,
-    ...(input.cooldownDays != null ? { cooldownDays: input.cooldownDays } : {}),
     ...(input.fireMode ? { fireMode: input.fireMode } : {}),
     ...(input.action === "TRIM" && input.trimPct != null ? { trimPct: input.trimPct } : {}),
   });
@@ -92,8 +90,7 @@ export function buildPrincipalTrigger(input: {
       `Invalid trigger: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
     );
   }
-  // Cooldown discipline (0-on-non-EXIT → per-kind default), the fire mode
-  // written down, then source=PRINCIPAL — server-owned, never from the body.
+  // The fire mode written down, then source=PRINCIPAL — server-owned, never from the body.
   return {
     ...applyTriggerDefaults([parsed.data as Trigger])[0],
     source: "PRINCIPAL",
@@ -324,8 +321,6 @@ export interface TriggerAddInput {
   trimPct?: number;
   /** Omit ⇒ a generated default sentence. */
   rationale?: string;
-  /** Omit ⇒ per-predicate-kind default via applyTriggerDefaults. */
-  cooldownDays?: number;
 }
 
 export interface TriggerAddResult {
@@ -390,8 +385,7 @@ export async function applyTriggerReplace(
           "Gain-from-entry and trailing-from-high triggers measure off the open position — they can only be set on a held (HOLDING) thesis.",
         );
       }
-      // A replace that names no wait keeps the one saved (the default fills one only when there is none).
-      return { op: "replace", id: triggerId, trigger: input.cooldownDays == null ? { ...built, cooldownDays: undefined } : built };
+      return { op: "replace", id: triggerId, trigger: built };
     },
     (thesis) => ({
       summary: `You changed a trigger on ${thesis.ticker}: ${sentenceOf(input)}`,

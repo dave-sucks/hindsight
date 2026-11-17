@@ -96,7 +96,7 @@ describe("the morning run", () => {
 
 describe("a trigger run", () => {
   it("V's floor, Send to Agent: the run's call keeps its first request over the Responses API, not the second", async () => {
-    const FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395.", cooldownDays: 1 };
+    const FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395."};
     const db = prismaDouble({
       thesis: [thesisRow({ id: "v", ticker: "V", status: "HOLDING", direction: "LONG", analystId: ANALYST, triggers: [FLOOR] })],
       position: [positionRow({ id: "pos_v", symbol: "V", analystId: ANALYST, environment: "LIVE", quantity: 10, avgCost: 350 })],

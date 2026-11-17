@@ -570,7 +570,7 @@ export const updateThesis = defineTool({
         catalystDate: true,
         triggers: true,
         // Per-thesis fire state for inherited rungs — read so a rung
-        // dropped as redundant can hand its cooldown stamp over.
+        // dropped as redundant can hand its fire stamp over.
         triggerState: true,
         // The review clock's due date, for the line's link to the clock (ruleAnswered).
         lastReviewedAt: true,

@@ -19,7 +19,7 @@ import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placehol
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
-  .pick({ action: true, rationale: true, fireMode: true, trimPct: true, cooldownDays: true })
+  .pick({ action: true, rationale: true, fireMode: true, trimPct: true })
   .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON) })
   .superRefine((t, ctx) => {
     const refuse = (message: string) => ctx.addIssue({ code: "custom", message });

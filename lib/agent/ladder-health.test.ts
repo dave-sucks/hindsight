@@ -19,7 +19,6 @@ function exitBelow(level: number, id = "trig-stop"): Trigger {
     predicate: { watch: "price", is: "below", value: level },
     action: "EXIT",
     rationale: "stop",
-    cooldownDays: 0,
   };
 }
 
@@ -29,7 +28,6 @@ function exitAbove(level: number, id = "trig-cover"): Trigger {
     predicate: { watch: "price", is: "above", value: level },
     action: "EXIT",
     rationale: "cover stop",
-    cooldownDays: 0,
   };
 }
 
@@ -39,7 +37,6 @@ function trailExit(pct: number, id = "trig-trail"): Trigger {
     predicate: { watch: "move", is: "below", value: pct, variable: "peak" },
     action: "EXIT",
     rationale: "gain ratchet",
-    cooldownDays: 0,
   };
 }
 

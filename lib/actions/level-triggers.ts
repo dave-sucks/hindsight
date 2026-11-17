@@ -20,7 +20,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { triggersArraySchema } from "@/lib/agent/triggers/schema";
-import { addProblem, conditionSentence } from "@/lib/agent/triggers/condition";
+import { addProblem, conditionSentence, samePredicate } from "@/lib/agent/triggers/condition";
 import { defaultNote } from "@/lib/agent/triggers/note";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
@@ -122,7 +122,6 @@ export interface LevelTriggerAddInput {
   fireMode?: FireMode;
   trimPct?: number;
   rationale?: string;
-  cooldownDays?: number;
 }
 
 export async function addLevelTrigger(
@@ -167,7 +166,9 @@ export async function addLevelTrigger(
  * The trigger dialog's Save on a standing rule that exists. Kept in the same
  * slot, the rule keeps its id (and with it each stock's fire history, which
  * is stored per stock under that id); moved to another slot it is a new rule
- * with a new id, so no stock inherits the old rule's cooldown.
+ * with a new id, so no stock inherits the old rule's fire history. A changed
+ * condition or action in the same slot clears each stock's fire time, so the
+ * rule fires on each when it is true.
  */
 export async function replaceLevelTrigger(
   level: WritableLevel,
@@ -197,13 +198,18 @@ export async function replaceLevelTrigger(
   });
   const sameSlot = triggerSlot(found) === bucket;
   const updated: Trigger = sameSlot
-    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, trimPct: built.trimPct, cooldownDays: input.cooldownDays != null ? built.cooldownDays : found.cooldownDays, source: built.source }
+    ? { ...found, predicate: built.predicate, action: built.action, fireMode: built.fireMode, trimPct: built.trimPct, source: built.source }
     : built;
   const next = existing.map((t) => (t.id === triggerId ? updated : t));
   if (!triggersArraySchema.safeParse(next).success) {
     throw new ThesisEditError("INVALID", "That trigger isn't valid at this level.");
   }
   await target.write(next);
+  // A changed condition or action is a new rule to fire: on every stock it fires when it is true. Its fire
+  // time on each stock lives in that stock's triggerState (the filings and reports it fired for stay).
+  if (sameSlot && (!samePredicate(found.predicate, updated.predicate) || found.action !== updated.action)) {
+    await prisma.$executeRaw`UPDATE "Thesis" SET "triggerState" = CASE WHEN jsonb_typeof("triggerState" -> ${triggerId}) = 'object' THEN jsonb_set("triggerState", ARRAY[${triggerId}]::text[], ("triggerState" -> ${triggerId}) - 'firedAt' - 'falseAtCloseAt') ELSE "triggerState" - ${triggerId} END WHERE "triggerState" ? ${triggerId}`;
+  }
   return updated;
 }
 

@@ -25,6 +25,7 @@
  * Runs every 5 minutes 4 AM – 8 PM ET, Mon–Fri.
  */
 
+import { takeOffFilled } from "@/lib/agent/triggers/filled";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import {
@@ -60,6 +61,9 @@ interface PendingOrderRow {
   intent: string | null;
   closeReason: string | null;
   closeSource: string | null;
+  /** The triggers a proposal answered: a filled trim or add takes them off the stock (lib/agent/triggers/filled). */
+  thesisId?: string | null;
+  triggerIds?: string[];
 }
 
 export const reconcileOrders = inngest.createFunction(
@@ -94,6 +98,8 @@ export const reconcileOrders = inngest.createFunction(
           intent: true,
           closeReason: true,
           closeSource: true,
+          thesisId: true,
+          triggerIds: true,
         },
       });
     });
@@ -465,6 +471,12 @@ async function applyFillByIntent(
   // actually committed (DAV-304). Here rather than at the two call sites
   // above: one place that knows a fill landed.
   if (handled) await maybeEvaluateClosedPosition(order);
+  // A filled trim or add uses up the triggers its proposal answered.
+  if (handled && (order.intent === "PARTIAL_CLOSE" || order.intent === "ADD") && order.thesisId && order.triggerIds?.length) {
+    await takeOffFilled({ thesisId: order.thesisId, triggerIds: order.triggerIds, priceAtTime: fillPrice }).catch((err) =>
+      console.error(`[reconcile-orders] order ${order.id} filled; its triggers could not be taken off:`, err instanceof Error ? err.message : err),
+    );
+  }
   return handled;
 }
 

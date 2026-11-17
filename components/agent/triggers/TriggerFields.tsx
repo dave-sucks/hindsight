@@ -55,16 +55,15 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   schedule: Repeat,
 };
 
-/** What the form edits: the action, one condition or two (both must hold), what it does on fire, a trim's size, and the wait. */
+/** What the form edits: the action, one condition or two (both must hold), what it does on fire, and a trim's size. */
 export interface Draft {
   action: TriggerAction;
   conditions: Condition[];
   fireMode: FireMode;
   trimPct: number;
-  /** The days it waits after a fire. Null until saved or typed: the condition's default. */
-  cooldownDays: number | null;
 }
 
+/** One condition, or two that must both hold. */
 export function whenOf(d: Draft): When {
   return d.conditions.length === 1 ? d.conditions[0] : { match: "all", conditions: d.conditions };
 }
@@ -78,7 +77,6 @@ export function draftOf(t: Trigger): Draft | null {
     conditions: conditionsOf(w),
     fireMode: fireModeOf(t),
     trimPct: trimPctOf(t),
-    cooldownDays: t.cooldownDays ?? null,
   };
 }
 
@@ -163,49 +161,34 @@ export function OnFireSelect({
 }
 
 /** A trim's size, the share of the position it sells in every On fire mode. Shown only for a trim. */
-/** A whole number in a labelled input with words around it: the trim's size, the wait. */
-function NumberField({ label, value, onValue, before, after, disabled }: { label: string; value: number; onValue: (n: number) => void; before?: string; after: string; disabled: boolean }) {
-  const [text, setText] = useState(String(value));
-  // Follow a number set from outside (a reset, a new default) without fighting typing.
+export function TrimSizeField({ trimPct, onTrimPct, disabled }: { trimPct: number; onTrimPct: (n: number) => void; disabled: boolean }) {
+  const [text, setText] = useState(String(trimPct));
+  // Follow a size set from outside (a reset) without fighting typing.
   useEffect(() => {
-    if (Number(text) !== value) setText(String(value));
+    if (Number(text) !== trimPct) setText(String(trimPct));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [trimPct]);
   return (
     <div className="space-y-1.5">
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel>Trim size</FieldLabel>
       <InputGroup>
-        {before ? (
-          <InputGroupAddon align="inline-start">
-            <InputGroupText>{before}</InputGroupText>
-          </InputGroupAddon>
-        ) : null}
         <InputGroupInput
           type="text"
           inputMode="numeric"
           value={text}
-          aria-label={label}
+          aria-label="Trim size"
           disabled={disabled}
           onChange={(e) => {
             setText(e.target.value);
-            onValue(Number(e.target.value));
+            onTrimPct(Number(e.target.value));
           }}
         />
         <InputGroupAddon align="inline-end">
-          <InputGroupText>{after}</InputGroupText>
+          <InputGroupText>% of the position</InputGroupText>
         </InputGroupAddon>
       </InputGroup>
     </div>
   );
-}
-
-export function TrimSizeField({ trimPct, onTrimPct, disabled }: { trimPct: number; onTrimPct: (n: number) => void; disabled: boolean }) {
-  return <NumberField label="Trim size" value={trimPct} onValue={onTrimPct} after="% of the position" disabled={disabled} />;
-}
-
-/** The wait: "Waits N days before it can fire again", prefilled with the saved or the default number. */
-export function WaitField({ days, onDays, disabled }: { days: number; onDays: (n: number) => void; disabled: boolean }) {
-  return <NumberField label="Wait" value={days} onValue={onDays} before="Waits" after="days before it can fire again" disabled={disabled} />;
 }
 
 // ── One condition ───────────────────────────────────────────────────────

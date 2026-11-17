@@ -1,5 +1,5 @@
 {
- "about": "ACN, Secular Compounder, production 2026-11-17: the thesis the Writer minted at 05:02 ET, its triggers as stored (one buy of three conditions joined by 'or') and as the 2026-11-21 migration leaves them (its dry run on a copy of production: three buys, new ids), and the 2026-11-16 indicator snapshot. Notes not kept.",
+ "about": "ACN, Secular Compounder, production 2026-11-17: the thesis the Writer minted at 05:02 ET, its triggers as stored (one buy of three conditions joined by 'or') and as the 2026-11-21 migration leaves them (its dry run on a copy of production: three buys, new ids, the stored waits dropped), and the 2026-11-16 indicator snapshot. Notes not kept.",
  "thesis": {
   "id": "cmwk87rgp000008l6k0b14ek5",
   "status": "WATCHING",
@@ -123,8 +123,7 @@
      }
     ]
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 1
+   "rationale": "(not kept)"
   },
   {
    "id": "50f8bcdb-f49c-ed8f-2327-82da1eb6f927",
@@ -138,8 +137,7 @@
     "watch": "move",
     "variable": "sma50"
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 1
+   "rationale": "(not kept)"
   },
   {
    "id": "3dffef90-dead-03c2-0afd-b2e0160f2cae",
@@ -152,8 +150,7 @@
     "watch": "price",
     "variable": "sma50"
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 1
+   "rationale": "(not kept)"
   },
   {
    "id": "12ca69fd-6263-45af-98f4-eb39b3f174ac",
@@ -165,8 +162,7 @@
     "value": 30,
     "watch": "repeat"
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 30
+   "rationale": "(not kept)"
   },
   {
    "id": "359625ec-f61e-49f6-82b8-0add351bb62b",
@@ -182,8 +178,7 @@
      "close": true
     }
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 1
+   "rationale": "(not kept)"
   },
   {
    "id": "506fd98d-310e-422d-b4ff-fae7bdf246a1",
@@ -195,8 +190,7 @@
     "value": 7,
     "watch": "report"
    },
-   "rationale": "(not kept)",
-   "cooldownDays": 30
+   "rationale": "(not kept)"
   }
  ],
  "snapshot": {

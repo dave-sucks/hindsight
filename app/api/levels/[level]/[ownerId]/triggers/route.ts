@@ -142,7 +142,6 @@ export async function POST(
     fireMode?: unknown;
     trimPct?: unknown;
     rationale?: unknown;
-    cooldownDays?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -164,7 +163,6 @@ export async function POST(
         fireMode: isFireMode(body.fireMode) ? body.fireMode : undefined,
         trimPct: typeof body.trimPct === "number" ? body.trimPct : undefined,
         rationale: typeof body.rationale === "string" ? body.rationale : undefined,
-        cooldownDays: typeof body.cooldownDays === "number" && Number.isFinite(body.cooldownDays) ? body.cooldownDays : undefined,
       },
       { accountId, actorUserId: user.id },
     );

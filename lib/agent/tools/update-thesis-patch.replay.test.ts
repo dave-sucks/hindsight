@@ -34,7 +34,7 @@ const asml = (over: Row = {}) =>
     status: "HOLDING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    triggers: [{ id: FLOOR_ID, action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 1835 }, rationale: "The floor.", cooldownDays: 1 }],
+    triggers: [{ id: FLOOR_ID, action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 1835 }, rationale: "The floor."}],
     ...over,
   });
 const seed = (thesis: Row = asml()) => ({

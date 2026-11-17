@@ -297,7 +297,7 @@ export const getTheses = defineTool({
         invalidationConds: true,
         triggers: true,
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
-        // overlays it so cooldown reads the same at every level.
+        // overlays it so the fire state reads the same at every level.
         triggerState: true,
         catalystDate: true,
         lastReviewedAt: true,

@@ -1,5 +1,6 @@
 /**
- * ACN, Secular Compounder, 2026-11-17: a buy that is true now fires on the first check, and two
+ * ACN, Secular Compounder, 2026-11-17: a buy that is true now and never fired fires on the first
+ * check, once; it fires again only after a close below the 50-day and a check back above it. Two
  * buys true on one pass wake one trigger run.
  *
  * The Writer minted ACN at 05:02 ET with one buy of three conditions joined by "or" (a close above
@@ -83,13 +84,14 @@ describe("the fixture is the production case", () => {
     expect(shapeOf(buy.predicate)).toBeNull();
   });
 
-  it("migrated: three buys, each its own condition, with the stored buy's mode, mark and wait", () => {
+  it("migrated: three buys, each its own condition, with the stored buy's mode and mark, and no wait", () => {
     expect(BUYS.map((t) => t.predicate)).toEqual([
       { match: "all", conditions: [{ is: "above", value: 271.76, watch: "price", settings: { close: true } }, { value: 1.5, watch: "volume" }] },
       { is: "near", value: 2, watch: "move", variable: "sma50" },
       { is: "above", watch: "price", variable: "sma50" },
     ]);
-    for (const t of BUYS) expect(t).toMatchObject({ fireMode: "ASK_NOW", playbook: "WATCH", source: "AGENT", cooldownDays: 1 });
+    for (const t of BUYS) expect(t).toMatchObject({ fireMode: "ASK_NOW", playbook: "WATCH", source: "AGENT"});
+    for (const t of fx.migrated) expect(t).not.toHaveProperty("cooldownDays");
     expect(new Set(BUYS.map((t) => t.id)).size).toBe(3);
   });
 });
@@ -101,10 +103,26 @@ describe("ACN, the first check after the deploy", () => {
     expect(sent[0].coFired).toBeUndefined();
   });
 
-  it("…and once fired, it waits its day", async () => {
+  it("…once fired, it does not fire again while ACN stays above the 50-day: not the next check, not the next day", async () => {
     const db = book();
     await check(db, TUESDAY_0935, CLOSE_1116);
     expect(await check(db, new Date(TUESDAY_0935.getTime() + 5 * 60_000), CLOSE_1116 + 1)).toEqual([]);
+    // Tuesday closes $249.10, still above the 50-day: not ready.
+    expect(await check(db, new Date("2026-11-18T21:20:05Z"), 249.1)).toEqual([]);
+    expect(await check(db, new Date("2026-11-19T14:35:00Z"), 251.3)).toEqual([]);
+  });
+
+  it("…and again after a close below the 50-day ($215 against $217.91) and a check back above it", async () => {
+    const db = book();
+    await check(db, TUESDAY_0935, CLOSE_1116);
+    expect(await check(db, new Date("2026-11-18T21:20:05Z"), 215)).toEqual([]);
+    const buy = (db.store.thesis[0].triggers as Array<{ id: string; falseAtCloseAt?: string }>).find((t) => t.id === ABOVE_50_BUY.id)!;
+    expect(buy.falseAtCloseAt).toBe("2026-11-18T21:20:05.000Z");
+    // Under the 50-day the next morning: nothing.
+    expect(await check(db, new Date("2026-11-19T14:35:00Z"), 210)).toEqual([]);
+    // Back above it (5% over, so the near-the-50-day buy is false): the buy fires.
+    const sent = await check(db, new Date("2026-11-19T16:05:00Z"), 229.5);
+    expect(sent).toEqual([expect.objectContaining({ triggerId: ABOVE_50_BUY.id, action: "ENTER", firedPrice: 229.5 })]);
   });
 
   it("at $220, within 2% of the 50-day and above it: two buys true on one pass wake one run, carrying the other", async () => {

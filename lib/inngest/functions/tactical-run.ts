@@ -43,7 +43,6 @@ import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-wr
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
 import { answers, firedTrigger } from "@/lib/proposals/staged";
-import { useOnce } from "@/lib/agent/triggers/use-once";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
@@ -280,13 +279,11 @@ export const tacticalRun = inngest.createFunction(
     }
 
     // ── Suppress redundant close runs while an exit is already queued ────────
-    // EXIT/TRIM triggers carry cooldownDays:0 ("fire every tick") because the
-    // original design closed the position immediately, dropping it from the
-    // evaluator's ACTIVE-only scan before the next 5-min tick ever arrived.
-    // Trade-as-proposal broke that assumption: the close now sits in
-    // AWAITING_APPROVAL while the human decides, so the position stays OPEN and
-    // the stop re-fires every tick — each fire a full GPT-5.5 tactical run
-    // (NVDA 12x / IREN 8x / NVTS 5x on 2026-06-04, ~25 runs / ~$25 in an hour).
+    // A sale trigger once fired on every tick while its close sat in
+    // AWAITING_APPROVAL: each fire a full tactical run (NVDA 12x / IREN 8x /
+    // NVTS 5x on 2026-06-04, ~25 runs / ~$25 in an hour). A trigger now fires
+    // once until a close finds it false; this still folds a second sale
+    // trigger's fire into the close already queued.
     //
     // If a close for this position is already awaiting approval — or was
     // rejected within the snooze window (the human explicitly chose to hold) —
@@ -574,10 +571,6 @@ export const tacticalRun = inngest.createFunction(
             if (!out.ok) return { tool: call.tool, error: out.error ?? "the trade tool failed" };
             tried = { tool: call.tool, summary: out.summary ?? null };
           }
-          const usedOnce = await useOnce({ thesisId: thesis.id, triggerId: trigger.id, runId: run.id, priceAtTime: fired.firedPrice ?? null }).catch((err) => {
-            console.error(`[tactical-run] could not take used-once trigger ${trigger.id} off ${thesis.ticker}:`, err instanceof Error ? err.message : err);
-            return false;
-          });
           // The order the tool made on this stock since the run began; none when it was refused. (manage_position
           // writes its decision row only on a fill, so an approval-held trim or add has none to look up by.)
           const made = await prisma.order.findFirst({
@@ -585,7 +578,7 @@ export const tacticalRun = inngest.createFunction(
             orderBy: { createdAt: "desc" },
             select: { id: true },
           });
-          return { ...tried, usedOnce, orderId: made?.id ?? null };
+          return { ...tried, orderId: made?.id ?? null };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(`[tactical-run] do-it ${doIt} failed thesis=${thesis.id} trigger=${trigger.id}: ${msg}`);

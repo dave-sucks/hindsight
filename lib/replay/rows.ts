@@ -185,10 +185,10 @@ export function accountRow(over: Row = {}): Row {
 export function planTriggers(p: { entry: number; target: number; stop: number; direction?: "LONG" | "SHORT" }): Row[] {
   const long = p.direction !== "SHORT";
   return [
-    { id: "plan_buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.entry }, rationale: "The buy.", cooldownDays: 1 },
-    { id: "plan_target", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.target }, rationale: "The target.", cooldownDays: 1 },
+    { id: "plan_buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.entry }, rationale: "The buy." },
+    { id: "plan_target", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: long ? "above" : "below", value: p.target }, rationale: "The target." },
     // A watch's floor is its Stop watching line, on the close (2026-11-16): it ends the watch and never sells.
-    { id: "plan_floor", action: "STOP_WATCHING", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop, settings: { close: true } }, rationale: "The floor.", cooldownDays: 1 },
+    { id: "plan_floor", action: "STOP_WATCHING", source: "AGENT", predicate: { watch: "price", is: long ? "below" : "above", value: p.stop, settings: { close: true } }, rationale: "The floor." },
   ];
 }
 

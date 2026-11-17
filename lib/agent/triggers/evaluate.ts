@@ -1,9 +1,9 @@
 /**
  * Does a trigger fire: the evaluation context, and `shouldFire`, the one fire
- * decision. A trigger fires when its condition holds and it is not inside the
- * wait saved on it (`cooldownDays`, counted from `lastFiredAt`). A buy or add
- * never fires on a stale quote; a heads-up whose report it never fired for is
- * not waiting.
+ * decision. A trigger fires when it becomes true; once fired, it fires again
+ * only after a market close finds its condition false. A buy or add never
+ * fires on a stale quote; a filing fires once per filing, a heads-up once per
+ * report.
  *
  * Pure: no DB, no fetches, no clock. Everything comes through
  * `EvaluationContext`, and a condition missing what it reads is false rather
@@ -13,11 +13,11 @@
  */
 
 import type { Trigger } from "./types";
-import { effectiveCooldownDays } from "./defaults";
 import type { EarningsReport } from "./earnings";
 import type { IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import type { SecFiling } from "@/lib/market-data/sec-events";
 import { SHAPE_CHECKER } from "./condition/read";
+import { firedSinceFalseClose } from "./condition/describe";
 import type { When } from "@/lib/agent/triggers/condition";
 
 // ── EvaluationContext ─────────────────────────────────────────────────
@@ -170,24 +170,29 @@ export function evaluateTrigger(predicate: When, ctx: EvaluationContext): boolea
 export interface Checker {
   holds(p: When, ctx: EvaluationContext): boolean;
   readsUpcomingReport(p: When): boolean;
+  /** It holds only on a filing or a report it hasn't fired for: each new one fires. */
+  oncePerEvent(p: When): boolean;
+}
+
+/** Does the trigger's condition hold now, read with its own memory of the filings and reports it fired on. */
+export function conditionHolds(trigger: Pick<Trigger, "predicate" | "firedFilings" | "firedReports">, ctx: EvaluationContext, checker: Checker = SHAPE_CHECKER): boolean {
+  if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
+  if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
+  return checker.holds(trigger.predicate, ctx);
 }
 
 /**
- * The one fire rule: a trigger fires when its condition holds and it is not
- * inside the wait saved on it (`cooldownDays`, counted from `lastFiredAt`; a
- * row saved before the wait was written reads its measure's default). A
- * reason code says which (tests and the evaluator's log read it).
+ * The one fire rule: a trigger fires when it becomes true. Once it fires, it
+ * does not fire again until a market close finds its condition false
+ * (`firedSinceFalseClose`, ./condition/describe). A reason code says which (tests and the
+ * evaluator's log read it).
  */
 export function shouldFire(
   trigger: Trigger,
   ctx: EvaluationContext,
   checker: Checker = SHAPE_CHECKER,
-): { fires: boolean; reason: "match" | "no-match" | "stale-quote" | "cooldown" } {
-  // A filing trigger reads its own fired-filing memory; nothing else does.
-  if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
-  if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
-  const matched = checker.holds(trigger.predicate, ctx);
-  if (!matched) return { fires: false, reason: "no-match" };
+): { fires: boolean; reason: "match" | "no-match" | "stale-quote" | "fired" } {
+  if (!conditionHolds(trigger, ctx, checker)) return { fires: false, reason: "no-match" };
 
   // A buy never fires on a quote that isn't today's price: at 09:30 Finnhub
   // still reported ETN's Friday close as "now" (2026-09-14, DAV-261). An ADD
@@ -196,21 +201,13 @@ export function shouldFire(
     return { fires: false, reason: "stale-quote" };
   }
 
-  // A heads-up is once per REPORT, and the wait is how that is enforced
-  // inside one window — so a report this trigger has never fired for is not
-  // waiting, whatever the clock says. Without this, one fire against a wrong
-  // date eats the real heads-up: AIR fired for a phantom 2026-09-21 and the
-  // 7-day wait ran past the true 09-29 window (DAV-293).
-  const reportDate = checker.readsUpcomingReport(trigger.predicate)
-    ? (ctx.upcomingEarnings?.reportDate ?? null)
-    : null;
-  const unfiredReport = reportDate != null && !(trigger.firedReports ?? []).includes(reportDate);
-
-  const wait = effectiveCooldownDays(trigger);
-  if (wait > 0 && trigger.lastFiredAt != null && !unfiredReport) {
-    if (ctx.now.getTime() - new Date(trigger.lastFiredAt).getTime() < wait * 86_400_000) {
-      return { fires: false, reason: "cooldown" };
-    }
+  // A filing or a heads-up holds only on one it hasn't fired for
+  // (./condition/read), so one that holds is a new filing or report: it fires
+  // once per event. Two filings in a day each fire, and a wrong date it fired
+  // for doesn't eat the real heads-up (AIR, a phantom 2026-09-21 before the
+  // true 09-29, DAV-293).
+  if (firedSinceFalseClose(trigger) && !checker.oncePerEvent(trigger.predicate)) {
+    return { fires: false, reason: "fired" };
   }
 
   return { fires: true, reason: "match" };

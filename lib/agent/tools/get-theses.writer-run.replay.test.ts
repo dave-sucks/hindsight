@@ -33,8 +33,8 @@ const seed = (createdAgo: number) =>
     coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
     entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, createdAt: ago(createdAgo), lastReviewedAt: null,
     triggers: [
-      { id: "wake", action: "REVIEW", source: "AGENT", predicate: { watch: "strength", value: 0, settings: { window: "6M" } }, rationale: "r", cooldownDays: 7 },
-      { id: "clock", action: "REVIEW", source: "AGENT", predicate: { watch: "repeat", value: 45 }, rationale: "r", cooldownDays: 45 },
+      { id: "wake", action: "REVIEW", source: "AGENT", predicate: { watch: "strength", value: 0, settings: { window: "6M" } }, rationale: "r"},
+      { id: "clock", action: "REVIEW", source: "AGENT", predicate: { watch: "repeat", value: 45 }, rationale: "r"},
     ],
   });
 

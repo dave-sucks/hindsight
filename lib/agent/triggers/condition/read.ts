@@ -24,6 +24,8 @@ interface Reader {
   holds(c: Condition, ctx: EvaluationContext): boolean;
   /** Reads the next scheduled report: a heads-up fires once per report. */
   readsReport?(c: Condition): boolean;
+  /** Holds only on an event it hasn't fired for (a filing, a report): each new one fires, whatever its fired state. */
+  oncePerEvent?(c: Condition): boolean;
 }
 
 const DAY = 86_400_000;
@@ -161,7 +163,8 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (c.is === "before") {
         // 0 = reports today: a before-open print has happened, an after-close one is tonight.
         const next = ctx.upcomingEarnings;
-        if (!next) return false;
+        // Once per report: a report this trigger has fired for doesn't hold, as a fired filing doesn't.
+        if (!next || ctx.firedReports?.includes(next.reportDate)) return false;
         const days = daysUntilReport(next, ctx.now);
         return days >= 0 && days <= c.value;
       }
@@ -171,6 +174,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       return since >= 0 && since <= c.value;
     },
     readsReport: (c) => c.is === "before",
+    oncePerEvent: (c) => c.is === "before",
   },
 
   surprise: {
@@ -195,6 +199,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
           : { forms: [v.slice(5)] };
       return unfiredMatches(rule, ctx.filings, ctx.firedFilings).length > 0;
     },
+    oncePerEvent: () => true,
   },
 
   insiders: {
@@ -243,5 +248,9 @@ export const SHAPE_CHECKER: Checker = {
   readsUpcomingReport: (p) => {
     const w = shapeOf(p);
     return w != null && conditionsOf(w).some((c) => READERS[c.watch].readsReport?.(c) === true);
+  },
+  oncePerEvent: (p) => {
+    const w = shapeOf(p);
+    return w != null && conditionsOf(w).some((c) => READERS[c.watch].oncePerEvent?.(c) === true);
   },
 };

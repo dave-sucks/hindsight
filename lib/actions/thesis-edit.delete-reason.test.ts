@@ -17,7 +17,6 @@ const trail = {
   action: "EXIT",
   rationale: "Gave back 25% from the high — the catastrophe line.",
   source: "DEFAULT",
-  cooldownDays: 0,
 };
 const floor = {
   id: "floor",
@@ -25,7 +24,6 @@ const floor = {
   action: "EXIT",
   rationale: "Floor.",
   source: "AGENT",
-  cooldownDays: 0,
 };
 
 async function remove(why?: string) {

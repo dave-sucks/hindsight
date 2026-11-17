@@ -22,7 +22,6 @@ const GD_TRIGGER: Trigger = {
   predicate: { watch: "price", is: "above", variable: "sma50" },
   rationale:
     "Buy only when GD reclaims the 50-day average, which would show the pullback has ended and the market is again underwriting the submarine-margin inflection story.",
-  cooldownDays: 1,
 };
 
 const GD_SNAPSHOT: IndicatorSnapshot = {

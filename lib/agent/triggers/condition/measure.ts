@@ -104,8 +104,6 @@ export interface MeasureDef {
   line?: (c: Condition, ctx: LineContext) => Line | null;
   /** The review clock: counted from the last review. The one schedule a watched stock opts into, and what "review due" reads. */
   clock?: boolean;
-  /** Days between fires when the trigger names none. */
-  cooldownDays: (c: Condition, action: string) => number;
   /** What the trigger check loads for it beyond the live quote. A variable or setting read off the snapshot adds it (./variables). */
   reads?: readonly Source[];
   /** What a new condition on this tab starts as. */

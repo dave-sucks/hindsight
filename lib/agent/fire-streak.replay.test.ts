@@ -48,7 +48,6 @@ const reviewRung = {
   predicate: { watch: "price", is: "below", variable: "sma200" },
   action: "REVIEW",
   rationale: "Below the 200-day — review",
-  cooldownDays: 1,
   source: "ANALYST",
 };
 
@@ -183,43 +182,41 @@ describe("DAV-323 — the run is told how long this has been asking", () => {
   });
 });
 
-describe("DAV-329, 2026-11-17 — the wait saved on the trigger is the wait", () => {
+describe("2026-11-17 — a trigger fires when it becomes true, and again only after a close finds it false", () => {
   const ctx = () => ({
     latestQuote: { price: PRICE, changePct: -0.8 },
     indicators: { sma: { 200: 105.2, 50: 104.1 } },
     now: at(0, 13),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any;
-  // The migration wrote the week the floor used to impose onto the Compounder's rule.
-  const asMigrated = { ...reviewRung, cooldownDays: 7 };
 
-  it("3. the Compounder's rule, saved at 7 by the migration, waits a week", () => {
-    const firedYesterday = { ...asMigrated, lastFiredAt: at(1, 13) } as unknown as Trigger;
-    expect(shouldFire(firedYesterday, ctx())).toEqual({ fires: false, reason: "cooldown" });
+  it("3. the Compounder's rule, never fired and true now: it fires", () => {
+    expect(shouldFire(reviewRung as unknown as Trigger, ctx())).toEqual({ fires: true, reason: "match" });
   });
 
-  it("4. …and asks again once the week is up", () => {
-    const firedLastWeek = { ...asMigrated, lastFiredAt: at(8, 13) } as unknown as Trigger;
-    expect(shouldFire(firedLastWeek, ctx()).fires).toBe(true);
-  });
-
-  it("5. the same rule saved at 1 asks the next day: nothing at check time lifts a saved wait", () => {
-    const firedYesterday = { ...reviewRung, lastFiredAt: at(1, 13) } as unknown as Trigger;
-    expect(shouldFire(firedYesterday, ctx()).fires).toBe(true);
-  });
-
-  it("6. a sale on the same condition, saved at 1, asks each day it holds (unchanged)", () => {
-    for (const action of ["EXIT", "TRIM"]) {
-      const sellRung = { ...reviewRung, id: `sell_${action}`, action, lastFiredAt: at(1, 13) } as unknown as Trigger;
-      expect(shouldFire(sellRung, ctx()).fires).toBe(true);
+  it("4. fired a week ago, and no close has found it false since: it does not fire, however long ago", () => {
+    for (const days of [1, 8, 40]) {
+      const fired = { ...reviewRung, lastFiredAt: at(days, 13) } as unknown as Trigger;
+      expect(shouldFire(fired, ctx())).toEqual({ fires: false, reason: "fired" });
     }
   });
 
-  it("7. a row saved before the wait was written reads its measure's default", () => {
-    const sellRung = { ...reviewRung, id: "sell_bare", action: "EXIT", cooldownDays: undefined, lastFiredAt: at(1, 13) } as unknown as Trigger;
-    expect(shouldFire(sellRung, ctx()).fires).toBe(true);
-    const reviewBare = { ...reviewRung, cooldownDays: undefined, lastFiredAt: at(1, 13) } as unknown as Trigger;
-    expect(shouldFire(reviewBare, ctx())).toEqual({ fires: false, reason: "cooldown" });
+  it("5. a close found it false after the fire: it fires again", () => {
+    const ready = { ...reviewRung, lastFiredAt: at(3, 13), falseAtCloseAt: at(2, 20) } as unknown as Trigger;
+    expect(shouldFire(ready, ctx()).fires).toBe(true);
+  });
+
+  it("6. a sale is the same: fired yesterday and still below, it does not fire again; after a close above, it does", () => {
+    for (const action of ["EXIT", "TRIM"]) {
+      const sellRung = { ...reviewRung, id: `sell_${action}`, action, lastFiredAt: at(1, 13) } as unknown as Trigger;
+      expect(shouldFire(sellRung, ctx())).toEqual({ fires: false, reason: "fired" });
+      expect(shouldFire({ ...sellRung, falseAtCloseAt: at(1, 20).toISOString() }, ctx()).fires).toBe(true);
+    }
+  });
+
+  it("7. a close that found it false before the last fire does not count", () => {
+    const fired = { ...reviewRung, lastFiredAt: at(1, 13), falseAtCloseAt: at(3, 20) } as unknown as Trigger;
+    expect(shouldFire(fired, ctx())).toEqual({ fires: false, reason: "fired" });
   });
 });
 

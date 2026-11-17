@@ -13,8 +13,6 @@ export const repeat: MeasureDef = {
   actions: ["REVIEW"],
   timed: true,
   clock: true,
-  // The cadence is the interval.
-  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "repeat" }),
   fits: (c) => c.value != null,
   shape: "A repeat takes a number of days.",
@@ -34,7 +32,6 @@ export const fromDate: MeasureDef = {
   actions: ["TRIM", "EXIT", "STOP_WATCHING", "REVIEW"],
   timed: true,
   says: (c) => `${c.value ?? 0} ${c.value === 1 ? "day" : "days"} ${c.is ?? "after"} ${c.variable ? variableDef(c.variable).words : "a date"}`,
-  cooldownDays: (c) => c.value ?? 0,
   fresh: () => ({ watch: "from_date", is: "after", variable: "buy" }),
   // After the buy, or either side of the event date.
   fits: (c) =>

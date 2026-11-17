@@ -61,7 +61,7 @@ export const LEVEL_PRECEDENCE: readonly TriggerLevel[] = [
 /**
  * A rung plus the level it resolved from. `lastFiredAt` is already
  * overlaid from the per-thesis fire state for inherited rungs, so every
- * consumer (evaluator cooldown gate, popover "Fired …" line) reads the
+ * consumer (the evaluator's fire rule, popover "Fired …" line) reads the
  * same field regardless of level.
  */
 export type ResolvedTrigger = Trigger & {
@@ -121,6 +121,8 @@ export interface LadderLevels {
   firedFilingsState?: Record<string, string[] | undefined>;
   /** Same, for an inherited heads-up's report-date memory. */
   firedReportsState?: Record<string, string[] | undefined>;
+  /** Same, for when a close last found an inherited rule false on this stock. */
+  falseAtCloseState?: Record<string, string | undefined>;
   /**
    * Which level the caller is rendering FROM. Everything below it is
    * inherited; rungs at this level are owned and editable.
@@ -327,12 +329,14 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 
       const firedFilings = inherited ? input.firedFilingsState?.[t.id] : t.firedFilings;
       const firedReports = inherited ? input.firedReportsState?.[t.id] : t.firedReports;
+      const falseAtCloseAt = inherited ? input.falseAtCloseState?.[t.id] : t.falseAtCloseAt;
 
       out.push({
         ...t,
         lastFiredAt: lastFiredAt ?? undefined,
         ...(firedFilings?.length ? { firedFilings } : {}),
         ...(firedReports?.length ? { firedReports } : {}),
+        ...(falseAtCloseAt ? { falseAtCloseAt } : {}),
         level,
         inherited,
       });
@@ -343,13 +347,13 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
 }
 
 /**
- * Split fired rungs by where their cooldown bookkeeping lives: rungs
+ * Split fired rungs by where their fire bookkeeping lives: rungs
  * stored on the thesis stamp `lastFiredAt` inline, inherited rungs stamp
  * into the thesis's `triggerState` map.
  *
  * Pure, and here rather than in the evaluator so it can be tested without
  * standing up Inngest — getting this partition wrong silently mis-files a
- * cooldown, which shows up as a rung that re-fires or one that goes quiet.
+ * fire, which shows up as a rung that re-fires or one that goes quiet.
  */
 export function splitFiresByLevel(fires: ResolvedTrigger[]): {
   firedTriggerIds: string[];

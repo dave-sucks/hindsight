@@ -13,7 +13,6 @@ export const volume: MeasureDef = {
   label: "Volume",
   word: "At least",
   value: { suffix: "× normal volume", placeholder: "2", range: { what: "Volume", unit: "×", over: 0, max: 50 } },
-  cooldownDays: () => 1,
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
   shape: "Volume takes a number: how many times normal volume.",
@@ -38,7 +37,6 @@ export const rsi: MeasureDef = {
       ],
     },
   ],
-  cooldownDays: () => 1,
   rises: (c) => (c.is === "above" ? true : c.is === "below" ? false : null),
   fresh: () => ({ watch: "rsi", is: "below" }),
   fits: (c) => c.value != null && (c.is === "above" || c.is === "below"),
@@ -66,8 +64,6 @@ export const strength: MeasureDef = {
       ],
     },
   ],
-  // A daily number that stays true for weeks: once a week.
-  cooldownDays: () => 7,
   // Ahead of the S&P is up; "not lagging by more than N" is neither.
   rises: (c) => ((c.value ?? 0) >= 0 ? true : null),
   fresh: () => ({ watch: "strength", settings: { window: "3M" } }),
@@ -82,8 +78,6 @@ export const gap: MeasureDef = {
   label: "Gap up",
   word: "At least",
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
-  // One fire per gap, whatever its volume.
-  cooldownDays: () => 1,
   rises: () => true,
   fresh: () => ({ watch: "gap" }),
   fits: (c) => c.value != null,

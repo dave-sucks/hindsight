@@ -239,7 +239,7 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
   });
 
   it("6. another watch's Stop watching line closes below: it retires, and its waiting buy is withdrawn", async () => {
-    const line = { id: "line-angx", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 4, settings: { close: true } }, rationale: "Below $4 the setup is over.", cooldownDays: 1 } as Trigger;
+    const line = { id: "line-angx", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 4, settings: { close: true } }, rationale: "Below $4 the setup is over."} as Trigger;
     const watch = thesisRow({ id: "thesis_angx", ticker: "ANGX", status: "WATCHING", direction: "LONG", triggers: [line] });
     const pending = positionRow({ id: "pos_angx", symbol: "ANGX", status: "PENDING_APPROVAL", stopLoss: 3.8 });
     store = {

@@ -2,54 +2,14 @@
  * The catalog's rules, stated. The frozen comparison that used to pin them
  * went with the translator; these say each answer outright, the way
  * read.test.ts does for the readers:
- *   - the cooldown a trigger gets when it names none, per measure, variable
- *     and action;
  *   - which settings and variables make two rules different (the slot), and
  *     the filing tier's slot, which is what lets a stock's own "anything
  *     material" rule override the account's.
  */
-import { defaultCooldownDays } from "./rules";
 import { triggerSlot } from "./slot";
 import { resolveLadder } from "../levels";
 import type { Trigger } from "../types";
 import type { When } from "./types";
-
-describe("the cooldown a trigger gets when it names none", () => {
-  const cases: Array<[string, When, string, number]> = [
-    ["a typed price", { watch: "price", is: "below", value: 150 }, "EXIT", 1],
-    ["a price under an average, sold", { watch: "price", is: "below", variable: "sma200" }, "EXIT", 1],
-    ["a price under an average, reviewed", { watch: "price", is: "below", variable: "sma200" }, "REVIEW", 7],
-    ["a new 52-week high, reviewed", { watch: "price", is: "above", variable: "high52" }, "REVIEW", 1],
-    // A gain from our entry latches: up 10% stays up 10%, so a week. A sale on it is a standing order: daily.
-    ["a gain from our entry, added to", { watch: "move", is: "above", value: 10, variable: "entry" }, "ADD", 7],
-    ["a gain from our entry, reviewed", { watch: "move", is: "above", value: 10, variable: "entry" }, "REVIEW", 7],
-    ["a fall from our entry, sold", { watch: "move", is: "below", value: 8, variable: "entry" }, "EXIT", 1],
-    ["a day's move", { watch: "move", is: "below", value: 7, variable: "prev_close" }, "REVIEW", 1],
-    ["a trail", { watch: "move", is: "below", value: 12, variable: "peak" }, "EXIT", 1],
-    ["near the 52-week high, reviewed", { watch: "move", is: "near", value: 5, variable: "high52" }, "REVIEW", 7],
-    ["near the 52-week high, bought", { watch: "move", is: "near", value: 5, variable: "high52" }, "ENTER", 1],
-    ["near an average", { watch: "move", is: "near", value: 2, variable: "sma50" }, "ENTER", 1],
-    ["volume", { watch: "volume", value: 2 }, "REVIEW", 1],
-    ["RSI", { watch: "rsi", is: "below", value: 30 }, "ENTER", 1],
-    ["strength vs the S&P", { watch: "strength", value: 5 }, "REVIEW", 7],
-    ["a gap, one fire per gap", { watch: "gap", value: 4 }, "REVIEW", 1],
-    ["a gap, no window", { watch: "gap", value: 4 }, "REVIEW", 1],
-    ["the report window", { watch: "report", is: "before", value: 3 }, "REVIEW", 30],
-    ["an earnings result", { watch: "surprise", is: "beat", value: 0 }, "REVIEW", 7],
-    ["a filing", { watch: "filing", variable: "tier:MATERIAL" }, "REVIEW", 0],
-    ["insider buying", { watch: "insiders", value: 3 }, "REVIEW", 30],
-    ["every 30 days", { watch: "repeat", value: 30 }, "REVIEW", 30],
-    ["45 days after the buy", { watch: "from_date", is: "after", value: 45, variable: "buy" }, "EXIT", 45],
-  ];
-  it.each(cases)("%s (%s): %s days", (_name, w, action, days) => {
-    expect(defaultCooldownDays(w, action)).toBe(days);
-  });
-
-  it("two conditions take the slower one's, at least a day", () => {
-    expect(defaultCooldownDays({ match: "all", conditions: [{ watch: "price", is: "above", value: 50 }, { watch: "volume", value: 2 }] }, "ENTER")).toBe(1);
-    expect(defaultCooldownDays({ match: "all", conditions: [{ watch: "move", is: "above", value: 10, variable: "entry" }, { watch: "volume", value: 2 }] }, "ADD")).toBe(7);
-  });
-});
 
 describe("which rules are the same rule (the slot)", () => {
   const slot = (predicate: When, action = "REVIEW") => triggerSlot({ predicate, action: action as Trigger["action"] });

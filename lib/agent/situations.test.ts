@@ -12,7 +12,7 @@ import type { Trigger } from "./triggers/types";
 
 const NOW = new Date("2026-05-09T21:00:00Z"); // a Saturday: no session
 const trig = (id: string, action: string, predicate: unknown): Trigger =>
-  ({ id, action, predicate, rationale: "r", cooldownDays: 0 }) as unknown as Trigger;
+  ({ id, action, predicate, rationale: "r"}) as unknown as Trigger;
 const below = (v: number) => ({ watch: "price", is: "below", value: v });
 const dayDrop = (v: number) => ({ watch: "move", is: "below", value: v, variable: "prev_close" });
 const fire = (triggerId: string, hoursAgo = 2) => ({ type: "TRIGGER_FIRED", timestamp: new Date(NOW.getTime() - hoursAgo * 3_600_000), triggerId, runId: null });

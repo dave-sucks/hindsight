@@ -20,8 +20,6 @@ export const filing: MeasureDef = {
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
   says: (_c, words) => `it files ${words}`,
-  // One fire per filing (firedFilings), and filings cluster: no wait.
-  cooldownDays: () => 0,
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   fits: (c) => event(c.variable) != null,
   shape: "Choose a filing: a tier, an 8-K item or a form.",
@@ -68,7 +66,6 @@ export const insiders: MeasureDef = {
     },
   ],
   actions: ["REVIEW"],
-  cooldownDays: () => 30,
   fresh: () => ({ watch: "insiders" }),
   fits: (c) => c.value != null,
   shape: "Insider buying takes a number: how many insiders.",

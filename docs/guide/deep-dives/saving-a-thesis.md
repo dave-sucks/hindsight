@@ -36,7 +36,7 @@ The fields fall in six groups: write-up, claim, triggers (with the setup, horizo
 
 ## Triggers, one at a time
 
-A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_triggers` (by id) or `remove_trigger_ids`; that is the only way a trigger changes. Each op is one line in Activity. A refused op comes back by id and the rest land. Because an edit keeps the trigger's id, its cooldown and fire history stay with it. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
+A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_triggers` (by id) or `remove_trigger_ids`; that is the only way a trigger changes. Each op is one line in Activity. A refused op comes back by id and the rest land. An edit keeps the trigger's id; one that changes its condition or action starts it fresh, so a true one fires at the next check. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
 
 ## Floors only go up
 

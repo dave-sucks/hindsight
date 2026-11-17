@@ -1,9 +1,10 @@
 /**
- * The morning read lists a review on the price as true now when it holds and its wait is over, the same
- * as the five-minute check fires it (2026-11-17: the crossing is deleted).
+ * The morning read lists a review on the price as true now exactly when the five-minute check would
+ * fire it (2026-11-17): it holds, and it has not fired since a close last found it false. Only a sale
+ * stays on the list after it fired.
  *
  * MU, Wednesday 2026-11-04 at 8:00 ET, the morning read (get_theses) with MU at Tuesday's $855.10 close,
- * under its "Review if below $878", last fired Nov 2 with a one-day wait. Rows in
+ * under its "Review if below $878", last fired Nov 2; no close has been above $878 since. Rows in
  * lib/agent/__fixtures__/review-fires-2026-11.json (the review, MU's Nov 2 Activity, the closes).
  */
 import raw from "@/lib/agent/__fixtures__/review-fires-2026-11.json";
@@ -25,8 +26,8 @@ const WEDNESDAY_8AM = new Date("2026-11-04T13:00:00Z");
 const FAKE = ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] as const;
 
 /** MU in the morning read, with these Activity rows. */
-async function morningRead(rows: Row[]) {
-  const review = { ...fx.mu.review, lastFiredAt: NOV2_FIRE.timestamp };
+async function morningRead(rows: Row[], falseAtCloseAt?: string) {
+  const review = { ...fx.mu.review, lastFiredAt: NOV2_FIRE.timestamp, ...(falseAtCloseAt ? { falseAtCloseAt } : {}) };
   const lastAnswer = rows.filter((r) => r.runId).at(-1)!;
   jest.useFakeTimers({ now: WEDNESDAY_8AM, doNotFake: [...FAKE] });
   try {
@@ -61,8 +62,12 @@ async function morningRead(rows: Row[]) {
 }
 
 describe("MU, Wednesday 2026-11-04, 8:00 ET — the morning read", () => {
-  it("with the Nov 2 fire answered by a run's line, MU still under $878 and its day up is on the list: the review is true now", async () => {
-    expect(await morningRead([MORNING_LINE, NOV2_FIRE, TRIGGER_RUN_LINE])).toEqual({ listed: true, situations: ["REVIEW_DUE"] });
+  it("with the Nov 2 fire answered by a run's line and no close above $878 since: it has fired, so it is not on the list", async () => {
+    expect(await morningRead([MORNING_LINE, NOV2_FIRE, TRIGGER_RUN_LINE])).toEqual({ listed: false, situations: [] });
+  });
+
+  it("had a close gone back above $878 since (the Nov 3 close, say), it is true again and on the list", async () => {
+    expect(await morningRead([MORNING_LINE, NOV2_FIRE, TRIGGER_RUN_LINE], "2026-11-03T21:20:05.000Z")).toEqual({ listed: true, situations: ["REVIEW_DUE"] });
   });
 
   it("with the Nov 2 fire unanswered, the review is on the list through its fire row", async () => {

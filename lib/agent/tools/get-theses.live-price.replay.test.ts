@@ -72,8 +72,8 @@ async function readDocu() {
             targetPrice: 83,
             stopLoss: 63,
             triggers: [
-              { id: "floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 63 }, rationale: "Floor.", cooldownDays: 1 },
-              { id: "target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 83 }, rationale: "Target.", cooldownDays: 1 },
+              { id: "floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 63 }, rationale: "Floor."},
+              { id: "target", action: "REVIEW", predicate: { watch: "price", is: "above", value: 83 }, rationale: "Target."},
             ],
           }),
         ],

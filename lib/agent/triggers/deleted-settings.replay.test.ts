@@ -20,23 +20,23 @@ const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const V_REVIEW = {
   id: "cf42e448-ec50-40b4-9c33-f1ee60e2522c", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING",
   predicate: { is: "above", value: 4.6, watch: "move", settings: { fastWinnerPct: 10 }, variable: "entry" },
-  rationale: "Stock approaching the base pivot at $385.57: review the thesis.", lastFiredAt: "2026-10-16T19:50:10.623Z", cooldownDays: 7,
+  rationale: "Stock approaching the base pivot at $385.57: review the thesis.", lastFiredAt: "2026-10-16T19:50:10.623Z",
 };
 /** V's floor and target, so the plan a save checks is the real one. */
 const V_PLAN = [
-  { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", source: "PRINCIPAL", fireMode: "DO_IT", predicate: { is: "below", value: 401.91, watch: "price" }, rationale: "The floor.", cooldownDays: 1 },
-  { id: "203c3f47-82be-4411-a399-01d8a2c91278", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 434, watch: "price" }, rationale: "The target.", cooldownDays: 1 },
+  { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", source: "PRINCIPAL", fireMode: "DO_IT", predicate: { is: "below", value: 401.91, watch: "price" }, rationale: "The floor."},
+  { id: "203c3f47-82be-4411-a399-01d8a2c91278", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 434, watch: "price" }, rationale: "The target."},
 ];
 /** CEG's live report review (Send to Agent), stored with fromDay 0. */
 const CEG_REVIEW = {
   id: "19574c52-632d-493e-a4d1-670c1d4fdeda", action: "REVIEW", source: "AGENT", fireMode: "ASK_NOW",
   predicate: { is: "before", value: 5, watch: "report", settings: { fromDay: 0 } },
-  rationale: "Earnings are due Nov. 6. Review the business and guidance before the report.", cooldownDays: 7,
+  rationale: "Earnings are due Nov. 6. Review the business and guidance before the report.",
 };
 /** The episodic-pivot setup's old gap, as its template wrote it. */
-const OLD_GAP = { id: "old-gap", action: "REVIEW", source: "AGENT", predicate: { watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, rationale: "An 8% gap.", cooldownDays: 3 };
+const OLD_GAP = { id: "old-gap", action: "REVIEW", source: "AGENT", predicate: { watch: "gap", value: 8, settings: { volume: 3, withinDays: 3 } }, rationale: "An 8% gap."};
 /** The PEAD seat's old trail, as a stored row still carries it. */
-const OLD_TRAIL = { id: "f552414c-ff2a-455d-b779-d5401ac9ea98", action: "EXIT", source: "PRINCIPAL", predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: 3 } }, rationale: "Gave back 12% from the high.", cooldownDays: 0 };
+const OLD_TRAIL = { id: "f552414c-ff2a-455d-b779-d5401ac9ea98", action: "EXIT", source: "PRINCIPAL", predicate: { watch: "move", is: "below", value: 12, variable: "peak", settings: { startOnceUpPct: 10, widenAtr: 3 } }, rationale: "Gave back 12% from the high."};
 
 const vThesis = () =>
   thesisRow({ id: "cmum3c2la000704l2nq4rgf8k", ticker: "V", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", entryPrice: 369.2526, targetPrice: 434, stopLoss: 401.91, analystId: SECULAR, triggers: [V_REVIEW, ...V_PLAN], researchRun: { agentConfigId: SECULAR, agentConfig: { enabled: true, name: "Secular Compounder", setupIds: [] } } });
@@ -80,6 +80,15 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+/** V's tape at 2026-10-26 09:30 ET (Alpaca, sip). */
+const V_TAPE = {
+  V: {
+    latestTrade: { p: 405.725, t: "2026-10-26T14:30:00Z" },
+    dailyBar: { t: "2026-10-26T04:00:00Z", o: 405.75, h: 407.53, l: 404.1901, c: 405.725 },
+    prevDailyBar: { t: "2026-10-23T04:00:00Z", o: 410.59, h: 412.5801, l: 406.8, c: 407.92 },
+  },
+};
+
 describe("a stored trigger still carrying a deleted key", () => {
   it("CEG's report review and an old gap read without their keys", () => {
     const { triggers } = parseTriggersResilient([CEG_REVIEW, OLD_GAP]);
@@ -99,15 +108,17 @@ describe("a stored trigger still carrying a deleted key", () => {
     expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if above 4.6% from our entry", "Sell if below 12% from the high since we bought"]);
   });
 
-  it("V 10-26 09:30 ET at $405.73: the review fires at its level for the morning run, though V ran 12.3% off the buy", async () => {
+  it("V 10-26 09:30 ET at $405.73: fired 10-16 and closed above +4.6% since, the review doesn't fire again", async () => {
     const db = prismaDouble({ account: [accountRow({ triggers: [] })], agentConfig: [agentConfigRow({ id: SECULAR, triggers: [] })], thesis: [vThesis()], position: [vPosition()] });
-    const sent = await pass(db, "2026-10-26T14:30:05Z", {
-      V: {
-        latestTrade: { p: 405.725, t: "2026-10-26T14:30:00Z" },
-        dailyBar: { t: "2026-10-26T04:00:00Z", o: 405.75, h: 407.53, l: 404.1901, c: 405.725 },
-        prevDailyBar: { t: "2026-10-23T04:00:00Z", o: 410.59, h: 412.5801, l: 406.8, c: 407.92 },
-      },
-    });
+    expect(await pass(db, "2026-10-26T14:30:05Z", V_TAPE)).toEqual([]);
+    expect((db.store.thesisUpdate ?? []) as unknown[]).toEqual([]);
+  });
+
+  it("…and after a close back under +4.6%, it fires at its level for the morning run, the deleted key read without", async () => {
+    const thesis = vThesis();
+    thesis.triggers = (thesis.triggers as Array<Record<string, unknown>>).map((t) => (t.id === V_REVIEW.id ? { ...t, falseAtCloseAt: "2026-10-20T20:20:00.000Z" } : t));
+    const db = prismaDouble({ account: [accountRow({ triggers: [] })], agentConfig: [agentConfigRow({ id: SECULAR, triggers: [] })], thesis: [thesis], position: [vPosition()] });
+    const sent = await pass(db, "2026-10-26T14:30:05Z", V_TAPE);
     expect(sent).toEqual([]);
     const fired = (db.store.thesisUpdate as Array<Record<string, unknown>>).filter((u) => u.type === "TRIGGER_FIRED");
     expect(fired).toMatchObject([{ triggerId: V_REVIEW.id, summary: "Review if above 4.6% from our entry", priceAtTime: 405.725 }]);

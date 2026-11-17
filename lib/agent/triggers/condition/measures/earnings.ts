@@ -28,8 +28,6 @@ export const report: MeasureDef = {
     if (n === 0) return "on the day of earnings";
     return `within ${n} ${n === 1 ? "day" : "days"} ${c.is === "after" ? "after" : "before"} earnings`;
   },
-  // True every day of the window, so the cooldown is what makes it fire once; 30 clears any window and is short of a quarter.
-  cooldownDays: () => 30,
   fresh: () => ({ watch: "report", is: "before" }),
   fits: (c) => c.value != null && (c.is === "before" || c.is === "after"),
   shape: "Earnings is before or after the report, a number of days.",
@@ -46,7 +44,6 @@ export const surprise: MeasureDef = {
   ],
   value: { suffix: "% or more", placeholder: "0", range: { what: "A surprise", unit: "%", min: 0 }, zero: "any amount" },
   actions: ["REVIEW"],
-  cooldownDays: () => 7,
   fresh: () => ({ watch: "surprise", is: "beat", value: 0 }),
   fits: (c) => c.is === "beat" || c.is === "miss",
   shape: "A result is a beat or a miss.",

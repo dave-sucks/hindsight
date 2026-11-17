@@ -8,8 +8,8 @@ import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLA
 
 const AT = new Date("2026-10-22T15:00:00Z"); // 11:00 ET, a Thursday
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
-const TARGET = { id: "56e86f78-7e31-43e0-b9c3-7445cc016c69", action: "REVIEW", predicate: { watch: "price", is: "above", value: 52 }, rationale: "Using $52 as the objective.", cooldownDays: 1 };
-const FLOOR = { id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under the $41.42 floor.", cooldownDays: 0 };
+const TARGET = { id: "56e86f78-7e31-43e0-b9c3-7445cc016c69", action: "REVIEW", predicate: { watch: "price", is: "above", value: 52 }, rationale: "Using $52 as the objective."};
+const FLOOR = { id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under the $41.42 floor."};
 
 async function pass(trigger: Record<string, unknown>, price: number) {
   const db = prismaDouble({

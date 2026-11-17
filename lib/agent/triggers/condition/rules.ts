@@ -1,6 +1,6 @@
 /**
  * The trigger rules every measure answers on its catalog entry, combined for
- * a whole condition or group: the default wait, the label a protective sale closes with, the close-only
+ * a whole condition or group: the label a protective sale closes with, the close-only
  * reading of a watched stock's floor, and what the trigger check loads for it.
  * docs/plans/TRIGGER_TYPES.md §6.1.
  *
@@ -12,15 +12,6 @@ import type { Line, LineContext, Source } from "./measure";
 import type { Condition, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
 import { variableDef } from "./variables";
-
-/**
- * The wait a trigger is saved with when it names none: its measure's. Two
- * conditions take the slower one's, at least a day.
- */
-export function defaultCooldownDays(w: When, action: string): number {
-  if (!isGroup(w)) return measureOf(w).cooldownDays(w, action);
-  return Math.max(1, ...w.conditions.map((x) => measureOf(x).cooldownDays(x, action)));
-}
 
 /** The label a protective sale closes with (a typed price, or a % from a close, our entry or the high); null for a judgment sale the agent labels itself. */
 export function protectiveCloseReason(w: When, direction: string | null): "STOP" | "TARGET" | null {

@@ -85,7 +85,6 @@ describe("get_theses — a held stock on the work list carries the list the prom
       predicate: { watch: "price", is: "below", variable: "sma200" },
       action: "REVIEW",
       rationale: "Below the 200-day — review",
-      cooldownDays: 1,
     };
     const { result, crashed } = await replayTool("get-theses", "getTheses", {
       seed: {

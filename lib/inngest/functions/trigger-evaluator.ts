@@ -11,9 +11,10 @@
 // the signal router, 2026-09-15.)
 //
 // A match emits `app/thesis.trigger.fired`, unless its fire mode leaves it
-// for the next morning run (triggers/fire-mode.ts). A trigger fires when its
-// condition holds; the `lastFiredAt` stamp and the wait saved on it
-// (`cooldownDays`) are the only thing that stops a repeat (shouldFire).
+// for the next morning run (triggers/fire-mode.ts). A trigger fires when it
+// becomes true (`lastFiredAt`), and fires again only after a close finds its
+// condition false: the close pass reads every fired trigger and stamps
+// `falseAtCloseAt` on each one it finds false (shouldFire).
 //
 // Chart kinds (DAV-247): vs-average, near-average, volume, new-high,
 // from-52-week-high, strength-vs-S&P, gap, RSI and the 5D/20D move read the
@@ -27,15 +28,15 @@
 // as the price. The 5-minute passes never fire those — "closes above the
 // pivot" is not an intraday poke. A trigger fires on the timing it saved:
 // a Stop watching line saved "only on the close" ends a watch on a close
-// below it, never an intraday dip (DAV-337). Cooldown makes the three
-// close ticks fire at most once. It also takes down a proposal a trigger made
-// when none of its triggers holds on the close (lib/proposals/trigger-proposals.ts).
+// below it, never an intraday dip (DAV-337). A trigger fired on the first
+// close tick is still true on the next two, so they don't fire it again. It
+// also takes down a proposal a trigger made when none of its triggers holds on the close (lib/proposals/trigger-proposals.ts).
 //
 // Each intraday pass first brings every held position's high since the buy
 // up to date from its quote (lib/trading/water-mark), so the trails read it;
 // the close pass does it from the finished day's bar, so a last-minute high counts.
 //
-// - Cooldown lives on the trigger object inside Thesis.triggers JSONB.
+// - The fire state (`lastFiredAt`, `falseAtCloseAt`) lives on the trigger in Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
 //   follow-up if hot-write contention shows up.
 
@@ -45,9 +46,9 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quote";
 import { quoteAgeMs, staleForTrading } from "@/lib/market-data/quote-age";
-import { evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
+import { conditionHolds, evaluateTrigger, shouldFire } from "@/lib/agent/triggers/evaluate";
 import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
-import { readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
+import { conditionsOf, firedSinceFalseClose, fromPosition, readsSource, sentenceOf, shapeOf, waitsForClose, type Source } from "@/lib/agent/triggers/condition";
 import { collapseProtectiveFires, type CoFired } from "@/lib/agent/triggers/co-fire";
 import type { EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import {
@@ -339,6 +340,30 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
   return { fires, updatedTriggers };
 }
 
+/** Measured from our position (our entry, the high since we bought, days after the buy): it reads the open position. */
+function readsThePosition(p: When): boolean {
+  const w = shapeOf(p);
+  return w != null && conditionsOf(w).some((c) => fromPosition(c) || (c.watch === "from_date" && c.variable === "buy"));
+}
+
+/**
+ * The close found these fired triggers false: each is ready to fire again
+ * (`falseAtCloseAt`). Inline on the stock's own; in `triggerState` for a rule
+ * inherited from the analyst or the account, as their fire time is.
+ */
+async function stampFalseAtClose(args: { thesisId: string; firedTriggerIds: string[]; firedInheritedTriggerIds: string[]; now: Date }): Promise<void> {
+  const at = args.now.toISOString();
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.thesis.findUnique({ where: { id: args.thesisId }, select: { triggers: true, triggerState: true } });
+    if (!row) return;
+    const own = new Set(args.firedTriggerIds);
+    const next = parseTriggers(row.triggers, args.thesisId).map((t) => (own.has(t.id) ? { ...t, falseAtCloseAt: at } : t));
+    const state = parseTriggerState(row.triggerState);
+    for (const id of args.firedInheritedTriggerIds) state[id] = { ...state[id], falseAtCloseAt: at };
+    await tx.thesis.update({ where: { id: args.thesisId }, data: { triggers: next as unknown as object[], triggerState: state as unknown as object } });
+  });
+}
+
 /**
  * Persist fire bookkeeping for a thesis in a single transaction.
  * Re-reads the row inside the tx so concurrent stamps don't trample each
@@ -352,7 +377,7 @@ function evaluateThesisTriggers<T extends Trigger>(args: {
  *     one analyst rung serves every thesis under that analyst — so their
  *     fire time goes in this thesis's `triggerState` map instead.
  *     Stamping the shared row would put every sibling
- *     thesis into cooldown on a trigger that never fired for them.
+ *     thesis into a fired state on a trigger that never fired for them.
  */
 async function stampLastFiredAt(args: {
   thesisId: string;
@@ -431,9 +456,9 @@ export const triggerEvaluator = inngest.createFunction(
     // intraday levels — at 15 min cadence the breakout has often failed
     // or run away by the time tactical-run spawns. 5 min is the floor for
     // "real-time enough to act on a breakout." Swing analysts unaffected
-    // because per-trigger cooldowns prevent over-firing — a EXIT trigger
-    // with cooldownDays=1 fires once whether the cron checks every 5 or
-    // every 15 min. Cost: one Alpaca call per hundred tickers per pass.
+    // because a trigger fires once until a close finds it false, whether the
+    // cron checks every 5 or every 15 min. Cost: one Alpaca call per hundred
+    // tickers per pass.
     { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
   ],
   async ({ step }) => {
@@ -527,17 +552,18 @@ export const triggerEvaluator = inngest.createFunction(
         )
         // The whole ladder, read before the close pass narrows it: a trigger's proposal is read against it on the close.
         .map((c) => ({ ...c, all: c.ladder, waiting: waitingByThesis.get(c.thesis.id) ?? [] }))
-        // The close pass only looks at rungs that wait for the close.
+        // The close pass fires only rungs that wait for the close, and reads
+        // every trigger that fired and hasn't been found false at a close since.
         .map((c) =>
           session === "CLOSE"
-            ? { ...c, ladder: c.ladder.filter((t) => hasCloseBasis(t.predicate)) }
-            : c,
+            ? { ...c, ladder: c.ladder.filter((t) => hasCloseBasis(t.predicate)), fired: c.all.filter(firedSinceFalseClose) }
+            : { ...c, fired: [] as typeof c.all },
         )
-        // No analyst owner ⇒ tactical-run can't dispatch; no rungs and no
-        // trigger's proposal waiting ⇒ nothing to evaluate.
-        .filter((c) => c.analystId && (c.ladder.length > 0 || c.waiting.length > 0));
-      // What a stock's checks read: on the close pass, the triggers behind its waiting proposals too.
-      const checked = (c: (typeof candidates)[number]) => [...c.ladder, ...c.all.filter((t) => c.waiting.some((p) => p.triggerIds.includes(t.id)))];
+        // No analyst owner ⇒ tactical-run can't dispatch; no rungs, no fired
+        // trigger to read on the close and no trigger's proposal waiting ⇒ nothing to evaluate.
+        .filter((c) => c.analystId && (c.ladder.length > 0 || c.waiting.length > 0 || c.fired.length > 0));
+      // What a stock's checks read: on the close pass, its fired triggers and the triggers behind its waiting proposals too.
+      const checked = (c: (typeof candidates)[number]) => [...c.ladder, ...c.fired, ...c.all.filter((t) => c.waiting.some((p) => p.triggerIds.includes(t.id)))];
       if (candidates.length === 0) return [] as FiringEvent[];
 
       // Cap unique tickers per tick. Theses past the cap defer to the next
@@ -677,7 +703,7 @@ export const triggerEvaluator = inngest.createFunction(
       }
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers, all, waiting } of candidates) {
+      for (const { thesis, analystId, ladder: triggers, all, waiting, fired } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -749,6 +775,26 @@ export const triggerEvaluator = inngest.createFunction(
           await withdrawOnTheClose({ ladder: all, ctx, proposals: waiting }).catch((e) =>
             console.error(`[trigger-evaluator] ${thesis.ticker}: the close-pass proposal check failed; it waits for tomorrow's close.`, e),
           );
+        }
+
+        // A fired trigger is ready again once a close finds its condition false, read
+        // with everything it reads in hand: an input that didn't load is not a false.
+        if (session === "CLOSE" && fired.length > 0) {
+          const read = (t: Trigger) =>
+            (!needsIndicators(t.predicate) || indicators.has(thesis.ticker)) &&
+            (!needsStreet(t.predicate) || street.has(thesis.ticker)) &&
+            (!(needsEarningsData(t.predicate) || needsUpcomingEarnings(t.predicate)) || !earnings.error) &&
+            (!needsFilings(t.predicate) || !filingsRead.error) &&
+            (!readsThePosition(t.predicate) || posInfo != null);
+          const falseNow = fired.filter((t) => {
+            try {
+              return read(t) && !conditionHolds(t, ctx);
+            } catch (e) {
+              console.error(`[trigger-evaluator] CLOSE CHECK FAILED on ${thesis.ticker}: trigger ${t.id} was not read on this close.`, e);
+              return false;
+            }
+          });
+          if (falseNow.length > 0) await stampFalseAtClose({ thesisId: thesis.id, ...splitFiresByLevel(falseNow), now });
         }
 
         const { fires: matched } = evaluateThesisTriggers({

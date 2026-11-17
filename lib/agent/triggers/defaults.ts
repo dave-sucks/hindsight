@@ -5,15 +5,15 @@
  * rule are written by an analyst or the owner, one trigger at a time, never
  * stamped from code. A playbook's lines are its templates, listed in
  * Settings → Playbook (lib/agent/knowledge/playbooks.ts). What code still
- * writes: the account's standing rules, and each trigger's cooldown and fire
- * mode when none is named.
+ * writes: the account's standing rules, and each trigger's fire mode when
+ * none is named.
  *
  * IDs are auto-assigned via randomUUID() — stable for the life of the
- * trigger so cooldown stamps survive subsequent merges.
+ * trigger so its fire history survives subsequent merges.
  */
 
 import { shapeOf } from "./condition/valid";
-import { defaultCooldownDays, reviewClockDays } from "./condition/rules";
+import { reviewClockDays } from "./condition/rules";
 import { randomUUID } from "node:crypto";
 import type { Trigger } from "./types";
 import { triggerSlot } from "./condition/slot";
@@ -52,8 +52,6 @@ function scaleInOnStrengthTrigger(): Trigger {
     predicate: { watch: "move", is: "above", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Up ${SCALE_IN_MOVE_PCT}% in a day — strength on a held name. Evaluate pressing the winner (add + raise target/stop) if the move is thesis-confirming, not an exhaustion spike. Approval-gated.`,
-    // 3-day cooldown so a multi-day run doesn't re-propose an add every session.
-    cooldownDays: 3,
   };
 }
 
@@ -78,7 +76,6 @@ export function scaleInOnPullbackTrigger(): Trigger {
     predicate: { watch: "move", is: "below", value: SCALE_IN_MOVE_PCT, variable: "prev_close" },
     action: "ADD",
     rationale: `Down ${SCALE_IN_MOVE_PCT}% in a day — evaluate a pullback-add ONLY if the drop is market/sector-wide with the thesis intact. A company-specific drop is thesis damage: do not add — hold, trim, or exit. Approval-gated.`,
-    cooldownDays: 3,
   };
 }
 
@@ -117,7 +114,6 @@ export function reviewCadenceTrigger(days: number): Trigger {
       days === 1
         ? `Look at this every day.`
         : `Look at this every ${days} days, counting from the last real review.`,
-    cooldownDays: days,
   };
 }
 
@@ -180,58 +176,9 @@ export function templateNotes(): string[] {
   return [...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
 }
 
-// ── Cooldown defaults ──────────────────────────────────────────────────
-//
-// Triggers without a `cooldownDays` value used to fire forever — the
-// `shouldFire` gate only enforces cooldown when both `cooldownDays` and
-// `lastFiredAt` are set, so an unset cooldown silently disabled rate
-// limiting. Observed in production: agent-supplied earnings-beat trigger
-// on AMZN with no cooldown fired 10 tactical runs over 12.5 hours on a
-// single earnings signal that the router (correctly) re-evaluated each
-// time a new intel batch landed.
-//
-// We now apply a sane per-predicate-kind default at write time in
-// record_thesis / update_thesis. The values mirror the conventions
-// already baked into the horizon templates above (EARNINGS_*: 7,
-// price and chart kinds: 1, etc.) so behavior of a default-minted trigger doesn't
-// change — these only kick in when an agent-supplied trigger is
-// missing the field.
-
-/**
- * The wait a trigger is saved with when it names none: its measure's
- * (./condition/measures). No wait on a filing (one fire per filing), 7 on a
- * beat or miss, 30 on a report window or an insider cluster, a day on price
- * and chart lines, a week on a review of an average (where a stock sits for
- * weeks) and on a gain milestone, a schedule's own interval.
- */
-export function defaultCooldownDaysForPredicate(
-  p: When,
-  action?: Trigger["action"],
-): number {
-  const w = shapeOf(p);
-  return w == null ? 1 : defaultCooldownDays(w, action ?? "");
-}
-
-/**
- * The wait a trigger fires on: the number saved on it. A row saved before
- * every write path wrote one reads its measure's default.
- */
-export function effectiveCooldownDays(trigger: Trigger): number {
-  return trigger.cooldownDays ?? defaultCooldownDaysForPredicate(trigger.predicate, trigger.action);
-}
-
-/**
- * Every write path saves each trigger with its wait and its fire mode. A
- * trigger saved with no wait, or with 0 where its measure's default isn't 0
- * (only a filing's is), is saved with its measure's default: a wait of zero
- * on a price fires on every five-minute check (NVDA 2026-06-02, 15 runs in
- * 70 minutes; CEG 2026-11-02, a sale at 9:30, 9:35 and 9:40).
- */
+/** Every write path saves each trigger with its fire mode: the one it names, else its action's default (./fire-mode). */
 export function applyTriggerDefaults(triggers: Trigger[]): Trigger[] {
-  return triggers.map((t) => {
-    const needsDefault = t.cooldownDays == null || t.cooldownDays === 0;
-    return withFireMode(needsDefault ? { ...t, cooldownDays: defaultCooldownDaysForPredicate(t.predicate, t.action) } : t);
-  });
+  return triggers.map((t) => withFireMode(t));
 }
 
 /**

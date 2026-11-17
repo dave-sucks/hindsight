@@ -58,8 +58,8 @@ means it cannot drift from reality. Two consequences worth knowing:
 
 Because a rung above the thesis is SHARED by every thesis under it, its
 `lastFiredAt` cannot live on the rung — one thesis firing would put every
-sibling into cooldown. Per-thesis fire state for inherited rungs lives in
-`Thesis.triggerState` (`{ [triggerId]: ISO }`) and is overlaid at resolve time.
+sibling into its fired state. Per-thesis fire state for inherited rungs lives in
+`Thesis.triggerState` (`{ [triggerId]: { firedAt, falseAtCloseAt } }`) and is overlaid at resolve time.
 
 ## 2. The decision model — what happens when each rung fires
 

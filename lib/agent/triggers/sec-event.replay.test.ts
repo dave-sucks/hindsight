@@ -94,7 +94,7 @@ describe("MU 8-K 5.02, 2026-08-26 — held, under the account's filing rule", ()
     expect(shouldFire(again, { ...ctx(), now: new Date(now.getTime() + 300_000) }).fires).toBe(false);
   });
 
-  it("a new filing the next day fires again — no cooldown", async () => {
+  it("a new filing an hour later fires: once per filing, whatever the fired state", async () => {
     stored.triggerState = { "acct-sec": { firedAt: now.toISOString(), firedFilings: ["0001104659-26-101067"] } };
     const rule = ladder().find((t) => isFilingRule(t.predicate))!;
     const nextDay = { ...mu[0], accession: "0001104659-26-101999", filedDate: "2026-08-27" };
