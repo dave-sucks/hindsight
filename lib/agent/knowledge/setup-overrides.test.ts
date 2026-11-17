@@ -31,8 +31,7 @@ describe("applySetupOverride", () => {
       scoring: { trendStrength: { score: 2, note: "x" }, relativeStrength: { score: 2, note: "x" }, entryQuality: { score: 2, note: "x" }, catalystFreshness: { score: 2, note: "x" } },
       conviction: "MEDIUM" as const, conviction_rationale: "Honest middle; the guide raise is real and the stop is under structure.",
     };
-    const chart = { atr14: 5.5, pivot: null, brokenOut: null, daysSinceReport: 2 };
-    const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), chart });
+    const asWritten = validateThesisDecision(decision, { mode: "mint", setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]) });
     expect(asWritten.errors).toEqual([]);
     expect(getSetup("PEAD", { PEAD: { stopMaxPct: 12 } })!.stop.maxPct).toBe(12);
   });

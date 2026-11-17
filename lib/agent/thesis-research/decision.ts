@@ -20,9 +20,6 @@ import { z } from "zod";
 import { jsonSchema, zodSchema, type Schema } from "ai";
 import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import { shapeOf } from "@/lib/agent/triggers/condition";
-import { applyTriggerOps } from "@/lib/agent/triggers/ops";
-import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import type { Trigger } from "@/lib/agent/triggers/types";
 import { type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 
@@ -120,20 +117,12 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** The stored triggers on a refresh, with ids: a refresh's edits are read against them. */
-  existingTriggers?: Trigger[];
-  /** The setups this seat may write on (setupsForSeat). Absent = no setup check. */
+  /** The setups this seat may write on (setupsForSeat): the reply to a view with nothing on it names MA_PULLBACK when it is one. */
   setups?: Setup[];
-  /** Chart numbers from the pull, for the stop-distance, chase and window checks. */
+  /** The 20- and 50-day averages from the pull, for naming the pullback in that reply. */
   chart?: {
-    atr14: number | null;
-    pivot: number | null;
-    brokenOut: boolean | null;
-    /** The 20- and 50-day averages, for naming the pullback when a windowed setup no longer applies. */
     sma20?: { value: number; rising: boolean } | null;
     sma50?: { value: number; rising: boolean } | null;
-    /** Days since the last report (the report day is 0); null when the calendar has none. */
-    daysSinceReport?: number | null;
   } | null;
 }
 
@@ -179,26 +168,11 @@ export function validateThesisDecision(
   // visible and editable, unlike a column that fed a template once at mint
   // and then drifted from it.
 
-  // The buy and the Stop watching line are triggers. A view is priced when the decision
-  // writes a buy or a Stop watching line; an unpriced view (no buy, ≥1 REVIEW wake —
-  // DAV-224) is legal: "bullish, entry window opens in January" used to be
-  // unwritable, so BMRN came back with today's quote as its buy level.
-  const { entry, priced } = decisionBuy(d, opts);
-
-  // ── The setup named, if any ───────────────────────────────────────────
-  // A buy may be saved with no setup named, and a setup off the seat's list is
-  // accepted as named. The setup only gives the chase limit below.
-  const setup = d.setup_id && opts.setups ? opts.setups.find((s) => s.id === d.setup_id) : undefined;
-  // The setup's sale rules (minimum ATR, widest %) are read on the sale the buy names (place_trade's
-  // saleRuleProblem), never on a watch's Stop watching line: that line never sells.
-  if (directional && priced && entry != null && entry > 0) {
-    const pivot = opts.chart?.pivot;
-    if (!held && setup?.entry.chaseLimitPct != null && pivot != null && pivot > 0 && d.direction === "LONG" && entry > pivot * (1 + setup.entry.chaseLimitPct / 100)) {
-      errors.push(
-        `buy: $${entry} is ${(((entry - pivot) / pivot) * 100).toFixed(1)}% past the base pivot $${pivot.toFixed(2)}; ${setup.name}'s chase limit is ${setup.entry.chaseLimitPct}%. Buy within the limit, write the buy on a pullback setup, or PASS.`,
-      );
-    }
-  }
+  // The setup is whatever the decision names: no check reads it. A buy may be
+  // saved with no setup, and a setup off the seat's list is accepted as named.
+  // A buy's chase cap is in the trigger itself ("… and below $C"), and the
+  // setup's sale rules are read on the sale the buy names (place_trade's
+  // saleRuleProblem), never on a watch's Stop watching line.
 
   if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
@@ -329,55 +303,6 @@ export function validateThesisDecision(
       ...(dropped.length ? { dropped } : {}),
     },
   };
-}
-
-/**
- * The price of the buy trigger the decision leaves on the stock, when it is
- * at a typed price (a refresh's edits applied to the stored ones), for the
- * setup's chase limit; and whether the decision itself writes a buy or a
- * Stop watching line. Pure.
- */
-export function decisionBuy(
-  d: ThesisDecisionInput,
-  opts: Pick<DecisionValidationOpts, "mode" | "existingStatus" | "existingTriggers">,
-): { entry: number | null; priced: boolean } {
-  const direction = d.direction === "PASS" ? null : d.direction;
-  const status = opts.mode === "refresh" ? (opts.existingStatus ?? "WATCHING") : "WATCHING";
-  let n = 0;
-  const asStored = (t: unknown): Trigger[] => {
-    const read = triggerInputSchema.safeParse(t);
-    return read.success ? [{ ...(read.data as unknown as Trigger), id: `decision-${n++}` }] : [];
-  };
-  const sets = (t: Trigger) => {
-    const slot = levelSlotOf(t, direction);
-    return slot === "ENTRY" || slot === "FLOOR";
-  };
-  let list: Trigger[];
-  let priced: boolean;
-  if (opts.mode === "mint") {
-    list = ((d.triggers ?? []) as unknown[]).flatMap(asStored);
-    priced = list.some(sets);
-  } else {
-    const stored = opts.existingTriggers ?? [];
-    const adds = ((d.add_triggers ?? []) as unknown[]).flatMap(asStored);
-    const edits = (d.edit_triggers ?? []).filter((e) => editNumber(e).value !== undefined);
-    list = applyTriggerOps({
-      stored,
-      ops: [
-        ...(d.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-        ...adds.map((trigger) => ({ op: "add" as const, trigger })),
-        ...edits.map((e) => ({ op: "edit" as const, id: e.id, ...editNumber(e), rationale: e.rationale })),
-      ],
-      direction,
-      status,
-      actor: "SYSTEM",
-      mintId: () => `decision-${n++}`,
-    }).triggers;
-    priced = adds.some(sets) || edits.some((e) => stored.some((t) => t.id === e.id && sets(t)));
-  }
-  // A buy trigger's own price, when it has one (a chart condition has none).
-  const entry = status === "HOLDING" ? null : (list.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null);
-  return { entry, priced };
 }
 
 /**

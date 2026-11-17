@@ -1,12 +1,15 @@
 /**
- * decision.setup.test.ts — the writer names its setup and says where its
- * numbers came from (DAV-249).
+ * decision.setup.test.ts — the setup the writer names is whatever it names.
+ *
+ * No check reads it (deleted 2026-11-16, each to come back if the app shows a
+ * need): a buy may be saved with no setup named, a setup off the seat's list is
+ * accepted as named, a setup past its window is accepted, and a buy past a
+ * base's chase cap is not refused here (the cap is in the buy trigger itself,
+ * "… and below $C").
  *
  * Replayed from production: DOCU, minted 2026-09-09 15:37 UTC by the PEAD
  * Specialist (run cmtu9hxmc000004jvp5wbzvpz) — LONG TARGET, entry $62.50,
- * stop $57.50, target $76, MEDIUM, stored setupId null. Chart that day
- * (Alpaca bars through 09-08): ATR(14) $2.94, no base, last swing low
- * $58.73, gapped up 3.9% on 2.5× volume on 09-04. The buy, the floor and
+ * stop $57.50, target $76, MEDIUM, stored setupId null. The buy, the floor and
  * the take-profit are triggers (2026-11-16); each trigger's rationale is its
  * reason, so no separate reason field is owed.
  */
@@ -24,7 +27,6 @@ function levels(entry: number, stop: number, target?: number) {
 }
 
 const PEAD_SEAT = setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]);
-const DOCU_CHART = { atr14: 2.94, pivot: null, brokenOut: null };
 
 const docu: ThesisDecisionInput = {
   direction: "LONG",
@@ -38,7 +40,7 @@ const docu: ThesisDecisionInput = {
   conviction_rationale: "The beat was real and the stock held the gap, but the multiple already moved a lot.",
 };
 
-const opts = { mode: "mint" as const, setups: PEAD_SEAT, chart: DOCU_CHART };
+const opts = { mode: "mint" as const, setups: PEAD_SEAT };
 
 describe("DOCU 2026-09-09 — the real PEAD mint", () => {
   it("a buy with no setup named is accepted: a buy may be saved with no playbook", () => {
@@ -47,28 +49,13 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     expect(v.ok).toBe(true);
   });
 
-  it("the repaired decision passes — the numbers didn't have to move", () => {
-    const v = validateThesisDecision(
-      {
-        ...docu,
-        setup_id: "PEAD",
-      },
-      opts,
-    );
+  it("naming PEAD passes too — the numbers didn't have to move", () => {
+    const v = validateThesisDecision({ ...docu, setup_id: "PEAD" }, opts);
     expect(v.errors).toEqual([]);
   });
 
   it("a setup this seat doesn't run is accepted as named", () => {
     const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT" }, opts);
-    expect(v.errors).toEqual([]);
-    expect(v.ok).toBe(true);
-  });
-
-  it("PEAD named 10 days after the report is accepted: the playbook's window is not checked", () => {
-    const v = validateThesisDecision(
-      { ...docu, setup_id: "PEAD" },
-      { ...opts, chart: { ...DOCU_CHART, daysSinceReport: 10 } },
-    );
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
   });
@@ -88,45 +75,26 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
     );
     expect(v.errors).toEqual([]);
   });
-});
 
-describe("FIVE 2026-09-09 chart — the chase limit on a breakout", () => {
-  // FIVE's base that day: pivot $263.88, not broken out (ATR $10.65).
-  const chart = { atr14: 10.65, pivot: 263.88, brokenOut: false };
-  const seat = setupsForAnalyst(["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]);
-  const breakout = {
-    ...docu,
-    horizon: "TARGET" as const,
-    setup_id: "BASE_BREAKOUT" as const,
-    triggers: levels(280, 255, 340),
-  };
-  it("an entry 6.1% past the pivot is sent back", () => {
-    const v = validateThesisDecision(breakout, { mode: "mint", setups: seat, chart });
-    expect(v.errors.some((e) => e.startsWith("buy: $280 is 6.1% past the base pivot $263.88"))).toBe(true);
-  });
-  it("an entry at the pivot plus a buffer passes", () => {
-    const v = validateThesisDecision({ ...breakout, triggers: levels(264.5, 240, 320) }, { mode: "mint", setups: seat, chart });
+  it("a breakout buy 6% past the base pivot is not refused here: the cap is in the buy trigger", () => {
+    const seat = setupsForAnalyst(["COMPOUNDER_ACCUMULATION", "BASE_BREAKOUT", "MA_PULLBACK"]);
+    const v = validateThesisDecision(
+      { ...docu, setup_id: "BASE_BREAKOUT", triggers: levels(280, 255, 340) },
+      { mode: "mint", setups: seat },
+    );
     expect(v.errors).toEqual([]);
+    expect(v.ok).toBe(true);
   });
 });
 
 describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", () => {
   // Replayed from production: run cmu30r2u20002sky7xsjj9m2u (PEAD Specialist,
-  // refresh). Chart that day: price $55.99, 20-day $54.48 rising, 50-day
-  // $51.39 rising, ATR(14) $3.75, last swing low $45.70, two gap-downs (09-03
-  // and 09-14). The print was 09-02, so this is day 13; PEAD's entry is days
-  // 1–3. The writer kept setup PEAD, found no stop the drift rules allowed,
-  // and saved an unpriced view with a REVIEW below the 20-day. The check that
-  // sent it back for the closed window was deleted 2026-11-16: the window is
-  // not checked, so the decision is accepted.
-  const chart = {
-    atr14: 3.75,
-    pivot: null,
-    brokenOut: null,
-    sma20: { value: 54.48, rising: true },
-    sma50: { value: 51.39, rising: true },
-    daysSinceReport: 13,
-  };
+  // refresh). Price $55.99, 20-day $54.48 rising, 50-day $51.39 rising, last
+  // swing low $45.70, two gap-downs (09-03 and 09-14). The print was 09-02, so
+  // this is day 13; PEAD's entry is days 1–3. The writer kept setup PEAD,
+  // found no stop the drift rules allowed, and saved an unpriced view with a
+  // REVIEW below the 20-day. The check that sent it back for the closed window
+  // was deleted 2026-11-16: the window is not checked, so it is accepted.
   const hpe: ThesisDecisionInput = {
     direction: "LONG",
     horizon: "TARGET",
@@ -141,7 +109,7 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     remove_trigger_ids: ["buy-57.25", "floor-54.90", "target-66.50"],
     edit_triggers: [{ id: "review-20d", value: 54.48, rationale: "Anchor the review to the rising 20-day" }],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT };
 
   it("is accepted: PEAD's window closed on day 3 and nothing sends it back for that", () => {
     const v = validateThesisDecision(hpe, opts);
@@ -164,24 +132,15 @@ describe("HPE 2026-09-15 — the real PEAD refresh, 13 days after the report", (
     expect(v.errors).toEqual([]);
     expect("riskReward" in v).toBe(false);
   });
-
 });
 
 describe("DOCU 2026-09-15 — the same shape, the same night", () => {
   // Replayed from production: run cmu3f9u6y0000opy70bkgdp0n (PEAD Specialist,
-  // refresh, 01:28 ET on 09-16). Reported 09-03 → day 13. Chart: price
-  // $71.85, 20-day $64.50 rising, 50-day $58.27 rising, ATR $2.98. The writer
-  // kept setup PEAD, went unpriced, and wrote the entire pullback plan
-  // (buy ~$64.50, stop $61.52, target $82.96, "R/R exceeds 6:1") into the
-  // rationale of a REVIEW below $65. Accepted (the window check was deleted 2026-11-16).
-  const chart = {
-    atr14: 2.98,
-    pivot: null,
-    brokenOut: null,
-    sma20: { value: 64.5, rising: true },
-    sma50: { value: 58.27, rising: true },
-    daysSinceReport: 13,
-  };
+  // refresh, 01:28 ET on 09-16). Reported 09-03 → day 13. Price $71.85, 20-day
+  // $64.50 rising, 50-day $58.27 rising. The writer kept setup PEAD, went
+  // unpriced, and wrote the entire pullback plan (buy ~$64.50, stop $61.52,
+  // target $82.96, "R/R exceeds 6:1") into the rationale of a REVIEW below $65.
+  // Accepted (the window check was deleted 2026-11-16).
   const docu: ThesisDecisionInput = {
     direction: "LONG",
     horizon: "TARGET",
@@ -202,7 +161,7 @@ describe("DOCU 2026-09-15 — the same shape, the same night", () => {
       },
     ],
   };
-  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT, chart };
+  const opts = { mode: "refresh" as const, existingStatus: "WATCHING", setups: PEAD_SEAT };
 
   it("is accepted with the pullback plan it had already written into a review", () => {
     const v = validateThesisDecision(docu, opts);

@@ -34,8 +34,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +90, the writer writes the buy and the floor as triggers (no entry / target / stop fields), and a watch's floor stops watching it.
   // 2026-11-16: +301, a watch's floor is a STOP_WATCHING trigger on the close that never sells; a watch carries no EXIT.
   // 2026-11-16: +8, the Stop watching line is where the setup is over, with no floor and no distance from the buy; the run that buys names the sale.
-  // 2026-11-16: −116, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup.
-  writer: 17_006,
+  // 2026-11-16: −181, the writer is no longer told the setup rules the save used to check: a buy names a setup, the setup is on the seat's list, a closed window sends the stock to the next setup, a buy stays within the chase limit.
+  writer: 16_941,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.

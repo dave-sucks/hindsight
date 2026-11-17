@@ -614,8 +614,7 @@ every field; the judgment rules:
          now; it fires on the first tick through it and becomes the
          ordinary approval-gated proposal. A breakout fires only on the
          close (settings: { close: true }); an intraday poke fails about
-         half the time. Never more than the setup's chase limit past its
-         pivot.
+         half the time.
        – where the setup is over (a STOP_WATCHING trigger on a typed
          price, settings: { close: true }): the structure the setup names
          (the base's low, the last swing low, the gap day's low). A close
@@ -953,8 +952,6 @@ Write the research note now, then call submit_thesis.`;
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
         currentPrice,
-        // A refresh's edits are read against the stored triggers (decisionBuy).
-        existingTriggers: existingThesis?.triggers,
         setups: seatSetups,
         chart: pullOutput.pull?.chart ?? null,
       },
@@ -1725,7 +1722,6 @@ async function resubmitWithFeedback(input: {
       mode: args.mode,
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
-      existingTriggers: existing?.triggers,
       setups: setupsForAnalyst(analyst.setupIds, await loadSetupOverrides(analyst.accountId)),
       chart: pullOutput.pull?.chart ?? null,
     },
