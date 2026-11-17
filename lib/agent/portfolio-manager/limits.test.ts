@@ -1,0 +1,106 @@
+import type { ToolSet } from "ai";
+import { PROPOSALS_A_RUN, WATCHES_A_RUN, managerPick, withRunLimits } from "./limits";
+import { COMPARING_FIELDS, rowForModel } from "@/lib/agent/row-for-model";
+import { watchingText, buildSnapshot, snapshotText, firstSentence } from "@/lib/portfolio/snapshot";
+
+const names = (n: number, from = 0) => Array.from({ length: n }, (_, i) => `T${from + i}`);
+const HELD = new Set(["V", "CEG"]);
+
+describe("the Portfolio Manager's get_theses", () => {
+  it("needs tickers: the whole account is not returned", () => {
+    expect(managerPick({}, {}, HELD).refused).toMatch(/Name the stocks by ticker/);
+  });
+
+  it("returns any holding, and a limited number of watched stocks a run", () => {
+    const ctx = {};
+    const first = managerPick(ctx, { tickers: ["v", "CEG", ...names(40)] }, HELD);
+    expect(first.tickers).toEqual(["V", "CEG", ...names(WATCHES_A_RUN)]);
+    expect(first.note).toMatch(new RegExp(`Not returned: T${WATCHES_A_RUN}`));
+    // A later call gets no new watch; a holding and a watch already asked about come back.
+    expect(managerPick(ctx, { tickers: names(5, 20) }, HELD).refused).toBeTruthy();
+    expect(managerPick(ctx, { tickers: ["t0", "V"] }, HELD).tickers).toEqual(["T0", "V"]);
+  });
+
+  it("gets a holding and a watch with the same fields, and none of the review's", () => {
+    const row = {
+      ticker: "NVDA", id: "th1", coreBelief: "Demand outruns supply.", invalidationConds: ["Orders fall"], keyAssumptions: ["Supply stays short"], convictionRationale: "Backlog is signed.",
+      bullCase: { bullets: [{ text: "bull" }] }, bearCase: { bullets: [{ text: "bear" }] }, variantView: "The Street is late.", snapshot: "A long snapshot.",
+      triggers: [{ id: "t1", says: "Sell if below $150" }], latestEarnings: { bullets: [{ text: "Beat." }, { text: "Raised." }, { text: "A third bullet." }] },
+      context: "eight lines", insights: ["a", "b", "c", "d"],
+    };
+    const held = rowForModel({ ...row, status: "HOLDING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
+    const watch = rowForModel({ ...row, status: "WATCHING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
+    expect(Object.keys(held)).toEqual(Object.keys(watch));
+    expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: ["a", "b", "c"], latestEarnings: ["Beat.", "Raised."] });
+    for (const k of Object.keys(held)) expect(COMPARING_FIELDS).toContain(k);
+    for (const k of ["bull_case", "bear_case", "variant_view", "snapshot", "situations"]) expect(held[k]).toBeUndefined();
+  });
+});
+
+describe("the run's limits, held by its tools", () => {
+  const calls: string[] = [];
+  const tool = (name: string) => ({ execute: async () => (calls.push(name), { ok: true, summary: "done" }) });
+  const tools = () =>
+    withRunLimits(Object.fromEntries(["place_trade", "manage_position", "close_position", "update_thesis", "dispatch_thesis_research", "get_theses"].map((n) => [n, tool(n)])) as unknown as ToolSet, async (id) => ({ th_v: "V", th_mu: "MU" })[id] ?? null);
+  const call = (t: ToolSet, name: string, input: Record<string, unknown>) => (t[name] as unknown as { execute: (i: unknown, o: unknown) => Promise<{ ok: boolean; error?: string }> }).execute(input, {});
+
+  it(`refuses a proposal after ${PROPOSALS_A_RUN}, across the three trade tools`, async () => {
+    const t = tools();
+    expect((await call(t, "place_trade", { ticker: "WST" })).ok).toBe(true);
+    expect((await call(t, "manage_position", { symbol: "CEG" })).ok).toBe(true);
+    expect((await call(t, "close_position", { ticker: "NVDA" })).ok).toBe(true);
+    const fourth = await call(t, "close_position", { ticker: "IOT" });
+    expect(fourth).toMatchObject({ ok: false, error: expect.stringContaining("WST, CEG, NVDA") });
+  });
+
+  it("a note goes only with a trade or a research request this run made on that stock", async () => {
+    const t = tools();
+    expect(await call(t, "update_thesis", { thesis_id: "th_v", rationale: "Still holding." })).toMatchObject({ ok: false, error: expect.stringContaining("write-up") });
+    await call(t, "close_position", { ticker: "v" });
+    expect((await call(t, "update_thesis", { thesis_id: "th_v", rationale: "Why I'd sell." })).ok).toBe(true);
+    await call(t, "dispatch_thesis_research", { existing_thesis_id: "th_mu", mode: "refresh" });
+    expect((await call(t, "update_thesis", { thesis_id: "th_mu", rationale: "Why it needs research." })).ok).toBe(true);
+  });
+
+  it("a refused trade is not counted", async () => {
+    const real = { place_trade: { execute: async () => ({ ok: false, error: "A buy proposal on WST is already awaiting user approval." }) }, update_thesis: tool("update_thesis") } as unknown as ToolSet;
+    const t = withRunLimits(real, async () => "WST");
+    await call(t, "place_trade", { ticker: "WST" });
+    expect((await call(t, "update_thesis", { thesis_id: "th_wst", rationale: "x" })).ok).toBe(false);
+  });
+});
+
+describe("the snapshot's holdings and the Watching block", () => {
+  const snap = buildSnapshot({
+    day: "2026-11-17", live: false, at: "2026-11-17T21:00:00Z", cash: 1000, contributed: 2000, trades: [],
+    holdings: [{ ticker: "V", shares: 2, avgCost: 400, price: 420, prevClose: 410, analyst: "Secular Compounder", move5dPct: -0.9, move20dPct: 3.1, conviction: "HIGH" }],
+    waiting: [{ side: "BUY", ticker: "WST", shares: 18, firstProposed: "2026-11-09T15:00:00Z", times: 4, note: null, analyst: "Secular Compounder" }],
+    watching: [
+      { ticker: "WST", price: 415.37, dayPct: -0.6, move5dPct: 0.7, move20dPct: 6.8, conviction: "HIGH", analyst: "Secular Compounder", since: "2026-08-12T14:00:00Z", buyIf: ["Buy if below $415.14"], belief: "West compounds as its margins recover." },
+      { ticker: "ACN", price: null, dayPct: null, move5dPct: null, move20dPct: null, conviction: null, analyst: null, since: "2026-11-17T14:00:00Z" },
+    ],
+  });
+
+  it("a holding's line carries its 5- and 20-day moves, and its conviction", () => {
+    expect(snapshotText(snap)).toContain("since bought at $400.00: +5.0% (+$40) · 5-day −0.9%, 20-day +3.1% · conviction HIGH · Secular Compounder");
+  });
+
+  it("a holding loaded without them reads as it did", () => {
+    const plain = buildSnapshot({ day: "2026-11-17", live: false, at: "2026-11-17T21:00:00Z", cash: 0, contributed: null, trades: [], waiting: [], holdings: [{ ticker: "V", shares: 2, avgCost: 400, price: 420, prevClose: 410, analyst: null }] });
+    expect(snapshotText(plain)).toMatch(/since bought at \$400\.00: \+5\.0% \(\+\$40\)$/m);
+  });
+
+  it("a watch is one line in the same style, with its buy trigger and its belief's first sentence", () => {
+    expect(watchingText(snap)).toBe(
+      [
+        "Watching (2):",
+        "- WST: $415.37 · day −0.6% · 5-day +0.7%, 20-day +6.8% · conviction HIGH · Secular Compounder · watching since Aug 12 · a buy proposal is waiting · Buy if below $415.14 · Belief: West compounds as its margins recover.",
+        "- ACN: no price · watching since Nov 17",
+      ].join("\n"),
+    );
+  });
+
+  it("the belief's first sentence is whole", () => {
+    expect(firstSentence("Constellation is the largest U.S. nuclear generator, and Inc. filings show it. A second sentence.")).toBe("Constellation is the largest U.S. nuclear generator, and Inc. filings show it.");
+  });
+});

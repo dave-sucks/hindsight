@@ -20,6 +20,7 @@ import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
 import { buildPortfolioManagerPrompt } from "@/lib/agent/portfolio-manager/prompt";
+import { withRunLimits } from "@/lib/agent/portfolio-manager/limits";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
 /** The RunEvent that keeps a run's write-up. */
@@ -29,7 +30,7 @@ export const MANAGER_MODEL = MODES["research-run"].model;
 const MAX_STEPS = 40;
 const CALL_MS = 770_000;
 
-/** What it may call. get_theses by ticker, a limited number of stocks a run (./stocks-a-run.ts); its save is a note. */
+/** What it may call. get_theses by ticker, a limited number of stocks a run (./limits.ts); its save is a note. */
 export const MANAGER_TOOLS = [
   "get_theses",
   "get_stock_data",
@@ -98,7 +99,9 @@ export async function runPortfolioManager(
     runEnvironment: book.environment,
     alpacaCreds: alpacaCreds ?? undefined,
   }) as ToolSet;
-  const real = Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet;
+  const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
+  // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
+  const real = withRunLimits(opts.tools ? opts.tools(Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet) : (Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet), tickerOf);
   const usage = emptyTokenUsage();
   const requests: number[] = [];
   const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
@@ -107,7 +110,7 @@ export async function runPortfolioManager(
       model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager" }),
       system: buildPortfolioManagerPrompt(portfolioBlock),
       prompt: firstMessage,
-      tools: opts.tools ? opts.tools(real) : real,
+      tools: real,
       providerOptions: { openai: { strictJsonSchema: true, ...(runId ? { promptCacheKey: runId } : {}) } },
       // The same refused call three times ends the loop (repeat-refusal.ts).
       stopWhen: [stepCountIs(MAX_STEPS), repeatRefusalGuard.stopWhen],

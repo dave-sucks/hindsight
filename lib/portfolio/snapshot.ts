@@ -47,6 +47,10 @@ export interface SnapshotWatch {
   analyst: string | null;
   /** When we started watching (ISO). */
   since: string;
+  /** The watch's own buy triggers, each as its sentence. */
+  buyIf?: string[];
+  /** The first sentence of the thesis's belief. */
+  belief?: string | null;
 }
 
 export interface SnapshotTrade {
@@ -254,6 +258,20 @@ export function snapshotWhen(s: Pick<PortfolioSnapshot, "day" | "live" | "at">):
   return s.live ? `${dayLabel(s.day)}, ${etTime(new Date(s.at))} ET (market open, latest prices)` : `${dayLabel(s.day)} at the close`;
 }
 
+const NOT_AN_END = new Set(["Inc", "Corp", "Co", "Ltd", "vs", "etc", "Mr", "Ms", "Dr", "St", "U.S", "e.g", "i.e"]);
+
+/** A text's first sentence, whole. "U.S." and "Inc." don't end one. */
+export function firstSentence(text: string | null | undefined): string | null {
+  const flat = text?.replace(/\s+/g, " ").trim();
+  if (!flat) return null;
+  for (const m of flat.matchAll(/[.!?](?=\s)/g)) {
+    const before = flat.slice(0, m.index);
+    const word = before.split(" ").pop() ?? "";
+    if (/[a-z0-9)%"'”’]$/.test(before) && !NOT_AN_END.has(word)) return flat.slice(0, m.index + 1);
+  }
+  return flat;
+}
+
 /** The Watching block: every stock we watch, one line each, in the holdings' style. */
 export function watchingText(s: Pick<PortfolioSnapshot, "watching" | "waiting">): string {
   const watching = s.watching ?? [];
@@ -268,7 +286,9 @@ export function watchingText(s: Pick<PortfolioSnapshot, "watching" | "waiting">)
         movesAndConviction(w) +
         (w.analyst ? ` · ${w.analyst}` : "") +
         ` · watching since ${dayLabel(nyDay(new Date(w.since))).replace(/^\w+, /, "")}` +
-        (buyWaiting.has(w.ticker) ? " · a buy proposal is waiting" : ""),
+        (buyWaiting.has(w.ticker) ? " · a buy proposal is waiting" : "") +
+        (w.buyIf?.length ? ` · ${w.buyIf.join("; ")}` : "") +
+        (w.belief ? ` · Belief: ${w.belief}` : ""),
     ),
   ].join("\n");
 }

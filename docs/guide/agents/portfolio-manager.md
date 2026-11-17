@@ -22,9 +22,17 @@ It is given nothing in a format of its own. Your holdings are the snapshot's hol
 
 ## What it asks for
 
-It asks `get_theses` for stocks by ticker, the tool every agent uses, and the same field rules decide what comes back: a holding with the fields a sale's decision reads (what would prove it wrong among them), a watch with the fields a buy's reads (Wall Street's view and the playbook's triggers that come with the buy). It does not get the long bull and bear cases; those go to the analyst on the stock's review.
+It asks `get_theses` for stocks by ticker, the tool every agent uses. One field rule, for comparing stocks, decides what comes back, the same for a holding and a watch:
 
-It may ask about 8 stocks in a run, and the tool holds that limit: a run told a limit in its job text asked for the whole account anyway. It has no web search. The Market Reviewer reads the news each morning and its notes are on each stock's Activity; a thesis that looks out of date goes to research.
+- the belief, its key assumptions, what would prove it wrong, and the reason for its conviction
+- its triggers
+- the newest three Activity lines someone wrote a paragraph on (the Overview's Agent insights)
+- Wall Street's view, the catalyst date, and the first two bullets of the latest earnings
+- the chart numbers, the playbook (on a watch, the triggers that come with the buy), the position and any proposal waiting
+
+It does not get the bull and bear cases or the other research sections; those go to the analyst on the stock's review.
+
+It may ask about any stock you own, and 8 watched stocks a run. It has no web search: the Market Reviewer reads the news each morning, and a thesis that looks out of date goes to research.
 
 ## The question it asks
 
@@ -47,11 +55,21 @@ Its note on the stock, written right after the trade call, is the reason you rea
 - Selling one stock to buy another is two proposals. You may approve one and not the other.
 - A trade you declined, or let lapse, is not proposed again until something new has happened.
 - Where you have written that you are holding a stock, it ranks the stock honestly and proposes no sale.
-- A case that looks wrong goes to research (the [Writer](writer.md)); it does not rewrite the case. Its save on a stock is a note and nothing else: no trigger, status or conviction.
+- A case that looks wrong goes to research (the [Writer](writer.md)); it does not rewrite the case.
 - Its note on a stock is not the analyst's review: the stock's review clock keeps counting.
 - Doing nothing is a normal result.
 
-These are instructions in its job text. How many stocks it can ask about and what its save can change are limits in its tools.
+## What its tools hold it to
+
+A run told a limit in its job text went past it, so these are in code:
+
+- **8 watched stocks a run** from `get_theses`.
+- **Three proposals a run.** A fourth is refused.
+- **Its trades always wait for you**, whatever your approval switches say.
+- **A note only with a trade or a research request** it made on that stock this run. Its view of every other stock is in its write-up, so its notes don't fill a stock's Activity.
+- **Its save is a note**: no trigger, status or conviction.
+
+The rest of its rules above are instructions in its job text.
 
 ## Its write-up
 
@@ -66,8 +84,8 @@ Its last reply, kept on the run: where the money is, the ranking, what it did, o
 #### The run
 `runPortfolioManager` (`lib/agent/portfolio-manager/run.ts`): the job text (`prompt.ts`), `loadPortfolioBlock` with `watching: true` and `portfolioDigest: false`, and `MANAGER_TOOLS`: `get_theses`, `get_stock_data`, `update_thesis`, `place_trade`, `manage_position`, `close_position`, `dispatch_thesis_research`.
 
-#### Its theses and its save
-`get_theses` on its run takes tickers and counts them against the run (`lib/agent/portfolio-manager/stocks-a-run.ts`); each row is built by `rowForModel` with `fieldsOf` a sale's situation on a holding and a buy's on a watch (`ROW_FIELDS`, `lib/agent/row-for-model.ts`). `update_thesis` on its run has two fields, the thesis and the note.
+#### Its theses, its limits and its save
+`get_theses` on its run takes tickers; each row is built by `rowForModel` with `comparing` (`COMPARING_FIELDS`, `lib/agent/row-for-model.ts`). The limits are `lib/agent/portfolio-manager/limits.ts`: `managerPick` counts the watches asked about, and `withRunLimits` wraps the run's tools with the proposal count and the note rule. `isManagerRun` at each trade tool's approval check makes its trade a proposal (`always`, `lib/proposals/maybe-await-approval.ts`). `update_thesis` on its run has two fields, the thesis and the note.
 
 #### Acting for the stock's analyst
 It has no analyst of its own. Each write acts for the stock's own analyst, under that analyst's sizes and limits, the way the unpinned chat does (`accountWide`, `lib/agent/analyst-scope.ts`). Unlike the chat it has none of the owner's powers: no size field, no reason field, no lowering a floor.

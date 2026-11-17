@@ -95,6 +95,21 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   history: "named",
 };
 
+/**
+ * The fields a stock is sent with when it is being compared with other stocks
+ * as a use of the account's money (the Portfolio Manager's get_theses): the
+ * same for a holding and a watch. `said` is its newest INSIGHTS_COMPARED
+ * Activity lines with a written paragraph, `latestEarnings` the section's
+ * first EARNINGS_BULLETS_COMPARED bullets; a watch carries `playbook_checks`
+ * (the triggers that come with the buy) where a holding carries `setup`.
+ */
+export const COMPARING_FIELDS: readonly string[] = [
+  "stock", "id", "analyst", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
+  "triggers", "said", "street", "catalyst", "latestEarnings", "chart", "setup", "playbook_checks", "research",
+];
+export const INSIGHTS_COMPARED = 3;
+export const EARNINGS_BULLETS_COMPARED = 2;
+
 /** The situation that reads the whole case. */
 export const REVIEW_SITUATION: SituationCode = "REVIEW_DUE";
 
@@ -374,14 +389,14 @@ function sectionText(v: unknown): string | string[] | null {
 }
 
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
-function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false, fieldsOf?: readonly SituationCode[]): Row {
+function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false, comparing = false): Row {
   const held = row.status === "HOLDING";
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
   const codes = list<SituationCode>(row.situations);
   const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
   const out: Row = {};
-  const sent = rowKeysFor(fieldsOf ?? codes, { size, named });
+  const sent = comparing ? new Set(COMPARING_FIELDS) : rowKeysFor(codes, { size, named });
   const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
 
   put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
@@ -391,7 +406,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   // An account-wide read names each stock's analyst.
   put("analyst", str(row.analyst));
   put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
-  put("said", str(row.context));
+  put("said", comparing ? strings(row.insights).slice(0, INSIGHTS_COMPARED) : str(row.context));
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));
@@ -417,10 +432,13 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   put("snapshot", snapshot ? (size === "full" ? stripSourceTags(snapshot) : firstParagraph(snapshot, 300)) : null);
   if (size === "full") {
     for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
+  } else if (comparing) {
+    const earnings = sectionText(row.latestEarnings);
+    put("latestEarnings", Array.isArray(earnings) ? earnings.slice(0, EARNINGS_BULLETS_COMPARED) : earnings);
   }
   put("chart", chartLine(row));
   put("street", streetLine(row));
-  put("research", researchLine(row, size));
+  put("research", researchLine(row, comparing ? "full" : size));
   const catalyst = date(row.catalystDate);
   put("catalyst", catalyst ? isoDay(catalyst) : catalystDateMissing(row) ? "date missing" : null);
   put("repeat", str(obj(row.needsAction)?.repeatLine));
@@ -442,10 +460,8 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
  * buy (`playbook_checks`) in place of the compact setup line. Every other
  * short row is unchanged; the full row always carries them.
  *
- * `fieldsOf` sends the fields those situations' decisions read (ROW_FIELDS),
- * whatever situation the stock is in: the Portfolio Manager weighs a sale on
- * a holding and a buy on a watch with no trigger having fired.
+ * `comparing` sends COMPARING_FIELDS, whatever situation the stock is in.
  */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; fieldsOf?: readonly SituationCode[] }): string | Row {
-  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.playbookChecks, opts.fieldsOf);
+export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; comparing?: boolean }): string | Row {
+  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.comparing ? row.status !== "HOLDING" : opts.playbookChecks, opts.comparing);
 }
