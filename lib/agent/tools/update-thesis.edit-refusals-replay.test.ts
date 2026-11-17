@@ -39,9 +39,6 @@ const rowOf = (r: Refused) => {
     direction: t.direction as string,
     horizon: t.horizon as string,
     setupId: (t.setupId as string | null) ?? null,
-    entryPrice: t.entryPrice as number | null,
-    targetPrice: t.targetPrice as number | null,
-    stopLoss: t.stopLoss as number | null,
     coreBelief: t.coreBelief as string,
     keyAssumptions: t.keyAssumptions as string[],
     invalidationConds: t.invalidationConds as string[],
@@ -58,16 +55,14 @@ const seedFor = (r: Refused) => ({ thesis: [rowOf(r)], agentConfig: [agentConfig
 /**
  * GD as the run found it at 08:06: the fixture holds the row AFTER the
  * set-down landed, so the two triggers the call names — the $315 floor
- * (e82b0485…) and the $435 target review (7201b75b…) — and the plan levels
- * they carried are put back from the audit row's own record of the removal.
+ * (e82b0485…) and the $435 target review (7201b75b…) — are put back from
+ * the audit row's own record of the removal.
  */
 const gdBefore = () => {
   const row = rowOf(gd);
   const [floorId, targetId] = gd.input.remove_trigger_ids as string[];
   return {
     ...row,
-    stopLoss: 315,
-    targetPrice: 435,
     triggers: [
       ...(row.triggers as unknown[]),
       { id: floorId, action: "EXIT", predicate: { watch: "price", is: "below", value: 315 }, rationale: "Floor — sell if the price drops to $315.", cooldownDays: 1, source: "AGENT" },
@@ -90,9 +85,8 @@ describe("GD 2026-09-25 — setting the plan down is an edit, not a belief chang
     const ids = new Set((row.triggers as Array<{ id: string }>).map((t) => t.id));
     for (const removed of gd.input.remove_trigger_ids as string[]) expect(ids.has(removed)).toBe(false);
     expect((row.triggers as unknown[]).length).toBe((before.triggers as unknown[]).length - 2);
-    // Levels are triggers: the floor and target columns follow them off.
-    expect(row.stopLoss).toBeNull();
-    expect(row.targetPrice).toBeNull();
+    // Levels are triggers: with them off, the stock has neither (nothing stores a level).
+    expect(row).not.toHaveProperty("stopLoss");
     expect(db.store.thesisUpdate).toHaveLength(1);
   });
 });

@@ -593,7 +593,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     status: "HOLDING",
     triggers: [ionsExit],
     avgCost: 73.83,
-    targetPrice: null as number | null,
   };
 
   it("flags a +17% holding whose floor locks −12% (the IONS shape)", () => {
@@ -682,7 +681,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         status: "HOLDING",
         triggers: [],
         avgCost: 100,
-        targetPrice: 120,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },
@@ -707,7 +705,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         status: "HOLDING",
         triggers: [tightFloor],
         avgCost: 100,
-        targetPrice: 120,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },
@@ -781,7 +778,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
         triggers: [trail],
         avgCost: 100,
         peakPrice: 120,
-        targetPrice: 130,
       },
       activity: [],
       latestQuote: { price: 118, changePct: 0 },

@@ -247,7 +247,7 @@ export function compactDiffValue(v: unknown, maxLen = 160): unknown {
 /**
  * Apply compactDiffValue to the from/to of the named keys, leaving every
  * other entry untouched. Used by update_thesis on the bulky research and
- * narrative section keys — scalars (targetPrice, stopLoss, …) and the
+ * narrative section keys — scalars and the
  * trigger arrays keep exact values, because the timeline renders those
  * from/to numbers directly ("floor 64 → 71").
  */

@@ -327,8 +327,9 @@ export function computeLadderHealth(opts: {
  *   - "triggerOps" — the trigger ops the caller sent (agent or principal)
  *   - "triggers"   — legacy rows, from before ops (a full-array diff)
  *   - "fireMode"   — legacy principal fire-mode rows
- *   - "stopLoss"   — stop moves synced from a level edit
- * Deliberately EXCLUDES "targetPrice" (a target move is a plan change, not
+ *   - "stopLoss"   — legacy rows: stop moves synced from a level edit, from
+ *                    before the level columns went (2026-11-16)
+ * Deliberately EXCLUDES legacy "targetPrice" rows (a target move was a plan change, not
  * protection work) and "source" (stamped on every principal edit, ladder or
  * not). Principal UI edits that touch only a non-stop rung value write none
  * of these keys — the metric then errs toward "stale," which fails safe

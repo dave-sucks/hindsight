@@ -27,7 +27,6 @@ export interface FactsRow {
   ticker: string;
   status: string;
   direction: string | null;
-  targetPrice: number | null;
   triggers: unknown;
   catalystDate: Date | null;
   createdAt: Date;
@@ -186,7 +185,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
           ticker: t.ticker,
           status: t.status,
           direction: t.direction,
-          targetPrice: t.targetPrice ?? null,
           avgCost: w?.avgCost ?? null,
           quantity: w?.quantity ?? null,
           equity: load.equity,
@@ -233,7 +231,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       triggers: load.ladders.get(t.id) ?? [],
       status: t.status,
       actionability: r?.actionability ?? null,
-      progressToTarget: r?.progressToTarget ?? null,
       buyBlockedByFull: blocked.has(t.id),
       unansweredDecision: context.get(t.id)?.unansweredDecision != null,
       pinnedNote: context.get(t.id)?.pinnedNote != null,

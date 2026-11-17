@@ -23,7 +23,6 @@ export interface SituationSources {
   status: string;
   /** The resolver's label (ENTER_NOW, PROMOTED_DECIDE_TODAY …). */
   actionability: string | null;
-  progressToTarget: number | null;
   buyBlockedByFull: boolean;
   unansweredDecision: boolean;
   /** A note pinned on the stock and a group it belongs to, that no run has written after (lib/agent/shared-notes.ts). */
@@ -79,7 +78,6 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   const codes = s.needs.flatMap((f) => flagCodes(s, f));
   if (s.actionability === "PROMOTED_DECIDE_TODAY") codes.push("PROMOTED_AWAITING");
   if (s.buyBlockedByFull || s.actionability === "ENTER_NOW") codes.push("BUY_ARRIVES");
-  if (s.status === "HOLDING" && (s.progressToTarget ?? 0) >= 0.75) codes.push("ADD_OR_WINNER");
   if (s.unansweredDecision || s.pinnedNote) codes.push("NOTE_TO_ANSWER");
   if (s.soldReview) codes.push("SOLD_ONE_REVIEW");
   return [...new Set(codes)];
@@ -175,8 +173,8 @@ Mistakes:
 If the analyst is full: every slot is held or awaiting approval (\`buyBlockedByFull\` names the holdings), so place_trade will refuse the buy; don't call it, and don't treat it as a quiet day. Is this stock a better use of a slot than the weakest one we hold? Weigh the thesis, the setup, the reward left to the Street's average target, and where we differ from the Street (\`variant_view\`). On this stock's one update_thesis, name which holding it would replace and why it is the better use of the slot, or say it waits for a free slot, and why. Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them. The note: what is going on with the company and why it wants in now, against the holding it would replace; then the swap you'd make, or that it waits for a free slot, in one sentence.`,
   },
   ADD_OR_WINNER: {
-    name: "add or near upside",
-    guidance: `When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its upside level or more (what we paid is in the \`position\` line, the upside level in the \`triggers\` lines). It is a decision point, not a hold by default.
+    name: "add",
+    guidance: `When: an add trigger fired or is true now on a stock we hold (what we paid is in the \`position\` line, its triggers in the \`triggers\` lines). It is a decision point, not a hold by default.
 
 Answer, in order:
 1. Why did it move: its news, its sector, the market (get_stock_data, one web_search; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.

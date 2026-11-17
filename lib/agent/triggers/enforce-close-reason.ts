@@ -83,8 +83,10 @@ export interface EnforceCloseReasonArgs {
   levels?: {
     direction: "LONG" | "SHORT";
     price: number | null;
-    targetPrice: number | null;
-    stopLoss: number | null;
+    /** The stock's upside line (its triggers), else the trade's approved target. */
+    upside: number | null;
+    /** The stock's sale (its triggers), else the trade's approved sell price. */
+    floor: number | null;
   };
 }
 
@@ -122,17 +124,17 @@ function levelClaimFailure(
   declared: "TARGET" | "STOP",
   levels: NonNullable<EnforceCloseReasonArgs["levels"]>,
 ): string | null {
-  const { direction, price, targetPrice, stopLoss } = levels;
+  const { direction, price, upside, floor } = levels;
   if (price == null) return null;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
   if (declared === "TARGET") {
-    if (targetPrice == null) return `the stock carries no upside level to have reached (price ${fmt(price)})`;
-    const reached = direction === "LONG" ? price >= targetPrice : price <= targetPrice;
-    return reached ? null : `the price (${fmt(price)}) never reached the ${fmt(targetPrice)} target`;
+    if (upside == null) return `the stock carries no upside level to have reached (price ${fmt(price)})`;
+    const reached = direction === "LONG" ? price >= upside : price <= upside;
+    return reached ? null : `the price (${fmt(price)}) never reached the ${fmt(upside)} upside line`;
   }
-  if (stopLoss == null) return `the stock carries no floor to have broken (price ${fmt(price)})`;
-  const broken = direction === "LONG" ? price <= stopLoss : price >= stopLoss;
-  return broken ? null : `the price (${fmt(price)}) is on the safe side of the ${fmt(stopLoss)} stop`;
+  if (floor == null) return `the stock carries no floor to have broken (price ${fmt(price)})`;
+  const broken = direction === "LONG" ? price <= floor : price >= floor;
+  return broken ? null : `the price (${fmt(price)}) is on the safe side of the ${fmt(floor)} stop`;
 }
 
 /**

@@ -52,8 +52,6 @@ export interface WatchlistItemView {
   priority: string;
   status: string;
   thesisDirection: string | null;
-  targetPrice: number | null;
-  stopPrice: number | null;
   catalyst: string | null;
   lastReviewedAt: Date | null;
   createdAt: Date;
@@ -157,8 +155,6 @@ export async function getWatchlistItems(
       id: true,
       ticker: true,
       direction: true,
-      targetPrice: true,
-      stopLoss: true,
       snapshot: true,
       sourceKind: true,
       sourceRationale: true,
@@ -219,8 +215,6 @@ export async function getWatchlistItems(
       // 'PENDING' (legacy, pre-backfill). Normalize both to null so the row
       // renders "Awaiting review".
       thesisDirection: t.direction === "PENDING" ? null : t.direction,
-      targetPrice: t.targetPrice,
-      stopPrice: t.stopLoss,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
       lastReviewedAt: t.lastReviewedAt,
       createdAt: t.createdAt,
@@ -367,8 +361,6 @@ export async function addWatchlistItem(
       id: true,
       ticker: true,
       direction: true,
-      targetPrice: true,
-      stopLoss: true,
       snapshot: true,
       sourceKind: true,
       createdAt: true,
@@ -393,8 +385,6 @@ export async function addWatchlistItem(
       status: "WATCHING",
       // P1-24 B4 dual-read: null (new seed) or legacy 'PENDING' → null.
       thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
-      targetPrice: existing.targetPrice,
-      stopPrice: existing.stopLoss,
       catalyst: null,
       lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
@@ -461,8 +451,6 @@ export async function addWatchlistItem(
     priority: "NORMAL",
     status: "WATCHING",
     thesisDirection: null,
-    targetPrice: null,
-    stopPrice: null,
     catalyst: null,
     lastReviewedAt: null, // just minted — never reviewed
     createdAt: thesis.createdAt,

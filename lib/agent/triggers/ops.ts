@@ -60,8 +60,8 @@ import { defaultNote } from "./note";
 import { stampWrittenPrice } from "./written-price";
 import { validateEnterTriggerRequired } from "./enter-guard";
 import {
-  canonicalLevels,
   levelSlotOf,
+  typedPriceOf,
   moveNumberInText,
   predicateFor,
   rationaleFor,
@@ -169,9 +169,10 @@ const SLOT_LABEL: Record<LevelSlot, string> = {
 
 const money = (n: number) => `$${n % 1 === 0 ? n : n.toFixed(2)}`;
 
-/** "Entry", "Stop", "Upside", "Review cadence", or the condition in words. */
+/** "Entry", "Stop", "Stop watching", "Upside", "Review cadence", or the condition in words. */
 function nameOf(t: Trigger, direction: string | null): string {
   const slot = levelSlotOf(t, direction);
+  if (t.action === "STOP_WATCHING") return "Stop watching";
   if (slot) return SLOT_LABEL[slot];
   const w = shapeOf(t.predicate);
   if (w && reviewClockDays(w) != null) return "Review cadence";
@@ -649,14 +650,14 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
 // ── The one check after all ops ─────────────────────────────────────────
 
 export type LadderCheck =
-  | { ok: true; columns: { entryPrice: number | null; targetPrice: number | null; stopLoss: number | null } }
+  | { ok: true }
   | { ok: false; error: "invalid_thesis_shape" | "missing_enter_trigger"; message: string };
 
 /**
  * Read the price levels off the list and check it once: ordering everywhere
  * and the buy-trigger / sell-trigger rules of `validateEnterTriggerRequired`.
  * No reward/risk floor (gone 2026-11-04): the house sets no target of its
- * own. Held: `entryPrice` is the fill.
+ * own. Held, the buy is what we paid (`avgCost`).
  */
 export function checkLadder(input: {
   triggers: Trigger[];
@@ -664,28 +665,25 @@ export function checkLadder(input: {
   direction: string | null;
   status: string | null;
   actor: ApplyTriggerOpsInput["actor"];
-  /** The fill on a held name (position avgCost, else the stored entry). */
-  entryPrice?: number | null;
+  /** What we paid, on a held name (the open position's avgCost). */
   avgCost?: number | null;
 }): LadderCheck {
   const { triggers, inherited = [], direction, status } = input;
   const held = status === "HOLDING";
-  const columns = canonicalLevels({
-    triggers: [
-      ...triggers.map((t) => ({ ...t, level: "THESIS" as const, inherited: false })),
-      ...inherited,
-    ],
-    direction,
-    status,
-    avgCost: input.avgCost,
-  }).columns;
 
   if (direction === "LONG" || direction === "SHORT") {
+    // The order check reads each trigger at a typed price by its slot (a move off cost or a trail has
+    // no price here). Under the price, the one that fires first; over it, the furthest. On a watch with
+    // no buy, a review over the price is a wake, never an upside line.
+    const list: Trigger[] = [...triggers, ...inherited];
+    const at = (slot: LevelSlot) => list.flatMap((t) => (levelSlotOf(t, direction) === slot ? [typedPriceOf(t)!] : []));
+    const top = (xs: number[]) => (xs.length === 0 ? null : direction === "LONG" ? Math.max(...xs) : Math.min(...xs));
+    const wakesOnly = !held && !list.some((t) => t.action === "ENTER");
     const shape = validateThesisShape({
       direction,
-      entryPrice: held ? (input.entryPrice ?? columns.entryPrice) : columns.entryPrice,
-      targetPrice: columns.targetPrice,
-      stopLoss: columns.stopLoss,
+      buy: held ? (input.avgCost ?? null) : (at("ENTRY")[0] ?? null),
+      upside: wakesOnly ? null : top(at("TARGET")),
+      floor: top(at("FLOOR")),
       held,
     });
     if (!shape.ok) return { ok: false, error: "invalid_thesis_shape", message: shape.note };
@@ -696,7 +694,7 @@ export function checkLadder(input: {
     triggers: [...triggers, ...inherited],
   });
   if (!guard.ok) return { ok: false, error: "missing_enter_trigger", message: guard.note };
-  return { ok: true, columns };
+  return { ok: true };
 }
 
 /** The accepted ops, as stored on the audit row — text and identity only. */

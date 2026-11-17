@@ -15,7 +15,7 @@
  * can't be applied is refused by itself, by name, and the rest lands.
  */
 import fixture from "@/lib/agent/__fixtures__/close-out-restated-2026-10-08.json";
-import { replayTool, thesisRow, positionRow, thesisUpdateRow, type Row } from "@/lib/replay";
+import { replayTool, thesisRow, positionRow, thesisUpdateRow, type Row, triggerSentences } from "@/lib/replay";
 
 type Refused = Array<{ field: string; reason: string }>;
 const data = (r: { result: { data?: Record<string, unknown> } }) => r.result.data ?? {};
@@ -34,9 +34,6 @@ const asml = (over: Row = {}) =>
     status: "HOLDING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 1716.09,
-    targetPrice: 2400,
-    stopLoss: 1835,
     triggers: [{ id: FLOOR_ID, action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 1835 }, rationale: "The floor.", cooldownDays: 1 }],
     ...over,
   });
@@ -70,7 +67,7 @@ describe("unchanged is a no-op", () => {
     expect(rows[0]).toMatchObject({ type: "REVIEWED", rationale: NOTE, fieldChanges: {} });
     expect(opsOf(r)).toEqual([]);
     expect(refusedOf(r)).toEqual([]);
-    expect(r.db.store.thesis[0]).toMatchObject({ direction: "LONG", horizon: "COMPOUNDER", entryPrice: 1716.09, stopLoss: 1835 });
+    expect(r.db.store.thesis[0]).toMatchObject({ direction: "LONG", horizon: "COMPOUNDER", triggers: asml().triggers });
   });
 
   it("every field of a held stock restated writes a REVIEWED row with empty fieldChanges", async () => {
@@ -146,7 +143,7 @@ describe("refuse the field, land the call", () => {
       const r = await replay(closeOut({ price_at_time: undefined, entry_price }), { quotes: {} });
       expect(r.refused).toBe(false);
       expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED", rationale: NOTE })]);
-      expect(r.db.store.thesis[0].entryPrice).toBe(1716.09);
+      expect(r.db.store.thesis[0]).not.toHaveProperty("entryPrice");
     }
   });
 
@@ -166,11 +163,11 @@ describe("refuse the field, land the call", () => {
 
   it("an upside line raised past the price on a watch lands with the floor raised beside it (there is no target of ours to guard)", async () => {
     const watch = thesisRow({
-      id: "t_watch", ticker: "AAA", status: "WATCHING", direction: "LONG", entryPrice: 100, targetPrice: 130, stopLoss: 90,
+      id: "t_watch", ticker: "AAA", status: "WATCHING", direction: "LONG",
       triggers: [
         { id: "buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "Buy the pullback to $100." },
         { id: "tgt", action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "above", value: 130 }, rationale: "Target $130." },
-        { id: "flr", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Floor $90." },
+        { id: "flr", action: "STOP_WATCHING", source: "AGENT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Floor $90." },
       ],
     });
     const r = await replayTool("update-thesis", "updateThesis", {
@@ -188,7 +185,7 @@ describe("refuse the field, land the call", () => {
     });
     expect(r.refused).toBe(false);
     expect(refusedOf(r)).toEqual([]);
-    expect(r.db.store.thesis[0]).toMatchObject({ targetPrice: 150, stopLoss: 95 });
+    expect(triggerSentences(r.db.store.thesis[0])).toEqual(expect.arrayContaining(["Review if above $150", "Stop watching if below $95"]));
   });
 
   it("a promoted stock given only a note writes the REVIEWED row and says it is still promoted", async () => {
@@ -203,7 +200,7 @@ describe("refuse the field, land the call", () => {
 
 describe("a call where nothing can land is still refused whole", () => {
   it("a seed's commitment missing its floor: refused, nothing written", async () => {
-    const s = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, entryPrice: null, targetPrice: null, stopLoss: null, triggers: [] });
+    const s = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, triggers: [] });
     const r = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [s] },
       args: {
@@ -247,7 +244,7 @@ describe("the two production close-outs, replayed end to end", () => {
       expect(rows[0].rationale).toBe(fx.call.rationale);
       expect(Object.keys((rows[0].fieldChanges ?? {}) as object)).not.toEqual(expect.arrayContaining(["direction", "status", "horizon", "entryPrice"]));
       expect(refusedOf(r).map((f) => f.field)).toEqual(["change_status"]);
-      expect(r.db.store.thesis[0]).toMatchObject({ status: "HOLDING", direction: "LONG", entryPrice: fx.thesis.entryPrice });
+      expect(r.db.store.thesis[0]).toMatchObject({ status: "HOLDING", direction: "LONG" });
     });
   }
 });

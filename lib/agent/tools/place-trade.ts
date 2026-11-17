@@ -839,6 +839,11 @@ export const placeTrade = defineTool({
         } catch {
           /* keep entry_price */
         }
+        // Until the fill lands the position is priced at the quote the sale is set under (stop when buying);
+        // reconcile-orders moves both to what was paid.
+        if (fillPrice !== args.entry_price) {
+          await prisma.position.update({ where: { id: position.id }, data: { avgCost: fillPrice } }).catch(() => {});
+        }
       }
 
       // A PROMOTED row (the first live run's re-entry) flips to HOLDING in armHeldLadderOnFill below, as a watch does.

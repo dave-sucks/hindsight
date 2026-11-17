@@ -54,7 +54,7 @@ describe("a pinned note on the five, the morning before the vote", () => {
   it("puts the stock on the list until a run writes on it, then clears for that stock only", () => {
     const sources = (pinnedNote: boolean): SituationSources => ({
       needs: [], triggers: [], status: "HOLDING", actionability: null,
-      progressToTarget: null, buyBlockedByFull: false, unansweredDecision: false, pinnedNote,
+      buyBlockedByFull: false, unansweredDecision: false, pinnedNote,
     });
     expect(situationsFor(sources(true))).toEqual(["NOTE_TO_ANSWER"]);
     expect(listsTheStock(sources(true))).toBe(true);

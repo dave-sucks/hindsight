@@ -43,11 +43,11 @@ const validLong: ThesisDecisionInput = {
 const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 101 };
 
 describe("validateThesisDecision — accept paths", () => {
-  it("accepts a fully-specified LONG mint and computes R/R", () => {
+  it("accepts a fully-specified LONG mint, and reports no reward/risk (the house sets no target)", () => {
     const v = validateThesisDecision(validLong, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeCloseTo(2.5);
+    expect("riskReward" in v).toBe(false);
   });
 
   it("accepts a PASS with only rationale + horizon (no prices, no conviction)", () => {
@@ -72,7 +72,7 @@ describe("validateThesisDecision — accept paths", () => {
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeCloseTo(2.5);
+    expect("riskReward" in v).toBe(false);
   });
 
   it("a mint with no triggers is sent back: nothing is added for it (a stock has triggers and nothing else)", () => {
@@ -107,14 +107,14 @@ describe("validateThesisDecision — accept paths", () => {
   });
 });
 
-describe("validateThesisDecision — price ordering; the ratio is reported, not a floor", () => {
-  it("accepts a LONG under 2:1 and reports the ratio", () => {
+describe("validateThesisDecision — price ordering; no reward/risk is reported", () => {
+  it("accepts a LONG under 2:1; there is no ratio to report", () => {
     const v = validateThesisDecision(
       { ...validLong, triggers: levels(100, 90, 115) }, // 15/10 = 1.5
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeCloseTo(1.5);
+    expect("riskReward" in v).toBe(false);
   });
 
   it("leaves the order of the levels to the save's own check (checkDecisionAgainstSave; thesis-shape.test.ts)", () => {
@@ -122,11 +122,11 @@ describe("validateThesisDecision — price ordering; the ratio is reported, not 
     expect(v.errors.join(" ")).not.toContain("ordering");
   });
 
-  it("accepts a buy and a floor and no take-profit (ETN as read 2026-11-04: buy $410, floor $358.50); no ratio to report", () => {
+  it("accepts a buy and a floor and no take-profit (ETN as read 2026-11-04: buy $410, floor $358.50)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: levels(410, 358.5) }, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
-    expect(v.riskReward).toBeUndefined();
+    expect("riskReward" in v).toBe(false);
   });
 
 });
@@ -153,7 +153,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
       mintOpts,
     );
     expect(v.ok).toBe(true);
-    expect(v.riskReward).toBeUndefined();
+    expect("riskReward" in v).toBe(false);
   });
 
   it("refresh: taking the buy, floor and upside line off by id (and keeping a REVIEW wake) is accepted", () => {

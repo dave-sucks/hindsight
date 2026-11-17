@@ -121,14 +121,14 @@ Mistakes:
 If the analyst is full: every slot is held or awaiting approval (`buyBlockedByFull` names the holdings), so place_trade will refuse the buy; don't call it, and don't treat it as a quiet day. Is this stock a better use of a slot than the weakest one we hold? Weigh the thesis, the setup, the reward left to the Street's average target, and where we differ from the Street (`variant_view`). On this stock's one update_thesis, name which holding it would replace and why it is the better use of the slot, or say it waits for a free slot, and why. Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them. The note: what is going on with the company and why it wants in now, against the holding it would replace; then the swap you'd make, or that it waits for a free slot, in one sentence.
 ```
 
-## Add or near upside
+## Add
 
 `ADD_OR_WINNER` · rank 4 of 8 · the row adds `floor_risk`, `street`, `catalyst` · sent to every run
 
-An add trigger fired, or a holding is three quarters of the way to its target.
+An add trigger fired on a holding.
 
 ```text
-When: an add trigger fired or is true now on a stock we hold, or the holding has come three quarters of the way to its upside level or more (what we paid is in the `position` line, the upside level in the `triggers` lines). It is a decision point, not a hold by default.
+When: an add trigger fired or is true now on a stock we hold (what we paid is in the `position` line, its triggers in the `triggers` lines). It is a decision point, not a hold by default.
 
 Answer, in order:
 1. Why did it move: its news, its sector, the market (get_stock_data, one web_search; get_market_context for a drop)? A rise counts only if it confirms the thesis: the catalyst playing out, estimates rising, healthy structure, not an exhaustion chase. A drop counts only if it is market- or sector-wide, the thesis intact and support holding.

@@ -1,24 +1,25 @@
 /**
  * After a buy placed by hand: the analyst writes what the stock is missing.
  *
- * The floor and target are the analyst's job. A buy that lands on a thesis
- * with no view, no floor or no target sends the writer to fill them in; the
- * levels already there (the ones typed into the Trade dialog among them) are
- * kept — the writer fills only the empty ones (`keepLevels`).
+ * The sale is the analyst's job. A buy that lands on a thesis with no view or
+ * no "Sell if" trigger sends the writer to fill it in; the triggers already
+ * there (the sale typed into the Trade dialog among them) are kept — the
+ * writer fills only the empty ones (`keepLevels`). There is no target of our
+ * own to be missing.
  */
 
 import { prisma } from "@/lib/prisma";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 
 /** What the writer is sent for, or null when the thesis has everything. */
-export function researchOwed(t: { noView: boolean; floor: number | null; target: number | null }): {
+export function researchOwed(t: { noView: boolean; hasSale: boolean }): {
   reason: string;
   missing: string;
 } | null {
-  if (t.noView) return { reason: "Bought by hand with no research yet; write its view, floor and target.", missing: "research" };
-  if (t.floor == null) return { reason: "Bought by hand; set its floor and target.", missing: "floor" };
-  if (t.target == null) return { reason: "Bought by hand; set its floor and target.", missing: "target" };
+  if (t.noView) return { reason: "Bought by hand with no research yet; write its view and its sale.", missing: "research" };
+  if (!t.hasSale) return { reason: "Bought by hand; set its sale.", missing: "sale" };
   return null;
 }
 
@@ -34,12 +35,11 @@ export async function sendWriterAfterBuy(opts: {
   noView: boolean;
 }): Promise<boolean> {
   const row = await prisma.thesis
-    .findUnique({ where: { id: opts.thesisId }, select: { stopLoss: true, targetPrice: true } })
+    .findUnique({ where: { id: opts.thesisId }, select: { triggers: true } })
     .catch(() => null);
   const owed = researchOwed({
     noView: opts.noView,
-    floor: row?.stopLoss ?? null,
-    target: row?.targetPrice ?? null,
+    hasSale: parseTriggersResilient(row?.triggers).triggers.some((t) => t.action === "EXIT"),
   });
   if (!owed) return false;
   try {

@@ -52,8 +52,6 @@ import PinnedPanel from '@/components/dashboard/PinnedPanel';
 import type { CoverageData } from '@/lib/actions/coverage.actions';
 import { StockLogo } from '@/components/StockLogo';
 import { Badge } from '@/components/ui/badge';
-import { ThesisRow, type ThesisRowData } from '@/components/ui/thesis-row';
-import type { StockCandle } from '@/lib/actions/finnhub.actions';
 import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { DigestNote, LatestDigest } from '@/lib/actions/digest.actions';
@@ -84,7 +82,7 @@ import {
   mockPortfolio,
   type MockTrade,
 } from '@/lib/mock-data/trades';
-import type { DashboardData, RecentPick } from '@/lib/actions/portfolio.actions';
+import type { DashboardData } from '@/lib/actions/portfolio.actions';
 import type { AccountActivityKind, AccountActivityLine } from '@/lib/thesis/account-activity';
 import { useTradeRealtime, type RealtimeTrade } from '@/hooks/useTradeRealtime';
 import { toast } from 'sonner';
@@ -330,43 +328,6 @@ const ACTIVITY_KIND: Record<AccountActivityKind, { label: string; dotClass: stri
   failed:             { label: 'Failed',           dotClass: 'bg-negative',            filter: 'attempts' },
 };
 
-function pickToThesisRow(pick: RecentPick, candles?: StockCandle[]): ThesisRowData {
-  return {
-    id: pick.id,
-    ticker: pick.ticker,
-    direction: pick.direction,
-    status: pick.status,
-    reasoningSummary: pick.reasoningSummary,
-    entryPrice: pick.entryPrice,
-    targetPrice: pick.targetPrice,
-    stopLoss: pick.stopLoss,
-    // True thesis-creation date — anchors the chart's "Watching" marker and
-    // the footer timestamp. (Previously overridden to the position's openedAt
-    // for holdings, which would have collapsed the Watching marker onto Entry.)
-    createdAt: pick.createdAt,
-    agentWatchDays: pick.agentWatchDays,
-    currentPrice: pick.currentPrice,
-    candles,
-    companyName: pick.companyName,
-    analystName: pick.analystName,
-    analystId: pick.analystId,
-    runId: pick.runId,
-    sourcesUsed: pick.sourcesUsed,
-    decision: pick.decision,
-    position: pick.position
-      ? {
-          id: pick.position.id,
-          status: pick.position.status,
-          tradeStatus: pick.position.tradeStatus,
-          avgCost: pick.position.avgCost,
-          quantity: pick.position.quantity,
-          openedAt: pick.position.openedAt,
-          filledAt: pick.position.filledAt,
-          placedAt: pick.position.placedAt,
-        }
-      : null,
-  };
-}
 
 
 function ActivityRow({ item }: { item: AccountActivityLine }) {

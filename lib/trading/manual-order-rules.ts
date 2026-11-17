@@ -18,8 +18,8 @@ export type BuyLane =
       thesisId: string | null;
       /** No view yet (a seed, or not watched): the buy makes it LONG and the writer is sent to research it. */
       needsResearch: boolean;
-      targetPrice: number | null;
-      // No stop: a stock we don't hold has no sale to start from. The one you type is the holding's sale.
+      // No stop and no target: a stock we don't hold has no sale to start from, and the house sets no
+      // target of its own. The sale you type is the holding's.
     }
   | { kind: "NONE"; reason: string };
 

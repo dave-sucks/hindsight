@@ -3,8 +3,8 @@
  * watch started.
  *
  * The coverage table's last column answers "how has this done since I started
- * watching it" — the missed-opportunity column. It was reading `entryPrice`,
- * which is the PLANNED BUY LEVEL (a cache of the ENTER trigger), not a price
+ * watching it" — the missed-opportunity column. It was reading the old buy
+ * column, the PLANNED BUY LEVEL (a cache of the ENTER trigger), not a price
  * anyone observed. 22 of 28 watched names had none, because 21 of them carry
  * only REVIEW triggers — the analyst never named a buy — so the column was
  * blank on three-quarters of the watchlist.

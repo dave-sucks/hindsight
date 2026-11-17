@@ -47,7 +47,8 @@ describe("a Writer mint that sends no triggers", () => {
     expect(refusal).toBeNull();
     expect(refused).toBe(false);
     const row = (db.store.thesis as Array<Record<string, unknown>>)[0];
-    expect(row).toMatchObject({ status: "WATCHING", direction: "LONG", entryPrice: null, targetPrice: null, stopLoss: null });
+    expect(row).toMatchObject({ status: "WATCHING", direction: "LONG" });
+    expect((row.triggers as Array<{ action: string; predicate: { watch?: string } }>).some((t) => ["ENTER", "EXIT", "STOP_WATCHING"].includes(t.action) && t.predicate.watch === "price")).toBe(false);
     const triggers = row.triggers as Trig[];
     expect(triggers.map((t) => [t.action, t.predicate.watch, t.predicate.value])).toEqual([["REVIEW", "repeat", 14]]);
   });
@@ -57,6 +58,6 @@ describe("a Writer mint that sends no triggers", () => {
     expect(refused).toBe(false);
     const row = (db.store.thesis as Array<Record<string, unknown>>)[0];
     expect(row.triggers).toEqual([]);
-    expect(row).toMatchObject({ entryPrice: null, targetPrice: null, stopLoss: null });
+    expect((row.triggers as Array<{ action: string; predicate: { watch?: string } }>).some((t) => ["ENTER", "EXIT", "STOP_WATCHING"].includes(t.action) && t.predicate.watch === "price")).toBe(false);
   });
 });

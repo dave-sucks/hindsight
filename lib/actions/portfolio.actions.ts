@@ -123,9 +123,6 @@ export interface RecentPick {
   /** Lifecycle status — drives the row's leading badge (Watching / Active / etc.). */
   status: string;
   reasoningSummary: string;
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
   createdAt: string; // ISO
   decision: string | null; // BUY | SELL | PASS | HOLD — actual action taken
   position: {
@@ -465,9 +462,6 @@ export async function getDashboardData(
         direction: true,
         status: true,
         snapshot: true,
-        entryPrice: true,
-        targetPrice: true,
-        stopLoss: true,
         createdAt: true,
         triggers: true,
         researchRun: {
@@ -1065,9 +1059,6 @@ export async function getDashboardData(
       direction: p.direction,
       status: p.status,
       reasoningSummary: getThesisSnapshotText(p),
-      entryPrice: p.entryPrice,
-      targetPrice: p.targetPrice,
-      stopLoss: p.stopLoss,
       createdAt: p.createdAt.toISOString(),
       decision: dec?.decision ?? null,
       position: positionData,

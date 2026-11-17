@@ -129,7 +129,6 @@ async function loadLanes(opts: {
       select: {
         id: true,
         direction: true,
-        targetPrice: true,
         researchRun: { select: { agentConfigId: true } },
       },
     }),
@@ -190,7 +189,6 @@ async function loadLanes(opts: {
                 kind: "OPEN",
                 thesisId: t?.id ?? null,
                 needsResearch: t?.direction !== "LONG",
-                targetPrice: t?.targetPrice ?? null,
               },
     });
   }

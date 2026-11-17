@@ -11,7 +11,7 @@
  *   - update_thesis change_status WATCHING on the sold row, through its real
  *     entry point.
  */
-import { prismaDouble, replayTool, thesisRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { prismaDouble, replayTool, thesisRow, REPLAY_ANALYST_ID, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const ANET_ID = "cmt0zqjmc000504l5zq6djk32";
@@ -22,7 +22,7 @@ const TRIGGERS = [
   { id: "8bfc23b7-ab85-4034-a86b-6ebc3cb7a9c6", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { is: "miss", value: 3, watch: "surprise" }, rationale: "Miss ≥ 3% — re-evaluate target.", cooldownDays: 7 },
   { id: "df7e2d95-dd24-422c-a506-d8728ed686ba", action: "EXIT", fireMode: "DO_IT", predicate: { is: "below", value: 4, watch: "move", variable: "peak" }, rationale: "Gave back 4% from the high.", cooldownDays: 1 },
 ];
-const ANET = { id: ANET_ID, ticker: "ANET", direction: "LONG", horizon: "TARGET", setupId: null, entryPrice: 183.827484, stopLoss: 184.5, targetPrice: 215, triggers: TRIGGERS, analystId: REPLAY_ANALYST_ID };
+const ANET = { id: ANET_ID, ticker: "ANET", direction: "LONG", horizon: "TARGET", setupId: null, triggers: TRIGGERS, analystId: REPLAY_ANALYST_ID };
 const sales = (ts: unknown) => (ts as Trigger[]).filter((t) => t.action === "EXIT");
 
 describe("ANET back to watch: its Sell lines come off with the status", () => {
@@ -48,7 +48,8 @@ describe("ANET back to watch: its Sell lines come off with the status", () => {
     });
     expect(r.refused).toBe(false);
     const row = r.db.store.thesis[0] as Record<string, unknown>;
-    expect(row).toMatchObject({ status: "WATCHING", retiredReason: null, stopLoss: null });
+    expect(row).toMatchObject({ status: "WATCHING", retiredReason: null });
+    expect(triggerSentences(row).some((t) => t.startsWith("Sell if"))).toBe(false);
     expect(sales(row.triggers)).toEqual([]);
     expect((row.triggers as Trigger[]).map((t) => t.id)).toEqual(TRIGGERS.filter((t) => t.action !== "EXIT").map((t) => t.id));
     const ops = (r.result.data?.trigger_ops ?? []) as Array<{ op: string; ok: boolean; text: string }>;

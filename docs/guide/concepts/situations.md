@@ -36,7 +36,7 @@ One per trigger action, and four the code finds with no trigger.
 |---|---|---|
 | A sell or trim trigger | **Sale signal** | It fired on a holding, or a sale you declined is still past its line. Not while a sale card for it waits for you. |
 | A buy trigger | **Buy level reached** | It fired on a watch, or its condition is still true when the morning run reads the stock. |
-| An add trigger, or the code | **Add or near upside** | An add trigger fired, or a holding is three quarters of the way to its upside level. |
+| An add trigger | **Add** | An add trigger fired on a holding. Nearing an upside line is no situation of its own: the house has no target. |
 | A review trigger | **Review due** | It fired, or the review clock came round. A trigger on a report or a filing is a review too. |
 | The code | **Floor to fix** | A holding's floor locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
 | The code | **A note to answer** | You left a note, a decline or a resized approval that no run has answered, or a note is pinned on the stock. |

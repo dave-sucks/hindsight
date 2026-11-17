@@ -195,10 +195,8 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
       ["REVIEW", "report:after"],
     ]);
     expect(now[0].predicate).toMatchObject({ watch: "price", is: "above", value: 146 });
-    // A wake, not a target: no plan columns on a stock with no buy.
-    expect(row.entryPrice).toBeNull();
-    expect(row.targetPrice).toBeNull();
-    expect(row.stopLoss).toBeNull();
+    // A wake, not a target: a stock with no buy, and nothing stores a level.
+    expect((row.triggers as Trigger[]).some((t) => t.action === "ENTER")).toBe(false);
     expect(saved.db.store.thesisUpdate).toHaveLength(1);
   });
 
@@ -222,9 +220,7 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     ]);
     const old = new Set(fx.thesisBefore.triggers.map((t) => t.id));
     expect(now.some((t) => old.has(t.id))).toBe(false);
-    expect(row.entryPrice).toBeNull();
-    expect(row.targetPrice).toBeNull();
-    expect(row.stopLoss).toBeNull();
+    expect((row.triggers as Trigger[]).some((t) => t.action === "ENTER")).toBe(false);
     expect(saved.db.store.thesisUpdate).toHaveLength(1);
   });
 });

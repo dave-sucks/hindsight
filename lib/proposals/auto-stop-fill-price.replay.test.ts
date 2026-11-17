@@ -11,7 +11,7 @@
  * broker are doubled.
  */
 
-import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, REPLAY_USER_ID, type PrismaDouble } from "@/lib/replay";
+import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ANALYST_ID, REPLAY_USER_ID, type PrismaDouble, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 let db: PrismaDouble;
@@ -45,7 +45,7 @@ async function buy(opts: { at?: number; setting?: { on: boolean; pct: number }; 
   db = prismaDouble({
     account: [accountRow({ autoStopOnBuy: setting.on, autoStopPct: setting.pct, setupOverrides: {} })],
     agentConfig: [agentConfigRow({ name: "PEAD Specialist", autoStopOnBuy: null, autoStopPct: null })],
-    thesis: [thesisRow({ id: "thesis_IOT", ticker: "IOT", status: "WATCHING", direction: "LONG", horizon: "TARGET", setupId: "NONE", entryPrice: PROPOSED, triggers: opts.floor ? [REVIEW_7D, opts.floor] : [REVIEW_7D] })],
+    thesis: [thesisRow({ id: "thesis_IOT", ticker: "IOT", status: "WATCHING", direction: "LONG", horizon: "TARGET", setupId: "NONE", triggers: opts.floor ? [REVIEW_7D, opts.floor] : [REVIEW_7D] })],
     position: [position],
     // The double joins nothing: the order carries its position inline, as the approval reads it.
     order: [{ id: "cmv9m90hs000b06l3xlg7n6ov", positionId: position.id, userId: REPLAY_USER_ID, environment: "LIVE", symbol: "IOT", side: "BUY", orderType: "MARKET", quantity: 300, status: "AWAITING_APPROVAL", intent: "OPEN", idempotencyKey: "idem-IOT-1015", expiresAt: new Date(Date.now() + 3_600_000), position }],
@@ -60,7 +60,7 @@ async function buy(opts: { at?: number; setting?: { on: boolean; pct: number }; 
 const thesis = () => (db.store.thesis as Array<Record<string, unknown>>)[0];
 const position = () => (db.store.position as Array<Record<string, unknown>>)[0];
 const floors = () => (thesis().triggers as Trigger[]).filter((t) => t.action === "EXIT").map((t) => ({ value: (t.predicate as { value: number }).value, fireMode: t.fireMode, source: t.source }));
-const fillLine = () => (db.store.thesisUpdate as Array<{ summary: string; rationale: string; fieldChanges: { triggerOps?: { to: Array<{ text: string }> } } }>).find((u) => u.summary.startsWith("IOT buy price set to what was paid"));
+const fillLine = () => (db.store.thesisUpdate as Array<{ summary: string; rationale: string; fieldChanges: { triggerOps?: { to: Array<{ text: string }> } } }>).find((u) => u.summary.startsWith("IOT stop when buying moved under what was paid"));
 
 describe("IOT 2026-10-15, stop when buying on at 6%", () => {
   it("the approval prices the floor off $42.755, the price then, not the proposal's $42.21; the fill moves it to 6% under the $42.695 paid", async () => {
@@ -68,7 +68,8 @@ describe("IOT 2026-10-15, stop when buying on at 6%", () => {
     // The proposal's price would have put it at $39.68.
     expect(approved).toEqual([{ value: 40.19, fireMode: "DO_IT", source: "PRINCIPAL" }]);
     expect(floors()).toEqual([{ value: 40.13, fireMode: "DO_IT", source: "PRINCIPAL" }]);
-    expect(thesis()).toMatchObject({ status: "HOLDING", entryPrice: PAID, stopLoss: 40.13 });
+    expect(thesis()).toMatchObject({ status: "HOLDING" });
+    expect(triggerSentences(thesis())).toContain("Sell if below $40.13");
     expect(position()).toMatchObject({ avgCost: PAID, stopLoss: 40.13 });
     expect(fillLine()?.fieldChanges.triggerOps?.to.map((o) => o.text)).toEqual(["Changed: Sell if below $40.19 → Sell if below $40.13"]);
     // The change is the line; no paragraph is written for it.

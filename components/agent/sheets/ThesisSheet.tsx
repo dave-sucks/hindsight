@@ -94,9 +94,10 @@ export type ThesisCardData = {
   reasoning_summary?: string;
   thesis_bullets?: string[];
   risk_flags?: string[];
-  entry_price?: number | null;
-  target_price?: number | null;
-  stop_loss?: number | null;
+  /** The stock's own triggers, each as its sentence (what a save hands back). */
+  triggers?: string[];
+  /** What we paid, on a holding. */
+  paid?: number | null;
   hold_duration?: string;
   signal_types?: string[];
   sources?: SourceChipData[];
@@ -863,12 +864,6 @@ export function ThesisBody({
     state.direction === "LONG" || state.direction === "SHORT"
       ? state.direction
       : null;
-  // `state.levels` is what fires; entryPrice/targetPrice/stopLoss are the
-  // cache and are passed only so the card can flag a number no trigger backs.
-  // See docs/plans/LEVELS_AS_TRIGGERS.md.
-  const entryPrice = state.levels?.entry?.price ?? state.entryPrice;
-  const targetPrice = state.targetPrice;
-  const stopLoss = state.stopLoss;
 
   // The price row's move. On 1D it is the quote's own day change — the live
   // price against yesterday's close, the same number the ticker tape shows.
@@ -1093,11 +1088,8 @@ export function ThesisBody({
           ticker={ticker}
           candles={candles}
           direction={direction === "SHORT" ? "SHORT" : "LONG"}
-          entryPrice={entryPrice}
           avgCost={position?.avgCost ?? null}
-          levels={state.levels ?? null}
-          targetPrice={targetPrice}
-          stopLoss={stopLoss}
+          priceLines={state.priceLines ?? null}
           current={quote?.currentPrice ?? null}
           addedAt={state.createdAt}
           enteredAt={position?.openedAt ?? null}

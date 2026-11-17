@@ -124,7 +124,6 @@ function research(): WriterResearchPhaseOutput {
       "- Q2 billings grew 9% against a 6% guide; a slip under the guide breaks the drift.",
     ].join("\n"),
     decision: v.decision as ValidatedThesisDecision,
-    riskReward: null,
     threadMessages: [],
     userPrompt: "GROUND-TRUTH DATA — DOCU",
     systemPrompt: "You are the PEAD Specialist.",

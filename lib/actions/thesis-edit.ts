@@ -40,6 +40,7 @@ import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { COPIED_RULE_CLEANUP } from "@/lib/agent/stock-context";
 import type { When } from "@/lib/agent/triggers/condition";
+import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 
 export interface ThesisEditContext {
   accountId: string;
@@ -120,9 +121,6 @@ interface EditableThesis {
   ticker: string;
   direction: string | null;
   status: string;
-  targetPrice: number | null;
-  stopLoss: number | null;
-  entryPrice: number | null;
   triggers: Trigger[];
   inherited: ReturnType<typeof resolveThesisLadder>;
   position: { id: string; avgCost: number | null } | null;
@@ -141,9 +139,6 @@ async function loadEditableThesis(
       status: true,
       horizon: true,
       accountId: true,
-      targetPrice: true,
-      stopLoss: true,
-      entryPrice: true,
       triggers: true,
       triggerState: true,
       researchRun: { select: { agentConfigId: true } },
@@ -203,9 +198,6 @@ async function loadEditableThesis(
     ticker: thesis.ticker,
     direction: thesis.direction,
     status: thesis.status,
-    targetPrice: thesis.targetPrice != null ? Number(thesis.targetPrice) : null,
-    stopLoss: thesis.stopLoss != null ? Number(thesis.stopLoss) : null,
-    entryPrice: thesis.entryPrice != null ? Number(thesis.entryPrice) : null,
     triggers: parsed.data as Trigger[],
     inherited,
     position: position
@@ -219,7 +211,7 @@ interface OpOutcome {
   /** The id the op landed on — an add into an occupied bucket lands on the existing trigger. */
   id: string;
   triggers: Trigger[];
-  /** Plan columns that moved with the op. */
+  /** The held position's sell price or target, moved with the op. */
   synced: { stopLoss?: number; targetPrice?: number };
 }
 
@@ -273,29 +265,26 @@ async function runPrincipalOp(
     direction: thesis.direction,
     status: thesis.status,
     actor: "PRINCIPAL",
-    entryPrice: thesis.position?.avgCost ?? thesis.entryPrice,
     avgCost: thesis.position?.avgCost,
   });
   if (!check.ok) throw new ThesisEditError("INVALID", check.message);
 
-  const held = thesis.status === "HOLDING";
+  // The trigger you edited, when it is a sale or an upside line at a price, moves the position's own price with it.
+  const edited = applied.triggers.find((t) => t.id === result.id);
+  const was = thesis.triggers.find((t) => t.id === result.id);
+  const price = edited ? typedPriceOf(edited) : null;
+  const slot = edited ? levelSlotOf(edited, thesis.direction) : null;
   const synced: { stopLoss?: number; targetPrice?: number } = {};
-  if (check.columns.stopLoss != null && check.columns.stopLoss !== thesis.stopLoss)
-    synced.stopLoss = check.columns.stopLoss;
-  if (check.columns.targetPrice != null && check.columns.targetPrice !== thesis.targetPrice)
-    synced.targetPrice = check.columns.targetPrice;
+  if (price != null && (!was || typedPriceOf(was) !== price)) {
+    if (slot === "FLOOR") synced.stopLoss = price;
+    if (slot === "TARGET") synced.targetPrice = price;
+  }
 
   const { summary } = audit(thesis, result.id);
   await prisma.$transaction(async (tx) => {
     await tx.thesis.update({
       where: { id: thesis.id },
-      data: {
-        triggers: applied.triggers as unknown as object,
-        targetPrice: check.columns.targetPrice,
-        stopLoss: check.columns.stopLoss,
-        // Held: the entry is the fill, written once by the buy.
-        ...(held ? {} : { entryPrice: check.columns.entryPrice }),
-      },
+      data: { triggers: applied.triggers as unknown as object },
     });
     if (thesis.position) {
       if (synced.stopLoss != null || synced.targetPrice != null) {
@@ -330,12 +319,6 @@ async function runPrincipalOp(
     fieldChanges: {
       source: { from: null, to: "USER" },
       triggerOps: { from: null, to: acceptedOps(applied.results) },
-      ...(check.columns.stopLoss !== thesis.stopLoss
-        ? { stopLoss: { from: thesis.stopLoss, to: check.columns.stopLoss } }
-        : {}),
-      ...(check.columns.targetPrice !== thesis.targetPrice
-        ? { targetPrice: { from: thesis.targetPrice, to: check.columns.targetPrice } }
-        : {}),
     },
     runId: null,
     tradeId: thesis.position?.id,

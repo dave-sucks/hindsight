@@ -34,6 +34,9 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { classifyResearchAge } from "@/lib/agent/thesis-research/staleness";
 import type { Horizon } from "@/lib/agent/horizon-policy";
+import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import type { Trigger } from "@/lib/agent/triggers/types";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import {
   getThesisBearCaseBullets,
   getThesisBullCaseBullets,
@@ -198,7 +201,7 @@ export const waitForThesisRefresh = defineTool({
       bearCase: string[];
       researchAge: ReturnType<typeof classifyResearchAge>;
       /**
-       * The PLAN the refresh left, and the levels it moved (DAV-301). Without
+       * The triggers the refresh left, and the levels it moved (DAV-301). Without
        * this the excerpt was prose only, and the run that commissioned the
        * refresh deleted three levels it had never been shown.
        */
@@ -214,9 +217,7 @@ export const waitForThesisRefresh = defineTool({
             snapshot: true,
             bullCase: true,
             bearCase: true,
-            entryPrice: true,
-            targetPrice: true,
-            stopLoss: true,
+            triggers: true,
             researchUpdatedAt: true,
             horizon: true,
           },
@@ -245,11 +246,7 @@ export const waitForThesisRefresh = defineTool({
           wrote: writerHandoff({
             ticker: thesis.ticker,
             update: writerUpdate,
-            plan: {
-              entryPrice: thesis.entryPrice,
-              targetPrice: thesis.targetPrice ?? null,
-              stopLoss: thesis.stopLoss ?? null,
-            },
+            triggers: (parseTriggersResilient(thesis.triggers).triggers as Trigger[]).map((t) => sentenceOf(t)),
           }),
         };
       }

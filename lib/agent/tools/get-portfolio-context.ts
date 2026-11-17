@@ -58,8 +58,6 @@ interface PositionDetail {
   unrealizedPnl: number | null;
   unrealizedPnlPct: number | null;
   daysHeld: number;
-  targetPrice: number | null;
-  stopLoss: number | null;
   exitStrategy: string | null;
   trailPct: number | null;
   peakPrice: number | null;
@@ -163,17 +161,17 @@ export const getPortfolioContext = defineTool({
     ]);
     const holdingOf = new Map((snapshot?.holdings ?? []).map((h) => [h.ticker, h]));
 
-    // Each position's thesis: its stop and target are the plan's, and its reasoning on request.
-    const theses = new Map<string, { id: string; snapshot: unknown; status: string; stopLoss: number | null; targetPrice: number | null }>();
+    // Each position's thesis, for its reasoning on request. Its triggers are on get_theses.
+    const theses = new Map<string, { id: string; snapshot: unknown; status: string }>();
     for (const pos of openPositions) {
       try {
         const thesis = await prisma.thesis.findFirst({
           where: { ticker: pos.symbol, status: "HOLDING", researchRun: { agentConfigId: pos.analystId } },
           orderBy: { createdAt: "desc" },
-          select: { id: true, snapshot: true, status: true, stopLoss: true, targetPrice: true },
+          select: { id: true, snapshot: true, status: true },
         });
         if (thesis) theses.set(pos.id, thesis);
-      } catch { /* the position's own levels stand in */ }
+      } catch { /* the reasoning is left off */ }
     }
 
     const now = new Date();
@@ -207,8 +205,6 @@ export const getPortfolioContext = defineTool({
         unrealizedPnl: n.gain?.dollars ?? null,
         unrealizedPnlPct: round2(n.gain?.pct ?? null),
         daysHeld,
-        targetPrice: thesis?.targetPrice ?? pos.targetPrice ?? null,
-        stopLoss: thesis?.stopLoss ?? pos.stopLoss ?? null,
         exitStrategy: pos.exitStrategy,
         trailPct: pos.trailingStopPct ?? null,
         peakPrice: pos.peakPrice ?? null,
@@ -248,11 +244,10 @@ export const getPortfolioContext = defineTool({
     const price = (p: PositionDetail) => (p.currentPrice != null ? `$${p.currentPrice.toFixed(2)}` : "no price");
     const peakStr = (p: PositionDetail) => (p.distanceFromPeak !== null ? ` | ${p.distanceFromPeak >= 0 ? "+" : ""}${p.distanceFromPeak}% from peak` : "");
     const summaryLines = positionDetails.map((p) => {
-      const stopStr = p.stopLoss != null ? ` | stop $${p.stopLoss}` : " | no stop";
       const who = !analystId && p.analyst ? ` (${p.analyst})` : "";
       return (
         `${p.priceWarning ? `⚠ ${p.priceWarning} ` : ""}${p.symbol}${who} ${p.direction} ${p.qty}sh @ $${p.avgCost.toFixed(2)} | now ${price(p)}` +
-        ` | day ${signed(p.dayMovePct)} | since bought ${signed(p.unrealizedPnlPct)} | ${p.daysHeld}d held${peakStr(p)}${stopStr}`
+        ` | day ${signed(p.dayMovePct)} | since bought ${signed(p.unrealizedPnlPct)} | ${p.daysHeld}d held${peakStr(p)}`
       );
     });
 

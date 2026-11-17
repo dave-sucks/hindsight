@@ -1,6 +1,6 @@
 /**
  * wait-for-thesis-refresh.handoff.test.ts — the run that commissioned a
- * refresh is handed the plan it wrote (DAV-301).
+ * refresh is handed the triggers it wrote (DAV-301), each as its sentence.
  *
  * Replay: CYTK, 2026-09-21, thesis cmroeg0l2000c04jux1gjdqhk.
  *   12:04:56  MORNING_PLAN cmub769ly001l04l8agl1clmr dispatches
@@ -55,9 +55,12 @@ beforeEach(() => {
     snapshot: { text: "CYTK trades at $68.78 (−1.63% today)…", citations: [] },
     bullCase: { bullets: [], citations: [] },
     bearCase: { bullets: [], citations: [] },
-    entryPrice: 70.25,
-    targetPrice: 88.31,
-    stopLoss: 64,
+    // The levels the writer priced, as the stock's triggers.
+    triggers: [
+      { id: "buy", action: "ENTER", predicate: { watch: "price", is: "above", value: 70.25, settings: { close: true } }, rationale: "x" },
+      { id: "up", action: "REVIEW", predicate: { watch: "price", is: "above", value: 88.31 }, rationale: "x" },
+      { id: "out", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 64, settings: { close: true } }, rationale: "x" },
+    ],
     scoring: { composite: 3 },
     researchUpdatedAt: new Date("2026-09-21T12:08:00.884Z"),
     horizon: "CATALYST",
@@ -81,20 +84,20 @@ async function run() {
   return tool.execute({ child_run_id: CHILD });
 }
 
-describe("CYTK — the refresh hands back its plan", () => {
+describe("CYTK — the refresh hands back its triggers", () => {
   it("the summary names the levels the parent was about to delete", async () => {
     const res = await run();
     expect(res.summary).toContain("Entry $73.50 → $70.25");
     expect(res.summary).toContain("Target $96 → $88.31");
     expect(res.summary).toContain(
-      "The plan the refresh left: buy $70.25, target $88.31, floor $64.00.",
+      "The triggers the refresh left: Buy if above $70.25 · only on the close; Review if above $88.31; Stop watching if below $64 · only on the close.",
     );
   });
 
   it("the tool row shows the same line, not a bullet count", async () => {
     const res = await run();
     const texts = (res.data?.items ?? []).map((i) => i.text);
-    expect(texts.some((t) => t.includes("buy $70.25, target $88.31, floor $64.00"))).toBe(true);
+    expect(texts.some((t) => t.includes("Buy if above $70.25 · only on the close; Review if above $88.31"))).toBe(true);
     expect(texts.some((t) => /bull \/ .* bear bullets refreshed/.test(t))).toBe(false);
   });
 
@@ -112,9 +115,9 @@ describe("CYTK — the refresh hands back its plan", () => {
     );
   });
 
-  it("a refresh that wrote no audit row still returns the plan on the row", async () => {
+  it("a refresh that wrote no audit row still returns the triggers on the row", async () => {
     mockUpdateFindFirst.mockResolvedValue(null);
     const res = await run();
-    expect(res.summary).toContain("The plan the refresh left: buy $70.25");
+    expect(res.summary).toContain("The triggers the refresh left: Buy if above $70.25");
   });
 });

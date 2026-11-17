@@ -7,7 +7,7 @@
 
 // Uses jest globals (project test runner is jest per package.json) — same
 // import-less pattern as lib/agent/triggers/evaluate.test.ts.
-import { riskReward, validateThesisShape } from "./thesis-shape";
+import { validateThesisShape } from "./thesis-shape";
 
 describe("validateThesisShape", () => {
   // ── PASS ───────────────────────────────────────────────────────────────
@@ -16,9 +16,9 @@ describe("validateThesisShape", () => {
     expect(
       validateThesisShape({
         direction: "PASS",
-        entryPrice: 100,
-        targetPrice: 50,
-        stopLoss: 200, // nonsense pair, but PASS doesn't care
+        buy: 100,
+        upside: 50,
+        floor: 200, // nonsense pair, but PASS doesn't care
       }),
     ).toEqual({ ok: true });
   });
@@ -43,19 +43,19 @@ describe("validateThesisShape", () => {
     expect(
       validateThesisShape({
         direction: "LONG",
-        entryPrice: 100,
-        targetPrice: 120,
-        stopLoss: 90,
+        buy: 100,
+        upside: 120,
+        floor: 90,
       }),
-    ).toEqual({ ok: true, riskReward: 2 });
+    ).toEqual({ ok: true });
   });
 
   it("LONG with only target+entry, target > entry: ok", () => {
     expect(
       validateThesisShape({
         direction: "LONG",
-        entryPrice: 100,
-        targetPrice: 120,
+        buy: 100,
+        upside: 120,
       }),
     ).toEqual({ ok: true });
   });
@@ -69,9 +69,9 @@ describe("validateThesisShape", () => {
   it("LONG with target < entry: fails (the 5/07 Secular Theme MU case)", () => {
     const r = validateThesisShape({
       direction: "LONG",
-      entryPrice: 487,
-      targetPrice: 470, // below entry — broken
-      stopLoss: 430,
+      buy: 487,
+      upside: 470, // below entry — broken
+      floor: 430,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -84,8 +84,8 @@ describe("validateThesisShape", () => {
   it("LONG with target == entry: fails (zero R/R)", () => {
     const r = validateThesisShape({
       direction: "LONG",
-      entryPrice: 100,
-      targetPrice: 100,
+      buy: 100,
+      upside: 100,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-target-not-above-entry");
@@ -94,9 +94,9 @@ describe("validateThesisShape", () => {
   it("LONG with stop > entry: fails (the 5/07 Earnings Drift MU case)", () => {
     const r = validateThesisShape({
       direction: "LONG",
-      entryPrice: 496,
-      targetPrice: 720,
-      stopLoss: 620, // above entry — broken
+      buy: 496,
+      upside: 720,
+      floor: 620, // above entry — broken
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-stop-not-below-entry");
@@ -105,8 +105,8 @@ describe("validateThesisShape", () => {
   it("LONG with stop == entry: fails", () => {
     const r = validateThesisShape({
       direction: "LONG",
-      entryPrice: 100,
-      stopLoss: 100,
+      buy: 100,
+      floor: 100,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-stop-not-below-entry");
@@ -115,8 +115,8 @@ describe("validateThesisShape", () => {
   it("LONG with target ≤ stop (no entry): fails", () => {
     const r = validateThesisShape({
       direction: "LONG",
-      targetPrice: 95,
-      stopLoss: 100,
+      upside: 95,
+      floor: 100,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-target-not-above-stop");
@@ -128,19 +128,19 @@ describe("validateThesisShape", () => {
     expect(
       validateThesisShape({
         direction: "SHORT",
-        entryPrice: 100,
-        targetPrice: 80,
-        stopLoss: 110,
+        buy: 100,
+        upside: 80,
+        floor: 110,
       }),
-    ).toEqual({ ok: true, riskReward: 2 });
+    ).toEqual({ ok: true });
   });
 
   it("SHORT with only target+stop (no entry): ok when target < stop", () => {
     expect(
       validateThesisShape({
         direction: "SHORT",
-        targetPrice: 80,
-        stopLoss: 110,
+        upside: 80,
+        floor: 110,
       }),
     ).toEqual({ ok: true });
   });
@@ -150,8 +150,8 @@ describe("validateThesisShape", () => {
   it("SHORT with target > entry: fails", () => {
     const r = validateThesisShape({
       direction: "SHORT",
-      entryPrice: 100,
-      targetPrice: 110,
+      buy: 100,
+      upside: 110,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("SHORT-target-not-below-entry");
@@ -160,8 +160,8 @@ describe("validateThesisShape", () => {
   it("SHORT with stop < entry: fails", () => {
     const r = validateThesisShape({
       direction: "SHORT",
-      entryPrice: 100,
-      stopLoss: 90,
+      buy: 100,
+      floor: 90,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("SHORT-stop-not-above-entry");
@@ -170,8 +170,8 @@ describe("validateThesisShape", () => {
   it("SHORT with target ≥ stop (no entry): fails", () => {
     const r = validateThesisShape({
       direction: "SHORT",
-      targetPrice: 110,
-      stopLoss: 100,
+      upside: 110,
+      floor: 100,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("SHORT-target-not-below-stop");
@@ -183,9 +183,9 @@ describe("validateThesisShape", () => {
     expect(
       validateThesisShape({
         direction: "LONG",
-        entryPrice: 100,
-        targetPrice: null,
-        stopLoss: 90,
+        buy: 100,
+        upside: null,
+        floor: 90,
       }),
     ).toEqual({ ok: true });
   });
@@ -194,56 +194,48 @@ describe("validateThesisShape", () => {
     expect(
       validateThesisShape({
         direction: "LONG",
-        entryPrice: null,
-        targetPrice: null,
-        stopLoss: null,
+        buy: null,
+        upside: null,
+        floor: null,
       }),
     ).toEqual({ ok: true });
   });
 });
 
-describe("validateThesisShape — the ratio is reported, never a floor (2026-11-04)", () => {
-  it("PLTR as stored: entry 183 / target 190 / stop 110 is 0.1:1 and legal", () => {
-    expect(validateThesisShape({ direction: "LONG", entryPrice: 183, targetPrice: 190, stopLoss: 110 })).toMatchObject({ ok: true, riskReward: expect.closeTo(0.1, 1) });
+describe("validateThesisShape — no reward/risk: the house sets no target of its own (2026-11-16)", () => {
+  it("PLTR as stored: buy 183 / upside line 190 / Stop watching 110 is legal, and nothing reports a ratio", () => {
+    expect(validateThesisShape({ direction: "LONG", buy: 183, upside: 190, floor: 110 })).toEqual({ ok: true });
   });
 
-  it("returns the realised R/R on a plan in order", () => {
-    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 125, stopLoss: 90 })).toEqual({ ok: true, riskReward: 2.5 });
-  });
-
-  it("SHORT mirrors the arithmetic", () => {
-    expect(validateThesisShape({ direction: "SHORT", entryPrice: 100, targetPrice: 90, stopLoss: 108 })).toEqual({ ok: true, riskReward: 1.25 });
-    expect(riskReward("SHORT", 100, 80, 108)).toBe(2.5);
-  });
-
-  it("a held name: ordering only, R/R still reported", () => {
-    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 110, stopLoss: 90 })).toEqual({ ok: true, riskReward: 1 });
-  });
-
-  it("a partial plan has no R/R to report", () => {
-    expect(validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 101 })).toEqual({ ok: true });
-  });
-
-  it("no note of the ratio ever reaches a refusal", () => {
-    const r = validateThesisShape({ direction: "LONG", entryPrice: 100, targetPrice: 90, stopLoss: 80 });
+  it("no ratio reaches a refusal", () => {
+    const r = validateThesisShape({ direction: "LONG", buy: 100, upside: 90, floor: 80 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.note).not.toMatch(/\d:1/);
+  });
+
+  it("on a watch the line under the buy is its Stop watching line; on a holding, the floor", () => {
+    const watch = validateThesisShape({ direction: "LONG", buy: 50, floor: 52 });
+    expect(watch.ok).toBe(false);
+    if (!watch.ok) expect(watch.note).toContain("the Stop watching line sits below the buy");
+    const held = validateThesisShape({ direction: "LONG", buy: 50, upside: 51, floor: 52, held: true });
+    expect(held.ok).toBe(false);
+    if (!held.ok) expect(held.note).toContain("the upside line sits above the floor");
   });
 });
 
 describe("validateThesisShape — a held name may carry a stop at or above the fill (DAV-233)", () => {
   it("SMMT: fill $14.35, stop moved to $16.20 — accepted on a held row", () => {
     expect(
-      validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 26, stopLoss: 16.2, held: true }),
+      validateThesisShape({ direction: "LONG", buy: 14.35, upside: 26, floor: 16.2, held: true }),
     ).toMatchObject({ ok: true });
   });
   it("the same tuple on a plan we haven't bought is still inverted", () => {
-    const r = validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 26, stopLoss: 16.2 });
+    const r = validateThesisShape({ direction: "LONG", buy: 14.35, upside: 26, floor: 16.2 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-stop-not-below-entry");
   });
   it("held still refuses a target under the stop — that is not a ratchet, that is nonsense", () => {
-    const r = validateThesisShape({ direction: "LONG", entryPrice: 14.35, targetPrice: 15, stopLoss: 16.2, held: true });
+    const r = validateThesisShape({ direction: "LONG", buy: 14.35, upside: 15, floor: 16.2, held: true });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("LONG-target-not-above-stop");
   });

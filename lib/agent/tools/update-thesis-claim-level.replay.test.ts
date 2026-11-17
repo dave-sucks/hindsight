@@ -13,12 +13,12 @@ import { generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { statSync } from "fs";
 import fixture from "@/lib/agent/__fixtures__/mu-floor-off-969-2026-09-23.json";
-import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, type Replay, type Row } from "@/lib/replay";
+import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, positionRow, type Replay, type Row, triggerSentences } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 const FIXTURE = "lib/agent/__fixtures__/mu-floor-off-969-2026-09-23.json";
-const LINE = "Your what-proves-it-wrong line still names $969; the floor is now $1,041.";
+const LINE = 'Your what-proves-it-wrong line still names $969; the trigger now reads "Sell if below $1041".';
 
 /** The morning run's real save schema, read without a database. */
 async function morningRunSchema(): Promise<z.ZodTypeAny> {
@@ -76,7 +76,6 @@ describe("MU 09-23: the floor leaves $969 while what-proves-it-wrong still names
     expect(save.crashed).toBe(false);
     expect(save.refused).toBe(false);
     const row = save.db.store.thesis[0];
-    expect(row.stopLoss).toBe(1041);
     expect((row.triggers as Array<{ id: string; predicate: { value: number } }>).find((x) => x.id === "t4")?.predicate.value).toBe(1041);
     // The claim is not this door's to change, so it is still the old text.
     expect(row.invalidationConds).toEqual(entry.thesis.invalidationConds);

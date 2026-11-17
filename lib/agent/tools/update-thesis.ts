@@ -55,7 +55,7 @@ import {
   type TriggerOp,
   type TriggerOpResult,
 } from "@/lib/agent/triggers/ops";
-import { canonicalLevels, isPlanLevelOnList, levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { isPlanLevelOnList, levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { levelOf, shapeOf } from "@/lib/agent/triggers/condition";
 import {
   writeThesisUpdate,
@@ -161,7 +161,6 @@ type UpdatePatch = Partial<{
   // carries the pass fact on status=PASSED (the column no longer stores
   // 'PASS' or 'PENDING').
   direction: string | null;
-  entryPrice: number | null;
   // PR-9 flat schema: legacy plain-string columns (reasoningSummary,
   // thesisBullets, riskFlags) replaced by JSONB section columns. Per the
   // single-shot cutover, the writer no longer surfaces the old fields.
@@ -179,8 +178,6 @@ type UpdatePatch = Partial<{
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  targetPrice: number | null;
-  stopLoss: number | null;
   // ── Conviction Expression v4 (existing-row read) ──────────────────────
   conviction: string | null;
   convictionRationale: string | null;
@@ -547,11 +544,8 @@ export const updateThesis = defineTool({
         // Diffed (compacted) so a degraded research_data-only refresh still
         // records that the research payload changed.
         researchData: true,
-        // direction + entryPrice are read by the shape gate below — adding
-        // them to the select fixes a latent bug where existing.direction
-        // and existing.entryPrice came back undefined at runtime.
+        // direction is read by the shape gate below.
         direction: true,
-        entryPrice: true,
         researchRun: { select: { agentConfigId: true } },
         snapshot: true,
         bullCase: true,
@@ -566,8 +560,6 @@ export const updateThesis = defineTool({
         coreBelief: true,
         keyAssumptions: true,
         invalidationConds: true,
-        targetPrice: true,
-        stopLoss: true,
         // Conviction Expression v4 — read existing values so gates can
         // enforce coherence when only a subset of (conviction, rationale,
         // variantView) is being patched.
@@ -1265,10 +1257,10 @@ export const updateThesis = defineTool({
           now: new Date(),
           mintId: () => randomUUID(),
         });
-        // Held: the entry is the fill. The open Position's avgCost is the
-        // canonical record of what we actually own at what price (the
-        // 2026-05-12 AMD shape — a $420 planned entry, a $446 fill, and a
-        // $434 stop refused against the plan). Fall back to the row.
+        // Held: the buy is the fill. The open Position's avgCost is the
+        // record of what we own at what price (the 2026-05-12 AMD shape — a
+        // $420 planned entry, a $446 fill, and a $434 stop refused against
+        // the plan).
         const held = levelStatus === "HOLDING";
         let avgCost: number | null | undefined;
         const checkOf = async (triggers: Trigger[]) => {
@@ -1289,7 +1281,6 @@ export const updateThesis = defineTool({
             direction: levelDirection,
             status: levelStatus,
             actor: "AGENT",
-            entryPrice: avgCost ?? (existing.entryPrice != null ? Number(existing.entryPrice) : null),
             avgCost,
           });
         };
@@ -1324,18 +1315,11 @@ export const updateThesis = defineTool({
           );
         } else if (check?.ok) {
           patch.triggers = applied.triggers as unknown as object;
-          patch.targetPrice = check.columns.targetPrice;
-          patch.stopLoss = check.columns.stopLoss;
-          // entryPrice on a HELD thesis is a historical fact — what the fill
-          // actually cost, written once by place_trade. On a watch row it
-          // derives from the buy trigger like the others.
-          if (!held) patch.entryPrice = check.columns.entryPrice;
-          const n = (v: unknown) => (v == null ? null : Number(v));
-          const before = { entryPrice: n(existing.entryPrice), targetPrice: n(existing.targetPrice), stopLoss: n(existing.stopLoss) };
+          // The claim may still name a trigger's price this call moved, each trigger against itself.
           claimNotes.push(
             ...claimNamesOldLevel({
-              before,
-              after: { entryPrice: held ? before.entryPrice : check.columns.entryPrice, targetPrice: check.columns.targetPrice, stopLoss: check.columns.stopLoss },
+              before: existingTriggers,
+              after: applied.triggers,
               coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
               invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
             }),
@@ -1439,21 +1423,6 @@ export const updateThesis = defineTool({
           if (sales.length) {
             patch.triggers = list.filter((t) => t.action !== "EXIT") as unknown as object;
             opResults.push(...sales.map((t) => ({ op: "remove" as const, id: t.id, ok: true, text: `Removed: ${describeTrigger(t)}` })));
-          }
-          // The level columns are a cache of the triggers. Sold, the entry
-          // was the fill; watched again, it is the buy trigger's level, or
-          // nothing when there is none (DOCU 2026-10-07 kept its $67.73 fill
-          // as a "buy" after its new plan was refused). Read once more as a
-          // watched stock when no trigger op landed to read them.
-          if (patch.triggers === undefined || sales.length) {
-            const { columns } = canonicalLevels({
-              triggers: parseTriggersResilient(patch.triggers ?? existing.triggers).triggers as unknown as ResolvedTrigger[],
-              direction: existing.direction,
-              status: "WATCHING",
-            });
-            patch.entryPrice = columns.entryPrice;
-            patch.targetPrice = columns.targetPrice;
-            patch.stopLoss = columns.stopLoss;
           }
         }
         updateType = "STATUS_CHANGED";
@@ -1585,7 +1554,7 @@ export const updateThesis = defineTool({
           trigger_ops: opResults,
           ...refusedData,
           ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
-          card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }),
+          card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }, await paidFor(existing, ctx.analystId)),
         },
         sources: [],
       };
@@ -1622,11 +1591,7 @@ export const updateThesis = defineTool({
       "conviction",
       "convictionRationale",
       "variantView",
-      // The levels (a cache of the triggers)
       "direction",
-      "entryPrice",
-      "targetPrice",
-      "stopLoss",
       "horizon",
       "catalystDate",
       // Lifecycle
@@ -1819,7 +1784,7 @@ export const updateThesis = defineTool({
     // led with "Updated DOCU: WATCHING" as if the buy had come with it.
     const after = { ...existing, ...patch } as Record<string, unknown>;
     const sentLevels = triggerOps.some((o) => o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null);
-    const noBuyLeft = after.entryPrice == null;
+    const noBuyLeft = !parseTriggersResilient(after.triggers).triggers.some((t) => (t as Trigger).action === "ENTER");
     const backOnWatchNoBuy =
       fieldChanges.status?.to === "WATCHING" && sentLevels && noBuyLeft
         ? `Back on watch with no buy: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the price triggers were not applied."}`
@@ -1838,7 +1803,7 @@ export const updateThesis = defineTool({
         // Post-update thesis snapshot for the chat renderer. Merges the
         // pre-update record with the patch we just applied — no extra DB
         // read. Drives the "Wrote / edited theses" carousel.
-        card: thesisToCardData({ ...existing, ...patch }),
+        card: thesisToCardData({ ...existing, ...patch }, await paidFor({ ...existing, ...patch }, ctx.analystId)),
       },
       sources: [],
     };
@@ -1860,11 +1825,21 @@ function catalystDateMissing(row: Record<string, unknown>): string[] {
     : [];
 }
 
+/** What we paid, on a held stock: the open position's average cost. */
+async function paidFor(t: { ticker: string; status?: unknown }, analystId: string | null | undefined): Promise<number | null> {
+  if (t.status !== "HOLDING" || !analystId) return null;
+  const position = await prisma.position
+    .findFirst({ where: { analystId, symbol: t.ticker, status: "OPEN" }, select: { avgCost: true }, orderBy: { openedAt: "desc" } })
+    .catch(() => null);
+  return position?.avgCost != null ? Number(position.avgCost) : null;
+}
+
 /**
  * Map a Thesis row (from prisma) to the ThesisCardData shape consumed by
- * ThesisCardRenderer. Same shape that record_thesis returns.
+ * ThesisCardRenderer: the stock's own triggers as their sentences, and what
+ * we paid on a holding. A stock has triggers and nothing else.
  */
-function thesisToCardData(t: Record<string, unknown>): {
+function thesisToCardData(t: Record<string, unknown>, paid: number | null): {
   thesis_id: string;
   ticker: string;
   // P1-24: `LONG | SHORT | null`. A pass stores direction=null and carries
@@ -1874,9 +1849,8 @@ function thesisToCardData(t: Record<string, unknown>): {
   reasoning_summary: string;
   thesis_bullets: string[];
   risk_flags: string[];
-  entry_price: number | null;
-  target_price: number | null;
-  stop_loss: number | null;
+  triggers: string[];
+  paid: number | null;
   hold_duration?: string;
   signal_types: string[];
   status: "HOLDING" | "WATCHING" | "PROMOTED" | "RETIRED" | "PASSED";
@@ -1889,12 +1863,8 @@ function thesisToCardData(t: Record<string, unknown>): {
     reasoning_summary: (t.reasoningSummary as string) ?? "",
     thesis_bullets: (t.thesisBullets as string[]) ?? [],
     risk_flags: (t.riskFlags as string[]) ?? [],
-    entry_price:
-      typeof t.entryPrice === "number" ? (t.entryPrice as number) : null,
-    target_price:
-      typeof t.targetPrice === "number" ? (t.targetPrice as number) : null,
-    stop_loss:
-      typeof t.stopLoss === "number" ? (t.stopLoss as number) : null,
+    triggers: (parseTriggersResilient(t.triggers).triggers as Trigger[]).map(describeTrigger),
+    paid,
     // Hold duration is now derived from `horizon` at card-data assembly
     // time (PR-4 — the legacy column drops in PR-5). Falls back to the
     // legacy column for rows that don't yet have horizon set.

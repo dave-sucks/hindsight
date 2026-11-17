@@ -15,6 +15,7 @@ import type { FillFacts } from "@/lib/stocks/stock-history";
 import type { NeedsAction } from "@/lib/agent/needs-action";
 import type { When } from "@/lib/agent/triggers/condition";
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
+import type { PriceLine } from "@/lib/agent/triggers/price-levels";
 
 export interface Trigger {
   id: string;
@@ -150,20 +151,8 @@ export interface ThesisDossier {
   // "DROPPED"|"REPLACED"|null. Drives the terminal-status banner.
   retiredReason: string | null;
   horizon: string | null;
-  /**
-   * Cached level columns. A CACHE, not the source — read `levels` for what
-   * actually fires. Until the L6 backfill runs these can still name a price
-   * no trigger enforces (the SNOW failure). See LEVELS_AS_TRIGGERS.md.
-   */
-  entryPrice: number | null;
-  targetPrice: number | null;
-  stopLoss: number | null;
-  /**
-   * The levels in force, read off the resolved trigger list by
-   * `canonicalLevels` (lib/agent/triggers/price-levels). This is what the
-   * Price Targets card and the chart render.
-   */
-  levels: ThesisStateLevels | null;
+  /** One line per trigger at a typed price, labelled with its sentence (`priceLines`). What the chart draws. */
+  priceLines: PriceLine[];
   catalystDate: string | null;
   /**
    * When this thesis next comes due for a look — DERIVED at read time from
@@ -356,31 +345,6 @@ export interface ThesisResearchSections {
   [extra: string]: ResearchTextSection | ResearchBulletSection | undefined;
 }
 
-
-/**
- * One price level read off the trigger list — the serialized `PriceLevel`
- * from lib/agent/triggers/price-levels.
- */
-export interface ThesisStateLevel {
-  slot: "ENTRY" | "FLOOR" | "TARGET" | null;
-  price: number;
-  side: "UPSIDE" | "DOWNSIDE";
-  action: string;
-  triggerId: string;
-  storedAt: string;
-  inherited: boolean;
-  /** True when the price moves (a trail off the high, a gain off entry). */
-  projected: boolean;
-}
-
-/** The canonical levels plus every price level, for the chart. */
-export interface ThesisStateLevels {
-  entry: ThesisStateLevel | null;
-  floor: ThesisStateLevel | null;
-  target: ThesisStateLevel | null;
-  all: ThesisStateLevel[];
-  next: { above: ThesisStateLevel | null; below: ThesisStateLevel | null };
-}
 
 /**
  * The earnings layer (GET /api/theses/:id/earnings) — live from the vendor

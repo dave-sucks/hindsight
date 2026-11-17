@@ -16,7 +16,7 @@
  *
  * Through the real get_theses execute and its real model-output hook.
  */
-import { replayTool, thesisRow, thesisUpdateRow } from "@/lib/replay";
+import { replayTool, thesisRow, thesisUpdateRow, positionRow } from "@/lib/replay";
 
 const snapshot = { text: "Nuclear baseload under long contracts; a clean uptrend, score 8.", citations: [] };
 const bull = { bullets: [{ text: "Hyperscaler power deals reprice the fleet." }] };
@@ -37,9 +37,6 @@ const syk = () =>
     status: "WATCHING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 340,
-    targetPrice: 420,
-    stopLoss: 300,
     snapshot,
     bullCase: bull,
     bearCase: bear,
@@ -68,9 +65,6 @@ const ceg = () =>
     direction: "LONG",
     horizon: "COMPOUNDER",
     setupId: "COMPOUNDER_ACCUMULATION",
-    entryPrice: 250,
-    targetPrice: 340,
-    stopLoss: 262,
     snapshot,
     scoring,
     researchUpdatedAt: new Date(Date.now() - 5 * 86_400_000),
@@ -83,7 +77,8 @@ const ceg = () =>
 
 async function read(args: Record<string, unknown>) {
   const { result } = await replayTool("get-theses", "getTheses", {
-    seed: { thesis: [syk(), ceg()], thesisUpdate: updates() },
+    // CEG's position: what we paid is the position's, never the thesis's.
+    seed: { thesis: [syk(), ceg()], thesisUpdate: updates(), position: [positionRow({ id: "p_ceg", symbol: "CEG", avgCost: 270 })] },
     ctx: { runMode: "MORNING_PLAN" },
     args,
     quotes: { SYK: 273, CEG: 280 },
@@ -121,7 +116,7 @@ describe("get_theses — the read", () => {
     const quiet = (model.quiet_theses as string[]).map((line) => line.split(" · ")[0]);
     expect(full).toEqual(["SYK"]);
     expect(quiet).toEqual(["CEG"]);
-    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · entry \$250\.00 · review \d\d-\d\d · id t_ceg$/)]);
+    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · paid \$270\.00 · review \d\d-\d\d · id t_ceg$/)]);
   });
 
   it("a read of a named stock is the full row: the history and the cases", async () => {

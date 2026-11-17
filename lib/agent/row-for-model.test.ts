@@ -24,9 +24,6 @@ const held = (): Row => ({
   snapshot: { text: "**First sentence** of the picture [STRUCTURED:Snapshot]. Second sentence says more. Third sentence goes on for a good while longer than the others to push the whole text well past three hundred characters, so that the short row has to stop at a sentence boundary, as the rule says, instead of cutting a word in half somewhere in the middle of this very long sentence. Fourth sentence.", citations: [] },
   bullCase: { bullets: [{ text: "**Clean beat:** EPS +25% [STRUCTURED:Earnings History]" }, { text: "Upgrades [WEB:https://example.com/b]" }] },
   bearCase: { bullets: [{ text: "FCF margin guided lower" }] },
-  entryPrice: 39.55,
-  targetPrice: 47,
-  stopLoss: 40.8,
   catalystDate: "2026-10-29T00:00:00.000Z",
   scoring: { composite: 8, entryQuality: { score: 2, note: "pullback to the 50-day" }, trendStrength: { score: 2, note: "above the 200-day" }, relativeStrength: { score: 2, note: "leads SPY" }, catalystFreshness: { score: 2, note: "reported 10 days ago" } },
   convictionRationale: "All four signals clean [STRUCTURED:Earnings History].",
@@ -47,7 +44,7 @@ const held = (): Row => ({
   needsAction: { kind: "TRIGGER_FIRED", triggerId: "t_floor", action: "EXIT", repeatLine: "This sale has fired 3 days running." },
   situations: ["PROTECTIVE_SALE", "REVIEW_DUE"],
   resolved: {
-    currentPrice: 40.51, unrealizedGainPct: 3.7, progressToTarget: 0.18,
+    currentPrice: 40.51, unrealizedGainPct: 3.7,
     ladderHealth: { gainPct: 3.7, floor: { triggerId: "t_floor", price: 40.8, flooredGainPct: 4.45, isTrail: false, label: "below $40.80" }, flooredGainPct: 4.45, hasTrail: false, nearestRung: { triggerId: "t_target", action: "REVIEW", price: 47, distancePct: 16.0, label: "above $47" }, daysSinceLadderEdit: 1, isUnprotectedGain: false, summary: "+3.7% from entry ($39.06 → $40.51); floor locks +4.4% — below $40.80; no trail; next rung REVIEW above $47 @ $47.00 (+16.0% away); ladder last edited 1d ago" },
     floorRisk: null, triggerState: "EXIT_FIRED", triggerDetail: "below $40.80 (now $40.51)", actionability: "ACTIVE_HOLD", supersededBy: null, staleness: "FRESH", resolvedAt: "2026-10-07T20:30:00.000Z", quoteAgeMs: 0,
   },
@@ -65,7 +62,7 @@ const held = (): Row => ({
 /** A quiet watched stock as get_theses saves it. */
 const quiet = (): Row => ({
   id: "t_docu", ticker: "DOCU", status: "WATCHING", direction: "LONG", horizon: "TARGET", setupId: "PEAD", conviction: "MEDIUM", composite: 8,
-  coreBelief: "A long belief that the line leaves out.", entryPrice: 74.1, targetPrice: 83, stopLoss: 68.9, currentPrice: 70.03,
+  coreBelief: "A long belief that the line leaves out.", paid: null, currentPrice: 70.03,
   reviewDueAt: "2026-10-20T12:00:00.000Z", catalystDate: null, triggerCount: 6, researchAge: { daysOld: 9 }, resolvedActionability: "WAIT_FOR_TRIGGER", needsAction: null, situations: [],
 });
 
@@ -78,10 +75,13 @@ describe("the size a row gets", () => {
 });
 
 describe("the one line", () => {
-  it("is the stock and its stance, the price, the buy it waits on, the next review and the id; no target, no floor", () => {
+  it("is the stock and its stance, the price, the next review and the id; it names no trigger (the full row has them)", () => {
     expect(rowForModel(quiet(), { named: false, size: "line" })).toBe(
-      "DOCU · watch · LONG · PEAD · $70.03 · buy $74.10 · review 10-20 · id t_docu",
+      "DOCU · watch · LONG · PEAD · $70.03 · review 10-20 · id t_docu",
     );
+  });
+  it("on a holding, what we paid", () => {
+    expect(rowForModel({ ...quiet(), status: "HOLDING", buy: null, paid: 68.12 }, { named: false, size: "line" })).toContain("· paid $68.12 ·");
   });
   it("leaves out what a stock lacks, says no view and no write-up yet on a seed, and names the horizon when no setup is named", () => {
     expect(rowForModel({ id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "CATALYST", catalystDate: "2026-11-02T00:00:00.000Z" }, { named: false, size: "line" })).toBe(

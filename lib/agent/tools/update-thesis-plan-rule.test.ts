@@ -62,9 +62,6 @@ function pltr(overrides: Record<string, unknown> = {}) {
     status: "WATCHING",
     direction: "LONG",
     horizon: "COMPOUNDER",
-    entryPrice: 183,
-    targetPrice: 190,
-    stopLoss: 110,
     coreBelief: "AIP adoption compounds.",
     keyAssumptions: ["a", "b"],
     invalidationConds: ["c", "d"],
@@ -121,6 +118,10 @@ beforeEach(() => {
   mockThesisFindUnique.mockResolvedValue(pltr());
 });
 
+/** A saved patch's trigger price by id (nothing stores a level column). */
+const priceIn = (data: { triggers?: unknown }, id: string) =>
+  ((data.triggers ?? []) as Array<{ id: string; predicate: { value?: number } }>).find((t) => t.id === id)?.predicate.value;
+
 describe("update_thesis — the plan rule runs on any level edit", () => {
   it("refuses the 08-27 PLTR edit: moving only the entry onto the target", async () => {
     const result = await run({ edit_triggers: [{ id: "enter-1", value: 190, rationale: "Onto the upside line." }] });
@@ -135,7 +136,7 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
     const result = await run({ edit_triggers: [{ id: "enter-1", value: 150, rationale: "The pullback to $150." }] });
     expect(result.data?.error).toBeUndefined();
     expect(((result.data?.refused_fields as Array<{ field: string }>) ?? []).some((f) => f.field === "triggers")).toBe(false);
-    expect(mockThesisUpdate.mock.calls.some(([a]) => a.data.entryPrice === 150)).toBe(true);
+    expect(mockThesisUpdate.mock.calls.some(([a]) => priceIn(a.data, "enter-1") === 150)).toBe(true);
   });
 
   it("accepts a re-level that clears the floor in the same call", async () => {
@@ -159,9 +160,6 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
       pltr({
         ticker: "SMMT",
         status: "HOLDING",
-        entryPrice: 14.35,
-        targetPrice: 26,
-        stopLoss: 12,
         // A held ladder carries a floor, not a buy rung.
         triggers: [
           { id: "floor-1", predicate: { watch: "price", is: "below", value: 12 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
@@ -179,7 +177,6 @@ describe("update_thesis — the plan rule runs on any level edit", () => {
     mockThesisFindUnique.mockResolvedValue(
       pltr({
         status: "HOLDING",
-        stopLoss: 170,
         triggers: [
           { id: "floor-1", predicate: { watch: "price", is: "below", value: 170 }, action: "EXIT", rationale: "Floor.", source: "AGENT" },
           { id: "target-1", predicate: { watch: "price", is: "above", value: 190 }, action: "REVIEW", rationale: "Target.", source: "AGENT" },

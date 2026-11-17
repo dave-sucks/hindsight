@@ -1,7 +1,7 @@
 /**
  * Prisma `select` block for the durable thesis fields that server pages
  * (stocks/[symbol], trades/[id]) read to build their ThesisRowData — status,
- * levels, snapshot, bull/bear case, horizon, etc. Spread it into a
+ * triggers, snapshot, bull/bear case, horizon, etc. Spread it into a
  * `prisma.thesis.find*({ select: { ...thesisSheetStateSelect, ... } })`.
  *
  * (The old `buildThesisSheetState` builder + its `sheetState` forward-to-sheet
@@ -21,9 +21,6 @@ export const thesisSheetStateSelect = {
   invalidReason: true,
   retiredReason: true,
   horizon: true,
-  entryPrice: true,
-  targetPrice: true,
-  stopLoss: true,
   catalystDate: true,
   triggers: true,
   company: true,

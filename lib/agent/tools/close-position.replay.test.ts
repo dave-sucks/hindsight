@@ -69,7 +69,7 @@ describe("SRRK 09-14: a sale whose label is corrected keeps the analyst's words 
     expect(r.result.data).toMatchObject({ declared_reason: "TARGET", label_auto_corrected: true });
     expect(String(r.result.data?.message)).toContain("Sale label auto-corrected TARGET → MANUAL");
     expect(eventOf(r)?.payload).toMatchObject({ reason: "MANUAL", declared_reason: "TARGET", label_auto_corrected: true });
-    expect(String(eventOf(r)?.payload.label_note)).toContain("$65.00 target");
+    expect(String(eventOf(r)?.payload.label_note)).toContain("$65.00 upside line");
   });
 
   it("a variant: no notes — the reason is empty, not a sentence the app wrote", async () => {

@@ -252,9 +252,6 @@ model Thesis {
   ticker           String
   source           String // "AGENT" | "MANUAL"
   direction        String? // P1-24: "LONG" | "SHORT" | null (unresearched watch). PASS/PENDING removed — PASS → status=PASSED, PENDING → null + WATCHING (migrated in PR B).
-  entryPrice       Float?
-  targetPrice      Float?
-  stopLoss         Float?
   holdDuration     String // "DAY" | "SWING" | "POSITION"
   sector           String?
   modelUsed        String

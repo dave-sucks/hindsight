@@ -724,7 +724,7 @@ it (a playbook, a check, or the owner's screen) and its size on the real
 book. A field with no reader goes. Today's full row carries at least
 `context`, the thesis columns, `triggers`, `triggerCount`, `history`,
 `needsAction`, `resolved` (`currentPrice`, `entryQualityScore`,
-`unrealizedGainPct`, `progressToTarget`, `ladderHealth`, `planSanity`,
+`unrealizedGainPct`, `ladderHealth`, `planSanity`,
 `floorRisk`, `triggerState`, `triggerDetail`, `actionability`,
 `supersededBy`, `staleness`, `resolvedAt`, `quoteAgeMs`), `setup`,
 `nameTheSetup`, `buyBlockedByFull` and `researchAge`. Overlaps to settle in
@@ -823,7 +823,7 @@ the same PR. Morning lines are `system-prompt.ts`; trigger-run lines are
 |---|---|---|---|---|
 | 1 | A protective sale fired, including one declined before | `SALE_DECLINED`; a fired EXIT | Trigger run: the belief-survived line (the field is the home). Morning: the fired-sale bullet with the held-through-the-floor duty | nvda-declined-sale, five-broken-belief; **new:** a trailing-sale fire |
 | 2 | A buy level arrived | `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` with action ENTER (`ENTER_NOW` is only the resolver's label) | Trigger run: the confirmation gate. Morning: the fired-buy bullet with re-pricing, the low-conviction buy, the variant view at a buy | docu-trigger, wst-buy-level-arrives |
-| 3 | An add fired, or a winner nears its target | A fired ADD; or a held row with `progressToTarget` ≥ 0.75. There is no flag for the second: `RUNNING_WINNER` was deleted 2026-08-25, so the attachment reads the resolver's number and the threshold stays in code, not in the text | Trigger run: adding to a holding. Morning: press, hold or take; the TRIM/ADD line | mu-earnings-review; **new:** an add fire |
+| 3 | An add fired | A fired ADD. (A held row three quarters of the way to its target was the second way in until 2026-11-16, when the target went: a stock has triggers and nothing else.) | Trigger run: adding to a holding. Morning: press, hold or take; the TRIM/ADD line | mu-earnings-review; **new:** an add fire |
 | 4 | An earnings trigger fired | The fired trigger's measure is `report` or `surprise` | Both earnings blocks | mu-earnings-review; **new:** an earnings fire |
 | 5 | A filing trigger fired | Measure `filing` | Both filing blocks | **new:** a filing fire |
 | 6 | A holding's protection lags its gain or risks too much | `UNPROTECTED_GAIN`; `FLOOR_TOO_FAR` (and `resolved.floorRisk`, answered even when another flag holds the row) | Morning: both bullets. Trigger run: "hold still means protecting the gain" inside the add text | **new:** an unprotected-gain row |

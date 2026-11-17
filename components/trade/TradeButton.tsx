@@ -54,9 +54,8 @@ type Step = "form" | "review";
 const shareWord = (n: number) => `share${n === 1 ? "" : "s"}`;
 
 /** A level on the review: the one typed, else the thesis's own, else the analyst's to set. */
-function levelLine(typed: string, thesis: number | null): string {
-  if (typed.trim()) return `$${Number(typed).toFixed(2)}`;
-  return thesis != null ? `$${thesis.toFixed(2)} (the thesis's)` : "Set by the analyst";
+function levelLine(typed: string): string {
+  return typed.trim() ? `$${Number(typed).toFixed(2)}` : "Set by the analyst";
 }
 
 export function TradeButton({
@@ -137,7 +136,7 @@ export function TradeButton({
     setQtyMode("shares");
     // A stock we don't hold has no sale to start from: the ticket's sell price starts empty.
     setStop("");
-    setTarget(lane?.buy.kind === "OPEN" && lane.buy.targetPrice != null ? lane.buy.targetPrice.toFixed(2) : "");
+    setTarget("");
     setSendError(null);
     setLevelsOpen(false);
     setStep("form");
@@ -501,8 +500,8 @@ export function TradeButton({
                 <InfoRow label="Market price" mono border={false} valueClassName="font-normal" value={money(price)} />
                 {isOpenBuy ? (
                   <>
-                    <InfoRow label="Sell if below" mono border={false} valueClassName="font-normal" value={levelLine(stop, null)} />
-                    <InfoRow label="Target" mono border={false} valueClassName="font-normal" value={levelLine(target, lane?.buy.kind === "OPEN" ? lane.buy.targetPrice : null)} />
+                    <InfoRow label="Sell if below" mono border={false} valueClassName="font-normal" value={levelLine(stop)} />
+                    <InfoRow label="Target" mono border={false} valueClassName="font-normal" value={levelLine(target)} />
                   </>
                 ) : null}
               </div>

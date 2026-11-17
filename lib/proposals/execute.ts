@@ -338,8 +338,10 @@ export async function approveProposal(
         data: {
           status: "OPEN",
           openedAt: promotedAt,
-          // Apply principal edits to the staged position. avgCost stays the
-          // proposal estimate; reconcile-orders corrects it to the real fill.
+          // Apply principal edits to the staged position. avgCost becomes the
+          // price now, the one the approval measures from (stop when buying
+          // sets its sale under it); reconcile-orders corrects it to the fill.
+          ...(livePrice != null ? { avgCost: livePrice } : {}),
           ...(qtyEdited ? { quantity: effectiveQty, initialQty: effectiveQty } : {}),
           ...(effectiveTarget !== order.position.targetPrice ? { targetPrice: effectiveTarget } : {}),
           ...(effectiveStop !== order.position.stopLoss

@@ -196,7 +196,7 @@ function savedRowFromOldCase(p: Record<string, any>): Record<string, unknown> {
     id: t.id, ticker: t.ticker, status: held ? "HOLDING" : "WATCHING", direction: t.direction, horizon: t.horizon, setupId: t.setupId ?? null,
     context: p.context ?? null,
     coreBelief: t.coreBelief, keyAssumptions: t.keyAssumptions, invalidationConds: t.invalidationConds,
-    entryPrice: t.entryPrice, targetPrice: t.targetPrice, stopLoss: t.stopLoss,
+    paid: held ? p.position.avgCost : null,
     position: held ? { quantity: p.position.quantity, avgCost: p.position.avgCost, peakPrice: p.position.peakPrice ?? null } : null,
     triggers: ((t.allTriggers ?? []) as Trigger[]).map((x) => ({ id: x.id, says: sentenceOf(x), rationale: x.rationale })),
     snapshot: t.snapshotText ? { text: t.snapshotText } : null,

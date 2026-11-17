@@ -22,7 +22,7 @@
  * except the clock.
  */
 
-import { canonicalLevels } from "./price-levels";
+import { priceLines, typedPriceOf } from "./price-levels";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { resolveLadder } from "./levels";
 import { sentenceOf } from "./condition";
@@ -37,12 +37,9 @@ import { computeNeedsAction } from "@/lib/agent/needs-action";
 /** The lead: the first entry on the stock's list, null when nothing is true. */
 const leadOf = (...a: Parameters<typeof computeNeedsAction>) => computeNeedsAction(...a)[0] ?? null;
 import type { Trigger } from "./types";
-import type { ResolvedTrigger } from "./levels";
 import type { When } from "@/lib/agent/triggers/condition";
 
 const NOW = new Date("2026-08-25T14:00:00Z");
-const asResolved = (ts: Trigger[]): ResolvedTrigger[] =>
-  ts.map((t) => ({ ...t, level: "THESIS" as const, inherited: false }));
 
 // What an analyst writes: buy at 100, look again at 150, wrong below 90.
 const written = (): Trigger[] => [
@@ -54,28 +51,12 @@ const written = (): Trigger[] => [
 describe("1. minting a stock", () => {
   const minted = written();
 
-  it("its buy, floor and take-profit are three triggers and nothing else", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "WATCHING",
-    });
-    expect(levels.entry?.price).toBe(100);
-    expect(levels.target?.price).toBe(150);
-    expect(levels.floor?.price).toBe(90);
-  });
-
-  it("shows the same numbers on the card as it will fire on", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(minted),
-      direction: "LONG",
-      status: "WATCHING",
-    });
-    expect(levels.columns).toEqual({
-      entryPrice: 100,
-      targetPrice: 150,
-      stopLoss: 90,
-    });
+  it("its buy, floor and take-profit are three triggers and nothing else: the chart draws each as its own sentence", () => {
+    expect(priceLines(minted).map((l) => [l.price, l.says])).toEqual([
+      [90, "Sell if below $90"],
+      [100, "Buy if above $100"],
+      [150, "Review if above $150"],
+    ]);
   });
 });
 
@@ -115,26 +96,12 @@ describe("3. each trigger says what it does, whether we own the stock or not", (
 describe("4. we buy it", () => {
   const held = written().filter((t) => t.action !== "ENTER");
 
-  it("entry becomes what we PAID, not the buy's level", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(held),
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42, // filled above the buy at 100
-    });
-    expect(levels.entry?.price).toBe(103.42);
-    expect(levels.columns.entryPrice).toBe(103.42);
+  it("the buy is gone: what we paid is the position's, never a trigger's", () => {
+    expect(held.some((t) => t.action === "ENTER")).toBe(false);
   });
 
   it("keeps the floor it had and still has somewhere to go", () => {
-    const levels = canonicalLevels({
-      triggers: asResolved(held),
-      direction: "LONG",
-      status: "HOLDING",
-      avgCost: 103.42,
-    });
-    expect(levels.floor?.price).toBe(90);
-    expect(levels.target?.price).toBe(150);
+    expect(priceLines(held).map((l) => l.says)).toEqual(["Sell if below $90", "Review if above $150"]);
   });
 });
 
@@ -188,20 +155,21 @@ describe("6. the analyst changes its mind, one trigger by its id", () => {
   const held = () => written().filter((t) => t.action !== "ENTER");
   const edit = (stored: Trigger[], ops: TriggerOp[], status: string) => {
     const out = applyTriggerOps({ stored, ops, direction: "LONG", status, actor: "AGENT", mintId: () => "new" });
-    return { triggers: out.triggers, columns: canonicalLevels({ triggers: asResolved(out.triggers), direction: "LONG", status, avgCost: 103.42 }).columns };
+    const price = (id: string) => { const t = out.triggers.find((x) => x.id === id); return t ? typedPriceOf(t) : null; };
+    return { triggers: out.triggers, buy: price("buy"), upside: price("upside"), floor: price("floor") };
   };
 
   it("raising the upside level moves the thing that fires, not just the label", () => {
     const out = edit(held(), [{ op: "edit", id: "upside", value: 180, rationale: "The Street raised its average to $180." }], "HOLDING");
-    expect(out.columns.targetPrice).toBe(180);
+    expect(out.upside).toBe(180);
   });
 
   it("tightening the floor moves the thing that fires", () => {
     const out = edit(held(), [{ op: "edit", id: "floor", value: 98, rationale: "Under the new base at $98." }], "HOLDING");
-    expect(out.columns.stopLoss).toBe(98);
+    expect(out.floor).toBe(98);
     expect(
       evaluateTrigger(
-        { watch: "price", is: "below", value: out.columns.stopLoss! },
+        { watch: "price", is: "below", value: out.floor! },
         { latestQuote: { price: 97, changePct: 0 }, thesis: { createdAt: NOW }, now: NOW },
       ),
     ).toBe(true);
@@ -209,13 +177,13 @@ describe("6. the analyst changes its mind, one trigger by its id", () => {
 
   it("re-pricing the buy on a watch item moves it", () => {
     const out = edit(written(), [{ op: "edit", id: "buy", value: 92, rationale: "The pullback to the 50-day at $92." }], "WATCHING");
-    expect(out.columns.entryPrice).toBe(92);
+    expect(out.buy).toBe(92);
     expect(out.triggers.filter((t) => t.action === "ENTER")).toHaveLength(1);
   });
 
   it("removing the floor clears the number too", () => {
     const out = edit(written(), [{ op: "remove", id: "floor" }, { op: "remove", id: "buy" }], "WATCHING");
-    expect(out.columns.stopLoss).toBeNull();
+    expect(out.floor).toBeNull();
   });
 });
 

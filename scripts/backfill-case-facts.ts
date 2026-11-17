@@ -207,7 +207,6 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
         positionOpenedAt: position?.openedAt ?? null, avgCost: position?.avgCost ?? null, peakPrice: position?.peakPrice ?? null,
         quantity: position && position.quantity > 0 ? position.quantity : null,
         structure: snap ? { low20: snap.low20, sma20: snap.sma[20], sma50: snap.sma[50], sma200: snap.sma[200] } : null,
-        targetPrice: num(row.targetPrice),
         paperTenureDays: num(row.paperTenureDays), paperRealizedPnl: num(row.paperRealizedPnl), paperReviewCount: num(row.paperReviewCount), promotedAt: date(row.promotedAt),
       },
       activity: rowsThen,
@@ -236,7 +235,6 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
     const sources: SituationSources = {
       needs, triggers: ladder, status,
       actionability: (resolved?.actionability as string | null) ?? null,
-      progressToTarget: num(resolved?.progressToTarget),
       buyBlockedByFull: row.buyBlockedByFull != null,
       unansweredDecision: unanswered,
     };

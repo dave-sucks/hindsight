@@ -32,6 +32,7 @@ export const THREAD_SHAPE = {
 
 export type FireMode = "Auto" | "Send to Agent" | "Flag for Review" | "Stopped watching";
 const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
+// The three level keys are on audit rows written before the level columns went (2026-11-16).
 const PLAN_KEYS = ["entryPrice", "stopLoss", "targetPrice", "status", "direction", "retiredReason", "catalystDate"];
 const RESEARCH_KEYS = ["researchData", "bullCase", "bearCase", "fundamentals", "coreBelief", "keyAssumptions", "invalidationConds", "variantView", "snapshot", "scoring"];
 

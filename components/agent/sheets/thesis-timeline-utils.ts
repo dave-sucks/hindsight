@@ -595,6 +595,7 @@ export function groupLabels(timestamps: string[], now = new Date()): (string | n
 // Exact from → to for the scalar plan fields. The trigger ops carry their
 // own lines ("Stop $64 → $71"), so the level columns yield to them.
 
+// Level keys on audit rows written before the level columns went (2026-11-16); new rows carry triggerOps.
 const LEVEL_KEYS = new Set(["targetPrice", "stopLoss", "entryPrice"]);
 
 const SCALAR_LINES: Array<{

@@ -315,7 +315,7 @@ describe("checkLadder — the one check after all ops", () => {
       { ...stopLine, predicate: { watch: "price", is: "below", value: 355 } },
     ]);
     const check = checkLadder({ triggers: out.triggers, direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: 432, targetPrice: 490, stopLoss: 355 } });
+    expect(check).toEqual({ ok: true });
   });
 
   it("ordering applies to anyone", () => {
@@ -327,14 +327,14 @@ describe("checkLadder — the one check after all ops", () => {
     expect(checkLadder({ triggers: inverted.triggers, direction: "LONG", status: "WATCHING", actor: "PRINCIPAL" })).toMatchObject({ ok: false, error: "invalid_thesis_shape" });
   });
 
-  it("derives the columns from the list when the plan is legal", () => {
+  it("passes a legal list, and hands back no level of its own (nothing stores one)", () => {
     const check = checkLadder({ triggers: [buy, target, stopLine], direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: 183, targetPrice: 250, stopLoss: 150 } });
+    expect(check).toEqual({ ok: true });
   });
 
   it("a Stop watching line with no buy is a watch, not a half plan", () => {
     const check = checkLadder({ triggers: [stopLine], direction: "LONG", status: "WATCHING", actor: "AGENT" });
-    expect(check).toEqual({ ok: true, columns: { entryPrice: null, targetPrice: null, stopLoss: 150 } });
+    expect(check).toEqual({ ok: true });
   });
 
   it("a held stock is satisfied by an inherited sell trigger", () => {
@@ -344,7 +344,6 @@ describe("checkLadder — the one check after all ops", () => {
       direction: "LONG",
       status: "HOLDING",
       actor: "AGENT",
-      entryPrice: 100,
       avgCost: 100,
     });
     expect(check.ok).toBe(true);

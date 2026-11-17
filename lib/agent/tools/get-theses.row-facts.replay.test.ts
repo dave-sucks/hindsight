@@ -44,7 +44,7 @@ const seed = () => ({
   agentConfig: [agentConfigRow({ triggers: [rung("analyst-clock", "REVIEW", { watch: "repeat", value: 7 }, 7)] })],
   thesis: [
     thesisRow({ id: "t_aaa", ticker: "AAA", status: "HOLDING", lastReviewedAt: ago(1), researchUpdatedAt: ago(60), triggers: [rung("floor-aaa", "EXIT", { watch: "price", is: "below", value: 95 })] }),
-    thesisRow({ id: "t_bbb", ticker: "BBB", status: "WATCHING", createdAt: ago(5), lastReviewedAt: ago(1), researchUpdatedAt: ago(1), entryPrice: 36, targetPrice: 48, stopLoss: 32, triggers: [rung("buy-bbb", "ENTER", { watch: "price", is: "above", value: 36 })] }),
+    thesisRow({ id: "t_bbb", ticker: "BBB", status: "WATCHING", createdAt: ago(5), lastReviewedAt: ago(1), researchUpdatedAt: ago(1), triggers: [rung("buy-bbb", "ENTER", { watch: "price", is: "above", value: 36 })] }),
   ],
   position: [positionRow({ id: "pos_aaa", symbol: "AAA", avgCost: 100, quantity: 10, openedAt: ago(20), peakPrice: 112 })],
   order: [
@@ -118,6 +118,6 @@ describe("get_theses — the facts on the saved row", () => {
   it("a quiet row goes through the builder as one line", async () => {
     const { model, screen } = await read();
     expect((screen.quiet_theses as Array<{ ticker: string }>).map((q) => q.ticker)).toEqual(["BBB"]);
-    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · buy $36.00 · id t_bbb"]);
+    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · id t_bbb"]);
   });
 });

@@ -56,11 +56,6 @@ export interface Rule {
 }
 
 const RULE_DEFS = {
-  UNDER_2X_SAY_WHY: {
-    says: "Reward against risk is reported, never a floor (2026-11-04): the house sets no target of its own. Under twice the floor's distance to the Street's average, the writer says why in the note; the row's Street line says how much room there is.",
-    refusal: "none — nothing refuses on the ratio.",
-    markers: { writer: "UNDER 2×" },
-  },
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
@@ -71,9 +66,8 @@ const RULE_DEFS = {
   LEVEL_ORDER: {
     says: "A stock's buy, floor and upside line sit in order against each other and the live price (long: floor < buy < upside line).",
     refusal: "invalid_thesis_shape — names the levels and which is out of order.",
-    // The trigger run reads the reward-to-risk check in ADD_OR_WINNER's
-    // guidance (lib/agent/situations.ts), and the order in the refusal.
-    markers: { daily: "buy, floor and upside level", chat: "buy, floor and upside level", writer: "R/R" },
+    // The trigger run and the writer read the order in the refusal.
+    markers: { daily: "buy, floor and upside level", chat: "buy, floor and upside level" },
   },
   EVENT_DATE: {
     says: "The event date is the company's newest statement. A filing fills a missing date; a disagreement is written on the row, never overwritten.",

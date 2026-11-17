@@ -253,9 +253,7 @@ export const recordRunSummary = defineTool({
       // structural `computeNeedsAction` check for "did the agent address
       // every triggered thesis?" — wording-agnostic, no false fails on
       // rationales that lacked a specific keyword. The goalpost-moving
-      // check is now enforced structurally in `update_thesis`
-      // (update-thesis.ts:547 — refuses to raise targetPrice on a
-      // WATCHING thesis whose entry condition is currently met).
+      // check moved into `update_thesis`.
       //
       // Two gates asking the same question with different rules caused
       // recurring false-fails on otherwise-healthy runs whose rationale

@@ -15,9 +15,7 @@ export const SITUATION_CODES = Object.keys(SITUATIONS) as SituationCode[];
 
 /**
  * What usually puts a stock in each situation (situations.ts `fireCodes` and
- * `flagCodes`): a trigger firing, or a flag read off the stock's facts. An add
- * or near target can come either way (an add trigger, three quarters of the
- * way to the target); the bolt names the usual one.
+ * `flagCodes`): a trigger firing, or a flag read off the stock's facts.
  */
 export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
   PROMOTED_AWAITING: "flag",

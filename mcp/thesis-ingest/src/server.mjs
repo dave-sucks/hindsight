@@ -98,10 +98,10 @@ const saveThesisInput = {
       "Required for LONG/SHORT. CATALYST (dated binary event — also send catalyst_date) · TARGET (a move over weeks to months) · TRADE (bounded momentum setup — also send max_hold_days) · COMPOUNDER (multi-year hold).",
     ),
   triggers: z
-    .array(z.object({ predicate: z.record(z.string(), z.unknown()), action: z.enum(["ENTER", "EXIT", "REVIEW"]), rationale: z.string() }))
+    .array(z.object({ predicate: z.record(z.string(), z.unknown()), action: z.enum(["ENTER", "STOP_WATCHING", "REVIEW"]), rationale: z.string() }))
     .optional()
     .describe(
-      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. The floor: { predicate: { watch: 'price', is: 'below', value }, action: 'EXIT', rationale } — on a watch it stops watching on a close below. A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
+      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. Where the setup is over: { predicate: { watch: 'price', is: 'below', value, settings: { close: true } }, action: 'STOP_WATCHING', rationale } — we stop watching on a close below it. A new thesis is a watch, so it has no sale ("Sell if" comes with the buy). A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
     ),
   core_belief: z
     .string()
