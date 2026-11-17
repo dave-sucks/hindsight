@@ -191,7 +191,6 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
    - The trigger run fills the proposal templates when it proposes the buy: "Sell if below $S", now read from the playbook's template, plus the take-profit and the breakout's one-risk review. `place_trade` takes each price with its reason, and the proposal and Edit & Approve show them.
    - The fill removes the buying-window reviews. It writes the approved take-profit with its template's action ("Trim 50% if above", where today a new upper price lands as a review), and writes the fill templates.
    - A sale back to watch removes the Sell lines and writes the watch templates.
-4. **Delete "stop when buying"** (`lib/trading/auto-stop.ts`, its settings, and the sizing that reads it).
 
 **Rough size, in net app code:**
 
@@ -200,7 +199,6 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
 | 1 | Small | About +260 / −180, plus a one-time data update for 9 lines |
 | 2 | Large, the bulk | About +700 / −900. Adds a column, the seed and the form reuse; deletes `setup-exits.ts`, about 300 lines of `setups.ts` prose and manage fields, the overrides a template now carries, and the horizon clock |
 | 3 | Medium | About +350 / −200 |
-| 4 | Small, a deletion | About −300 |
 
 ## Checked against recent trades
 
@@ -214,4 +212,4 @@ These lines were replayed on real daily prices against the last five sales, thre
 
 1. **The take-profit for the breakout, PEAD and the pullback** is at the prior high above the buy, or twice the risk above the buy when there is no prior high.
 2. **A pre-catalyst trade sells 7 days before the event date.**
-3. **"Stop when buying" is deleted.** The "Sell if below" approved on the proposal is the one sell line a buy brings.
+3. **"Stop when buying" stays:** the owner's switch in Settings → Triggers. When on, it applies at the fill after the approved sell price is written.
