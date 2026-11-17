@@ -14,7 +14,7 @@ jest.mock("@/lib/prisma", () => ({
     thesis: {
       findMany: jest.fn(async () => [
         { ticker: "CEG", status: "HOLDING", conviction: "HIGH", createdAt: new Date("2026-06-01T14:00:00Z"), researchRun: { agentConfig: { name: "Analyst One" } } },
-        { ticker: "WST", status: "WATCHING", conviction: "MEDIUM", createdAt: new Date("2026-08-12T14:00:00Z"), researchRun: { agentConfig: { name: "Analyst One" } } },
+        { ticker: "WST", status: "WATCHING", conviction: "MEDIUM", coreBelief: "West compounds as margins recover. More follows.", triggers: [], createdAt: new Date("2026-08-12T14:00:00Z"), researchRun: { agentConfig: { name: "Analyst One" } } },
       ]),
     },
   },
@@ -124,6 +124,6 @@ describe("New York's midnight", () => {
     expect(plain!.watching).toBeUndefined();
     getLiveQuotes.mockResolvedValue({ CEG: { quote: { c: 274.73, pc: 267.76, t: CLOSE_AT } }, WST: { quote: { c: 415, pc: 410, dp: 1.2, t: CLOSE_AT } } });
     const withWatching = await loadPortfolioSnapshot({ accountId: "acct", environment: "LIVE", now: NOW, watching: true });
-    expect(withWatching!.watching).toEqual([{ ticker: "WST", price: 415, dayPct: 1.2, move5dPct: null, move20dPct: null, conviction: "MEDIUM", analyst: "Analyst One", since: "2026-08-12T14:00:00.000Z" }]);
+    expect(withWatching!.watching).toEqual([{ ticker: "WST", price: 415, dayPct: 1.2, move5dPct: null, move20dPct: null, conviction: "MEDIUM", analyst: "Analyst One", since: "2026-08-12T14:00:00.000Z", buyIf: [], belief: "West compounds as margins recover." }]);
   });
 });

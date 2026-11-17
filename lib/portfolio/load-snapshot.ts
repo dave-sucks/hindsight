@@ -14,7 +14,9 @@ import { getLiveQuotes, type LiveQuoteResult } from "@/lib/market-data/live-quot
 import { isMarketOpen } from "@/lib/market-hours";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { movePctOverSessions, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
-import { buildSnapshot, type PortfolioSnapshot, type SnapshotProposal } from "@/lib/portfolio/snapshot";
+import { buildSnapshot, firstSentence, type PortfolioSnapshot, type SnapshotProposal } from "@/lib/portfolio/snapshot";
+import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
+import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
 import { PROPOSED } from "@/lib/proposals/staged";
 
 /** Paper accounts start at this and have no transfers. */
@@ -38,6 +40,9 @@ export function nyMidnight(day: string): Date {
   }
   return new Date(`${day}T05:00:00Z`);
 }
+
+/** A watch's own buy triggers, each as its sentence ("Buy if below $415.14"). */
+const buyTriggers = (raw: unknown, ticker: string): string[] => parseLevelTriggers(raw, `watch=${ticker}`).filter((x) => x.action === "ENTER").map(sentenceOf);
 
 /** `watching` also loads the stocks we watch, for a reader that gets the Watching block. */
 export async function loadPortfolioSnapshot(args: { accountId: string; environment: "PAPER" | "LIVE"; now?: Date; watching?: boolean }): Promise<PortfolioSnapshot | null> {
@@ -104,7 +109,7 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
   const theses = await prisma.thesis
     .findMany({
       where: { status: { in: args.watching ? ["HOLDING", "WATCHING"] : ["HOLDING"] }, researchRun: { agentConfig: { accountId, tradingEnvironment: environment } } },
-      select: { ticker: true, status: true, conviction: true, createdAt: true, researchRun: { select: { agentConfig: { select: { name: true } } } } },
+      select: { ticker: true, status: true, conviction: true, createdAt: true, ...(args.watching ? { coreBelief: true, triggers: true } : {}), researchRun: { select: { agentConfig: { select: { name: true } } } } },
       orderBy: { createdAt: "asc" },
     })
     // The account's numbers never wait on these: a holding's line is whole without them.
@@ -154,7 +159,7 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
             .map(([t, th]) => {
               const q = watchQuotes[t]?.quote;
               const price = q && q.c > 0 ? q.c : null;
-              return { ticker: t, price, dayPct: price != null ? q!.dp : null, move5dPct: move(t, price, 5), move20dPct: move(t, price, 20), conviction: th.conviction, analyst: th.researchRun?.agentConfig?.name ?? null, since: th.createdAt.toISOString() };
+              return { ticker: t, price, dayPct: price != null ? q!.dp : null, move5dPct: move(t, price, 5), move20dPct: move(t, price, 20), conviction: th.conviction, analyst: th.researchRun?.agentConfig?.name ?? null, since: th.createdAt.toISOString(), buyIf: buyTriggers((th as { triggers?: unknown }).triggers, t), belief: firstSentence((th as { coreBelief?: string | null }).coreBelief) };
             }),
         }
       : {}),

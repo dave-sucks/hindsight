@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { getSetup, isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
@@ -628,6 +629,7 @@ export const placeTrade = defineTool({
           positionId: position.id,
           orderId: order.id,
           intent: "OPEN",
+          always: isManagerRun(ctx),
           environment: positionEnvironment,
           rationale: proposalRationale,
           triggerIds: answers(ctx.firedTrigger, ticker, "BUY"),

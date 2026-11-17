@@ -24,6 +24,8 @@ import { staged } from "@/lib/proposals/staged";
 export type ProposalIntent = "OPEN" | "ADD" | "CLOSE" | "PARTIAL_CLOSE";
 
 export interface MaybeAwaitApprovalArgs {
+  /** This caller's trades always wait for the owner, whatever the account's switches say (the Portfolio Manager). */
+  always?: boolean;
   accountId: string;
   positionId: string;
   orderId: string;
@@ -116,8 +118,10 @@ export class ApprovalGateAccountUnresolvedError extends Error {
  * before Alpaca (GAPS P1-19). PAPER keeps the legacy fail-open (false).
  */
 export async function approvalRequired(
-  args: Pick<MaybeAwaitApprovalArgs, "accountId" | "intent" | "environment">,
+  args: Pick<MaybeAwaitApprovalArgs, "accountId" | "intent" | "environment" | "always">,
 ): Promise<boolean> {
+  // The Portfolio Manager's trades wait for the owner whatever the switches say.
+  if (args.always) return true;
   const account = await prisma.account.findUnique({
     where: { id: args.accountId },
     select: {
