@@ -218,13 +218,13 @@ export const JOB_TRIGGERS: Record<string, { event: string; time: string }> = {
 export const URGENCY_CONFIG: Record<string, { dot: string; label: string }> = {
   BREAKING: { dot: "bg-red-500", label: "Breaking" },
   HIGH: { dot: "bg-amber-500", label: "High" },
-  MEDIUM: { dot: "bg-blue-500", label: "Medium" },
+  MEDIUM: { dot: "bg-brand-blue", label: "Medium" },
   LOW: { dot: "bg-muted-foreground/40", label: "Low" },
 };
 
 export const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
-  BULLISH: { label: "Bullish", className: "text-emerald-500" },
-  BEARISH: { label: "Bearish", className: "text-red-500" },
+  BULLISH: { label: "Bullish", className: "text-positive" },
+  BEARISH: { label: "Bearish", className: "text-negative" },
   NEUTRAL: { label: "Neutral", className: "text-muted-foreground" },
   MIXED: { label: "Mixed", className: "text-amber-500" },
 };

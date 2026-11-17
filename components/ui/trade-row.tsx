@@ -6,7 +6,7 @@ import { proposedLine } from "@/lib/trade-statement";
 import { MoreVertical, Plus } from "lucide-react";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { StockLogo } from "@/components/StockLogo";
-import { PnlBadge } from "@/components/ui/pnl-badge";
+import { PriceChange } from "@/components/ui/price-change";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { cn, pnlColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import {
   getTradeStatusDisplay,
@@ -56,8 +56,6 @@ export interface TradeRowShellProps {
   secondary?: React.ReactNode;
   /** Bottom-right content (P&L badge). */
   trailingBottom?: React.ReactNode;
-  /** A third line, very small and muted (a proposal's "Proposed at $230.10 on Nov 13, 3:36 PM"). */
-  tertiary?: React.ReactNode;
   /** Kebab-menu actions, shown on hover at the right edge. */
   menuItems?: RowMenuItem[];
   flash?: "win" | "loss";
@@ -76,7 +74,6 @@ export function TradeRowShell({
   trailingTop,
   secondary,
   trailingBottom,
-  tertiary,
   menuItems,
   flash,
   className,
@@ -96,8 +93,8 @@ export function TradeRowShell({
           {trailingTop}
         </div>
         {(secondary !== undefined || trailingBottom !== undefined) && (
-          <div className="flex items-center justify-between mt-0.5">
-            <span className="text-xs text-muted-foreground tabular-nums truncate">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-light text-muted-foreground tabular-nums truncate">
               {secondary}
             </span>
             {trailingBottom !== undefined && (
@@ -105,12 +102,12 @@ export function TradeRowShell({
             )}
           </div>
         )}
-        {tertiary !== undefined && <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums truncate">{tertiary}</div>}
       </div>
     </>
   );
 
-  const actionClasses = "flex w-full min-w-0 items-center gap-3 px-3 py-2.5 text-left";
+  // Tight on purpose (the owner, 2026-11-14): less padding around the row and less between the logo and the text.
+  const actionClasses = "flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left";
 
   // prefetch={false}: rows come in lists, and Next fetches every link as it
   // scrolls into view — the dashboard's pinned and movers rows asked for their
@@ -149,7 +146,7 @@ export function TradeRowShell({
 
 function RowMenu({ items }: { items: RowMenuItem[] }) {
   return (
-    <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -232,7 +229,8 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 }
 
 // ── GainPair — the number every row ends with ────────────────────────────────
-// Dollar amount + percent badge, same weights and colours whether it's a held
+// The arrow, the dollars, the percent: the second line's small size, one light weight, coloured,
+// no badge (the owner, 2026-11-17), whether it's a held
 // position's lifetime P&L or a watched name's move today. ONE component so a
 // trade row and a watchlist row can never drift into showing the gain
 // differently — the whole point of "one row design everywhere".
@@ -242,12 +240,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 
 export function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
   return (
-    <>
-      <span className={cn("text-sm tabular-nums", pnlColor(dollar))}>
-        {dollar >= 0 ? "+" : ""}${Math.abs(dollar).toFixed(2)}
-      </span>
-      <PnlBadge value={pct} format="percent" className="text-xs" />
-    </>
+    <PriceChange dollarChange={dollar} percentChange={pct} size="xs" arrowFirst className="font-light" />
   );
 }
 
@@ -377,7 +370,11 @@ export function TradeRow({
 
   const cfg = getTradeStatusDisplay(status);
   const timeLabel = isAwaitingApproval
-    ? proposalTooltip(pendingProposal.intent, isExecuting)
+    ? proposalTooltip(
+        pendingProposal.intent,
+        isExecuting,
+        pendingProposal.proposedAt ? proposedLine(pendingProposal.proposedAt, pendingProposal.proposedPrice) : null,
+      )
     : cfg.timeLabel({ placedAt, filledAt, closedAt });
   const shortId = shortAlpacaId(alpacaOrderId);
   const priceSourceLabel = isOpen ? fmtPriceSource(priceSource, priceUpdatedAt) : null;
@@ -404,14 +401,13 @@ export function TradeRow({
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
       primary={
         <>
-          {/* Reads as "Trim SNOW" / "Buy HPE". The dropdown offers Approve
-              before you'd otherwise know what you're approving — the verb is
-              the missing half of that decision. Lighter weight so the ticker
-              still leads the row visually. */}
+          {/* Reads as "Trim SNOW" / "Buy HPE": the verb light, the ticker
+              medium, both the text's own colour, one size up from the line
+              under them, so the row scans by weight (the owner, 2026-11-17). */}
           {isAwaitingApproval && (
             <span
               className={cn(
-                "text-sm font-light text-muted-foreground",
+                "text-sm font-light text-foreground",
                 // Approved and in flight — the same shimmer the agent's
                 // in-progress rows use, in the verb's slot. It's the whole
                 // signal that the trade is on its way rather than lost.
@@ -465,7 +461,6 @@ export function TradeRow({
           {dateStr && <> · {dateStr}</>}
         </>
       }
-      tertiary={isAwaitingApproval && !isExecuting && pendingProposal.proposedAt ? proposedLine(pendingProposal.proposedAt, pendingProposal.proposedPrice) : undefined}
       trailingBottom={
         isStalePrice ? (
           <span className="text-[10px] text-amber-500/80">no live price</span>

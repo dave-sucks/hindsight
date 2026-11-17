@@ -236,7 +236,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
                       data-lit={on ? "true" : undefined}
                       className={cn(
                         "flex flex-col gap-1.5 rounded-lg px-2.5 py-2",
-                        on ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "opacity-40",
+                        on ? "bg-brand-blue/10 ring-1 ring-brand-blue/30" : "opacity-40",
                       )}
                     >
                       <span className="text-xs text-muted-foreground">{f.label}</span>

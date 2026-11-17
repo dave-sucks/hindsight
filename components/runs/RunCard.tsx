@@ -37,9 +37,9 @@ function formatRelativeTime(date: Date): string {
 }
 
 function dotColorBg(color: ActionColor): string {
-  if (color === "green") return "bg-emerald-500";
-  if (color === "red") return "bg-red-500";
-  if (color === "blue") return "bg-sky-500";
+  if (color === "green") return "bg-positive";
+  if (color === "red") return "bg-negative";
+  if (color === "blue") return "bg-brand-blue";
   return "";
 }
 
@@ -188,7 +188,7 @@ export function RunCard({ run }: { run: RunCardRun }) {
               <span
                 className={cn(
                   "text-xs font-medium tabular-nums shrink-0",
-                  pnl! >= 0 ? "text-emerald-500" : "text-red-500",
+                  pnl! >= 0 ? "text-positive" : "text-negative",
                 )}
               >
                 {pnlLabel}

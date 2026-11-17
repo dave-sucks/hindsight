@@ -215,7 +215,7 @@ function SheetMock() {
  */
 const DESK = {
   initials: "PS",
-  color: "bg-blue-500",
+  color: "bg-brand-blue",
   name: "PEAD Specialist",
   pnl: "+$2,305",
   up: true,

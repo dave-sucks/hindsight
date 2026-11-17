@@ -52,7 +52,7 @@ export function StockOverview({
     <div className="space-y-5">
       {price != null ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-          <span className="text-xl font-semibold tabular-nums">{formatCurrency(price)}</span>
+          <span className="text-xl font-medium tabular-nums">{formatCurrency(price)}</span>
           {shownMove ? (
             <PriceChange dollarChange={shownMove.dollars} percentChange={shownMove.pct} size="xl" />
           ) : null}

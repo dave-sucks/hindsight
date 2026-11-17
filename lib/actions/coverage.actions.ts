@@ -82,6 +82,9 @@ export interface CoveragePendingProposal {
   quantity: number;
   /** ISO — when the proposal lapses; drives the Expired state on the Review control. */
   expiresAt?: string;
+  /** When it was proposed and the stock's price then: the status dot's tooltip. */
+  proposedAt?: string;
+  proposedPrice?: number | null;
   /**
    * Approved and sent to Alpaca, waiting on the fill (Order.status PENDING).
    * The row keeps the proposal subhead but reads "Executing: Sell 20 shares"
@@ -160,7 +163,7 @@ export async function getCoverageData(
           where: { status: { in: ["AWAITING_APPROVAL", "PENDING"] } },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, status: true, intent: true, quantity: true, expiresAt: true },
+          select: { id: true, status: true, intent: true, quantity: true, expiresAt: true, createdAt: true, proposedPrice: true },
         },
         // The thesis this position was bought on. Fallback for when the
         // by-ticker lookup below finds none in this environment — a LIVE
@@ -220,7 +223,7 @@ export async function getCoverageData(
           where: { status: "AWAITING_APPROVAL" },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { id: true, intent: true, quantity: true, expiresAt: true },
+          select: { id: true, intent: true, quantity: true, expiresAt: true, createdAt: true, proposedPrice: true },
         },
       },
     }).catch(() => [] as never[]),
@@ -240,6 +243,8 @@ export async function getCoverageData(
       intent: (o.intent ?? "OPEN") as CoveragePendingProposal["intent"],
       quantity: o.quantity,
       expiresAt: o.expiresAt?.toISOString(),
+      proposedAt: o.createdAt.toISOString(),
+      proposedPrice: o.proposedPrice ?? null,
     });
   }
 
@@ -403,6 +408,8 @@ export async function getCoverageData(
             intent: (p.orders[0].intent ?? "CLOSE") as CoveragePendingProposal["intent"],
             quantity: p.orders[0].quantity,
             expiresAt: p.orders[0].expiresAt?.toISOString(),
+            proposedAt: p.orders[0].createdAt.toISOString(),
+            proposedPrice: p.orders[0].proposedPrice ?? null,
             executing: p.orders[0].status === "PENDING",
           }
         : null,

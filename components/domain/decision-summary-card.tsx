@@ -49,7 +49,7 @@ const ACTION_STATUS: Record<string, ActionStatus> = {
   HOLD:         { label: "Hold",     dotClass: "bg-muted-foreground/60",     tooltip: "Position held — thesis still valid" },
   REDUCE:       { label: "Reduce",   dotClass: "bg-amber-500",               tooltip: "Trimmed position size" },
   EXIT:         { label: "Sold",     dotClass: "bg-positive",                tooltip: "Position closed this run" },
-  WATCH:        { label: "Watch",    dotClass: "bg-blue-500",                tooltip: "Added to watchlist" },
+  WATCH:        { label: "Watch",    dotClass: "bg-brand-blue",                tooltip: "Added to watchlist" },
   REMOVE_WATCH: { label: "Unwatch",  dotClass: "bg-muted-foreground/60",     tooltip: "Removed from watchlist" },
   PASS:         { label: "Pass",     dotClass: "bg-muted-foreground/40",     tooltip: "Researched but not actioned" },
   FAILED:       { label: "Failed",   dotClass: "bg-negative",                tooltip: "Order rejected (e.g. duplicate position)" },

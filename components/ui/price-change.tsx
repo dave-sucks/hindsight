@@ -83,8 +83,9 @@ export function PriceChange({
         )}
       >
         <Arrow className={iconCls} />
-        {!percentOnly && dollarText}
-        {percentText}
+        {/* Each its own item, so the gap falls between the arrow, the dollars and the percent. */}
+        {!percentOnly ? <span>{dollarText}</span> : null}
+        {percentText ? <span>{percentText}</span> : null}
       </span>
     );
   }

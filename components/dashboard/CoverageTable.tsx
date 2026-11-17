@@ -16,7 +16,6 @@ import {
 import { getTradeStatusDisplay } from "@/lib/trade-status";
 import { cn, pnlColor } from "@/lib/utils";
 import { PriceChange } from "@/components/ui/price-change";
-import { PnlBadge } from "@/components/ui/pnl-badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { moveDollar } from "@/lib/portfolio/move-dollar";
@@ -28,6 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { formatSignedCurrency } from "@/lib/format";
 import { sharesLine, proposalTooltip } from "@/lib/trade-status";
+import { proposedLine } from "@/lib/trade-statement";
 import { StatusDot } from "@/components/ui/trade-row";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { ThesisCardData } from "@/components/agent/sheets/ThesisSheet";
@@ -71,7 +71,7 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
   if (pp) {
     return {
       className: getTradeStatusDisplay("PENDING").dotClass,
-      label: proposalTooltip(pp.intent, pp.executing),
+      label: proposalTooltip(pp.intent, pp.executing, pp.proposedAt ? proposedLine(pp.proposedAt, pp.proposedPrice) : null),
     };
   }
   if (row.tradeState === "OPEN") {
@@ -84,7 +84,7 @@ function statusDot(row: CoverageRow): { className: string; label: string } {
   }
   const since = new Date(row.anchorAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   if (row.verdict != null) return { className: "bg-muted-foreground/40", label: `Passed ${since}` };
-  return { className: "bg-sky-500", label: `Watching since ${since}` };
+  return { className: "bg-brand-blue", label: `Watching since ${since}` };
 }
 
 // ── 1D/5D/30D cell ───────────────────────────────────────────────────────────
@@ -124,14 +124,11 @@ function Move({
           {formatSignedCurrency(d)}
         </span>
       )}
-      {flat ? (
-        <span className={cn("tabular-nums text-sm text-muted-foreground", showDollar && "md:hidden")}>
-          {pct >= 0 ? "+" : ""}
-          {pct.toFixed(2)}%
-        </span>
-      ) : (
-        <PnlBadge value={pct} format="percent" className={cn("text-xs", showDollar && "md:hidden")} />
-      )}
+      {/* Plain text in its colour, no badge (the owner, 2026-11-17). */}
+      <span className={cn("tabular-nums text-sm", flat ? "text-muted-foreground" : pnlColor(pct), showDollar && "md:hidden")}>
+        {pct >= 0 ? "+" : ""}
+        {pct.toFixed(2)}%
+      </span>
     </span>
   );
 }
@@ -192,12 +189,8 @@ function LifetimeGain({ row }: { row: CoverageRow }) {
   if (row.sincePct == null) return <span className="text-muted-foreground/40 text-xs">—</span>;
   const dollar = row.tradeState == null ? null : row.sinceDollar;
   return (
-    <span className="inline-flex items-center gap-1.5 justify-end">
-      {dollar != null && (
-        <PriceChange dollarChange={dollar} percentChange={null} size="sm" arrowFirst />
-      )}
-      <PnlBadge value={row.sincePct} format="percent" className="text-xs" />
-    </span>
+    // The arrow, the dollars, the percent as plain text in its colour, as the stock rows read; a watched or passed name has no dollars.
+    <PriceChange dollarChange={dollar ?? row.sincePct} percentChange={row.sincePct} percentOnly={dollar == null} size="sm" arrowFirst />
   );
 }
 

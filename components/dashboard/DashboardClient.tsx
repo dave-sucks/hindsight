@@ -56,8 +56,7 @@ import { getThesisStatusDisplay, type ThesisStatus } from '@/lib/thesis-status';
 import { OnboardingChecklist } from '@/components/domain/onboarding-checklist';
 import type { DigestNote, LatestDigest } from '@/lib/actions/digest.actions';
 import { DigestMarkdown } from '@/components/ui/ticker-markdown';
-import { TickerChip } from '@/components/chat/TickerChip';
-import { NoteSignal } from '@/components/domain/note-signal';
+import { FlameIcon } from '@/components/ui/flame-icon';
 import { SectionLabel } from '@/components/domain/section-label';
 import { openingDigestTab, stripMarkdown, type DigestTab } from '@/components/dashboard/digest-preview';
 import {
@@ -317,7 +316,7 @@ const ACTIVITY_KIND: Record<AccountActivityKind, { label: string; dotClass: stri
   added:              { label: 'Added',            dotClass: 'bg-positive',            filter: 'trades' },
   sold:               { label: 'Sold',             dotClass: 'bg-muted-foreground/60', filter: 'trades' },
   trimmed:            { label: 'Trimmed',          dotClass: 'bg-amber-500',           filter: 'trades' },
-  watching:           { label: 'Started watching', dotClass: 'bg-blue-500',            filter: 'watch' },
+  watching:           { label: 'Started watching', dotClass: 'bg-brand-blue',          filter: 'watch' },
   'stopped-watching': { label: 'Stopped watching', dotClass: 'bg-muted-foreground/60', filter: 'watch' },
   holding:            { label: 'Position opened',  dotClass: 'bg-positive',            filter: 'watch' },
   closed:             { label: 'Position closed',  dotClass: 'bg-muted-foreground/60', filter: 'watch' },
@@ -516,7 +515,7 @@ function ProposalsPanel({
       <p className="text-[10px] font-mono uppercase tracking-wide text-muted-foreground mb-1.5 px-1 lg:absolute lg:bottom-full lg:left-0">
         Proposals
       </p>
-      {/* Plain bordered container — TradeRowShell supplies its own px-3 py-2.5
+      {/* Plain bordered container — TradeRowShell supplies its own
           padding + border-b dividers, so rows sit flush (matches the coverage
           table + the prod trade list). No Card p-1/gap wrapper. */}
       <div className="rounded-lg border overflow-hidden bg-card">
@@ -628,16 +627,24 @@ function DigestTabs({
   );
 }
 
-/** One note the market digest's run wrote: its stocks' chips, each opening the stock, then its flame and Bullish / Bearish / Neutral. */
-function DigestNoteRow({ note }: { note: DigestNote }) {
+/**
+ * The stocks the market digest's run wrote a note on, in the digest's dialog
+ * only (the owner, 2026-11-16): each a ghost button, its logo and ticker,
+ * that opens the stock. The flame marks a stock with a high-impact note;
+ * nothing else about the note is spelled out here.
+ */
+function DigestNoteStocks({ notes }: { notes: DigestNote[] }) {
+  const high = new Set(notes.filter((n) => n.impact === 'high').flatMap((n) => n.tickers));
+  const tickers = [...new Set(notes.flatMap((n) => n.tickers))];
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {note.tickers.map((t) => (
-        <Link key={t} href={`/stocks/${t}`} prefetch={false} className="no-underline shrink-0">
-          <TickerChip symbol={t} />
-        </Link>
+    <div className="-mx-2.5 flex flex-wrap items-center gap-1">
+      {tickers.map((t) => (
+        <Button key={t} variant="ghost" size="sm" nativeButton={false} render={<Link href={`/stocks/${t}`} prefetch={false} />}>
+          <StockLogo ticker={t} size="xs" />
+          {t}
+          {high.has(t) ? <FlameIcon className="size-3" /> : null}
+        </Button>
       ))}
-      <NoteSignal impact={note.impact} effect={note.effect} className="text-xs text-muted-foreground" />
     </div>
   );
 }
@@ -662,7 +669,7 @@ function DigestPreviewCard({
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
   const preview = active ? stripMarkdown(active.narrative).slice(0, 700) : null;
-  // The market digest's notes on our stocks, under the preview and the digest.
+  // The market digest's notes on our stocks, under the digest in its dialog.
   const notes = isMarket ? (active?.notes ?? []) : [];
 
   return (
@@ -693,13 +700,6 @@ function DigestPreviewCard({
             <p className="text-xs text-muted-foreground">{emptyLine}</p>
           )}
         </button>
-        {notes.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0 text-xs">
-            {notes.map((n) => (
-              <DigestNoteRow key={n.id} note={n} />
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -721,9 +721,7 @@ function DigestPreviewCard({
             {notes.length > 0 ? (
               <div className="mt-4 pt-4 border-t flex flex-col gap-2">
                 <SectionLabel>Agent notes</SectionLabel>
-                {notes.map((n) => (
-                  <DigestNoteRow key={n.id} note={n} />
-                ))}
+                <DigestNoteStocks notes={notes} />
               </div>
             ) : null}
           </div>
@@ -1129,7 +1127,7 @@ export default function DashboardClient({ data, userId, digest, marketDigest, co
               className="lg:h-[390px]"
               controls={
                 <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-                  <TabsList size="sm" variant="outline">
+                  <TabsList size="sm">
                     {RANGES.map((r) => (
                       <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
                     ))}

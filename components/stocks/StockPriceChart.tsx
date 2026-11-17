@@ -376,7 +376,7 @@ export function StockPriceChart({
       controls={
         showControls ? (
           <Tabs value={range} onValueChange={(v) => handleRange(v as Range)}>
-            <TabsList size="sm" variant="outline">
+            <TabsList size="sm">
               {ranges.map((r) => (
                 <TabsTrigger key={r} value={r}>{r}</TabsTrigger>
               ))}
