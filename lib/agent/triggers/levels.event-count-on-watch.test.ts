@@ -77,12 +77,12 @@ const MIRM_TRIGGERS = [
 
 /** The Catalyst Event PM's rules as they stand in production. */
 const CATALYST_RULES: Trigger[] = [
-  { id: "859afdef-8a57-4a03-8098-6af366dc238c", action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 10, variable: "event" }, rationale: "10 days before the event date on the thesis.", cooldownDays: 10, source: "PRINCIPAL" },
-  { id: "18d100c3-6e90-4f23-a876-94c0196a9eaa", action: "REVIEW", predicate: { watch: "from_date", is: "after", value: 30, variable: "event" }, rationale: "30 days after the event date on the thesis.", cooldownDays: 30, source: "PRINCIPAL" },
+  { id: "859afdef-8a57-4a03-8098-6af366dc238c", action: "REVIEW", predicate: { watch: "from_date", is: "before", value: 10, variable: "event" }, rationale: "10 days before the event date on the thesis.", source: "PRINCIPAL" },
+  { id: "18d100c3-6e90-4f23-a876-94c0196a9eaa", action: "REVIEW", predicate: { watch: "from_date", is: "after", value: 30, variable: "event" }, rationale: "30 days after the event date on the thesis.", source: "PRINCIPAL" },
 ];
 /** The account's review clock — the rule the gate exists for. */
 const ACCOUNT_CLOCK: Trigger[] = [
-  { id: "b459cc93", action: "REVIEW", predicate: { watch: "repeat", value: 7 }, rationale: "Look at this every 7 days.", cooldownDays: 7 },
+  { id: "b459cc93", action: "REVIEW", predicate: { watch: "repeat", value: 7 }, rationale: "Look at this every 7 days."},
 ];
 
 const resolved = () =>

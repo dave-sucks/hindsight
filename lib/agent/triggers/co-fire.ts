@@ -1,18 +1,18 @@
 /**
- * co-fire.ts — two protective triggers on one thesis firing on the same
- * pass become ONE run (DAV-254).
+ * co-fire.ts — two triggers on one thesis that ask the same question, firing
+ * on the same pass, become ONE run (DAV-254).
  *
  * MU 2026-09-14 09:35: the $969 stop and the 8% trail fired in the same
  * minute and started two paid tactical runs deciding the same sale; the
  * second was only folded by the "close already queued" check after the
  * first had proposed. SRRK did the same on 09-10 and 09-11. Here the fold
- * happens before any run is spawned: the first protective fire carries the
- * others as `coFired`, the tactical run lists them all as fired, and each
- * still gets its own audit row.
+ * happens before any run is spawned: the first fire carries the others as
+ * `coFired`, the tactical run lists them all as fired, and each still gets
+ * its own audit row.
  *
- * Only EXIT and TRIM fold — they answer one question ("sell some or all?").
- * A buy, an add or a review firing alongside a stop is a different decision
- * and keeps its own event.
+ * A sale and a trim fold together ("sell some or all?"); two buys fold
+ * together ("buy?": a stock with three ways in, two true on one pass). An
+ * add or a review keeps its own event, and so does a buy next to a sale.
  */
 
 export interface CoFired {
@@ -31,19 +31,22 @@ interface Foldable {
   coFired?: CoFired[];
 }
 
-const PROTECTIVE = new Set(["EXIT", "TRIM"]);
+/** Which question a fire asks; fires asking the same one on one thesis fold. */
+const QUESTION: Readonly<Record<string, string>> = { EXIT: "sell", TRIM: "sell", ENTER: "buy" };
 
 export function collapseProtectiveFires<T extends Foldable>(events: T[]): T[] {
   const out: T[] = [];
-  const primaryByThesis = new Map<string, T>();
+  const primaryByKey = new Map<string, T>();
   for (const e of events) {
-    if (!PROTECTIVE.has(e.action)) {
+    const question = QUESTION[e.action];
+    if (!question) {
       out.push(e);
       continue;
     }
-    const primary = primaryByThesis.get(e.thesisId);
+    const key = `${e.thesisId}:${question}`;
+    const primary = primaryByKey.get(key);
     if (!primary) {
-      primaryByThesis.set(e.thesisId, e);
+      primaryByKey.set(key, e);
       out.push(e);
       continue;
     }

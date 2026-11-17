@@ -22,10 +22,10 @@ import { num } from "./words";
 
 interface Reader {
   holds(c: Condition, ctx: EvaluationContext): boolean;
-  /** Compares the live price to a level, so a buy or a review on it fires on the crossing. */
-  readsPrice?(c: Condition): boolean;
   /** Reads the next scheduled report: a heads-up fires once per report. */
   readsReport?(c: Condition): boolean;
+  /** Holds only on an event it hasn't fired for (a filing, a report): each new one fires, whatever its fired state. */
+  oncePerEvent?(c: Condition): boolean;
 }
 
 const DAY = 86_400_000;
@@ -87,7 +87,6 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (line == null) return false;
       return c.is === "above" ? price > line : price < line;
     },
-    readsPrice: () => true,
   },
 
   move: {
@@ -120,8 +119,6 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (move == null) return false;
       return c.is === "above" ? move >= v : move <= -v;
     },
-    // A 1-day move reads the quote's own change and can't be re-read at the close.
-    readsPrice: (c) => c.is === "near" || c.variable === "close_5d" || c.variable === "close_20d",
   },
 
   volume: {
@@ -138,7 +135,6 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (value == null) return false;
       return c.is === "above" ? value > c.value : value < c.value;
     },
-    readsPrice: () => true,
   },
 
   strength: {
@@ -167,7 +163,8 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       if (c.is === "before") {
         // 0 = reports today: a before-open print has happened, an after-close one is tonight.
         const next = ctx.upcomingEarnings;
-        if (!next) return false;
+        // Once per report: a report this trigger has fired for doesn't hold, as a fired filing doesn't.
+        if (!next || ctx.firedReports?.includes(next.reportDate)) return false;
         const days = daysUntilReport(next, ctx.now);
         return days >= 0 && days <= c.value;
       }
@@ -177,6 +174,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
       return since >= 0 && since <= c.value;
     },
     readsReport: (c) => c.is === "before",
+    oncePerEvent: (c) => c.is === "before",
   },
 
   surprise: {
@@ -201,6 +199,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
           : { forms: [v.slice(5)] };
       return unfiredMatches(rule, ctx.filings, ctx.firedFilings).length > 0;
     },
+    oncePerEvent: () => true,
   },
 
   insiders: {
@@ -237,21 +236,21 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
 
 export function whenHolds(w: When, ctx: EvaluationContext): boolean {
   if (!isGroup(w)) return READERS[w.watch].holds(w, ctx);
-  return w.match === "all" ? w.conditions.every((x) => whenHolds(x, ctx)) : w.conditions.some((x) => whenHolds(x, ctx));
+  return w.conditions.every((x) => whenHolds(x, ctx));
 }
 
-/** The condition shape's answers to `shouldFire`'s three questions, read off the catalog. */
+/** The condition shape's answers to `shouldFire`'s two questions, read off the catalog. */
 export const SHAPE_CHECKER: Checker = {
   holds: (p, ctx) => {
     const w = shapeOf(p);
     return w != null && whenHolds(w, ctx);
   },
-  readsPrice: (p) => {
-    const w = shapeOf(p);
-    return w != null && conditionsOf(w).some((c) => READERS[c.watch].readsPrice?.(c) === true);
-  },
   readsUpcomingReport: (p) => {
     const w = shapeOf(p);
     return w != null && conditionsOf(w).some((c) => READERS[c.watch].readsReport?.(c) === true);
+  },
+  oncePerEvent: (p) => {
+    const w = shapeOf(p);
+    return w != null && conditionsOf(w).some((c) => READERS[c.watch].oncePerEvent?.(c) === true);
   },
 };

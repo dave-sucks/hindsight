@@ -22,7 +22,7 @@ const INPUTS: readonly { title: string; sub: string }[] = [
 
 const STOCKS: readonly { s: string; situations: readonly string[] }[] = [
   { s: "MU", situations: ["review due", "floor to fix"] },
-  { s: "CRWD", situations: ["buy level reached"] },
+  { s: "CRWD", situations: ["buy price reached"] },
   { s: "LLY", situations: [] },
 ];
 

@@ -29,8 +29,7 @@
  *                         the fresh quote says one of the thesis's
  *                         price/time-side predicates is currently true.
  *                         Catches matches the cron may not have
- *                         delivered yet. A review on the price is left to
- *                         its crossing's fire row (TRIGGER_FIRED).
+ *                         delivered yet.
  *   UNPROTECTED_GAIN    — a HOLDING whose cumulative gain is meaningfully
  *                         above what its tightest protective EXIT rung locks
  *                         in: gain ≥ 8% AND (gain − flooredGain) ≥ 6pts, a
@@ -81,14 +80,13 @@
  * Pure function. Caller supplies all data; no DB, no clock, no fetches.
  */
 
-import { shouldFire } from "@/lib/agent/triggers/evaluate";
-import { SHAPE_CHECKER } from "@/lib/agent/triggers/condition/read";
+import { conditionHolds, shouldFire, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
 import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { firedSinceFalseClose, readsTheTape, reviewClockDays, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import type { DeclinedSaleWork } from "@/lib/agent/declined-sale";
 import { fireStreak, type FireStreakUpdate } from "@/lib/agent/fire-streak";
 import { openFires, type ActivityRow } from "@/lib/agent/stock-context";
@@ -541,17 +539,22 @@ export function computeNeedsAction(
 
   // 2) TRIGGER_MATCHING_NOW — server-side eval against the fresh quote
   //    + time-based predicates. Same `shouldFire` the trigger evaluator
-  //    runs every 5 minutes; we just want the run-start snapshot too.
-  //    Cooldown gating respected — a match within the cooldown window
-  //    returns false from shouldFire, which is correct (the cron will
-  //    re-fire when cooldown expires). Every trigger true now, in ladder
-  //    order; the first is the one that can lead.
+  //    runs every 5 minutes, so a trigger that fired and hasn't been found
+  //    false at a close since isn't listed again. A sale or a trim is: one
+  //    that fired stays on the list every morning until a close finds it
+  //    false (the close pass read it with every input in hand; this read has
+  //    no position or chart numbers, so it never re-reads a trail or an
+  //    average), or its price is changed, so a declined sale doesn't go
+  //    silent; one that hasn't fired is listed when it reads true now.
+  //    Every trigger listed, in ladder order; the first can lead.
   const matches: NeedsAction[] = [];
   for (const trigger of thesis.triggers) {
-    if (!isPriceOrTimePredicate(trigger.predicate)) continue;
-    // A review on the price fires on its crossing, and this read has no prior close to see one.
-    if (trigger.action === "REVIEW" && SHAPE_CHECKER.readsPrice(trigger.predicate)) continue;
-    const result = shouldFire(trigger, {
+    const sale = trigger.action === "EXIT" || trigger.action === "TRIM";
+    if (!(sale && firedSinceFalseClose(trigger)) && !isPriceOrTimePredicate(trigger.predicate)) continue;
+    const read = sale
+      ? (t: typeof trigger, c: EvaluationContext) => ({ fires: firedSinceFalseClose(t) || conditionHolds(t, c) })
+      : shouldFire;
+    const result = read(trigger, {
       latestQuote: latestQuote ?? undefined,
       // During the session a "closes above $X" level is not true yet — it
       // waits for the close pass. Outside it, the last price IS a close.

@@ -184,13 +184,13 @@ const TRAIL = fixture.trail.trigger.id;
 jest.setTimeout(120_000);
 
 describe("a trigger's proposal over 2026-10-14 → 11-13", () => {
-  it("NVDA: one proposal for the break of $236, open 20 days (main: 23 proposals, 19 trigger runs); declined 11-03, it asks again the next day, as before", async () => {
+  it("NVDA: one proposal for the break of $236, open 20 days (main: 23 proposals, 19 trigger runs); declined 11-03, the floor does not fire again while NVDA stays below", async () => {
     const r = await month("NVDA");
     expect(r.proposals).toEqual([
       // NVDA never closed back above $236, so nothing came down; the run read $220.55 when it proposed.
       { at: "2026-10-14T18:01", status: "REJECTED", triggerIds: [FLOOR.NVDA], expiresAt: null, withdrawnReason: null, proposedPrice: 220.55 },
-      // A decline still means "not today": the floor and the 6% trail fire together the next day.
-      { at: "2026-11-04T14:35", status: "AWAITING_APPROVAL", triggerIds: [FLOOR.NVDA, TRAIL], expiresAt: null, withdrawnReason: null, proposedPrice: 201.61 },
+      // Declined 11-03. NVDA never closed back above $236, so the floor has fired and stays fired; the 6% trail fires on its own.
+      { at: "2026-11-04T14:35", status: "AWAITING_APPROVAL", triggerIds: [TRAIL], expiresAt: null, withdrawnReason: null, proposedPrice: 201.61 },
     ]);
     expect(r.runs).toBe(2);
     // The four mornings production proposed it again: the read worked, and with the proposal open it asked nothing.
@@ -214,8 +214,10 @@ describe("a trigger's proposal over 2026-10-14 → 11-13", () => {
       // Both broke 10-28. It closed back above $196 that day ($196.81) but not above the trail, so it stayed.
       { at: "2026-10-28T14:10", status: "AWAITING_APPROVAL", triggerIds: [FLOOR.PLTR, TRAIL], expiresAt: null, withdrawnReason: null, proposedPrice: 194.485 },
     ]);
-    // Six runs on 10-15 → 10-22 held without a sale, as in production; then one per proposal.
-    expect(r.runs).toBe(10);
+    // The floor fired 10-15 and the close ($200.50) went back above $196; it fired 10-16 and stayed below through 10-20;
+    // the 10-21 close ($201.72) made it ready, and it fired 10-22. Three runs held without a sale (production: six,
+    // one a day while below); then one per proposal.
+    expect(r.runs).toBe(7);
   });
 });
 
@@ -236,7 +238,7 @@ describe("a trigger's buy and add come down on the close too", () => {
   const order = (over: Record<string, unknown>) => ({ userId: ACCOUNT, environment: "LIVE", side: "BUY", orderType: "MARKET", status: "AWAITING_APPROVAL", expiresAt: null, closeReason: null, closeSource: null, ...over });
 
   it("ABBV 10-19: the buy above $285.42, proposed at $285.76, closed at $282.68: withdrawn, and the staged position with it", async () => {
-    const ENTER = { id: "9e61601d", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 285.42 }, rationale: "(not kept)", cooldownDays: 1, lastFiredAt: "2026-10-19T13:35:05.000Z" };
+    const ENTER = { id: "9e61601d", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "above", value: 285.42 }, rationale: "(not kept)", lastFiredAt: "2026-10-19T13:35:05.000Z" };
     const db = prismaDouble({
       account: [accountRow({ id: ACCOUNT, requireApprovalSellsLive: true, requireApprovalBuysLive: true, triggers: [], triggersSeededAt: new Date("2026-09-18T12:00:00Z") })],
       agentConfig: [agentConfigRow({ id: SECULAR, accountId: ACCOUNT, userId: ACCOUNT, tradingEnvironment: "LIVE", triggers: [] })],
@@ -250,7 +252,7 @@ describe("a trigger's buy and add come down on the close too", () => {
   });
 
   it("WST 10-29: the add on a 7% day, proposed at $432.50; it closed up 3.2%: withdrawn, the holding untouched", async () => {
-    const ADD = { id: "1aba586f-cd45-4bbd-82da-d651f1e2802a", action: "ADD", source: "DEFAULT", fireMode: "ASK_NOW", predicate: { is: "above", value: 7, watch: "move", variable: "prev_close" }, rationale: "(not kept)", cooldownDays: 3 };
+    const ADD = { id: "1aba586f-cd45-4bbd-82da-d651f1e2802a", action: "ADD", source: "DEFAULT", fireMode: "ASK_NOW", predicate: { is: "above", value: 7, watch: "move", variable: "prev_close" }, rationale: "(not kept)"};
     const db = prismaDouble({
       account: [accountRow({ id: ACCOUNT, requireApprovalSellsLive: true, requireApprovalBuysLive: true, triggers: [ADD], triggersSeededAt: new Date("2026-09-18T12:00:00Z") })],
       agentConfig: [agentConfigRow({ id: SECULAR, accountId: ACCOUNT, userId: ACCOUNT, tradingEnvironment: "LIVE", triggers: [] })],

@@ -6,7 +6,6 @@
  */
 
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
-import { stampWrittenPrice } from "@/lib/agent/triggers/written-price";
 import { freshQuotePrice } from "@/lib/market-data/quote-age";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -16,9 +15,9 @@ import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { triggersInputArraySchema } from "@/lib/agent/triggers/schema";
 import { mergeTriggers, applyTriggerDefaults } from "@/lib/agent/triggers/defaults";
-import { buyAlreadyTrue, checkLadder } from "@/lib/agent/triggers/ops";
+import { checkLadder } from "@/lib/agent/triggers/ops";
 import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
-import { actionProblem } from "@/lib/agent/triggers/condition";
+import { actionProblem, POSITION_ON_A_WATCH, readsThePosition, shapeOf } from "@/lib/agent/triggers/condition";
 import { fireModeProblem } from "@/lib/agent/triggers/fire-mode";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -546,13 +545,11 @@ export const recordThesis = defineTool({
       // the watchlist screen keeps visible. Nothing replaces them — what was
       // missing was a screen, not another rule.
 
-      // The price the stock is at: a buy trigger is stamped with it
-      // (./written-price) and a soft watch's first line carries it. Fresh
-      // quote first, the caller's `current_price` second. A buy's side is
-      // the trigger's own (`is: above` or `below`), as the analyst wrote it.
+      // The price the stock is at: the CREATED row carries it. Fresh quote
+      // first, the caller's `current_price` second.
       let quoteForEntrySide: number | null = null;
-      let freshForStamp: number | null = null;
-      // A PASS has no buy to stamp, so it skips the quote — but a
+      let freshPrice: number | null = null;
+      // A PASS has no buy, so it skips the quote — but a
       // SOFT WATCH is a PASS that keeps watching, and its coverage row is
       // measured from the price on the day it opened. Without a quote its
       // CREATED row carried no price and the row had nothing to anchor to
@@ -561,7 +558,7 @@ export const recordThesis = defineTool({
         try {
           const q = await getStockQuote(args.ticker);
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
-          freshForStamp = freshQuotePrice(q, new Date());
+          freshPrice = freshQuotePrice(q, new Date());
         } catch {
           /* handled below — the caller's price */
         }
@@ -576,7 +573,7 @@ export const recordThesis = defineTool({
       // ── The triggers ──────────────────────────────────────────────────
       // Built before the row hits the DB so the ladder check below can
       // refuse a list that can't stand (a holding with no sale, or a buy).
-      let mergedTriggers: Trigger[] = (() => {
+      const mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
         if (args.direction === "PASS" && !passKeepsWatch) {
@@ -602,20 +599,18 @@ export const recordThesis = defineTool({
         return applyTriggerDefaults(mergeTriggers([], supplied));
       })();
 
-      // Every buy trigger carries the price it was written at, so a level set
-      // on a down day isn't judged against yesterday's close (./written-price).
-      mergedTriggers = stampWrittenPrice([], mergedTriggers, freshForStamp, new Date());
-
-      // A buy already true at the price it is written at can never cross (the same rule as an added one).
-      const deadBuy = mergedTriggers.map((t) => buyAlreadyTrue(t, quoteForEntrySide)).find(Boolean);
-      if (deadBuy) {
-        return { summary: `Thesis rejected for ${args.ticker}: a buy already true at the price never fires.`, data: { thesis_id: null, status: "FAILED" as const, note: deadBuy }, sources: [] };
-      }
-
       // A new thesis is a watch: a sale on it is refused with the fix (STOP_WATCHING), as an added one is.
       const wrongAction = mergedTriggers.map((t) => actionProblem(t.action, { held: false })).find(Boolean);
       if (wrongAction) {
         return { summary: `Thesis rejected for ${args.ticker}: a sale on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: wrongAction }, sources: [] };
+      }
+      // ...and a watch carries watch triggers: one on our position waits for the buy.
+      const onPosition = mergedTriggers.find((t) => {
+        const w = shapeOf(t.predicate);
+        return w != null && readsThePosition(w);
+      });
+      if (onPosition) {
+        return { summary: `Thesis rejected for ${args.ticker}: a trigger on our position on a stock we only watch.`, data: { thesis_id: null, status: "FAILED" as const, note: POSITION_ON_A_WATCH }, sources: [] };
       }
 
       // ── The ladder check (shared with update_thesis) ─────────────────
@@ -638,7 +633,7 @@ export const recordThesis = defineTool({
       // A buy trigger's own price, when it has one: the re-buy-after-a-sale guard below reads it.
       const buyLevel = mergedTriggers.filter((t) => t.action === "ENTER").map(typedPriceOf).find((p) => p != null) ?? null;
       // What the stock cost when this was written, for the Activity rows below.
-      const priceNow = freshForStamp ?? quoteForEntrySide ?? null;
+      const priceNow = freshPrice ?? quoteForEntrySide ?? null;
 
       // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
       // The agent may pass either the legacy plain-string args
@@ -731,7 +726,7 @@ export const recordThesis = defineTool({
         variantView: args.variant_view ?? null,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final
-        // array (defaults + agent + cooldown) BEFORE the row hits the
+        // array (defaults + agent) BEFORE the row hits the
         // DB. See the build block above for the templating rules.
         triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,

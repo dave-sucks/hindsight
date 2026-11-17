@@ -346,7 +346,7 @@ describe("validateThesisDecision — trigger action-set by position state", () =
     const review = (predicate: Record<string, unknown>) => ({ action: "REVIEW", fireMode: "ASK_NOW", predicate, rationale: "Any 8-K other-events filing from Praxis." });
     const filing = { watch: "filing", value: "item:8.01" };
     const line = { watch: "price", is: "below", value: "sma50" };
-    for (const predicate of [filing, line, { match: "any", conditions: [filing, line] }]) {
+    for (const predicate of [filing, line, { match: "all", conditions: [filing, line] }]) {
       const v = validateThesisDecision({ ...validLong, triggers: [review(predicate)] as never }, mintOpts);
       expect(v.decision?.triggers).toEqual([review(predicate)]);
       expect(v.decision?.dropped).toBeUndefined();

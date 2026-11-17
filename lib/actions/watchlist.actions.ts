@@ -259,7 +259,6 @@ function buildSeedTriggers(
       action: "REVIEW",
       rationale: `Look again if it drops to $${wake.below}.`,
       source: "PRINCIPAL",
-      cooldownDays: 1,
     });
   }
   if (wake?.above != null) {
@@ -269,7 +268,6 @@ function buildSeedTriggers(
       action: "REVIEW",
       rationale: `Look again if it reaches $${wake.above}.`,
       source: "PRINCIPAL",
-      cooldownDays: 1,
     });
   }
   return out;

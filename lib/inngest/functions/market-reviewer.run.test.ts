@@ -285,7 +285,7 @@ describe("the 7:30 Market Reviewer", () => {
         id, ticker, status: "WATCHING", direction: null, horizon: "COMPOUNDER", setupId: null,
         coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
         entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, createdAt: new Date("2026-10-01T00:00:00Z"), lastReviewedAt: null,
-        triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r", cooldownDays: 7 }],
+        triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r"}],
       });
     const seed = { thesis: [watch("t_mu", "MU"), watch("t_asml", "ASML")], sharedNote: notes.map((n) => ({ ...n, userId: REPLAY_USER_ID })) };
     // This file's own database mock (for the job) answers before the replay's, so it holds the replay's seed.

@@ -15,11 +15,12 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { TriggerOp } from "@/lib/agent/triggers/ops";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { TRIGGER_LIST_NAME, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
-import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type TemplatePredicate } from "./setups";
+import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import { playbookChecks } from "@/lib/agent/analyst-brief";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
-  .pick({ action: true, rationale: true, fireMode: true, trimPct: true, cooldownDays: true })
+  .pick({ action: true, rationale: true, fireMode: true, trimPct: true })
   .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON) })
   .superRefine((t, ctx) => {
     const refuse = (message: string) => ctx.addIssue({ code: "custom", message });
@@ -72,11 +73,28 @@ export function playbookTriggerText(templates: Template[] | null, on: WrittenOn)
   return [
     `${TRIGGER_LIST_NAME[on]}:`,
     ...mine.map((t) => {
-      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}) };
+      // A trim's size travels with the buy's triggers (place_trade takes it).
+      const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
+      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
       return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
     }),
     ...(marks.length ? [`Where each chart number comes from: ${marks.map((m) => `${m} ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
   ];
+}
+
+/**
+ * The playbooks an analyst writes a stock's triggers from, each with its words
+ * and its watch triggers as Settings → Playbook lists them. The Writer and the
+ * trigger run that answers a watch's review read this one block.
+ */
+export function playbooksBlock(setups: readonly Setup[], playbooks: ((setupId: string) => Template[]) | null): string {
+  if (!setups.length) return "";
+  return `
+═══════════════════════════════════════════════════════════════════
+YOUR PLAYBOOKS — the ones you write a stock's triggers from
+═══════════════════════════════════════════════════════════════════
+${setups.map((s) => [...playbookChecks(s), ...playbookTriggerText(playbooks ? playbooks(s.id) : null, "WATCH")].join("\n  ")).join("\n\n")}
+`;
 }
 
 /**

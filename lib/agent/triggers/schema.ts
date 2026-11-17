@@ -83,15 +83,14 @@ function buildPredicateInputSchema() {
   // run stopped writing triggers at all (0 of 8 re-priced, 3 bought into the dip); as `anyOf`, 8 of 8.
   const condition = z.union(branches, { error: (iss) => explain(iss.input) }).meta({ id: "Condition" });
   const stored = condition.transform((c) => toStored(c as AgentCondition));
+  // Two or more conditions that must all hold. "Either one" is two triggers.
   const group = z.object({
-    match: z.enum(["all", "any"]).describe("all = every condition holds; any = one does."),
+    match: z.literal("all").describe("Every condition must hold. For either one, write two triggers."),
     conditions: z.array(stored).min(2).max(8),
   });
   return z
-    .union([stored, z.object({ match: group.shape.match, conditions: z.array(z.union([stored, group])).min(2).max(8) })], {
-      error: (iss) => explain(iss.input),
-    })
-    .describe("One condition, or { match, conditions } for two or more.")
+    .union([stored, group], { error: (iss) => explain(iss.input) })
+    .describe("One condition, or { match: \"all\", conditions } for two or more that must all hold.")
     .superRefine((w, ctx) => {
       const refused = refusalOf(w);
       if (refused) ctx.addIssue({ code: "custom", message: refused });
@@ -163,7 +162,7 @@ export const triggerActionSchema = z.enum(["REVIEW", "EXIT", "ENTER", "ADD", "TR
 
 export const triggerSchema = z.object({
   // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
-  // any trigger without one (parseTriggers), and lastFiredAt cooldown
+  // any trigger without one (parseTriggers), and the lastFiredAt
   // stamping keys off it. The LLM never supplies an id (it's an internal
   // field), so we GENERATE one here via .default() when omitted. Before
   // 2026-06-02 this was a bare .optional() whose "auto-generated if
@@ -183,28 +182,8 @@ export const triggerSchema = z.object({
     .describe(
       "The note the owner reads: why it's here and what you'll do when it fires. e.g. 'A close under the 50-day average on heavy volume breaks the pullback, so I sell.'",
     ),
-  cooldownDays: z
-    .number()
-    .int()
-    .min(0)
-    .max(90)
-    .optional()
-    .describe(
-      // Description-level discipline — the agent reads this when picking
-      // a value. Runtime enforcement lives in the read/write paths
-      // (applyTriggerDefaults overwrites bad 0s at write time,
-      // shouldFire falls back to the per-kind default at evaluation time).
-      // Not enforced by Zod .refine() here because triggersArraySchema is
-      // ALSO used at disk-read time (trigger-evaluator parseTriggers,
-      // get-theses, thesis-sheet-state, tactical-run, live-evaluate). A
-      // refine() that rejects legacy bad-shape rows would fail the whole
-      // array parse and silently drop ALL triggers on that thesis —
-      // including the legitimate EXIT stops sitting next to the bad
-      // REVIEW. That's the same silent-failure shape PR #371 just fixed
-      // for the id-less bug; don't re-introduce it.
-      "Don't re-fire this trigger more than once per N days. Omit it to use the default (an earnings result 7, price and chart conditions 1, a review schedule its own interval) — the right answer in almost every case. 0 is for EXIT triggers only; on any other action the runtime replaces it with the default.",
-    ),
   lastFiredAt: z.string().datetime().optional(),
+  falseAtCloseAt: z.string().datetime().optional().describe("Evaluator-stamped: when a close last found it false after it fired. Do not set."),
   firedFilings: z
     .array(z.string())
     .max(50)
@@ -215,16 +194,6 @@ export const triggerSchema = z.object({
     .max(8)
     .optional()
     .describe("Evaluator-stamped on an earnings heads-up: the report dates it has fired for. Do not set."),
-  writtenPrice: z
-    .number()
-    .positive()
-    .optional()
-    .describe("Server-stamped on a buy or review trigger when it is written. Do not set — any supplied value is overwritten."),
-  writtenAt: z
-    .string()
-    .datetime()
-    .optional()
-    .describe("Server-stamped with writtenPrice. Do not set."),
   // No .default(): this is also the read gate, and the write paths stamp the action's default (./fire-mode).
   fireMode: z
     .enum(FIRE_MODES)
@@ -260,8 +229,7 @@ export const triggersArraySchema = z
  * without the fields only the server writes. `id` is minted on the way in
  * (ops.ts: `trigger.id || mintId()`; record_thesis mints for the triggers
  * it stores directly), and the evaluator and the write paths stamp
- * `lastFiredAt`, `firedFilings`, `firedReports`, `writtenPrice`, `writtenAt`
- * and `source`. Each of those used to sit in the tool definition saying
+ * `lastFiredAt`, `falseAtCloseAt`, `firedFilings`, `firedReports` and `source`. Each of those used to sit in the tool definition saying
  * "do not set" — and `id` carried its `.default(() => randomUUID())`, which
  * the SDK re-ran on every request, so every request's tool definition held
  * a different id. OpenAI caches an exact prefix, so the cache stopped at
@@ -275,14 +243,10 @@ export const triggerInputSchema = triggerSchema
     lastFiredAt: true,
     firedFilings: true,
     firedReports: true,
-    writtenPrice: true,
-    writtenAt: true,
+    falseAtCloseAt: true,
     source: true,
     // A trim's size is the owner's (the dialog); an agent's trim sells the default half unless the run names another.
     trimPct: true,
-    // The wait is the app's: a trade asks once a day, a review on its measure's clock. Agents could set
-    // 0–90 days until 2026-11-02; a 0 on CEG's sale woke a run every five minutes. A sent value is dropped.
-    cooldownDays: true,
   })
   .extend({
     predicate: predicateInputSchema(),
@@ -310,7 +274,7 @@ export const editTriggerOpSchema = z.looseObject({
   action: triggerActionSchema.optional(),
   fire_mode: z.enum(FIRE_MODES).optional(),
   rationale: z.string().optional().describe("REQUIRED when the value changes — the sentence moves with the number."),
-  close: z.boolean().optional().describe("A price level: true fires only on the 16:20 close pass; false = intraday."),
+  close: z.boolean().optional().describe("A typed price or an average: true fires only on the 16:20 close pass; false = intraday."),
 });
 
 /**
@@ -335,33 +299,19 @@ export type TriggerInput = z.infer<typeof triggerSchema>;
 // the whole array, so every rung on that thesis silently disappears.
 //
 // This is not theoretical. On 2026-08-16, GD / ASML / ETN each carried a
-// review rung with cooldownDays of 144 / 144 / 292 against
-// the schema's max of 90 — and all 8 / 8 / 6 of their rungs, entry
-// triggers included, were being discarded on every read. No error, no
+// review rung with an out-of-range number, and all 8 / 8 / 6 of their rungs,
+// entry triggers included, were being discarded on every read. No error, no
 // alert. Same silent-failure shape as the id-less bug of 2026-06.
 //
-// The file already warns about exactly this hazard for `.refine()`
-// ("would fail the whole array parse and silently drop ALL triggers on
-// that thesis") — the `.max(90)` on cooldownDays does the same thing and
-// nobody noticed.
-//
-// So the read path parses rung-by-rung and repairs what it can:
-//   • cooldownDays out of range → CLAMPED into [0, 90]. A 292-day
-//     cooldown means "basically never re-fire"; 90 is close enough, and
-//     keeping the rung beats losing it.
-//   • anything else invalid   → that ONE rung is dropped, loudly. The
-//     rest of the ladder survives.
-//
-// The write paths keep using `triggersArraySchema` directly and stay
-// strict — bad input should be refused at the door, not repaired.
-
-const MAX_COOLDOWN_DAYS = 90;
+// So the read path parses rung-by-rung: anything invalid drops that ONE
+// rung, loudly, and the rest of the ladder survives. A field this schema no
+// longer has (the wait, `cooldownDays`, deleted 2026-11-17) is dropped by the
+// parse, not the rung. The write paths keep using `triggersArraySchema`
+// directly and stay strict.
 
 export interface ResilientParseResult {
   triggers: TriggerInput[];
-  /** Rungs whose cooldown was out of range and got clamped. */
-  clamped: number;
-  /** Rungs that could not be repaired and were dropped. */
+  /** Rungs that could not be read and were dropped. */
   dropped: number;
 }
 
@@ -371,30 +321,15 @@ export function parseTriggersResilient(raw: unknown): ResilientParseResult {
     const whole = triggersArraySchema.safeParse(raw ?? []);
     return {
       triggers: whole.success ? whole.data : [],
-      clamped: 0,
       dropped: 0,
     };
   }
 
   const triggers: TriggerInput[] = [];
-  let clamped = 0;
   let dropped = 0;
 
   for (const entry of raw) {
     let candidate = entry;
-    // Repair pass: clamp an out-of-range cooldown before validating.
-    if (
-      candidate &&
-      typeof candidate === "object" &&
-      typeof (candidate as { cooldownDays?: unknown }).cooldownDays === "number"
-    ) {
-      const cd = (candidate as { cooldownDays: number }).cooldownDays;
-      const fixed = Math.min(Math.max(Math.round(cd), 0), MAX_COOLDOWN_DAYS);
-      if (fixed !== cd) {
-        candidate = { ...(candidate as object), cooldownDays: fixed };
-        clamped++;
-      }
-    }
     // A fire mode this code doesn't know reads as unset (the action's default) rather than losing the rung.
     if (candidate && typeof candidate === "object" && "fireMode" in candidate && !isFireMode((candidate as { fireMode?: unknown }).fireMode)) {
       console.error("[triggers] an unknown fire mode reads as the action's default:", (candidate as { id?: unknown }).id);
@@ -415,5 +350,5 @@ export function parseTriggersResilient(raw: unknown): ResilientParseResult {
     );
   }
 
-  return { triggers, clamped, dropped };
+  return { triggers, dropped };
 }

@@ -12,7 +12,7 @@ import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 type Row = Record<string, unknown>;
 
-const T = (id: string, says: string, extra: Row = {}): Row => ({ id, says, setBy: "AGENT", cooldownDays: 1, ...extra });
+const T = (id: string, says: string, extra: Row = {}): Row => ({ id, says, setBy: "AGENT", ...extra });
 
 /** CRWD, held, in two situations: the same facts the sheet on the page shows. */
 export const CRWD_ROW: Row = {

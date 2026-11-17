@@ -10,6 +10,7 @@ import type { TriggerAction } from "../types";
 import { measureOf } from "./catalog";
 import type { When } from "./types";
 import { conditionsOf } from "./types";
+import { isWindowIn } from "./rules";
 
 /** The order the dialog lists them in. */
 export const DIALOG_ACTIONS: readonly TriggerAction[] = ["ENTER", "ADD", "TRIM", "EXIT", "STOP_WATCHING", "REVIEW"];
@@ -35,7 +36,8 @@ export function actionProblem(action: string, ctx: { held: boolean; standing?: b
  */
 export function allowedActions(w: When, ctx: { held: boolean; standing: boolean }): TriggerAction[] {
   const listed = conditionsOf(w).reduce<readonly TriggerAction[]>((acc, c) => {
-    const own = measureOf(c).actions;
+    // A window bounds the others: they decide what the trigger does.
+    const own = isWindowIn(w, c) ? undefined : measureOf(c).actions;
     return own ? acc.filter((a) => own.includes(a)) : acc;
   }, DIALOG_ACTIONS);
   return listed.filter((a) => {

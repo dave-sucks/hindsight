@@ -151,8 +151,7 @@ describe("exactly on the line", () => {
 
   it.each(all.map((x) => [x.on, JSON.stringify(x.c), x.holds, x] as const))("%s: %s holds = %s", (_on, _c, holds, { c, ctx }) => {
     expect(SHAPE_CHECKER.holds(c, ctx)).toBe(holds);
-    for (const action of ["EXIT", "REVIEW"] as const) {
-      if (action === "REVIEW" && SHAPE_CHECKER.readsPrice(c)) continue;
+    for (const action of ["EXIT", "REVIEW", "ENTER"] as const) {
       const t: Trigger = { id: "t", predicate: c, action, rationale: "" };
       expect(shouldFire(t, ctx).fires).toBe(holds);
     }

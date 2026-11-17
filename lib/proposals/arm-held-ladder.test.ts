@@ -113,6 +113,19 @@ describe("armHeldLadderOnFill", () => {
     expect(armed.some((t) => t.action === "REVIEW")).toBe(true);
   });
 
+  it("ACN 11-17: the three buys the Or split into all come off, the one that fired and the two that didn't", async () => {
+    const acn = (await import("@/lib/agent/__fixtures__/acn-buys-2026-11-17.json")).default as { migrated: Array<{ id: string; action: string; playbook?: string }> };
+    // Hand-written (no playbook mark), so only being a buy takes them off.
+    const buys = acn.migrated.filter((t) => t.action === "ENTER").map(({ playbook: _p, ...t }) => t);
+    thesisFindFirst.mockResolvedValue({ id: "t1", direction: "LONG", catalystDate: null, triggers: buys });
+
+    await armHeldLadderOnFill(BASE);
+
+    const armed = thesisUpdate.mock.calls[0][0].data.triggers as Array<{ action: string; id: string }>;
+    expect(buys).toHaveLength(3);
+    expect(armed.filter((t) => buys.some((b) => b.id === t.id))).toEqual([]);
+  });
+
   it("is a no-op when the analyst has no WATCHING thesis on the ticker", async () => {
     thesisFindFirst.mockResolvedValue(null);
     await armHeldLadderOnFill(BASE);

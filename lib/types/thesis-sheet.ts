@@ -22,8 +22,9 @@ export interface Trigger {
   predicate: When;
   action: string;
   rationale: string;
-  cooldownDays?: number;
   lastFiredAt?: string;
+  /** When a close last found it false after it fired (lib/agent/triggers/evaluate, firedSinceFalseClose). */
+  falseAtCloseAt?: string;
   /** On fire (lib/agent/triggers/fire-mode). Absent ⇒ the action's default. */
   fireMode?: FireMode;
   /** An Auto-trim: the % it sells. */

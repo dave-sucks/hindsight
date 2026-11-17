@@ -84,7 +84,7 @@ describe("the row a situation builds (CEG, held)", () => {
     expect(row.would_prove_it_wrong).toBeDefined();
     expect(row.triggers).toBeDefined();
   });
-  it("a buy level reached: the chart numbers, the Street and the setup come with it", () => {
+  it("a buy price reached: the chart numbers, the Street and the setup come with it", () => {
     const row = rowForModel(saved(["BUY_ARRIVES"]), { named: false, size: "short" }) as Row;
     for (const k of ["chart", "street", "setup"]) expect([k, k in row]).toEqual([k, true]);
     for (const k of ["bull_case", "would_prove_it_wrong", "company"]) expect([k, k in row]).toEqual([k, false]);

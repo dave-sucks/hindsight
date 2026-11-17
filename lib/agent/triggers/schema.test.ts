@@ -16,9 +16,8 @@ const good = {
   predicate: { watch: "price", is: "below", value: 64 },
   action: "EXIT",
   rationale: "hard stop",
-  cooldownDays: 0,
 };
-/** The exact shape that was discarding whole ladders. */
+/** A rung stored with the wait (cooldownDays, 292 days: the shape that once discarded whole ladders), deleted 2026-11-17. */
 const badCooldown = {
   id: "t2",
   predicate: { watch: "repeat", value: 180 },
@@ -34,24 +33,11 @@ const unrepairable = {
 };
 
 describe("parseTriggersResilient", () => {
-  it("keeps the good rungs when one has an out-of-range cooldown", () => {
-    // The regression: strict parsing returns nothing at all here.
-    expect(triggersArraySchema.safeParse([good, badCooldown]).success).toBe(false);
-
+  it("a rung stored with the deleted wait is kept, the wait dropped", () => {
     const r = parseTriggersResilient([good, badCooldown]);
     expect(r.triggers).toHaveLength(2);
-    expect(r.clamped).toBe(1);
     expect(r.dropped).toBe(0);
-  });
-
-  it("clamps the cooldown into range rather than dropping the rung", () => {
-    const r = parseTriggersResilient([badCooldown]);
-    expect(r.triggers[0].cooldownDays).toBe(90);
-  });
-
-  it("clamps a negative cooldown to zero", () => {
-    const r = parseTriggersResilient([{ ...badCooldown, cooldownDays: -5 }]);
-    expect(r.triggers[0].cooldownDays).toBe(0);
+    expect(r.triggers[1]).not.toHaveProperty("cooldownDays");
   });
 
   it("drops only the unrepairable rung and keeps the rest", () => {
@@ -64,7 +50,7 @@ describe("parseTriggersResilient", () => {
 
   it("leaves a clean ladder untouched", () => {
     const r = parseTriggersResilient([good]);
-    expect(r).toMatchObject({ clamped: 0, dropped: 0 });
+    expect(r).toMatchObject({ dropped: 0 });
     expect(r.triggers).toHaveLength(1);
   });
 

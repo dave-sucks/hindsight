@@ -42,7 +42,7 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
 
   it("the four answers, the call that puts one back on watch and how the rest clears are SOLD_ONE_REVIEW's", () => {
     const g = SITUATIONS.SOLD_ONE_REVIEW.guidance;
-    expect(g).toContain("Keep watching with a re-entry level priced off today's chart.");
+    expect(g).toContain("Keep watching with a buy priced off today's chart.");
     expect(g).toContain("Keep watching on a review cadence.");
     expect(g).toContain("Keep watching with nothing set (legal, and it costs nothing).");
     expect(g).toContain("Let it go.");

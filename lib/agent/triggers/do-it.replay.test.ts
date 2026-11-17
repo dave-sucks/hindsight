@@ -20,29 +20,29 @@ const CATALYST = { id: "cmmmh0wxu000004js7yoyzvlf", name: "Catalyst Event PM", m
 const PEAD = { id: "cmnhxpjio000004jvox6kl6c7", name: "PEAD Specialist", minPositionSize: 3000, maxPositionSize: 14000, maxPositionTotal: 28000, maxOpenPositions: 6, riskPct: 1 };
 const APPROVALS = accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true, requireApprovalBuysPaper: true, requireApprovalSellsPaper: true });
 
-const TRV_BUY: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 };
+const TRV_BUY: Trigger = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70."};
 const TRV = {
   id: "cmum3c72c000h04jp9ztyxxko", ticker: "TRV", status: "WATCHING", direction: "LONG", horizon: "COMPOUNDER", setupId: "BASE_BREAKOUT", conviction: "HIGH", scoring: { composite: 8 },
   entryPrice: 398.7, targetPrice: 431.5, stopLoss: 382.4, analystId: SECULAR.id,
   triggers: [
     TRV_BUY,
-    { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "STOP_WATCHING", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4, settings: { close: true } }, rationale: "Under the recent swing-high-turned-support area.", cooldownDays: 1 },
-    { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 431.5 }, rationale: "The 1.272 extension.", cooldownDays: 1 },
+    { id: "aaf8dc78-a969-495d-ab0a-6bb95b55fe66", action: "STOP_WATCHING", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 382.4, settings: { close: true } }, rationale: "Under the recent swing-high-turned-support area."},
+    { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 431.5 }, rationale: "The 1.272 extension."},
   ],
 };
 const CORT = {
   id: "cmuhp4n4e000e04kx3vkxm5lr", ticker: "CORT", status: "WATCHING", direction: "LONG", horizon: "CATALYST", setupId: "PRE_CATALYST", conviction: "HIGH", scoring: { composite: 9 },
   entryPrice: 126.38, targetPrice: 152.11, stopLoss: null, analystId: CATALYST.id,
   triggers: [
-    { id: "3e5db9a6-8ba6-46e6-8e00-d237ba4a7e7a", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 126.38, settings: { close: true } }, rationale: "I buy when it breaks above $126.38.", cooldownDays: 1 },
-    { id: "94477111-596d-44f1-997a-fecd4e35cc90", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 152.11 }, rationale: "The 1.272 extension.", cooldownDays: 1 },
+    { id: "3e5db9a6-8ba6-46e6-8e00-d237ba4a7e7a", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 126.38, settings: { close: true } }, rationale: "I buy when it breaks above $126.38."},
+    { id: "94477111-596d-44f1-997a-fecd4e35cc90", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 152.11 }, rationale: "The 1.272 extension."},
   ],
 };
-const IOT_TRIM: Trigger = { id: "trim-test", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 47.47 }, rationale: "Take some at the 52-week high.", cooldownDays: 1 };
+const IOT_TRIM: Trigger = { id: "trim-test", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 47.47 }, rationale: "Take some at the 52-week high."};
 const IOT = {
   id: "cmu062bge000004jtd1aqp304", ticker: "IOT", status: "HOLDING", direction: "LONG", horizon: "TARGET", setupId: "NONE", conviction: "LOW", scoring: { composite: 8 },
   entryPrice: 42.695, targetPrice: 52, stopLoss: 41.42, analystId: PEAD.id,
-  triggers: [{ id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", fireMode: "DO_IT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under the $41.42 floor.", cooldownDays: 0 }, IOT_TRIM],
+  triggers: [{ id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", fireMode: "DO_IT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under the $41.42 floor."}, IOT_TRIM],
 };
 const IOT_POSITION = positionRow({ id: "cmv9m90g0000a06l3zv45o24s", symbol: "IOT", analystId: PEAD.id, environment: "LIVE", quantity: 300, initialQty: 300, avgCost: 42.695, peakPrice: 43.62, stopLoss: 41.42, targetPrice: 47 });
 

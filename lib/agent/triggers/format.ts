@@ -7,7 +7,7 @@
  * Pure, safe to import anywhere.
  */
 
-import { sentenceOf } from "./condition/describe";
+import { firedSinceFalseClose, firesAgainWords, sentenceOf } from "./condition/describe";
 import { defaultFireMode, type FireMode } from "./fire-mode";
 
 /**
@@ -59,7 +59,7 @@ export function levelBadgeLabel(
  * itself is never sent as data: the sentence is the one vocabulary.
  */
 export function triggerForAgent(
-  t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: FireMode; trimPct?: number; lastFiredAt?: string; source?: string; cooldownDays?: number },
+  t: { id: string; action: string; predicate: unknown; rationale?: string; fireMode?: FireMode; trimPct?: number; lastFiredAt?: string; falseAtCloseAt?: string; source?: string },
 ) {
   return {
     id: t.id,
@@ -67,8 +67,9 @@ export function triggerForAgent(
     ...(t.rationale ? { rationale: t.rationale } : {}),
     // On fire, said only when it isn't the action's default (the tools' fire_mode names the defaults).
     ...(t.fireMode && t.fireMode !== defaultFireMode(t.action) ? { fireMode: t.fireMode } : {}),
-    ...(t.cooldownDays != null ? { cooldownDays: t.cooldownDays } : {}),
     ...(t.lastFiredAt ? { lastFiredAt: t.lastFiredAt } : {}),
+    // Fired and still true at every close since: when it can fire again, in words.
+    ...(firedSinceFalseClose(t) ? { firesAgain: firesAgainWords(t) } : {}),
     ...(t.source ? { setBy: t.source } : {}),
   };
 }

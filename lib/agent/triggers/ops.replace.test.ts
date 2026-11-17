@@ -18,7 +18,6 @@ const trail: Trigger = {
   action: "EXIT",
   rationale: "Give back 25% from the high and the run is over.",
   lastFiredAt: "2026-09-28T15:20:00.000Z",
-  cooldownDays: 1,
   source: "AGENT",
 };
 const floor: Trigger = {
@@ -58,13 +57,13 @@ beforeEach(() => {
 });
 
 describe("replace — same slot", () => {
-  it("keeps the id, the fire history and the cooldown, and stores the reason sent with the new number", () => {
+  it("keeps the id, starts the fire state fresh for the new number, and stores the reason sent with it", () => {
     const out = run({ id: "trail", trigger: built({ predicate: { watch: "move", is: "below", value: 20, variable: "peak" }, action: "EXIT" }) });
     expect(out.results).toEqual([expect.objectContaining({ ok: true, id: "trail" })]);
     const t = out.triggers.find((x) => x.id === "trail")!;
     expect(t.predicate).toEqual({ watch: "move", is: "below", value: 20, variable: "peak" });
-    expect(t.lastFiredAt).toBe(trail.lastFiredAt);
-    expect(t.cooldownDays).toBe(1);
+    // A changed condition is a new trigger to fire: it fires when it is true (2026-11-17).
+    expect(t.lastFiredAt).toBeUndefined();
     expect(t.rationale).toBe("A trigger set by hand.");
     expect(t.source).toBe("PRINCIPAL");
   });

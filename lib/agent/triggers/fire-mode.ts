@@ -4,7 +4,6 @@
  * on a sale or trim). Pure.
  */
 
-import { sentenceOf } from "./condition/describe";
 
 export const FIRE_MODES = ["DO_IT", "ASK_NOW", "NEXT_MORNING"] as const;
 export type FireMode = (typeof FIRE_MODES)[number];
@@ -92,10 +91,6 @@ export function approvalLine(
   return live && paper ? "Waits for your approval." : live ? "Waits for your approval on Live." : paper ? "Waits for your approval on Paper." : null;
 }
 
-/** The Activity line when an Auto buy, add or trim is used and comes off the stock: "Used once: Trim 30% if above $150 (Auto-trim)". */
-export function usedOnceLine(t: { action: string; predicate: unknown; trimPct?: number | null }): string {
-  return `Used once: ${sentenceOf(t)} (${fireModeLabel("DO_IT", t.action)})`;
-}
 
 /** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
 export function fireModeWords(t: { action: string; fireMode?: FireMode | null }): string {

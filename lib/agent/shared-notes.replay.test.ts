@@ -22,7 +22,7 @@ const watch = (id: string, ticker: string) =>
     id, ticker, status: "WATCHING", direction: null, horizon: "COMPOUNDER", setupId: null,
     coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
     entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, createdAt: ago(3), lastReviewedAt: null,
-    triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r", cooldownDays: 7 }],
+    triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r"}],
   });
 
 const sharedNote = (over: Record<string, unknown>) => ({

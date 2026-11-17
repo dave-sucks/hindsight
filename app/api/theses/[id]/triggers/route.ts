@@ -1,10 +1,10 @@
 /**
  * POST /api/theses/:id/triggers — add a new Price/Trailing trigger.
  *
- * Body: { action, predicate, fireMode?, trimPct?, rationale?, cooldownDays? }. The
+ * Body: { action, predicate, fireMode?, trimPct?, rationale? }. The
  * trigger is validated by the same Zod schema the agent write-paths use
  * (invalid triggers are silently dropped at evaluation, so we reject them up
- * front), cooldown-defaulted, and — when it's the canonical stop/target —
+ * front), its fire mode defaulted, and — when it's the canonical stop/target —
  * mirrored onto Thesis + the open Position. A fired EXIT still flows through
  * the trigger pipeline + approval gate; this only persists the predicate.
  *
@@ -48,7 +48,6 @@ export async function POST(
     fireMode?: unknown;
     trimPct?: unknown;
     rationale?: unknown;
-    cooldownDays?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -74,10 +73,6 @@ export async function POST(
     fireMode: body.fireMode ?? undefined,
     trimPct: typeof body.trimPct === "number" ? body.trimPct : undefined,
     rationale: typeof body.rationale === "string" ? body.rationale : undefined,
-    cooldownDays:
-      typeof body.cooldownDays === "number" && Number.isFinite(body.cooldownDays)
-        ? body.cooldownDays
-        : undefined,
   } as unknown as TriggerAddInput;
 
   try {

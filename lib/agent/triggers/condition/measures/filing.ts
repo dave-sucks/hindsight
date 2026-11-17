@@ -20,18 +20,10 @@ export const filing: MeasureDef = {
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
   says: (_c, words) => `it files ${words}`,
-  // One fire per filing (firedFilings), and filings cluster: no cooldown.
-  cooldownDays: () => 0,
-  // A rule naming a tier is the tier rule, whatever else it names, so it
-  // overrides the tier rule above it. One naming only events adds to it.
-  groupSlot: (cs) => cs.find((c) => tierOf(c.variable)),
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   fits: (c) => event(c.variable) != null,
   shape: "Choose a filing: a tier, an 8-K item or a form.",
-  rule: (c) => eventsProblem([c]),
-  // Several events are one rule when they name at most one tier; then the
-  // rule holds at most 20 items and 10 forms.
-  problemAny: (cs) => (cs.length > 1 && cs.every((c) => event(c.variable)) && cs.filter((c) => tierOf(c.variable)).length <= 1 ? eventsProblem(cs) : undefined),
+  rule: (c) => eventProblem(c),
 };
 
 /** What a filing variable names: a tier, an 8-K item or a form. */
@@ -44,18 +36,13 @@ function event(v: string | undefined): { tier: string } | { item: string } | { f
   return null;
 }
 
-/** The events of one rule: an item code is 4–5 characters (2.01), a form 1–20; at most 20 items and 10 forms. */
-function eventsProblem(cs: readonly Condition[]): string | null {
-  const named = cs.map((c) => event(c.variable));
-  if (named.some((e) => e == null)) return "Choose a filing: a tier, an 8-K item or a form.";
-  const items = named.flatMap((e) => (e && "item" in e ? [e.item] : []));
-  const forms = named.flatMap((e) => (e && "form" in e ? [e.form] : []));
-  if (items.length > 20) return `One filing rule names up to 20 8-K items; this names ${items.length}.`;
-  if (forms.length > 10) return `One filing rule names up to 10 forms; this names ${forms.length}.`;
-  const item = items.find((i) => i.length < 4 || i.length > 5);
-  if (item != null) return `An 8-K item is written like 8.01; ${shown(item)} isn't.`;
-  const form = forms.find((f) => f.length < 1 || f.length > 20);
-  return form == null ? null : `A form name is 1 to 20 characters; ${shown(form)} isn't.`;
+/** What a filing names: an item code is 4–5 characters (2.01), a form 1–20. */
+function eventProblem(c: Condition): string | null {
+  const e = event(c.variable);
+  if (e == null) return "Choose a filing: a tier, an 8-K item or a form.";
+  if ("item" in e && (e.item.length < 4 || e.item.length > 5)) return `An 8-K item is written like 8.01; ${shown(e.item)} isn't.`;
+  if ("form" in e && (e.form.length < 1 || e.form.length > 20)) return `A form name is 1 to 20 characters; ${shown(e.form)} isn't.`;
+  return null;
 }
 
 export const insiders: MeasureDef = {
@@ -79,7 +66,6 @@ export const insiders: MeasureDef = {
     },
   ],
   actions: ["REVIEW"],
-  cooldownDays: () => 30,
   fresh: () => ({ watch: "insiders" }),
   fits: (c) => c.value != null,
   shape: "Insider buying takes a number: how many insiders.",

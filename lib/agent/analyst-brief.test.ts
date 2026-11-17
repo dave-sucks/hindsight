@@ -98,7 +98,7 @@ describe("the Catalyst Event PM's brief", () => {
           "- Max open positions: 5",
         ].join("\n"),
         [
-          "Setups:",
+          "Playbooks:",
           `- ${playbookChecks(getSetup("PRE_CATALYST")!)[0]}`,
           `- ${playbookChecks(getSetup("BASE_BREAKOUT")!)[0]}`,
           `- ${playbookChecks(getSetup("MA_PULLBACK")!)[0]}`,
@@ -118,7 +118,7 @@ describe("the Catalyst Event PM's brief", () => {
 
   it("an analyst with no setups chosen gets no setups block, never the catalog", () => {
     const none = analystBrief({ ...CATALYST, setupIds: [] });
-    expect(none).not.toContain("Setups:");
+    expect(none).not.toContain("Playbooks:");
     expect(none).not.toContain("BASE_BREAKOUT");
   });
 

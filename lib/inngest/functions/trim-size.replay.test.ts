@@ -13,7 +13,7 @@ import { prismaDouble, replayTool, thesisRow, agentConfigRow, accountRow, positi
 import { triggerForAgent } from "@/lib/agent/triggers/format";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
-const TRIM = { id: "5fbb5cdb-e4b3-4559-8703-eaf75798ae79", action: "TRIM", source: "DEFAULT", predicate: { is: "above", value: 16.6, watch: "move", variable: "entry" }, rationale: "Up 16.6% from entry: 2R on a 8.3% stop.", cooldownDays: 7, trimPct: 30 };
+const TRIM = { id: "5fbb5cdb-e4b3-4559-8703-eaf75798ae79", action: "TRIM", source: "DEFAULT", predicate: { is: "above", value: 16.6, watch: "move", variable: "entry" }, rationale: "Up 16.6% from entry: 2R on a 8.3% stop.", trimPct: 30 };
 
 const seed = (fireMode: string) => ({
   thesis: [thesisRow({ id: "cmtg9nbdy000204jpc6cwawgg", ticker: "NVDA", status: "HOLDING", direction: "LONG", horizon: "TARGET", analystId: PEAD, triggers: [{ ...TRIM, fireMode }] })],

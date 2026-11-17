@@ -36,7 +36,7 @@ import { __test__ as reconcile } from "@/lib/inngest/functions/reconcile-orders"
 
 const PROPOSED = 42.21;
 const PAID = 42.695;
-const REVIEW_7D = { id: "8fc79e5c-3682-48de-a0d9-03acce291d71", action: "REVIEW", source: "DEFAULT", fireMode: "NEXT_MORNING", predicate: { value: 7, watch: "repeat" }, rationale: "Look at this every 7 days, counting from the last real review.", cooldownDays: 7 };
+const REVIEW_7D = { id: "8fc79e5c-3682-48de-a0d9-03acce291d71", action: "REVIEW", source: "DEFAULT", fireMode: "NEXT_MORNING", predicate: { value: 7, watch: "repeat" }, rationale: "Look at this every 7 days, counting from the last real review."};
 
 async function buy(opts: { at?: number; setting?: { on: boolean; pct: number }; floor?: Record<string, unknown>; stop?: number } = {}) {
   quote = opts.at ?? 42.755;
@@ -84,7 +84,7 @@ describe("IOT 2026-10-15, stop when buying on at 6%", () => {
   });
 
   it("an owner's floor above the line, which the proposal named as its stop, is left as it is at the approval and at the fill", async () => {
-    const mine = { id: "owner_floor", action: "EXIT", source: "PRINCIPAL", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 41.5 }, rationale: "Sell if below $41.50. You set this.", cooldownDays: 1 };
+    const mine = { id: "owner_floor", action: "EXIT", source: "PRINCIPAL", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 41.5 }, rationale: "Sell if below $41.50. You set this."};
     await buy({ floor: mine, stop: 41.5 });
     expect(floors()).toEqual([{ value: 41.5, fireMode: "ASK_NOW", source: "PRINCIPAL" }]);
     expect(fillLine()?.fieldChanges.triggerOps).toBeUndefined();

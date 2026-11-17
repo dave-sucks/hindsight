@@ -107,7 +107,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
       id: "trg_promoted_enter",
       action: "ENTER",
       predicate: { watch: "price", is: "above", value: 92.5 },
-      cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
     const r = buildResolvedEnvelope({
@@ -167,7 +166,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
       id: "trg_test_enter",
       action: "ENTER",
       predicate: { watch: "price", is: "above", value: 92.5 },
-      cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
     const r = buildResolvedEnvelope({
@@ -185,7 +183,6 @@ describe("buildResolvedEnvelope — actionability classifier", () => {
       id: "trg_test_enter",
       action: "ENTER",
       predicate: { watch: "price", is: "above", value: 92.5 },
-      cooldownDays: 1,
       rationale: "Breakout confirm.",
     };
     const r = buildResolvedEnvelope({
@@ -240,7 +237,6 @@ describe("buildResolvedEnvelope — ladder-health block (Game Plan PR-B)", () =>
     id: "trg_floor",
     action: "EXIT",
     predicate: { watch: "price", is: "below", value: 65 },
-    cooldownDays: 0,
     rationale: "day-one stop",
   };
 

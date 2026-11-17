@@ -105,7 +105,6 @@ function book(): PrismaDouble {
     action: "REVIEW",
     predicate: { watch: "repeat", value: 30 },
     rationale: "Look at this every 30 days, counting from the last real review.",
-    cooldownDays: 30,
     source: "AGENT",
   });
   return prismaDouble({
@@ -128,7 +127,6 @@ function book(): PrismaDouble {
               action: "EXIT",
               predicate: { watch: "price", is: "below", value: h.stop },
               rationale: `Hard stop at $${h.stop}. If we hit it the thesis is broken; close and write up the lesson.`,
-              cooldownDays: 0,
               fireMode: "ASK_NOW",
               source: "AGENT",
             },

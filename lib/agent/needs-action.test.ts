@@ -15,7 +15,6 @@ const ENTER_LONG: Trigger = {
   predicate: { watch: "price", is: "above", value: 100 },
   action: "ENTER",
   rationale: "Entry on breakout",
-  cooldownDays: 1,
 };
 
 const EXIT_LONG: Trigger = {
@@ -23,7 +22,6 @@ const EXIT_LONG: Trigger = {
   predicate: { watch: "price", is: "below", value: 90 },
   action: "EXIT",
   rationale: "Stop at 90",
-  cooldownDays: 0,
 };
 
 const REVIEW_HYGIENE: Trigger = {
@@ -31,7 +29,6 @@ const REVIEW_HYGIENE: Trigger = {
   predicate: { watch: "repeat", value: 30 },
   action: "REVIEW",
   rationale: "Monthly hygiene",
-  cooldownDays: 25,
 };
 
 const SIGNAL_EARNINGS: Trigger = {
@@ -39,7 +36,6 @@ const SIGNAL_EARNINGS: Trigger = {
   predicate: { watch: "surprise", is: "beat", value: 0 },
   action: "REVIEW",
   rationale: "Earnings beat",
-  cooldownDays: 7,
 };
 
 const now = new Date("2026-05-10T12:00:00Z");
@@ -66,7 +62,6 @@ const CADENCE_7D: Trigger = {
   predicate: { watch: "repeat", value: 7 },
   action: "REVIEW",
   rationale: "Look at this every 7 days.",
-  cooldownDays: 7,
 };
 
 /** A thesis last looked at `days` ago. */
@@ -200,9 +195,9 @@ describe("computeNeedsAction — pending entry proposal suppresses ENTER (P1-25 
 });
 
 describe("computeNeedsAction — a sale waiting for the principal silences only that sale", () => {
-  const TRIM_LONG: Trigger = { id: "trig-trim", predicate: { watch: "price", is: "above", value: 150 }, action: "TRIM", rationale: "Trim into strength", cooldownDays: 1 };
-  const ADD_LONG: Trigger = { id: "trig-add", predicate: { watch: "price", is: "above", value: 150 }, action: "ADD", rationale: "Press the winner", cooldownDays: 1 };
-  const REVIEW_PRICE: Trigger = { id: "trig-review-price", predicate: { watch: "price", is: "below", value: 95 }, action: "REVIEW", rationale: "Look if it slips", cooldownDays: 1 };
+  const TRIM_LONG: Trigger = { id: "trig-trim", predicate: { watch: "price", is: "above", value: 150 }, action: "TRIM", rationale: "Trim into strength"};
+  const ADD_LONG: Trigger = { id: "trig-add", predicate: { watch: "price", is: "above", value: 150 }, action: "ADD", rationale: "Press the winner"};
+  const REVIEW_PRICE: Trigger = { id: "trig-review-price", predicate: { watch: "price", is: "below", value: 95 }, action: "REVIEW", rationale: "Look if it slips"};
   const held = (triggers: Trigger[]) => ({ ...baseThesis, status: "HOLDING", triggers });
   const fired = (triggerId: string, at = "2026-05-10T09:00:00Z") => ({ type: "TRIGGER_FIRED", triggerId, timestamp: new Date(at) });
   /** The kinds on the list, lead first, and the sale's action wherever a fire carries it. */
@@ -246,7 +241,8 @@ describe("computeNeedsAction — a sale waiting for the principal silences only 
     const waiting = computeNeedsAction({ ...input, hasPendingSaleProposal: true });
     expect(waiting[0]).toMatchObject({ kind: "TRIGGER_FIRED", triggerId: "trig-review-price", action: "REVIEW" });
     expect(waiting[0]).not.toHaveProperty("alsoFired");
-    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "REVIEW_DUE"]);
+    // The review is still under its line and out of its wait, so it is also true now.
+    expect(kinds(waiting)).toEqual(["TRIGGER_FIRED", "TRIGGER_MATCHING_NOW", "REVIEW_DUE"]);
   });
 
   it("an add that fired, and a review that came due, are not the sale's: still listed", () => {
@@ -586,7 +582,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
     predicate: { watch: "price", is: "below", value: 65 },
     action: "EXIT",
     rationale: "day-one stop",
-    cooldownDays: 0,
   };
   const ionsThesis = {
     ...baseThesis,
@@ -661,7 +656,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       predicate: { watch: "price", is: "above", value: 85 },
       action: "ADD",
       rationale: "breakout add",
-      cooldownDays: 1,
     };
     const result = leadOf({
       thesis: { ...ionsThesis, triggers: [ionsExit, addRung] },
@@ -697,7 +691,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       predicate: { watch: "price", is: "below", value: 114 },
       action: "EXIT",
       rationale: "ratcheted floor",
-      cooldownDays: 0,
     };
     const result = leadOf({
       thesis: {
@@ -767,7 +760,6 @@ describe("computeNeedsAction — UNPROTECTED_GAIN (Game Plan PR-B, the IONS dete
       predicate: { watch: "move", is: "below", value: 5, variable: "peak" },
       action: "EXIT",
       rationale: "gain ratchet",
-      cooldownDays: 0,
     };
     // peak 120, trail 5% → floor 114 locks +14; +18% gain → gap 4 → protected
     // (no flag — the gain is protected).
@@ -819,7 +811,6 @@ describe("computeNeedsAction — a day count from the buy is not the review cloc
     predicate: { watch: "from_date", is: "after", value: 60, variable: "buy" },
     action: "REVIEW",
     rationale: "The 60-day business checkpoint.",
-    cooldownDays: 60,
   };
   it("a watch with only a buy-count review and no clock is quiet", () => {
     const result = leadOf({

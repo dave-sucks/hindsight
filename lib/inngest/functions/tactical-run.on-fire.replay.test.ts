@@ -12,10 +12,10 @@ import { AUTO_WRITEUP } from "@/lib/agent/system-prompts/intraday-tactical";
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 
-const IOT_FLOOR = { id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", fireMode: "DO_IT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under your hand-set floor at $41.42.", cooldownDays: 0 };
-const IOT_TARGET = { id: "56e86f78-7e31-43e0-b9c3-7445cc016c69", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 52 }, rationale: "Using $52 as the objective.", cooldownDays: 1 };
-const V_FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395. You set this.", cooldownDays: 1 };
-const TRV_BUY = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 };
+const IOT_FLOOR = { id: "cf1e7fd0-8bcc-4629-b605-5d1da41735c2", action: "EXIT", fireMode: "DO_IT", predicate: { watch: "price", is: "below", value: 41.42 }, rationale: "Under your hand-set floor at $41.42."};
+const IOT_TARGET = { id: "56e86f78-7e31-43e0-b9c3-7445cc016c69", action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 52 }, rationale: "Using $52 as the objective."};
+const V_FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395. You set this."};
+const TRV_BUY = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70."};
 
 const IOT_LINE = 'Your "Sell if below $41.42" came true. It\'s set to Auto-sell.';
 const NOTE = "Samsara fell 4% on Oct 22 with software stocks after a weak guide from a peer; nothing in its own news. You own 300 shares at $42.70. Your Auto-sell at $41.42 was hit, so the sale is waiting for you; I'd hold, since nothing that would break the case has happened.";
@@ -106,7 +106,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
 }
 
-const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength.", cooldownDays: 1 };
+const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength."};
 
 describe("the trigger run's Market and portfolio block", () => {
   it("is loaded once for the analyst's book and printed before the stock's row", async () => {

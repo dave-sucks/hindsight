@@ -45,7 +45,7 @@ Every analyst trades from the same twelve playbooks, each with what must be true
 
 <!-- asset: playbook -->
 
-Every setup's rules in full: [Setups](../reference/setups.md).
+Every playbook's rules in full: [Playbooks](../reference/setups.md).
 
 ## Built by conversation
 

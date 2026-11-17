@@ -31,13 +31,26 @@ Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 run answers it; never a sell or trim, since a sale can't wait for the morning).
 Unset, a review is Flag for Review and everything else Send to
 Agent; every stored trigger names one. Auto on a buy, add or trim is the
-owner's alone, on a stock (not an account or analyst rule), and is used once;
-an Auto-sell is a standing order (`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Fire
-semantics differ by action (DAV-229):** a sale, trim or add rung is a standing
-order (re-fires every day its condition holds; a decline is "did nothing");
-an ENTER or a REVIEW fires on the *crossing* of its level (true now, false at
-the prior close; a review that doesn't read the price, like a clock or a
-report, fires while true) — see `shouldFire` in `lib/agent/triggers/evaluate.ts`. The three
+owner's alone, on a stock (not an account or analyst rule)
+(`lib/agent/triggers/fire-mode.ts`, TRIGGERS.md §4). **Triggers work like
+orders (2026-11-17):** a trigger fires when it becomes true (one already true
+when written, or when its condition or action is changed, fires at the next
+check); after a fire it does not fire again until a market close (the 16:20 ET
+pass) finds its condition false (`falseAtCloseAt`, inline on the stock's own,
+in `Thesis.triggerState` for an inherited rule), never on a 5-minute check. A
+trade it leads to uses it up: when a trim or add fills, the stock's own trim or
+add triggers behind it (named on the order, or fired and not found false since)
+come off with one Activity line (`lib/agent/triggers/filled.ts`; never another
+action; a sale closes the position); a declined, expired or withdrawn proposal does not. There are no
+waits. A filing fires once per filing, a heads-up once per report, and a buy or
+add never fires on a stale quote — see `shouldFire` in
+`lib/agent/triggers/evaluate.ts`. A sale that fired stays on the morning list
+(PROTECTIVE_SALE) until a close finds it false. "Either one" is two triggers:
+two conditions together are "and" only, one level deep. Inside an "and", a date
+count before the event is a window (`window` on its catalog entry): the
+pre-catalyst buys fire only within 70 days before the event. A trigger on our
+position (a move from our buy price or the high since we bought, days since the
+buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
@@ -72,11 +85,11 @@ Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
 **A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
-`{ watch, is?, value?, variable?, settings? }`, or `{ match, conditions }` for
-two or more — the form's own fields. Each measure (`price`, `move`, `volume`,
+`{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }`
+for two or more that must all hold — the form's own fields. Each measure (`price`, `move`, `volume`,
 `rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `repeat`,
 `from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
-carrying its words, number, variables, settings, default cooldown, what the
+carrying its words, number, variables, settings, what the
 check loads, how it reads and what numbers it takes (`fits` / `valid`,
 read by `whenValid`); nothing switches on a kind. Storage holds the same
 shape; anything else in a trigger list reads as a removed condition. A
@@ -90,10 +103,8 @@ a price level read on the close (`settings.close`) fires only on the 16:20 ET cl
 trigger fires on the timing it saved; nothing changes it at check time. A
 watch's Stop watching line is written "only on the close", so we stop
 watching on a close below it, never an intraday dip. There is
-no buy-now option: buying now is a buy trigger at or near the current price
-(a buy written after the prior close measures its crossing from the price it
-was written at — `lib/agent/triggers/written-price.ts` — so a level set on a
-down day isn't dead on arrival). The
+no buy-now option: buying now is a buy trigger at or near the current price,
+which fires on the next check because it is true. The
 signal kinds (SIGNAL_TYPE / GUIDANCE_CHANGE / FILING) were deleted in DAV-247 —
 news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
@@ -808,10 +819,10 @@ When you spot something new, file it there — not here.)
 ### Triggers (the living ladder)
 - lib/agent/triggers/ops.ts — THE write path once a thesis exists: applyTriggerOps (add / edit by id / remove by id; a buy fill's level op writes the approved order's stop and upside level) + checkLadder (the one post-op check). update_thesis, the UI popover and a buy fill all go through it (DAV-242)
 - lib/agent/triggers/stop-watching.ts — a STOP_WATCHING line on a watched stock, fired on its saved timing: the thesis retires as DROPPED, one Activity line
-- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: cooldown, a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
+- lib/agent/triggers/condition/ — the condition shape, one catalog entry per measure (measures/*), the rules that read it (rules.ts: a protective sale's close reason, levels, states), the check (read.ts), the words (describe.ts), and what the save accepts (valid.ts)
 - lib/agent/triggers/types.ts — the Trigger type
-- lib/agent/triggers/evaluate.ts — shouldFire: crossing, stale quote, cooldown, re-arm
-- lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts) + cooldown defaults
+- lib/agent/triggers/evaluate.ts — shouldFire: the condition, a stale quote, the wait
+- lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts)
 - lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded, read by `loadPlaybooks`, null when unread); `playbookTriggerText` prints the watch triggers for the Writer and the triggers that come with the buy for a watch's row; the fill writes the triggers written at the fill (`fillTemplateOps`)
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note), and with no fire a declared STOP/TARGET is stored MANUAL; THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass

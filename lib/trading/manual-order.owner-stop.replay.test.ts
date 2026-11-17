@@ -23,12 +23,11 @@ const FLOOR = {
   fireMode: "ASK_NOW",
   predicate: { is: "below", value: 382.4, watch: "price", settings: { close: true } },
   rationale: "I am using $382.40 just under the recent swing-high-turned-support area so a failed breakout ends the plan quickly.",
-  cooldownDays: 1,
 };
 const ROW = [
-  { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 398.7, watch: "price", settings: { close: true } }, rationale: "I buy when it breaks above $398.70.", cooldownDays: 1 },
+  { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", value: 398.7, watch: "price", settings: { close: true } }, rationale: "I buy when it breaks above $398.70."},
   FLOOR,
-  { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 431.5, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the January-July up-leg is $431.53.", cooldownDays: 1 },
+  { id: "c5b67206-924c-4260-be2a-82918f32bbbd", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "above", value: 431.5, watch: "price" }, rationale: "The 1.272 Fibonacci extension of the January-July up-leg is $431.53."},
 ];
 
 /** TRV's row and the Trade button's own entry points, with only the database, the broker and the clock doubled. */

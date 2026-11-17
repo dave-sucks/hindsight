@@ -94,7 +94,7 @@ export type Placeholder = `{${string}}`;
  * with a value allowed to be a `{placeholder}` the writer fills from the chart.
  */
 export type TemplateCondition = Omit<Condition, "value"> & { value?: number | Placeholder };
-export type TemplatePredicate = TemplateCondition | { match: "all" | "any"; conditions: TemplatePredicate[] };
+export type TemplatePredicate = TemplateCondition | { match: "all"; conditions: TemplateCondition[] };
 
 export interface Setup {
   /** Stable id stored on Thesis.setupId. */
@@ -595,17 +595,15 @@ export function setupIndex(): { id: SetupId; code: string; name: string; role: S
   return SETUPS.map(({ id, code, name, role, horizons }) => ({ id, code, name, role, horizons }));
 }
 
-const isGroupTemplate = (p: TemplatePredicate): p is { match: "all" | "any"; conditions: TemplatePredicate[] } => "match" in p;
+const conditionsOfTemplate = (p: TemplatePredicate): TemplateCondition[] => ("match" in p ? p.conditions : [p]);
 
-/** The `{placeholders}` a template uses, recursively. */
+/** The `{placeholders}` a template uses. */
 export function templatePlaceholders(p: TemplatePredicate | null): string[] {
-  if (!p) return [];
-  if (isGroupTemplate(p)) return p.conditions.flatMap(templatePlaceholders);
-  return typeof p.value === "string" ? [p.value] : [];
+  return p ? conditionsOfTemplate(p).flatMap((c) => (typeof c.value === "string" ? [c.value] : [])) : [];
 }
 
 /** The template with each `{placeholder}` replaced by `fill(name)`. */
 export function fillTemplate(p: TemplatePredicate, fill: (name: Placeholder) => number): When {
-  if (isGroupTemplate(p)) return { match: p.match, conditions: p.conditions.map((c) => fillTemplate(c, fill)) };
-  return { ...p, value: typeof p.value === "string" ? fill(p.value) : p.value } as Condition;
+  const filled = (c: TemplateCondition) => ({ ...c, value: typeof c.value === "string" ? fill(c.value) : c.value }) as Condition;
+  return "match" in p ? { match: "all", conditions: p.conditions.map(filled) } : filled(p);
 }

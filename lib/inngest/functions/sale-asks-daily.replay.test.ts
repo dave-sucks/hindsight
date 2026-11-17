@@ -1,17 +1,16 @@
 /**
- * A sale proposal with a 24-hour deadline asks again every trading day once it
- * lapses. Since 2026-11-14 only a sale no trigger made has one (and those made
- * before then): a trigger's sale stays open while its line holds, tested in
- * lib/proposals/trigger-proposals.replay.test.ts. These are the older proposals.
+ * A sale trigger fires once. While the price stays past its line it does not
+ * fire again, and no new card is sent; the morning read keeps the holding on
+ * its list (PROTECTIVE_SALE) every day, declined or not, until a new sale price
+ * is set or the price is back. Once a market close (the 16:20 ET pass) finds it
+ * false, it is ready, and the next break fires it.
  *
- * ASML (Secular Compounder, LIVE): its $1835 floor (1-day wait) proposed a sale
- * 2026-10-22 13:45:42Z that expired 10-23 13:45:42Z. The 10-23 13:45:17Z pass
- * fired 25 s before that, was stamped, and was dropped as a duplicate, so the
- * floor waited a day and 10-23 had no ask. Now that pass is skipped unstamped
- * and the 13:50 pass, with the old proposal expired but not yet swept, asks.
+ * ASML (Secular Compounder, LIVE): its $1835 floor proposed a sale 2026-10-22
+ * 13:45:42Z that expired 10-23 13:45:42Z. ASML never traded back near $1835, so
+ * 10-23 fires nothing (it used to propose the sale again every day).
  *
- * NVDA (PEAD, floor $236, stored with no wait): since 2026-11-02 a wait of 0
- * reads as a day, so it asks once a day like every sale. IOT is the close
+ * NVDA (PEAD, floor $236): the 10-22 sale, declined; NVDA stayed near $212.
+ * Two mornings list it, and the passes between send no card. IOT is the close
  * pass: its 10-23 high, $44.985 at 15:58 ET, came after the last 5-minute pass.
  *
  * Real handlers, rows and tape; doubled: the database, Alpaca, the model, the clock.
@@ -22,10 +21,10 @@ const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const ACCOUNT = "34f5c589-e216-4afe-9ee8-613c13f300e7";
 
-const ASML_FLOOR = { id: "8e790d37-6e92-4eea-9b39-be8a537c471c", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 1835, watch: "price" }, rationale: "Under the $1835 floor.", cooldownDays: 1 };
+const ASML_FLOOR = { id: "8e790d37-6e92-4eea-9b39-be8a537c471c", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 1835, watch: "price" }, rationale: "Under the $1835 floor."};
 // The 10-22 stamp: the 13:45 pass, before the 13:45:20 run it started (10-23's 13:45:17 fire proves it was no later).
 const ASML_STAMP = "2026-10-22T13:45:05.000Z";
-const NVDA_FLOOR = { id: "6306936b-bb02-4298-9ca0-90f586772512", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 236, watch: "price" }, rationale: "Under the $236 floor.", cooldownDays: 0, lastFiredAt: "2026-10-23T14:25:05.000Z" };
+const NVDA_FLOOR = { id: "6306936b-bb02-4298-9ca0-90f586772512", action: "EXIT", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "below", value: 236, watch: "price" }, rationale: "Under the $236 floor.", lastFiredAt: "2026-10-23T14:25:05.000Z" };
 
 const proposal = (id: string, positionId: string, symbol: string, qty: number, thesisId: string, createdAt: string, status = "AWAITING_APPROVAL") => ({
   id, positionId, userId: ACCOUNT, environment: "LIVE", symbol, side: "SELL", orderType: "MARKET", quantity: qty, status, intent: "CLOSE",
@@ -136,8 +135,8 @@ const ASML_DAY = { o: 1550.485, l: 1550 };
 const ASML_1345 = { snapshots: { ASML: snap(1567.19, "2026-10-23T13:45:00Z", { ...ASML_DAY, h: 1568.76 }, 1560.54) } };
 const ASML_1350 = { snapshots: { ASML: snap(1566.085, "2026-10-23T13:50:00Z", { ...ASML_DAY, h: 1573.07 }, 1560.54) } };
 
-describe("ASML 10-22 → 10-23: a floor below the price asks every day", () => {
-  it("13:45:17, 25 s before yesterday's proposal expires: skipped and not stamped", async () => {
+describe("ASML 10-22 → 10-23: a floor that fired does not fire again while the price stays below it", () => {
+  it("13:45:17, 25 s before yesterday's proposal expires: nothing fires", async () => {
     const db = book("ASML");
     const { sent, result } = await pass(db, "2026-10-23T13:45:17Z", ASML_1345);
     expect(result).toMatchObject({ session: "INTRADAY", firings: 0 });
@@ -145,33 +144,13 @@ describe("ASML 10-22 → 10-23: a floor below the price asks every day", () => {
     expect(floor(db)).toBe(ASML_STAMP);
   });
 
-  it("13:50, the proposal expired but not yet swept: the floor fires, the run reaches the analyst, and the sale is proposed anew", async () => {
+  it("13:50, the proposal expired: nothing fires, no run, no new card (it proposed the sale again every day until 2026-11-17)", async () => {
     const db = book("ASML");
     await pass(db, "2026-10-23T13:45:17Z", ASML_1345);
     const { sent } = await pass(db, "2026-10-23T13:50:05Z", ASML_1350);
-    expect(fired(sent)).toEqual([["ASML", ASML_FLOOR.id, 1566.085]]);
-    expect(floor(db)).toBe("2026-10-23T13:50:05.000Z");
-
-    const run = await trigger(db, "2026-10-23T13:50:20Z", sent[0].data);
-    expect(run.returned.skipped).toBeUndefined();
-    expect(run.modelCalls).toBeGreaterThan(0);
-
-    // The analyst's close_position: a new proposal, not a fold into the expired one.
-    jest.useFakeTimers({ now: new Date("2026-10-23T13:50:40Z"), doNotFake: [...FAKE.doNotFake] });
-    try {
-      const sale = await replayTool("close-position", "closePosition", {
-        seed: db.store,
-        args: { ticker: "ASML", reason: "STOP", notes: "Under the $1835 floor." },
-        ctx: { userId: ACCOUNT, accountId: ACCOUNT, analystId: SECULAR, runEnvironment: "LIVE", runMode: "INTRADAY_TACTICAL" },
-        quotes: { ASML: 1566.085 },
-        mocks: { "@/lib/notify/proposal-push": () => ({ sendProposalPendingPush: async () => undefined }), "@/lib/emails/proposal-pending": () => ({ sendProposalPendingEmail: async () => undefined }) },
-      });
-      const waiting = (sale.db.store.order as Array<Record<string, unknown>>).filter((o) => o.status === "AWAITING_APPROVAL");
-      expect(waiting.map((o) => o.id)).toEqual(["cmvjlg3ir000408l2ncicz5q6", expect.not.stringMatching("cmvjlg3ir000408l2ncicz5q6")]);
-      expect(waiting[1]).toMatchObject({ intent: "CLOSE", quantity: 5, expiresAt: new Date("2026-10-24T13:50:40Z") });
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(sent).toEqual([]);
+    expect(floor(db)).toBe(ASML_STAMP);
+    expect(db.store.order).toHaveLength(1);
   });
 
   it("13:50, the stock's row no longer lists the expired proposal, so the analyst isn't told a sale is waiting", async () => {
@@ -185,36 +164,69 @@ describe("ASML 10-22 → 10-23: a floor below the price asks every day", () => {
     }
   });
 
-  it("a REJECTED sale still holds the floor back for 4 hours, stamped as before", async () => {
+  it("once a close went back above $1835 it fires again, and a sale declined 45 minutes earlier holds nothing back: the run reaches the analyst", async () => {
     const db = book("ASML", "REJECTED");
+    (db.store.thesis[0].triggers as Array<Record<string, unknown>>)[0].falseAtCloseAt = "2026-10-22T20:20:05.000Z";
     (db.store.order[0] as Record<string, unknown>).updatedAt = new Date("2026-10-23T13:00:00Z");
     const { sent } = await pass(db, "2026-10-23T13:45:17Z", ASML_1345);
     expect(fired(sent)).toEqual([["ASML", ASML_FLOOR.id, 1567.19]]);
     expect(floor(db)).toBe("2026-10-23T13:45:17.000Z");
     const run = await trigger(db, "2026-10-23T13:45:30Z", sent[0].data);
-    expect(run.returned).toMatchObject({ skipped: "close-already-queued", reason: "REJECTED" });
+    // Until 2026-11-17 a decline in the last four hours skipped the run after the fire was stamped: the break was spent until a close.
+    expect(run.returned.skipped).toBeUndefined();
+    expect(run.modelCalls).toBeGreaterThan(0);
   });
 });
 
 const NVDA_DAY = { o: 210.99, l: 210.18 };
-describe("NVDA, its floor stored with no wait: a sale asks once a day", () => {
+/** The morning read of the stock: its situations, at the price before the open. */
+async function morning(db: PrismaDouble, at: string, price: number) {
+  jest.useFakeTimers({ now: new Date(at), doNotFake: [...FAKE.doNotFake] });
+  try {
+    const read = await replayTool("get-theses", "getTheses", { seed: db.store, args: { tickers: ["NVDA"] }, ctx: { userId: ACCOUNT, accountId: ACCOUNT, analystId: PEAD, runEnvironment: "LIVE", runMode: "MORNING_PLAN" }, quotes: { NVDA: price } });
+    return ((read.result.data as { theses: Array<{ situations?: string[] }> }).theses)[0].situations ?? [];
+  } finally {
+    jest.useRealTimers();
+    for (const m of ["@/lib/prisma", "@/lib/alpaca", "@/lib/actions/finnhub.actions", "@/lib/agent/research-helpers", "@/lib/inngest/client"]) jest.dontMock(m);
+  }
+}
+
+const NVDA_PASS = (at: string, p: number) => ({ snapshots: { NVDA: snap(p, at, { ...NVDA_DAY, h: 213.85 }, 212.21) } });
+const NVDA_CLOSE = (day: string, c: number) => ({ snapshots: {}, bars: { NVDA: [{ t: `${day}T04:00:00Z`, o: 212, h: Math.max(c, 213), l: 210.18, c, v: 150_000_000 }] } });
+
+describe("NVDA, its sale declined: the floor fires once, and the morning keeps listing it", () => {
   it("while its proposal waits: no run, as before", async () => {
     const db = book("NVDA");
-    const { sent } = await pass(db, "2026-10-23T14:30:05Z", { snapshots: { NVDA: snap(212.895, "2026-10-23T14:30:00Z", { ...NVDA_DAY, h: 213.32 }, 212.21) } });
+    const { sent } = await pass(db, "2026-10-23T14:30:05Z", NVDA_PASS("2026-10-23T14:30:00Z", 212.895));
     expect(sent).toEqual([]);
   });
 
-  it("once the sweeper has marked it EXPIRED, the same day: the floor waits for tomorrow (a 0 read as 'ask on every pass' until 2026-11-02; CEG woke a run every five minutes while its analyst held)", async () => {
-    const db = book("NVDA", "EXPIRED");
-    const { sent } = await pass(db, "2026-10-23T15:00:30Z", { snapshots: { NVDA: snap(212.975, "2026-10-23T15:00:29Z", { ...NVDA_DAY, h: 213.85 }, 212.21) } });
-    expect(sent).toEqual([]);
+  it("declined, two mornings later: each morning lists the sale, and the passes between send no card", async () => {
+    const db = book("NVDA", "REJECTED");
+    expect(await morning(db, "2026-10-26T12:01:00Z", 212.975)).toContain("PROTECTIVE_SALE");
+    expect((await pass(db, "2026-10-26T14:30:30Z", NVDA_PASS("2026-10-26T14:30:29Z", 212.975))).sent).toEqual([]);
+    expect((await pass(db, "2026-10-26T20:20:05Z", NVDA_CLOSE("2026-10-26", 211.4))).sent).toEqual([]);
+    expect(await morning(db, "2026-10-27T12:02:00Z", 211.4)).toContain("PROTECTIVE_SALE");
+    expect((await pass(db, "2026-10-27T14:30:30Z", NVDA_PASS("2026-10-27T14:30:29Z", 210.9))).sent).toEqual([]);
+    expect(db.store.order.map((o) => (o as { status: string }).status)).toEqual(["REJECTED"]);
+    expect(floor(db)).toBe(NVDA_FLOOR.lastFiredAt);
   });
 
-  it("the next trading day: it fires and the run reaches the analyst", async () => {
-    const db = book("NVDA", "EXPIRED");
-    const { sent } = await pass(db, "2026-10-26T14:30:30Z", { snapshots: { NVDA: snap(212.975, "2026-10-26T14:30:29Z", { ...NVDA_DAY, h: 213.85 }, 212.21) } });
-    expect(fired(sent)).toEqual([["NVDA", NVDA_FLOOR.id, 212.975]]);
-    const run = await trigger(db, "2026-10-26T14:30:45Z", sent[0].data);
+  it("fired and held with no sale proposed: on the morning list until a close finds it false, whatever the price that morning", async () => {
+    const db = book("NVDA");
+    db.store.order.length = 0;
+    expect(await morning(db, "2026-10-26T12:01:00Z", 212.975)).toContain("PROTECTIVE_SALE");
+    expect(await morning(db, "2026-10-26T12:01:00Z", 236.5)).toContain("PROTECTIVE_SALE");
+  });
+
+  it("a close back above $236 makes it ready; the next break fires it and the run reaches the analyst", async () => {
+    const db = book("NVDA", "REJECTED");
+    await pass(db, "2026-10-26T20:20:05Z", NVDA_CLOSE("2026-10-26", 237.1));
+    expect((db.store.thesis[0].triggers as Array<{ falseAtCloseAt?: string }>)[0].falseAtCloseAt).toBe("2026-10-26T20:20:05.000Z");
+    expect(await morning(db, "2026-10-27T12:02:00Z", 237.1)).not.toContain("PROTECTIVE_SALE");
+    const { sent } = await pass(db, "2026-10-27T14:30:30Z", NVDA_PASS("2026-10-27T14:30:29Z", 235.4));
+    expect(fired(sent)).toEqual([["NVDA", NVDA_FLOOR.id, 235.4]]);
+    const run = await trigger(db, "2026-10-27T14:30:45Z", sent[0].data);
     expect(run.modelCalls).toBeGreaterThan(0);
   });
 });

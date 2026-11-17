@@ -96,7 +96,7 @@ function freshDraft(type: TriggerType, level: Level, held: boolean): Draft {
   const actions = allowedActions(c, { held, standing: level !== "THESIS" });
   const preferred: TriggerAction = t.trades ? (held || level !== "THESIS" ? "EXIT" : "ENTER") : "REVIEW";
   const action = actions.includes(preferred) ? preferred : actions[0];
-  return { action, conditions: [c], match: "all", fireMode: defaultFireMode(action), trimPct: DEFAULT_TRIM_PCT };
+  return { action, conditions: [c], fireMode: defaultFireMode(action), trimPct: DEFAULT_TRIM_PCT };
 }
 
 /** The dialog: a new trigger of `type`, or `trigger` to change. */
@@ -182,15 +182,7 @@ export function TriggerDialog({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <Select value={draft.match} onValueChange={(v) => (v === "all" || v === "any") && update({ match: v })} disabled={pending}>
-                    <SelectTrigger width="full" aria-label="Both or either">
-                      <SelectValue>{draft.match === "all" ? "And: both must be true" : "Or: either one is enough"}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">And: both must be true</SelectItem>
-                      <SelectItem value="any">Or: either one is enough</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FieldLabel>And: both must be true</FieldLabel>
                 </div>
                 <Button variant="ghost" size="sm" disabled={pending} onClick={() => update({ conditions: [draft.conditions[0]] })}>
                   Remove

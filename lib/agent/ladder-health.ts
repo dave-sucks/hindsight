@@ -148,13 +148,12 @@ const fmtPct = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
 
 /**
  * The fixed price levels a condition fires at: a typed price, a % from our
- * entry, a give-back off the high. Recurses into "any of" (any branch fires
- * alone); skips "all of" (a level inside it doesn't fire by itself, so it
- * neither protects nor counts as a rung). Anything with no one price (an
- * average, a day's move, a date) yields nothing.
+ * entry, a give-back off the high. Skips two conditions (a level inside one
+ * doesn't fire by itself, so it neither protects nor counts as a rung).
+ * Anything with no one price (an average, a day's move, a date) yields nothing.
  */
 function extractPriceRungs(w: When, ctx: { isLong: boolean; avgCost: number; peak: number }): ExtractedRung[] {
-  if (isGroup(w)) return w.match === "any" ? w.conditions.flatMap((c) => extractPriceRungs(c, ctx)) : [];
+  if (isGroup(w)) return [];
   const level = levelOf(w);
   if (level) {
     return [{ firesWhen: level.above ? "RISES" : "FALLS", price: level.value, isTrail: false, label: conditionSentence(w) }];

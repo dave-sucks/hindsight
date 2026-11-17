@@ -23,8 +23,8 @@ const ma = (over: Record<string, unknown> = {}) =>
     coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
     entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, lastReviewedAt: null, createdAt: new Date("2026-09-29T02:47:48.106Z"),
     triggers: [
-      { id: WAKE, action: "REVIEW", source: "AGENT", predicate: { value: 0, watch: "strength", settings: { window: "6M" } }, rationale: "Mastercard's 6M RS vs SPY has recovered to flat or positive.", lastFiredAt: "2026-10-09T13:30:10.549Z", cooldownDays: 7 },
-      { id: "a2e0f9b5-8b48-4e7a-b91e-7bc2bb350006", action: "REVIEW", source: "AGENT", predicate: { value: 45, watch: "repeat" }, rationale: "45-day housekeeping check.", cooldownDays: 45 },
+      { id: WAKE, action: "REVIEW", source: "AGENT", predicate: { value: 0, watch: "strength", settings: { window: "6M" } }, rationale: "Mastercard's 6M RS vs SPY has recovered to flat or positive.", lastFiredAt: "2026-10-09T13:30:10.549Z"},
+      { id: "a2e0f9b5-8b48-4e7a-b91e-7bc2bb350006", action: "REVIEW", source: "AGENT", predicate: { value: 45, watch: "repeat" }, rationale: "45-day housekeeping check."},
     ],
     triggerState: {},
     ...over,
