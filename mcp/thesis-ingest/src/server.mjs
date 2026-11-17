@@ -3,7 +3,7 @@
 // Exposes ONE tool, `save_thesis`, that mints a WATCHING thesis in Hindsight
 // from a JSON object — at ZERO LLM cost. It wraps the deployed HTTP endpoint
 // (POST /api/intelligence/thesis-ingest); the server-side record_thesis logic
-// does all validation, taxonomy, gating, and trigger generation. This process
+// does all validation, taxonomy and gating. This process
 // holds no DB connection — just the ingest URL + secret.
 //
 // The whole point: research a name in a flat-rate Claude/GPT chat, then have
@@ -71,8 +71,8 @@ export async function postThesis(payload, { url = INGEST_URL, secret = INGEST_SE
 // ── save_thesis input schema (mirrors §A of docs/prompts/INGEST_THESIS.md) ────
 // Lean by design — the endpoint's Zod schema is the source of truth and does
 // the full validation. The descriptions carry the format-prompt so the calling
-// assistant fills the fields correctly. Do NOT add a `triggers` field — the
-// endpoint generates and enforces triggers server-side.
+// assistant fills the fields correctly. The stock's triggers are the `triggers`
+// it sends; nothing is generated for it.
 const sectionScore = (max) =>
   z.object({
     score: z.number().int().min(0).max(max),
@@ -101,7 +101,7 @@ const saveThesisInput = {
     .array(z.object({ predicate: z.record(z.string(), z.unknown()), action: z.enum(["ENTER", "STOP_WATCHING", "REVIEW"]), rationale: z.string() }))
     .optional()
     .describe(
-      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. Where the setup is over: { predicate: { watch: 'price', is: 'below', value, settings: { close: true } }, action: 'STOP_WATCHING', rationale } — we stop watching on a close below it. A new thesis is a watch, so it has no sale ("Sell if" comes with the buy). A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
+      "The stock's triggers. The buy: { predicate: { watch: 'price', is: 'below' (a pullback) or 'above' (a breakout), value }, action: 'ENTER', rationale }. Where the setup is over: { predicate: { watch: 'price', is: 'below', value, settings: { close: true } }, action: 'STOP_WATCHING', rationale } — it reads 'Stop watching if below $X · only on the close', ends the watch and never sells. Never send EXIT: a sale is for a stock we hold, and the holding's sale comes later, with the buy proposal. A review clock: { predicate: { watch: 'repeat', value: days }, action: 'REVIEW', rationale }. Nothing is added for you.",
     ),
   core_belief: z
     .string()
@@ -161,9 +161,9 @@ server.registerTool(
     title: "Save thesis to Hindsight",
     description:
       "Mint a WATCHING thesis in the Hindsight paper-trading platform from a finished research decision. " +
-      "The platform validates the input (taxonomy, price shape, conviction gates), generates the triggers, " +
-      "and persists it — at zero model cost. Use after you've researched a name for one of the analysts. " +
-      "Do NOT pass triggers (the platform generates them). On rejection, the error explains exactly what to fix; " +
+      "The platform validates the input (taxonomy, trigger shape, conviction gates) and persists it, with the " +
+      "triggers you send (the buy and where the setup is over) — at zero model cost. Use after you've researched a name for one of the analysts. " +
+      "On rejection, the error explains exactly what to fix; " +
       "correct the fields and call again.",
     inputSchema: saveThesisInput,
   },

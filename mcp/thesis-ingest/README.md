@@ -3,8 +3,8 @@
 An MCP server that exposes one tool, **`save_thesis`**, so an assistant (Claude Desktop,
 or any MCP client) can mint a Hindsight `WATCHING` thesis directly from a research
 decision — no copy-paste into the web UI. It wraps the deployed
-`POST /api/intelligence/thesis-ingest` endpoint; all validation, taxonomy, gating, and
-**trigger generation happen server-side at zero LLM cost**. This process holds no
+`POST /api/intelligence/thesis-ingest` endpoint; all validation, taxonomy and
+**gating happen server-side at zero LLM cost**. This process holds no
 database connection — only the ingest URL + secret.
 
 This is Phase 2 of `docs/plans/EXTERNAL_THESIS_INGEST.md`. The research method itself
@@ -45,7 +45,7 @@ In Claude Desktop, research a name for one of the analysts (Secular Compounder, 
 Event PM, PEAD Specialist, Momentum Breakout — see `docs/prompts/INGEST_THESIS.md`), then
 ask it to *"save this as a thesis for the Secular Compounder."* It calls `save_thesis`;
 on success you get the `thesis_id`, on rejection the exact validation reason to fix and
-retry. Never pass `triggers` — the platform generates them from horizon + prices.
+retry. Send `triggers`: the buy (`ENTER`) and where the setup is over (`STOP_WATCHING`, never `EXIT`). Nothing is generated for the thesis.
 
 ## Smoke test (against a local dev server)
 ```bash

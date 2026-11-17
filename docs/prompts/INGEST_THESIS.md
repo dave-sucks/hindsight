@@ -2,7 +2,7 @@
 
 Offload thesis research to an **unlimited flat-rate chat** (ChatGPT / claude.ai), then
 paste the resulting JSON into **`/intelligence/ingest`** in Hindsight. The endpoint
-validates + persists at **zero LLM cost** and auto-generates the triggers. This replaces
+validates + persists at **zero LLM cost** and stores the triggers it sends. This replaces
 the ~$4/dispatch in-app thesis-writer for the screening/discovery stage.
 
 See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 hardening.
@@ -14,7 +14,7 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
    and the ticker.
 3. The chat researches and emits **one JSON object** (the contract in §A).
 4. Copy the JSON → `/intelligence/ingest` → pick the analyst → **Mint thesis**.
-5. A green "Thesis minted" = a `WATCHING` thesis with server-generated triggers. A red box
+5. A green "Thesis minted" = a `WATCHING` thesis with the triggers it sent. A red box
    = the validation reason (fix the JSON and re-paste). It can't half-succeed.
 
 > **`/ingest-thesis` slash command:** in a Claude Code session, `/ingest-thesis <Analyst> <TICKER…>`
@@ -38,7 +38,7 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 >   "horizon": "COMPOUNDER",
 >   "triggers": [
 >     { "predicate": { "watch": "price", "is": "below", "value": 280 }, "action": "ENTER", "rationale": "the buy: why this level" },
->     { "predicate": { "watch": "price", "is": "below", "value": 245 }, "action": "EXIT", "rationale": "the floor: what a close below it would mean" }
+>     { "predicate": { "watch": "price", "is": "below", "value": 245, "settings": { "close": true } }, "action": "STOP_WATCHING", "rationale": "where the setup is over: what a close below it would mean" }
 >   ],
 >   "core_belief": "two or three plain sentences: what the company does, why it is worth owning, what has to stay true; never a stock price, a target or a date",
 >   "key_assumptions": ["specific checkable premise", "another", "..."],
@@ -64,13 +64,16 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 >   way for this analyst's edge, output `direction:"PASS"` (documents the decline) — do NOT
 >   force a trade.
 > - **For `LONG`/`SHORT` ALL of these are required:** `horizon`, `triggers` (a buy, action
->   `ENTER`, and a floor, action `EXIT`), `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
+>   `ENTER`, and where the setup is over, action `STOP_WATCHING`), `core_belief`, `key_assumptions` (**≥2**), `invalidation_conditions` (**≥2**),
 >   `conviction`, `conviction_rationale`, `target_size_pct`.
 > - **A stock has triggers and nothing else:** no price fields, no target of our own ("target"
 >   is Wall Street's number). The buy is `is: "below"` for a pullback, `"above"` for a
->   breakout. On a LONG the floor sits below the buy; a take-profit (a `REVIEW` or `TRIM` above)
->   is optional and sits above both. On a stock we watch the floor reads "Stop watching if
->   below $X": a close below it retires the watch. Nothing is generated for you.
+>   breakout. Where the setup is over is a `STOP_WATCHING` line, `"is": "below"` the buy on a
+>   LONG, with `"settings": { "close": true }`. It reads "Stop watching if below $X · only on
+>   the close": a close below it ends the watch. It never sells, and **never send `EXIT`**:
+>   a sale is for a stock we hold, and the new thesis is only a watch. The holding's sale
+>   comes later, with the buy proposal, never in this JSON. A `REVIEW` above the buy is
+>   optional. Nothing is generated for you.
 > - **`variant_view` is required when `conviction` is `STRONG` or `HIGH`.** If you can't state a
 >   real variant view, your conviction is `MEDIUM` — don't inflate it.
 > - **`horizon`** is `CATALYST` | `TARGET` | `TRADE` | `COMPOUNDER`. Conditional requireds:
@@ -80,8 +83,6 @@ See `docs/plans/EXTERNAL_THESIS_INGEST.md` for the architecture and the Phase-1 
 >   caps **trendStrength 0-3, relativeStrength 0-3, entryQuality 0-2, catalystFreshness 0-2**
 >   (they sum to a /10 composite; **≥7 = high-conviction add**).
 > - **Numbers are numbers, not strings** (`"target_size_pct": 11`, not `"11"`).
-> - **Do NOT send `triggers`** — the platform generates them from horizon + prices. Anything
->   you put there is discarded.
 > - **Do NOT send `snapshot` / `bull_case` / `bear_case` as plain strings/arrays** — use
 >   `reasoning_summary` (string), `thesis_bullets` (string[]), `risk_flags` (string[]) instead.
 > - Output the JSON object only. No ```json fence, no text before/after.
@@ -107,8 +108,8 @@ operator + capital-allocation discipline, pricing power (gross-margin trajectory
 conversion, management alignment. Themes: AI infrastructure, datacenter buildout, GLP-1/obesity,
 energy transition, defense reindustrialization, onshoring, demographics.
 **Triggers:** the buy (`ENTER`) = the level you'd start scaling in at — a price the stock has
-NOT reached (a pullback below the tape, or a breakout above it). The floor (`EXIT`) = the
-thesis-break level (tolerate ~−15%). No take-profit: the 3-5yr value is the case, not a trigger.
+NOT reached (a pullback below the tape, or a breakout above it). Where the setup is over
+(`STOP_WATCHING`, on the close) = the thesis-break level (~−15%). No upside line: the 3-5yr value is the case, not a trigger.
 **Conviction → size:** STRONG 12-15 · HIGH 10-12 · MEDIUM 5-8 · LOW 3-5.
 **Invalidation must be structural:** regulatory break, demand erosion, two consecutive guidance
 cuts, CFO departure, capital-allocation breakdown. Avoid: profitless growth, story stocks,
@@ -133,8 +134,8 @@ LONG-only. Buying the drift, not the gap-day reaction.
 **Clean signal:** EPS beat **≥5%** AND revenue beat AND **guidance raised**; gap-day volume
 **>1.5× 20-day avg**; analyst estimate revisions **UP within 72h**. Filter out: one-time-item
 beats, sideways/down guides, names already gapped 10%+ (edge is gone).
-**Timing:** entry **1-3 days after** the print (not on it); target a 60-day drift window; stop
-**−8%** or a volume reversal candle. The buy trigger = the drift-entry level you're waiting
+**Timing:** entry **1-3 days after** the print (not on it); target a 60-day drift window; the
+setup is over at **−8%** (the Stop watching line) or a volume reversal candle. The buy trigger = the drift-entry level you're waiting
 for — above or below the tape, never on it; put the 60-day window in `key_assumptions` and
 (optionally) `max_hold_days`-via-`TRADE` if you prefer a hard time-exit.
 **Conviction → size:** STRONG ~3 · HIGH ~2.5 · MEDIUM ~2 · LOW ~1.5 (small book; cap $3k).
@@ -147,19 +148,19 @@ Any sector, **$5B+ market cap**, US common stock (no thin ADRs/SPACs/microcaps).
 sector ETF outperforming SPY, clean base or initial pullback to the breakout level, **no earnings
 within 5 trading days**. Avoid late-cycle/distribution breakouts, parabolic climax tops, insider-
 selling clusters.
-**Timing:** the buy trigger = the breakout level. Stops are tight: **−5% or a 10-day EMA break**,
-whichever first → set the floor trigger accordingly. `max_hold_days` 5-10. Never average down.
+**Timing:** the buy trigger = the breakout level. The setup ends fast: **−5% or a 10-day EMA break**,
+whichever first → set the Stop watching line accordingly. `max_hold_days` 5-10. Never average down.
 **Conviction → size:** STRONG 5 · HIGH 4 · MEDIUM 3 · LOW → PASS (no low-conviction breakouts).
 Max 5 open. Don't hold through earnings.
 
 ---
 
-## Worked example — Secular Compounder / AVGO (validated 2026-06-28)
+## Worked example — Secular Compounder / AVGO (validated 2026-11-16)
 This object mints cleanly (status WATCHING) with the two triggers it sends:
 ```json
 {
   "ticker": "AVGO", "direction": "LONG", "horizon": "COMPOUNDER",
-  "triggers": [{ "predicate": { "watch": "price", "is": "below", "value": 280 }, "action": "ENTER", "rationale": "I start buying on the pullback to $280." }, { "predicate": { "watch": "price", "is": "below", "value": 245 }, "action": "EXIT", "rationale": "A close under $245 would say the XPU ramp is not showing up." }],
+  "triggers": [{ "predicate": { "watch": "price", "is": "below", "value": 280 }, "action": "ENTER", "rationale": "I start buying on the pullback to $280." }, { "predicate": { "watch": "price", "is": "below", "value": 245, "settings": { "close": true } }, "action": "STOP_WATCHING", "rationale": "A close under $245 would say the XPU ramp is not showing up." }],
   "core_belief": "Broadcom's custom-silicon (XPU) plus networking franchise compounds datacenter revenue >30%/yr through 2028 as hyperscalers in-source AI accelerators, lifting operating margin above 65%.",
   "key_assumptions": ["Hyperscaler AI capex stays above $300B/yr through 2027, custom-XPU share rising toward 25%.", "VMware integration holds software gross margin near 90%.", "≥3 named XPU customers ramp to volume.", "FCF conversion stays above 40% of revenue."],
   "invalidation_conditions": ["A flagship hyperscaler drops Broadcom XPU/networking for an in-house alternative.", "Two consecutive quarters of AI-semi revenue growth below 20% YoY.", "Consolidated gross margin below 70% ex-acquisition.", "VMware subscription conversion stalls two quarters."],
