@@ -236,6 +236,17 @@ export function tradeLine(props: Omit<TradeSummaryProps, "look">) {
   return { sentence, gain, settled };
 }
 
+/** A buy proposal's "Sell if below" and the triggers that come with it, each as its sentence: they go on the stock at the fill. */
+function ProposalTriggers({ sentences }: { sentences: readonly string[] }) {
+  return (
+    <ul className="pt-1 text-sm text-muted-foreground tabular-nums">
+      {sentences.map((s) => (
+        <li key={s}>{s}</li>
+      ))}
+    </ul>
+  );
+}
+
 /** The waiting proposal's dot: white, breathing fast (`proposal-dot`, globals.css). */
 const PROPOSAL_DOT = "bg-foreground proposal-dot";
 /** The title row the two looks share, the same on both (the owner, 2026-11-06): one size up from a section label and regular, the dot (the accordion's chevron over it on hover, where the card is one), the word (shimmering on a proposal), the buttons at the right. */
@@ -376,6 +387,7 @@ function TradeBanner(props: TradeSummaryProps) {
           </HoverCardContent>
         </HoverCard>
       )}
+      {pp?.triggerSentences?.length ? <ProposalTriggers sentences={pp.triggerSentences} /> : null}
       {/* The reason, muted: two lines until the card is clicked, then all of it with the days held as its last line (or the "Writing" line while the note is on its way). */}
       {pp && !pp.executing && (pp.rationale?.trim() || pp.writing) ? (
         <div className="pt-2">
@@ -477,6 +489,7 @@ function TradeCard(props: TradeSummaryProps) {
             ))}
           </p>
         ) : null}
+        {pp?.triggerSentences?.length ? <ProposalTriggers sentences={pp.triggerSentences} /> : null}
       </div>
       {/* A rule the card's full width, splitting the numbers from the words. */}
       <div className="-mx-3">

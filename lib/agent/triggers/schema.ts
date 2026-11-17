@@ -245,6 +245,7 @@ export const triggerSchema = z.object({
     .describe(
       "Server-owned. Who authored this rung's value: DEFAULT (code template), AGENT, or PRINCIPAL (UI). Do not set — it is stamped server-side and any supplied value is overwritten.",
     ),
+  playbook: z.enum(["WATCH", "PROPOSAL", "FILL"]).optional(),
 });
 
 export const triggersArraySchema = z
@@ -286,6 +287,7 @@ export const triggerInputSchema = triggerSchema
   .extend({
     predicate: predicateInputSchema(),
     action: triggerActionSchema.describe("EXIT sells and is for a stock we hold; STOP_WATCHING ends the watch, never sells, and is for a stock we only watch."),
+    playbook: z.enum(["WATCH"]).optional().describe("WATCH when this trigger is one of the stock's playbook's watch triggers, its prices from the chart. When the stock is bought those come off with the buy; a trigger you write yourself stays. Leave it out on any other trigger."),
   });
 
 export const triggersInputArraySchema = z

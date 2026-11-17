@@ -295,7 +295,7 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
 export function saleRuleProblem(p: { setup: Setup; horizon: string | null; entry: number; stop: number; atr: number | null }): string | null {
   const dist = Math.abs(p.entry - p.stop);
   const $ = (n: number) => `$${n.toFixed(2)}`;
-  const { minAtr, maxPct } = p.setup.stop;
+  const { minAtr, maxPct } = p.setup.sale;
   if (p.atr != null && p.atr > 0 && dist < minAtr * p.atr) {
     return `the sale ${$(p.stop)} is ${(dist / p.atr).toFixed(2)} ATR from the ${$(p.entry)} buy (ATR ${$(p.atr)}). ${p.setup.name} needs it at least ${minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least ${$(minAtr * p.atr)} from the buy`;
   }

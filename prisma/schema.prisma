@@ -938,6 +938,10 @@ model Position {
   /// Why the sell price is there, in the analyst's words (place_trade's
   /// sell_reason): the note the fill writes on the "Sell if below" line.
   stopReason          String?
+  /// The triggers that come with the buy besides its sell price, as the run
+  /// named them (place_trade's triggers_with_buy): written on the stock at the
+  /// fill (lib/proposals/buy-triggers.ts).
+  buyTriggers         Json?
   /// The stop when the position opened (after any edit at approval). Never
   /// moves: R = gain ÷ (entry − initialStop) for the setup scorecard
   /// (DAV-248). stopLoss above moves with the plan; this is the risk taken.

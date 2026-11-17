@@ -21,7 +21,7 @@ it("the short row prints these keys, in this order", () => {
 
 it("the full row is the short row plus the seven research sections and the history", () => {
   // The trigger run's short row, so both carry the setup's lines (the full row always does).
-  const short = Object.keys(rowForModel(saved(), { named: true, size: "short", setupLines: true }) as Row);
+  const short = Object.keys(rowForModel(saved(), { named: true, size: "short", playbookChecks: true }) as Row);
   const full = Object.keys(rowForModel(saved(), { named: true, size: "full" }) as Row);
   const sections = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
   expect([...full].sort()).toEqual([...short, ...sections, "history"].sort());

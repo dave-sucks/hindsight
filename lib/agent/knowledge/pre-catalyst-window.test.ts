@@ -43,7 +43,7 @@ describe("preCatalystWindowLine", () => {
 
   it("the setup's own text says the same window as the line — one number (QB ruling, 2026-09-29)", () => {
     const d8 = getSetup("PRE_CATALYST")!;
-    const text = [...d8.preconditions, d8.entry.text].join(" ");
+    const text = [...d8.preconditions, ...d8.entry.confirmation].join(" ");
     expect(text).toContain("21–70 days out");
     expect(text).not.toMatch(/\b14\b/);
   });

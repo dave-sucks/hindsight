@@ -1,42 +1,36 @@
 /**
- * setup-checklist.ts — the compact setup block a thesis row carries into
- * the daily run (DAV-253): what a held name's review checks, from the
- * setup it was bought on, instead of a horizon glossary.
+ * setup-checklist.ts — the compact playbook block a thesis row carries into
+ * every run (DAV-253): what a review checks, from the playbook the stock was
+ * written on, and, on a stock we don't hold, the playbook's triggers that
+ * come with the buy, for the run that proposes it.
  */
 
-import { getSetup, type Horizon } from "./setups";
+import { getSetup } from "./setups";
 import type { SetupOverrides } from "./setup-overrides";
-import { setupLines } from "@/lib/agent/analyst-brief";
+import type { Template } from "./playbook-templates";
+import { playbookTriggerText } from "./playbooks";
+import { playbookChecks } from "@/lib/agent/analyst-brief";
 
 export interface SetupChecklist {
   id: string;
   name: string;
   /** What must still be true for the setup to be working. */
   failureSigns: string[];
-  /** The horizon's manage rule (the trail is the analyst's; this is the shape). */
-  manage: string | null;
-  /** The time limit, in words. */
-  time: string;
-  /** The lines a fire checks, for this horizon (setupLines' decision cut): a row's `setup_lines`. */
+  /** What a fire checks (playbookChecks' decision cut), and on a watch the playbook's triggers that come with the buy: a row's `playbook_checks`. */
   lines: string[];
 }
 
 export function setupChecklist(
   setupId: string | null | undefined,
-  horizon: string | null | undefined,
-  overrides?: SetupOverrides,
+  opts: { overrides?: SetupOverrides; held?: boolean; templates?: Template[] | null } = {},
 ): SetupChecklist | null {
   if (!setupId) return null;
-  const s = getSetup(setupId, overrides);
+  const s = getSetup(setupId, opts.overrides);
   if (!s) return null;
-  const h = (horizon ?? null) as Horizon | null;
   return {
     id: s.id,
     name: s.name,
     failureSigns: s.failureSigns,
-    // A horizon with no line of its own gets none, never another horizon's.
-    manage: h ? (s.trail[h] ?? null) : (Object.values(s.trail)[0] ?? null),
-    time: s.time.text,
-    lines: setupLines(s, h, "decision"),
+    lines: [...playbookChecks(s, "decision"), ...(opts.held || opts.templates === undefined ? [] : playbookTriggerText(opts.templates, "PROPOSAL"))],
   };
 }

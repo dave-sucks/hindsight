@@ -48,7 +48,7 @@ const held = (): Row => ({
     ladderHealth: { gainPct: 3.7, floor: { triggerId: "t_floor", price: 40.8, flooredGainPct: 4.45, isTrail: false, label: "below $40.80" }, flooredGainPct: 4.45, hasTrail: false, nearestRung: { triggerId: "t_target", action: "REVIEW", price: 47, distancePct: 16.0, label: "above $47" }, daysSinceLadderEdit: 1, isUnprotectedGain: false, summary: "+3.7% from entry ($39.06 → $40.51); floor locks +4.4% — below $40.80; no trail; next rung REVIEW above $47 @ $47.00 (+16.0% away); ladder last edited 1d ago" },
     floorRisk: null, triggerState: "EXIT_FIRED", triggerDetail: "below $40.80 (now $40.51)", actionability: "ACTIVE_HOLD", supersededBy: null, staleness: "FRESH", resolvedAt: "2026-10-07T20:30:00.000Z", quoteAgeMs: 0,
   },
-  setup: { id: "PEAD", name: "Post-earnings drift", failureSigns: ["The gap-day low breaks", "Revisions don't follow"], manage: "After +10%: 3 ATR under the high.", time: "Hold 30–60 days." },
+  setup: { id: "PEAD", name: "Post-earnings drift", failureSigns: ["The gap-day low breaks", "Revisions don't follow"] },
   buyBlockedByFull: null,
   heldThroughFloor: null,
   unapprovedExitCount: 0,
@@ -145,7 +145,7 @@ describe("the short row", () => {
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
     expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
-    expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow. Manage: After +10%: 3 ATR under the high. Time: Hold 30–60 days.");
+    expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow.");
     expect(row.chart).toBe("as of the 2026-10-07 close: 20d $39.70 · 50d $39.47 · 200d $33.68 · RSI 56 (14-day, from the closes and the live price) · 20d range $36.40–$44.21 · 52w high $47.47 · ATR $1.99 · vs the S&P 1M -0.6% / 3M +6.1% · 20d avg volume 5.7M · 5d +2.1% · 20d +6.4%");
     expect(row.research).toBe('Written 2026-10-05 at $39.55, 2 days ago. Full row: get_theses(tickers: ["IOT"]).');
     expect(row.catalyst).toBe("2026-10-29");
@@ -250,21 +250,21 @@ describe("the research sections a read loads with include_research", () => {
 
 describe("the trigger run's door (step 10): the short row with the setup's lines", () => {
   const withLines = () => ({ ...held(), ...research, setup: { ...(held().setup as Row), lines: ["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."] } });
-  it("carries setup_lines in place of the compact setup line, the whole view, and nothing else of the full row", () => {
-    const row = rowForModel(withLines(), { named: true, size: "short", setupLines: true }) as Row;
-    expect(row.setup_lines).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
+  it("carries playbook_checks in place of the compact setup line, the whole view, and nothing else of the full row", () => {
+    const row = rowForModel(withLines(), { named: true, size: "short", playbookChecks: true }) as Row;
+    expect(row.playbook_checks).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
     expect(row).not.toHaveProperty("setup");
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     for (const k of ["history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
     expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
   });
-  it("every other short row is unchanged: the compact setup line, no setup_lines", () => {
+  it("every other short row is unchanged: the compact setup line, no playbook_checks", () => {
     const row = rowForModel(withLines(), { named: false, size: "short" }) as Row;
     expect(row.setup).toBe((rowForModel(held(), { named: false, size: "short" }) as Row).setup);
-    expect(row).not.toHaveProperty("setup_lines");
+    expect(row).not.toHaveProperty("playbook_checks");
   });
   it("the full row always carries them", () => {
-    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).setup_lines).toHaveLength(3);
+    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).playbook_checks).toHaveLength(3);
   });
 });
 

@@ -26,6 +26,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { parseBuyTriggers } from "@/lib/proposals/buy-triggers";
 import {
   placeMarketOrder,
   closePositionPartial,
@@ -135,6 +136,7 @@ export async function approveProposal(
           targetPrice: true,
           stopLoss: true,
           stopReason: true,
+          buyTriggers: true,
         },
       },
     },
@@ -470,6 +472,8 @@ export async function approveProposal(
       // The analyst's reason goes only with its own price.
       stopIsOwners: via?.tradeTicket === true || effectiveStop !== order.position.stopLoss,
       stopReason: order.position.stopReason,
+      // The triggers that come with the buy, written as the analyst named them.
+      buyTriggers: parseBuyTriggers(order.position.buyTriggers),
     });
   } else if (intent === "CLOSE") {
     await closeThesisOnApproval({

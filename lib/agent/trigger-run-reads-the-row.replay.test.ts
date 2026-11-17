@@ -12,10 +12,12 @@
  * get_theses execute at the moment of the fire, then the trigger run's own
  * `stockFromRead` and its prompt builder.
  */
+import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
+import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import raw from "@/lib/agent/__fixtures__/trigger-run-reads-2026-10.json";
 import { replayTool, thesisRow, positionRow, agentConfigRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
-import { setupLines } from "@/lib/agent/analyst-brief";
+import { playbookChecks } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { SITUATIONS } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
@@ -27,7 +29,7 @@ const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxO
 /** What only the full row carries: the trigger run's row has none of it. */
 const FULL_ONLY = ["history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
 /** The row's standing keys, on every fire; the cases, the conviction reason and the snapshot ride only on the review clock (ROW_FIELDS, 2026-11-06). */
-const STANDING_KEYS = ["stock", "id", "situations", "said", "triggers", "setup_lines", "research"];
+const STANDING_KEYS = ["stock", "id", "situations", "said", "triggers", "playbook_checks", "research"];
 // The keys only the review clock sends: the cases and the company line. The snapshot, the conviction reason and the variant view ride with a situation that reads them (a plan problem, a buy).
 const REVIEW_ONLY = ["bull_case", "bear_case", "company"];
 const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>, withIt: string[], without: string[]) => {
@@ -104,7 +106,8 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy level reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
-    expect(row.setup_lines).toEqual(setupLines(getSetup("MA_PULLBACK")!, "TARGET", "decision"));
+    // A watch: what a fire checks, then the playbook's triggers that come with the buy.
+    expect(row.playbook_checks).toEqual([...playbookChecks(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(PLAYBOOK_TEMPLATES.MA_PULLBACK, "PROPOSAL")]);
     // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
     // Plan checks were deleted (2026-11-13): no plan_checks line, and the writer's own read of the case waits for the review clock.
     shortRow(row, saved, [], ["position", "plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"]);
@@ -124,7 +127,8 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
-    expect(row.setup_lines).toEqual(setupLines(getSetup("PEAD")!, "TARGET", "decision"));
+    // A holding: its triggers are on the stock, so only what a fire checks.
+    expect(row.playbook_checks).toEqual(playbookChecks(getSetup("PEAD")!, "decision"));
     // A sale signal reads the position and what would prove us wrong, not the Street or the writer's dated read.
     shortRow(row, saved, ["position", "would_prove_it_wrong"], ["street", "snapshot", "conviction_rationale", "variant_view"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);

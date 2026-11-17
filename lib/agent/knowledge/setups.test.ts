@@ -1,8 +1,7 @@
 /**
- * setups.test.ts — the catalog is complete and speaks only the vocabulary
- * that will exist. A template naming a kind nobody evaluates is a plan
- * that can't fire — the exact failure 7 of 13 trigger kinds had
- * (docs/plans/AGENT_REBUILD.md §1.6).
+ * setups.test.ts — the catalog is complete, and its triggers are its
+ * templates (./playbook-templates, tested there): no rule a trigger carries
+ * is written here in words.
  */
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
@@ -12,22 +11,13 @@ import {
   setupsForAnalyst,
   SETUPS,
   SETUP_IDS,
-  describeTemplate,
   getSetup,
   setupIndex,
-  templateMeasures,
-  fillTemplate,
   templatePlaceholders,
-  type TemplatePredicate,
 } from "./setups";
 import { STRATEGY_ARCHETYPES } from "./strategy-archetypes";
-import { triggerPredicateSchema } from "@/lib/agent/triggers/schema";
-import { MEASURES } from "@/lib/agent/triggers/condition";
 import { readKnowledgeLibrary } from "@/lib/agent/tools/read-knowledge-library";
 import { createToolContext } from "@/lib/agent/tool-context";
-
-/** A template with every `{placeholder}` filled with a number. */
-const filled = (p: TemplatePredicate) => fillTemplate(p, () => 100);
 
 describe("the setup catalog", () => {
   it("has the twelve playbook setups, D1–D12, once each", () => {
@@ -44,61 +34,32 @@ describe("the setup catalog", () => {
     expect(s.summary.length).toBeGreaterThan(20);
     expect(s.horizons.length).toBeGreaterThan(0);
     expect(s.preconditions.length).toBeGreaterThan(0);
-    expect(s.entry.text.length).toBeGreaterThan(0);
-    expect(s.stop.text.length).toBeGreaterThan(0);
-    expect(s.stop.minAtr).toBeGreaterThan(0);
-    // A target only where the setup has an upside rule that is an action; no minimum ratio anywhere (2026-11-04).
-    if (s.target) expect(s.target.text.length).toBeGreaterThan(0);
+    expect(s.entry.confirmation.length + (s.entry.entryVia?.length ?? 0)).toBeGreaterThan(0);
+    expect(s.sale.minAtr).toBeGreaterThan(0);
     expect(s.riskMultiplier).toBeGreaterThan(0);
     expect(s.sizing.length).toBeGreaterThan(0);
-    expect(s.time.text.length).toBeGreaterThan(0);
     expect(s.failureSigns.length).toBeGreaterThan(0);
     expect(Array.isArray(s.triggers)).toBe(true);
   });
 
-  it("every ENTRY setup has a condition and a trail for its TRADE and CATALYST horizons; TARGET and COMPOUNDER sell by the analyst's and the account's rules", () => {
-    for (const s of SETUPS.filter((x) => x.role === "ENTRY")) {
-      if (s.id === "PRE_CATALYST") continue; // entered via D1/D5; its trail is the event
-      expect({ id: s.id, template: s.entry.template }).not.toEqual({ id: s.id, template: null });
-      for (const h of s.horizons) {
-        const own = h === "TRADE" || h === "CATALYST";
-        expect({ id: s.id, h, trail: s.trail[h] != null }).toEqual({ id: s.id, h, trail: own });
-      }
+  it("carries no trigger rule in words: the sell price, the Trim, the trail and the time limit are its templates", () => {
+    for (const s of SETUPS) {
+      expect(Object.keys(s).filter((k) => ["stop", "target", "trail", "time", "manage"].includes(k))).toEqual([]);
+      expect("template" in s.entry || "text" in s.entry).toBe(false);
+      expect(Object.keys(s.sale)).toEqual(["maxPct", "minAtr"]);
     }
   });
 
   it("every SCREEN names the ENTRY setups it is entered through", () => {
     for (const s of SETUPS.filter((x) => x.role === "SCREEN")) {
-      expect(s.entry.template).toBeNull();
       expect(s.entry.entryVia?.length).toBeGreaterThan(0);
       for (const via of s.entry.entryVia ?? []) expect(getSetup(via)?.role).toBe("ENTRY");
     }
   });
 
-  it("every template, filled in, is a predicate the trigger write path accepts", () => {
-    for (const s of SETUPS.filter((x) => x.entry.template)) {
-      const parsed = triggerPredicateSchema.safeParse(filled(s.entry.template!));
-      expect({ setup: s.id, ok: parsed.success, issues: parsed.error?.issues.slice(0, 1) }).toEqual({
-        setup: s.id,
-        ok: true,
-        issues: undefined,
-      });
-    }
-    // The check itself bites.
-    expect(triggerPredicateSchema.safeParse({ kind: "GUIDANCE_CHANGE", direction: "DOWN" }).success).toBe(false);
-  });
-
-  it("every template is built from the catalog's measures", () => {
-    const used = SETUPS.flatMap((s) => templateMeasures(s.entry.template));
-    for (const m of used) expect(Object.keys(MEASURES)).toContain(m);
-    expect(used.length).toBeGreaterThan(5);
-  });
-
   it("every placeholder a template uses is defined", () => {
     for (const s of SETUPS) {
-      for (const p of templatePlaceholders(s.entry.template)) {
-        expect(Object.keys(PLACEHOLDERS)).toContain(p);
-      }
+      for (const t of s.triggers) for (const p of templatePlaceholders(t.predicate)) expect(Object.keys(PLACEHOLDERS)).toContain(p);
     }
   });
 
@@ -128,15 +89,6 @@ describe("the setup catalog", () => {
     expect(setupsForAnalyst(["GONE", "PRE_CATALYST"]).map((s) => s.id)).toEqual(["PRE_CATALYST"]);
   });
 
-  it("describes a template in one line", () => {
-    expect(describeTemplate(getSetup("BASE_BREAKOUT")!.entry.template)).toBe(
-      "above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}",
-    );
-    expect(describeTemplate(getSetup("PEAD")!.entry.template)).toBe(
-      "within 3 days after earnings and above {gapDayLow}",
-    );
-  });
-
   it("looks up case-insensitively and indexes all twelve", () => {
     expect(getSetup("base_breakout")?.code).toBe("D1");
     expect(setupIndex()).toHaveLength(12);
@@ -155,11 +107,15 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.summary).toMatch(/^12 setups:/);
   });
 
-  it("returns a full entry with readable content", async () => {
+  it("returns a full entry with readable content: the playbook's words, then its triggers", async () => {
     const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
     expect(r.data.found).toBe(true);
-    expect(String(r.data.content)).toContain("Post-earnings drift (D4)");
-    expect(String(r.data.content)).toContain("Condition: within 3 days after earnings and above {gapDayLow}");
+    const content = String(r.data.content);
+    expect(content).toContain("Post-earnings drift (D4)");
+    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {price} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{price}","settings":{"close":true}}} — Today\'s price');
+    expect(content).toContain("The triggers that come with the buy:\n- Sell if below {sellPrice}: ");
+    expect(content).toContain('- Review 60 days after the buy: {"action":"REVIEW","predicate":{"watch":"from_date","is":"after","value":60,"variable":"buy"}} — Hold 30–60 days.');
+    expect(content).not.toMatch(/^(Stop|Target|Trail|Time|  Condition):/m);
   });
 
   it("names the available setups on an unknown id", async () => {
@@ -169,29 +125,15 @@ describe("read_knowledge_library — topic 'setup'", () => {
   });
 });
 
-describe("the pullback is a plan the writer can write (HPE 2026-09-15)", () => {
-  it("the pullback template is the arm alone — no level nothing re-sets", () => {
-    const p = getSetup("MA_PULLBACK")!;
-    expect(templatePlaceholders(p.entry.template)).toEqual([]);
-    expect(describeTemplate(p.entry.template)).toBe(
-      "within 2% of the 20-day average or within 2% of the 50-day average",
-    );
-    expect(Object.keys(PLACEHOLDERS)).not.toContain("{priorDayHigh}");
-    for (const s of SETUPS) expect(templatePlaceholders(s.entry.template)).not.toContain("{priorDayHigh}");
-  });
-
-  it("the reversal is the tactical run's confirmation, and the stop has a rule before the pullback low prints", () => {
-    const p = getSetup("MA_PULLBACK")!;
-    expect(p.entry.confirmation.some((c) => c.includes("close above the prior day's high"))).toBe(true);
-    expect(p.stop.structure).toEqual([
-      "the pullback's swing low, once it has printed",
-      "until then, 1 ATR under the average being bought",
-    ]);
+describe("the pullback and the drift (HPE 2026-09-15)", () => {
+  it("the reversal is the tactical run's confirmation", () => {
+    expect(getSetup("MA_PULLBACK")!.entry.confirmation.some((c) => c.includes("close above the prior day's high"))).toBe(true);
   });
 
   it("PEAD carries its window as data, and only PEAD does", () => {
     expect(getSetup("PEAD")!.entry.windowDays).toEqual([1, 3]);
-    expect(getSetup("PEAD")!.entry.text).toContain("written on the pullback setup");
+    // Past the window the stock goes to the pullback playbook: its watch clock's own reason.
+    expect(getSetup("PEAD")!.triggers.find((t) => t.writtenOn === "WATCH" && t.action === "REVIEW")!.rationale).toContain("re-writes the stock on the pullback playbook");
     expect(SETUPS.filter((s) => s.entry.windowDays).map((s) => s.id)).toEqual(["PEAD"]);
   });
 });

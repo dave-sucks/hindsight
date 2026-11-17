@@ -58,11 +58,11 @@ beforeAll(async () => {
 });
 
 const decide = (c: Case, d: Record<string, unknown> = c.decision) =>
-  validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price, setups: setupsForAnalyst([c.decision.setup_id]), chart: null });
+  validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price });
 
 /** submit_thesis as the Writer builds it; its input schema is what the SDK parses the model's call with. */
 const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) =>
-  makeSubmit({ ticker: "T", validate: { mode: "mint", currentPrice: c.price, setups: setupsForAnalyst([c.decision.setup_id]), chart: null }, check, onAttempt: () => 1, onAccept }) as unknown as {
+  makeSubmit({ ticker: "T", validate: { mode: "mint", currentPrice: c.price }, check, onAttempt: () => 1, onAccept }) as unknown as {
     inputSchema: Parameters<typeof asSchema>[0];
     execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[]; saved_without?: string[] }>;
   };
@@ -188,7 +188,7 @@ describe("submit_thesis never says accepted unless the save will take it", () =>
   const c = { ...F.AAOI, decision: { ...F.AAOI.decision, ...asWritten(F.AAOI.decision) } };
   const tool = (check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) => ({
     onAccept,
-    t: makeSubmit({ ticker: "AAOI", validate: { mode: "mint", currentPrice: c.price, setups: setupsForAnalyst(["PEAD"]), chart: null }, check, onAttempt: () => 1, onAccept }) as unknown as {
+    t: makeSubmit({ ticker: "AAOI", validate: { mode: "mint", currentPrice: c.price }, check, onAttempt: () => 1, onAccept }) as unknown as {
       execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[]; saved_without?: string[] }>;
     },
   });

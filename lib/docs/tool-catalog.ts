@@ -11,6 +11,9 @@
 
 import { MODES, type AgentMode } from "@/lib/agent/modes";
 import { SETUPS } from "@/lib/agent/knowledge/setups";
+import { TRIGGER_LIST_NAME, WRITTEN_ON } from "@/lib/agent/knowledge/playbook-templates";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { DOCS_AGENTS, TOOL_DOCS, WRITER_TOOLS, type CatalogTool, type DocsAgentId, type DocsSetup } from "./tools";
 
 export { TOOL_DOCS } from "./tools";
@@ -60,10 +63,8 @@ export function buildSetupList(): DocsSetup[] {
     role: s.role,
     summary: s.summary,
     preconditions: s.preconditions,
-    entry: s.entry.text,
-    stop: s.stop.text,
-    target: s.target?.text ?? null,
-    time: s.time.text,
+    confirmation: s.entry.confirmation,
+    triggers: WRITTEN_ON.map((on) => ({ label: TRIGGER_LIST_NAME[on], sentences: s.triggers.filter((t) => t.writtenOn === on).map((t) => sentenceOf(t as unknown as Trigger)) })).filter((g) => g.sentences.length),
     failureSigns: s.failureSigns,
   }));
 }

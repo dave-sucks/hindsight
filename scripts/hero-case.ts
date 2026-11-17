@@ -44,6 +44,7 @@ import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
@@ -166,7 +167,8 @@ function systemFor(c: HeroCase): string {
       // Cases saved before step 10 carry the analyst's fields loose on the arguments.
       const p = c.promptArgs;
       const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
-      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]) } as never);
+      // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
+      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) } as never);
     }
     case "research-run": {
       // JSON turned the refusals' dates into strings; the builder wants dates.

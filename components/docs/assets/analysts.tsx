@@ -34,7 +34,7 @@ const ANALYSTS = [
   },
 ] as const;
 
-/** The playbook's entry setups, one accordion each: what it is, what it needs, how it fails, and its four levels. */
+/** The playbooks with a buy of their own, one accordion each: what it is, what it needs, how it fails, and its triggers. */
 export function Playbook() {
   const setups = useDocsSetups().filter((s) => s.role === "ENTRY");
   if (setups.length === 0) return null;
@@ -57,10 +57,24 @@ export function Playbook() {
               ))}
             </Ul>
           </DocFact>
-          <DocFact label="Entry">{s.entry}</DocFact>
-          <DocFact label="Stop">{s.stop}</DocFact>
-          {s.target ? <DocFact label="Target">{s.target}</DocFact> : null}
-          <DocFact label="Time">{s.time}</DocFact>
+          {s.confirmation.length ? (
+            <DocFact label="A buy is confirmed by">
+              <Ul>
+                {s.confirmation.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </Ul>
+            </DocFact>
+          ) : null}
+          {s.triggers.map((g) => (
+            <DocFact key={g.label} label={g.label}>
+              <Ul>
+                {g.sentences.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </Ul>
+            </DocFact>
+          ))}
         </DocAccordion>
       ))}
     </DocAccordions>

@@ -56,6 +56,8 @@ export async function promoteThesisOnApproval(opts: {
   stopIsOwners?: boolean;
   /** The analyst's reason for the proposal's sell price, when you approved that price. */
   stopReason?: string | null;
+  /** The triggers that come with the buy besides its sell price (Position.buyTriggers). */
+  buyTriggers?: Trigger[];
   runId?: string | null;
 }): Promise<void> {
   // WATCHING or PROMOTED → HOLDING. One shared implementation with place_trade; see armHeldLadderOnFill below.
@@ -67,6 +69,7 @@ export async function promoteThesisOnApproval(opts: {
     stopLoss: opts.stopLoss,
     stopIsOwners: opts.stopIsOwners,
     stopReason: opts.stopReason,
+    buyTriggers: opts.buyTriggers,
     positionId: opts.positionId,
     runId: opts.runId ?? null,
     via: "approved proposal",
@@ -85,13 +88,17 @@ export async function promoteThesisOnApproval(opts: {
  * what a rewrite cost: ASML's $2,800 target and four reviews, gone on the
  * fill):
  *   - finds the analyst's newest WATCHING thesis on the ticker
- *   - removes the buy trigger(s) — you can't enter what you already hold
- *     (GAPS A2 found 35/36 ENTER tactical runs were on already-held tickers)
- *     — and the Stop watching lines: there is no watch left to end
+ *   - the playbook's watch triggers come off and its holding triggers go on:
+ *     the buy trigger(s) — you can't buy what you already hold (GAPS A2
+ *     found 35/36 ENTER tactical runs were on already-held tickers) — the
+ *     Stop watching triggers, and every trigger written from the playbook's
+ *     watch triggers (`playbook: "WATCH"`). A trigger written by hand stays
  *   - writes "Sell if below $X" at the approved sell price (the order's
  *     stopLoss): the analyst's, with its reason, from the proposal; yours
- *     from the Trade ticket. A watch line never becomes the sale. The
- *     upside level goes to the order's target when it names one
+ *     from the Trade ticket. A watch trigger never becomes the sale
+ *   - writes the triggers that come with the buy (Position.buyTriggers) as
+ *     the analyst named them, each with its reason. An old order's or the
+ *     Trade ticket's upside price (targetPrice) goes on as a price trigger
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
  *   - writes the stock's playbook's fill templates as Settings → Playbook
@@ -114,8 +121,10 @@ export async function armHeldLadderOnFill(opts: {
   stopLoss: number | null;
   /** The stop was typed on the Trade ticket: the floor it writes is the owner's. */
   stopIsOwners?: boolean;
-  /** Why the sell price is there: the analyst's words, the note on the "Sell if below" line. */
+  /** Why the sell price is there: the analyst's words, the note on the "Sell if below" trigger. */
   stopReason?: string | null;
+  /** The triggers that come with the buy besides its sell price, written as they are. */
+  buyTriggers?: Trigger[];
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
@@ -134,12 +143,14 @@ export async function armHeldLadderOnFill(opts: {
     if (!watchingThesis) return;
 
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
-    // The playbook's fill templates, read against the lines left once the buy and Stop watching lines come off.
+    // At the fill, the playbook's watch triggers come off and its holding triggers go on. A trigger written by hand stays.
+    const watchTriggers = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING" || t.playbook === "WATCH";
+    const buyTriggers = opts.buyTriggers ?? [];
+    // The playbook's fill triggers, read against the triggers left and the ones the buy brings.
     // A playbook that can't be read writes none, and the Activity line says so.
-    const watchLines = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING";
     const playbook = fillTemplateOps(
       watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
-      stored.filter((t) => !watchLines(t)),
+      [...stored.filter((t) => !watchTriggers(t)), ...buyTriggers],
     );
     // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
     // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
@@ -148,26 +159,27 @@ export async function armHeldLadderOnFill(opts: {
       opts.stopLoss != null
         ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, rationale: chooser === "PRINCIPAL" ? addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) : opts.stopReason?.trim() }]
         : [];
-    const ops: TriggerOp[] = [
-      ...stored.filter(watchLines).map((t) => ({ op: "remove" as const, id: t.id })),
-      ...(chooser ? [] : floorOp),
-      ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-      ...playbook.ops,
+    const add = (t: Trigger): TriggerOp => ({ op: "add", trigger: t });
+    // Each trigger is written by whoever chose it, so it reads as theirs.
+    const byActor: Array<["SYSTEM" | "AGENT" | "PRINCIPAL", TriggerOp[]]> = [
+      [
+        "SYSTEM",
+        [
+          ...stored.filter(watchTriggers).map((t) => ({ op: "remove" as const, id: t.id })),
+          ...(chooser ? [] : floorOp),
+          ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
+          ...playbook.ops,
+        ],
+      ],
+      ["AGENT", [...(chooser === "AGENT" ? floorOp : []), ...buyTriggers.map(add)]],
+      ["PRINCIPAL", chooser === "PRINCIPAL" ? floorOp : []],
     ];
-    const system = applyTriggerOps({
-      stored,
-      ops,
-      direction: watchingThesis.direction,
-      status: "HOLDING",
-      actor: "SYSTEM",
-      mintId: () => randomUUID(),
-    });
-    // The sale is written by whoever chose its price, so it reads as theirs.
-    const chosen =
-      chooser && floorOp.length > 0
-        ? applyTriggerOps({ stored: system.triggers, ops: floorOp, direction: watchingThesis.direction, status: "HOLDING", actor: chooser, mintId: () => randomUUID() })
-        : null;
-    const applied = { triggers: chosen?.triggers ?? system.triggers, results: [...system.results, ...(chosen?.results ?? [])] };
+    let applied: { triggers: Trigger[]; results: ReturnType<typeof applyTriggerOps>["results"] } = { triggers: stored, results: [] };
+    for (const [actor, ops] of byActor) {
+      if (!ops.length) continue;
+      const r = applyTriggerOps({ stored: applied.triggers, ops, direction: watchingThesis.direction, status: "HOLDING", actor, mintId: () => randomUUID() });
+      applied = { triggers: r.triggers, results: [...applied.results, ...r.results] };
+    }
     // Stop when buying: read against the floor the buy just set.
     const stopOps = autoStopOps({
       triggers: applied.triggers,

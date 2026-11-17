@@ -35,9 +35,7 @@ export const CRWD_ROW: Row = {
     id: "PEAD",
     name: "Post-earnings drift",
     failureSigns: ["The gap day's low breaks", "Revisions stall"],
-    manage: "A 3 ATR trail after +10%.",
-    time: "60 days from the buy.",
-    lines: ["Entry: the gap day's close, confirmed by a close above it.", "Stop: under the gap day's low, at least 1.5 ATR.", "Failure looks like: the gap day's low breaks; revisions stall.", "Manage: a 3 ATR trail after +10%.", "Time: 60 days from the buy."],
+    lines: ["Confirm a buy by: the gap held; surprise and guidance confirmed from the release", "Failure looks like: the gap day's low breaks; revisions stall."],
   },
   // What we paid, on a holding: the quiet line names it (the buy on a watch is its trigger's sentence).
   paid: 404.1,

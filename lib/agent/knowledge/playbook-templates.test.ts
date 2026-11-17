@@ -58,8 +58,8 @@ function specRows(id: string): Array<[WrittenOn, string]> {
     const at = from ?? how;
     if (at === "Proposal") return [["PROPOSAL", said(text)]];
     if (at === "Template") return [["FILL", said(text)]];
-    // Kept: the watch's line stays; a clock is also written at the fill.
-    return text.startsWith("Review every") ? [["FILL", said(text)]] : [];
+    // Kept: the watch triggers come off at the fill, so a clock is written again at the fill and any other kept trigger comes with the buy.
+    return text.startsWith("Review every") ? [["FILL", said(text)]] : [["PROPOSAL", said(text)]];
   });
   return [...watch, ...holding];
 }
@@ -74,9 +74,10 @@ describe("the seed is the spec's tables, row for row", () => {
     });
   }
 
-  it("a Kept line that isn't a clock is the watch's own line (it stays through the fill)", () => {
+  it("a Kept trigger that isn't a clock is on the watch and comes again with the buy (the fill takes the watch triggers off)", () => {
     const ep = PLAYBOOK_TEMPLATES.EPISODIC_PIVOT;
     expect(ep.filter((t) => t.writtenOn === "WATCH").map((t) => rendered("EPISODIC_PIVOT", t))).toContain("Review if below $M on the close");
+    expect(ep.filter((t) => t.writtenOn === "PROPOSAL").map((t) => rendered("EPISODIC_PIVOT", t))).toContain("Review if below $M on the close");
   });
 
   it("reads the way the pill does: a chart level by its name", () => {
