@@ -51,14 +51,15 @@ export const price: MeasureDef = {
     }
     return null;
   },
-  // A typed price either way; an average either way; a high, or a Street target, only from below (a new high; the Street is never a floor). On the close only for a typed price.
+  // A typed price either way; an average either way; a high, or a Street target, only from below (a new high; the Street is never a floor). On the close only for a typed price or an average.
   fits: (c) => {
     if (c.is !== "above" && c.is !== "below") return false;
     if (!c.variable) return c.value != null;
+    if (SMA_PERIOD[c.variable] != null) return true;
     if (c.settings?.close === true) return false;
-    return SMA_PERIOD[c.variable] != null || ((c.variable === "high20" || c.variable === "high52" || STREET.has(c.variable)) && c.is === "above");
+    return ((c.variable === "high20" || c.variable === "high52" || STREET.has(c.variable)) && c.is === "above");
   },
-  shape: "A price is above or below a typed price or an average, or above a high or one of the Street's targets (never below the Street: it is evidence, not a floor); only a typed price can wait for the close.",
+  shape: "A price is above or below a typed price or an average, or above a high or one of the Street's targets (never below the Street: it is evidence, not a floor); only a typed price or an average can wait for the close.",
 };
 
 export const move: MeasureDef = {

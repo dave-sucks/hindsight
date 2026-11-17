@@ -32,7 +32,9 @@ Each thesis carries a `triggers[]` JSONB array. A trigger is a tuple:
   bought, or a date count from the buy: `readsThePosition` in
   `condition/rules.ts`) is refused at the save on a stock we don't hold, with
   `POSITION_ON_A_WATCH`: it comes with the buy, or at the fill. A stored one is
-  left as it is.
+  left as it is. An analyst or account rule on our position doesn't apply to a
+  stock we don't own: `resolveLadder` leaves it off a watch's list, as it does
+  a sale, an add and a trim.
   An action means the same thing whatever the stock's state.
 - **rationale** — prose the agent reads when it acts.
 - **lastFiredAt / falseAtCloseAt** — its fire state, written by the trigger check: when it last fired, and when a market close last found it false after that (see §6). There are no waits.
@@ -78,7 +80,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 
 | Measure (`watch`) | Means | Number · variable · settings |
 |---|---|---|
-| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
+| `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it (a typed price or an average: "Stop watching if below the 200-day average · only on the close") — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
 | `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |

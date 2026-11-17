@@ -103,7 +103,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | On a watch | How the level is picked |
 |---|---|
 | None before the report | The account's "Review if earnings beat" wakes a run at the first open after the report |
-| Buy if above $X on the close | X: today's price, written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised, reaction volume 2×+, not already 10% past the gap, and never a beat the stock fell on |
+| Buy if above $M on the close | M: the gap day's middle (the gap held). Written on days 1–3 after a report with EPS 5%+ over, a revenue beat, guidance raised, reaction volume 2×+, not already 10% past the gap, and never a beat the stock fell on; already true then, so it fires at the next close |
 | Review every 7 days | The first one after day 3 re-writes the stock on the pullback playbook or lets it go |
 | Stop watching if below $L on the close | L: the gap day's low |
 
@@ -117,7 +117,6 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 *Can't be written:*
 
 - A wake on the session after the report.
-- "The gap held."
 - "Out before the next print" as a sale, because an earnings condition only takes a review.
 - Estimate revisions.
 
@@ -146,9 +145,9 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 |---|---|
 | Buy if above $P on the close and at least 1.5× normal volume | P: the base's pivot |
 | Buy if within 2% of the 50-day average | Only while the 50-day is rising |
-| Buy if above the 50-day average | Only while the 50-day is rising |
+| Buy if above the 50-day average | The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now |
 | Review every 30 days | |
-| Stop watching if below $L on the close | L: the 52-week low |
+| Stop watching if below the 200-day average on the close | The uptrend broke; not an accumulation candidate until it's back |
 
 | On a holding | How the level is picked | From |
 |---|---|---|

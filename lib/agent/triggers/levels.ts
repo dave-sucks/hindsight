@@ -41,7 +41,7 @@
  */
 
 import { triggerSlot } from "./condition/slot";
-import { fromPosition, reviewClockDays, shapeOf, tightness } from "./condition";
+import { fromPosition, readsThePosition, reviewClockDays, shapeOf, tightness } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import type { Trigger } from "./types";
 
@@ -162,10 +162,14 @@ function isReviewClock(t: Trigger): boolean {
   return w != null && reviewClockDays(w) != null;
 }
 
-/** A condition measured from an open position (our entry, the high since we bought) is inert without one. */
-function measuresOffPosition(t: Trigger): boolean {
+/**
+ * A condition measured from an open position (our entry, the high since we bought) is inert without one.
+ * A rule above the stock reading our position in any way (days since the buy, or inside an "and") doesn't
+ * apply to a stock we don't own either; the stock's own are read as stored.
+ */
+function measuresOffPosition(t: Trigger, level: TriggerLevel): boolean {
   const w = shapeOf(t.predicate);
-  return w != null && fromPosition(w);
+  return w != null && (level === "THESIS" ? fromPosition(w) : readsThePosition(w));
 }
 // Actions that operate on a position. A rung with one of these on a thesis
 // we don't hold is not a decision, it is a spawn: the account's ±7% scale-in
@@ -285,7 +289,7 @@ export function resolveLadder(input: LadderLevels): ResolvedTrigger[] {
     for (const t of byLevel[level]) {
       if (
         dropPositionScoped &&
-        (measuresOffPosition(t) || POSITION_SCOPED_ACTIONS.has(t.action))
+        (measuresOffPosition(t, level) || POSITION_SCOPED_ACTIONS.has(t.action))
       ) {
         continue;
       }
