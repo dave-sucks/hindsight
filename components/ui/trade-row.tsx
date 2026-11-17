@@ -6,7 +6,7 @@ import { proposedLine } from "@/lib/trade-statement";
 import { MoreVertical, Plus } from "lucide-react";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import { StockLogo } from "@/components/StockLogo";
-import { PnlBadge } from "@/components/ui/pnl-badge";
+import { PriceChange } from "@/components/ui/price-change";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -15,7 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { cn, pnlColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/format";
 import {
   getTradeStatusDisplay,
@@ -97,7 +97,7 @@ export function TradeRowShell({
         </div>
         {(secondary !== undefined || trailingBottom !== undefined) && (
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground tabular-nums truncate">
+            <span className="text-sm font-light text-muted-foreground tabular-nums truncate">
               {secondary}
             </span>
             {trailingBottom !== undefined && (
@@ -233,7 +233,8 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 }
 
 // ── GainPair — the number every row ends with ────────────────────────────────
-// Dollar amount + percent badge, same weights and colours whether it's a held
+// The arrow, the dollars, the percent: one size, one light weight, coloured,
+// no badge (the owner, 2026-11-17), whether it's a held
 // position's lifetime P&L or a watched name's move today. ONE component so a
 // trade row and a watchlist row can never drift into showing the gain
 // differently — the whole point of "one row design everywhere".
@@ -243,12 +244,7 @@ function usePinMenuItem(ticker: string): RowMenuItem {
 
 export function GainPair({ dollar, pct }: { dollar: number; pct: number }) {
   return (
-    <>
-      <span className={cn("text-xs tabular-nums", pnlColor(dollar))}>
-        {dollar >= 0 ? "+" : ""}${Math.abs(dollar).toFixed(2)}
-      </span>
-      <PnlBadge value={pct} format="percent" className="text-xs" />
-    </>
+    <PriceChange dollarChange={dollar} percentChange={pct} size="sm" arrowFirst className="font-light" />
   );
 }
 
@@ -405,14 +401,13 @@ export function TradeRow({
       leading={<StockLogo ticker={ticker} size="md" className="rounded-md" />}
       primary={
         <>
-          {/* Reads as "Trim SNOW" / "Buy HPE". The dropdown offers Approve
-              before you'd otherwise know what you're approving — the verb is
-              the missing half of that decision. Lighter weight so the ticker
-              still leads the row visually. */}
+          {/* Reads as "Trim SNOW" / "Buy HPE": the verb light, the ticker
+              medium, both the text's own colour and size, so the row scans by
+              weight (the owner, 2026-11-17). */}
           {isAwaitingApproval && (
             <span
               className={cn(
-                "text-sm font-light text-muted-foreground",
+                "text-sm font-light text-foreground",
                 // Approved and in flight — the same shimmer the agent's
                 // in-progress rows use, in the verb's slot. It's the whole
                 // signal that the trade is on its way rather than lost.
