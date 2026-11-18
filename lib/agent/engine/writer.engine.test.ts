@@ -86,6 +86,7 @@ describe("a stock's two Writer agents", () => {
     expect(rowsOf(built)?.map((r) => r.name)).toEqual([
       "The analyst",
       "House rules",
+      "Weighing the Market and portfolio block",
       "How you write",
       "Its playbooks",
       "Its job",

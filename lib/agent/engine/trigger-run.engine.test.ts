@@ -95,15 +95,12 @@ describe("a trigger fire's two agents", () => {
       "How you write",
       "Its situations",
       "Market numbers",
-      "Market digest",
-      "Portfolio snapshot",
-      "Portfolio digest",
       "The stock's row",
       "What fired",
       "The fire",
       "The ask",
     ]);
     const auto = triggerRunRequest(args("auto_sale"), { facts: "Write-up on $CASE." });
-    expect(rowsOf(auto)?.map((r) => r.name)).toEqual(["The analyst", "Its instructions", "House rules", "How you write", "Market numbers", "Market digest", "Portfolio snapshot", "Portfolio digest", "The stock's row", "What fired", "The fire", "The ask"]);
+    expect(rowsOf(auto)?.map((r) => r.name)).toEqual(["The analyst", "Its instructions", "House rules", "Weighing the Market and portfolio block", "How you write", "Market numbers", "Market digest", "Portfolio snapshot", "Portfolio digest", "The stock's row", "What fired", "The fire", "The ask"]);
   });
 });

@@ -71,6 +71,7 @@ describe("the Portfolio Manager on the engine", () => {
     expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual([
       "instructions:Its role",
       "instructions:House rules",
+      "instructions:Weighing the Market and portfolio block",
       "instructions:How you write",
       "instructions:Market numbers",
       "instructions:Market digest",

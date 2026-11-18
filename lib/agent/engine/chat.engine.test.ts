@@ -53,8 +53,8 @@ describe("the chat on the agent engine", () => {
 
   it("pinned, the analyst's scope, brief, money and book end the instructions, after the house rules and how you write", () => {
     const ids = (name: ChatCaseName) => built(name).parts.map((p) => p.id);
-    expect(ids("pinned")).toEqual(["instructions", "house_rules", "how_you_write", "analyst_scope", "analyst_brief", "money_context", "book_context"]);
-    expect(ids("pinned_bare")).toEqual(["instructions", "house_rules", "how_you_write", "analyst_scope", "analyst_brief"]);
+    expect(ids("pinned")).toEqual(["instructions", "house_rules", "market_block_rule", "how_you_write", "analyst_scope", "analyst_brief", "money_context", "book_context"]);
+    expect(ids("pinned_bare")).toEqual(["instructions", "house_rules", "market_block_rule", "how_you_write", "analyst_scope", "analyst_brief"]);
     expect(partText("pinned", "analyst_scope")).toBe(
       "## Current scope — pinned to Case Analyst\n\n  • Analyst ID: `analyst_case`\n  • Sectors: Information Technology\n  • Market cap: $2B – no ceiling\n  • Exclusions: XXX\n  • Watchlist: AAA, BBB",
     );
@@ -63,8 +63,8 @@ describe("the chat on the agent engine", () => {
 
   it("at the portfolio level, each analyst's room ends the instructions when there are any, and no analyst's blocks are given", () => {
     const ids = (name: ChatCaseName) => built(name).parts.map((p) => p.id);
-    expect(ids("unscoped")).toEqual(["instructions", "house_rules", "how_you_write"]);
-    expect(ids("unscoped_rooms")).toEqual(["instructions", "house_rules", "how_you_write", "analyst_rooms"]);
+    expect(ids("unscoped")).toEqual(["instructions", "house_rules", "market_block_rule", "how_you_write"]);
+    expect(ids("unscoped_rooms")).toEqual(["instructions", "house_rules", "market_block_rule", "how_you_write", "analyst_rooms"]);
     expect(built("unscoped_rooms").instructions.endsWith("## Each analyst's room (a buy for a FULL analyst is refused)\n  • Case Analyst: 4 of 6 held, 2 free\n  • Other Analyst: FULL, 5 of 5")).toBe(true);
   });
 

@@ -9,9 +9,9 @@
  * stock's situations: instructions that travel with the stock, kept with the
  * instructions because among the facts they were followed less (the NVDA
  * declined sale went from 6 of 6 to 3 of 6, docs/plans/AGENT_ENGINE.md). The
- * market and portfolio, the stock's row, the trigger that fired and the fire
- * come in its first message, as context blocks; the analyst it works for opens
- * its instructions, as the morning run's does.
+ * market numbers, the stock's row, the trigger that fired and the fire come in
+ * its first message, as context blocks; the analyst it works for opens its
+ * instructions, as the morning run's does.
  */
 import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
@@ -20,23 +20,11 @@ const INSTRUCTIONS = `## Your job
 
 A trigger on one of your stocks just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision. The first message has the stock's row, the trigger that fired and the facts of the fire.
 
-## Tool-call discipline: read first
-
-Every assistant turn between this prompt and complete_run MUST include at least one tool call. Text-only turns terminate the loop and produce a FAILED tactical run with no closeout audit row. Act, don't summarize.
-
-After get_stock_data returns, the next turn is the action call (or the update_thesis closeout if the check failed). NOT a markdown "now I'll evaluate this" paragraph. The decision framework below is short — read once, then execute.
-
-Forbidden assistant-turn endings (each = run failure):
-- "Next, I'll proceed to..."
-- "Let me now focus on..."
-- "Now I'll decide..."
-- Any turn that ends without a tool call.
-
 ## The belief
 
-**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action. If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
+**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own or watch the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — and act through the trigger's declared action; don't free-think a different opinion in your rationale.
 
-**Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
+**Anchor your decision to the row's \`would_prove_it_wrong\`, when the row has it, not the price level alone.** The trigger firing is necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
 
 ## Decision framework
 
@@ -51,7 +39,7 @@ Forbidden assistant-turn endings (each = run failure):
    - Override is allowed when you have a specific reason (e.g. trigger said EXIT but the move is news-driven and likely overdone — TRIM instead). Say in the note what you did and why.
 
 3. If it no longer holds:
-   - Pass. Write update_thesis with type implicit (REVIEWED via empty patch) and a note on what is happening to the stock and why you are not acting.
+   - Pass. Write update_thesis with a note on what is happening to the stock and why you are not acting.
    - If the check reveals the thesis itself is no longer applicable (ticker fell outside this analyst's edge/universe, the original premise has broken structurally, the name is no longer worth tracking): say so in the note, and on a stock we watch take its buy and Stop watching triggers off by id (remove_trigger_ids) so nothing fires on it; the morning run decides whether it stays on the book. A stock we hold is sold first with close_position, which retires the thesis itself.
 
 4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the stock's triggers reflect it. After an add, raise the "Sell if below" price (a bigger position must never round-trip into a loss). After a fired gain checkpoint, replace it with the next one. After a move that blew through a trigger's price, re-set it off the NEW structure the chart gives (the swing low, the breakout price, the average), not a round number. The triggers that came with the buy and the playbook's fill triggers were written at the fill; your analyst's and the account's rules apply on their own. The trigger ids are on the row's triggers lines. If nothing went stale, leave them. On a stock we hold you can raise a sale's price, never lower it; if you think it is wrong, say so in the note and name the price.
@@ -77,10 +65,9 @@ export const TRIGGER_RUN: AgentRecord = {
   // A situation's text is an instruction that travels with the stock: it ends the instructions, after the fixed text.
   instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }, { block: "situations" }],
   message: [
+    // From the Market and portfolio block, the market numbers alone: the snapshot and the digests are the rest of
+    // the account (2026-11-18). The stock's position is on its row, the analyst's room in its brief, and code sizes a buy.
     { block: "market_numbers" },
-    { block: "market_digest" },
-    { block: "portfolio_snapshot" },
-    { block: "portfolio_digest" },
     { block: "stock_row" },
     { block: "playbooks" },
     { block: "fired_trigger" },

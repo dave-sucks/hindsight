@@ -45,7 +45,7 @@ export const MORNING_RUN: AgentRecord = {
   maxSteps: MODES["research-run"].maxSteps,
   // The analyst opens the instructions: in the first message, MU's review stopped lowering its conviction (3 of 3 runs to 0 of 3).
   // The regime and the refused calls travel with the run: they end the instructions, after the fixed text.
-  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }, { block: "regime" }, { block: "blocked_last_time" }],
+  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "market_block_rule" }, { block: "how_you_write" }, { block: "regime" }, { block: "blocked_last_time" }],
   message: [
     { block: "market_numbers" },
     { block: "market_digest" },

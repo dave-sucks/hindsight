@@ -233,7 +233,7 @@ describe("a trigger fire's request — a declined sale is asked again", () => {
   });
 });
 
-describe("a trigger fire's request — the stock's own row wins over the digest", () => {
+describe("a trigger fire's request — the stock's row, and of the account only the market numbers", () => {
   // ASML's real sale proposal (Order cmux0e18w000m04jhodrm7pn3): a CLOSE of 5 shares, placed 2026-10-06 18:25 UTC, expiring a
   // day later. The 10-07 digest that the trigger run printed said "no pending proposals"; the row said this.
   const asml = () =>
@@ -245,18 +245,22 @@ describe("a trigger fire's request — the stock's own row wins over the digest"
   it("prints the row's waiting sale with its times, and no digest without the block", () => {
     const prompt = triggerRunSent(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
     expect(prompt).not.toContain("### Portfolio digest");
-    expect(prompt).toContain("Where it and a stock's own row differ, the row is right");
+    // With no snapshot and no digest there is nothing for the rule on weighing them to settle (2026-11-18).
+    expect(prompt).not.toContain("Where it and a stock's own row differ, the row is right");
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"');
   });
 
-  it("prints the Market and portfolio block once, before the stock's row, so the row is read after it", () => {
+  it("prints the market numbers once, before the stock's row, and none of the snapshot or the digests", () => {
     const portfolioPieces = [
+      { id: "market_numbers", text: "### Market numbers (as of Wed, Nov 11, 10:00 AM ET)\nS&P 500 stand-in" },
+      { id: "market_digest", text: "### Market digest (written Wed, Nov 11, 7:30 AM ET)\nStocks slipped." },
       { id: "portfolio_snapshot", text: "### Portfolio snapshot\nYour portfolio, stand-in" },
       { id: "portfolio_digest", text: "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nNo pending proposals." },
     ];
     const prompt = triggerRunSent({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioPieces });
     expect(prompt.split("## Market and portfolio")).toHaveLength(2);
-    expect(prompt.indexOf("## Market and portfolio")).toBeLessThan(prompt.indexOf("$ASML, its row (get_theses)"));
+    expect(prompt.indexOf("### Market numbers")).toBeLessThan(prompt.indexOf("$ASML, its row (get_theses)"));
+    for (const other of ["### Market digest", "### Portfolio snapshot", "### Portfolio digest", "No pending proposals."]) expect([other, prompt.includes(other)]).toEqual([other, false]);
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh');
   });
 

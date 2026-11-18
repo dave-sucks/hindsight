@@ -248,7 +248,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // four independent samples each). Their presence changes the answer.
       "get_stock_data",
       "get_earnings_data",
-      "get_market_context",
+      // get_market_context is not on it: the market numbers block carries the same numbers (2026-11-18).
       "get_sec_filings",
       "get_catalyst_calendar",
       "web_search",

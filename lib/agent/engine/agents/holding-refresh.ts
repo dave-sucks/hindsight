@@ -41,6 +41,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   instructions: [
     { block: "analyst_brief" },
     { block: "house_rules" },
+    { block: "market_block_rule" },
     { block: "how_you_write" },
     { own: "job", title: "Its job", text: JOB },
     { block: "date_awareness" },

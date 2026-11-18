@@ -76,6 +76,7 @@ export const WRITER: AgentRecord = {
   instructions: [
     { block: "analyst_brief" },
     { block: "house_rules" },
+    { block: "market_block_rule" },
     { block: "how_you_write" },
     { block: "playbooks" },
     { own: "job", title: "Its job", text: JOB },

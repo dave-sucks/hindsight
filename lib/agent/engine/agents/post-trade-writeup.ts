@@ -64,7 +64,7 @@ export const POST_TRADE_WRITEUP: AgentRecord = {
   runsWhen: "Right after a trigger set to Auto makes or tries a trade.",
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
-  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }],
+  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "market_block_rule" }, { block: "how_you_write" }],
   message: [
     { block: "market_numbers" },
     { block: "market_digest" },

@@ -10,7 +10,7 @@
  * the Market and portfolio block's parts, the agent's own data); the engine
  * adds no text of its own.
  */
-import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
+import { HOUSE_LINES, HOW_YOU_WRITE, MARKET_BLOCK_RULE } from "@/lib/agent/house-rules";
 import { DATE_AWARENESS, EARNINGS_TRIGGERS, RESEARCH_NOTE, THESIS_CLAIM, WHAT_THE_OWNER_READS } from "@/lib/agent/thesis-research/writer-rules";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { BLOCKS, GROUP_HEADINGS } from "./blocks";
@@ -38,6 +38,7 @@ export const SEP = "\n\n";
 /** Blocks whose text is the same for every run, written once in code. */
 const BUILT_IN: Partial<Record<BlockId, string>> = {
   house_rules: HOUSE_LINES,
+  market_block_rule: MARKET_BLOCK_RULE,
   how_you_write: HOW_YOU_WRITE,
   date_awareness: DATE_AWARENESS,
   research_note: RESEARCH_NOTE,

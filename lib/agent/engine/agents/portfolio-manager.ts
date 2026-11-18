@@ -29,6 +29,7 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
       text: `You are the Portfolio Manager for this account. Each stock has its own analyst, who decides whether it is worth owning. You decide whether it is the best use of the account's money.`,
     },
     { block: "house_rules" },
+    { block: "market_block_rule" },
     { block: "how_you_write" },
     { block: "market_numbers" },
     { block: "market_digest" },
