@@ -22,14 +22,14 @@ const args = (name: TriggerCaseName) => {
 const k = TRIGGER_KICKOFF;
 const names = Object.keys(TRIGGER_CASES) as TriggerCaseName[];
 const isAuto = (name: TriggerCaseName) => Boolean((TRIGGER_CASES[name] as { autoTrade?: unknown }).autoTrade);
-/** The instructions without the stock's situations: the text every run of the agent is sent. */
+/** The instructions without the analyst and the stock's situations: the text every run of the agent is sent. */
 const fixedOf = (name: TriggerCaseName) => {
   const built = triggerRunRequest(args(name));
   let at = 0;
   let out = "";
   for (const p of built.parts.filter((x) => x.where === "instructions")) {
     at += (p.sep ?? "").length;
-    if (p.id !== "situations") out += built.instructions.slice(at, at + p.chars);
+    if (p.id !== "situations" && p.id !== "analyst_brief") out += built.instructions.slice(at, at + p.chars);
     at += p.chars;
   }
   return out;
@@ -89,11 +89,11 @@ describe("a trigger fire's two agents", () => {
   it("names every part, and the parts add up to what is sent", () => {
     const built = triggerRunRequest(args("buy_on_watch"), { facts: "Tactical run on $CASE. Buy if above $120." });
     expect(rowsOf(built)?.map((r) => r.name)).toEqual([
+      "The analyst",
       "Its instructions",
       "House rules",
       "How you write",
       "Its situations",
-      "The analyst",
       "Market numbers",
       "Market digest",
       "Portfolio snapshot",
@@ -104,6 +104,6 @@ describe("a trigger fire's two agents", () => {
       "The ask",
     ]);
     const auto = triggerRunRequest(args("auto_sale"), { facts: "Write-up on $CASE." });
-    expect(rowsOf(auto)?.map((r) => r.name)).toEqual(["Its instructions", "House rules", "How you write", "The analyst", "Market numbers", "Market digest", "Portfolio snapshot", "Portfolio digest", "The stock's row", "What fired", "The fire", "The ask"]);
+    expect(rowsOf(auto)?.map((r) => r.name)).toEqual(["The analyst", "Its instructions", "House rules", "How you write", "Market numbers", "Market digest", "Portfolio snapshot", "Portfolio digest", "The stock's row", "What fired", "The fire", "The ask"]);
   });
 });

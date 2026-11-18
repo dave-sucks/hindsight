@@ -145,7 +145,9 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked[0].tools).not.toEqual(expect.arrayContaining(["place_trade"]));
     expect(r.asked[0].tools.some((t) => ["place_trade", "close_position", "manage_position"].includes(t))).toBe(false);
     // The post-trade write-up's own instructions, the same on every run.
-    expect(r.asked[0].system.startsWith((POST_TRADE_WRITEUP.instructions[0] as { text: string }).text)).toBe(true);
+    // The analyst it works for, then its own fixed text.
+    expect(r.asked[0].system.startsWith("## Analyst:")).toBe(true);
+    expect(r.asked[0].system).toContain((POST_TRADE_WRITEUP.instructions.find((p) => "own" in p) as { text: string }).text);
     expect(r.asked[0].system).not.toContain("## Decision framework");
     expect(r.asked[0].prompt).not.toContain("AUTO_TRADE");
     expect(r.asked[0].prompt).toContain("The sale of all 300 shares is proposed and waits for the principal's approval.");

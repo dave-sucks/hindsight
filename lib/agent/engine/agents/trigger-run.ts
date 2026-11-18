@@ -9,8 +9,9 @@
  * stock's situations: instructions that travel with the stock, kept with the
  * instructions because among the facts they were followed less (the NVDA
  * declined sale went from 6 of 6 to 3 of 6, docs/plans/AGENT_ENGINE.md). The
- * analyst, the market and portfolio, the stock's row, the trigger that fired
- * and the fire come in its first message, as context blocks.
+ * market and portfolio, the stock's row, the trigger that fired and the fire
+ * come in its first message, as context blocks; the analyst it works for opens
+ * its instructions, as the morning run's does.
  */
 import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
@@ -46,7 +47,7 @@ Forbidden assistant-turn endings (each = run failure):
 
 2. If it still holds:
    - Default: execute the trigger's declared action. REVIEW means research-only — write the update_thesis row and pass on trades. EXIT means close_position. ENTER means place_trade once the buy's checks hold. ADD means manage_position (scale up). TRIM means manage_position (partial close).
-   - When the stock is in a situation, the first message lists each one and what it asks.
+   - When the stock is in a situation, each one and what it asks end these instructions.
    - Override is allowed when you have a specific reason (e.g. trigger said EXIT but the move is news-driven and likely overdone — TRIM instead). Say in the note what you did and why.
 
 3. If it no longer holds:
@@ -74,9 +75,8 @@ export const TRIGGER_RUN: AgentRecord = {
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   // A situation's text is an instruction that travels with the stock: it ends the instructions, after the fixed text.
-  instructions: [{ own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }, { block: "situations" }],
+  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }, { block: "situations" }],
   message: [
-    { block: "analyst_brief" },
     { block: "market_numbers" },
     { block: "market_digest" },
     { block: "portfolio_snapshot" },
