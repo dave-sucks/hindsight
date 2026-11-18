@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * /how-it-works/framework — how an agent is put together: one request taken apart
- * (the same parts for every agent), the read zoomed in, and the instructions that travel
- * with a stock. The numbers come measured from the server (lib/docs/framework.ts).
+ * /how-it-works/framework — how an agent is put together: every agent's
+ * request taken apart, as the engine builds it from the agent's record, the
+ * read zoomed in, and the instructions that travel with a stock. Everything
+ * is built on the server from the code (lib/docs/framework.ts).
  */
 
 import type { ReactNode } from "react";
@@ -27,8 +28,8 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
           <TwoTone
             as="h1"
             size="hero"
-            lead="One agent, many doors."
-            rest="Every agent is sent the same parts on every request: its job, the house rules, the analyst, the market and portfolio, its tools and the read. Only the sizes change."
+            lead="One engine, every agent."
+            rest="An agent is its own instructions, the blocks it is given from one library, and its tools. The engine builds each of its requests from its record, in the record's order, so the parts below are the parts it is sent."
           />
         </div>
 
@@ -39,7 +40,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
         id="read"
         eyebrow="The read"
         lead="Each stock at the size today needs."
-        rest="Every agent asks one tool for its stocks. Code decides which of each thesis's fields to send: one line when nothing changed, the fields the situation's decision reads when something did, the whole case on the review clock, everything when asked by name."
+        rest="The agents that decide on stocks read them through one tool. Code decides which of each thesis's fields to send: one line when nothing changed, the fields the situation's decision reads when something did, the whole case on the review clock, everything when asked by name."
       >
         <ReadDemo data={data} />
       </Block>
@@ -62,24 +63,24 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
           <Shelf icon={Layers} title="Situation guidance" size={`${fmt(Math.min(...data.situations.map((s) => s.chars)))}–${fmt(Math.max(...data.situations.map((s) => s.chars)))} each`}>
             The text for a flag that&apos;s up, attached once to the read.
           </Shelf>
-          <Shelf icon={ListChecks} title="Setup lines" size="a few lines">
+          <Shelf icon={ListChecks} title="Setup lines">
             How the stock&apos;s setup fails and how to manage it, on the rows where the decision turns on it.
           </Shelf>
-          <Shelf icon={BookOpen} title="A full row, by name" size="~20,000">
+          <Shelf icon={BookOpen} title="A full row, by name">
             The whole thesis with its research, when an agent asks for one stock.
           </Shelf>
-          <Shelf icon={FileSearch} title="The writer's report" size="one stock">
+          <Shelf icon={FileSearch} title="The writer's report">
             The morning run or the chat can start the writer on a stock and read what it wrote.
           </Shelf>
-          <Shelf icon={Wrench} title="Data on request" size="per call">
+          <Shelf icon={Wrench} title="Data on request">
             News, earnings, filings, charts and the web, pulled with a tool. The result joins the conversation.
           </Shelf>
         </div>
       </Block>
 
       <footer className="flex flex-wrap justify-between gap-2 border-t pt-6 text-xs text-muted-foreground">
-        <span>Prompts, tool menus, models and the situation texts are measured from the code on this deploy.</span>
-        <span>The real request is a Secular Compounder morning, from the Agent Rebuild Roadmap.</span>
+        <span>Every agent&apos;s parts, tools and model are read from its record on this deploy, and the situation texts from their one table.</span>
+        <span>Each agent is sized on its latest saved run, the numbers its run&apos;s Context panel shows; one with no saved run yet, on a sample day.</span>
       </footer>
     </div>
   );
@@ -97,13 +98,14 @@ function Block({ id, eyebrow, lead, rest, children }: { id?: string; eyebrow: st
   );
 }
 
-function Shelf({ icon: Icon, title, size, children }: { icon: typeof Layers; title: string; size: string; children: ReactNode }) {
+/** One piece added only when needed; `size` only where the code gives one. */
+function Shelf({ icon: Icon, title, size, children }: { icon: typeof Layers; title: string; size?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-dashed bg-card p-5">
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">{title}</span>
-        <Mono className="ml-auto text-xs text-muted-foreground">{size}</Mono>
+        {size ? <Mono className="ml-auto text-xs text-muted-foreground">{size}</Mono> : null}
       </div>
       <p className="text-sm text-muted-foreground">{children}</p>
     </div>

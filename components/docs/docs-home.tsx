@@ -23,8 +23,9 @@ import { docBySlug, type DocSlug } from "./registry";
 import { StockStory } from "./stock-story";
 import { GuideDoc } from "./markdown-doc";
 import { DocsDataProvider, ToolCatalog } from "./tool-catalog";
+import type { FrameworkData } from "@/lib/docs/framework-content";
 
-export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[]; guide: Readonly<Record<string, string>> }) {
+export function DocsHome({ tools, setups, guide, framework }: { tools: readonly CatalogTool[]; setups: readonly DocsSetup[]; guide: Readonly<Record<string, string>>; framework: FrameworkData }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -37,7 +38,7 @@ export function DocsHome({ tools, setups, guide }: { tools: readonly CatalogTool
 
 
   return (
-    <DocsDataProvider tools={tools} setups={setups} guide={guide}>
+    <DocsDataProvider tools={tools} setups={setups} guide={guide} framework={framework}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-24 px-4 pb-32 pt-6 sm:px-6 lg:pt-10">
         <section className="flex flex-col gap-10">
           <div className="flex flex-col gap-5">

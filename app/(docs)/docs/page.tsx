@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { DocsHub, HOME } from "@/components/docs/docs-hub";
-import { buildFrameworkData } from "@/lib/docs/framework";
+import { loadFrameworkData } from "@/lib/docs/framework";
 import { loadGuide } from "@/lib/docs/guide";
 import { buildSetupList, buildToolCatalog } from "@/lib/docs/tool-catalog";
 
@@ -12,5 +12,5 @@ export default async function DocsPage({ searchParams }: { searchParams: Promise
   // Links from before the hub opened a doc as /docs?doc=<slug>.
   const { doc } = await searchParams;
   if (doc) redirect(`/docs/${doc}`);
-  return <DocsHub slug={HOME} tools={buildToolCatalog()} setups={buildSetupList()} guide={loadGuide()} framework={buildFrameworkData()} />;
+  return <DocsHub slug={HOME} tools={buildToolCatalog()} setups={buildSetupList()} guide={loadGuide()} framework={await loadFrameworkData()} />;
 }

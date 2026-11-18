@@ -11,7 +11,9 @@
  * other agent's is kept by the model it gets from modelFor (model.ts).
  */
 import { prisma } from "@/lib/prisma";
-import type { SentPartManifest, Where } from "@/lib/agent/engine/types";
+import { swatchOf, type PartId } from "@/components/docs/framework/swatch";
+import { BLOCKS } from "@/lib/agent/engine/blocks";
+import type { AgentId, BlockId, SentPartManifest, Where } from "@/lib/agent/engine/types";
 
 export const REQUEST_ROLE = "request";
 
@@ -19,6 +21,8 @@ export interface RequestRecord {
   v: 1;
   /** Which call of the run ("Main"). */
   call: string;
+  /** The agent whose record built it (lib/agent/engine/agents), when the agent engine did. Saved right after `call`, so a reader finds it in the row's first characters. */
+  agent?: AgentId;
   /** The code that made it. */
   source: string;
   model: string;
@@ -56,8 +60,8 @@ export interface SentPart {
 /** One part of a request, in the order it was sent. */
 export interface SentCategory {
   name: string;
-  /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
-  part: "job" | "read" | "tools" | null;
+  /** Its color on the Framework page (components/docs/framework/swatch.ts); null when it has none. */
+  part: PartId | null;
   chars: number;
   /** Its text: whole, or for the tool menu, each tool. */
   sections: SentPart[];
@@ -167,10 +171,13 @@ export function byParts(parts: SentPartManifest[], text: string): { parts: SentC
   const tail = text.slice(at);
   if (tail && !tail.startsWith("\n\n")) return null;
   return {
-    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, part: p.kind === "own" ? ("job" as const) : ("read" as const), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
+    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, part: partOf(p), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
     after: tail.slice(2),
   };
 }
+
+/** A named part's color, the Framework page's: its own words one, each kind of library block its own (a block no longer in the library, the stock and the run's). */
+const partOf = (p: SentPartManifest): PartId => (p.kind === "own" ? "job" : BLOCKS[p.id as BlockId] ? swatchOf(BLOCKS[p.id as BlockId]) : "read");
 
 /** A run's records, oldest first, as its page shows them. */
 export async function loadRunRequests(runId: string): Promise<CallView[]> {

@@ -1,21 +1,59 @@
 /**
- * What /how-it-works/framework says that the code can't measure: the doors in plain
- * words, the one real request the Roadmap measured, and which parts of a
- * thesis each size of the read carries. Client-safe; the measured numbers
- * come from ./framework.ts on the server.
+ * What /how-it-works/framework shows, as the server hands it down: every
+ * agent's parts as the engine built them from its record (./framework.ts),
+ * the situation texts, and which parts of a thesis each size of the read
+ * carries. Client-safe.
  */
 
-export type FrameworkDoorId = "morning" | "trigger" | "chat" | "writer";
+import type { PartId } from "@/components/docs/framework/swatch";
 
-/** A door as measured on the server. A null number is one the build couldn't take. */
-export interface FrameworkDoor {
-  id: FrameworkDoorId;
+/** Where a part of a request goes: the instructions, the first message, or each new message of a conversation. */
+export type FrameworkWhere = "instructions" | "message" | "newest";
+
+/** Each place a part can go, in the order a request is read, as the page names it. */
+export const WHERE_LABEL: Record<FrameworkWhere, string> = {
+  instructions: "Its instructions",
+  message: "Its first message",
+  newest: "On each new message you send",
+};
+
+/** One part of an agent's request, in its record's order. */
+export interface FrameworkPart {
+  /** The own part's key, or the block's id. */
+  id: string;
+  title: string;
+  /** Its own words, or a block from the library. */
+  kind: "own" | "block";
+  where: FrameworkWhere;
+  /** A block's line from the library; for its own words, how they open on the sample. */
+  about: string;
+  /** The file its text comes from. */
+  source: string;
+  /** Its own words, written for each run (a date, the account) rather than one fixed text. */
+  perRun?: boolean;
+  /** Characters on what it is sized on (its run, or its sample); null when that didn't send it (it goes only on some runs). */
+  chars: number | null;
+  swatch: PartId;
+}
+
+/** One agent as its record says and its sample built it. */
+export interface FrameworkAgent {
+  id: string;
+  name: string;
+  does: string;
+  runsWhen: string;
   model: string;
   maxSteps: number;
-  promptChars: number | null;
-  houseRules: boolean | null;
-  tools: string[];
-  toolChars: number | null;
+  output: string;
+  /**
+   * What its sizes are from: its latest request the account's runs saved with
+   * its parts named (`gone`: parts that run sent that its record no longer
+   * lists), else its sample day (the case, in a few words), else nothing.
+   */
+  sizedOn: { kind: "run"; at: string; runId: string; gone: string[] } | { kind: "sample"; from: string } | null;
+  parts: FrameworkPart[];
+  /** Its tools by name; their menu in characters (each tool's description and schema, as sent), over the ones measured here. */
+  tools: { names: string[]; chars: number | null; unmeasured: string[]; provider: string[] };
 }
 
 /** What usually puts a stock in a situation: a trigger firing (the bolt), or a flag read off the stock's facts (the flag). */
@@ -47,65 +85,10 @@ export interface FrameworkRead {
 }
 
 export interface FrameworkData {
-  houseRulesChars: number;
-  doors: FrameworkDoor[];
+  agents: FrameworkAgent[];
   situations: FrameworkSituation[];
   read: FrameworkRead;
 }
-
-/** The doors in words. `save` is how many fields its update_thesis may send (step 12, pinned by update-thesis-doors.test.ts). */
-export const DOOR_COPY: Record<FrameworkDoorId, { name: string; woken: string; job: string; read: string; analyst: string; save: string }> = {
-  morning: {
-    name: "Morning run",
-    woken: "A clock: 8:00 AM on the analyst's run days",
-    job: "Walk the whole book, every holding and every watch, and act where something changed.",
-    read: "Asks for its book once and gets every stock at the size today needs.",
-    analyst: "Always. It works for one analyst.",
-    save: "18 fields: the plan, the verdict and the note",
-  },
-  trigger: {
-    name: "Trigger run",
-    woken: "A trigger fires on one of its stocks",
-    job: "One stock, one decision: sell, buy, add, or say why not.",
-    read: "Its one stock's row from the same read every agent uses, with the fired trigger beside it.",
-    analyst: "Always. The stock belongs to one analyst.",
-    save: "11 fields: the plan and the note",
-  },
-  chat: {
-    name: "Chat",
-    woken: "You type",
-    job: "Answer you, look things up, and act only when you say so.",
-    read: "Asks for stocks by name when the conversation needs them.",
-    analyst: "When you open the chat on an analyst.",
-    save: "21 fields: also the belief and direction",
-  },
-  writer: {
-    name: "Writer",
-    woken: "Another agent asks for research on one stock",
-    job: "Research one stock in depth and write its whole thesis.",
-    read: "Its own pull of the stock's data, run in code before it writes.",
-    analyst: "Always. It writes in the analyst's strategy.",
-    save: "35 fields: the whole thesis, including the write-up only it may change",
-  },
-};
-
-/**
- * One real request: a Secular Compounder morning run. The Oct 2 numbers and
- * the read with #816 were measured from a production request (Agent Rebuild
- * Roadmap); the analyst brief with #817 from that analyst's production row
- * (#817's description). The rest is measured from the code on the page.
- */
-export const MEASURED_REQUEST = {
-  before: { date: "Oct 2", instructions: 40_082, tools: 59_135, read: 266_767 },
-  after: { read: 43_410, analystBrief: 6_291 },
-  requestsPerMorning: 15,
-} as const;
-
-export const READ_SIZES = {
-  line: "95 to 170 characters",
-  short: "a few hundred to a few thousand characters, by the situation",
-  full: "about 20,000 characters",
-} as const;
 
 export type RowSize = "line" | "short" | "full";
 
@@ -250,4 +233,17 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
 export function fieldsLit(keys: readonly string[]): Set<string> {
   const set = new Set(keys);
   return new Set(SHEET_FIELDS.filter((f) => f.keys.some((k) => set.has(k))).map((f) => f.id));
+}
+
+/**
+ * The blocks an agent is given, the ones the fewest agents get first (a tie
+ * in its record's order), so what sets it apart leads: the chips on the
+ * workflow diagram.
+ */
+export function blocksByRarity(agent: FrameworkAgent, agents: readonly FrameworkAgent[]): FrameworkPart[] {
+  const blockIds = (a: FrameworkAgent) => [...new Set(a.parts.filter((p) => p.kind === "block").map((p) => p.id))];
+  const given = new Map<string, number>();
+  for (const a of agents) for (const id of blockIds(a)) given.set(id, (given.get(id) ?? 0) + 1);
+  const first = blockIds(agent).map((id) => agent.parts.find((p) => p.kind === "block" && p.id === id)!);
+  return first.map((p, i) => ({ p, i })).sort((a, b) => (given.get(a.p.id) ?? 0) - (given.get(b.p.id) ?? 0) || a.i - b.i).map((x) => x.p);
 }

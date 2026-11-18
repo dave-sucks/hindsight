@@ -83,7 +83,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 
 ## What an agent is told
 
-Every agent is a job and a list of tools, plus the parts every agent shares: the house rules (how to write, and that your word comes first), the analyst's brief, and the read of its stocks. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in a prompt. Pick an agent to see the same parts at its sizes.
+Every agent is its own instructions, the blocks it is given from one library (the house rules, the analyst it works for, the Market and portfolio block, the stock and the run it is working on), and its tools. The agent engine builds each request from the agent's record, in the record's order, so no two agents need be sent the same parts. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in an agent's own words. Pick an agent to see its parts in order, sized on its latest run: the numbers that run's Context panel shows, colored the same way. An agent with no saved run that names its parts yet is sized on a sample day, and says so.
 
 <!-- asset: request-grid -->
 

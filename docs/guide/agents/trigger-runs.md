@@ -41,11 +41,15 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 ## What it reads
 
-<!-- asset: context trigger-runs -->
+<!-- asset: context trigger_run -->
 
 The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right. It is printed before the stock's row, so the row is read after it.
 
 The stock's row, the same one `get_theses` gives every agent: the position, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
+
+Right after a trigger set to Auto makes or tries a trade, the run that writes it up is its own agent, with no trade tools. It is sent this:
+
+<!-- asset: context post_trade_writeup -->
 
 A give-back is measured from the highest price since the buy, over the whole holding. The run can't call a fire false by reading a lower high off a short chart; declining a sale takes new evidence about the business.
 
