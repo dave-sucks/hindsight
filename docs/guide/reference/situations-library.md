@@ -237,7 +237,7 @@ Answer, in order:
 
 What you can do:
 - Patch the triggers: edit_triggers on the ones that moved, by id.
-- They stand: update_thesis with a rationale only (trigger_id only when several fired).
+- They stand: update_thesis with a rationale only.
 - Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one wake that can still fire, and say what would bring the stock back.
 - A condition that happened is an exit: close_position with belief_survived false.
 - No longer applicable: on a stock we watch, take its buy and its Stop watching line off by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.

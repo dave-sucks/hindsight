@@ -34,7 +34,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −422, the trigger run's instructions are one fixed text and its stock, trigger and fire are blocks of the first message (now counted here, its ask included): the ═══ banners, the PATH block, the hard wraps and the decline line (the buy and add situations carry it) go.
   // 2026-11-18: −1, the analyst opens the instructions (the morning run's measurement, #1021) and the situations line says where they are: at the end of the instructions, not the first message.
   // 2026-11-18: −1,023, the tool-call discipline section goes (the ask says it once), three sentences that pointed at a belief field, a type field and a price-only fire are corrected, and the rule on weighing the snapshot and the digests leaves with them.
-  tactical: 13_579,
+  // 2026-11-18: −90, the trigger run is no longer told to pass trigger_id: its save is handed the trigger that fired.
+  tactical: 13_489,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -82,9 +83,11 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: −114 each, triggers_with_buy takes no wait: there are no waits.
   // 2026-11-17: +14 each, an edit's "close" is for a typed price or an average.
   // 2026-11-18: −377 each, get_theses no longer offers include_research (the read stopped sending the research sections).
-  "research-run": 36_958,
+  // 2026-11-18: −432 each, place_trade takes no company, exchange or price: the tool reads the live quote, and the other two it never read.
+  "research-run": 36_526,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
-  tactical: 32_409,
+  // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
+  tactical: 31_422,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -99,7 +102,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: −114, the same.
   // 2026-11-17: +14, the same.
   // 2026-11-18: −377, the same get_theses description and fields.
-  principal: 68_199,
+  // 2026-11-18: −432, the same place_trade fields.
+  principal: 67_767,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

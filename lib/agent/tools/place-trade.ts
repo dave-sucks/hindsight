@@ -85,10 +85,9 @@ function blocked(ticker: string, direction: "LONG" | "SHORT", why: string, messa
 
 const placeTradeSchema = z.object({
     ticker: z.string(),
-    company_name: z.string().optional().describe("Company name from get_stock_data"),
-    exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
     direction: z.enum(["LONG", "SHORT"]),
-    entry_price: z.number().describe("The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the buy trigger's price (one we may not have reached), here today's price is the right answer."),
+    // The price it is placed at: the live quote, read by the tool (no model writes it); an Auto buy passes the fire's.
+    entry_price: z.number(),
     // Every model call names the sale (schemaFor); an Auto-buy, which no model writes, comes without one.
     sell_if_below: z.number().optional(),
     sell_reason: z.string().optional(),
@@ -129,12 +128,21 @@ const withSale = <T extends z.ZodObject>(schema: T) =>
 
 export const placeTrade = defineTool({
   description:
-    "Place a trade on Alpaca. Requires the thesis_id.",
+    "Place a trade on Alpaca for a thesis, at the live price.",
   schema: placeTradeSchema,
   // A run's model never sees a size field. The analyst's rules size the
   // buy; there is one way to size a buy (DAV-317).
   // A run's note on the stock (update_thesis, after the buy) is the proposal's reason; only your chat gives the buy its own words.
-  schemaFor: (ctx) => withSale(isPrincipalChat(ctx) ? placeTradeSchema : placeTradeSchema.omit({ notional: true, shares: true, entry_rationale: true })),
+  // No model names the price (the tool reads the live quote); a trigger run's stock and thesis are code's (fromRun).
+  schemaFor: (ctx) =>
+    withSale(
+      isPrincipalChat(ctx)
+        ? placeTradeSchema.omit({ entry_price: true })
+        : ctx.runMode === "INTRADAY_TACTICAL"
+          ? placeTradeSchema.omit({ notional: true, shares: true, entry_rationale: true, entry_price: true, ticker: true, thesis_id: true })
+          : placeTradeSchema.omit({ notional: true, shares: true, entry_rationale: true, entry_price: true }),
+    ),
+  fromRun: (ctx) => (ctx.runStock ? { ticker: ctx.runStock.ticker, thesis_id: ctx.runStock.thesisId } : null),
   ui: "tool-ui" as const,
   gateLog: "place_trade",
   groupId: "Executing",
@@ -150,10 +158,19 @@ export const placeTrade = defineTool({
     return `${verb}${size} ${t}`;
   },
 
-  execute: async (args, ctx) => {
+  execute: async (given, ctx) => {
     // Normalize ticker to uppercase — model sometimes passes lowercase/mixed case,
     // which bypasses the duplicate check and hits Alpaca with a 422.
-    const ticker = args.ticker.toUpperCase().trim();
+    const ticker = given.ticker.toUpperCase().trim();
+    // A market order: the price it sizes and expects to pay is the live quote now.
+    let args = given;
+    if (!(args.entry_price > 0)) {
+      const quote = await getLatestPrice(ticker, ctx.alpacaCreds).catch(() => null);
+      if (quote == null || !Number.isFinite(quote) || quote <= 0) {
+        return blocked(ticker, args.direction, "no live price", `Trade blocked: no live price for $${ticker}. Call place_trade again once a quote comes back.`);
+      }
+      args = { ...args, entry_price: quote };
+    }
 
     // An account-wide run buys for the thesis's own analyst, under its rules, pinned or not (analyst-scope.ts).
     if (accountWide(ctx)) {

@@ -98,6 +98,20 @@ const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
 const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
 
+/**
+ * What code fills in each call before the tool runs (defineTool's fromRun): a
+ * trigger fire's stock and the trigger that fired, handed to the tools as
+ * tactical-run.ts hands them. A call is graded as the tool receives it.
+ */
+function codeFills(c: HeroCase): Record<string, () => Record<string, unknown> | null> {
+  if (c.mode !== "tactical") return {};
+  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
+  const runStock = { ticker: String(saved.ticker), thesisId: String(saved.id), triggerId: String(p.trigger?.id ?? "") };
+  const all = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx, runStock } as never) as Record<string, { fromRun?: () => Record<string, unknown> | null }>;
+  return Object.fromEntries(Object.entries(all).flatMap(([name, t]) => (t.fromRun ? [[name, t.fromRun]] : [])));
+}
+
 /** The mode's tools as the model sees them: description and schema, no execute. */
 function describedTools(c: HeroCase): ToolSet {
   if (c.mode === "thesis-writer") {
@@ -305,6 +319,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
   const tools = describedTools(c);
+  const fills = codeFills(c);
   // What the agent was shown, for the yardstick's grades: its instructions and the conversation it was handed.
   const shown = `${system}\n${JSON.stringify(c.messages)}`;
   // Kept beside the runs, so a saved run can be graded again without a model call (scripts/yardstick-regrade.ts).
@@ -374,7 +389,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       tokensCached += result.usage.inputTokenDetails?.cacheReadTokens ?? result.usage.cachedInputTokens ?? 0;
       tokensOut += result.usage.outputTokens ?? 0;
       // A call the schema refuses is refused in production too: it never counts toward a pass.
-      const turnCalls: Call[] = result.toolCalls.filter((t) => !(t as { invalid?: boolean }).invalid).map((t) => ({ toolName: t.toolName, input: t.input }));
+      const turnCalls: Call[] = result.toolCalls
+        .filter((t) => !(t as { invalid?: boolean }).invalid)
+        .map((t) => ({ toolName: t.toolName, input: { ...(t.input as object), ...(fills[t.toolName]?.() ?? {}) } }));
       const refusals = new Map<string, string>();
       for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; error?: unknown; input?: unknown }>) {
         if (!t.invalid) continue;

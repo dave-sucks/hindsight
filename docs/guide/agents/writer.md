@@ -9,7 +9,7 @@ Model: claude-sonnet-4-6
 Starts: When asked
 Steps: Up to 8
 Tools: 9
-Saves: 29 fields: the whole thesis
+Saves: 22 fields: the whole thesis
 ```
 
 ```chat

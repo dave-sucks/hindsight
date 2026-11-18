@@ -146,6 +146,14 @@ export interface ToolContext {
    */
   firedTrigger?: FiredTrigger;
 
+  /**
+   * A trigger fire's one stock and the trigger that fired, set by
+   * tactical-run.ts for the trigger run and the post-trade write-up. Their
+   * save and trade tools take the stock from here, and the model is never
+   * asked for it (each tool's schemaFor and fromRun).
+   */
+  runStock?: { ticker: string; thesisId: string; triggerId: string };
+
   /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;
 
