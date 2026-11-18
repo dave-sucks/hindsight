@@ -7,6 +7,8 @@
  *   … [--written out.jsonl]  also append what each run wrote for the
  *                            owner (narration + shown text fields), for
  *                            scripts/voice-count.ts. Scoring is unchanged.
+ *   … [--inputs-only]        save what each case is shown beside --written, and
+ *                            call no model (for scripts/yardstick-regrade.ts).
  *   … [--live-search]        web_search runs for real (Sonar, today's news,
  *                            about $0.006 a search); every other call stays a stub.
  *   cases: scripts/hero-cases/*.json  (cut from real runs by hero-case-from-run.ts)
@@ -31,7 +33,8 @@
  * { lt, gt, regex }. Not in CI; the pass rate is read by a person and
  * recorded with the PR, before and after a change.
  */
-import { appendFileSync, readFileSync, readdirSync } from "fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -43,22 +46,21 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
+import { makeSubmitThesisTool, writerRequest } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
+import { grade } from "@/lib/agent/yardstick/grade";
+import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
 
-type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
-interface Rule { tool: string; where?: Record<string, Cond> }
-/** A read that ran for real (`execute`) returned every one of these paths, not empty. */
-interface ReadRule { tool: string; has: string[] }
-interface Expect { call?: Rule[]; never?: Rule[]; text?: { regex: string }; neverText?: { regex: string }; read?: ReadRule }
 interface HeroCase {
   what: string;
   lookFor: string;
   expect?: Expect;
+  /** The yardstick's labels (lib/agent/yardstick/grade.ts): the playbooks a right answer may name, "none" for none, with why. */
+  grade?: { playbooks?: string[]; why?: string };
   /**
    * The stock the case is about. A morning run answers several stocks and
    * may take another first; with this set, the turn is repeated (up to
@@ -81,7 +83,6 @@ interface HeroCase {
   toolCtx: Record<string, unknown>;
   messages: ModelMessage[];
 }
-interface Call { toolName: string; input: unknown }
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
 
@@ -153,9 +154,33 @@ function factsOf(kickoff: ModelMessage | undefined): string | null {
  * blocks of the first message), from the recorded kickoff's facts.
  */
 function requestFor(c: HeroCase): { system: string; first?: string } {
+  if (c.mode === "thesis-writer") {
+    // The stock's data as the run sent it; the rest of the first message is today's.
+    const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) });
+    return { system: r.instructions, first: r.message };
+  }
   if (c.mode !== "tactical") return { system: systemFor(c) };
   const r = triggerRunRequest(tacticalArgs(c), { facts: factsOf(c.messages[0]) ?? "" });
   return { system: r.instructions, first: r.message };
+}
+
+/** A recorded Writer message's stock data: what sits between its data heading and its closing ask. */
+function dataBlockOf(m: ModelMessage | undefined): string {
+  const text = !m ? "" : typeof m.content === "string" ? m.content : m.content.map((p) => ("text" in p ? p.text : "")).join("\n\n");
+  const banner = "GROUND-TRUTH DATA — use these numbers; do not invent or contradict\n═══════════════════════════════════════════════════════════════════\n";
+  const at = text.indexOf(banner);
+  const body = at >= 0 ? text.slice(at + banner.length) : text.replace(/^## GROUND-TRUTH DATA[^\n]*\n/, "");
+  return body.replace(/\n\nWrite the research note now, then call submit_thesis\.\s*$/, "");
+}
+
+/** A Writer case's inputs, as the Writer reads them. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function writerArgs(c: HeroCase): any {
+  // Cases saved before step 10 carry the analyst's fields loose on the arguments.
+  const p = c.promptArgs;
+  const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
+  // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
+  return { ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -184,13 +209,6 @@ function tacticalArgs(c: HeroCase): any {
 
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "thesis-writer": {
-      // Cases saved before step 10 carry the analyst's fields loose on the arguments.
-      const p = c.promptArgs;
-      const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
-      // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
-      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) } as never);
-    }
     case "research-run": {
       // JSON turned the refusals' dates into strings; the builder wants dates.
       const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
@@ -233,69 +251,6 @@ function savedRowFromOldCase(p: Record<string, any>): Record<string, unknown> {
   };
 }
 
-/** Every value at a dot path; `*` steps into each element of an array; `$sum` adds the `score` of each child; `$count` is the number of children. */
-function valuesAt(obj: unknown, path: string): unknown[] {
-  let current: unknown[] = [obj];
-  for (const key of path.split(".")) {
-    const next: unknown[] = [];
-    for (const v of current) {
-      if (v == null || typeof v !== "object") continue;
-      if (key === "*") { if (Array.isArray(v)) next.push(...v); continue; }
-      if (key === "$sum") {
-        const dims = Object.values(v as Record<string, unknown>);
-        next.push(dims.reduce<number>((s, d) => s + (typeof d === "object" && d != null && typeof (d as { score?: unknown }).score === "number" ? (d as { score: number }).score : 0), 0));
-        continue;
-      }
-      if (key === "$count") {
-        next.push(Array.isArray(v) ? v.length : Object.keys(v as Record<string, unknown>).length);
-        continue;
-      }
-      if (Array.isArray(v)) continue;
-      const got = (v as Record<string, unknown>)[key];
-      if (got !== undefined) next.push(got);
-    }
-    current = next;
-  }
-  return current.filter((v) => v !== undefined && v !== null);
-}
-
-function holds(input: unknown, path: string, cond: Cond): boolean {
-  const found = valuesAt(input, path);
-  if (cond === "present") return found.length > 0;
-  if (cond === "absent") return found.length === 0;
-  if (typeof cond === "object") {
-    return found.some((v) =>
-      (cond.lt === undefined || (typeof v === "number" && v < cond.lt)) &&
-      (cond.gt === undefined || (typeof v === "number" && v > cond.gt)) &&
-      (cond.regex === undefined || new RegExp(cond.regex, "i").test(String(v))),
-    );
-  }
-  return found.some((v) => v === cond);
-}
-
-function matches(call: Call, rule: Rule): boolean {
-  if (call.toolName !== rule.tool) return false;
-  return Object.entries(rule.where ?? {}).every(([path, cond]) => holds(call.input, path, cond));
-}
-
-function score(ex: Expect | undefined, calls: Call[], text: string, reads: Array<{ toolName: string; output: unknown }> = []): { pass: boolean; why: string } {
-  if (!ex) return { pass: true, why: "no expectation" };
-  const why: string[] = [];
-  if (ex.read) {
-    const ran = reads.filter((r) => r.toolName === ex.read!.tool);
-    if (ran.length === 0) why.push(`no ${ex.read.tool} read`);
-    else if (!ran.some((r) => ex.read!.has.every((path) => holds(r.output, path, "present")))) {
-      const last = ran[ran.length - 1].output;
-      why.push(`${ex.read.tool} returned no ${ex.read.has.filter((path) => !holds(last, path, "present")).join(", ")}`);
-    }
-  }
-  if (ex.call?.length && !ex.call.some((r) => calls.some((c) => matches(c, r)))) why.push(`no ${ex.call.map((r) => r.tool).join(" / ")} as expected`);
-  for (const r of ex.never ?? []) if (calls.some((c) => matches(c, r))) why.push(`made the ${r.tool} it must not`);
-  if (ex.text && !new RegExp(ex.text.regex, "i").test(text)) why.push(`text lacks /${ex.text.regex}/`);
-  if (ex.neverText && new RegExp(ex.neverText.regex, "i").test(text)) why.push(`text has /${ex.neverText.regex}/`);
-  return { pass: why.length === 0, why: why.join("; ") };
-}
-
 function brief(call: Call): string {
   const a = (call.input ?? {}) as Record<string, unknown>;
   const keys = Object.keys(a).filter((k) => a[k] !== undefined && a[k] !== null && k !== "rationale" && k !== "notes" && k !== "structural_unchanged_reason");
@@ -334,13 +289,21 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
   return out;
 }
 
-async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
   const { system, first } = requestFor(c);
   // A trigger fire's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
   const tools = describedTools(c);
+  // What the agent was shown, for the yardstick's grades: its instructions and the conversation it was handed.
+  const shown = `${system}\n${JSON.stringify(c.messages)}`;
+  // Kept beside the runs, so a saved run can be graded again without a model call (scripts/yardstick-regrade.ts).
+  if (writtenPath) {
+    mkdirSync(`${dirname(writtenPath)}/inputs`, { recursive: true });
+    writeFileSync(`${dirname(writtenPath)}/inputs/${name}.txt`, shown);
+  }
+  if (inputsOnly) return { name, passes: 0, runs: 0, lookFor: c.lookFor };
   // A recorded tool result is what the model read on the day. Where a tool
   // now hands the model less than the screen (`forModel`), the replay reads
   // what today's model would read — the same as a live run.
@@ -389,6 +352,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
     const reads: Array<{ toolName: string; output: unknown }> = [];
+    /** What each read the case runs for real handed the model: the grades count it as shown. */
+    const readShown: unknown[] = [];
     let text = "";
     let turns = 0;
     /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
@@ -438,6 +403,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
             const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
             reads.push({ toolName: t.toolName, output });
             const forModel = read.toModelOutput ? await read.toModelOutput({ toolCallId: t.toolCallId, input: t.input, output }) : { type: "json" as const, value: output };
+            readShown.push(forModel);
             return { type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: forModel as { type: "json"; value: never } };
           }
           return {
@@ -467,7 +433,10 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    // A read the case runs for real is part of what the run was shown.
+    const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
+    console.log(`GRADES ${JSON.stringify(grades)}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
@@ -493,7 +462,8 @@ async function main() {
   }
   const results = [];
   const inSession = args.includes("--live-reads-in-session");
-  for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession, args.includes("--live-search")));
+  // --inputs-only: save what each case is shown (beside --written) and call no model.
+  for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession, args.includes("--live-search"), args.includes("--inputs-only")));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
   for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
 }

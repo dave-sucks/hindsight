@@ -31,6 +31,8 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { BRIEF_FIELDS } from "@/lib/agent/analyst-brief";
 import { createResearchTools } from "@/lib/agent/tools";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
+import { loadExistingThesis, loadWriterAnalyst } from "@/lib/agent/run-thesis-writer";
+import { etDateOf } from "@/lib/market-data/intraday-window";
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
 
@@ -52,6 +54,7 @@ async function main() {
   if (!thread) throw new Error("no saved conversation on this run");
   const messages = JSON.parse(thread.content) as Msg[];
   if (run.mode === "PRINCIPAL_CHAT" && run.agentConfigId == null) return unscopedChat(runId, run, messages, name);
+  if (run.mode === "THESIS_WRITER") return writerRun(runId, run, name);
   const analyst = await prisma.agentConfig.findUniqueOrThrow({ where: { id: run.agentConfigId! } });
   const thesis = await prisma.thesis.findFirst({
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
@@ -130,7 +133,7 @@ async function main() {
   }
 
   const out = {
-    what: `${ticker} ${run.startedAt.toISOString().slice(0, 10)}, ${run.mode} run ${runId} for ${analyst.name}. FILL IN: what the decision point is.`,
+    what: `${ticker} ${etDateOf(run.startedAt)}, ${run.mode} run ${runId} for ${analyst.name}. FILL IN: what the decision point is.`,
     lookFor: "FILL IN: the question the replay answers.",
     source: { runId, ticker, thesisId, cutBeforeMessage: cut, theRunDid: decided, notes },
     expect: { call: [{ tool: "update_thesis" }], never: [] },
@@ -148,13 +151,47 @@ function briefOf(analyst: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(BRIEF_FIELDS.map((k) => [k, ["minPositionSize", "maxPositionSize", "maxPositionTotal"].includes(k) ? Number(analyst[k] ?? 0) : analyst[k] ?? null]));
 }
 
+/**
+ * A Writer run: its one decision is the research call. The first message is
+ * the one the run sent, word for word (its Research request); the inputs the
+ * instructions are built from are the run's own (reason, notes, idea, mode)
+ * and, for the analyst and a refresh's thesis, as they are today.
+ */
+async function writerRun(runId: string, run: { startedAt: Date; parameters: unknown; agentConfigId: string | null }, name: string) {
+  const p = (run.parameters ?? {}) as Record<string, unknown>;
+  const rows = await prisma.runMessage.findMany({ where: { runId, role: "request" }, select: { content: true } });
+  const record = rows.map((r) => JSON.parse(r.content) as { call: string; requests: Array<{ messages?: Array<{ role: string; content: unknown }> }> }).find((r) => r.call === "Research");
+  const first = record?.requests[0]?.messages?.find((m) => m.role === "user");
+  if (!first) throw new Error("no Research request saved on this run");
+  const text = typeof first.content === "string" ? first.content : (first.content as Array<{ text?: string }>).map((x) => x.text ?? "").join("\n\n");
+  const analyst = await loadWriterAnalyst(run.agentConfigId!);
+  if (!analyst) throw new Error("the run's analyst is gone");
+  const existingThesis = p.mode === "refresh" && p.existingThesisId ? await loadExistingThesis(String(p.existingThesisId)) : null;
+  const promptArgs = {
+    ticker: p.ticker, mode: p.mode, analyst: briefOf(analyst as never), existingThesis,
+    reason: p.reason ?? "", researchNotes: p.researchNotes ?? null, ideaSource: p.ideaSource ?? null,
+    promotionContext: p.promotionContext ?? null, runDate: etDateOf(run.startedAt),
+  };
+  const out = {
+    what: `${p.ticker} ${etDateOf(run.startedAt)}, a Writer ${p.mode} run ${runId}${existingThesis ? ` on a ${existingThesis.status} thesis` : ""}. FILL IN: what the decision point is.`,
+    lookFor: "FILL IN: the question the replay answers.",
+    source: { runId, ticker: p.ticker, notes: ["promptArgs.existingThesis and the analyst are as they are today; the first message is the run's own."] },
+    expect: { call: [{ tool: "submit_thesis" }], never: [] },
+    mode: "thesis-writer", runMode: "THESIS_WRITER", promptArgs, toolCtx: {},
+    messages: [{ role: "user", content: text }],
+  };
+  const file = `scripts/hero-cases/${name}.json`;
+  writeFileSync(file, JSON.stringify(out, null, 1));
+  console.log(`${file}: the run's first message, ${text.length.toLocaleString("en-US")} characters`);
+}
+
 /** A chat with no analyst selected: cut before the model's first turn. */
 function unscopedChat(runId: string, run: { startedAt: Date; environment: string }, messages: Msg[], name: string) {
   const cut = messages.findIndex((m) => m.role === "assistant");
   if (cut <= 0) throw new Error("no assistant turn in this chat");
   const answered = (messages[cut].content as Part[]).filter((p) => p.type === "tool-call").map((p) => `${p.toolName} ${JSON.stringify(p.input).slice(0, 160)}`);
   const out = {
-    what: `${run.startedAt.toISOString().slice(0, 10)}, a chat with no analyst selected, run ${runId}. FILL IN: the question, paraphrased (the repo is public).`,
+    what: `${etDateOf(run.startedAt)}, a chat with no analyst selected, run ${runId}. FILL IN: the question, paraphrased (the repo is public).`,
     lookFor: "FILL IN: the question the replay answers.",
     source: { runId, cutBeforeMessage: cut, theRunDid: answered, notes: [`the chat ran in the ${run.environment} book; set toolCtx.runEnvironment to the book the question is about`] },
     expect: { call: [], never: [] },

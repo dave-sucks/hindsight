@@ -38,6 +38,25 @@ A block's options are the record's choice of blocks. For example, the Portfolio 
 2. **The old builder is deleted in the same PR.** There is never a second way to build that agent.
 3. **No text is added to any agent.** Moving is not editing. Changes to what an agent is sent come after, one edit to a record at a time, with the Context panel before and after and a score on real cases.
 
+## The yardstick (step 1 of the audit's order; every change to an agent is scored on it)
+
+A change to what an agent is sent lands only with its scores before and after. Ten real Writer decisions and ten real trigger-run decisions, each replayed twice against the real model (`scripts/hero-case.ts`), and graded by code (`lib/agent/yardstick/grade.ts`):
+
+| Grade | What counts |
+|---|---|
+| The right action | The case's `expect`: what a right answer calls, and what it must never call |
+| The right playbook | The case names the playbooks a right answer may name (`grade.playbooks`, "none" for none), with why, from each playbook's preconditions |
+| Prices from what it was shown | Every price it sets sits within 1% of a dollar figure in its inputs (the chart's levels, the gap-day lows) |
+| Nothing invented | Every number it writes is in its inputs, within 1%, or a percent between two prices it was shown; a replay has no web search, so anything else came from nowhere |
+| A belief someone can check | No price in the belief; two to four assumptions, each with a number and when it is checked; what would prove it wrong names the business, never a price, an average or a gap |
+| The sale price kept | No edit lowers a "Sell if below" price, and none removes one |
+
+The cases are cut from production runs (`scripts/hero-case-from-run.ts`) and kept on the owner's machine as `scripts/hero-cases/local-*.json`, which git ignores: the repo is public. `scripts/yardstick-report.ts` puts two versions side by side; the scores go on a private page.
+
+A case holds the New York date its run started (`runDate`), the date the Writer is told. Until 11-18 the cutter took the UTC date, so seven of the eight Writer cases were told the next day; every score measured before then ran both versions on those same dates.
+
+The set: Writer — four stocks we hold (V, NVDA, MU, CEG refreshes of the evening of 11-15), four new stocks (AAON, CORT, ACN, ZTS) and the two saved SNDK cases; trigger runs — a buy (WST), sales held through after a decline (CEG, GEV), a sale (NVDA), a declined sale (the saved NVDA case), reviews (LUXE's earnings miss, PRAX's 8-K) and three Auto write-ups (IOT, PLTR, MU).
+
 ## The order
 
 ### Pass 1: one way to build a request
