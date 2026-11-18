@@ -48,7 +48,7 @@ function main() {
   const args = process.argv.slice(2);
   const jsonAt = args.indexOf("--json");
   const jsonOut = jsonAt >= 0 ? args[jsonAt + 1] : null;
-  const sets = args.filter((a, i) => a.includes("=") && i !== jsonAt + 1).map((a) => {
+  const sets = args.filter((a, i) => a.includes("=") && !(jsonAt >= 0 && i === jsonAt + 1)).map((a) => {
     const [label, path] = a.split("=");
     const rows = readFileSync(path, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Row);
     return { label, rows };
