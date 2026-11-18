@@ -31,7 +31,7 @@ import { chartFacts } from "@/lib/market-data/indicator-snapshot";
 import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { guidanceCodes, guidanceFor, listsTheStock, reviewCasesFor, situationsFor, situationsTap, type ReviewCase, type SituationCode } from "@/lib/agent/situations";
+import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
 import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
@@ -111,7 +111,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -157,7 +157,6 @@ export const getTheses = defineTool({
         ...sold.flatMap((x) => x.situations ?? []).filter((c) => guidanceCodes("RETIRED", [c], ctx.runMode).length > 0),
       ],
       ctx.runMode,
-      rows.flatMap((r) => (Array.isArray(r.reviewCases) ? (r.reviewCases as ReviewCase[]) : [])),
     );
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
@@ -466,10 +465,6 @@ export const getTheses = defineTool({
       const src = facts.sources.get(id);
       return src ? situationsFor(src) : [];
     };
-    const reviewCasesOf = (id: string): ReviewCase[] => {
-      const src = facts.sources.get(id);
-      return src ? reviewCasesFor(src) : [];
-    };
 
     // Actionable-detail split: full rows for the work list, one-line index
     // entries for the quiet rest; "book" mode, and prices that failed to
@@ -537,7 +532,6 @@ export const getTheses = defineTool({
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
       situations: situationsOf(t.id),
-      reviewCases: reviewCasesOf(t.id),
     }));
 
     const enriched = fullTheses.map((t) => {
@@ -559,7 +553,6 @@ export const getTheses = defineTool({
         // Every situation the stock is in, the lead's first; `guidance` on
         // the result says what each asks.
         situations: situationsOf(t.id),
-        reviewCases: reviewCasesOf(t.id),
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
         // rows; `triggerDetail` shows trigger state vs current price;
@@ -809,11 +802,10 @@ export const getTheses = defineTool({
     // What each situation on the work list asks, once per read, in rank
     // order (lib/agent/situations.ts). A promoted stock calls for the
     // promotion's text alone; quiet rows are not today's work.
-    const guidance = guidanceFor(
-      [...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)), ...soldToReview.flatMap((x) => x.situations)],
-      undefined,
-      fullTheses.flatMap((t) => reviewCasesOf(t.id)),
-    );
+    const guidance = guidanceFor([
+      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)),
+      ...soldToReview.flatMap((x) => x.situations),
+    ]);
 
     return {
       summary: summaryWithSold,

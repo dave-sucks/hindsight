@@ -91,9 +91,8 @@ describe("the row a situation builds (CEG, held)", () => {
   });
   it("the review clock: the whole case", () => {
     const row = rowForModel(saved([REVIEW_SITUATION]), { named: false, size: "short" }) as Row;
-    for (const k of ["company", "bull_case", "bear_case", "conviction_rationale", "variant_view", "chart", "street", "setup", "assumptions", "would_prove_it_wrong"]) expect([k, k in row]).toEqual([k, true]);
+    for (const k of ["company", "bull_case", "bear_case", "conviction_rationale", "variant_view", "snapshot", "chart", "street", "setup", "assumptions", "would_prove_it_wrong"]) expect([k, k in row]).toEqual([k, true]);
     expect(row).not.toHaveProperty("history");
-    expect(row).not.toHaveProperty("snapshot");
   });
   it("the trigger run's row carries the setup's lines whatever its situation", () => {
     const withLines = { ...saved(["PROTECTIVE_SALE"]), setup: { ...(fixture as Row).setup as Row, lines: ["Entry: the gap day's close.", "Stop: under the gap day's low."] } };

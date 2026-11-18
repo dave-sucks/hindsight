@@ -100,8 +100,8 @@ describe("get_theses — the read", () => {
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
     expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · conviction MEDIUM");
-    // The short row carries the cases, and no snapshot: nothing has rewritten one since 2026-11-03.
-    expect(modelRow).not.toHaveProperty("snapshot");
+    // The short row carries the snapshot's first paragraph and the cases.
+    expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
     expect(modelRow).toHaveProperty("bear_case");
     expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\. Full row: get_theses\(tickers: \["SYK"\]\)\.$/);
@@ -122,7 +122,7 @@ describe("get_theses — the read", () => {
   it("a read of a named stock is the full row: the history and the cases", async () => {
     const { modelRow } = await read({ tickers: ["SYK"], include_history: true });
     expect(Array.isArray(modelRow.history) && (modelRow.history as unknown[]).length).toBeGreaterThan(0);
-    expect(modelRow).not.toHaveProperty("snapshot");
+    expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
     expect(modelRow.bear_case).toEqual(["Capacity auction prices fall back."]);
     expect(String(modelRow.research)).toMatch(/at \$348\.00/);

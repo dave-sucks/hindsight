@@ -81,10 +81,10 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +239 / +224, triggers_with_buy takes a trim's size and a wait, and the field and library texts say playbook.
   // 2026-11-17: −114 each, triggers_with_buy takes no wait: there are no waits.
   // 2026-11-17: +14 each, an edit's "close" is for a typed price or an average.
-  // 2026-11-18: −429 each, get_theses no longer offers include_research or names the snapshot (the read stopped sending them).
-  "research-run": 36_906,
+  // 2026-11-18: −377 each, get_theses no longer offers include_research (the read stopped sending the research sections).
+  "research-run": 36_958,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
-  tactical: 32_357,
+  tactical: 32_409,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -98,8 +98,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-17: +258, the same.
   // 2026-11-17: −114, the same.
   // 2026-11-17: +14, the same.
-  // 2026-11-18: −429, the same get_theses description and fields.
-  principal: 68_147,
+  // 2026-11-18: −377, the same get_theses description and fields.
+  principal: 68_199,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

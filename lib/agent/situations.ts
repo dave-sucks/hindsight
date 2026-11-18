@@ -21,8 +21,6 @@ export interface SituationSources {
   /** The ladder the list was read from, for each fire's measures. */
   triggers: Trigger[];
   status: string;
-  /** The stock's direction: null on a watch with no view yet (a review's `no_view` case). */
-  direction?: string | null;
   /** The resolver's label (ENTER_NOW, PROMOTED_DECIDE_TODAY …). */
   actionability: string | null;
   buyBlockedByFull: boolean;
@@ -223,7 +221,7 @@ ${SALE_WAITS}`,
   },
   REVIEW_DUE: {
     name: "review due",
-    guidance: `When: the review clock came due, a review trigger fired or is true now, or a trigger on a report or a filing fired. A review on a report, a filing, a playbook's way in or a watch with no view yet ends in that case's paragraph (the \`situations\` line names it). A watch with no view: go straight to its paragraph.
+    guidance: `When: the review clock came due, a review trigger fired or is true now, or a trigger on a report or a filing fired. A review on a report, one on a filing, and a watch with no view yet each have a paragraph at the end (the \`triggers\` lines say what fired; the \`stock\` line says "no view"). A watch with no view: go straight to its paragraph.
 
 Answer, in order:
 1. Anything from the principal not yet answered (\`said\`)? Answer it first.
@@ -246,7 +244,17 @@ The note: what has happened with the company and the stock since your last note,
 Mistakes:
 - The same answer to a review that fired again (the \`repeat\` line says how often): change a trigger, or say what differs from last time.
 - Deleting a trigger you still believe in to look at the name less.
-${SALE_WAITS}`,
+${SALE_WAITS}
+
+If it watches a report: read it before anything else. Before the report: what is expected, and what has the stock done into it? Within days of it, it is sizing, not a trade: is a holding sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story; a watch holds its buy until the report. Your note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it: what did they report against what was expected, what did management say about what comes next, and how did the stock take it? The reaction is the information. The figures are in a trigger run's kickoff, or get_earnings_data in the morning read; read the call before trusting a number (web_search). A surprise on an estimate under $0.05 is left blank; judge it in dollars. Beat on both lines, guidance up: raise the upside trigger and the floor; consider adding. EPS beat, revenue missed: the beat came from cost; raise nothing on it. A beat the stock is down on: the market wanted more; tighten the floor. A miss: a broken assumption is a sale (close_position, belief_survived false); an intact story that is early stays, floored under structure; say what would change your mind. Your note then answers the bar (answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar) and gives those three answers. Never buy on a beat alone or sell on a miss alone, and never add into the print.
+
+If it watches a filing: read the document first (get_sec_filings with \`read\` on its link; a trigger run's kickoff names the event and the link). The item code names the class; the document says which way it cuts, so never act on the class without reading it. On a holding: a restatement (4.02) means the numbers may be false, so sell unless it is clearly small and off-thesis, and say which; bankruptcy or a delisting notice is a sale; on a late report, find the stated reason, tighten the floor, and add nothing until it is filed; an officer leaving (5.02) is noise in a planned succession and a warning in a sudden CFO exit, so tighten the floor; an acquisition target we hold is capped at the deal price, so move the upside trigger to it and consider selling; dilution (3.02, 424B5, S-3) gets no add, and check the use of proceeds. On a watch: take the buy off on a restatement, stop watching on bankruptcy, buy nothing into a late report or an offering. It is answered by an update_thesis citing the filing you read, or by the trade; the note says what the company filed and what it says, in plain words, not the item code.
+
+If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): write that playbook's watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH", exactly as listed, every {chart number} replaced by its price from this stock's chart today; one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS; the morning run reads them with read_knowledge_library (topic "setup" and the playbook's id).
+
+If it is a watch with no view yet: there are no triggers to review, and its claim is the writer's: the save carries no belief fields and refuses a call on a stock with no direction, so never write the claim yourself.
+- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your update_thesis after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.
+- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one update_thesis for what you still owe it, if anything. Or re-arm it: update_thesis with edit_triggers moving the wakes to the prices that matter now, adding a review clock (add_triggers watching "repeat") only if the stock has earned one, and saying why. Or let it go: update_thesis with change_status ARCHIVED. One of the three answers it. If you leave the wake as it is, it fires again only after a close finds it false, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
   },
   NOTE_TO_ANSWER: {
     name: "a note to answer",
@@ -297,55 +305,6 @@ Mistakes:
 };
 
 /**
- * The review's cases: a paragraph each, sent after REVIEW_DUE's text only when
- * the stock is in that case (reviewCasesFor), so a review on a report is not
- * also sent what to do with a filing. Each is read off a fact the row shows:
- * a fired trigger that watches a report or a filing, a fired review a playbook
- * wrote on a watch that has no buy yet, a watch with no view.
- */
-export type ReviewCase = "report" | "filing" | "way_in" | "no_view";
-export const REVIEW_CASES: Record<ReviewCase, { name: string; text: string }> = {
-  report: {
-    name: "on a report",
-    text: `If it watches a report: read it before anything else. Before the report: what is expected, and what has the stock done into it? Within days of it, it is sizing, not a trade: is a holding sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story; a watch holds its buy until the report. Your note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it: what did they report against what was expected, what did management say about what comes next, and how did the stock take it? The reaction is the information. The figures are in a trigger run's kickoff, or get_earnings_data in the morning read; read the call before trusting a number (web_search). A surprise on an estimate under $0.05 is left blank; judge it in dollars. Beat on both lines, guidance up: raise the upside trigger and the floor; consider adding. EPS beat, revenue missed: the beat came from cost; raise nothing on it. A beat the stock is down on: the market wanted more; tighten the floor. A miss: a broken assumption is a sale (close_position, belief_survived false); an intact story that is early stays, floored under structure; say what would change your mind. Your note then answers the bar (answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar) and gives those three answers. Never buy on a beat alone or sell on a miss alone, and never add into the print.`,
-  },
-  filing: {
-    name: "on a filing",
-    text: `If it watches a filing: read the document first (get_sec_filings with \`read\` on its link; a trigger run's kickoff names the event and the link). The item code names the class; the document says which way it cuts, so never act on the class without reading it. On a holding: a restatement (4.02) means the numbers may be false, so sell unless it is clearly small and off-thesis, and say which; bankruptcy or a delisting notice is a sale; on a late report, find the stated reason, tighten the floor, and add nothing until it is filed; an officer leaving (5.02) is noise in a planned succession and a warning in a sudden CFO exit, so tighten the floor; an acquisition target we hold is capped at the deal price, so move the upside trigger to it and consider selling; dilution (3.02, 424B5, S-3) gets no add, and check the use of proceeds. On a watch: take the buy off on a restatement, stop watching on bankruptcy, buy nothing into a late report or an offering. It is answered by an update_thesis citing the filing you read, or by the trade; the note says what the company filed and what it says, in plain words, not the item code.`,
-  },
-  way_in: {
-    name: "a playbook's way in",
-    text: `If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): write that playbook's watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH", exactly as listed, every {chart number} replaced by its price from this stock's chart today; one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS; the morning run reads them with read_knowledge_library (topic "setup" and the playbook's id).`,
-  },
-  no_view: {
-    name: "a watch with no view",
-    text: `If it is a watch with no view yet: there are no triggers to review, and its claim is the writer's: the save carries no belief fields and refuses a call on a stock with no direction, so never write the claim yourself.
-- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your update_thesis after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.
-- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one update_thesis for what you still owe it, if anything. Or re-arm it: update_thesis with edit_triggers moving the wakes to the prices that matter now, adding a review clock (add_triggers watching "repeat") only if the stock has earned one, and saying why. Or let it go: update_thesis with change_status ARCHIVED. One of the three answers it. If you leave the wake as it is, it fires again only after a close finds it false, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
-  },
-};
-const CASE_ORDER = Object.keys(REVIEW_CASES) as ReviewCase[];
-
-/** The review's cases a stock is in, in the table's order: none unless it is in REVIEW_DUE. */
-export function reviewCasesFor(s: SituationSources): ReviewCase[] {
-  if (!situationsFor(s).includes("REVIEW_DUE")) return [];
-  const cases = new Set<ReviewCase>();
-  const fired = s.needs.flatMap((f): Array<{ triggerId: string; action: string }> =>
-    f.kind === "TRIGGER_FIRED" ? [f, ...(f.alsoFired ?? [])] : f.kind === "TRIGGER_MATCHING_NOW" ? [f] : [],
-  );
-  const hasBuy = s.triggers.some((t) => t.action === "ENTER");
-  for (const x of fired) {
-    const t = s.triggers.find((tr) => tr.id === x.triggerId);
-    const measures = measuresOf(t?.predicate);
-    if (measures.some((m) => m.type === "earnings")) cases.add("report");
-    if (measures.some((m) => m.id === "filing")) cases.add("filing");
-    if (x.action === "REVIEW" && t?.playbook === "WATCH" && s.status === "WATCHING" && !hasBuy) cases.add("way_in");
-  }
-  if (s.status === "WATCHING" && !s.direction) cases.add("no_view");
-  return CASE_ORDER.filter((c) => cases.has(c));
-}
-
-/**
  * Situations whose answer needs fields the trigger run's save lacks, so the
  * morning run answers them: putting a sold stock back on watch (change_status,
  * which the trigger run's save has not had since #825; a sold stock is never a
@@ -389,10 +348,9 @@ export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<read
   ],
 };
 
-/** A situation's text as this run reads it: a review with the paragraphs of its cases, and the trigger run's lines in place of the status verbs its save lacks. */
-function guidanceText(code: SituationCode, runMode?: string, cases: readonly ReviewCase[] = []): string {
-  const own = code === "REVIEW_DUE" ? CASE_ORDER.filter((c) => cases.includes(c)).map((c) => REVIEW_CASES[c].text) : [];
-  const text = [SITUATIONS[code].guidance, ...own].join("\n\n");
+/** A situation's text as this run reads it: the trigger run's lines in place of the status verbs its save lacks. */
+function guidanceText(code: SituationCode, runMode?: string): string {
+  const text = SITUATIONS[code].guidance;
   if (runMode !== "INTRADAY_TACTICAL") return text;
   return (TRIGGER_RUN_LINES[code] ?? []).reduce((t, [line, theirs]) => t.replace(line, theirs), text);
 }
@@ -403,12 +361,11 @@ export function guidanceCodes(status: string, codes: readonly SituationCode[], r
   return runMode === "INTRADAY_TACTICAL" ? codes.filter((c) => !NOT_FOR_THE_TRIGGER_RUN.has(c)) : [...codes];
 }
 
-/** The guidance for these codes, each text once, in rank order, worded for the run that reads it; a review with the paragraphs of the cases given. */
-export function guidanceFor(codes: Iterable<SituationCode>, runMode?: string, cases: Iterable<ReviewCase> = []): Partial<Record<SituationCode, string>> {
+/** The guidance for these codes, each text once, in rank order, worded for the run that reads it. */
+export function guidanceFor(codes: Iterable<SituationCode>, runMode?: string): Partial<Record<SituationCode, string>> {
   const wanted = new Set(codes);
-  const theCases = [...new Set(cases)];
   const out: Partial<Record<SituationCode, string>> = {};
-  for (const code of Object.keys(SITUATIONS) as SituationCode[]) if (wanted.has(code)) out[code] = guidanceText(code, runMode, theCases);
+  for (const code of Object.keys(SITUATIONS) as SituationCode[]) if (wanted.has(code)) out[code] = guidanceText(code, runMode);
   return out;
 }
 

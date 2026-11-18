@@ -19,7 +19,7 @@
  * (`[STRUCTURED:…]`, `[WEB:…]`) are stripped from every text here. Pure: a
  * saved row or a recorded one (scripts/hero-cases) builds the same way.
  */
-import { REVIEW_CASES, SITUATIONS, type ReviewCase, type SituationCode } from "@/lib/agent/situations";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { stripCitationTags } from "@/lib/thesis/clean-text";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import { streetLine } from "@/lib/market-data/street-consensus";
@@ -82,6 +82,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   bear_case: "review",
   conviction_rationale: "review",
   variant_view: ["BUY_ARRIVES"],
+  snapshot: "review",
   // Only when asked for by name.
   history: "named",
 };
@@ -159,6 +160,18 @@ function stance(status: unknown): string {
   }
 }
 
+/** The text's sentences up to `max` characters, never a cut word. */
+function firstParagraph(text: string, max: number): string {
+  const clean = stripSourceTags(text);
+  if (clean.length <= max) return clean;
+  let out = "";
+  for (const sentence of clean.split(/(?<=[.!?])\s+/)) {
+    const next = out ? `${out} ${sentence}` : sentence;
+    if (next.length > max) break;
+    out = next;
+  }
+  return out || clean.slice(0, max).replace(/\s+\S*$/, "");
+}
 
 /**
  * The stock's write-up, read off the `writerRun` fact (get_theses: the newest
@@ -351,6 +364,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
   const codes = list<SituationCode>(row.situations);
+  const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
   const out: Row = {};
   const sent = comparing ? new Set(COMPARING_FIELDS) : rowKeysFor(codes, { size, named });
   const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
@@ -361,10 +375,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   put("id", row.id);
   // An account-wide read names each stock's analyst.
   put("analyst", str(row.analyst));
-  // A review names its cases, the paragraphs its text ends in (REVIEW_CASES).
-  const cases = list<ReviewCase>(row.reviewCases).filter((c) => REVIEW_CASES[c]).map((c) => REVIEW_CASES[c].name);
-  const label = (c: SituationCode) => (c === "REVIEW_DUE" && cases.length ? `${SITUATIONS[c].name}: ${cases.join(", ")}` : SITUATIONS[c]?.name);
-  put("situations", codes.map((c) => `${c}${label(c) ? ` (${label(c)})` : ""}`));
+  put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
   put("said", comparing ? strings(row.insights).slice(0, INSIGHTS_COMPARED) : str(row.context));
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
@@ -388,6 +399,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   put("buyBlockedByFull", row.buyBlockedByFull);
   put("heldThroughFloor", row.heldThroughFloor);
   put("supersededBy", resolved?.supersededBy);
+  put("snapshot", snapshot ? (size === "full" ? stripSourceTags(snapshot) : firstParagraph(snapshot, 300)) : null);
   put("chart", chartLine(row));
   put("street", streetLine(row));
   put("research", researchLine(row, comparing ? "full" : size));

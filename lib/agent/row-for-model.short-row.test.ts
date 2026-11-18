@@ -14,7 +14,7 @@ it("the short row prints these keys, in this order", () => {
     "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price",
     "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
     "bull_case", "bear_case", "conviction_rationale", "variant_view",
-    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "chart",
+    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
     "research", "catalyst", "repeat",
   ]);
 });

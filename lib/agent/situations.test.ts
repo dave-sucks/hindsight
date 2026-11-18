@@ -6,9 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, REVIEW_CASES, SITUATIONS, situationLabels, situationsFor, TRIGGER_RUN_LINES, type ReviewCase, type SituationCode, type SituationSources } from "./situations";
-
-const ALL_CASES = Object.keys(REVIEW_CASES) as ReviewCase[];
+import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, TRIGGER_RUN_LINES, type SituationCode, type SituationSources } from "./situations";
 import { MERGED_CODE } from "@/lib/performance/agent-work-terms";
 import type { Trigger } from "./triggers/types";
 
@@ -199,10 +197,10 @@ describe("the guidance: each situation's text, once", () => {
     expect(guidanceCodes("HOLDING", codes, "MORNING_PLAN")).toEqual(codes);
     expect(guidanceCodes("HOLDING", codes)).toEqual(codes);
     // A seed's first research is still the morning run's: the trigger run reads that line in its place.
-    const theirs = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL", ["no_view"]).REVIEW_DUE!;
+    const theirs = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
     expect(theirs).toContain("due its first research on that clock, and the morning run answers it");
     expect(theirs).not.toContain("wait_for_thesis_refresh on the child run");
-    expect(guidanceFor(["REVIEW_DUE"], "MORNING_PLAN", ["no_view"]).REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
+    expect(guidanceFor(["REVIEW_DUE"], "MORNING_PLAN").REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
   });
 });
 
@@ -343,11 +341,9 @@ describe("a seed's claim is the writer's (step 12, part 1)", () => {
   });
 
   it("the review's paragraph on a watch with no view sends the claim through the writer, and never asks a run to write it", () => {
-    const text = REVIEW_CASES.no_view.text;
-    expect(text.startsWith("If it is a watch with no view yet:")).toBe(true);
+    const text = SITUATIONS.REVIEW_DUE.guidance.slice(SITUATIONS.REVIEW_DUE.guidance.indexOf("If it is a watch with no view yet:"));
     for (const words of ["dispatch_thesis_research", 'mode "refresh"', "existing_thesis_id", "wait_for_thesis_refresh", "commits the view", "never write the claim yourself"]) expect([words, text.includes(words)]).toEqual([words, true]);
-    const whole = guidanceFor(["REVIEW_DUE"], undefined, ALL_CASES).REVIEW_DUE!;
-    for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([field, whole.includes(field)]).toEqual([field, false]);
+    for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([field, SITUATIONS.REVIEW_DUE.guidance.includes(field)]).toEqual([field, false]);
     expect(text).toContain("No write-up yet");
     expect(text).toContain("A failed write-up is dispatched again");
   });
@@ -357,13 +353,12 @@ describe("the words per run (step 12, part 2)", () => {
   const ALL = Object.keys(SITUATIONS) as SituationCode[];
   it("every trigger-run line replaces a line of its text, word for word", () => {
     for (const [code, pairs] of Object.entries(TRIGGER_RUN_LINES) as Array<[SituationCode, ReadonlyArray<readonly [string, string]>]>) {
-      const texts = [SITUATIONS[code].guidance, ...(code === "REVIEW_DUE" ? ALL_CASES.map((c) => REVIEW_CASES[c].text) : [])];
-      for (const [line] of pairs) expect([code, line, texts.some((t) => t.includes(line))]).toEqual([code, line, true]);
+      for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
     }
   });
   it("the trigger run's guidance never names change_status, INVALIDATED or ARCHIVED; it takes the buy and the Stop watching line off by id and the morning run decides", () => {
-    const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL", ALL_CASES)).join("\n");
-    const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL", ALL_CASES)).join("\n");
+    const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
+    const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) {
       expect([word, text.includes(word)]).toEqual([word, false]);
       expect([word, promoted.includes(word)]).toEqual([word, false]);
@@ -374,13 +369,12 @@ describe("the words per run (step 12, part 2)", () => {
   it("the morning run and the chat keep the verbs", () => {
     for (const runMode of ["MORNING_PLAN", "PRINCIPAL_CHAT", undefined]) {
       expect(guidanceFor(["REVIEW_DUE"], runMode).REVIEW_DUE).toContain("change_status INVALIDATED on a stock we watch");
-      expect(guidanceFor(["REVIEW_DUE"], runMode, ["no_view"]).REVIEW_DUE).toContain("Or let it go: update_thesis with change_status ARCHIVED.");
+      expect(guidanceFor(["REVIEW_DUE"], runMode).REVIEW_DUE).toContain("Or let it go: update_thesis with change_status ARCHIVED.");
       expect(guidanceFor(["PROMOTED_AWAITING"], runMode).PROMOTED_AWAITING).toContain('change_status "WATCHING"');
     }
   });
   it("every text stays under the cap in every run's words", () => {
-    // A review with every case it can end in, the longest it is ever sent.
-    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode, ALL_CASES)[code]!.length <= capOf(code)]).toEqual([code, runMode, true]);
+    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode)[code]!.length <= capOf(code)]).toEqual([code, runMode, true]);
   });
 });
 

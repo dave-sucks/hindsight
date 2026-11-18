@@ -118,7 +118,7 @@ describe("the short row", () => {
     expect(Object.keys(row)).toEqual([
       "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "triggers",
       "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view",
-      "setup", "chart", "research", "catalyst", "repeat",
+      "setup", "snapshot", "chart", "research", "catalyst", "repeat",
     ]);
   });
 
@@ -161,6 +161,11 @@ describe("the short row", () => {
     for (const own of lines.filter((l) => !l.includes("· inherited"))) expect(own).toMatch(/\[id t_\w+\]$/);
   });
 
+  it("keeps the snapshot to whole sentences under 300 characters, tags and bold stripped", () => {
+    const snap = String(row.snapshot);
+    expect(snap).toBe("First sentence of the picture. Second sentence says more.");
+    expect(snap.length).toBeLessThanOrEqual(300);
+  });
 
   it("carries no score notes, no raw facts, no bookkeeping and no source tags", () => {
     for (const k of ["bullCase", "bearCase", "convictionRationale", "variantView", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
@@ -190,12 +195,13 @@ describe("the short row", () => {
 });
 
 describe("the full row", () => {
-  it("is the short row plus, on a named read, the history", () => {
+  it("is the short row plus the whole snapshot and, on a named read, the history", () => {
     const row = rowForModel(held(), { named: true, size: "full" }) as Row;
     expect(row.bull_case).toEqual(["Clean beat: EPS +25%", "Upgrades"]);
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
     expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
+    expect(String(row.snapshot)).toMatch(/Fourth sentence\.$/);
     expect(row.research).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
     expect(row.history).toEqual([{ id: "u1", type: "REVIEWED" }]);
     expect(Object.keys(row).indexOf("bull_case")).toBeLessThan(Object.keys(row).indexOf("chart"));
@@ -207,7 +213,7 @@ describe("the full row", () => {
   });
 });
 
-/** The snapshot and the seven research sections in the shapes the writer saved until 2026-11-03, when it stopped writing them (parse-sections.ts). */
+/** The seven research sections in the shapes the writer saved until 2026-11-03, when it stopped writing them (parse-sections.ts). */
 const research = {
   recentCatalysts: { text: "Raised guidance on Sept 3 [WEB:https://example.com/r].", citations: [{ url: "https://example.com/r", kind: "WEB", domain: "example.com" }] },
   fundamentals: { text: "**Revenue +30%** year on year [STRUCTURED:Financials].", citations: [{ kind: "STRUCTURED", title: "Financials" }] },
@@ -217,11 +223,10 @@ const research = {
   insiderTechnical: { text: "No open-market buys in 90 days [STRUCTURED:Insider Activity].", citations: [] },
   researchData: "Raw notes [STRUCTURED:Snapshot] with numbers.",
 };
-const FROZEN = ["snapshot", ...Object.keys(research)];
+const FROZEN = Object.keys(research);
 
 describe("what nothing rewrites any more", () => {
-  // NVDA's review on 2026-11-18 was sent its snapshot from Sep 9 ("$NVDA trades at $225.73") with the stock at $158.
-  it("no row carries the snapshot or the research sections, named or not, review or not", () => {
+  it("no row carries the research sections, named or not, review or not", () => {
     for (const [codes, opts] of [[[], { named: true, size: "full" }], [["REVIEW_DUE"], { named: false, size: "short" }], [["REVIEW_DUE"], { named: false, size: "full" }]] as const) {
       const row = rowForModel({ ...held(), ...research, situations: [...codes] }, opts) as Row;
       for (const k of FROZEN) expect([k, row[k]]).toEqual([k, undefined]);
