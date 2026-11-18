@@ -101,8 +101,11 @@ export function playbookChecks(setup: Setup, cut: "all" | "decision" = "all"): s
 /**
  * The analyst, as every door reads it. `room` is how full it is, when the
  * caller has counted (the morning run always; the trigger run on a buy).
+ * The "research" cut is for an agent that researches a stock and never
+ * trades (the Writer, the Holding refresh): no trade sizes, no slots and no
+ * list of playbooks.
  */
-export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | null): string {
+export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | null, cut: "all" | "research" = "all"): string {
   const min = amount(analyst.minPositionSize) ?? 0;
   const max = amount(analyst.maxPositionSize) ?? 2500;
   const rules = [
@@ -116,11 +119,12 @@ export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | nul
   ];
   const roomLine = capacityLine(room);
   if (roomLine) rules.push(`- ${roomLine}`);
-  const setups = chosenSetups(analyst);
+  const setups = cut === "all" ? chosenSetups(analyst) : [];
   return [
     `## Analyst: ${analyst.name || "Research Analyst"}`,
     ...(analyst.analystPrompt ? [analyst.analystPrompt] : []),
-    ["Rules:", ...rules].join("\n"),
+    // The research cut keeps the first two rules: the direction and the hold style.
+    ["Rules:", ...(cut === "all" ? rules : rules.slice(0, 2))].join("\n"),
     ...(setups.length ? [["Playbooks:", ...setups.map((s) => `- ${playbookChecks(s)[0]}`)].join("\n")] : []),
   ].join("\n\n");
 }

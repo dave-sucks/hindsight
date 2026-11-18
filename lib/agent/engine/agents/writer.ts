@@ -50,10 +50,8 @@ Call submit_thesis ONCE with your decision. The schema documents every field; th
 /** The stock's facts, in the first message: the same blocks for both Writer agents. */
 export const WRITER_FACTS: readonly RecordPart[] = [
   { block: "today" },
+  // From the Market and portfolio block, the market numbers alone (2026-11-18): neither agent trades or sizes, and our history with the stock is in its data.
   { block: "market_numbers" },
-  { block: "market_digest" },
-  { block: "portfolio_snapshot" },
-  { block: "portfolio_digest" },
   { block: "why_sent", heading: "## Why you were dispatched" },
   { block: "sender_notes" },
   { block: "idea_source" },
@@ -74,9 +72,8 @@ export const WRITER: AgentRecord = {
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
   instructions: [
-    { block: "analyst_brief" },
+    { block: "analyst_research" },
     { block: "house_rules" },
-    { block: "market_block_rule" },
     { block: "how_you_write" },
     { block: "playbooks" },
     { own: "job", title: "Its job", text: JOB },

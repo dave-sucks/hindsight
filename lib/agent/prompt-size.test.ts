@@ -47,7 +47,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-17: +114, each price comes from the chart today and a trigger whose price it doesn't have yet is left out; "a view with no buy names no playbook" goes; the Street is its own rule.
   // 2026-11-17: +356, a watch gets its watch triggers, its earnings review and its own looks, nothing that waits for the buy; the pre-catalyst buys carry "within 70 days before the event date".
   // 2026-11-18: +1,240, the Writer's request measured whole (its first message's date, reason and ask now counted), and its instructions one fixed text: the rules for a recent sale, someone's idea and a promotion are always there, where they printed only when they applied; a stock we own goes to the Holding refresh, whose instructions carry none of a watch's rules.
-  writer: 17_325,
+  // 2026-11-18: −319, the Writer gets the analyst without its trade sizes and slots, and no rule on weighing a snapshot it no longer gets.
+  writer: 17_006,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.

@@ -23,6 +23,7 @@ export type BlockId =
   | "reviewer_notes"
   | "last_digest"
   | "analyst_brief"
+  | "analyst_research"
   | "playbooks"
   | "why_sent"
   | "sender_notes"

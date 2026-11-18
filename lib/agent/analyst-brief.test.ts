@@ -131,8 +131,15 @@ describe("every door reads the same brief, once", () => {
   const brief = analystBrief(CATALYST);
   const prompts = Object.fromEntries(Object.entries(DOORS).map(([door, build]) => [door, build()])) as Record<keyof typeof DOORS, string>;
 
-  it("the trigger run off a sale, the chat and the writer: the brief byte for byte", () => {
-    for (const door of ["trigger", "chat", "writer"] as const) expect(count(prompts[door], brief)).toBe(1);
+  it("the trigger run off a sale and the chat: the brief byte for byte", () => {
+    for (const door of ["trigger", "chat"] as const) expect(count(prompts[door], brief)).toBe(1);
+  });
+
+  it("the writer, which never trades: the brief without its trade sizes, its slots or its playbook list", () => {
+    const research = analystBrief(CATALYST, null, "research");
+    expect(research).toBe(["## Analyst: Catalyst Event PM", STRATEGY, "Rules:\n- Direction: LONG\n- Hold style: SWING, POSITION"].join("\n\n"));
+    expect(count(prompts.writer, research)).toBe(1);
+    for (const gone of ["- Position size:", "- Most in one stock:", "- Max open positions:", "Playbooks:\n"]) expect([gone, prompts.writer.includes(gone)]).toEqual([gone, false]);
   });
 
   it("the morning run: the same brief with its room line", () => {
@@ -160,9 +167,9 @@ describe("every door reads the same brief, once", () => {
     }
   });
 
-  it("the rule on weighing the snapshot and the digests goes once to a door given them, and never to the trigger run, which gets the market numbers alone", () => {
-    for (const door of ["daily", "chat", "writer"] as const) expect([door, count(prompts[door], MARKET_BLOCK_RULE)]).toEqual([door, 1]);
-    expect(count(prompts.trigger, MARKET_BLOCK_RULE)).toBe(0);
+  it("the rule on weighing the snapshot and the digests goes once to a door given them, and never to the trigger run or the writer, which get the market numbers alone", () => {
+    for (const door of ["daily", "chat"] as const) expect([door, count(prompts[door], MARKET_BLOCK_RULE)]).toEqual([door, 1]);
+    for (const door of ["trigger", "writer"] as const) expect([door, count(prompts[door], MARKET_BLOCK_RULE)]).toEqual([door, 0]);
   });
 
   it("no door renders the analyst its own way any more", () => {

@@ -449,7 +449,7 @@ export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBloc
   return composeAgentRequest(writerRecordFor(opts), { now: new Date(), environment: "PAPER" }, {
     pieces: opts.portfolioPieces ?? null,
     blocks: {
-      analyst_brief: analystBrief(opts.analyst),
+      analyst_research: analystBrief(opts.analyst, null, "research"),
       // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
       playbooks: playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
       today: `## Today\nToday is ${opts.runDate}.`,

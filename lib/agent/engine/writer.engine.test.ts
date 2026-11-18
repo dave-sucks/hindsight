@@ -84,9 +84,8 @@ describe("a stock's two Writer agents", () => {
   it("names every part, and the parts add up to what is sent; a part with nothing this run isn't shown", () => {
     const built = writerRequest(opts("refresh_watch"), { dataBlock: WRITER_MESSAGE.dataBlock, chatFound: WRITER_MESSAGE.chatFound });
     expect(rowsOf(built)?.map((r) => r.name)).toEqual([
-      "The analyst",
+      "The analyst, for research",
       "House rules",
-      "Weighing the Market and portfolio block",
       "How you write",
       "Its playbooks",
       "Its job",
@@ -98,9 +97,6 @@ describe("a stock's two Writer agents", () => {
       "What the owner reads",
       "Today's date",
       "Market numbers",
-      "Market digest",
-      "Portfolio snapshot",
-      "Portfolio digest",
       "Why it was sent",
       "The thesis now",
       "A recent sale",
