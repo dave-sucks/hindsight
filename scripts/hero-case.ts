@@ -352,6 +352,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
     const reads: Array<{ toolName: string; output: unknown }> = [];
+    /** What each read the case runs for real handed the model: the grades count it as shown. */
+    const readShown: unknown[] = [];
     let text = "";
     let turns = 0;
     /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
@@ -401,6 +403,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
             const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
             reads.push({ toolName: t.toolName, output });
             const forModel = read.toModelOutput ? await read.toModelOutput({ toolCallId: t.toolCallId, input: t.input, output }) : { type: "json" as const, value: output };
+            readShown.push(forModel);
             return { type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: forModel as { type: "json"; value: never } };
           }
           return {
@@ -430,9 +433,10 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
-    const grades = grade({ calls, narration: text }, shown, c.grade ?? {});
+    // A read the case runs for real is part of what the run was shown.
+    const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

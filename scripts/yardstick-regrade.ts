@@ -19,7 +19,9 @@ if (!written || !out) throw new Error("usage: yardstick-regrade.ts <written.json
 const rows = readFileSync(written, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown> & { case: string; narration: string; calls: Array<{ tool: string; input: unknown }> });
 const lines = rows.map((r) => {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${r.case}.json`, "utf8")) as { expect?: Expect; grade?: { playbooks?: string[] } };
-  const inputs = readFileSync(`${dirname(written)}/inputs/${r.case}.txt`, "utf8");
+  const saved = readFileSync(`${dirname(written)}/inputs/${r.case}.txt`, "utf8");
+  // What the run's own live reads handed the model, saved with the run.
+  const inputs = r.readShown ? `${saved}\n${JSON.stringify(r.readShown)}` : saved;
   const calls = r.calls.map((x) => ({ toolName: x.tool, input: x.input }));
   const verdict = score(c.expect, calls, r.narration ?? "");
   return JSON.stringify({ ...r, pass: verdict.pass, why: verdict.why, grades: grade({ calls, narration: r.narration ?? "" }, inputs, c.grade ?? {}) });
