@@ -19,10 +19,19 @@ export interface ChatPromptOpts {
   room?: AnalystCapacity | null;
 }
 
+/**
+ * The pinned analyst, as the chat reads it: the analyst's text, its first
+ * line the analyst the chat is pinned to and its id (a fact of the pinned
+ * chat; the chat's tools act on it).
+ */
+export function pinnedAnalystText(scope: ScopedAnalyst, room?: AnalystCapacity | null): string {
+  return `## Current scope — pinned to ${scope.name} (Analyst ID: \`${scope.id}\`)\n\n${analystBrief(scope, room)}`;
+}
+
 /** The chat's instructions, each part named for the run's Context panel. */
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
-  return composeAgentRequest(CHAT, { now: new Date(), environment }, { shared: { the_analyst: scope ? analystBrief(scope, opts.room) : null } });
+  return composeAgentRequest(CHAT, { now: new Date(), environment }, { shared: { the_analyst: scope ? pinnedAnalystText(scope, opts.room) : null } });
 }
 
 /** The read "the_analysts": each analyst's room, at the portfolio level. Null when there are none. */

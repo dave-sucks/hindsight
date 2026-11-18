@@ -64,7 +64,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −331, the chat's instructions are one fixed text for both scopes and the pinned analyst's id, fence and watchlist are a block that ends them (its scope): the ═══ banners go; the whole-book paragraph, once only at the portfolio level, is in every run's text.
   // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
   // 2026-11-18: −61, the same.
-  chat: 35_470,
+  // 2026-11-18: +68, the pinned analyst's name and id open its analyst text, as the scope block's first line did.
+  chat: 35_538,
 };
 
 /**

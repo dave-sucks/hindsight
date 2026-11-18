@@ -1,8 +1,7 @@
 /**
  * The Portfolio Manager's record (docs/plans/AGENT_ENGINE.md): the one agent
  * that looks at the whole account at once. Twice a week, one run per traded
- * book (lib/inngest/functions/portfolio-manager.ts, ./run in
- * lib/agent/portfolio-manager/run.ts). Its instructions: its own text, the
+ * book (run by lib/agent/portfolio-manager/run.ts). Its instructions: its own text, the
  * house rules and how you write. Its context: the market and the portfolio,
  * the book, and its own last write-up. The schedule writes it no message: the
  * date line is its start.
@@ -52,7 +51,7 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
   name: "Portfolio Manager",
   does: "Looks across the whole account and may propose up to three trades, each waiting for you.",
   runsWhen: "Tuesday and Thursday at 10:00 AM ET, one run per traded book.",
-  messageFrom: "The schedule (lib/inngest/functions/portfolio-manager.ts), which writes it no message: the date line is its start.",
+  messageFrom: "The schedule, which writes it no message: the date line is its start.",
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 40,

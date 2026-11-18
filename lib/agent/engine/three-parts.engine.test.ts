@@ -13,7 +13,8 @@
  * - the trigger run's fire is said once, in the message from the trigger check;
  * - the Writer's five rule texts are one, its own text one, its brief its
  *   message, and on a refresh the stock is its row;
- * - the chat's book and each analyst's room ride on your newest message.
+ * - the chat's book and each analyst's room ride on your newest message; the
+ *   pinned analyst's name and id open its analyst text.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { before, partsOf } from "./__fixtures__/before";
@@ -168,7 +169,8 @@ describe("the chat", () => {
     );
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
-    if (c.scopedAnalyst) expect(now["instructions:the_analyst"]).toBe(withFence(old["instructions:analyst_brief"], c.scopedAnalyst));
+    // Pinned: the analyst's text opens with the analyst it is pinned to and its id, the old scope block's first line and its id.
+    if (c.scopedAnalyst) expect(now["instructions:the_analyst"]).toBe(`## Current scope — pinned to ${c.scopedAnalyst.name} (Analyst ID: \`${c.scopedAnalyst.id}\`)\n\n${withFence(old["instructions:analyst_brief"], c.scopedAnalyst)}`);
     else expect(now["instructions:the_analyst"]).toBeUndefined();
     // Each analyst's room rides on your newest message, under the heading it had.
     const newest = partsOf({ ...chatRequest({ scopedAnalyst: null }), parts: [] }, chatNewest(NOW, null, "PAPER", { analysts: analystsText(c.roomLines ?? []) }));
