@@ -187,7 +187,7 @@ function SizedOn({ agent }: { agent: FrameworkAgent }) {
         </p>
       ) : on?.kind === "sample" ? (
         <p>
-          No run of it has saved its parts yet, so it is sized on a sample day: {on.from}. Its own words and the house rules are the same on every run; a block that holds data is drawn at the sample&apos;s size, not a real day&apos;s.
+          No run of it has saved its parts yet, so it is sized on a sample day: {on.from}. Its own text and the shared texts are the same on every run; a read that holds data is drawn at the sample&apos;s size, not a real day&apos;s.
         </p>
       ) : (
         <p>It has no saved run and no sample day, so its parts are drawn from its record without sizes.</p>

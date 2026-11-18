@@ -258,7 +258,8 @@ async function latestRuns(accountId: string): Promise<Map<string, RunSizes>> {
   for (const row of rows) {
     try {
       const record = JSON.parse(row.content) as RequestRecord;
-      if (record.agent && record.parts?.length) out.set(record.agent, runSizesOf(record, row.createdAt, row.runId));
+      // A record kept before the three parts names its parts the old way (kind "block"): the agent stays on its sample until it runs again.
+      if (record.agent && record.parts?.length && !record.parts.some((p) => (p.kind as string) === "block")) out.set(record.agent, runSizesOf(record, row.createdAt, row.runId));
     } catch {
       // A record that doesn't read leaves its agent on its sample.
     }

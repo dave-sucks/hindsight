@@ -187,7 +187,13 @@ export function byParts(parts: SentPartManifest[], text: string): { parts: SentC
  * reads by where it went.
  */
 const groupOf = (p: SentPartManifest): SentGroup =>
-  p.kind === "own" || p.kind === "shared" || p.kind === "situations" ? "Instructions" : p.kind === "message" ? "Message" : p.kind === "line" || p.kind === "context" ? "Context" : p.where === "instructions" ? "Instructions" : "Context";
+  p.kind === "shared" || p.kind === "situations" ? "Instructions"
+  : p.kind === "message" ? "Message"
+  : p.kind === "line" || p.kind === "context" ? "Context"
+  : p.where === "instructions" ? "Instructions"
+  // Kept before the three parts: an agent's own words in its first message were its ask.
+  : p.kind === "own" ? "Message"
+  : "Context";
 
 /** A run's records, oldest first, as its page shows them. */
 export async function loadRunRequests(runId: string): Promise<CallView[]> {

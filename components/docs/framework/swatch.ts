@@ -30,5 +30,14 @@ export function swatchOf(p: { kind: PartKind; id: string }): PartId {
   if (p.kind === "message") return "message";
   if (p.kind === "shared") return p.id === "the_analyst" || p.id === "playbooks" ? "analyst" : "house";
   if (p.kind === "context") return CONTEXT[p.id as ContextId]?.group ? "portfolio" : p.id === "playbook_record" ? "analyst" : "read";
+  // A request kept before the three parts named its parts "block": colored by what they were.
+  if ((p.kind as string) === "block") return OLD_BLOCKS[p.id] ?? "read";
   return "read";
 }
+
+const OLD_BLOCKS: Record<string, PartId> = {
+  house_rules: "house", market_block_rule: "house", how_you_write: "house",
+  analyst_brief: "analyst", playbooks: "analyst", setup_record: "analyst",
+  market_numbers: "portfolio", market_digest: "portfolio", portfolio_snapshot: "portfolio", watching: "portfolio", portfolio_digest: "portfolio",
+  situations: "guidance",
+};

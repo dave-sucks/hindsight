@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { CONTEXT, DATE_LINE, SHARED } from "@/lib/agent/engine/parts";
+import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
 import { ownText, sharedOf, type AgentRecord, type ContextId, type SharedId } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
 
@@ -64,7 +64,7 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Context</h2>
             <p className="text-sm text-muted-foreground">
-              {record.conversation ? "On each message you send" : "In its first message"}: {DATE_LINE.about.replace(/\. Every first message opens with it\.$/, "")}, then each read checked here.
+              {record.conversation ? "On each message you send" : "In its first message"}: the date line (the date and time in New York, and whether the account is paper or live), then each read checked here.
             </p>
             <Checklist items={(Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, ...CONTEXT[id], on: reads.has(id) }))} />
           </section>
