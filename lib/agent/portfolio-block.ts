@@ -57,17 +57,30 @@ function withinTime<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
  */
 export interface BlockArgs { accountId: string; environment: string; now?: Date; waitMs?: number; watching?: boolean; portfolioDigest?: boolean }
 
-/** The block's text for one book. Never throws. */
+/** The block's parts, each a context block of its own in the agent engine (lib/agent/engine/blocks.ts). */
+export type PortfolioPieceId = "market_numbers" | "market_digest" | "portfolio_snapshot" | "watching" | "portfolio_digest";
+/** One part of the block, its own heading first. `unreadable` stands in for the whole block when nothing could be read. */
+export interface PortfolioPiece { id: PortfolioPieceId | "unreadable"; text: string }
+
+const UNREADABLE = "The portfolio snapshot and the digest couldn't be read for this request.";
+
+/** The block's text for one book: its heading, then its parts. Never throws. */
 export async function loadPortfolioBlock(args: BlockArgs): Promise<string> {
+  const pieces = await loadPortfolioPieces(args);
+  return [BLOCK_HEADING, ...pieces.map((p) => p.text)].join("\n\n");
+}
+
+/** The block's parts for one book, in order, without the block's heading. Never throws. */
+export async function loadPortfolioPieces(args: BlockArgs): Promise<PortfolioPiece[]> {
   try {
-    return await readBlock(args);
+    return await readPieces(args);
   } catch (err) {
     console.warn(`[portfolio-block] the block couldn't be read: ${err instanceof Error ? err.message : err}`);
-    return [BLOCK_HEADING, "", "The portfolio snapshot and the digest couldn't be read for this request."].join("\n");
+    return [{ id: "unreadable", text: UNREADABLE }];
   }
 }
 
-async function readBlock(args: BlockArgs): Promise<string> {
+async function readPieces(args: BlockArgs): Promise<PortfolioPiece[]> {
   const now = args.now ?? new Date();
   const environment = args.environment === "LIVE" ? "LIVE" : "PAPER";
   const wait = args.waitMs ?? SNAPSHOT_WAIT_MS;
@@ -91,28 +104,25 @@ async function readBlock(args: BlockArgs): Promise<string> {
   if (numbers === "timeout") console.warn(`[portfolio-block] the market numbers took over ${wait} ms`);
   if (snapshot === "timeout") console.warn(`[portfolio-block] the snapshot took over ${wait} ms for ${args.accountId} ${environment}`);
   else if (snapshot == null) console.warn(`[portfolio-block] no snapshot for ${args.accountId} ${environment} (no owner, no broker keys, or the broker failed)`);
-  const parts = [BLOCK_HEADING, ""];
-  if (numbers && numbers !== "timeout") parts.push(`### Market numbers (as of ${stamp(now)} ET)`, marketNumbersText(numbers), "");
-  else parts.push("### Market numbers", "The market numbers couldn't be read for this request.", "");
+  const pieces: PortfolioPiece[] = [];
+  pieces.push({
+    id: "market_numbers",
+    text: numbers && numbers !== "timeout" ? `### Market numbers (as of ${stamp(now)} ET)\n${marketNumbersText(numbers)}` : "### Market numbers\nThe market numbers couldn't be read for this request.",
+  });
   const marketFresh = market && now.getTime() - market.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
-  if (market && marketFresh) {
-    parts.push(`### Market digest (written ${stamp(market.createdAt)} ET)`);
+  pieces.push({
+    id: "market_digest",
     // Any heading it has (#, ## or ###) goes to ####, so it sits inside this part, never beside "## Market and portfolio".
-    parts.push(market.digest.trim().replace(/^#{1,3} /gm, "#### "));
-  } else {
-    parts.push("### Market digest", `No market digest in the last ${DIGEST_SHELF_DAYS} days.`);
-  }
-  parts.push("", "### Portfolio snapshot");
-  parts.push(snapshot && snapshot !== "timeout" ? snapshotText(snapshot) : "The portfolio snapshot couldn't be read for this request.");
-  if (args.watching && snapshot && snapshot !== "timeout") parts.push("", "### Watching", watchingText(snapshot));
-  if (args.portfolioDigest === false) return parts.join("\n");
-  parts.push("");
+    text: market && marketFresh ? `### Market digest (written ${stamp(market.createdAt)} ET)\n${market.digest.trim().replace(/^#{1,3} /gm, "#### ")}` : `### Market digest\nNo market digest in the last ${DIGEST_SHELF_DAYS} days.`,
+  });
+  const read = snapshot && snapshot !== "timeout" ? snapshot : null;
+  pieces.push({ id: "portfolio_snapshot", text: `### Portfolio snapshot\n${read ? snapshotText(read) : "The portfolio snapshot couldn't be read for this request."}` });
+  if (args.watching && read) pieces.push({ id: "watching", text: `### Watching\n${watchingText(read)}` });
+  if (args.portfolioDigest === false) return pieces;
   const fresh = digest && now.getTime() - digest.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
-  if (digest && fresh) {
-    parts.push(`### Portfolio digest (written ${stamp(digest.createdAt)} ET)`);
-    parts.push(digest.narrative.trim());
-  } else {
-    parts.push("### Portfolio digest", `No digest written from the portfolio snapshot in the last ${DIGEST_SHELF_DAYS} days.`);
-  }
-  return parts.join("\n");
+  pieces.push({
+    id: "portfolio_digest",
+    text: digest && fresh ? `### Portfolio digest (written ${stamp(digest.createdAt)} ET)\n${digest.narrative.trim()}` : `### Portfolio digest\nNo digest written from the portfolio snapshot in the last ${DIGEST_SHELF_DAYS} days.`,
+  });
+  return pieces;
 }

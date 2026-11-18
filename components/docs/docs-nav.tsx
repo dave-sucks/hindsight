@@ -1,6 +1,6 @@
 "use client";
 
-/** The tour's two tabs (how it works, and how an agent is put together), with the docs a button away on the right. */
+/** The tour's tabs (how it works, how an agent is put together, and every agent as the engine runs it), with the docs a button away on the right. */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const TABS = [
   { href: "/how-it-works", label: "How it works" },
   { href: "/how-it-works/framework", label: "The Framework" },
+  { href: "/how-it-works/agents", label: "Agents" },
 ] as const;
 
 export function DocsNav() {

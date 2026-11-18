@@ -11,6 +11,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { LanguageModel } from "ai";
 import { saveRequestRecord } from "@/lib/agent/run-requests";
+import type { SentPartManifest } from "@/lib/agent/engine/types";
 
 export interface ModelUse {
   /** The run that keeps the request. With none, nothing is kept. */
@@ -23,6 +24,8 @@ export interface ModelUse {
   api?: "chat" | "responses";
   /** The run keeps only the newest record of this call (a chat keeps one, not one per message). */
   replace?: boolean;
+  /** Which part of the request is which, from the agent engine; the run keeps it with the request. */
+  parts?: SentPartManifest[];
 }
 
 /** The model for `modelId`, the same one each call site built before, keeping its call's first request on the run. */
@@ -53,5 +56,5 @@ async function keep(runId: string, model: string, use: ModelUse, body: string): 
     // Not JSON: kept as the text it was.
   }
   const at = new Date().toISOString();
-  await saveRequestRecord(runId, { v: 1, call: use.call, source: use.source, model, startedAt: at, endedAt: at, requests: [sent] }, { replace: use.replace });
+  await saveRequestRecord(runId, { v: 1, call: use.call, source: use.source, model, startedAt: at, endedAt: at, requests: [sent], ...(use.parts ? { parts: use.parts } : {}) }, { replace: use.replace });
 }

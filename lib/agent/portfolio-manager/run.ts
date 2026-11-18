@@ -1,9 +1,10 @@
 /**
  * The Portfolio Manager: one run per traded book, Tuesday and Thursday at
- * 10:00 AM ET (lib/inngest/functions/portfolio-manager.ts). The same agent as
- * every other door, with its own job (./prompt.ts). It is given the Market
- * and portfolio block every agent gets, with the Watching block, and asks
- * get_theses for the stocks it weighs. It has no analyst: each
+ * 10:00 AM ET (lib/inngest/functions/portfolio-manager.ts). Its record
+ * (lib/agent/engine/agents/portfolio-manager.ts) holds its job, the blocks it
+ * is given and its tools; the agent engine builds its request from it, and
+ * the run keeps which part is which. It asks get_theses for the stocks it
+ * weighs. It has no analyst: each
  * write acts for the stock's own analyst (lib/agent/analyst-scope.ts), and
  * every trade goes through the approval switch like any run's. Its last
  * reply is its write-up, kept on the run as a RunEvent and read first by its
@@ -11,35 +12,22 @@
  */
 import { generateText, stepCountIs, type ToolSet } from "ai";
 import { prisma } from "@/lib/prisma";
-import { MODES } from "@/lib/agent/modes";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
-import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
+import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
-import { buildPortfolioManagerPrompt } from "@/lib/agent/portfolio-manager/prompt";
 import { withRunLimits } from "@/lib/agent/portfolio-manager/limits";
+import { buildAgentRequest } from "@/lib/agent/engine/engine";
+import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
 /** The RunEvent that keeps a run's write-up. */
 export const WRITEUP_EVENT = "portfolio_writeup";
-/** The morning runs' model. */
-export const MANAGER_MODEL = MODES["research-run"].model;
-const MAX_STEPS = 40;
+export const MANAGER_MODEL = PORTFOLIO_MANAGER.model;
 const CALL_MS = 770_000;
-
-/** What it may call. get_theses by ticker, a limited number of stocks a run (./limits.ts); its save is a note. */
-export const MANAGER_TOOLS = [
-  "get_theses",
-  "get_stock_data",
-  "update_thesis",
-  "place_trade",
-  "manage_position",
-  "close_position",
-  "dispatch_thesis_research",
-] as const;
 
 export interface ManagerBook {
   accountId: string;
@@ -49,8 +37,8 @@ export interface ManagerBook {
 
 const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
 
-/** Its first message: the day and its own last write-up. The account, its holdings and the watchlist are in the Market and portfolio block. */
-export async function managerMessage(book: ManagerBook, now: Date): Promise<string> {
+/** Its last write-up, under its heading: the second part of its first message, after the day. */
+export async function lastWriteup(book: Pick<ManagerBook, "accountId" | "environment">): Promise<string> {
   const last = await prisma.runEvent
     .findFirst({
       where: { type: WRITEUP_EVENT, run: { accountId: book.accountId, environment: book.environment, mode: MANAGER_RUN_MODE } },
@@ -58,7 +46,7 @@ export async function managerMessage(book: ManagerBook, now: Date): Promise<stri
       select: { message: true, createdAt: true },
     })
     .catch(() => null);
-  return [`${day(now)}, the ${book.environment} account.`, "", "## Your last write-up", last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first."].join("\n");
+  return ["## Your last write-up", last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first."].join("\n");
 }
 
 export interface ManagerResult {
@@ -85,12 +73,14 @@ export async function runPortfolioManager(
   opts: { now?: Date; tools?: (real: ToolSet) => ToolSet } = {},
 ): Promise<ManagerResult> {
   const now = opts.now ?? new Date();
-  const [firstMessage, portfolioBlock, alpacaCreds] = await Promise.all([
-    managerMessage(book, now),
-    // The same block every agent gets, with the Watching block and without the 8 PM digest's view of the waiting proposals.
-    loadPortfolioBlock({ accountId: book.accountId, environment: book.environment, now, watching: true, portfolioDigest: false }),
+  const [request, alpacaCreds] = await Promise.all([
+    buildAgentRequest(PORTFOLIO_MANAGER, { now, environment: book.environment }, {
+      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
+      lastWriteup: () => lastWriteup(book),
+    }),
     resolveAlpacaCredentials(book.userId, book.environment),
   ]);
+  const firstMessage = request.message;
   const every = createResearchTools({
     runId: runId ?? "",
     userId: book.userId,
@@ -101,19 +91,20 @@ export async function runPortfolioManager(
   }) as ToolSet;
   const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
   // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
-  const real = withRunLimits(opts.tools ? opts.tools(Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet) : (Object.fromEntries(MANAGER_TOOLS.map((name) => [name, every[name]])) as ToolSet), tickerOf);
+  const mine = Object.fromEntries(request.tools.map((name) => [name, every[name]])) as ToolSet;
+  const real = withRunLimits(opts.tools ? opts.tools(mine) : mine, tickerOf);
   const usage = emptyTokenUsage();
   const requests: number[] = [];
   const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
   try {
     const { steps, response, text } = await generateText({
-      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager" }),
-      system: buildPortfolioManagerPrompt(portfolioBlock),
+      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager", parts: request.parts }),
+      system: request.instructions,
       prompt: firstMessage,
       tools: real,
       providerOptions: { openai: { strictJsonSchema: true, ...(runId ? { promptCacheKey: runId } : {}) } },
       // The same refused call three times ends the loop (repeat-refusal.ts).
-      stopWhen: [stepCountIs(MAX_STEPS), repeatRefusalGuard.stopWhen],
+      stopWhen: [stepCountIs(PORTFOLIO_MANAGER.maxSteps), repeatRefusalGuard.stopWhen],
       prepareStep: repeatRefusalGuard.prepareStep,
       abortSignal: AbortSignal.timeout(CALL_MS),
       onStepFinish({ usage: u }) {
