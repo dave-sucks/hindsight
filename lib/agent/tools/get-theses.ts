@@ -31,7 +31,7 @@ import { chartFacts } from "@/lib/market-data/indicator-snapshot";
 import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
+import { guidanceCodes, guidanceFor, listsTheStock, reviewCasesFor, situationsFor, situationsTap, type ReviewCase, type SituationCode } from "@/lib/agent/situations";
 import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
@@ -157,6 +157,7 @@ export const getTheses = defineTool({
         ...sold.flatMap((x) => x.situations ?? []).filter((c) => guidanceCodes("RETIRED", [c], ctx.runMode).length > 0),
       ],
       ctx.runMode,
+      rows.flatMap((r) => (Array.isArray(r.reviewCases) ? (r.reviewCases as ReviewCase[]) : [])),
     );
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
@@ -465,6 +466,10 @@ export const getTheses = defineTool({
       const src = facts.sources.get(id);
       return src ? situationsFor(src) : [];
     };
+    const reviewCasesOf = (id: string): ReviewCase[] => {
+      const src = facts.sources.get(id);
+      return src ? reviewCasesFor(src) : [];
+    };
 
     // Actionable-detail split: full rows for the work list, one-line index
     // entries for the quiet rest; "book" mode, and prices that failed to
@@ -532,6 +537,7 @@ export const getTheses = defineTool({
       resolvedActionability: resolvedByThesisId.get(t.id)?.actionability ?? null,
       needsAction: null,
       situations: situationsOf(t.id),
+      reviewCases: reviewCasesOf(t.id),
     }));
 
     const enriched = fullTheses.map((t) => {
@@ -553,6 +559,7 @@ export const getTheses = defineTool({
         // Every situation the stock is in, the lead's first; `guidance` on
         // the result says what each asks.
         situations: situationsOf(t.id),
+        reviewCases: reviewCasesOf(t.id),
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
         // rows; `triggerDetail` shows trigger state vs current price;
@@ -802,10 +809,11 @@ export const getTheses = defineTool({
     // What each situation on the work list asks, once per read, in rank
     // order (lib/agent/situations.ts). A promoted stock calls for the
     // promotion's text alone; quiet rows are not today's work.
-    const guidance = guidanceFor([
-      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)),
-      ...soldToReview.flatMap((x) => x.situations),
-    ]);
+    const guidance = guidanceFor(
+      [...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)), ...soldToReview.flatMap((x) => x.situations)],
+      undefined,
+      fullTheses.flatMap((t) => reviewCasesOf(t.id)),
+    );
 
     return {
       summary: summaryWithSold,

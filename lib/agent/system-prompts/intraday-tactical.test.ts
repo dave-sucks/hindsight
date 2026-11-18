@@ -18,7 +18,7 @@ import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTemplates, playbookTriggerText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
+import { guidanceFor, REVIEW_CASES, SITUATIONS, type ReviewCase } from "@/lib/agent/situations";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -280,7 +280,7 @@ describe("the trigger run's situation words (step 12, part 2)", () => {
     }
   });
   it("the morning run's and the chat's keep the verbs", () => {
-    const text = Object.values(guidanceFor(ALL)).join("\n");
+    const text = Object.values(guidanceFor(ALL, undefined, Object.keys(REVIEW_CASES) as ReviewCase[])).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([word, text.includes(word)]).toEqual([word, true]);
   });
 });
@@ -293,7 +293,7 @@ describe("a trigger fire's request — a watch's review gets the Writer's playbo
     const prompt = triggerRunSent(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
     expect(prompt).toContain(block);
     expect(prompt).not.toContain("a playbook's way in");
-    const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
+    const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL", ["way_in"]).REVIEW_DUE!;
     expect(due).toContain('If it is a playbook\'s way in on a stock we watch (its note says the run writes the triggers): write that playbook\'s watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH"');
     expect(due).toContain("one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS");
   });
