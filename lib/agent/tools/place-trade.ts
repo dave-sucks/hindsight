@@ -303,7 +303,7 @@ export const placeTrade = defineTool({
         ) {
           const msg =
             `$${ticker}: cannot place_trade on an unresearched watchlist seed (direction is not committed to LONG/SHORT). It is a seed awaiting first research — no buy, no floor, no committed view. ` +
-            `Its view comes from the writer: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${args.thesis_id}", then wait_for_thesis_refresh. ` +
+            `Its view comes from the writer: dispatch_thesis_research on $${ticker}, then wait_for_thesis_refresh. ` +
             `Once it is LONG or SHORT, place_trade on the same thesis_id.`;
           return {
             summary: `Trade blocked: $${ticker} — thesis has no committed direction (promote via update_thesis first)`,

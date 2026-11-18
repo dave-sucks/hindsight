@@ -855,7 +855,7 @@ export const updateThesis = defineTool({
       // (step 12, part 1): a seed's claim is the writer's, so its answer is a
       // dispatch, and the refusal says so instead of listing fields it lacks.
       const message = isMorningRun(ctx)
-        ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+        ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research on $${existing.ticker}, ` +
           `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
           `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
         : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +

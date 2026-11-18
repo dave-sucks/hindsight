@@ -64,7 +64,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −331, the chat's instructions are one fixed text for both scopes and the pinned analyst's id, fence and watchlist are a block that ends them (its scope): the ═══ banners go; the whole-book paragraph, once only at the portfolio level, is in every run's text.
   // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
   // 2026-11-18: −61, the same.
-  chat: 35_470,
+  // 2026-11-18: −850, the send's own fields: a brief (why this stock, what was found, whose idea, its own view) and a source link; the mode, thesis id, reason, notes, setup and screen row examples go.
+  chat: 34_620,
 };
 
 /**
@@ -117,7 +118,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −432, the same place_trade fields.
   // 2026-11-18: −5,706, the same place_trade field.
   // 2026-11-18: −2,157, the same send.
-  principal: 59_904,
+  // 2026-11-18: −2, run_screen puts a row's numbers in the send's brief.
+  principal: 59_902,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 
