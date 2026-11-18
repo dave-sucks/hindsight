@@ -21,10 +21,14 @@ export interface ScheduledAgent {
   /** A day the market is closed runs nothing. */
   marketDaysOnly: boolean;
   on: boolean;
+  /** The kickoff the schedule writes it, its message, when it writes one (after the date line every run opens with). */
+  message?: string;
 }
 
 export const SCHEDULE: readonly ScheduledAgent[] = [
   { agent: "portfolio_manager", cron: "0 10 * * 2,4", per: "book", marketDaysOnly: true, on: true },
+  // Off until the owner rewrites its job text and turns it on.
+  { agent: "discovery", cron: "0 9 * * 2,4", per: "analyst", marketDaysOnly: true, on: false, message: "Find this analyst's next stocks." },
 ];
 
 /** A cron in New York time, as Inngest takes it. */

@@ -125,6 +125,11 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "Serious and material filings on the book in the last 7 days, from EDGAR.",
     source: "lib/agent/run-input.ts (filingsOnBook)",
   },
+  earnings_calendar: {
+    title: "The earnings calendar",
+    about: "Who reported in the last 7 days and who reports in the next 14, outside the analyst's book, as get_earnings_calendar reads it.",
+    source: "lib/agent/discovery/run.ts (earningsCalendar)",
+  },
   refused_calls: {
     title: "Refused calls",
     about: "This analyst's refused calls from the last 7 days that no run has redone yet.",

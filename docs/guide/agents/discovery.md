@@ -30,7 +30,9 @@ Finding a stock and making the case for it are separate jobs. Discovery is wide 
 
 ## When it runs
 
-When you ask in [chat](chat.md). "Find drift names off this week's reports" is a discovery pass, best with an analyst selected so the search stays inside its universe. Nothing runs it on a schedule.
+When you ask in [chat](chat.md). "Find drift names off this week's reports" is a discovery pass, best with an analyst selected so the search stays inside its universe.
+
+There is also a Discovery agent that runs on its own, one run per analyst, on a schedule. It is **off** until you rewrite its job text (a draft today) and turn it on. See [The scheduled Discovery agent](#the-scheduled-discovery-agent).
 
 > Find drift names off this week's reports.
 >
@@ -72,6 +74,19 @@ A watch sleeps until its wake-up comes true. Then the stock is in the "review du
 
 The Writer runs it started land on their own; `wait_for_thesis_refresh` brings them back into the conversation.
 
+## The scheduled Discovery agent
+
+The same job, written down once as its own agent: its job text, what it starts with, its tools and when it runs. It works for one analyst a run and is **off**. Its job text is a draft for you to rewrite.
+
+- **Starts with:** the analyst (its strategy, rules, free slots and playbooks), its book (what it holds, watches and has traded before), and the earnings calendar outside its book (who reported in the last 7 days and who reports in the next 14).
+- **Its message:** the schedule's kickoff, "Find this analyst's next stocks.", after the date line every run opens with.
+- **Tools:** `get_earnings_calendar`, `run_screen`, `get_market_movers`, `get_stock_data`, `web_search`, and `dispatch_thesis_research`, which sends a stock to the Writer with its brief: the playbook, the numbers, what it found and where the stock came from.
+- **At most three stocks a run** go to the Writer; the tool refuses a fourth. Sending none is a normal result.
+- **It ends with a write-up:** each stock it sent and why, the best it passed on and why, and what its lists lacked.
+- **When:** Tue and Thu at 9:00 AM ET on market days, once it is on.
+
+<!-- asset: context discovery -->
+
 ## Tools
 
 Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
@@ -94,6 +109,9 @@ The cap of five dispatches a conversation is a rule in the chat prompt.
 
 #### Outcomes
 `record_thesis` with `direction: PASS` is a pass; with `status: WATCHING` as well, a watch with no buy. A new stock's first triggers are always the Writer's.
+
+#### The scheduled agent
+Its record is `DISCOVERY` (`lib/agent/engine/agents/discovery.ts`): its instructions (the analyst, `the_analyst`, then its own text), its context (`the_book`, the analyst's book, and `earnings_calendar`, a read of `get_earnings_calendar` outside the book) and its tools. Its run, `DISCOVERY_RUN` (`lib/agent/discovery/run.ts`), reads its context and makes its tools for the analyst in the run's book, with mode `DISCOVERY`. The runner (`runAgentAsRun`, `lib/agent/engine/run.ts`) opens the run and keeps its books. Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`) is per analyst, `0 9 * * 2,4`, off, and writes its kickoff, its message. The send limit is `SENDS_A_RUN`, held by `withSendLimit`. A DISCOVERY run takes no messages (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`). Try it with nothing sent to the Writer: `npx tsx --env-file=.env.local scripts/discovery-dry-run.ts "PEAD Specialist" PAPER`.
 
 #### Screens
 `lib/discovery/screens.ts`; setups in `lib/agent/knowledge/setups.ts`. Playbook: `docs/DISCOVERY_PLAYBOOK.md`.

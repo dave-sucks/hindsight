@@ -163,7 +163,8 @@ export interface SavedRun extends AgentRun {
 /**
  * Run an agent as a saved run. It opens the run (RUNNING, with the record's
  * model and the day in New York), runs the agent with the args its own code
- * makes for that run (its context and its tools), and keeps the run's books:
+ * makes for that run (its context and its tools) and the message whoever
+ * started it wrote (the schedule's kickoff), and keeps the run's books:
  * the thread the run page shows (its opening, then the model's messages), the
  * token use, its note on a stock as that stock's proposal's reason (as on
  * every run), then what the agent keeps of its own. Last, the status:
@@ -171,7 +172,7 @@ export interface SavedRun extends AgentRun {
  * COMPLETE, set only while the run is still RUNNING; a FAILED run keeps why
  * in its parameters. Never throws once the run is open.
  */
-export async function runAgentAsRun(agent: AgentToRun, target: RunFor): Promise<SavedRun> {
+export async function runAgentAsRun(agent: AgentToRun, target: RunFor, message?: string | null): Promise<SavedRun> {
   const { record } = agent;
   const started = new Date();
   const { id: runId } = await prisma.researchRun.create({
@@ -192,7 +193,8 @@ export async function runAgentAsRun(agent: AgentToRun, target: RunFor): Promise<
   try {
     const args = await agent.args(target, runId);
     source = args.source;
-    done = await runAgent(record, { ...args, runId });
+    // The run's task, as whoever started it wrote it (the schedule's kickoff).
+    done = await runAgent(record, { ...args, ...(message ? { input: { ...args.input, message } } : {}), runId });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.warn(`[${source}] run ${runId} couldn't start: ${error}`);
