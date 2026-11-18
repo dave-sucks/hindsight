@@ -271,7 +271,8 @@ function tacticalArgs(c: HeroCase): any {
     capacity: p.capacity ?? null,
     // A case that names its situations takes their text from today's
     // table, so a recorded case prints the guidance a live run prints.
-    situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
+    // The post-trade write-up writes up the trade; a situation asks for a decision it doesn't make (tactical-run.ts).
+    situations: p.autoTrade ? null : p.situations?.guidance ? p.situations : stock?.situations ?? null,
     autoTrade: p.autoTrade ?? null,
   };
 }

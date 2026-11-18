@@ -41,10 +41,15 @@ Your cash is in the portfolio snapshot. \`get_portfolio_context\` carries the ma
 - **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.
 - **Cash duty.** Cash above 25% of equity, a watch name at its buy level (the start of the day names them), and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`;
 
-/** The schedule's kickoff: the start of the day, and the watched stocks at their buy price this morning. */
-export function morningKickoff(atBuy: readonly string[]): string {
+/**
+ * The schedule's kickoff: the start of the day, the cash when the portfolio
+ * snapshot couldn't be read (else the snapshot says it), and the watched
+ * stocks at their buy price this morning.
+ */
+export function morningKickoff(atBuy: readonly string[], cashUnread: number | null = null): string {
   return [
     "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.",
+    ...(cashUnread != null ? [`The portfolio snapshot couldn't be read: cash is $${Math.round(cashUnread).toLocaleString()}.`] : []),
     ...(atBuy.length ? [`Watched stocks at their buy price this morning: ${atBuy.join(", ")}.`] : []),
   ].join("\n\n");
 }

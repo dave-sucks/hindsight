@@ -28,7 +28,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
   // 2026-11-18: −193, the morning run's instructions are one fixed text and the analyst, the market and portfolio and the book's week are blocks of the first message (now counted here, its start of the day included): the ═══ banners go.
   // 2026-11-18: +168, an agent is instructions, context and tools: the date line opens the first message, the house rules carry the line on weighing the Market and portfolio context again, the analyst carries its fence, and the regime's rules are its own text (no cash line that changes by run).
-  daily: 9_415,
+  // 2026-11-18: +59, the cash comes back in the kickoff when the snapshot couldn't be read (the sample has no snapshot).
+  daily: 9_474,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -37,7 +38,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −1,023, the tool-call discipline section goes (the ask says it once), three sentences that pointed at a belief field, a type field and a price-only fire are corrected, and the rule on weighing the snapshot and the digests leaves with them.
   // 2026-11-18: −90, the trigger run is no longer told to pass trigger_id: its save is handed the trigger that fired.
   // 2026-11-18: +297, the same three moves (the date line, the house rule, the fence), and the fire said once in the message from the trigger check.
-  tactical: 13_786,
+  // 2026-11-18: +23, the fire names its declared action, which the instructions act on.
+  tactical: 13_809,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.

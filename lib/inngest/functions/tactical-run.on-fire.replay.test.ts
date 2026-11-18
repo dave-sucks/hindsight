@@ -201,7 +201,7 @@ describe("what the run page opens with", () => {
 
   it("a trigger run (V's floor, Send to Agent): the fire's facts and the ask, none of the blocks the model read", async () => {
     const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 });
-    expect(r.opening).toBe(`Tactical run on $V. "Sell if below $395" fired at $394.50 (trigger ${V_FLOOR.id}).\n\n${TRIGGER_RUN_ASK}`);
+    expect(r.opening).toBe(`Tactical run on $V. "Sell if below $395" fired at $394.50 (trigger ${V_FLOOR.id}; declared action: EXIT).\n\n${TRIGGER_RUN_ASK}`);
     for (const block of BLOCKS) expect([block, r.opening!.includes(block)]).toEqual([block, false]);
     // The model still read every read: of the Market and portfolio reads, the market numbers alone (2026-11-18).
     for (const block of ["## Market and portfolio", "### Market numbers", "its row (get_theses)"]) expect(r.asked[0].prompt).toContain(block);
@@ -211,7 +211,7 @@ describe("what the run page opens with", () => {
   it("the post-trade write-up (IOT's Auto-sell): the fire's facts with the trade's line, and its ask", async () => {
     const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 });
     // The row wasn't read on this pass, so the message carries the trigger's note.
-    expect(r.opening!.startsWith(`Write-up on $IOT. "Sell if below $41.42" fired at $41.30 (trigger ${IOT_FLOOR.id}). Its note: "Under your hand-set floor at $41.42." It is set to Auto, so no analyst decided. The sale of all 300 shares is proposed and waits for the principal's approval.`)).toBe(true);
+    expect(r.opening!.startsWith(`Write-up on $IOT. "Sell if below $41.42" fired at $41.30 (trigger ${IOT_FLOOR.id}; declared action: EXIT). Its note: "Under your hand-set floor at $41.42." It is set to Auto, so no analyst decided. The sale of all 300 shares is proposed and waits for the principal's approval.`)).toBe(true);
     expect(r.opening!.endsWith(`\n\n${WRITEUP_ASK}`)).toBe(true);
     for (const block of BLOCKS) expect([block, r.opening!.includes(block)]).toEqual([block, false]);
   });

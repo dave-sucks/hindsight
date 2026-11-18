@@ -63,7 +63,11 @@ describe("the morning run", () => {
     }
     expect(now["message:refused_calls"]).toBe(old["instructions:blocked_last_time"]);
     const atBuy = (c.runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
-    expect(now["message:message"]).toBe(`${old["message:kickoff"]}${atBuy.length ? `\n\nWatched stocks at their buy price this morning: ${atBuy.join(", ")}.` : ""}`);
+    // The cash the regime line said when the snapshot couldn't be read is the kickoff's now.
+    const cash = old["instructions:regime"].match(/Cash is (\$[\d,]+)\./)?.[1];
+    expect(now["message:message"]).toBe(
+      `${old["message:kickoff"]}${cash ? `\n\nThe portfolio snapshot couldn't be read: cash is ${cash}.` : ""}${atBuy.length ? `\n\nWatched stocks at their buy price this morning: ${atBuy.join(", ")}.` : ""}`,
+    );
     expect(now["message:line"]).toBe(dateLine(NOW, "PAPER"));
     expect(Object.keys(now).filter((k) => k.startsWith("instructions:"))).toEqual(["instructions:the_analyst", "instructions:own", "instructions:house_rules", "instructions:how_you_write"]);
   });
@@ -97,7 +101,9 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     const message = now["message:message"];
     expect(message.endsWith(`\n\n${old["message:ask"]}`)).toBe(true);
     expect(count(message.replace(more, ""), sentenceOf(t))).toBe(1);
-    expect(message).toContain(`(trigger ${t.id}${t.source === "PRINCIPAL" ? ", which the principal wrote" : ""})`);
+    // Its declared action, as the old "declared action:" line said it: the instructions act on it.
+    const declared = old["message:fired_trigger"].match(/declared action: (.+)/)![1];
+    expect(message).toContain(`(trigger ${t.id}${t.source === "PRINCIPAL" ? ", which the principal wrote" : ""}; declared action: ${declared})`);
     if (a.fired?.price != null) expect(message).toContain(`fired at $${a.fired.price.toFixed(2)}`);
     expect(message).toContain(TRIGGER_KICKOFF.coFiredSuffix.trim());
     // The trigger's note is said once in the whole request: beside its id on the row, or in the message when there is no row.

@@ -212,6 +212,8 @@ interface WriterAnalyst {
   holdDurations: string[];
   maxOpenPositions: number;
   sectors: string[];
+  marketCapMin: unknown;
+  marketCapMax: unknown;
   exclusionList: string[];
   tradingEnvironment: string | null;
   minPositionSize: unknown;
@@ -234,6 +236,8 @@ export async function loadWriterAnalyst(analystId: string): Promise<WriterAnalys
       holdDurations: true,
       maxOpenPositions: true,
       sectors: true,
+      marketCapMin: true,
+      marketCapMax: true,
       exclusionList: true,
       tradingEnvironment: true,
       minPositionSize: true,

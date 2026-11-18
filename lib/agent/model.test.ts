@@ -100,10 +100,10 @@ describe("the morning run", () => {
     const firstUser = (body: string) => (JSON.parse(body).messages as Array<{ role: string; content: string }>).find((m) => m.role === "user")!.content;
     expect(net.sent.length).toBeGreaterThan(1);
     for (const body of net.sent) expect(firstUser(body)).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the PAPER account\.\n\n## Earnings on your book this week\nReporting: MU 2026-11-19 after close[\s\S]*\n\nIt's the start of the trading day\./);
-    // The run page opens with the start of the day alone: the blocks are on the Context panel.
+    // The run page opens with its message alone (the snapshot couldn't be read here, so the kickoff says the cash): the reads are on the Context panel.
     const thread = (db.store.runMessage as Kept[]).find((m) => m.role === "thread")!;
     expect((JSON.parse(thread.content)[0] as { content: Array<{ text: string }> }).content.map((p) => p.text).join("")).toBe(
-      "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.",
+      "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.\n\nThe portfolio snapshot couldn't be read: cash is $0.",
     );
   });
 });

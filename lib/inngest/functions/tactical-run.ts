@@ -176,6 +176,8 @@ export const tacticalRun = inngest.createFunction(
             holdDurations: true,
             setupIds: true,
             sectors: true,
+            marketCapMin: true,
+            marketCapMax: true,
             minPositionSize: true,
             maxPositionSize: true,
             maxOpenPositions: true,
@@ -247,7 +249,8 @@ export const tacticalRun = inngest.createFunction(
         trigger,
         // The resolved list, for the shape each co-fired rule keeps on its own line.
         ladder,
-        agentConfig,
+        // The market-cap band as numbers: a BigInt doesn't cross the step boundary.
+        agentConfig: { ...agentConfig, marketCapMin: agentConfig.marketCapMin == null ? null : Number(agentConfig.marketCapMin), marketCapMax: agentConfig.marketCapMax == null ? null : Number(agentConfig.marketCapMax) },
         capacity,
         position: position
           ? {

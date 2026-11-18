@@ -85,10 +85,12 @@ export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: s
     held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
     awaitingApproval: queued,
   };
-  // Watched stocks at their buy price this morning: the kickoff names them.
+  // Watched stocks at their buy price this morning: the kickoff names them, and the cash when the snapshot couldn't be read.
   const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
+  const pieces = runInput.portfolioPieces ?? null;
+  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
 
-  return composeAgentRequest(MORNING_RUN, { now, environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", message: morningKickoff(atBuy) }, {
+  return composeAgentRequest(MORNING_RUN, { now, environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", message: morningKickoff(atBuy, snapshotRead ? null : (runInput.portfolio?.cash ?? 0)) }, {
     shared: { the_analyst: analystBrief(analyst, capacity) },
     pieces: runInput.portfolioPieces ?? null,
     context: {

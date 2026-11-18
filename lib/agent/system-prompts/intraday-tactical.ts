@@ -11,7 +11,7 @@
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { isGroup, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { isGroup, sentenceOf, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { writtenNote } from "@/lib/agent/triggers/note";
@@ -152,15 +152,17 @@ export interface FireFacts {
 
 /**
  * The message from the trigger check: the fire, said once. The trigger's
- * sentence names its action; its note is on the stock's row beside its id,
- * so it is said here only when the row couldn't be read. Then the ask.
+ * sentence, its price, its id and its declared action (the instructions act
+ * on it); its note is on the stock's row beside its id, so it is said here
+ * only when the row couldn't be read. Then the ask.
  */
 export function fireMessage(args: TacticalPromptArgs, facts: FireFacts): string {
   const { stock, trigger } = args;
   const price = args.fired?.price ?? null;
   const by = trigger.source === "PRINCIPAL" ? ", which the principal wrote" : "";
   const note = !stock.row && writtenNote(trigger) ? ` Its note: "${writtenNote(trigger)}"` : "";
-  const fired = `"${sentenceOf(trigger)}" fired${price != null ? ` at $${price.toFixed(2)}` : ""} (trigger ${trigger.id}${by}).${note}`;
+  const action = trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action;
+  const fired = `"${sentenceOf(trigger)}" fired${price != null ? ` at $${price.toFixed(2)}` : ""} (trigger ${trigger.id}${by}; declared action: ${action}).${note}`;
   const auto = args.autoTrade ?? null;
   const head = auto
     ? `Write-up on $${stock.ticker}. ${fired} It is set to Auto, so no analyst decided. ${auto.line}${facts.more}`
