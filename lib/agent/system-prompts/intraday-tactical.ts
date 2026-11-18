@@ -162,10 +162,11 @@ export interface TriggerRunKickoff {
  */
 export function triggerRunRequest(args: TacticalPromptArgs, kickoff?: TriggerRunKickoff): BuiltRequest {
   // The Market and portfolio block goes in before the stock's row, so the
-  // row is read after it. On 2026-10-07 a day-old digest told the trigger
-  // runs "no pending proposals" while ASML's row carried its sale awaiting
-  // approval: the block's snapshot is written when this request is built,
-  // and the house rules say the stock's row wins where they differ.
+  // row is read after it: the trigger run's is the market numbers alone; the
+  // write-up's has the snapshot and the digests, and the rule on weighing
+  // them (the stock's row wins where they differ). On 2026-10-07 a day-old
+  // digest told the trigger runs "no pending proposals" while ASML's row
+  // carried its sale awaiting approval.
   return composeAgentRequest(recordFor(args), { now: new Date(), environment: "PAPER" }, {
     pieces: args.portfolioPieces ?? null,
     blocks: {
