@@ -118,7 +118,7 @@ One runner (`runAgent`, `lib/agent/engine/run.ts`) takes a record and its input,
 The model call moves unchanged. The bookkeeping (the thread, the token use, the status) becomes one way once two or three agents run on the runner, where the differences above are settled one at a time.
 
 The order, each its own PR:
-1. The Portfolio Manager: one call, no retries.
+1. The Portfolio Manager: one call, no retries. Then the runner keeps the books: `runAgentAsRun` opens the run, runs the agent and saves its thread (its opening by `openingOf`, as the morning and trigger runs save theirs), its token use, its notes on its proposals, the agent's own save (the PM's write-up) and its status, FAILED when the call failed or ended without its last reply, set only while the run is RUNNING.
 2. The trigger run and the post-trade write-up, once the open trigger-run PRs merge.
 3. The Writer, once the Writer split and the date fix merge.
 4. The morning run, once its simple record merges.
