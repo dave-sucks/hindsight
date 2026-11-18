@@ -59,13 +59,15 @@ const ctx = {
 const hoursAgo = (n: number) => new Date(Date.now() - n * 3_600_000);
 /** SMMT's real close, held at a fixed offset so the "sold today" wording is stable. */
 const SOLD_AT = hoursAgo(20);
+/** Eight weeks ahead, as SMMT's was at the sale; a fixed date stops being ahead. */
+const CATALYST = hoursAgo(-56 * 24);
 
 const SMMT_SOLD = {
   id: "cmtc1kp7o000l04ikm6kf9h1b",
   ticker: "SMMT",
   closedAt: SOLD_AT,
   closeReason: "STOP",
-  catalystDate: new Date("2026-11-14T00:00:00Z"),
+  catalystDate: CATALYST,
   // The close's own bookkeeping lands in the same second as the sale. The
   // scan filters to UPDATED / REVIEWED / STATUS_CHANGED, so an empty list
   // here is what production looks like the morning after a sale.
@@ -120,7 +122,7 @@ describe("SMMT reaches the run as sold_to_review", () => {
     expect(ask).toContain("$16.92");
     expect(ask).toContain("+$1,158 (+17.9%)");
     expect(ask).toContain("on a stop");
-    expect(ask).toContain("Its catalyst is still ahead — 2026-11-14.");
+    expect(ask).toContain(`Its catalyst is still ahead — ${CATALYST.toISOString().slice(0, 10)}.`);
     expect(situations).toEqual(["SOLD_ONE_REVIEW"]);
     expect(data.guidance.SOLD_ONE_REVIEW).toContain('change_status "WATCHING"');
   });

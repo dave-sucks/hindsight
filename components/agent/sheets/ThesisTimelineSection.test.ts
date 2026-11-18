@@ -339,7 +339,11 @@ describe("one kind per row, then one table each", () => {
     ).toBe("sell");
     expect(dotFor(row({ type: "PROPOSAL_REJECTED" }))).toBe("declined");
     expect(dotFor(row({ type: "PROPOSAL_EXPIRED" }))).toBe("declined");
-    expect(dotFor(row({ type: "PROPOSAL_PROPOSED" }))).toBe("open-ask");
+    // Only a proposal still waiting pulses; an ended one's Proposed row is a plain mark.
+    const proposed = (status: string) =>
+      dotFor(row({ type: "PROPOSAL_PROPOSED", fieldChanges: { proposal: { to: { intent: "OPEN", status } } } }));
+    expect(proposed("AWAITING_APPROVAL")).toBe("open-ask");
+    expect(proposed("EXPIRED")).toBe("default");
     expect(dotFor(row({ type: "TRIGGER_FIRED" }))).toBe("default");
     expect(dotFor(row({ type: "REVIEWED" }))).toBe("default");
   });
