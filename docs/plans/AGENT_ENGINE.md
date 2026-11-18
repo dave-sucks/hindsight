@@ -1,42 +1,52 @@
 # The agent engine
 
-**The goal.** Every agent is one record (its instructions, its context blocks, its tools, when it runs) and one engine builds every model request from a record. What the owner sees on the Agents page and in a run's Context panel is read from those records and from what the run saved. No hand-built prompt is left.
+**An agent is three things: its instructions, its context and its tools.** Nothing else. Every agent is one record that says those three, and one engine builds every model request from a record. What the owner sees on the Agents page, the Framework page and a run's Context panel is read from those records and from what the run saved.
 
-## Today (2026-11-17, measured)
+The design (2026-11-18) is the top section of the audit page, https://claude.ai/artifact/LqoCe8qF1uo1Nb7A27hP2U. It follows the published guides: an agent is a model, its instructions and a few tools in a loop (OpenAI, *A practical guide to building agents*; Anthropic, *Building effective agents*); the instructions stay the same on every run, with a small always-useful fact like the date slotted in (OpenAI Agents SDK); what the run is about comes in the first message, written by whoever starts it (Claude Agent SDK); a few things are loaded up front and the rest fetched with a tool (Anthropic, *Effective context engineering*).
 
-- Seven agents are each put together by their own code:
-  - `system-prompt.ts` (morning run)
-  - `intraday-tactical.ts` + `tactical-run.ts` (trigger run)
-  - `run-thesis-writer.ts` (Writer)
-  - `modes.ts` (chat)
-  - `portfolio-manager/`
-  - `market-reviewer/`
-  - `digest-writer.ts` (portfolio digest)
-- They share some parts, imported by each builder: `house-rules.ts`, `voice.ts`, `analyst-brief.ts`, `portfolio-block.ts`, `situations.ts`.
-- Which agent gets which part is whatever its builder imports. The only per-agent switch is `loadPortfolioBlock({ watching, portfolioDigest })`.
-- A run saves the request it sent (`run-requests.ts`), but not which part is which. The Context panel splits the text at headings.
+## The three parts
 
-The audit is at https://claude.ai/artifact/LqoCe8qF1uo1Nb7A27hP2U.
-
-## The shape
-
-| Thing | What it is | Where |
+| Part | What it is | Where |
 |---|---|---|
-| **Block** | One named piece of context an agent can be given: a title, the file that builds it, one line on what it holds, and a loader | `lib/agent/engine/blocks.ts` |
-| **Agent record** | The agent's own instructions (its job, in sections), the blocks it gets and where (instructions or first message), its tools, its model, its step limit, when it runs | `lib/agent/engine/agents/*.ts` |
-| **Engine** | `buildAgentRequest(record, sources)`: loads each block, puts the record's parts in order, and returns the instructions, the first message, the tools and a manifest of every part (id, title, source, where, size) | `lib/agent/engine/engine.ts` |
-| **Saved record** | The request as sent, now with the manifest (`parts`) and the agent whose record built it (`agent`, saved right after `call`) | `run-requests.ts` |
-| **Context panel** | One row per part, named and sized from the manifest, each in the Framework page's color for its kind (`swatchOf`). Records saved before the engine keep today's view | `RunContext.tsx` |
-| **Agents page** | Every agent as its record shows it: instructions, which blocks are on and which are off, which tools are on and which are off. Read-only | `/how-it-works/agents` |
-| **Framework page** | Every agent a tab: its parts in its record's order, each sized from the manifest of the latest request the account's runs saved for it (`RequestRecord.agent`), the Context panel's numbers; an agent with no such run yet is sized on its sample day (its engine test's case, `lib/docs/agent-samples.ts`), and the tab says which. Its tools. The workflow chips and each agent doc's "What it reads" list come from the same build | `/how-it-works/framework`, `lib/docs/framework.ts` |
+| **Instructions** | The agent's own text (one string, the same on every run) and the shared texts it uses, in the order the record lists them. When its context has the stock, the stock's situations end them | the record (`instructions`), `lib/agent/engine/parts.ts` (`SHARED`) |
+| **Context** | The reads put in its first message, each one named text from one function. In a conversation (the chat) they ride on each message you send | the record (`context`), `parts.ts` (`CONTEXT`) |
+| **Tools** | The tools it may call | the record (`tools`) |
 
-A block's options are the record's choice of blocks. For example, the Portfolio Manager lists `watching` and leaves out `portfolio_digest`; it doesn't pass a flag to a loader.
+Two more things are in every request, and neither is a part an agent chooses:
 
-## The rules for every move onto the engine
+- **The message**: the run's task, written by whoever starts the run (you in the chat, another agent's brief, the trigger check, the schedule's kickoff). The engine prints it last in the first message (`AgentInput.message`).
+- **The date line**: the first line of every first message, "Wed, Nov 18, 2026, 10:00 AM ET, the PAPER account." (`dateLine`, `engine.ts`). Not configurable.
 
-1. **Nothing an agent is sent changes.** A test built from the old builder's output (kept as a fixture) proves the engine sends the same instructions, first message and tools, character for character.
-2. **The old builder is deleted in the same PR.** There is never a second way to build that agent.
-3. **No text is added to any agent.** Moving is not editing. Changes to what an agent is sent come after, one edit to a record at a time, with the Context panel before and after and a score on real cases.
+**The shared texts (5):**
+- `house_rules`: the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it (`house-rules.ts`).
+- `how_you_write` (`voice.ts`).
+- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, the stocks it may cover), its playbooks a line each (`analyst-brief.ts`).
+- `playbooks`: the analyst's playbooks in full, for the Writer and, on a review of a stock we watch, the trigger run (`knowledge/playbooks.ts`).
+- `research_rules`: the Writer's five rule texts as one, for the Writer and the Holding refresh (`thesis-research/writer-rules.ts`).
+
+**The reads (13):** `market_numbers`, `market_digest`, `portfolio` (today's snapshot), `portfolio_digest` (the four print under one heading, "Market and portfolio", from one loader, `portfolio-block.ts`); `the_book` (every stock held and watched, a line each with its belief, `book.ts`); `the_analysts` (each analyst's room); `the_stock` (the `get_theses` row); `stock_data` (the Writer's data pull, with our history with the stock); `playbook_record`; `earnings_this_week`; `filings_this_week`; `refused_calls`; `last_output` (the agent's own last write-up, or its digest and notes).
+
+**The engine** (`engine.ts`): `buildAgentRequest(record, input, sources)` reads each text the record names, `composeAgentRequest(record, input, loaded)` puts them together, and the request names every part (its id, title, kind, where it went, its source, its size). The run saves that manifest with what it sent (`run-requests.ts`), and the Context panel shows a request as the agent is made: Instructions (its own text and each shared text, named), Context (the date line and each read, named), Message, Tools.
+
+## The agents
+
+| Agent | Instructions | Context | Its message comes from |
+|---|---|---|---|
+| Morning run | the analyst, its own text (with the regime's rules), house rules, how you write | the four Market and portfolio reads, earnings this week, filings this week, refused calls | the schedule's kickoff (or the Run button), with the watched stocks at their buy price |
+| Trigger run | the analyst, its own text, house rules, how you write, the playbooks (a review of a watch only); the stock's situations | market numbers, the stock | the trigger check: the trigger that fired, its price and the fire's facts, said once, then the ask |
+| Post-trade write-up | the analyst, its own text, house rules, how you write | the four Market and portfolio reads, the stock | the trigger check: the trade the Auto trigger made, then the ask |
+| Writer | the analyst, house rules, how you write, the playbooks, the research rules, its own text | market numbers, the stock (on a refresh), record by playbook, the stock's data | the sender's brief: why it was sent, what the sender found, whose idea it was, what the chat found |
+| Holding refresh | the analyst, house rules, how you write, the research rules, its own text | the Writer's | the sender's brief |
+| Portfolio Manager | its own text, house rules, how you write | market numbers, market digest, the portfolio, the book, its last write-up | none: the date line is its start |
+| Market Reviewer | its own text | market numbers, the portfolio, the book, its last digest and notes | none |
+| Portfolio digest | its own text | the portfolio | none |
+| Chat | its own text, house rules, how you write, pinned the analyst | on each message you send: the four Market and portfolio reads, pinned the analyst's book, at the portfolio level each analyst's room | you |
+
+## The rules for a change to an agent
+
+1. **One edit to a record at a time**, with the Context panel before and after.
+2. **Same words wherever the change doesn't move them.** A test built from the old builder's output proves it part by part (`engine.test.ts`, `three-parts.engine.test.ts`, the Portfolio Manager's wire golden).
+3. **Where the words change, the yardstick scores it** (below), and the change stays only if the scores hold.
 
 ## The yardstick (step 1 of the audit's order; every change to an agent is scored on it)
 
@@ -53,7 +63,7 @@ A change to what an agent is sent lands only with its scores before and after. T
 
 The cases are cut from production runs (`scripts/hero-case-from-run.ts`) and kept on the owner's machine as `scripts/hero-cases/local-*.json`, which git ignores: the repo is public. `scripts/yardstick-report.ts` puts two versions side by side; the scores go on a private page.
 
-A case holds the New York date its run started (`runDate`), the date the Writer is told. Until 11-18 the cutter took the UTC date, so seven of the eight Writer cases were told the next day; every score measured before then ran both versions on those same dates.
+A replayed case's date line is the date its run started (the run's start time, or the case's `runDate`). Until 11-18 the cutter took the UTC date, so seven of the eight Writer cases were told the next day; every score measured before then ran both versions on those same dates.
 
 The set: Writer — four stocks we hold (V, NVDA, MU, CEG refreshes of the evening of 11-15), four new stocks (AAON, CORT, ACN, ZTS) and the two saved SNDK cases; trigger runs — a buy (WST), sales held through after a decline (CEG, GEV), a sale (NVDA), a declined sale (the saved NVDA case), reviews (LUXE's earnings miss, PRAX's 8-K) and three Auto write-ups (IOT, PLTR, MU).
 
@@ -69,23 +79,20 @@ The set: Writer — four stocks we hold (V, NVDA, MU, CEG refreshes of the eveni
 6. The chat. Its builder moved out of `modes.ts` to `system-prompts/chat.ts`, so the record can read its model and tools from `MODES` without the two files importing each other. With every agent moved, the Agents page has no "not on the engine yet" card.
 7. The heading split is deleted from `run-requests.ts`: what rides on the chat's newest message (the time, the Market and portfolio block) is a third place in the record, `newest`, so every part the panel shows is named. A request saved before the engine shows each piece whole.
 
-### Simple records (2026-11-18, before the Framework page and pass 2)
+### Simple records, then the three parts (2026-11-18)
 
-Every record takes the shape the owner described: its instructions are one fixed markdown text, the same on every run; everything that changes by run is a context block; a blank line between parts, no separator of its own. Where the old instructions branched on the run, the branch is either two agents or one text for both.
+The simple-records step made each agent's own text one fixed string and put every fact in the first message (#1017–#1027; their measurements are in git history). It still cut each old prompt into 45 named "blocks" (`today`, `why_sent`, `sender_notes`, `idea_source`, `fired_trigger`…), and the owner rejected that. The three parts replace it:
 
-Where a block goes follows what it is. A fact (the market and portfolio, the stock's row, what fired) goes in the first message. The analyst it works for opens the instructions, and an instruction that travels with the stock (its situations) ends them, after the fixed text. The morning run measured the analyst's place (#1021: in the first message three of six decisions changed, back at the top of the instructions all three came back); on the trigger run's yardstick cases the move scored the same (20 of 20 actions, no price off, nothing invented, nothing loosened), so it moved too, for one rule. Measured on the trigger run (`scripts/hero-case.ts`, 6 runs a case): with the situations among the facts in the first message, the NVDA declined-sale case went from 6 of 6 right to 3 of 6 and the CEG sale tried to lower its sale price in 2 of 9 runs; with the situations ending the instructions, 6 of 6 and 0 of 6, the same as before the split. Putting the agent's own text after the house rules instead made it worse (2 of 6, and 5 of 6 lowering).
+- `today` and the chat's time line → the date line.
+- The Writer's `why_sent`, `sender_notes`, `idea_source` and `chat_found` → its message, the sender's brief; `existing_thesis` and `promotion` → the stock (its row has `paper_record`); `prior_exit` → the stock's data (its history); `setup_record` → record by playbook; the five rule texts → `research_rules`.
+- The trigger run's `fired_trigger`, `fire_facts` and the ask → the message from the trigger check, said once (the trigger's sentence and its note had printed three times and twice); `stock_row` → the stock; its playbooks → the shared text.
+- The morning run's regime rules → its own text; the watched stocks at their buy price → its kickoff; `blocked_last_time` → refused calls.
+- The chat's scope, money and book → the analyst (whose rules now carry the fence) and the book, on each message; each analyst's room → the analysts, on each message.
+- The Portfolio Manager's `watching` → the book; `last_writeup` → its last output. Its Market and portfolio reads move from its instructions to its first message, as every agent's do.
+- The Market Reviewer's beliefs → the book; its notes and last digest → its last output.
+- `market_block_rule` → back into the house rules.
 
-1. The trigger run splits in two: the trigger run decides, and the post-trade write-up writes the note on a trade an Auto trigger made (its own instructions, no trade tools). The stock, the trigger, the price it fired at and the fire are blocks of the first message; the situations end the trigger run's instructions. Checked on seven real fires and two saved cases with `scripts/hero-case.ts`, before and after.
-2. The Writer splits in two: the Writer (a new stock, a watch, a promoted stock) and the Holding refresh (a stock we own), each its own fixed text, with the rules both follow as five shared blocks and the stock's facts in the first message. On the yardstick against the old Writer (10 cases, 2 runs each): the right playbook 14 of 16 against 9 of 16, numbers from nowhere 8 against 13, belief problems 8 against 11, the action 19 of 20 against 18 of 20; both lowered NVDA's sale once (the save refuses it).
-3. The chat: one fixed text for both scopes, saying what being pinned means when the analyst's blocks are given and what the portfolio level means when they aren't. Its first message is your conversation, so its standing facts stay in the instructions and end them, after the fixed text: pinned, the analyst's scope (its id, fence and watchlist, a new block), its brief, its money and its book; at the portfolio level, each analyst's room. The time and the Market and portfolio block stay on your newest message. Checked on the five chat cases with `scripts/hero-case.ts`, before and after: the same decisions.
-4. The morning run, then the three whose words already don't change (the Portfolio Manager, the Market Reviewer, the portfolio digest) move their blocks to the same places.
-   - The morning run's instructions open with the analyst it works for, then its own fixed text (the ═══ banners are headings now) with the house rules, then what travels with the run: the regime and cash (a block now) and the refused calls never redone. The Market and portfolio block and the book's earnings and filings this week are blocks of the first message, and the Run button sends that first message too.
-   - Checked on the six saved morning cases with `scripts/hero-case.ts`. With the analyst in the first message instead, as the trigger run has it, MU's earnings review stopped lowering its conviction (3 of 3 runs to 0 of 3), so the analyst opens the instructions.
-   - One case decides differently, graded with the yardstick: on WST (a watched stock at its buy, an empty book), the new order buys a stock in 6 of 9 runs against 2 of 9 before, WST itself in 2 (0 before). With the fixed text back at the end of the instructions it was 1 of 4: the instructions now end with the regime's cash duty ("act on it, or write one sentence in the run summary saying why not"). The other five decide as before.
-   - The Market Reviewer and the portfolio digest already had every fact in their first message; each one's own parts are one fixed text now, the same characters.
-   - The Portfolio Manager keeps its Market and portfolio block in its instructions. Its Nov 17 request, replayed with the block in the first message (3 runs each way), made the same call, no trade, but weighed different watches: ABBV, which every run as sent read and ranked second or third, was read in 1 of 3. Its job text also calls the snapshot "above".
-   - Still own text that changes by run: the Portfolio Manager's and the Market Reviewer's day line ("Tue, Nov 17, the LIVE account.").
-5. The engine drops what no record uses any more: own text that changes by run, and a part's own separator.
+Two measured placements stay: the analyst opens the instructions of the agents that work for one (the morning run's MU case), and the stock's situations end the instructions (the trigger run's NVDA case: 6 of 6 there, 3 of 6 in the message).
 
 ### Pass 2: one way to run an agent
 
