@@ -19,34 +19,19 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { conditionSentence, isGroup, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
-import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { writtenNote } from "@/lib/agent/triggers/note";
+import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { TRIGGER_RUN, type TriggerRunExtra } from "@/lib/agent/engine/agents/trigger-run";
+import type { BuiltRequest } from "@/lib/agent/engine/types";
 
 /** The tools a write-up of an Auto trade is not given: the trade is made, and this run only writes. */
 export const NOT_IN_A_WRITEUP: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
 
-/** What the write-up of an Auto trade asks: the trade is made (or tried), and this run says what it thinks of it. */
-export const AUTO_WRITEUP = `When: a trigger set to Auto made or tried a trade on this stock with no analyst deciding: a buy, an add, a trim or a sale, proposed to the principal, already sent, or refused (the run's opening line says which). This run writes it up. It cannot trade.
-
-Answer, in order:
-1. What is going on with the company and the stock, and why: its news, its sector, the market (get_stock_data, one web_search)? If the trigger watched a report or a filing, read it first.
-2. Does that touch why we own it, or why we wanted it? Go down \`would_prove_it_wrong\`: has any of it happened? In the note, name only what has.
-3. Do you agree with the trade? If they passed on it before (\`heldThroughFloor\`, \`said\`), what is different today?
-
-What you can do:
-- Write one update_thesis with trigger_id: your note, which the principal reads on the trade.
-- If you would do something different, say so plainly in the note and why: hold instead of sell, wait instead of buy, a smaller trim. The principal decides on the approval, or on a trade that already went through.
-- Change a trigger only if the trade left one plainly stale.
-
-Answered: that one update_thesis.
-
-The note: what is going on with the company and the stock and why, and what it means for why we own it; then the trade in one sentence ("your Auto-sell at $196 was hit, so the sale is waiting for you", or why it was refused) and whether you agree, and if not, what you would do instead.
-
-Mistakes:
-- Explaining the trigger instead of the company: the principal knows it fired.
-- Calling a trade tool: this run has none.`;
+/** What the write-up of an Auto trade asks: its text is the record's (lib/agent/engine/agents/trigger-run.ts). */
+export { AUTO_WRITEUP } from "@/lib/agent/engine/agents/trigger-run";
 
 interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
@@ -85,8 +70,8 @@ interface TacticalPromptArgs {
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
   /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The run writes it up. */
   autoTrade?: { line: string } | null;
-  /** The Market and portfolio block (lib/agent/portfolio-block.ts). Empty or null: none. */
-  portfolioBlock?: string | null;
+  /** The Market and portfolio block's parts (lib/agent/portfolio-block.ts). Null: none. */
+  portfolioPieces?: PortfolioPiece[] | null;
   /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's block (playbooksBlock); REVIEW_DUE says what to do with them. Null: none. */
   playbooks?: string | null;
 }
@@ -117,201 +102,117 @@ export function stockFromRead(
   };
 }
 
-export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  const { analyst, stock, trigger, position, fired } = args;
-  // The situations the stock is in, each with what it asks, printed where
-  // the per-situation text used to sit (lib/agent/situations.ts).
-  const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
-  const situationsBlock = guidance.length
-    ? `   - The situations $${stock.ticker} is in (${(args.situations?.codes ?? []).join(", ")}), and what each asks:\n\n` +
-      guidance.map(([code, text]) => `${code} — ${SITUATIONS[code].name}\n${text}`).join("\n\n") +
-      "\n\n"
-    : "";
-
-  const predicateSummary = conditionSentence(trigger.predicate);
+/** The run's facts its words need (the record's TriggerRunExtra), from the prompt's args. */
+function extraOf(args: TacticalPromptArgs): TriggerRunExtra {
+  const { stock, trigger, fired } = args;
   const auto = args.autoTrade ?? null;
+  return {
+    ticker: stock.ticker,
+    auto: auto != null,
+    autoLine: auto?.line ?? "",
+    predicateSummary: conditionSentence(trigger.predicate),
+    action: trigger.action,
+    triggerId: trigger.id,
+    firedPrice: fired?.price ?? null,
+    hasPlaybooks: Boolean(args.playbooks),
+    declineLine: !auto && (trigger.action === "ENTER" || trigger.action === "ADD"),
+  };
+}
 
-  // DAV-186: a fell-from-peak fire is validated against the system's tracked
-  // watermark, never a chart-derived high. On 2026-08-18 a genuine HPE trail
-  // fire (real peak $62.70) was declined because the validating agent
-  // computed its own "peak" ($58.09) from a shorter window and concluded
-  // "only down 5%, false alarm." The evaluator only fires this predicate
-  // when Position.peakPrice exists, so a missing peak here means OUR context
-  // lookup failed — not that the fire was wrong.
-  const trailingPeakBlock = (() => {
+/**
+ * On a give-back off the high since we bought, the tracked high and the line:
+ * part of the fired_trigger block.
+ */
+function trailingPeakText(args: TacticalPromptArgs): string {
+  const { stock, trigger, position } = args;
+  const auto = args.autoTrade ?? null;
     // A give-back off the high since we bought. An Auto trade is made: there is no fire to check.
-    if (auto) return "";
-    const w = shapeOf(trigger.predicate);
-    if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
-    const pct = w.value;
-    const isShort = stock.direction === "SHORT";
-    const peak = position?.peakPrice ?? null;
-    const threshold =
-      peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
-    return `
+  if (auto) return "";
+  const w = shapeOf(trigger.predicate);
+  if (!w || isGroup(w) || w.variable !== "peak" || w.value == null) return "";
+  const pct = w.value;
+  const isShort = stock.direction === "SHORT";
+  const peak = position?.peakPrice ?? null;
+  const threshold =
+    peak != null ? peak * (isShort ? 1 + pct / 100 : 1 - pct / 100) : null;
+  return `
   ⚠ THE PEAK IS AUTHORITATIVE — DO NOT RE-DERIVE IT.
   This trigger measures give-back from the system's tracked ${isShort ? "low" : "high"}${
-    peak != null ? `: $${peak.toFixed(2)}` : ""
+  peak != null ? `: $${peak.toFixed(2)}` : ""
   }, recorded every five minutes over the position's ENTIRE life.
   ${
-    threshold != null
-      ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Checking this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
-      : `Checking this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
+  threshold != null
+    ? `The fire line is $${threshold.toFixed(2)} (${pct}% ${isShort ? "above the low" : "below the peak"}). Checking this fire means ONE arithmetic check: is the current price ${isShort ? "at or above" : "at or below"} $${threshold.toFixed(2)}?`
+    : `Checking this fire means one arithmetic check against that tracked watermark — if it is missing from this prompt, treat the evaluator's fire as correct rather than reconstructing a peak yourself.`
   }
   Any "recent high" you compute from a chart window has shorter memory than
   the watermark, understates the give-back, and is NOT valid grounds to
   declare a false alarm. Declining this exit requires new fundamental
   evidence — not a different peak.`;
-  })();
+}
 
-  const pathSection = `
-PATH: the predicate fired on the 5-minute check.${
-    fired?.price != null ? `\n  It fired at $${fired.price.toFixed(2)}.` : ""
-  }
-  Check the latest quote and any recent news on $${stock.ticker} via get_stock_data.
-  If get_stock_data comes back with no live quote (its \`quote\` is null, or
-  \`technicals.priceIsLive\` is false), the price in its chart block is the
-  LAST CLOSE, not now — act on the fired price above, never on yesterday's
-  close.
-`;
+/** What fired: the fired_trigger block. */
+function firedTriggerText(args: TacticalPromptArgs): string {
+  const { trigger } = args;
+  const predicateSummary = conditionSentence(trigger.predicate);
+  return `═══════════════════════════════════════════════════════════════════
+TRIGGER THAT FIRED (id: ${trigger.id})
+═══════════════════════════════════════════════════════════════════
+  predicate: ${predicateSummary}
+  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakText(args)}`;
+}
 
+/** The stock's row, under its heading: the stock_row block. */
+function stockRowText(stock: TacticalPromptArgs["stock"]): string {
+  return `═══════════════════════════════════════════════════════════════════
+$${stock.ticker}, its row (get_theses)
+═══════════════════════════════════════════════════════════════════
+${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}`;
+}
+
+/** The situations the stock is in and what each asks, printed inside the decision framework: the situations block. */
+function situationsText(args: TacticalPromptArgs): string {
+  const { stock } = args;
+  const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
+  return guidance.length
+    ? `   - The situations $${stock.ticker} is in (${(args.situations?.codes ?? []).join(", ")}), and what each asks:\n\n` +
+      guidance.map(([code, text]) => `${code} — ${SITUATIONS[code].name}\n${text}`).join("\n\n") +
+      "\n\n"
+    : "";
+}
+
+/** The kickoff's facts (tactical-run.ts writes them): the fire_facts block. */
+export interface TriggerRunKickoff {
+  facts: string;
+}
+
+/**
+ * The trigger run's request, built by the agent engine from its record
+ * (lib/agent/engine/agents/trigger-run.ts): its instructions, and its first
+ * message when the kickoff's facts are given.
+ */
+export function triggerRunRequest(args: TacticalPromptArgs, kickoff?: TriggerRunKickoff): BuiltRequest {
+  const auto = args.autoTrade ?? null;
   // The Market and portfolio block goes in before the stock's row, so the
   // row is read after it. On 2026-10-07 a day-old digest told the trigger
   // runs "no pending proposals" while ASML's row carried its sale awaiting
   // approval: the block's snapshot is written when this request is built,
   // and the house rules say the stock's row wins where they differ.
-  const portfolioBlock = args.portfolioBlock ? `${args.portfolioBlock}\n\n` : "";
+  return composeAgentRequest(TRIGGER_RUN, { now: new Date(), environment: "PAPER", extra: extraOf(args) }, {
+    pieces: args.portfolioPieces ?? null,
+    blocks: {
+      analyst_brief: analystBrief(args.analyst, args.capacity),
+      stock_row: stockRowText(args.stock),
+      playbooks: args.playbooks || null,
+      fired_trigger: firedTriggerText(args),
+      // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
+      situations: auto ? null : situationsText(args),
+      fire_facts: kickoff ? kickoff.facts : null,
+    },
+  });
+}
 
-  return `${analystBrief(analyst, args.capacity)}
-
-${
-    auto
-      ? `Your $${stock.ticker} trigger "${predicateSummary}" fired. It is set to Auto, so no analyst decided: ${auto.line} Find out what is going on with the company and the stock today and write the note the principal reads with this trade.`
-      : `A trigger on your $${stock.ticker} thesis just fired. Find out what is going on with the company and the stock today, decide what to do, and write the review the principal reads: one decision.`
-  }
-
-═══════════════════════════════════════════════════════════════════
-TOOL-CALL DISCIPLINE — read first
-═══════════════════════════════════════════════════════════════════
-
-Every assistant turn between this prompt and complete_run MUST include
-at least one tool call. Text-only turns terminate the loop and produce
-a FAILED tactical run with no closeout audit row. Act, don't summarize.
-
-After get_stock_data returns, the next turn is ${auto ? "the update_thesis call with your note." : `the action call (or
-the update_thesis closeout if the check failed).`} NOT a markdown
-"now I'll evaluate this" paragraph. ${auto ? "The write-up" : "The decision framework"} below is
-short — read once, then execute.
-
-Forbidden assistant-turn endings (each = run failure):
-  - "Next, I'll proceed to..."
-  - "Let me now focus on..."
-  - "Now I'll decide..."
-  - Any turn that ends without a tool call.
-
-${portfolioBlock}═══════════════════════════════════════════════════════════════════
-$${stock.ticker}, its row (get_theses)
-═══════════════════════════════════════════════════════════════════
-${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}
-
-${args.playbooks ? `${args.playbooks}\n` : ""}**The row's \`belief\` IS your analyst's standing opinion on this name.** It's why we own the company and what has to stay true; every downstream decision (including this one) reads it as the claim of record. Verify whether the belief is still operative against the fresh data the trigger surfaced — ${auto ? "and say in the note whether the trade fits it." : "and act through the trigger's declared action."} If material new evidence contradicts the belief, call \`update_thesis\` to refresh the belief; don't free-think a different opinion in your rationale.
-
-**Anchor your decision to the row's \`would_prove_it_wrong\`, not the price level alone.** The trigger fired on price — that's necessary but not sufficient. The \`would_prove_it_wrong\` lines are what would invalidate the trade; check whether any of them have come true since the research was written.
-
-${!auto && (trigger.action === "ENTER" || trigger.action === "ADD") ? "If they declined this same buy and nothing they named has changed, say so and pass.\n" : ""}${HOUSE_RULES}
-
-═══════════════════════════════════════════════════════════════════
-TRIGGER THAT FIRED (id: ${trigger.id})
-═══════════════════════════════════════════════════════════════════
-  predicate: ${predicateSummary}
-  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakBlock}
-${pathSection}
-${
-  auto
-    ? `═══════════════════════════════════════════════════════════════════
-THE WRITE-UP
-═══════════════════════════════════════════════════════════════════
-
-1. Find out what is going on.
-   - get_stock_data($${stock.ticker}): the live price and the company's news.
-   - One web_search: why $${stock.ticker} is moving and the latest on the
-     company.
-
-2. Write EXACTLY one update_thesis call with trigger_id="${trigger.id}".
-   Its rationale is your note: the principal reads it on the trade.
-   - What the write-up asks:
-
-${AUTO_WRITEUP}
-
-   - This run has no trade tools. If you would do something different,
-     say so in the note and why.
-
-3. Then complete_run.
-
-`
-    : `═══════════════════════════════════════════════════════════════════
-DECISION FRAMEWORK
-═══════════════════════════════════════════════════════════════════
-
-1. Find out what is going on.
-   - get_stock_data($${stock.ticker}): the live price and the company's news.
-   - One web_search: why $${stock.ticker} is moving and the latest on the
-     company.
-   - Confirm the condition still holds now, not just when the check sampled it.
-
-2. If it still holds:
-   - Default: execute the declared action (${trigger.action}). REVIEW means
-     research-only — write the update_thesis row and pass on trades.
-     EXIT means close_position. ENTER means place_trade once the buy's
-     checks hold. ADD means manage_position (scale up). TRIM means
-     manage_position (partial close).
-${situationsBlock}   - Override is allowed when you have a specific reason (e.g. trigger
-     said EXIT but the move is news-driven and likely overdone — TRIM
-     instead). Say in the note what you did and why.
-
-3. If it no longer holds:
-   - Pass. Write update_thesis with type implicit (REVIEWED via empty
-     patch) and a note on what is happening to the stock and why you are
-     not acting.
-   - If the check reveals the thesis itself is no longer applicable
-     (ticker fell outside this analyst's edge/universe, the original
-     premise has broken structurally, the name is no longer worth
-     tracking): say so in the note, and on a stock we watch take its buy
-     and Stop watching triggers off by id (remove_trigger_ids) so nothing fires on it; the
-     morning run decides whether it stays on the book. A stock we
-     hold is sold first with close_position, which retires the thesis itself.
-
-4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the
-   stock's triggers reflect it. After an add, raise the "Sell if below"
-   price (a bigger position must never round-trip into a loss). After a
-   fired gain checkpoint, replace it with the next one. After a move that
-   blew through a trigger's price, re-set it off the NEW structure the
-   chart gives (the swing low, the breakout price, the average), not a
-   round number. The triggers that came with the buy and the playbook's
-   fill triggers were written at the fill; your analyst's and the
-   account's rules apply on their own.
-   The trigger ids are on the row's triggers lines. If nothing went stale,
-   leave them. On a stock we hold you can raise a sale's price, never
-   lower it; if you think it is wrong, say so in the note and name the price.
-
-5. Output discipline:
-   - At most ONE trade tool call (place_trade / manage_position / close_position).
-   - Always EXACTLY one update_thesis call documenting what you did and why;
-     after a trade you proposed, that note is the proposal's reason the
-     principal reads. Pass trigger_id="${trigger.id}" so the timeline carries the link.
-   - When the row's \`said\` lists the principal's decisions or other triggers
-     fired since the last answer, your note answers what each asks (an
-     earnings date coming, a gain to reassess, a drop to explain) inside the
-     story of the stock, not as a list of the triggers.
-   - Then complete_run.
-
-`
-}═══════════════════════════════════════════════════════════════════
-HARD CONSTRAINTS
-═══════════════════════════════════════════════════════════════════
-
-  - 15 step max. Be ruthlessly concise.
-  - You are NOT reviewing your other theses. Only $${stock.ticker} matters
-    on this run.
-`;
+/** The trigger run's instructions alone (triggerRunRequest). */
+export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
+  return triggerRunRequest(args).instructions;
 }

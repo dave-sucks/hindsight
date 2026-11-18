@@ -17,7 +17,7 @@
 // theses; if conviction breaks the agent calls update_thesis with
 // change_status="INVALIDATED" and close_position.
 
-import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
+import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -27,7 +27,7 @@ import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { NOT_IN_A_WRITEUP, triggerRunRequest, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -647,27 +647,6 @@ export const tacticalRun = inngest.createFunction(
         }
       })();
 
-      const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
-      // The Market and portfolio block: the portfolio snapshot, written now, and the latest digest. Never throws.
-      const portfolioBlock = await loadPortfolioBlock({ accountId: agentConfig.accountId, environment: agentConfig.tradingEnvironment ?? "PAPER" });
-      const systemPrompt = buildTacticalSystemPrompt({
-        analyst: { ...agentConfig, setupOverrides },
-        stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
-        trigger,
-        position,
-        fired: { price: fired.firedPrice ?? null },
-        capacity: ctx.capacity ?? null,
-        // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
-        situations: auto ? null : read?.situations ?? null,
-        autoTrade: auto ? { line: auto.line } : null,
-        portfolioBlock,
-        // A review on a stock we only watch may be a playbook's way in: the Writer's playbooks block.
-        playbooks:
-          !auto && trigger.action === "REVIEW" && !position
-            ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
-            : null,
-      });
-
       // Build the kickoff message so the chat replay shows WHY this run
       // fired without the user having to dig. Same English sentence the
       // audit row stores so the chat reads naturally.
@@ -693,15 +672,33 @@ export const tacticalRun = inngest.createFunction(
         (thesis as { ticker: string }).ticker,
       );
       const ticker = (thesis as { ticker: string }).ticker;
-      const userPrompt = auto
-        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so no analyst decided. ${auto.line}${contextSuffix}${coFiredSuffix} ` +
-          `Find out what is going on with the company and the stock, then write your note with update_thesis. You can't trade on this run. ` +
-          `You are running unattended — no human will respond. Every turn must call a tool; ` +
-          `text-only turns terminate the run as FAILED.`
-        : `Tactical run on $${ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock} ` +
-          `Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. ` +
-          `You are running unattended — no human will respond. Every turn must call a tool; ` +
-          `text-only turns terminate the run as FAILED.`;
+      const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
+      // The Market and portfolio block's parts: the portfolio snapshot, written now, and the latest digest. Never throws.
+      const portfolioPieces = await loadPortfolioPieces({ accountId: agentConfig.accountId, environment: agentConfig.tradingEnvironment ?? "PAPER" });
+      // The fire's facts start the kickoff; the record adds what it asks.
+      const facts = auto
+        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so no analyst decided. ${auto.line}${contextSuffix}${coFiredSuffix}`
+        : `Tactical run on $${ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}`;
+      const request = triggerRunRequest({
+        analyst: { ...agentConfig, setupOverrides },
+        stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
+        trigger,
+        position,
+        fired: { price: fired.firedPrice ?? null },
+        capacity: ctx.capacity ?? null,
+        // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
+        situations: auto ? null : read?.situations ?? null,
+        autoTrade: auto ? { line: auto.line } : null,
+        portfolioPieces,
+        // A review on a stock we only watch may be a playbook's way in: the Writer's playbooks block.
+        playbooks:
+          !auto && trigger.action === "REVIEW" && !position
+            ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
+            : null,
+      }, { facts });
+      const systemPrompt = request.instructions;
+      const userPrompt = request.message;
+
       // What this run read and wrote, every request counted, recorded on
       // the run row at the end (also on the failure path below).
       const tokenUsage = emptyTokenUsage();
@@ -712,7 +709,7 @@ export const tacticalRun = inngest.createFunction(
       const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
       try {
         const { steps, response } = await generateText({
-          model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Main", source: "tactical-run" }),
+          model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Main", source: "tactical-run", parts: request.parts }),
           system: systemPrompt,
           prompt: userPrompt,
           tools,
@@ -790,7 +787,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const retryResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run" }),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run", parts: request.parts }),
               system: systemPrompt,
               messages: [
                 {
@@ -885,7 +882,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const refusalResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run" }),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run", parts: request.parts }),
               system: systemPrompt,
               messages: [
                 { role: "user", content: [{ type: "text", text: userPrompt }] },

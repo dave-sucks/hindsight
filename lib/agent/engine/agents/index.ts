@@ -8,6 +8,7 @@ import { PORTFOLIO_MANAGER } from "./portfolio-manager";
 import { PORTFOLIO_DIGEST } from "./portfolio-digest";
 import { MARKET_REVIEWER } from "./market-reviewer";
 import { WRITER } from "./writer";
+import { TRIGGER_RUN } from "./trigger-run";
 
 export interface PendingAgent {
   id: AgentId;
@@ -26,10 +27,7 @@ export const AGENTS: readonly AgentEntry[] = [
   { onEngine: true, record: MARKET_REVIEWER },
   { onEngine: true, record: PORTFOLIO_DIGEST },
   { onEngine: true, record: WRITER },
-  {
-    onEngine: false,
-    agent: { id: "trigger_run", name: "Trigger run", does: "Decides on one stock when one of its triggers fires.", runsWhen: "Every 5 minutes in market hours and at the 4:20 PM close check, when a trigger fires.", builtBy: "lib/agent/system-prompts/intraday-tactical.ts and lib/inngest/functions/tactical-run.ts" },
-  },
+  { onEngine: true, record: TRIGGER_RUN },
   {
     onEngine: false,
     agent: { id: "morning_run", name: "Morning run", does: "Walks one analyst's book and answers each stock on its work list.", runsWhen: "8:00 AM ET on each analyst's run days.", builtBy: "lib/agent/system-prompt.ts and lib/agent/run-input.ts" },

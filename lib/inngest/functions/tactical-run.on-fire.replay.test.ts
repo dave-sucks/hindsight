@@ -49,7 +49,10 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   const toolCalls: Array<{ tool: string; args: unknown; ctx: Record<string, unknown> }> = [];
   const blockArgs: unknown[] = [];
   await jest.isolateModulesAsync(async () => {
-    jest.doMock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: async (a: unknown) => (blockArgs.push(a), "## Market and portfolio\n\n### Portfolio snapshot\nSTAND-IN") }));
+    jest.doMock("@/lib/agent/portfolio-block", () => ({
+      loadPortfolioBlock: async (a: unknown) => (blockArgs.push(a), "## Market and portfolio\n\n### Portfolio snapshot\nSTAND-IN"),
+      loadPortfolioPieces: async (a: unknown) => (blockArgs.push(a), [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]),
+    }));
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({

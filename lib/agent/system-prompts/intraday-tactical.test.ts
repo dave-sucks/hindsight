@@ -248,8 +248,11 @@ describe("buildTacticalSystemPrompt — the stock's own row wins over the digest
   });
 
   it("prints the Market and portfolio block once, before the stock's row, so the row is read after it", () => {
-    const block = "## Market and portfolio\n\n### Portfolio snapshot\nYour portfolio, stand-in\n\n### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nNo pending proposals.";
-    const prompt = buildTacticalSystemPrompt({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioBlock: block });
+    const portfolioPieces = [
+      { id: "portfolio_snapshot", text: "### Portfolio snapshot\nYour portfolio, stand-in" },
+      { id: "portfolio_digest", text: "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nNo pending proposals." },
+    ];
+    const prompt = buildTacticalSystemPrompt({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioPieces });
     expect(prompt.split("## Market and portfolio")).toHaveLength(2);
     expect(prompt.indexOf("## Market and portfolio")).toBeLessThan(prompt.indexOf("$ASML, its row (get_theses)"));
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh');
