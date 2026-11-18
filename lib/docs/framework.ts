@@ -17,6 +17,7 @@
  */
 
 import { whenItRuns } from "@/lib/agent/engine/schedule";
+import { providerToolNames } from "@/lib/agent/engine/types";
 import { zodSchema } from "ai";
 import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
@@ -191,7 +192,7 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
       names: [...record.tools],
       chars: measured.length ? measured.reduce((n, name) => n + toolChars(tools[name]), 0) : null,
       unmeasured: record.tools.filter((n) => !tools[n]),
-      provider: [...(record.providerTools ?? [])],
+      provider: providerToolNames(record),
     },
   };
 }

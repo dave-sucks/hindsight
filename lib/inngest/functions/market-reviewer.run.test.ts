@@ -2,8 +2,8 @@
  * The Market Reviewer V1 is one model call with web search, a run Dave can
  * open: given its instructions, the book and its last digest, its reply is
  * the digest and its notes on the book's stocks, and the job saves both.
- * Through the job's own handler, with the real run and the doubled database;
- * OpenAI's Responses API is stood in. The notes it saves are then read by the
+ * Through the job's own handler on the agent runner, with the doubled
+ * database; OpenAI's Responses endpoint is stood in. The notes it saves are then read by the
  * real readers: get_theses (a run's list and what it reads) and the Activity
  * tab's loader. Made-up book, stand-in amounts.
  */
@@ -46,20 +46,20 @@ jest.mock("@/lib/agent/research-helpers", () => ({
   finnhub: async (path: string) =>
     path.startsWith("/calendar/earnings") ? { data: jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_CALENDAR } : { data: null, error: "not stood in" },
 }));
-/** OpenAI's Responses API, stood in: the bodies it was sent, and its one reply (or a failure). */
-const mockOpenAI = { bodies: [] as unknown[], reply: null as unknown, fails: null as Error | null };
-jest.mock("openai", () => ({
-  __esModule: true,
-  default: class {
-    responses = {
-      create: async (body: unknown) => {
-        mockOpenAI.bodies.push(JSON.parse(JSON.stringify(body)));
-        if (mockOpenAI.fails) throw mockOpenAI.fails;
-        return mockOpenAI.reply;
-      },
-    };
-  },
-}));
+/** OpenAI's Responses endpoint, stood in: the bodies it was sent, and its one reply (or a failure the API reports). */
+const mockOpenAI = { bodies: [] as unknown[], reply: null as unknown, fails: null as string | null };
+const realFetch = globalThis.fetch;
+beforeAll(() => {
+  process.env.OPENAI_API_KEY = "sk-test";
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    mockOpenAI.bodies.push(JSON.parse(String(init?.body)));
+    const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    return mockOpenAI.fails ? json({ error: { message: mockOpenAI.fails, type: "invalid_request_error" } }, 400) : json(mockOpenAI.reply);
+  }) as typeof fetch;
+});
+afterAll(() => {
+  globalThis.fetch = realFetch;
+});
 
 import "./market-reviewer";
 import { writeMarketReview } from "@/lib/agent/market-reviewer/run";
@@ -91,16 +91,20 @@ const NOTES = [
   { tickers: ["MU"], text: "A peer said memory prices held through October ([Bloomberg](https://www.bloomberg.com/news/example-memory-prices/)).", impact: "low", effect: "neutral" },
 ];
 const REPLY = JSON.stringify({ digest: DIGEST, notes: NOTES });
-/** A finished reply: two searches, then the digest and its notes as one JSON object. */
-const reply = (over: Record<string, unknown> = {}) => ({
+/** A finished reply: two searches, then the reply's text (the digest and its notes as one JSON object). */
+const reply = (over: Record<string, unknown> = {}, text = REPLY) => ({
+  id: "resp_1",
+  object: "response",
+  created_at: 1_762_864_200,
+  model: "gpt-5.4",
   status: "completed",
+  incomplete_details: null,
   output: [
-    { type: "web_search_call", id: "ws_1", status: "completed", action: { type: "search", query: "stock market today", queries: ["why stocks rose Nov 11 2026"] } },
+    { type: "web_search_call", id: "ws_1", status: "completed", action: { type: "search", query: "why stocks rose Nov 11 2026" } },
     { type: "web_search_call", id: "ws_2", status: "completed", action: { type: "search", query: "economic calendar November 2026 CPI PPI" } },
-    { type: "message", id: "m_1", role: "assistant", status: "completed", content: [{ type: "output_text", text: REPLY, annotations: [] }] },
+    { type: "message", id: "m_1", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] },
   ],
-  output_text: REPLY,
-  usage: { input_tokens: 41_230, output_tokens: 3_118 },
+  usage: { input_tokens: 41_230, input_tokens_details: { cached_tokens: 0 }, output_tokens: 3_118, output_tokens_details: { reasoning_tokens: 0 }, total_tokens: 44_348 },
   ...over,
 });
 const inBook = (over: Record<string, unknown>) =>
@@ -152,7 +156,7 @@ describe("the 7:30 Market Reviewer", () => {
     expect(mockOpenAI.bodies).toHaveLength(1);
     const body = mockOpenAI.bodies[0] as {
       model: string;
-      input: Array<{ role: string; content: string }>;
+      input: [{ role: string; content: string }, { role: string; content: Array<{ type: string; text: string }> }];
       tools: unknown[];
       text: { format: { type: string; strict: boolean; schema: { properties: { notes: { items: { properties: { tickers: { items: { enum: string[] } } } } } } } } };
     };
@@ -162,7 +166,10 @@ describe("the 7:30 Market Reviewer", () => {
     expect(body.text.format).toMatchObject({ type: "json_schema", name: "market_review", strict: true });
     expect([...body.text.format.schema.properties.notes.items.properties.tickers.items.enum].sort()).toEqual(["ASML", "MU"]);
     expect(body.input[0].content).toContain("## Notes\nYour reply's \"notes\" are saved on the stocks they name");
-    expect(body.input.map((m) => m.role)).toEqual(["system", "user"]);
+    // The AI SDK's roles, and its first message as a text part.
+    expect(body.input.map((m) => m.role)).toEqual(["developer", "user"]);
+    expect(body.input[1].content.map((p) => p.type)).toEqual(["input_text"]);
+    const firstMessage = body.input[1].content[0].text;
     expect(body.input[0].content).toMatch(/^You are the Market Intelligence Analyst for an autonomous stock trading system\./);
     expect(body.input[0].content).toContain("Do not make trades.");
     expect(body.input[0].content).toContain("The Market numbers in your first message are the index, sector and earnings numbers to use: search the web for what moved them, not for the numbers.");
@@ -171,7 +178,7 @@ describe("the 7:30 Market Reviewer", () => {
     // Market and portfolio reads print them), the book with each stock's belief in a line, its notes (none yet), then
     // its last digest. Nothing else.
     const snapshot = (await loadPortfolioSnapshot({ accountId: ACCOUNT, environment: "LIVE" })) as PortfolioSnapshot;
-    expect(body.input[1].content).toBe(
+    expect(firstMessage).toBe(
       [
         "Wed, Nov 11, 2026, 7:30 AM ET, the LIVE account.",
         "",
@@ -208,7 +215,7 @@ describe("the 7:30 Market Reviewer", () => {
 
     // A read-only run for the account, closed COMPLETE, its request kept exactly as sent.
     expect(runs).toEqual([expect.objectContaining({ mode: "MARKET_REVIEWER", accountId: ACCOUNT, environment: "LIVE", userId: "user_owner", status: "COMPLETE" })]);
-    expect(runs[0].parameters).toEqual({ date: "2026-11-11", model: "gpt-5.4" });
+    expect(runs[0].parameters).toEqual({ date: "2026-11-11", model: "gpt-5.4", tokenUsage: expect.objectContaining({ input: 41_230, output: 3_118, requests: 1, model: "gpt-5.4" }) });
     expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
     expect(record!.error).toBeUndefined();
 
@@ -225,10 +232,10 @@ describe("the 7:30 Market Reviewer", () => {
     ]);
     const sent = (from: number, to: number) => view.categories.slice(from, to).map((c) => c.sections[0].text).join("\n\n");
     expect(sent(0, 1)).toBe(body.input[0].content);
-    expect(sent(1, 6)).toBe(body.input[1].content);
+    expect(sent(1, 6)).toBe(firstMessage);
     expect(view.categories[6].sections.map((s) => s.label)).toEqual(["web_search"]);
 
-    // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
+    // The run page: the day, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");
     expect(thread).toContain("Stocks rebounded, led by technology");
     expect(thread).toContain("**Note on MU, ASML · high · weaker · flagged for review**");
@@ -258,14 +265,14 @@ describe("the 7:30 Market Reviewer", () => {
       reviewerNote("n_other", 1, { userId: "someone_else", tickers: ["MU"], impact: "high", effect: "weaker", body: "Another user's book." }),
     ];
     const review = await writeMarketReview({ accountId: ACCOUNT, environment: "LIVE", userId: "user_owner" }, { now: AT });
-    const first = (review.request.requests[0] as { input: Array<{ content: string }> }).input[1].content;
+    const first = review.run.request.message;
     expect(first.split("## Your notes in the last 5 days\n")[1].split("\n\n## Your last digest")[0]).toBe(
       [
         "- Tue Nov 10 · MU · low · neutral · A peer said memory prices held through October.",
         `- Mon Nov 9 · MU, ASML · high · weaker · ${`New export rules cover memory tools sold to China, ${"and the list of tools named in the rule runs long ".repeat(3)}`.slice(0, 160).trimEnd()}…`,
       ].join("\n"),
     );
-    expect((review.request.requests[0] as { input: Array<{ content: string }> }).input[0].content).toContain(
+    expect(review.run.request.instructions).toContain(
       "Write a note on a story you already noted only when something new happened since, and say what is new.",
     );
   });
@@ -330,27 +337,27 @@ describe("the 7:30 Market Reviewer", () => {
   });
 
   it("a reply that isn't the digest and its notes saves nothing, and says so", async () => {
-    mockOpenAI.reply = reply({ output_text: DIGEST });
-    const { record, runs, digests, notes } = await runTheJob();
+    mockOpenAI.reply = reply({}, DIGEST);
+    const { runs, digests, notes } = await runTheJob();
     expect(runs[0].status).toBe("FAILED");
-    expect(record!.error).toBe("The reply wasn't the digest and its notes.");
+    expect((runs[0].parameters as { error?: string }).error).toBe("The reply wasn't the shape asked for.");
     expect(digests).toHaveLength(1);
     expect(notes).toEqual([]);
   });
 
   it("a reply cut off at its limit saves nothing, and the run closes FAILED saying why", async () => {
     mockOpenAI.reply = reply({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" } });
-    const { record, runs, digests } = await runTheJob();
+    const { runs, digests } = await runTheJob();
     expect(runs[0].status).toBe("FAILED");
-    expect(record!.error).toBe("The reply was cut off: max_output_tokens.");
+    expect((runs[0].parameters as { error?: string }).error).toBe("The reply was cut off at its limit.");
     expect(digests).toHaveLength(1);
   });
 
-  it("a call that fails saves nothing, and its record keeps the request and the error", async () => {
-    mockOpenAI.fails = new Error("Request timed out.");
+  it("a call that fails saves nothing; its record keeps the request and the run keeps the error", async () => {
+    mockOpenAI.fails = "The model is overloaded.";
     const { record, runs, digests } = await runTheJob();
     expect(runs[0].status).toBe("FAILED");
-    expect(record!.error).toBe("Request timed out.");
+    expect((runs[0].parameters as { error?: string }).error).toBe("The model is overloaded.");
     expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
     expect(digests).toHaveLength(1);
   });

@@ -72,6 +72,7 @@ export const WRITER: AgentRecord = {
   context: WRITER_CONTEXT,
   // submit_thesis is the Writer's own tool (makeSubmitThesisTool, lib/agent/run-thesis-writer.ts).
   tools: ["submit_thesis"],
-  providerTools: [`Anthropic's web search, up to ${WEB_SEARCH_MAX_USES} searches`],
+  providerTools: ["web_search"],
+  searchesPerCall: WEB_SEARCH_MAX_USES,
   output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, playbook, watch triggers and the claim; the save writes the thesis.",
 };

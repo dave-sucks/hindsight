@@ -5,7 +5,7 @@
  * at 8 PM ET). Its instructions are its own text, the same on every run;
  * its context is the portfolio. The schedule writes it no message.
  */
-import type { AgentRecord } from "../types";
+import type { RunnableRecord } from "../types";
 
 const INSTRUCTIONS = `You write the owner's end-of-day summary of their stock account. The owner reads it on the home page.
 
@@ -19,7 +19,7 @@ Write 3 to 5 short paragraphs of plain prose, with no headings and no lists:
 
 Name stocks by their ticker, as the snapshot does; never write out a company name it doesn't give. Write the way you would say it to a friend: short sentences, everyday words, and only the two or three numbers that matter in each paragraph.`;
 
-export const PORTFOLIO_DIGEST: AgentRecord = {
+export const PORTFOLIO_DIGEST: RunnableRecord = {
   id: "portfolio_digest",
   name: "Portfolio digest",
   does: "Writes your evening summary of the account, with its view on each proposal waiting for you.",
@@ -28,6 +28,10 @@ export const PORTFOLIO_DIGEST: AgentRecord = {
   // GPT-4o ignored "never suggest what to do with the cash" and skipped a waiting proposal on the Nov 11 book.
   model: "gpt-5.4",
   maxSteps: 1,
+  timeoutMs: 120_000,
+  api: "chat",
+  // A reasoning model: its thinking counts against this.
+  maxOutputTokens: 6000,
   instructions: [{ own: INSTRUCTIONS }],
   context: ["portfolio", "message"],
   tools: [],

@@ -8,7 +8,7 @@
  * The schedule writes it no message: the date line is its start.
  */
 import { MODES } from "@/lib/agent/modes";
-import type { AgentRecord } from "../types";
+import type { RunnableRecord } from "../types";
 
 /** The six sections together, the links not counted; each section gets a sixth. */
 export const DIGEST_CHARS = 3_000;
@@ -48,7 +48,31 @@ Your reply's "notes" are saved on the stocks they name, and each stock's analyst
 
 You are running unattended; no one will answer.`;
 
-export const MARKET_REVIEWER: AgentRecord = {
+/** Its reply: the digest and the notes, each note naming only stocks from this run's book. */
+const replySchema = (tickers: readonly string[]) => ({
+  type: "object",
+  additionalProperties: false,
+  required: ["digest", "notes"],
+  properties: {
+    digest: { type: "string" },
+    notes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["tickers", "text", "impact", "effect"],
+        properties: {
+          tickers: { type: "array", minItems: 1, items: tickers.length ? { type: "string", enum: [...tickers] } : { type: "string" } },
+          text: { type: "string" },
+          impact: { type: "string", enum: ["low", "medium", "high"] },
+          effect: { type: "string", enum: ["stronger", "weaker", "neutral"] },
+        },
+      },
+    },
+  },
+});
+
+export const MARKET_REVIEWER: RunnableRecord = {
   id: "market_reviewer",
   name: "Market Reviewer",
   does: "Researches the market's day and writes the morning digest, and notes on our stocks its research touches.",
@@ -57,9 +81,13 @@ export const MARKET_REVIEWER: AgentRecord = {
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 1,
+  timeoutMs: 600_000,
+  // Its thinking and its searches count against it.
+  maxOutputTokens: 20_000,
+  reply: { name: "market_review", schema: (input) => replySchema(input.stocks ?? []) },
   instructions: [{ own: INSTRUCTIONS }],
   context: ["market_numbers", "portfolio", "the_book", "last_output", "message"],
   tools: [],
-  providerTools: ["OpenAI's web search"],
-  output: "One reply (JSON): the digest, saved for the day, and its notes, each saved on the stocks it names. A high note flags its stocks for the next run.",
+  providerTools: ["web_search"],
+  output: "One reply (JSON): the digest, saved for the day, and its notes (tickers: one of the stocks in this run's book), each saved on the stocks it names. A high note flags its stocks for the next run.",
 };

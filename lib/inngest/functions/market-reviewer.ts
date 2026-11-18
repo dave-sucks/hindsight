@@ -1,21 +1,19 @@
 /**
  * market-reviewer — 7:30 AM ET every weekday: the Market Reviewer's run for
  * each traded book (an account and environment with an enabled analyst
- * trading in it, or a stock held in it). One model call with web search
- * writes the market digest and its notes on the stocks its research touched
- * (lib/agent/market-reviewer/run.ts); the next step saves the digest, as the
- * 8 PM Portfolio Digest saves its own, and the one after saves each note on
- * its stocks, a high one pinned (lib/agent/shared-notes.ts). A market
- * holiday writes nothing. Each book is its own read-only run.
+ * trading in it, or a stock held in it), through the agent runner
+ * (runAgentAsRun). One model call with web search writes the market digest
+ * and its notes on the stocks its research touched; its own save keeps the
+ * digest and each note on its stocks, a high one pinned
+ * (lib/agent/market-reviewer/run.ts). A market holiday writes nothing. Each
+ * book is its own read-only run.
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { getOwnerUserId } from "@/lib/auth/account";
 import { isTradingDay } from "@/lib/market-hours";
-import { runAccountCall } from "@/lib/runs/account-run";
-import { notePin, REVIEWER_MODEL, writeMarketReview } from "@/lib/agent/market-reviewer/run";
-import { writeSharedNote } from "@/lib/agent/shared-notes.server";
-import { etDateOf } from "@/lib/market-data/intraday-window";
+import { runAgentAsRun } from "@/lib/agent/engine/run";
+import { REVIEWER_RUN } from "@/lib/agent/market-reviewer/run";
 
 type Env = "PAPER" | "LIVE";
 
@@ -38,48 +36,18 @@ export const marketReviewer = inngest.createFunction(
   { cron: "TZ=America/New_York 30 7 * * 1-5" },
   async ({ step }) => {
     if (!isTradingDay(new Date())) return { skipped: "market holiday" };
-    const { date, books } = await step.run("books", async () => ({ date: etDateOf(new Date()), books: await tradedBooks() }));
+    const books = await step.run("books", tradedBooks);
     const done: Array<{ book: string; saved: boolean }> = [];
     for (const b of books) {
       const key = `${b.accountId}-${b.environment}`;
-      // Saved as a read-only run with its one request (lib/runs/account-run.ts).
+      // One step: the runner opens the run, runs it and keeps its books; its own save keeps the digest and the notes.
       const out = await step.run(`review-${key}`, async () => {
         const userId = await getOwnerUserId(b.accountId);
         if (!userId) return null;
-        const review = await runAccountCall(
-          { accountId: b.accountId, environment: b.environment, mode: "MARKET_REVIEWER", parameters: { date, model: REVIEWER_MODEL } },
-          async (runId) => ({ ...(await writeMarketReview({ ...b, userId })), runId }),
-        );
-        return { digest: review.digest, notes: review.notes, runId: review.runId, userId };
+        const run = await runAgentAsRun(REVIEWER_RUN, { ...b, userId });
+        return { runId: run.runId, saved: run.status === "COMPLETE" };
       });
-      if (out?.digest) {
-        const digest = out.digest;
-        await step.run(`save-${key}`, async () => {
-          const day = new Date(`${date}T00:00:00.000Z`);
-          await prisma.marketDigest.upsert({
-            where: { accountId_environment_date: { accountId: b.accountId, environment: b.environment, date: day } },
-            create: { accountId: b.accountId, environment: b.environment, date: day, digest, model: REVIEWER_MODEL, runId: out.runId },
-            update: { digest, model: REVIEWER_MODEL, runId: out.runId, createdAt: new Date() },
-          });
-        });
-        // Each note on its stocks. A note that doesn't save never fails the digest.
-        if (out.notes.length) {
-          const { userId, runId, notes } = out;
-          await step.run(`notes-${key}`, async () => {
-            let saved = 0;
-            for (const note of notes) {
-              try {
-                await writeSharedNote({ userId, author: "MARKET_REVIEWER", runId, body: note.text, audience: "STOCKS", tickers: note.tickers, impact: note.impact, effect: note.effect, pinnedUntil: notePin(note, new Date()) });
-                saved++;
-              } catch (err) {
-                console.warn(`[market-reviewer] a note on ${note.tickers.join(", ")} didn't save:`, err instanceof Error ? err.message : err);
-              }
-            }
-            return { saved, of: notes.length };
-          });
-        }
-      }
-      done.push({ book: key, saved: Boolean(out?.digest) });
+      done.push({ book: key, saved: Boolean(out?.saved) });
     }
     console.log(`[market-reviewer] ${done.map((d) => `${d.book} ${d.saved ? "saved" : "not saved"}`).join("; ") || "no book is traded"}`);
     return { done };
