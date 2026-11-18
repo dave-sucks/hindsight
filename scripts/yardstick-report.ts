@@ -7,13 +7,15 @@
  *
  * Each column is one version of the code (main, a PR). Per case: the action
  * right (the case's expect), the playbook right, prices not from what it was
- * shown, numbers from nowhere, the belief's problems and sale prices loosened,
- * summed over its runs.
+ * shown, numbers from nowhere, the belief's problems, sale prices loosened,
+ * and the rules of its own instructions it broke (lib/agent/yardstick/rules.ts),
+ * summed over its runs. A case with no expect (the Market Reviewer, the
+ * digest) has no action to be right about.
  */
 import { readFileSync, writeFileSync } from "fs";
 import type { Grades } from "@/lib/agent/yardstick/grade";
 
-interface Row { case: string; run: number; pass: boolean; grades?: Grades }
+interface Row { case: string; agent?: string; hasExpect?: boolean; run: number; pass: boolean; error?: string | null; grades?: Grades }
 
 export interface CaseScore {
   runs: number;
@@ -25,6 +27,12 @@ export interface CaseScore {
   inventedTokens: string[];
   beliefProblems: number | null;
   saleLoosened: number;
+  /** Rules of its own instructions broken, summed, and by rule; null for an agent with none. */
+  rules: { broken: number; byRule: Record<string, number> } | null;
+  /** Runs whose call failed (no reply graded). */
+  failed: number;
+  /** The action has no expect to be graded on. */
+  noAction: boolean;
 }
 
 function score(rows: Row[]): CaseScore {
@@ -41,6 +49,14 @@ function score(rows: Row[]): CaseScore {
     inventedTokens: [...new Set(graded.flatMap((r) => r.grades!.invented))].slice(0, 12),
     beliefProblems: beliefs.length ? beliefs.reduce((n, r) => n + r.grades!.belief!.problems.length, 0) : null,
     saleLoosened: graded.reduce((n, r) => n + r.grades!.saleLoosened.length, 0),
+    rules: graded.some((r) => r.grades!.rules)
+      ? {
+          broken: graded.reduce((n, r) => n + (r.grades!.rules?.length ?? 0), 0),
+          byRule: graded.flatMap((r) => r.grades!.rules ?? []).reduce<Record<string, number>>((m, b) => ({ ...m, [b.rule]: (m[b.rule] ?? 0) + 1 }), {}),
+        }
+      : null,
+    failed: rows.filter((r) => r.error).length,
+    noAction: rows.every((r) => r.hasExpect === false),
   };
 }
 
@@ -63,10 +79,14 @@ function main() {
     }
   }
   const cell = (x: CaseScore | undefined) =>
-    !x ? "—" : `act ${x.actionRight}/${x.runs}${x.playbookRight != null ? ` · pb ${x.playbookRight}/${x.runs}` : ""} · price-off ${x.pricesOff}/${x.pricesSet} · invented ${x.invented}${x.beliefProblems != null ? ` · belief ${x.beliefProblems}` : ""}${x.saleLoosened ? ` · LOOSENED ${x.saleLoosened}` : ""}`;
+    !x
+      ? "—"
+      : `${x.noAction ? `${x.runs} runs` : `act ${x.actionRight}/${x.runs}`}${x.failed ? ` · FAILED ${x.failed}` : ""}${x.playbookRight != null ? ` · pb ${x.playbookRight}/${x.runs}` : ""} · price-off ${x.pricesOff}/${x.pricesSet} · invented ${x.invented}${x.beliefProblems != null ? ` · belief ${x.beliefProblems}` : ""}${x.saleLoosened ? ` · LOOSENED ${x.saleLoosened}` : ""}${x.rules ? ` · rules ${x.rules.broken}${x.rules.broken ? ` (${Object.entries(x.rules.byRule).map(([k, v]) => `${k.split(".")[1]} ${v}`).join(", ")})` : ""}` : ""}`;
   console.log(`| Case | ${sets.map((s) => s.label).join(" | ")} |`);
   console.log(`|---|${sets.map(() => "---").join("|")}|`);
   for (const c of cases) console.log(`| ${c} | ${sets.map((s) => cell(table[c][s.label])).join(" | ")} |`);
+  // The Portfolio Manager's instructions have no sentence against inventing a number (lib/agent/yardstick/rules.ts, INVENTED_QUOTES).
+  if (sets.some((s) => s.rows.some((r) => r.agent === "portfolio_manager"))) console.log("\nThe Portfolio Manager's \"invented\" rests on no sentence of its instructions: reported, not a rule it was given.");
   if (jsonOut) writeFileSync(jsonOut, JSON.stringify(table, null, 2));
 }
 

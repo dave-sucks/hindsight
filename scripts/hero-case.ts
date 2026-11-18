@@ -32,8 +32,17 @@
  * "scoring.$sum") and what each must be: "present", "absent", a value, or
  * { lt, gt, regex }. Not in CI; the pass rate is read by a person and
  * recorded with the PR, before and after a change.
+ *
+ * A case cut with its context (`context`, lib/agent/yardstick/context.ts)
+ * sends the facts as the run sent them, put together with today's record.
+ * The Portfolio Manager's case runs on until its write-up. The Market
+ * Reviewer and the portfolio digest are one call each, sent the way their
+ * run files send it (`sent`: the rest of the saved body); the reviewer's web
+ * search runs for real, on today's web. Their rules (lib/agent/yardstick/rules.ts)
+ * are graded beside the yardstick's grades.
  */
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
+import OpenAI from "openai";
 import { dirname } from "path";
 import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -53,11 +62,21 @@ import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
 import { grade } from "@/lib/agent/yardstick/grade";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { MARKET_REVIEWER } from "@/lib/agent/engine/agents/market-reviewer";
+import { MORNING_RUN } from "@/lib/agent/engine/agents/morning-run";
+import { PORTFOLIO_DIGEST } from "@/lib/agent/engine/agents/portfolio-digest";
+import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
+import type { AgentRecord } from "@/lib/agent/engine/types";
+import { loadedFrom, type StoredContext } from "@/lib/agent/yardstick/context";
+import { brokenRules, holdingsOf, reviewerInvented, type RuleRun } from "@/lib/agent/yardstick/rules";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
 
 interface HeroCase {
   what: string;
   lookFor: string;
+  /** Why the expected answer is the right one: the situation text or the instruction that makes it so. */
+  why?: string;
   expect?: Expect;
   /** The yardstick's labels (lib/agent/yardstick/grade.ts): the playbooks a right answer may name, "none" for none, with why. */
   grade?: { playbooks?: string[]; why?: string };
@@ -77,14 +96,61 @@ interface HeroCase {
   execute?: string[];
   /** The run the case was cut from: an executed read runs as its owner, on its account. */
   source?: { runId?: string };
-  mode: "principal" | "tactical" | "thesis-writer" | "research-run";
+  mode: "principal" | "tactical" | "thesis-writer" | "research-run" | "portfolio-manager" | "market-reviewer" | "portfolio-digest";
   runMode: string;
+  /** The facts the run was sent, as it sent them (lib/agent/yardstick/context.ts); with `promptArgs.now` and `promptArgs.environment`. */
+  context?: StoredContext[];
+  /** A one-call agent's saved body, its messages and model left out: what the replay sends beside today's text. */
+  sent?: Record<string, unknown>;
   promptArgs: Record<string, unknown>;
   toolCtx: Record<string, unknown>;
   messages: ModelMessage[];
 }
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
+
+/** The record a case's context is put together with, by mode. */
+const RECORDS: Partial<Record<HeroCase["mode"], AgentRecord>> = {
+  "portfolio-manager": PORTFOLIO_MANAGER,
+  "market-reviewer": MARKET_REVIEWER,
+  "portfolio-digest": PORTFOLIO_DIGEST,
+  "research-run": MORNING_RUN,
+};
+const ONE_CALL = new Set<HeroCase["mode"]>(["market-reviewer", "portfolio-digest"]);
+/** The agent's model, and whether it goes through OpenAI's chat API (the morning run's) or its responses API. */
+function modelOf(c: HeroCase): { model: string; provider: string; thinkingBudget?: number | null } {
+  const record = RECORDS[c.mode];
+  if (record && c.mode !== "research-run") return { model: record.model, provider: "openai" };
+  return MODES[c.mode as keyof typeof MODES];
+}
+
+/** A case's request from its stored context: today's record, the day's facts. Names any block today's record reads that the case lacks. */
+function fromContext(c: HeroCase): { system: string; first: string; record: AgentRecord } {
+  const record = RECORDS[c.mode];
+  if (!record || !c.context) throw new Error(`${c.mode} has no record to put a stored context together with`);
+  const { loaded, missing } = loadedFrom(record, c.context);
+  if (missing.length) console.log(`note: today's ${record.id} reads ${missing.join(", ")}, which this case doesn't have: sent as none`);
+  const p = c.promptArgs as { now?: string; environment?: "PAPER" | "LIVE" };
+  const built = composeAgentRequest(record, { now: new Date(p.now ?? Date.now()), environment: p.environment ?? "PAPER" }, loaded);
+  return { system: built.instructions, first: built.message, record };
+}
+
+/** A stored block's text, by today's block id. */
+const contextText = (c: HeroCase, block: string) => c.context?.find((x) => x.block === block)?.text ?? null;
+
+/** The rows a recorded get_theses returned, by ticker. */
+function recordedRows(c: HeroCase): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  for (const m of c.messages) {
+    if (m.role !== "tool" || !Array.isArray(m.content)) continue;
+    for (const p of m.content) {
+      if (p.type !== "tool-result" || p.toolName !== "get_theses") continue;
+      const v = (p.output as { value?: { data?: { theses?: Array<Record<string, unknown>> } } })?.value;
+      for (const row of v?.data?.theses ?? []) out.set(String(row.ticker).toUpperCase(), row);
+    }
+  }
+  return out;
+}
 
 function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
   const a = (call.input ?? {}) as Record<string, unknown>;
@@ -109,7 +175,7 @@ function describedTools(c: HeroCase): ToolSet {
     runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
   // A fire's tools are its agent's: the post-trade write-up (promptArgs.autoTrade) has no trade tools, as the live run.
-  const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : (MODES[c.mode].toolAllowlist ?? Object.keys(all));
+  const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : c.mode === "portfolio-manager" ? [...PORTFOLIO_MANAGER.tools] : (MODES[c.mode as keyof typeof MODES].toolAllowlist ?? Object.keys(all));
   const scoped = c.mode !== "principal" || c.toolCtx.analystId != null;
   return Object.fromEntries(
     allowed
@@ -155,6 +221,7 @@ function factsOf(kickoff: ModelMessage | undefined): string | null {
  * the first message); a trigger fire's from the recorded kickoff's facts.
  */
 function requestFor(c: HeroCase): { system: string; first?: string } {
+  if (c.context) return fromContext(c);
   if (c.mode === "thesis-writer") {
     // The stock's data as the run sent it; the rest of the first message is today's.
     const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) });
@@ -213,6 +280,7 @@ function tacticalArgs(c: HeroCase): any {
 }
 
 function systemFor(c: HeroCase): string {
+  if (c.context) return fromContext(c).system;
   switch (c.mode) {
     case "research-run":
       return morningRequest(c).instructions;
@@ -298,9 +366,10 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
   return out;
 }
 
-async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
+async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string; noExpect?: boolean }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
-  const mode = MODES[c.mode];
+  if (ONE_CALL.has(c.mode)) return runOneCall(name, c, runs, writtenPath, inputsOnly);
+  const mode = modelOf(c);
   const { system, first } = requestFor(c);
   // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
@@ -336,6 +405,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     }),
   );
   const model = mode.provider === "anthropic" ? anthropic(mode.model) : c.mode === "research-run" ? openai.chat(mode.model) : openai(mode.model);
+  // The Portfolio Manager's case runs on until its write-up: a reply with no call.
+  const untilDone = c.mode === "portfolio-manager";
+  const rows = recordedRows(c);
 
   console.log(`\n# ${name} — ${mode.model}, ${runs} run${runs === 1 ? "" : "s"}, prompt ${system.length.toLocaleString("en-US")} characters, conversation ${JSON.stringify(c.messages).length.toLocaleString("en-US")}`);
   console.log(c.what);
@@ -356,7 +428,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   const search = liveSearch
     ? (createResearchTools({ runId: `hero-${name}`, userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx } as never) as unknown as Record<string, LiveRead>).web_search
     : null;
-  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
+  const maxTurns = untilDone ? (c.maxTurns ?? 8) : c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -364,6 +436,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     /** What each read the case runs for real handed the model: the grades count it as shown. */
     const readShown: unknown[] = [];
     let text = "";
+    /** The last turn's text: the Portfolio Manager's write-up. */
+    let lastText = "";
     let turns = 0;
     /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
     const invalid: Array<{ tool: string; error: string }> = [];
@@ -388,9 +462,10 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       }
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
+      lastText = result.text;
       // Done when the model answers without a call, or (with scoreOn) decides on the stock.
-      const decided = turnCalls.length === 0 || (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
-      if (refusals.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
+      const decided = turnCalls.length === 0 || (!untilDone && (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live));
+      if (refusals.size === 0 && (decided || turn >= (c.scoreOn || live || untilDone ? maxTurns : 1))) break;
       // Not there yet: answer every call and let the model go on. A read the
       // case runs for real gets its real reply, as the model would read it;
       // every other call gets a stub and nothing is run. Ending the run is
@@ -408,6 +483,15 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         role: "tool",
         content: await Promise.all(unanswered.map(async (t) => {
           const read = live?.[t.toolName] ?? (t.toolName === "web_search" ? search : null);
+          // A get_theses on a stock the recording read is answered with the recorded row, as the model read it.
+          const tickers = t.toolName === "get_theses" && rows.size ? ((t.input as { tickers?: string[] })?.tickers ?? []).map((x) => x.toUpperCase()) : [];
+          if (tickers.length && !refusals.has(t.toolCallId)) {
+            const found = tickers.flatMap((x) => (rows.has(x) ? [rows.get(x)!] : []));
+            const raw = { ok: true, summary: `${found.length} of ${tickers.length} from the recorded read`, data: { theses: found } };
+            const hook = (tools.get_theses as { toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => unknown })?.toModelOutput;
+            const forModel = hook ? await hook({ toolCallId: t.toolCallId, input: t.input, output: raw }) : { type: "json" as const, value: raw };
+            return { type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: forModel as { type: "json"; value: never } };
+          }
           if (read && !refusals.has(t.toolCallId)) {
             const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
             reads.push({ toolName: t.toolName, output });
@@ -444,11 +528,92 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     });
     // A read the case runs for real is part of what the run was shown.
     const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
+    if (c.mode === "portfolio-manager") {
+      const thesisTickers = new Map([...rows.values()].map((r) => [String(r.id), String(r.ticker).toUpperCase()]));
+      grades.rules = brokenRules("portfolio_manager", { calls, reply: lastText, shown, portfolio: contextText(c, "portfolio_snapshot"), thesisTickers });
+    }
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    for (const b of grades.rules ?? []) console.log(`RULE ${b.rule}: ${b.problem}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, agent: RECORDS[c.mode]?.id ?? c.mode, hasExpect: c.expect != null, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
+}
+
+/** The stocks a reviewer's first message lists, held and watched ("- NVDA · …"). */
+const bookOf = (c: HeroCase) => [
+  ...new Set([
+    ...[contextText(c, "held_beliefs"), contextText(c, "watched_beliefs")].flatMap((t) => (t ?? "").split("\n").flatMap((l) => l.match(/^- ([A-Z][A-Z.\-]*) ·/)?.[1] ?? [])),
+    ...holdingsOf(contextText(c, "portfolio_snapshot")),
+  ]),
+];
+
+/**
+ * A one-call agent's case (the Market Reviewer, the portfolio digest): its
+ * request put together from its context with today's record, sent the way its
+ * run file sends it, the rest of the body as saved. The reviewer's web search
+ * runs for real. Graded on the yardstick's grades and its own rules.
+ */
+async function runOneCall(name: string, c: HeroCase, runs: number, writtenPath: string | null, inputsOnly: boolean): Promise<{ name: string; passes: number; runs: number; lookFor: string; noExpect?: boolean }> {
+  const { system, first, record } = fromContext(c);
+  const shown = `${system}\n${first}`;
+  if (writtenPath) {
+    mkdirSync(`${dirname(writtenPath)}/inputs`, { recursive: true });
+    writeFileSync(`${dirname(writtenPath)}/inputs/${name}.txt`, shown);
+  }
+  if (inputsOnly) return { name, passes: 0, runs: 0, lookFor: c.lookFor };
+  const reviewer = c.mode === "market-reviewer";
+  console.log(`\n# ${name} — ${record.model}, ${runs} run${runs === 1 ? "" : "s"}, instructions ${system.length.toLocaleString("en-US")} characters, first message ${first.length.toLocaleString("en-US")}`);
+  console.log(c.what);
+  console.log(`Look for: ${c.lookFor}`);
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
+  let passes = 0;
+  let tokensIn = 0, tokensOut = 0;
+  for (let i = 1; i <= runs; i++) {
+    let reply = "";
+    let notes: NonNullable<RuleRun["notes"]> = [];
+    let error: string | null = null;
+    let searches = 0;
+    try {
+      if (reviewer) {
+        const body = { ...c.sent, model: record.model, input: [{ role: "system" as const, content: system }, { role: "user" as const, content: first }] };
+        const resp = await client.responses.create(body as never, { timeout: 600_000 }) as unknown as OpenAI.Responses.Response;
+        tokensIn += resp.usage?.input_tokens ?? 0;
+        tokensOut += resp.usage?.output_tokens ?? 0;
+        searches = resp.output.filter((o) => o.type === "web_search_call").length;
+        if (resp.status === "incomplete") error = `cut off: ${resp.incomplete_details?.reason ?? "incomplete"}`;
+        const parsed = (() => { try { return JSON.parse(resp.output_text ?? "") as { digest?: string; notes?: typeof notes }; } catch { return null; } })();
+        if (!parsed?.digest) error ??= "the reply wasn't the digest and its notes";
+        reply = parsed?.digest?.trim() ?? "";
+        notes = parsed?.notes ?? [];
+      } else {
+        const body = { ...c.sent, model: record.model, messages: [{ role: "system" as const, content: system }, { role: "user" as const, content: first }] };
+        const resp = await client.chat.completions.create(body as never) as unknown as OpenAI.Chat.Completions.ChatCompletion;
+        tokensIn += resp.usage?.prompt_tokens ?? 0;
+        tokensOut += resp.usage?.completion_tokens ?? 0;
+        if (resp.choices[0]?.finish_reason === "length") error = "cut off at its limit";
+        reply = resp.choices[0]?.message?.content?.trim() ?? "";
+        if (!reply) error ??= "no text";
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    const written = [reply, ...notes.map((n) => n.text)].join("\n\n");
+    const verdict = error ? { pass: false, why: error } : score(c.expect, [], written);
+    if (verdict.pass) passes++;
+    const run: RuleRun = { calls: [], reply, notes, shown, portfolio: contextText(c, "portfolio_snapshot"), marketNumbers: contextText(c, "market_numbers"), book: bookOf(c) };
+    const grades = grade({ calls: [], narration: written }, shown, {});
+    // A number in a sentence with its link is from a page it found; the replay can't read the page.
+    if (reviewer) grades.invented = reviewerInvented(run);
+    grades.rules = error ? [] : brokenRules(record.id, run);
+    console.log(`## run ${i} — ${error ? `failed: ${error}` : c.expect ? (verdict.pass ? "pass" : `fail: ${verdict.why}`) : "written"}${reviewer ? ` (${searches} searches, ${notes.length} notes: ${notes.map((n) => `${n.tickers.join("/")} ${n.impact}`).join(", ") || "none"})` : ""}`);
+    console.log(reply.length > 900 ? reply.slice(0, 900) + "…" : reply);
+    for (const b of grades.rules) console.log(`RULE ${b.rule}: ${b.problem}`);
+    console.log(`GRADES ${JSON.stringify({ invented: grades.invented, prices: grades.prices })}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, agent: record.id, hasExpect: c.expect != null, run: i, pass: verdict.pass, why: verdict.why, error, grades, narration: reply, notes, searches }) + "\n");
+  }
+  console.log(`\n${name}: ${c.expect ? `${passes}/${runs} pass` : `${runs} written`} — tokens in ${tokensIn.toLocaleString("en-US")}, out ${tokensOut.toLocaleString("en-US")}`);
+  return { name, passes, runs, lookFor: c.lookFor, noExpect: c.expect == null };
 }
 
 async function main() {
@@ -474,7 +639,7 @@ async function main() {
   // --inputs-only: save what each case is shown (beside --written) and call no model.
   for (const name of names) results.push(await runCase(name, runs, writtenPath, inSession, args.includes("--live-search"), args.includes("--inputs-only")));
   console.log("\n| Case | Pass | Looks for |\n|---|---|---|");
-  for (const r of results) console.log(`| ${r.name} | ${r.passes}/${r.runs} | ${r.lookFor} |`);
+  for (const r of results) console.log(`| ${r.name} | ${r.noExpect ? `${r.runs} written` : `${r.passes}/${r.runs}`} | ${r.lookFor} |`);
 }
 
 main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

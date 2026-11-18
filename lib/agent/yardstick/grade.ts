@@ -34,6 +34,8 @@ export interface Grades {
   belief: { problems: string[] } | null;
   /** Sale prices it lowered or removed, by trigger id. */
   saleLoosened: string[];
+  /** The rules of its own instructions it broke (./rules.ts), for the agents that have them. */
+  rules?: Array<{ rule: string; problem: string }>;
 }
 
 const NUMBER = /\$?\d[\d,]*(?:\.\d+)?%?/g;

@@ -21,6 +21,13 @@
  * A chat with no analyst selected has no stock decision to cut before: give
  * `-` for the ticker and the conversation is cut before the model's first
  * turn, so the case replays its answer to the opening question.
+ *
+ * A run that saved its request keeps its facts as it sent them (`context`,
+ * lib/agent/yardstick/context.ts): a morning run's case reads the account of
+ * its own morning, not today's. The Portfolio Manager (`-` for the ticker) is
+ * cut before its first decision: a trade, a research request or its
+ * write-up. The Market Reviewer and the portfolio digest (`-`) are one call
+ * each: the case is their request, its facts and the rest of its body.
  */
 import { writeFileSync } from "fs";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +40,13 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { loadLevelSources, resolveThesisLadder } from "@/lib/agent/triggers/load-levels";
 import { loadExistingThesis, loadWriterAnalyst } from "@/lib/agent/run-thesis-writer";
 import { etDateOf } from "@/lib/market-data/intraday-window";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { MARKET_REVIEWER } from "@/lib/agent/engine/agents/market-reviewer";
+import { MORNING_RUN } from "@/lib/agent/engine/agents/morning-run";
+import { PORTFOLIO_DIGEST } from "@/lib/agent/engine/agents/portfolio-digest";
+import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
+import type { AgentRecord, SentPartManifest } from "@/lib/agent/engine/types";
+import { contextFromHeadings, contextFromParts, loadedFrom, sentOf, type StoredContext } from "@/lib/agent/yardstick/context";
 
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
 
@@ -55,6 +69,8 @@ async function main() {
   const messages = JSON.parse(thread.content) as Msg[];
   if (run.mode === "PRINCIPAL_CHAT" && run.agentConfigId == null) return unscopedChat(runId, run, messages, name);
   if (run.mode === "THESIS_WRITER") return writerRun(runId, run, name);
+  if (run.mode === "PORTFOLIO_MANAGER") return managerRun(runId, run, messages, name);
+  if (run.mode === "MARKET_REVIEWER" || run.mode === "PORTFOLIO_DIGEST") return oneCallRun(runId, run, name);
   const analyst = await prisma.agentConfig.findUniqueOrThrow({ where: { id: run.agentConfigId! } });
   const thesis = await prisma.thesis.findFirst({
     where: { ticker, researchRun: { agentConfigId: analyst.id }, status: { in: ["WATCHING", "HOLDING"] } },
@@ -91,11 +107,20 @@ async function main() {
   };
 
   let mode: string; let runMode: string; let promptArgs: Record<string, unknown>; const notes: string[] = [];
+  let context: StoredContext[] | undefined;
   if (run.mode === "MORNING_PLAN") {
     mode = "research-run"; runMode = "MORNING_PLAN";
-    const creds = (await resolveAlpacaCredentials(analyst.userId, env)) ?? undefined;
-    promptArgs = { config: briefOf(analyst), runInput: await buildRunInput(analyst.id, analyst.userId, creds) };
-    notes.push("promptArgs.runInput is the account as it is today, not on the run's day; the stock rows the run read are in messages.");
+    // The run's own facts, when it saved its request; else the account as it is today.
+    const saved = await contextOfRun(runId, MORNING_RUN, run.startedAt, run.environment as "PAPER" | "LIVE");
+    if (saved) {
+      context = saved;
+      promptArgs = { now: run.startedAt.toISOString(), environment: run.environment };
+      notes.push("context is what the run was sent on its morning; the analyst's tools are as they are today.");
+    } else {
+      const creds = (await resolveAlpacaCredentials(analyst.userId, env)) ?? undefined;
+      promptArgs = { config: briefOf(analyst), runInput: await buildRunInput(analyst.id, analyst.userId, creds) };
+      notes.push("promptArgs.runInput is the account as it is today, not on the run's day; the stock rows the run read are in messages.");
+    }
   } else if (run.mode === "INTRADAY_TACTICAL") {
     mode = "tactical"; runMode = "INTRADAY_TACTICAL";
     if (!thesis) throw new Error(`no live thesis on ${ticker} for ${analyst.name}`);
@@ -137,13 +162,91 @@ async function main() {
     lookFor: "FILL IN: the question the replay answers.",
     source: { runId, ticker, thesisId, cutBeforeMessage: cut, theRunDid: decided, notes },
     expect: { call: [{ tool: "update_thesis" }], never: [] },
-    mode, runMode, promptArgs, toolCtx, messages: kept,
+    mode, runMode, promptArgs, toolCtx, ...(context ? { context } : {}), messages: kept,
   };
   const file = `scripts/hero-cases/${name}.json`;
   writeFileSync(file, JSON.stringify(out, null, 1));
   console.log(`${file}: ${kept.length} messages kept of ${messages.length}, ${JSON.stringify(kept).length.toLocaleString("en-US")} characters`);
   console.log(`the run then did: ${decided.join(" | ")}`);
   for (const n of notes) console.log(`note: ${n}`);
+}
+
+/** The run's saved request: its main call's record. */
+async function savedRequest(runId: string): Promise<{ parts?: SentPartManifest[]; requests: unknown[] } | null> {
+  const rows = await prisma.runMessage.findMany({ where: { runId, role: "request" }, orderBy: { createdAt: "asc" }, select: { content: true } });
+  const records = rows.map((r) => JSON.parse(r.content) as { call: string; parts?: SentPartManifest[]; requests: unknown[] });
+  return records.find((r) => r.call === "Main") ?? records[0] ?? null;
+}
+
+/**
+ * The facts a run was sent, from its saved request, for the record that built
+ * it; null when it saved none. Prints how the request today's record puts
+ * together from them differs from the one the run sent: nothing, when only
+ * the facts were the day's.
+ */
+async function contextOfRun(runId: string, record: AgentRecord, startedAt: Date, environment: "PAPER" | "LIVE"): Promise<StoredContext[] | null> {
+  const req = await savedRequest(runId);
+  if (!req?.requests?.length) return null;
+  const sent = sentOf(req.requests[0]);
+  const context = req.parts ? contextFromParts(record, sent, req.parts) : contextFromHeadings(record, sent);
+  const { loaded, missing } = loadedFrom(record, context);
+  const today = composeAgentRequest(record, { now: startedAt, environment }, loaded);
+  for (const [what, a, b] of [["instructions", sent.instructions, today.instructions], ["first message", sent.message, today.message]] as const) {
+    if (a === b) { console.log(`${what}: today's ${record.id} sends the run's, character for character`); continue; }
+    let at = 0;
+    while (at < a.length && a[at] === b[at]) at++;
+    console.log(`${what}: today's ${record.id} sends ${b.length.toLocaleString("en-US")} characters against the run's ${a.length.toLocaleString("en-US")}, first different at ${at}: "${a.slice(at, at + 60).replace(/\n/g, "⏎")}" → "${b.slice(at, at + 60).replace(/\n/g, "⏎")}"`);
+  }
+  if (missing.length) console.log(`note: today's ${record.id} reads ${missing.join(", ")}, which the run wasn't sent`);
+  return context;
+}
+
+/**
+ * A Portfolio Manager run: cut before its first decision (a trade, a research
+ * request, or its write-up, a reply with no call). The replay goes on until
+ * its write-up.
+ */
+async function managerRun(runId: string, run: { startedAt: Date; environment: string }, messages: Msg[], name: string) {
+  const context = await contextOfRun(runId, PORTFOLIO_MANAGER, run.startedAt, run.environment as "PAPER" | "LIVE");
+  if (!context) throw new Error("no saved request on this run");
+  const cut = messages.findIndex((m) => m.role === "assistant" && Array.isArray(m.content) && (m.content.some((p) => p.type === "tool-call" && DECIDING.has(p.toolName ?? "")) || !m.content.some((p) => p.type === "tool-call")));
+  if (cut <= 0) throw new Error("no decision in this run");
+  const did = messages.slice(cut).flatMap((m) => (m.role === "assistant" && Array.isArray(m.content) ? m.content : [])).filter((p) => p.type === "tool-call").map((p) => `${p.toolName} ${JSON.stringify(p.input).slice(0, 160)}`);
+  const out = {
+    what: `${etDateOf(run.startedAt)}, a Portfolio Manager run ${runId} on the ${run.environment} book. FILL IN: what the decision point is.`,
+    lookFor: "FILL IN: the question the replay answers.",
+    why: "FILL IN: the instruction that makes the expected answer right.",
+    source: { runId, cutBeforeMessage: cut, theRunDid: did.length ? did : ["its write-up, no call"], notes: ["context is what the run was sent; a get_theses again is answered from the recorded read."] },
+    expect: {},
+    mode: "portfolio-manager", runMode: "PORTFOLIO_MANAGER",
+    promptArgs: { now: run.startedAt.toISOString(), environment: run.environment },
+    toolCtx: {}, context, messages: messages.slice(0, cut),
+  };
+  const file = `scripts/hero-cases/${name}.json`;
+  writeFileSync(file, JSON.stringify(out, null, 1));
+  console.log(`${file}: ${cut} messages kept of ${messages.length}; the run then did: ${out.source.theRunDid.join(" | ")}`);
+}
+
+/** A Market Reviewer or portfolio digest run: one call, its facts and the rest of its body as saved. */
+async function oneCallRun(runId: string, run: { mode: string; startedAt: Date; environment: string }, name: string) {
+  const reviewer = run.mode === "MARKET_REVIEWER";
+  const record = reviewer ? MARKET_REVIEWER : PORTFOLIO_DIGEST;
+  const req = await savedRequest(runId);
+  const context = await contextOfRun(runId, record, run.startedAt, run.environment as "PAPER" | "LIVE");
+  if (!req || !context) throw new Error("no saved request on this run");
+  // The body as sent, less what the replay sends itself: the model and the messages.
+  const { model: _model, messages: _messages, input: _input, ...sent } = req.requests[0] as Record<string, unknown>;
+  const out = {
+    what: `${etDateOf(run.startedAt)}, the ${reviewer ? "Market Reviewer" : "portfolio digest"} run ${runId} on the ${run.environment} book.`,
+    lookFor: reviewer ? "The digest and its notes keep the rules of its instructions: its six sections, its numbers sourced, nothing on a waiting proposal." : "The digest keeps the rules of its instructions: every waiting proposal with a view, nothing invented, no advice on the cash.",
+    source: { runId, notes: [reviewer ? "the replay's web search reads today's web, not the run's day." : "the replay is sent what the run was sent."] },
+    mode: reviewer ? "market-reviewer" : "portfolio-digest", runMode: run.mode,
+    promptArgs: { now: run.startedAt.toISOString(), environment: run.environment },
+    toolCtx: {}, context, sent, messages: [],
+  };
+  const file = `scripts/hero-cases/${name}.json`;
+  writeFileSync(file, JSON.stringify(out, null, 1));
+  console.log(`${file}: ${context.filter((c) => c.text != null).length} facts, ${JSON.stringify(context).length.toLocaleString("en-US")} characters`);
 }
 
 /** The analyst as the brief reads it (lib/agent/analyst-brief.ts), money columns as numbers. */
