@@ -86,7 +86,9 @@ describe("the morning run", () => {
     net.restore();
     const [main, ...more] = kept(db);
     expect(main.runId).toBe((db.store.researchRun as Array<{ id: string }>)[0].id);
-    expect(main.record).toMatchObject({ call: "Main", source: "morning-research", model: "gpt-5.4" });
+    expect(main.record).toMatchObject({ call: "Main", agent: "morning_run", source: "morning-research", model: "gpt-5.4" });
+    // The agent is in the row's first characters, where the Framework page looks for it.
+    expect(((db.store.runMessage ?? []) as Kept[]).find((m) => m.role === "request")!.content.startsWith('{"v":1,"call":"Main","agent":"morning_run",')).toBe(true);
     expect(asSent(main.record)).toEqual([net.sent[0]]);
     // The run's retry, when it made one, keeps its own first request.
     for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
@@ -136,7 +138,7 @@ describe("a trigger run", () => {
     const [main, ...more] = kept(db);
     expect(more).toEqual([]);
     expect(main.runId).toBe((db.store.researchRun as Array<{ id: string }>)[0].id);
-    expect(main.record).toMatchObject({ call: "Main", source: "tactical-run", model: "gpt-5.4" });
+    expect(main.record).toMatchObject({ call: "Main", agent: "trigger_run", source: "tactical-run", model: "gpt-5.4" });
     expect(asSent(main.record)).toEqual([net.sent[0]]);
     // The agent engine built it: Context shows each part by name, the fire's facts opening the first message.
     expect(main.record.parts?.length).toBeGreaterThan(0);
@@ -193,7 +195,7 @@ describe("the chat", () => {
     const [only, ...more] = kept(db);
     expect(more).toEqual([]);
     expect(only.runId).toBe(runs[0].id);
-    expect(only.record).toMatchObject({ call: "Message", source: "agent/principal", model: "claude-sonnet-4-6" });
+    expect(only.record).toMatchObject({ call: "Message", agent: "chat", source: "agent/principal", model: "claude-sonnet-4-6" });
     expect(asSent(only.record)).toEqual([net.sent[1]]);
     const categories = view!(only.record).categories;
     // Its instructions one row per part of its record, the conversation as it was, then the newest message: what rides on it, each part named, then your words.
@@ -264,7 +266,7 @@ describe("the Writer", () => {
     net.restore();
     const records = runMessage.filter((m) => m.role === "request").map((m) => ({ runId: m.runId, record: JSON.parse(m.content) as RequestRecord }));
     expect(records[0].runId).toBe("writer_child_dyn");
-    expect(records[0].record).toMatchObject({ call: "Research", source: "thesis-writer", model: "claude-sonnet-4-6" });
+    expect(records[0].record).toMatchObject({ call: "Research", agent: "writer", source: "thesis-writer", model: "claude-sonnet-4-6" });
     expect(asSent(records[0].record)).toEqual([net.sent[0]]);
     // The agent engine built it: the record keeps which part is which, and Context shows each by name.
     expect(records[0].record.parts?.length).toBeGreaterThan(0);

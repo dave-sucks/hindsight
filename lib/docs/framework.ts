@@ -3,15 +3,16 @@
  * deploy runs. Every agent is read from its record (lib/agent/engine/agents),
  * the same way for each: its parts in the record's order, a block's title and
  * line from the library (lib/agent/engine/blocks.ts), and each part sized from
- * the request the engine built on the agent's sample day
- * (./agent-samples.ts): the manifest that request names its parts with. Its
- * tools are the record's, measured the way they are sent (each tool's
- * description and its JSON schema). The situation texts are the SITUATIONS
- * table itself.
+ * the latest request the account's runs saved for that agent: the manifest
+ * the run kept with it (lib/agent/run-requests.ts), the same numbers the
+ * run's Context panel shows. An agent with no saved run yet is sized on its
+ * sample day (./agent-samples.ts), and the page says which. Its tools are the
+ * record's. The situation texts are the SITUATIONS table itself.
  *
- * Built once per server instance; a deploy that changes a record changes the
- * page. A sample that can't be built leaves that agent's parts unsized and
- * says so, rather than the page failing.
+ * The records and samples are built once per server instance (a deploy that
+ * changes a record changes the page); the runs are read on each request. A
+ * sample that can't be built leaves that agent unsized and says so, rather
+ * than the page failing.
  */
 
 import { zodSchema } from "ai";
@@ -19,7 +20,10 @@ import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
 import { BLOCKS } from "@/lib/agent/engine/blocks";
 import { isOwn, type AgentRecord, type BuiltNewest, type BuiltRequest, type RecordPart, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
-import { byParts } from "@/lib/agent/run-requests";
+import { getAccountId } from "@/lib/auth/account";
+import { REQUEST_ROLE, byParts, viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
+import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { createResearchTools } from "@/lib/agent/tools";
 import { AGENT_SAMPLES } from "./agent-samples";
@@ -164,7 +168,7 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
     model: record.model,
     maxSteps: record.maxSteps,
     output: record.output,
-    sample: sample && !foreign ? sample.from : null,
+    sizedOn: sample && !foreign ? { kind: "sample", from: sample.from } : null,
     parts,
     tools: {
       names: [...record.tools],
@@ -190,7 +194,84 @@ function measure(): FrameworkData {
 
 let cached: FrameworkData | null = null;
 
+/** Every agent read from its record and sized on its sample day; built once per server instance. */
 export function buildFrameworkData(): FrameworkData {
   cached ??= measure();
   return cached;
+}
+
+/** What a run kept that sizes an agent: when, which run, its parts as named, and its tool menu as the Context panel counts it. */
+export interface RunSizes {
+  at: string;
+  runId: string;
+  parts: SentPartManifest[];
+  toolChars: number | null;
+}
+
+/** The sizes in one saved request record, as its run's Context panel reads them. */
+export function runSizesOf(record: RequestRecord, at: Date, runId: string): RunSizes {
+  const menu = viewOfRecord(record).categories.find((c) => c.part === "tools");
+  return { at: at.toISOString(), runId, parts: record.parts ?? [], toolChars: menu?.chars ?? null };
+}
+
+/** An agent sized on a run: each part the run's manifest names, the tool menu as that run sent it. */
+export function sizedOnRun(agent: FrameworkAgent, run: RunSizes): FrameworkAgent {
+  const sent = new Map(run.parts.filter((p) => p.chars > 0).map((p) => [keyOf(p.where, p.id), p.chars]));
+  const listed = new Set(agent.parts.map((p) => keyOf(p.where, p.id)));
+  return {
+    ...agent,
+    sizedOn: { kind: "run", at: run.at, runId: run.runId, gone: run.parts.filter((p) => p.chars > 0 && !listed.has(keyOf(p.where, p.id))).map((p) => p.title) },
+    parts: agent.parts.map((p) => ({ ...p, chars: sent.get(keyOf(p.where, p.id)) ?? null })),
+    tools: { ...agent.tools, chars: run.toolChars, unmeasured: [] },
+  };
+}
+
+/**
+ * Each agent's latest request the account's runs saved with its agent named
+ * (RequestRecord.agent, written right after `call`, so only each row's first
+ * characters are read to find it); then just those rows are loaded.
+ */
+async function latestRuns(accountId: string): Promise<Map<string, RunSizes>> {
+  const latest = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT DISTINCT ON (agent) id FROM (
+      SELECT m.id, m."createdAt", substring(left(m.content, 200) from '"agent":"([a-z_]+)"') AS agent
+      FROM "RunMessage" m JOIN "ResearchRun" r ON r.id = m."runId"
+      WHERE m.role = ${REQUEST_ROLE} AND r."accountId" = ${accountId}
+    ) x
+    WHERE agent IS NOT NULL
+    ORDER BY agent, "createdAt" DESC`;
+  if (!latest.length) return new Map();
+  const rows = await prisma.runMessage.findMany({ where: { id: { in: latest.map((r) => r.id) } }, select: { content: true, createdAt: true, runId: true } });
+  const out = new Map<string, RunSizes>();
+  for (const row of rows) {
+    try {
+      const record = JSON.parse(row.content) as RequestRecord;
+      if (record.agent && record.parts?.length) out.set(record.agent, runSizesOf(record, row.createdAt, row.runId));
+    } catch {
+      // A record that doesn't read leaves its agent on its sample.
+    }
+  }
+  return out;
+}
+
+/**
+ * The page's data for the signed-in account: every agent sized on its latest
+ * saved run where there is one, else on its sample day. A read that fails
+ * leaves every agent on its sample, and says so in the server log.
+ */
+export async function loadFrameworkData(): Promise<FrameworkData> {
+  const base = buildFrameworkData();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const accountId = user ? await getAccountId(user.id) : null;
+    if (!accountId) return base;
+    const runs = await latestRuns(accountId);
+    return { ...base, agents: base.agents.map((a) => (runs.has(a.id) ? sizedOnRun(a, runs.get(a.id)!) : a)) };
+  } catch (err) {
+    console.warn(`[framework] the agents' latest runs couldn't be read: ${err instanceof Error ? err.message : err}`);
+    return base;
+  }
 }

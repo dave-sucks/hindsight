@@ -403,7 +403,7 @@ export const morningResearch = inngest.createFunction(
             // triggerInputSchema): the same request cached 71% before and
             // 97% after. Chat Completions is kept; it cached the head
             // further than Responses did in that probe.
-            model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Main", source: "morning-research", parts: request.parts }),
+            model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Main", source: "morning-research", parts: request.parts, agent: request.agent }),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
@@ -732,7 +732,7 @@ export const morningResearch = inngest.createFunction(
             const runRetry = async (messages: any[]): Promise<number> => {
               const retry = await generateText({
                 // Same model as the main run — switches with research-run config.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research", parts: request.parts }),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research", parts: request.parts, agent: request.agent }),
                 system: systemPrompt,
                 messages,
                 tools,
@@ -1059,7 +1059,7 @@ export const morningResearch = inngest.createFunction(
             try {
               const recoveryResp = await generateText({
                 // Same model as the main run.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research", parts: request.parts }),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research", parts: request.parts, agent: request.agent }),
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +

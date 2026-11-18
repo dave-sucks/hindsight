@@ -43,7 +43,7 @@
 import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
 import { WRITER, WEB_SEARCH_MAX_USES, type WriterExtra } from "@/lib/agent/engine/agents/writer";
-import type { BuiltRequest, SentPartManifest } from "@/lib/agent/engine/types";
+import type { AgentId, BuiltRequest, SentPartManifest } from "@/lib/agent/engine/types";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
@@ -621,6 +621,8 @@ export interface WriterResearchPhaseOutput {
   systemPrompt?: string;
   /** Which part of the research request is which (the agent engine's), kept with the retry's request too. */
   requestParts?: SentPartManifest[];
+  /** The agent whose record built it, kept with the retry's request too. */
+  requestAgent?: AgentId;
   stepCount: number;
   toolCallCount: number;
   submitAttempts: number;
@@ -736,7 +738,7 @@ export async function writerResearchPhase(
 
 
     const modeConfig = MODES["thesis-writer"];
-    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer", parts: request.parts });
+    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer", parts: request.parts, agent: request.agent });
 
     let accepted: ValidatedThesisDecision | null = null;
     let submitAttempts = 0;
@@ -907,6 +909,7 @@ export async function writerResearchPhase(
         pullOutput,
         systemPrompt,
         requestParts: request.parts,
+        requestAgent: request.agent,
         userPrompt,
         noteText,
         analyst,
@@ -934,6 +937,7 @@ export async function writerResearchPhase(
       userPrompt,
       systemPrompt,
       requestParts: request.parts,
+      requestAgent: request.agent,
       stepCount,
       toolCallCount,
       submitAttempts,
@@ -1502,6 +1506,7 @@ async function resubmitWithFeedback(input: {
   pullOutput: WriterPullPhaseOutput;
   systemPrompt: string | undefined;
   requestParts?: SentPartManifest[];
+  requestAgent?: AgentId;
   userPrompt: string;
   noteText: string;
   analyst: WriterAnalyst;
@@ -1539,7 +1544,7 @@ async function resubmitWithFeedback(input: {
     },
   });
   const modeConfig = MODES["thesis-writer"];
-  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer", parts: input.requestParts });
+  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer", parts: input.requestParts, agent: input.requestAgent });
   try {
     const res = await generateText({
       model,
@@ -1668,6 +1673,7 @@ export async function writerPersistPhase(
             pullOutput,
             systemPrompt: research.systemPrompt,
             requestParts: research.requestParts,
+            requestAgent: research.requestAgent,
             userPrompt: research.userPrompt,
             noteText: research.noteText,
             analyst,

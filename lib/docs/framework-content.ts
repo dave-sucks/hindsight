@@ -31,7 +31,7 @@ export interface FrameworkPart {
   source: string;
   /** Its own words, written for each run (a date, the account) rather than one fixed text. */
   perRun?: boolean;
-  /** Characters on the sample; null when the sample didn't send it (it goes only on some runs). */
+  /** Characters on what it is sized on (its run, or its sample); null when that didn't send it (it goes only on some runs). */
   chars: number | null;
   swatch: PartId;
 }
@@ -45,8 +45,12 @@ export interface FrameworkAgent {
   model: string;
   maxSteps: number;
   output: string;
-  /** The case its sample request is built on, in a few words; null when it has none (its parts are then unsized). */
-  sample: string | null;
+  /**
+   * What its sizes are from: its latest request the account's runs saved with
+   * its parts named (`gone`: parts that run sent that its record no longer
+   * lists), else its sample day (the case, in a few words), else nothing.
+   */
+  sizedOn: { kind: "run"; at: string; runId: string; gone: string[] } | { kind: "sample"; from: string } | null;
   parts: FrameworkPart[];
   /** Its tools by name; their menu in characters (each tool's description and schema, as sent), over the ones measured here. */
   tools: { names: string[]; chars: number | null; unmeasured: string[]; provider: string[] };

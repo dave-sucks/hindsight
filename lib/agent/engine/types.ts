@@ -129,6 +129,8 @@ export interface SentPartManifest {
 }
 
 export interface BuiltRequest {
+  /** The record it was built from: the run keeps it with what it sent (RequestRecord.agent). */
+  agent: AgentId;
   instructions: string;
   message: string;
   /** Every part, in order: its instructions first, then its first message. */
@@ -138,6 +140,8 @@ export interface BuiltRequest {
 
 /** What rides on a conversation's newest message: each text in order, and its parts named. */
 export interface BuiltNewest {
+  /** The record it was built from. */
+  agent: AgentId;
   texts: string[];
   parts: SentPartManifest[];
 }

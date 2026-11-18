@@ -63,16 +63,16 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
           <Shelf icon={Layers} title="Situation guidance" size={`${fmt(Math.min(...data.situations.map((s) => s.chars)))}–${fmt(Math.max(...data.situations.map((s) => s.chars)))} each`}>
             The text for a flag that&apos;s up, attached once to the read.
           </Shelf>
-          <Shelf icon={ListChecks} title="Setup lines" size="a few lines">
+          <Shelf icon={ListChecks} title="Setup lines">
             How the stock&apos;s setup fails and how to manage it, on the rows where the decision turns on it.
           </Shelf>
-          <Shelf icon={BookOpen} title="A full row, by name" size="~20,000">
+          <Shelf icon={BookOpen} title="A full row, by name">
             The whole thesis with its research, when an agent asks for one stock.
           </Shelf>
-          <Shelf icon={FileSearch} title="The writer's report" size="one stock">
+          <Shelf icon={FileSearch} title="The writer's report">
             The morning run or the chat can start the writer on a stock and read what it wrote.
           </Shelf>
-          <Shelf icon={Wrench} title="Data on request" size="per call">
+          <Shelf icon={Wrench} title="Data on request">
             News, earnings, filings, charts and the web, pulled with a tool. The result joins the conversation.
           </Shelf>
         </div>
@@ -80,7 +80,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
 
       <footer className="flex flex-wrap justify-between gap-2 border-t pt-6 text-xs text-muted-foreground">
         <span>Every agent&apos;s parts, tools and model are read from its record on this deploy, and the situation texts from their one table.</span>
-        <span>The sizes are each agent&apos;s request built on a sample day, from the cases its engine tests use.</span>
+        <span>Each agent is sized on its latest saved run, the numbers its run&apos;s Context panel shows; one with no saved run yet, on a sample day.</span>
       </footer>
     </div>
   );
@@ -98,13 +98,14 @@ function Block({ id, eyebrow, lead, rest, children }: { id?: string; eyebrow: st
   );
 }
 
-function Shelf({ icon: Icon, title, size, children }: { icon: typeof Layers; title: string; size: string; children: ReactNode }) {
+/** One piece added only when needed; `size` only where the code gives one. */
+function Shelf({ icon: Icon, title, size, children }: { icon: typeof Layers; title: string; size?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-dashed bg-card p-5">
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-muted-foreground" />
         <span className="text-sm font-medium text-foreground">{title}</span>
-        <Mono className="ml-auto text-xs text-muted-foreground">{size}</Mono>
+        {size ? <Mono className="ml-auto text-xs text-muted-foreground">{size}</Mono> : null}
       </div>
       <p className="text-sm text-muted-foreground">{children}</p>
     </div>

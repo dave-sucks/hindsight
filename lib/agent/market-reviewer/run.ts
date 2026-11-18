@@ -208,7 +208,7 @@ export async function writeMarketReview(
   const done = (digest: string | null, notes: ReviewNote[], searches: string[], usage: ReviewUsage | null, error?: string) => {
     const said = [...(usage || searches.length ? [searchedLine(searches, usage)] : []), ...(digest ? [digest] : []), ...notes.map((note) => noteText(note, now))];
     return {
-      request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
+      request: { v: 1 as const, call: "Main", agent: built.agent, source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
       thread: [body.input[1], ...(said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [])],
       digest,
       notes,

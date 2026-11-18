@@ -709,7 +709,7 @@ export const tacticalRun = inngest.createFunction(
       const openaiOptions = { strictJsonSchema: true, promptCacheKey: run.id };
       try {
         const { steps, response } = await generateText({
-          model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Main", source: "tactical-run", parts: request.parts }),
+          model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Main", source: "tactical-run", parts: request.parts, agent: request.agent }),
           system: systemPrompt,
           prompt: userPrompt,
           tools,
@@ -787,7 +787,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const retryResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run", parts: request.parts }),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run", parts: request.parts, agent: request.agent }),
               system: systemPrompt,
               messages: [
                 {
@@ -882,7 +882,7 @@ export const tacticalRun = inngest.createFunction(
           );
           try {
             const refusalResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run", parts: request.parts }),
+              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run", parts: request.parts, agent: request.agent }),
               system: systemPrompt,
               messages: [
                 { role: "user", content: [{ type: "text", text: userPrompt }] },

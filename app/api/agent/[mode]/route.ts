@@ -21,7 +21,7 @@ import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
 import { analystToolSettings, type AnalystToolSettings } from "@/lib/agent/tool-context";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
-import type { SentPartManifest } from "@/lib/agent/engine/types";
+import type { AgentId, SentPartManifest } from "@/lib/agent/engine/types";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -186,6 +186,8 @@ export async function POST(
     let systemPrompt: string;
     // The parts of the instructions, when the agent engine built them (the conversation is the person's).
     let systemParts: SentPartManifest[] | undefined;
+    // The agent whose record built them, kept with the request.
+    let systemAgent: AgentId | undefined;
     // The analyst's fence and limits the tools enforce: the body's when no
     // analyst row is loaded, else the row's (analystToolSettings).
     let agentConfig: AnalystToolSettings = (config as AnalystToolSettings) || {};
@@ -245,6 +247,7 @@ export async function POST(
       );
       systemPrompt = daily.instructions;
       systemParts = daily.parts.filter((p) => p.where === "instructions");
+      systemAgent = daily.agent;
 
     } else if (agentMode === "builder") {
       systemPrompt = BUILDER_SYSTEM_PROMPT;
@@ -492,6 +495,7 @@ export async function POST(
       );
       systemPrompt = chat.instructions;
       systemParts = chat.parts;
+      systemAgent = chat.agent;
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
@@ -792,7 +796,7 @@ export async function POST(
       : modeConfig.model;
     const effectiveProvider = effectiveModel.startsWith("claude") ? "anthropic" : "openai";
 
-    const resolvedModel = modelFor(effectiveModel, { runId, call: "Message", source: `agent/${agentMode}`, replace: true, parts: systemParts });
+    const resolvedModel = modelFor(effectiveModel, { runId, call: "Message", source: `agent/${agentMode}`, replace: true, parts: systemParts, agent: systemAgent });
 
     // Every request of this turn, recorded on the run row in onFinish and
     // added to the turns before it (token-usage.ts). Builder and editor

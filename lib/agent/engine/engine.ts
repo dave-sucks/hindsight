@@ -69,6 +69,7 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
   const message = printParts(record, record.message, "message", input, loaded);
   const join = (ps: Printed[]) => ps.map((p) => p.manifest.sep + p.text).join("");
   return {
+    agent: record.id,
     instructions: join(instructions),
     message: join(message),
     parts: [...instructions, ...message].map((p) => p.manifest),
@@ -92,7 +93,7 @@ export function composeNewest(record: AgentRecord, input: AgentInput, loaded: Lo
     if (p.continuesGroup && texts.length) texts[texts.length - 1] += p.manifest.sep + p.text;
     else texts.push(p.text);
   }
-  return { texts, parts: printed.map((p) => p.manifest) };
+  return { agent: record.id, texts, parts: printed.map((p) => p.manifest) };
 }
 
 interface Printed {

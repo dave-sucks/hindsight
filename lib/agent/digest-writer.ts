@@ -53,7 +53,7 @@ export async function writeDigestNarrative(
   const done = (narrative: string, model: string, error?: string): DigestWriterResult => ({
     narrative,
     model,
-    request: { v: 1, call: "Main", source: "portfolio-digest", model: DIGEST_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
+    request: { v: 1, call: "Main", agent: built.agent, source: "portfolio-digest", model: DIGEST_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
     thread: [body.messages[1], { role: "assistant", content: [{ type: "text", text: narrative }] }],
   });
 

@@ -12,8 +12,9 @@ import { AGENTS } from "@/lib/agent/engine/agents";
 import { BLOCKS } from "@/lib/agent/engine/blocks";
 import { isOwn } from "@/lib/agent/engine/types";
 import { MODES } from "@/lib/agent/modes";
+import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { AGENT_SAMPLES } from "./agent-samples";
-import { buildFrameworkData, openingOf } from "./framework";
+import { buildFrameworkData, openingOf, runSizesOf, sizedOnRun } from "./framework";
 import { blocksByRarity } from "./framework-content";
 import { loadGuide } from "./guide";
 import { parseDoc } from "./guide-parse";
@@ -27,8 +28,38 @@ describe("the framework page's agents", () => {
     expect(data.agents.map((a) => a.id)).toEqual(AGENTS.map((r) => r.id));
   });
 
-  it("builds every agent on its sample day", () => {
-    for (const a of data.agents) expect([a.id, a.sample]).toEqual([a.id, expect.any(String)]);
+  it("builds every agent on its sample day, until a run of it is read", () => {
+    for (const a of data.agents) expect([a.id, a.sizedOn]).toEqual([a.id, { kind: "sample", from: expect.any(String) }]);
+  });
+
+  /** A saved record of the agent's sample request, as a run keeps it: the body as sent, the manifest beside it. */
+  const savedRecord = (record: (typeof AGENTS)[number]): RequestRecord => {
+    const { request, newest } = AGENT_SAMPLES[record.id]!.build(record);
+    const messages = [
+      { role: "system", content: request.instructions },
+      ...(request.message ? [{ role: "user", content: request.message }] : []),
+      ...(newest ? [{ role: "user", content: `${newest.texts.join("\n\n")}\n\nWhy hold it?` }] : []),
+    ];
+    const tools = record.tools.map((name) => ({ type: "function", function: { name, description: `What ${name} does.`, parameters: { type: "object" } } }));
+    return { v: 1, call: "Main", agent: record.id, source: "test", model: record.model, startedAt: "", endedAt: "", requests: [{ messages, tools }], parts: [...request.parts, ...(newest?.parts ?? [])] };
+  };
+
+  it.each(AGENTS.map((r) => [r.id, r] as const))("%s: sized on a saved run, its parts, sizes and colors are the ones that run's Context panel shows", (_, record) => {
+    const saved = savedRecord(record);
+    const agent = sizedOnRun(byId.get(record.id)!, runSizesOf(saved, new Date("2026-11-17T20:55:00Z"), "run_1"));
+    const panel = viewOfRecord(saved).categories;
+    expect(agent.sizedOn).toEqual({ kind: "run", at: "2026-11-17T20:55:00.000Z", runId: "run_1", gone: [] });
+    expect(agent.parts.filter((p) => p.chars != null).map((p) => [p.title, p.chars, p.swatch])).toEqual(panel.filter((c) => c.part && c.part !== "tools").map((c) => [c.name, c.chars, c.part]));
+    expect(agent.tools.chars).toBe(panel.find((c) => c.part === "tools")?.chars ?? null);
+  });
+
+  it("a part the run didn't send has no size, and one it sent that the record no longer lists is named", () => {
+    const pm = byId.get("portfolio_manager")!;
+    const run = { at: "2026-11-17T20:55:00.000Z", runId: "run_1", toolChars: 100, parts: [{ id: "role", title: "Its role", kind: "own" as const, where: "instructions" as const, source: "x", chars: 181 }, { id: "old_part", title: "An old part", kind: "own" as const, where: "instructions" as const, source: "x", chars: 50 }] };
+    const sized = sizedOnRun(pm, run);
+    expect(sized.parts.find((p) => p.id === "role")!.chars).toBe(181);
+    expect(sized.parts.filter((p) => p.id !== "role").every((p) => p.chars == null)).toBe(true);
+    expect(sized.sizedOn).toMatchObject({ kind: "run", gone: ["An old part"] });
   });
 
   it.each(AGENTS.map((r) => [r.id, r] as const))("%s: its parts are its record's, in order; a block's title and line are the library's", (_, record) => {

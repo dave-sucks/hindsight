@@ -98,7 +98,7 @@ export async function runPortfolioManager(
   const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
   try {
     const { steps, response, text } = await generateText({
-      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager", parts: request.parts }),
+      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager", parts: request.parts, agent: request.agent }),
       system: request.instructions,
       prompt: firstMessage,
       tools: real,
