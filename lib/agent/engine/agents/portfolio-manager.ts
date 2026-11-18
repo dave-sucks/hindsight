@@ -50,7 +50,6 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
   id: "portfolio_manager",
   name: "Portfolio Manager",
   does: "Looks across the whole account and may propose up to three trades, each waiting for you.",
-  runsWhen: "Tuesday and Thursday at 10:00 AM ET, one run per traded book.",
   messageFrom: "The schedule, which writes it no message: the date line is its start.",
   // The morning runs' model.
   model: MODES["research-run"].model,
