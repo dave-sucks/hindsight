@@ -20,12 +20,11 @@ import type { TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
 import { withRunLimits } from "@/lib/agent/portfolio-manager/limits";
 import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
-import { runAgent } from "@/lib/agent/engine/run";
+import { runAgent, type AgentRun, type AgentToRun, type RunAgentArgs } from "@/lib/agent/engine/run";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
 /** The RunEvent that keeps a run's write-up. */
 export const WRITEUP_EVENT = "portfolio_writeup";
-export const MANAGER_MODEL = PORTFOLIO_MANAGER.model;
 
 export interface ManagerBook {
   accountId: string;
@@ -61,16 +60,16 @@ export interface ManagerResult {
 }
 
 /**
- * The run: its record through the agent runner (lib/agent/engine/run.ts).
- * Saves nothing itself beyond what its tools save: the job keeps the thread
- * and the write-up. `tools` lets a dry run swap the writes for ones that save
- * nothing. Never throws.
+ * What its run is given, for the agent runner (lib/agent/engine/run.ts): the
+ * blocks' reads (the Market and portfolio block, its last write-up) and the
+ * tools made for the run, under its limits. `tools` lets a dry run swap the
+ * writes for ones that save nothing.
  */
-export async function runPortfolioManager(
+export async function managerArgs(
   book: ManagerBook,
   runId: string | null,
   opts: { now?: Date; tools?: (real: ToolSet) => ToolSet } = {},
-): Promise<ManagerResult> {
+): Promise<Omit<RunAgentArgs, "runId">> {
   const now = opts.now ?? new Date();
   const alpacaCreds = await resolveAlpacaCredentials(book.userId, book.environment);
   const toolset = createResearchTools({
@@ -82,18 +81,43 @@ export async function runPortfolioManager(
     alpacaCreds: alpacaCreds ?? undefined,
   }) as ToolSet;
   const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
-  const run = await runAgent(PORTFOLIO_MANAGER, {
+  return {
     input: { now, environment: book.environment },
     sources: {
       portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
       context: { the_book: () => loadBook(book), last_output: async () => `## Your last write-up\n${await lastWriteup(book)}` },
     },
-    runId,
     toolset,
     // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
     wrapTools: (mine) => withRunLimits(opts.tools ? opts.tools(mine) : mine, tickerOf),
     source: "portfolio-manager",
-  });
+  };
+}
+
+/** Its write-up, kept on the run for its next run to read first. */
+export async function keepWriteup(runId: string, done: AgentRun): Promise<void> {
+  if (done.text) await prisma.runEvent.create({ data: { runId, type: WRITEUP_EVENT, title: "Portfolio Manager write-up", message: done.text } });
+}
+
+/** The Portfolio Manager as the runner runs it on its own, one saved run per book (runAgentAsRun). */
+export const PORTFOLIO_MANAGER_RUN: AgentToRun = {
+  record: PORTFOLIO_MANAGER,
+  mode: MANAGER_RUN_MODE,
+  args: (book, runId) => managerArgs(book, runId),
+  keep: keepWriteup,
+};
+
+/**
+ * The run with no run row of its own (a dry run, the wire test): its record
+ * through the agent runner. Saves nothing itself beyond what its tools save.
+ * Never throws.
+ */
+export async function runPortfolioManager(
+  book: ManagerBook,
+  runId: string | null,
+  opts: { now?: Date; tools?: (real: ToolSet) => ToolSet } = {},
+): Promise<ManagerResult> {
+  const run = await runAgent(PORTFOLIO_MANAGER, { ...(await managerArgs(book, runId, opts)), runId });
   const { request, text, ...rest } = run;
   return {
     ...rest,
