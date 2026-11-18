@@ -20,7 +20,7 @@ Two more things are in every request, and neither is a part an agent chooses:
 **The shared texts (5):**
 - `house_rules`: the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it (`house-rules.ts`).
 - `how_you_write` (`voice.ts`).
-- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, the stocks it may cover), its playbooks a line each (`analyst-brief.ts`).
+- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, and its fence where it narrows: some sectors, a market-cap band, exclusions), its playbooks a line each (`analyst-brief.ts`).
 - `playbooks`: the analyst's playbooks in full, for the Writer and, on a review of a stock we watch, the trigger run (`knowledge/playbooks.ts`).
 - `research_rules`: the Writer's five rule texts as one, for the Writer and the Holding refresh (`thesis-research/writer-rules.ts`).
 
@@ -91,6 +91,8 @@ The simple-records step made each agent's own text one fixed string and put ever
 - The Portfolio Manager's `watching` → the book; `last_writeup` → its last output. Its Market and portfolio reads move from its instructions to its first message, as every agent's do.
 - The Market Reviewer's beliefs → the book; its notes and last digest → its last output.
 - `market_block_rule` → back into the house rules.
+
+Measured on the way (`scripts/hero-case.ts`, the morning set, 4 runs a case): printing an unfenced analyst's three fence lines ("every sector", "no bound", "(none)") to every agent took the morning set from 5 of 12 to 2 of 12; printing the fence only where it narrows brought it back to 5 of 12. The fire message keeps the trigger's declared action, which the trigger run's instructions act on, and the morning kickoff keeps the cash when the snapshot can't be read, which the regime line used to say.
 
 Two measured placements stay: the analyst opens the instructions of the agents that work for one (the morning run's MU case), and the stock's situations end the instructions (the trigger run's NVDA case: 6 of 6 there, 3 of 6 in the message).
 

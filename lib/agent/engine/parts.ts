@@ -28,7 +28,7 @@ export const SHARED: Record<SharedId, PartDef> = {
   },
   the_analyst: {
     title: "The analyst",
-    about: "The analyst it works for: its strategy in its own words, its rules (direction, hold style, size, slots, the stocks it may cover) and its playbooks, a line each.",
+    about: "The analyst it works for: its strategy in its own words, its rules (direction, hold style, size, slots, and the stocks it may cover where its fence narrows them) and its playbooks, a line each.",
     source: "lib/agent/analyst-brief.ts",
   },
   playbooks: {
