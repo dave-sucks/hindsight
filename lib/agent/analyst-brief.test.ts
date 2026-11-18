@@ -15,7 +15,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
-import { analystBrief, playbookChecks, universeLines, type BriefAnalyst } from "@/lib/agent/analyst-brief";
+import { analystBrief, fenceLines, playbookChecks, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
@@ -98,7 +98,6 @@ describe("the Catalyst Event PM's brief", () => {
           "- Max open positions: 5",
           "- Sectors: Health Care, Information Technology",
           "- Market cap: $0.5B – $20B",
-          "- Exclusions: (none)",
         ].join("\n"),
         [
           "Playbooks:",
@@ -115,7 +114,7 @@ describe("the Catalyst Event PM's brief", () => {
     // The cron once passed the slots left in the limit's place, and a
     // half-full analyst read as full (2026-09-18). The brief reads the row.
     const withRoom = analystBrief(CATALYST, { open: 3, max: CATALYST.maxOpenPositions, held: ["MRNA", "IONS"], awaitingApproval: 1 });
-    expect(withRoom).toContain("- Exclusions: (none)\n- Positions: 3 of 5 — 2 free. It holds $MRNA, $IONS. 1 buy awaiting your approval already took a slot.");
+    expect(withRoom).toContain("- Market cap: $0.5B – $20B\n- Positions: 3 of 5 — 2 free. It holds $MRNA, $IONS. 1 buy awaiting your approval already took a slot.");
     expect(withRoom.replace(/\n- Positions: [^\n]*/, "")).toBe(brief);
   });
 
@@ -172,16 +171,17 @@ describe("every door reads the same brief, once", () => {
     for (const door of Object.keys(DOORS) as Array<keyof typeof DOORS>) for (const g of gone) expect([door, g, prompts[door].includes(g)]).toEqual([door, g, false]);
   });
 
-  it("the chat shows the fence, from one function", () => {
-    const fence = universeLines(CATALYST);
-    expect(fence).toEqual([
-      "Sectors: Health Care, Information Technology",
-      "Market cap: $0.5B – $20B",
-      "Exclusions: (none)",
-    ]);
-    for (const line of fence) {
-      expect(count(prompts.chat, line)).toBe(1);
-    }
+  it("every door shows the fence where it narrows, from one function: some sectors, a cap band, exclusions", () => {
+    const fence = fenceLines(CATALYST);
+    expect(fence).toEqual(["Sectors: Health Care, Information Technology", "Market cap: $0.5B – $20B"]);
+    for (const door of Object.keys(DOORS) as Array<keyof typeof DOORS>) for (const line of fence) expect([door, count(prompts[door], line)]).toEqual([door, 1]);
+  });
+
+  it("an analyst with no fence prints none: every sector listed is no fence", () => {
+    const ALL = ["Information Technology", "Health Care", "Industrials", "Utilities", "Communication Services", "Energy", "Materials", "Consumer Discretionary", "Consumer Staples", "Financials", "Real Estate"];
+    expect(fenceLines({ sectors: ALL, marketCapMin: null, marketCapMax: null, exclusionList: [] })).toEqual([]);
+    expect(fenceLines({})).toEqual([]);
+    expect(fenceLines({ exclusionList: ["XXX"], marketCapMax: BigInt(2_000_000_000) })).toEqual(["Market cap: no floor – $2B", "Exclusions: XXX"]);
   });
 });
 

@@ -29,7 +29,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −193, the morning run's instructions are one fixed text and the analyst, the market and portfolio and the book's week are blocks of the first message (now counted here, its start of the day included): the ═══ banners go.
   // 2026-11-18: +168, an agent is instructions, context and tools: the date line opens the first message, the house rules carry the line on weighing the Market and portfolio context again, the analyst carries its fence, and the regime's rules are its own text (no cash line that changes by run).
   // 2026-11-18: +59, the cash comes back in the kickoff when the snapshot couldn't be read (the sample has no snapshot).
-  daily: 9_474,
+  // 2026-11-18: −61, the analyst's fence prints only where it narrows (the three lines for an unfenced analyst changed three of six morning decisions).
+  daily: 9_413,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -39,7 +40,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −90, the trigger run is no longer told to pass trigger_id: its save is handed the trigger that fired.
   // 2026-11-18: +297, the same three moves (the date line, the house rule, the fence), and the fire said once in the message from the trigger check.
   // 2026-11-18: +23, the fire names its declared action, which the instructions act on.
-  tactical: 13_809,
+  // 2026-11-18: −61, the same.
+  tactical: 13_748,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -53,14 +55,16 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-17: +356, a watch gets its watch triggers, its earnings review and its own looks, nothing that waits for the buy; the pre-catalyst buys carry "within 70 days before the event date".
   // 2026-11-18: +1,240, the Writer's request measured whole (its first message's date, reason and ask now counted), and its instructions one fixed text: the rules for a recent sale, someone's idea and a promotion are always there, where they printed only when they applied; a stock we own goes to the Holding refresh, whose instructions carry none of a watch's rules.
   // 2026-11-18: +116, the same three moves; its five rule texts are one, its own text one, and its brief its message (the "## Today" line goes).
-  writer: 17_441,
+  // 2026-11-18: −61, the same.
+  writer: 17_380,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
   // 2026-11-16: +1, the same situation texts.
   // 2026-11-18: −331, the chat's instructions are one fixed text for both scopes and the pinned analyst's id, fence and watchlist are a block that ends them (its scope): the ═══ banners go; the whole-book paragraph, once only at the portfolio level, is in every run's text.
   // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
-  chat: 35_531,
+  // 2026-11-18: −61, the same.
+  chat: 35_470,
 };
 
 /**

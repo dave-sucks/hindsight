@@ -5,8 +5,8 @@
  * the moves docs/plans/AGENT_ENGINE.md names:
  * - the house rules carry the line on weighing the Market and portfolio
  *   context again (it was its own block for a day);
- * - the analyst's text carries its fence (sectors, market cap, exclusions),
- *   which was the chat's scope block;
+ * - the analyst's text carries its fence (sectors, market cap, exclusions)
+ *   where it narrows, which was the chat's scope block;
  * - the date line opens every first message; the run's task is its message;
  * - the morning run's regime rules are its own text, the watched stocks at
  *   their buy price its kickoff, its refused calls a read;
@@ -25,15 +25,18 @@ import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { writerRequest } from "@/lib/agent/run-thesis-writer";
 import { analystsText, chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
-import { universeLines, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
+import { fenceLines, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { dateLine } from "./engine";
 
 const NOW = new Date("2026-11-17T15:55:00Z");
-/** The analyst's text with its fence after its slots: the one change to the analyst. */
-const withFence = (old: string, a: UniverseAnalyst) => old.replace(/(- Max open positions: \d+)/, `$1\n${universeLines(a).map((l) => `- ${l}`).join("\n")}`);
+/** The analyst's text with its fence after its slots, where it narrows: the one change to the analyst. */
+const withFence = (old: string, a: UniverseAnalyst) => {
+  const fence = fenceLines(a).map((l) => `- ${l}`);
+  return fence.length ? old.replace(/(- Max open positions: \d+)/, `$1\n${fence.join("\n")}`) : old;
+};
 /** The house rules with the line on weighing the Market and portfolio context back in. */
 const MARKET_RULE = before("morning.quiet")["instructions:market_block_rule"];
 const house = (old: Record<string, string>) => `${old["instructions:house_rules"]}\n\n${MARKET_RULE}`;
