@@ -152,6 +152,7 @@ export const PLACEHOLDERS: Record<Placeholder, string> = {
   "{high20}": "chart.range.high20 — the 20-day high",
   "{baseLow}": "chart.base.low — the base's low",
   "{priorHigh}": "chart.swings.lastHigh.price — the prior high above the buy",
+  "{priorHighOrTwiceRisk}": "chart.swings.lastHigh.price when it is above the buy, else the buy price + 2 × (the buy price − the sell price)",
   "{low52}": "chart.range.low52w — the 52-week low",
   "{flagLow}": "chart.range.low20 — the flag's low",
   "{price}": "chart.price — today's price",

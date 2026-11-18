@@ -14,11 +14,12 @@
  *      playbook's watch triggers come off, the trigger written by hand
  *      stays, "Sell if below" goes on, and the fill writes the playbook's
  *      triggers that come with the buy from the chart then and the buy: the
- *      one-risk review. Its Trim is not written: the chart's last swing high
- *      ($351.73) is under the buy, and the fill's Activity line says so.
- *      Then the playbook's triggers written at the fill go on.
- *   4. Edit & Approve changes the sell price only; the one-risk review reads
- *      the price you approved.
+ *      Trim at the prior high above the buy, else twice the risk above it
+ *      (the chart's last swing high, $351.73, is under the buy: $427.42),
+ *      and the one-risk review. Then the playbook's triggers written at the
+ *      fill go on.
+ *   4. Edit & Approve changes the sell price only; the Trim and the one-risk
+ *      review read the price you approved.
  *
  * The AAPL call is the recorded one; the sell price and its reason are the
  * ones the run named that day, and the chart at the fill is the one its
@@ -48,6 +49,9 @@ const BUY = fx.aapl.placeTrade.entry_price; // $359.36
 const SALE = fx.aapl.named.stop_loss; // $325.33, the Nov 3 swing low
 const RISK = Math.round((BUY - SALE) * 100) / 100; // $34.03
 const ONE_RISK = Math.round((RISK / BUY) * 10000) / 100; // 9.47%
+// The prior high ($351.73, Oct 23) is under the buy price, so the Trim is twice the risk above it, as the run wrote it that day.
+const TRIM = Math.round((BUY + 2 * RISK) * 100) / 100; // $427.42
+const TRIM_REASON = "The prior high above the buy, else twice the risk above the buy.";
 /** BASE_BREAKOUT's one-risk review, as the fill writes it. */
 const ONE_RISK_REASON = "One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.";
 
@@ -181,7 +185,7 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
     expect(thesis().status).toBe("WATCHING");
   });
 
-  it("3. filled: the watch triggers come off, the one written by hand stays, Sell if below and the one-risk review go on from the chart and the buy, the Trim with no prior high above the buy is not written, and the fill triggers go on", async () => {
+  it("3. filled: the watch triggers come off, the one written by hand stays, Sell if below, the Trim and the one-risk review go on from the chart and the buy, and the fill triggers go on", async () => {
     jest.useFakeTimers({ now: new Date("2026-11-13T15:00:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     await approveAndFill(rows("order").find((o) => o.symbol === T && o.intent === "OPEN")!);
     jest.useRealTimers();
@@ -190,8 +194,9 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
       [
         // Written by hand on the watch, by an agent: stays.
         "Review if above $406.68",
-        // The sell price, and the playbook's triggers that come with the buy the chart and the buy can price.
+        // The sell price, and the playbook's triggers that come with the buy, priced from the chart and the buy.
         `Sell if below $${SALE}`,
+        `Trim 50% if above $${TRIM}`,
         `Review if above ${ONE_RISK}% from our entry`,
         // BASE_BREAKOUT's triggers written at the fill (the seed: this account hasn't edited its playbook).
         "Review every 7 days",
@@ -203,22 +208,20 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
     expect(triggerFor("Review every 7 days")).toMatchObject({ playbook: "FILL", source: "DEFAULT" });
     expect(triggerFor(`Review if above ${ONE_RISK}% from our entry`)).toMatchObject({ playbook: "PROPOSAL", rationale: ONE_RISK_REASON });
     expect(triggerFor(`Sell if below $${SALE}`)!.rationale).toBe(fx.aapl.named.stop_basis);
-    // The Trim reads the prior high above the buy; AAPL's last swing high ($351.73) is under the $359.36 buy, so it isn't written, and the fill's line says so.
-    expect(stockTriggers().some((t) => t.action === "TRIM")).toBe(false);
-    const line = rows("thesisUpdate").find((u) => u.type === "STATUS_CHANGED" && String(u.summary).includes("HOLDING"))!;
-    const said = (line.fieldChanges as { triggerOps: { to: Array<{ text: string }> } }).triggerOps.to.map((o) => o.text);
-    expect(said.find((s) => s.startsWith("Not written: the playbook's Trim 50%"))).toMatch(/the chart had no \{priorHigh\}$/);
+    // AAPL's last swing high ($351.73) is under the $359.36 buy, so the Trim is twice the $34.03 risk above the buy: $427.42, the price the run wrote that day.
+    expect(triggerFor(`Trim 50% if above $${TRIM}`)).toMatchObject({ action: "TRIM", trimPct: 50, playbook: "PROPOSAL", rationale: TRIM_REASON });
   });
 
-  it("4. Edit & Approve changes the sell price only: yours goes on, and the one-risk review reads it", async () => {
+  it("4. Edit & Approve changes the sell price only: yours goes on, and the Trim and the one-risk review read it", async () => {
     seed();
     const order = await propose();
     jest.useFakeTimers({ now: new Date("2026-11-13T15:00:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     await approveAndFill(order, { stopLoss: 330 });
     jest.useRealTimers();
     expect(triggerFor("Sell if below $330")).toMatchObject({ action: "EXIT", source: "PRINCIPAL" });
-    // One risk to the price you approved: ($359.36 − $330) ÷ $359.36.
+    // One risk to the price you approved: ($359.36 − $330) ÷ $359.36; the Trim twice that risk above the buy.
     expect(triggerFor(`Review if above ${Math.round(((BUY - 330) / BUY) * 10000) / 100}% from our entry`)).toMatchObject({ playbook: "PROPOSAL" });
+    expect(triggerFor(`Trim 50% if above $${Math.round((BUY + 2 * (BUY - 330)) * 100) / 100}`)).toMatchObject({ playbook: "PROPOSAL", rationale: TRIM_REASON });
     expect(rows("position").find((p) => p.id === order.positionId)).toMatchObject({ stopLoss: 330 });
     expect(rows("position").find((p) => p.id === order.positionId)!.targetPrice ?? null).toBeNull();
   });
@@ -286,7 +289,7 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     } finally {
       mockChart = aaplChart();
     }
-    expect(triggerFor("Trim 30% if above $380")).toMatchObject({ action: "TRIM", trimPct: 30, playbook: "PROPOSAL", rationale: "The prior high above the buy, else twice the risk above the buy." });
+    expect(triggerFor("Trim 30% if above $380")).toMatchObject({ action: "TRIM", trimPct: 30, playbook: "PROPOSAL", rationale: TRIM_REASON });
   });
 
   it("a trigger that comes with the buy never overwrites one the owner wrote: his stays, and the fill's line names the one not written", async () => {

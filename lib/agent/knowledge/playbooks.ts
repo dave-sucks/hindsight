@@ -22,7 +22,7 @@ import { playbookChecks } from "@/lib/agent/analyst-brief";
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
   .pick({ action: true, rationale: true, fireMode: true, trimPct: true })
-  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON) })
+  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON), judged: z.literal(true).optional() })
   .superRefine((t, ctx) => {
     const refuse = (message: string) => ctx.addIssue({ code: "custom", message });
     if (!shapeOf(t.predicate)) return refuse(refusalOf(t.predicate) ?? "Not a condition.");
@@ -144,6 +144,8 @@ export function fillValue(name: Placeholder, at: FillPrices): number | undefined
     "{high20}": c?.range.high20,
     "{baseLow}": c?.base?.low,
     "{priorHigh}": c?.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : null,
+    // With no chart, whether a prior high is above the buy is unknown: no number.
+    "{priorHighOrTwiceRisk}": !c ? null : c.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : at.sale != null && at.sale < at.buy ? at.buy + 2 * (at.buy - at.sale) : null,
     "{low52}": c?.range.low52w,
     "{flagLow}": c?.range.low20,
     "{price}": c?.price,
@@ -157,7 +159,8 @@ export function fillValue(name: Placeholder, at: FillPrices): number | undefined
 /**
  * The playbook's triggers that come with the buy, written at the fill: each
  * template with its {chart numbers} filled (fillValue). The sale ("Sell if
- * below {sellPrice}") is the buy's own price and is written beside them. A
+ * below {sellPrice}") is the buy's own price and is written beside them; a
+ * template a run writes on its own judgment (`judged`) is left to the run. A
  * template whose number the chart doesn't have is not written, and
  * `notWritten` says so. A playbook that couldn't be read (null) writes none;
  * fillTemplateOps says so.
@@ -165,8 +168,8 @@ export function fillValue(name: Placeholder, at: FillPrices): number | undefined
 export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices, mintId: () => string = randomUUID): { triggers: Trigger[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
   const triggers: Trigger[] = [];
   const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
-  for (const { writtenOn, predicate, ...rest } of templates ?? []) {
-    if (writtenOn !== "PROPOSAL") continue;
+  for (const { writtenOn, predicate, judged, ...rest } of templates ?? []) {
+    if (writtenOn !== "PROPOSAL" || judged) continue;
     const marks = templatePlaceholders(predicate) as Placeholder[];
     if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
     const missing = marks.filter((m) => fillValue(m, at) == null);
