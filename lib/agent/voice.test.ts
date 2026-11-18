@@ -161,7 +161,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     ["submit_thesis.rationale", wordsOf(submit().rationale)],
     ["record_run_summary.decision_rationale", wordsOf(props("record_run_summary").decision_rationale)],
     ["record_run_summary.ranked_picks.reasoning", wordsOf(props("record_run_summary").ranked_picks?.items?.properties?.reasoning)],
-    ...["core_belief", "conviction_rationale", "variant_view", "snapshot"].map(
+    ...["core_belief", "conviction_rationale", "variant_view"].map(
       (f): [string, string] => [`update_thesis.${f}`, wordsOf(props("update_thesis")[f])],
     ),
   ];

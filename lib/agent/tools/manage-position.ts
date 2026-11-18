@@ -162,7 +162,9 @@ export const managePosition = defineTool({
     "A stop or target moves through update_thesis. Every action is audit-logged with your reason.",
   schema,
   // A run's model never sees a size field (DAV-317), nor a reason field: its note on the stock is the reason.
-  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ add_notional: true, reason: true })),
+  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : ctx.runMode === "INTRADAY_TACTICAL" ? schema.omit({ add_notional: true, reason: true, symbol: true }) : schema.omit({ add_notional: true, reason: true })),
+  // A trigger run trims or adds to its own stock.
+  fromRun: (ctx) => (ctx.runStock ? { symbol: ctx.runStock.ticker } : null),
   ui: "tool-ui" as const,
   gateLog: "manage_position",
   groupId: "Executing",

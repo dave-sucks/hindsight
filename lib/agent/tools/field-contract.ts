@@ -98,8 +98,7 @@ const f = (field: string, kind: FieldKind, extra: Omit<FieldContract, "field" | 
 
 /** The thesis body the writer copies through — the same nine on record and update. */
 const RESEARCH_BLOCKS: FieldContract[] = [
-  "snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events",
-  "bull_case", "bear_case", "analyst_consensus", "insider_technical",
+  "bull_case", "bear_case",
 ].map((k) => f(k, "CARRIED", { note: "A research section, copied from the writer's note." }));
 
 const BELIEF: FieldContract[] = [
@@ -117,10 +116,8 @@ const BELIEF: FieldContract[] = [
 export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   place_trade: [
     f("ticker", "IDENTITY"),
-    f("company_name", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
-    f("exchange", "CARRIED", { note: "Display only. Candidate for COMPUTED from the profile." }),
     f("direction", "CHOSEN"),
-    f("entry_price", "JUDGED", { rule: "SALE_SIDE", note: "The market order's expected price; it sizes the buy." }),
+    f("entry_price", "COMPUTED", { note: "The live quote, read by the tool; it sizes the buy. An Auto buy passes the fire's price." }),
     // The holding's sale comes with the buy (2026-11-16): a watch's line ends the watch and is never the sale.
     f("sell_if_below", "JUDGED", { rule: "SALE_SIDE", note: "Below the price for a LONG; sizes the buy; the pending position holds it, and the fill writes it as Sell if below." }),
     f("sell_reason", "TEXT", { note: "The note on the holding's Sell if below line." }),

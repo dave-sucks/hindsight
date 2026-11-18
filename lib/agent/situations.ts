@@ -332,6 +332,8 @@ export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<read
     ],
   ],
   REVIEW_DUE: [
+    // The trigger run's save is handed the trigger that fired (ToolContext.runStock).
+    [`- They stand: update_thesis with a rationale only (trigger_id only when several fired).`, `- They stand: update_thesis with a rationale only.`],
     [
       `Or let it go: update_thesis with change_status ARCHIVED.`,
       `Or let it go: update_thesis with remove_trigger_ids naming its wakes, and say in the note that it can go. It stays on the watchlist with nothing to wake it; dropping it for good is the morning run's call.`,

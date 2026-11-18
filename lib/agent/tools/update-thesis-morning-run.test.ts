@@ -38,14 +38,15 @@ describe("the morning run's save", () => {
   });
 
   it("leaves the other doors' saves as they were", () => {
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(9);
+    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(7);
     expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
     const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
     expect(chat).toHaveLength(18);
     for (const f of ["price_at_time", "snapshot", "variant_view"]) expect(chat).not.toContain(f);
     expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
-    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(29);
-    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(19);
+    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(22);
+    // Discovery's save lost the snapshot, which nothing wrote after a stock was first researched.
+    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(18);
   });
 
   it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {

@@ -1,6 +1,7 @@
 /**
  * update-thesis-trigger-run.test.ts — the trigger run's closing save
- * (Roadmap step 10): update_thesis with the trigger run's eleven fields, and the review's three.
+ * (Roadmap step 10): update_thesis with the trigger run's four fields, and the review's three. Its
+ * stock and the trigger that fired are code's (ToolContext.runStock), never the model's.
  *
  * The four trigger runs that failed (ASML 10-07; NVDA, CEG, MU 10-08) each
  * sent the whole 22-field form in every call, change_status WATCHING among it.
@@ -20,18 +21,29 @@ import { updateThesis } from "./update-thesis";
 
 const DOOR = [
   "add_triggers", "answers_update_id", "edit_triggers", "rationale", "remove_trigger_ids",
-  "thesis_id", "trigger_id", "verdict", "verdict_line",
+  "verdict", "verdict_line",
 ];
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
 const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const CALLS = (["ASML", "NVDA", "CEG", "MU"] as const).map((t) => [t, fixture[t].call as Record<string, unknown>] as const);
 
 describe("the trigger run's save", () => {
-  it("offers exactly nine fields, and no change_status", () => {
+  it("offers exactly seven fields: no change_status, and no thesis or trigger id", () => {
     const schema = schemaOf("INTRADAY_TACTICAL");
     expect(Object.keys(schema.shape).sort()).toEqual(DOOR);
     const json = zodSchema(schema as never).jsonSchema as { properties: Record<string, unknown> };
     expect(json.properties).not.toHaveProperty("change_status");
+  });
+
+  it("is handed its thesis and the trigger that fired by code, and saves under them", async () => {
+    const runStock = { ticker: "NVDA", thesisId: "thesis_run", triggerId: "trig_fired" };
+    const real = updateThesis({ ...(ctx("INTRADAY_TACTICAL") as object), runStock } as never) as unknown as { execute: (a: unknown, o: unknown) => Promise<{ summary?: string; progressLabel?: string }> };
+    // No such thesis in the stub database: the save reads the one it was handed and stops there.
+    const { prisma } = jest.requireMock("@/lib/prisma") as { prisma: Record<string, unknown> };
+    prisma.thesis = { findUnique: async () => null, findFirst: async () => null };
+    const result = await real.execute({ rationale: "The note." }, { toolCallId: "c1", messages: [] });
+    expect(result.summary).toBe("Thesis thesis_run not found.");
+    expect(result.progressLabel).toBe("Updating thesis esis_run");
   });
 
   it("leaves the other doors' saves as they were", () => {

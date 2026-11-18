@@ -92,7 +92,7 @@ async function propose() {
   const r = await replayTool("place-trade", "placeTrade", {
     seed: store,
     args: { ...fx.aapl.placeTrade, sell_if_below: SALE, sell_reason: fx.aapl.named.stop_basis, triggers_with_buy: TRIGGERS_WITH_BUY },
-    ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy.id, action: buy.action, ticker: T } },
+    ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy.id, action: buy.action, ticker: T }, runStock: { ticker: T, thesisId: fx.aapl.thesis.id, triggerId: buy.id } },
     quotes: { [T]: BUY },
   });
   expect(r.refused).toBe(false);
@@ -234,7 +234,8 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     const r = await replayTool("place-trade", "placeTrade", {
       seed: store,
       args,
-      ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy().id, action: buy().action, ticker: T } },
+      // The trigger run's stock, as tactical-run.ts hands it: its schema asks the model for none of it.
+      ctx: { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy().id, action: buy().action, ticker: T }, runStock: { ticker: T, thesisId: fx.aapl.thesis.id, triggerId: buy().id } },
       quotes: { [T]: BUY },
     });
     expect(r.refused).toBe(false);

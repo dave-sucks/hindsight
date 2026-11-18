@@ -94,20 +94,12 @@
      {
       "type": "function",
       "name": "place_trade",
-      "description": "Place a trade on Alpaca. Requires the thesis_id.",
+      "description": "Place a trade on Alpaca for a thesis, at the live price.",
       "parameters": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "type": "object",
        "properties": {
         "ticker": {
-         "type": "string"
-        },
-        "company_name": {
-         "description": "Company name from get_stock_data",
-         "type": "string"
-        },
-        "exchange": {
-         "description": "Exchange from get_stock_data, e.g. NASDAQ",
          "type": "string"
         },
         "direction": {
@@ -116,10 +108,6 @@
           "LONG",
           "SHORT"
          ]
-        },
-        "entry_price": {
-         "type": "number",
-         "description": "The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the buy trigger's price (one we may not have reached), here today's price is the right answer."
         },
         "sell_if_below": {
          "type": "number",
@@ -232,7 +220,6 @@
        "required": [
         "ticker",
         "direction",
-        "entry_price",
         "sell_if_below",
         "sell_reason",
         "thesis_id"
@@ -900,20 +887,12 @@
       {
        "type": "function",
        "name": "place_trade",
-       "description": "Place a trade on Alpaca. Requires the thesis_id.",
+       "description": "Place a trade on Alpaca for a thesis, at the live price.",
        "parameters": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
          "ticker": {
-          "type": "string"
-         },
-         "company_name": {
-          "description": "Company name from get_stock_data",
-          "type": "string"
-         },
-         "exchange": {
-          "description": "Exchange from get_stock_data, e.g. NASDAQ",
           "type": "string"
          },
          "direction": {
@@ -922,10 +901,6 @@
            "LONG",
            "SHORT"
           ]
-         },
-         "entry_price": {
-          "type": "number",
-          "description": "The CURRENT quote — this is a market order, so this is what you expect to pay and what sizes the position. Unlike the buy trigger's price (one we may not have reached), here today's price is the right answer."
          },
          "sell_if_below": {
           "type": "number",
@@ -1038,7 +1013,6 @@
         "required": [
          "ticker",
          "direction",
-         "entry_price",
          "sell_if_below",
          "sell_reason",
          "thesis_id"
