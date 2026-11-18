@@ -155,8 +155,9 @@ describe("the situations for a person: the sheet's flag line", () => {
 
 // The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15; the buy's triggers_with_buy, 11-17;
 // the buy passed on and left as it is fires again only after a close finds it false, and a review that is a playbook's way in, 11-17;
-// a pullback buy that touched without the reversal is re-priced to a close above today's high, 11-17).
-const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_480, REVIEW_DUE: 7_640, NOTE_TO_ANSWER: 3_240 };
+// a pullback buy that touched without the reversal is re-priced to a close above today's high, 11-17;
+// a buy passed on is taken off or re-priced to a price the stock has not reached, never to just past today's, 11-17).
+const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_620, REVIEW_DUE: 7_640, NOTE_TO_ANSWER: 3_240 };
 const capOf = (code: string) => CAP[code as SituationCode] ?? 2_200;
 
 describe("the guidance: each situation's text, once", () => {

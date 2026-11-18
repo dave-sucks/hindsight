@@ -27,7 +27,7 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
   });
   it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a mistake, not refused", () => {
     expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Take the buy off:");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it.");
+    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving a buy you passed on to dodge it (take it off instead), or to just past today's price");
     // Plan checks were deleted (2026-11-13): no text points at one.
     expect(SITUATIONS.BUY_ARRIVES.guidance).not.toMatch(/plan.check/);
     expect(prompt).not.toContain("a fired buy is a decision with two answers");

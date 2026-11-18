@@ -30,7 +30,7 @@ export default async function TriggerSettingsPage() {
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
       <SettingsPageHeader
         title="Triggers"
-        description="Standing rules for every analyst on this account. A rung set here applies to every thesis unless an analyst or a specific thesis overrides it."
+        description="Standing rules for every analyst on this account. A rule set here applies to every stock, unless the analyst or the stock has its own trigger for the same thing."
       />
 
       <SettingsSection
@@ -48,13 +48,14 @@ export default async function TriggerSettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="How the levels stack"
-        description="Most specific wins. An analyst overrides the account; a single thesis overrides them all. Deleting a rung reveals whatever sits beneath it."
+        title="Which rule wins"
+        description="The most specific one. An analyst's rule beats the account's, and a stock's own trigger beats both. Delete one and the next one down applies."
       >
         <p className="text-xs text-muted-foreground">
-          Rules here can only express things that mean the same on every
-          name — a trailing stop, a gain checkpoint, a daily-move rule. An
-          absolute price level belongs on the thesis that has that price.
+          Rules here can only say things that mean the same on every stock: a
+          sale on a fall from the peak, a review at a gain, a rule on the
+          day&rsquo;s move. A trigger at a set price belongs on the stock
+          it&rsquo;s for.
         </p>
       </SettingsSection>
 

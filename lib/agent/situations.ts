@@ -161,14 +161,14 @@ What you can do:
 - Re-price: edit_triggers on the buy's id, at a price from the chart's structure. A pullback buy that touched its average without the reversal is re-priced to a close above today's high, which is the reversal.
 - Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
 
-Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again only after a close finds it false: re-price it or take it off when today's no would stay no.
+Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again only after a close finds it false. When today's no would stay no, take it off, or re-price it to a price on the chart the stock has not reached.
 
 The note: what is going on with the company and why now is the time to buy or not; then the buy, the new buy price, or the buy taken off, in one sentence.
 
 Mistakes:
 - place_trade after a check failed.
 - Volume as the reason on a pullback, a compounder or a pre-catalyst buy, or before mid-session.
-- Moving the buy above the price to dodge it.
+- Moving a buy you passed on to dodge it (take it off instead), or to just past today's price, where the next check asks the same question again.
 
 If the analyst is full: every slot is held or awaiting approval (\`buyBlockedByFull\` names the holdings), so place_trade will refuse the buy; don't call it, and don't treat it as a quiet day. Is this stock a better use of a slot than the weakest one we hold? Weigh the thesis, the playbook, the reward left to the Street's average target, and where we differ from the Street (\`variant_view\`). On this stock's one update_thesis, name which holding it would replace and why it is the better use of the slot, or say it waits for a free slot, and why. Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them. The note: what is going on with the company and why it wants in now, against the holding it would replace; then the swap you'd make, or that it waits for a free slot, in one sentence.`,
   },
