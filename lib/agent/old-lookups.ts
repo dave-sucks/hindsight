@@ -83,3 +83,16 @@ export function withNewestParts(messages: ModelMessage[], texts: readonly string
   out[i] = { ...m, content: [...texts.map((text) => ({ type: "text" as const, text })), ...content] };
   return out;
 }
+
+/**
+ * The conversation with its first message as the agent's record writes it
+ * (the morning run's facts and the start of the day), in place of what the
+ * page sent to start it (the Run button's "Run").
+ */
+export function withFirstMessage(messages: ModelMessage[], text: string): ModelMessage[] {
+  const i = messages.findIndex((m) => m.role === "user");
+  if (i < 0) return messages;
+  const out = [...messages];
+  out[i] = { role: "user", content: [{ type: "text", text }] };
+  return out;
+}

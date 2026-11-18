@@ -7,6 +7,7 @@ import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-wr
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
+import { openingOf } from "@/lib/agent/engine/engine";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
@@ -793,6 +794,8 @@ export const morningResearch = inngest.createFunction(
             try {
               // Tier 1 — seed from the prior in-run context.
               retryToolCalls = await runRetry([
+                // The first message carries the market and portfolio and the book's week.
+                { role: "user", content: userPrompt },
                 ...responseMessages,
                 { role: "user", content: nudgeWithRefusals },
               ]);
@@ -802,8 +805,8 @@ export const morningResearch = inngest.createFunction(
                 `[morning-research] 🔁 ${config.name} seeded retry rejected (${seedErr instanceof Error ? seedErr.message : seedErr}); retrying historyless`
               );
               try {
-                // Tier 2 — historyless. The system prompt carries the state.
-                retryToolCalls = await runRetry([{ role: "user", content: nudgeWithRefusals }]);
+                // Tier 2 — historyless. The first message and the system prompt carry the state.
+                retryToolCalls = await runRetry([{ role: "user", content: userPrompt }, { role: "user", content: nudgeWithRefusals }]);
               } catch (retryErr) {
                 console.error(
                   `[morning-research] 🔁 ${config.name} retry failed:`,
@@ -1013,10 +1016,10 @@ export const morningResearch = inngest.createFunction(
             );
           }
 
-          // The conversation for /runs/[id] (run-thread.ts).
+          // The conversation for /runs/[id] (run-thread.ts). It opens with the start of the day; the blocks the model read are on the Context panel.
           await saveRunThread(
             run.id,
-            { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: response?.messages, steps },
+            { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }], messages: response?.messages, steps },
             "morning-research",
           );
 
@@ -1061,10 +1064,16 @@ export const morningResearch = inngest.createFunction(
                 // Same model as the main run.
                 model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research", parts: request.parts, agent: request.agent }),
                 system: systemPrompt,
-                prompt:
-                  `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
-                  `Your first action this turn is get_portfolio_context and get_theses in parallel — no narration before the tool calls. ` +
-                  `Then proceed with your normal playbook.`,
+                messages: [
+                  { role: "user", content: userPrompt },
+                  {
+                    role: "user",
+                    content:
+                      `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
+                      `Your first action this turn is get_portfolio_context and get_theses in parallel — no narration before the tool calls. ` +
+                      `Then proceed with your normal playbook.`,
+                  },
+                ],
                 tools,
                 // Same cache route as the main loop — the retry replays the same prefix.
                 providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
@@ -1097,7 +1106,7 @@ export const morningResearch = inngest.createFunction(
                   run.id,
                   {
                     opening: [
-                      { role: "user", content: [{ type: "text", text: userPrompt }] },
+                      { role: "user", content: [{ type: "text", text: openingOf(request) }] },
                       { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" },
                     ],
                     messages: recoveryResp.response?.messages,

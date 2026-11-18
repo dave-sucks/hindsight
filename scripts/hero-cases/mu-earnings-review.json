@@ -21,15 +21,15 @@
     "where": {
      "thesis_id": "cmrp6chyu000h04l5roqq5ha1",
      "trigger_id": "present",
-     "stop_loss": "present"
+     "edit_triggers": "present"
     }
    },
    {
-    "tool": "manage_position",
+    "tool": "update_thesis",
     "where": {
-     "symbol": "MU",
-     "action": "update_targets",
-     "new_stop_loss": "present"
+     "thesis_id": "cmrp6chyu000h04l5roqq5ha1",
+     "trigger_id": "present",
+     "add_triggers.*.action": "EXIT"
     }
    }
   ],

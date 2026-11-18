@@ -95,7 +95,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `research-run` in `lib/agent/modes.ts`: `gpt-5.4`, up to 65 steps, an 800-second limit.
 
 #### Prompt
-Its record, `MORNING_RUN` (`lib/agent/engine/agents/morning-run.ts`): its own words and where its blocks go (the analyst with its room, the house rules, earnings and filings this week, refused calls never redone, the Market and portfolio block). `dailyRunRequest` (`lib/agent/system-prompt.ts`) reads the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
+Its record, `MORNING_RUN` (`lib/agent/engine/agents/morning-run.ts`). Its instructions open with the analyst it works for (its brief with its room), then its own fixed text with the house rules, the same on every run, then what travels with the run: the regime and cash, and refused calls never redone. Every fact about the run is a block of its first message: the Market and portfolio block, the book's earnings and filings this week, then the start of the day. The cron and the Run button send the same first message. `dailyRunRequest` (`lib/agent/system-prompt.ts`) writes the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
 
 #### The read
 `get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
@@ -104,5 +104,5 @@ Its record, `MORNING_RUN` (`lib/agent/engine/agents/morning-run.ts`): its own wo
 `complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`). The stocks it owes are `listsTheStock` (`lib/agent/situations.ts`) over `loadStockFacts` (`lib/agent/stock-facts.ts`), what `get_theses` lists; any `ThesisUpdate` this run but a trigger fire answers one. A trigger run or a Writer run owes only its own stock.
 
 #### What was sent
-The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
+The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`). A retry resends the first message. The conversation on the page opens with the start of the day alone (`openingOf`, `lib/agent/engine/engine.ts`); the blocks are in Context.
 </details>

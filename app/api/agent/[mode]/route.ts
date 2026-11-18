@@ -12,7 +12,7 @@
 import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { streamText, stepCountIs, hasToolCall, type ModelMessage, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
-import { hideOldLookups, withNewestParts } from "@/lib/agent/old-lookups";
+import { hideOldLookups, withFirstMessage, withNewestParts } from "@/lib/agent/old-lookups";
 import { modelFor } from "@/lib/agent/model";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
@@ -160,6 +160,8 @@ export async function POST(
     // PAPER. Builder/editor/podcast modes don't trade and stay PAPER.
 
     let runEnvironment: "PAPER" | "LIVE" = "PAPER";
+    // The saved run's mode: a morning run's page (the cron's or the Run button's) sends the morning run's first message.
+    let savedMode: string | null = null;
     // The chat's Market and portfolio block, started once its book is known and read with the newest message.
     let portfolioPiecesLoad: Promise<PortfolioPiece[]> | null = null;
     if (runId) {
@@ -171,6 +173,7 @@ export async function POST(
       if (runRow && READ_ONLY_RUN_MODES.has(runRow.mode)) return new Response("This run takes no messages", { status: 403 });
       if (runRow) {
         runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
+        savedMode = runRow.mode;
       }
     }
 
@@ -184,10 +187,12 @@ export async function POST(
     // ── System prompt + tools ──────────────────────────────────────────────
 
     let systemPrompt: string;
-    // The parts of the instructions, when the agent engine built them (the conversation is the person's).
+    // The parts of the instructions (and of a morning run's first message), when the agent engine built them; the rest of the conversation is the person's.
     let systemParts: SentPartManifest[] | undefined;
     // The agent whose record built them, kept with the request.
     let systemAgent: AgentId | undefined;
+    // A morning run's first message (the analyst, the account, the book's week, the start of the day), sent in place of the Run button's "Run".
+    let firstMessage: string | undefined;
     // The analyst's fence and limits the tools enforce: the body's when no
     // analyst row is loaded, else the row's (analystToolSettings).
     let agentConfig: AnalystToolSettings = (config as AnalystToolSettings) || {};
@@ -246,7 +251,9 @@ export async function POST(
         },
       );
       systemPrompt = daily.instructions;
-      systemParts = daily.parts.filter((p) => p.where === "instructions");
+      // Another run's page (a trigger run, the Writer) keeps that run's own first message.
+      if (savedMode === "MORNING_PLAN") firstMessage = daily.message;
+      systemParts = firstMessage != null ? daily.parts : daily.parts.filter((p) => p.where === "instructions");
       systemAgent = daily.agent;
 
     } else if (agentMode === "builder") {
@@ -785,6 +792,8 @@ export async function POST(
       modelMessages = withNewestParts(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), newest.texts);
     } else {
       modelMessages = await historyForModel(messages, tools as ToolSet);
+      // The cron and the Run button send the morning run the same first message.
+      if (firstMessage != null) modelMessages = withFirstMessage(modelMessages, firstMessage);
     }
 
     // Allow client to override model (validated to known model IDs).

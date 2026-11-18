@@ -2,7 +2,8 @@
  * system-prompt.test.ts — the daily run as a portfolio manager (DAV-253).
  * What the prompt deletes and adds, pinned; the prompt builder is pure.
  */
-import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
+import { dailyRunRequest } from "./system-prompt";
 import { SITUATIONS } from "./situations";
 import type { RunInput } from "./run-input";
 
@@ -17,9 +18,9 @@ const runInput = {
   filings: { recent: [{ ticker: "PRAX", date: "2026-07-02", tier: "serious" as const, summary: "8-K — auditor change (4.01)", url: "https://www.sec.gov/prax" }] },
 } as unknown as RunInput;
 
-const prompt = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
+const prompt = morningRunSent({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, runInput);
 
-describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager", () => {
+describe("the morning run — the daily run as a portfolio manager", () => {
   it("deletes the per-horizon data discipline block and the three-path fired buy", () => {
     expect(prompt).not.toContain("Per-horizon data discipline");
     expect(prompt).not.toContain("THREE legal paths");
@@ -56,13 +57,13 @@ describe("buildDailyRunSystemPromptV2 — the daily run as a portfolio manager",
 // DAV-292 — the run is told how full the analyst is. Replay: the Secular
 // Compounder on 2026-09-18 held ABT, ASML, CEG and WST against a limit of 4,
 // with ETN's buy live; the PEAD Specialist held 4 of 6.
-describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
+describe("the morning run — the analyst's room", () => {
   const pos = (symbol: string) => ({ symbol, direction: "LONG", quantity: 10, avgCost: 100, currentPrice: 101, unrealizedPnl: 10, unrealizedPnlPct: 1, targetPrice: null });
   const withBook = (symbols: string[]) =>
     ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
 
   it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is the buy's paragraph on a full analyst", () => {
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
     );
@@ -73,7 +74,7 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
       withBook(["FIVE", "IOT", "MU", "NVDA"]),
     );
@@ -82,15 +83,16 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
   });
 });
 
-describe("buildDailyRunSystemPromptV2 — the Market and portfolio block", () => {
+describe("the morning run — the Market and portfolio block", () => {
   const block = "## Market and portfolio\n\n### Portfolio snapshot\nThe account, stand-in";
-  it("prints the block last, after every fixed instruction, and points the cash line to it", () => {
-    const p = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe account, stand-in" }] });
-    expect(p.endsWith(block)).toBe(true);
-    expect(p).toContain("Your cash is in the portfolio snapshot below.");
+  it("prints the block in the first message, before the book's week, and points the cash line to it", () => {
+    const r = dailyRunRequest({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe account, stand-in" }] });
+    expect(r.message.startsWith(`${block}\n\n## Filings on your book this week`)).toBe(true);
+    expect(r.instructions).not.toContain("## Market and portfolio");
+    expect(r.instructions).toContain("Your cash is in the portfolio snapshot below.");
   });
   it("says the cash itself when the snapshot couldn't be read", () => {
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 },
       { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request." }] },
     );

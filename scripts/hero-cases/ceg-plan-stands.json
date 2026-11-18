@@ -22,9 +22,6 @@
     "tool": "update_thesis",
     "where": {
      "thesis_id": "cmqb2ku1a000q04l6jtquuqr6",
-     "entry_price": "absent",
-     "stop_loss": "absent",
-     "target_price": "absent",
      "edit_triggers": "absent",
      "remove_trigger_ids": "absent",
      "add_triggers": "absent",

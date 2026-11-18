@@ -65,7 +65,7 @@ describe("the morning run", () => {
     const db = prismaDouble({ agentConfig: [agentConfigRow({ id: ANALYST, name: "Secular Compounder", enabled: true, tradingEnvironment: "PAPER", runDaysOfWeek: [1, 2, 3, 4, 5] })], researchRun: [], runMessage: [], runEvent: [] });
     const done = () => json({ id: "c1", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "Done." } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const net = network(done);
-    const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, openRefusals: [] };
+    const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [{ ticker: "MU", date: "2026-11-19", hour: "amc" }], justReported: [] }, filings: { recent: [] }, openRefusals: [] };
     const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/triggers/seed-account", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
@@ -94,8 +94,17 @@ describe("the morning run", () => {
     for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
     // The agent engine built it: Context shows each part by name.
     const names = view!(main.record).categories.map((c) => c.name);
-    expect(names.slice(0, 3)).toEqual(["The analyst", "House rules", "How you write"]);
+    expect(names.slice(0, 3)).toEqual(["The analyst", "Its instructions", "House rules"]);
     expect(names.slice(-2)).toEqual(["The start", "Tool menu"]);
+    // Every request it sent, its retry's too, opens with the first message and the book's week in it.
+    const firstUser = (body: string) => (JSON.parse(body).messages as Array<{ role: string; content: string }>).find((m) => m.role === "user")!.content;
+    expect(net.sent.length).toBeGreaterThan(1);
+    for (const body of net.sent) expect(firstUser(body)).toMatch(/^## Earnings on your book this week\nReporting: MU 2026-11-19 after close[\s\S]*\n\nIt's the start of the trading day\./);
+    // The run page opens with the start of the day alone: the blocks are on the Context panel.
+    const thread = (db.store.runMessage as Kept[]).find((m) => m.role === "thread")!;
+    expect((JSON.parse(thread.content)[0] as { content: Array<{ text: string }> }).content.map((p) => p.text).join("")).toBe(
+      "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.",
+    );
   });
 });
 

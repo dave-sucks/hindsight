@@ -26,7 +26,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-06: tactical −32, the sample row carries its situation's fields, not every field (ROW_FIELDS in lib/agent/row-for-model.ts).
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
   // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
-  daily: 9_440,
+  // 2026-11-18: −193, the morning run's instructions are one fixed text and the analyst, the market and portfolio and the book's week are blocks of the first message (now counted here, its start of the day included): the ═══ banners go.
+  daily: 9_247,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.

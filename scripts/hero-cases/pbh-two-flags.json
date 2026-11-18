@@ -24,18 +24,14 @@
    {
     "tool": "update_thesis",
     "where": {
+     "thesis_id": "cmt0zqtsl000a04l5oj023qic",
      "add_triggers": "present"
     }
    },
    {
     "tool": "update_thesis",
     "where": {
-     "entry_price": "present"
-    }
-   },
-   {
-    "tool": "update_thesis",
-    "where": {
+     "thesis_id": "cmt0zqtsl000a04l5oj023qic",
      "change_status": {
       "regex": "ARCHIVED|INVALIDATED"
      }
