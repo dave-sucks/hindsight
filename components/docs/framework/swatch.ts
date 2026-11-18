@@ -23,13 +23,17 @@ export const SWATCH: Record<PartId, { className: string; style?: CSSProperties }
   guidance: { className: "border border-dashed border-muted-foreground bg-muted-foreground/35" },
 };
 
-/** A part's color, by what it is: the agent's own text, a shared text, a read, the date line, the message, the situations. */
+/** The facts about the analyst it works for: its text, its playbooks, its record. */
+const ANALYST_FACTS = new Set(["the_analyst", "playbooks", "playbook_record"]);
+
+/** A part's color, by what it is: the agent's own file, a shared file, a fact (the analyst's, the market and portfolio, the stock's situations, a read), the date line, the message. */
 export function swatchOf(p: { kind: PartKind; id: string }): PartId {
   if (p.kind === "own") return "job";
-  if (p.kind === "situations") return "guidance";
   if (p.kind === "message") return "message";
-  if (p.kind === "shared") return p.id === "the_analyst" || p.id === "playbooks" ? "analyst" : "house";
-  if (p.kind === "context") return CONTEXT[p.id as ContextId]?.group ? "portfolio" : p.id === "playbook_record" ? "analyst" : "read";
+  if (p.kind === "shared") return "house";
+  if (p.kind === "context") return p.id === "situations" ? "guidance" : ANALYST_FACTS.has(p.id) ? "analyst" : CONTEXT[p.id as ContextId]?.group ? "portfolio" : "read";
+  // Kept before today (#1040): the analyst and the playbooks were shared texts, the situations their own kind.
+  if ((p.kind as string) === "situations") return "guidance";
   // A request kept before the three parts named its parts "block": colored by what they were.
   if ((p.kind as string) === "block") return OLD_BLOCKS[p.id] ?? "read";
   return "read";

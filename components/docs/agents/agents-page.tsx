@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
-import { ownText, providerToolNames, readsOf, sharedOf, type AgentRecord, type ContextId, type SharedId } from "@/lib/agent/engine/types";
+import { isFile, isShared, providerToolNames, readsOf, sharedOf, SHARED_FILES, type AgentRecord, type ContextId, type SharedFile } from "@/lib/agent/engine/types";
+import { instructionText } from "@/lib/agent/engine/instructions";
 import { whenItRuns } from "@/lib/agent/engine/schedule";
 import { DocsNav } from "../docs-nav";
 
@@ -33,8 +34,10 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
 }
 
 function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
-  const own = ownText(record);
-  const shared = new Set<SharedId>(sharedOf(record));
+  const shared = new Set<SharedFile>(sharedOf(record));
+  // Its instructions as one document: each file's text, and where a fact is placed among them, its name.
+  const doc = record.instructions.map((e) => (isFile(e) ? instructionText(e) : `[${CONTEXT[e].title}: read for each run]`)).join("\n\n");
+  const files = record.instructions.map((e) => (isFile(e) ? (isShared(e) ? e : `${e} (its own)`) : CONTEXT[e].title)).join(", ");
   const reads = new Set<ContextId>(readsOf(record));
   // Its first message in order: the date line, then each read and its message where the record lists it.
   const order = ["the date line", ...record.context.map((id) => (id === "message" ? "its message" : CONTEXT[id].title))].join(", ");
@@ -54,14 +57,14 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Instructions</h2>
-            <p className="text-sm text-muted-foreground">Its own text, the same on every run, and the shared texts it uses, in the order they are sent.{reads.has("the_stock") ? " The stock's situations end them, when it is in one." : ""}</p>
+            <p className="text-sm text-muted-foreground">Markdown files in lib/agent/engine/agents, the same on every run, and the facts its record places among them, in the order they are sent: {files}.</p>
             <Collapsible>
-              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its own text · {n(own.length)} characters</CollapsibleTrigger>
+              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its instructions · {n(doc.length)} characters</CollapsibleTrigger>
               <CollapsibleContent>
-                <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{own}</p>
+                <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{doc}</p>
               </CollapsibleContent>
             </Collapsible>
-            <Checklist items={(Object.keys(SHARED) as SharedId[]).map((id) => ({ id, ...SHARED[id], on: shared.has(id) }))} />
+            <Checklist items={SHARED_FILES.map((id) => ({ id, ...SHARED[id], on: shared.has(id) }))} />
           </section>
 
           <section className="flex flex-col gap-2">

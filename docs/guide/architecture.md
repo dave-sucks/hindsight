@@ -26,7 +26,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **What an agent is told in a situation:** `SITUATIONS` in `lib/agent/situations.ts`. Never a prompt.
 - **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
 - **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
-- **The rules every agent shares:** `HOUSE_RULES` in `lib/agent/house-rules.ts`, with the writing rules in `lib/agent/voice.ts`.
+- **The rules every agent shares:** `lib/agent/engine/agents/house-rules.md` and the writing rules in `how-you-write.md` beside it; each agent's own instructions are a markdown file there too.
 - **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
 - **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.

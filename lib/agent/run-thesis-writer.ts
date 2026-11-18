@@ -428,7 +428,7 @@ export const stockDataText = (dataBlock: string) => `## GROUND-TRUTH DATA — us
  */
 export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }, now: Date = new Date()): BuiltRequest {
   const t = writerTexts(opts, first);
-  return composeAgentRequest(writerRecordFor(opts), writerInput(opts, first, now), { shared: t.shared, pieces: opts.portfolioPieces ?? null, context: t.context });
+  return composeAgentRequest(writerRecordFor(opts), writerInput(opts, first, now), { pieces: opts.portfolioPieces ?? null, context: t.context });
 }
 
 /** The Writer's input for its run: the date, its account, and its message (the sender's brief). */
@@ -436,17 +436,15 @@ function writerInput(opts: WriterResearchPromptOpts, first: { chatFound?: string
   return { now, environment: opts.environment ?? "PAPER", message: writerMessage(opts, first?.chatFound) };
 }
 
-/** The Writer's texts that change by run: the analyst and its playbooks, and its context reads. */
+/** The Writer's facts for this run: the analyst and its playbooks (placed in its instructions), and its first message's reads. */
 function writerTexts(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }) {
   const T = opts.ticker.toUpperCase();
   const refreshing = opts.mode === "refresh" && opts.existingThesis != null;
   return {
-    shared: {
+    context: {
       the_analyst: analystBrief(opts.analyst),
       // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
       playbooks: playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
-    },
-    context: {
       the_stock: refreshing ? stockRowText({ ticker: T, row: opts.stockRow ?? null }) : null,
       playbook_record: setupRecordText(opts.setupRecord),
       stock_data: first ? stockDataText(first.dataBlock) : null,
@@ -726,7 +724,6 @@ export async function writerResearchPhase(
       input: writerInput(writerOpts, first, new Date()),
       sources: {
         portfolioPieces: async () => writerOpts.portfolioPieces ?? [],
-        shared: { the_analyst: async () => texts.shared.the_analyst, playbooks: async () => texts.shared.playbooks },
         context: Object.fromEntries(Object.entries(texts.context).map(([id, text]) => [id, async () => text ?? null])),
       },
       runId: args.childRunId,

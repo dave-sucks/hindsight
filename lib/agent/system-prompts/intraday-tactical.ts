@@ -178,14 +178,17 @@ export function fireMessage(args: TacticalPromptArgs, facts: FireFacts): string 
  */
 export function triggerRunRequest(args: TacticalPromptArgs, facts: FireFacts = { more: "" }, now: Date = new Date()): BuiltRequest {
   return composeAgentRequest(recordFor(args), { now, environment: args.environment ?? "PAPER", message: fireMessage(args, facts) }, {
-    shared: { the_analyst: analystBrief(args.analyst, args.capacity), playbooks: args.playbooks || null },
-    situations: situationsText(args),
     // The trigger run's Market and portfolio context is the market numbers alone; the write-up's has the snapshot
     // and the digests, and the house rules say how to weigh them (the stock's row wins where they differ). On
     // 2026-10-07 a day-old digest told the trigger runs "no pending proposals" while ASML's row carried its sale
     // awaiting approval.
     pieces: args.portfolioPieces ?? null,
-    context: { the_stock: stockRowText(args.stock) },
+    context: {
+      the_analyst: analystBrief(args.analyst, args.capacity),
+      playbooks: args.playbooks || null,
+      situations: situationsText(args),
+      the_stock: stockRowText(args.stock),
+    },
   });
 }
 

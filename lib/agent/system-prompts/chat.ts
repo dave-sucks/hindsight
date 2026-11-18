@@ -31,7 +31,7 @@ export function pinnedAnalystText(scope: ScopedAnalyst, room?: AnalystCapacity |
 /** The chat's instructions, each part named for the run's Context panel. */
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
-  return composeAgentRequest(CHAT, { now: new Date(), environment }, { shared: { the_analyst: scope ? pinnedAnalystText(scope, opts.room) : null } });
+  return composeAgentRequest(CHAT, { now: new Date(), environment }, { context: { the_analyst: scope ? pinnedAnalystText(scope, opts.room) : null } });
 }
 
 /** The read "the_analysts": each analyst's room, at the portfolio level. Null when there are none. */

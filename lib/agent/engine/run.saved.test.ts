@@ -59,7 +59,8 @@ const RECORD: RunnableRecord = {
   model: "gpt-5.4",
   maxSteps: 3,
   timeoutMs: 1_000,
-  instructions: [{ own: "Do the job." }],
+  // Any agent's instruction file: the runner reads it as the engine does.
+  instructions: ["portfolio-digest.md"],
   context: ["last_output", "message"],
   tools: [],
   output: "A reply.",

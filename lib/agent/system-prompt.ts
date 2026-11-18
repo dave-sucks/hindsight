@@ -91,9 +91,9 @@ export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: s
   const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
 
   return composeAgentRequest(MORNING_RUN, { now, environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", message: morningKickoff(atBuy, snapshotRead ? null : (runInput.portfolio?.cash ?? 0)) }, {
-    shared: { the_analyst: analystBrief(analyst, capacity) },
     pieces: runInput.portfolioPieces ?? null,
     context: {
+      the_analyst: analystBrief(analyst, capacity),
       earnings_this_week: earningsWeekText(runInput),
       filings_this_week: filingsWeekText(runInput),
       // Refused calls never redone (2026-09-25): PLTR's buy was refused on

@@ -10,6 +10,9 @@ import type { BuiltNewest, BuiltRequest } from "../types";
 
 type Golden = { cases: Record<string, Record<string, number>>; texts: string[] };
 
+/** The shared instruction files, by the ids the old builders gave them. */
+const OLD_IDS: Record<string, string> = { "house-rules.md": "house_rules", "how-you-write.md": "how_you_write", "research-rules.md": "research_rules" };
+
 /** A case's old parts: "instructions:analyst_brief" → its text. */
 export function before(caseKey: string): Record<string, string> {
   const g = BEFORE as Golden;
@@ -26,7 +29,9 @@ export function partsOf(b: BuiltRequest, newest?: BuiltNewest): Record<string, s
     const cut = byParts(parts, text);
     if (!cut || cut.after) throw new Error("its parts don't add up to what it sent");
     const sent = parts.filter((p) => p.chars > 0);
-    cut.parts.forEach((c, i) => (out[`${sent[i].where}:${sent[i].id}`] = c.sections[0].text));
+    // Keyed as the old builders named the parts: the agent's own file is "own", a shared file its old id.
+    const key = (p: (typeof sent)[number]) => (p.kind === "own" ? "own" : (OLD_IDS[p.id] ?? p.id));
+    cut.parts.forEach((c, i) => (out[`${sent[i].where}:${key(sent[i])}`] = c.sections[0].text));
   };
   add(b.parts.filter((p) => p.where === "instructions"), b.instructions);
   add(b.parts.filter((p) => p.where === "message"), b.message);

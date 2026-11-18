@@ -23,8 +23,11 @@ import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
-import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { instructionText } from "@/lib/agent/engine/instructions";
+
+const HOUSE_LINES = instructionText("house-rules.md");
+const HOW_YOU_WRITE = instructionText("how-you-write.md");
+const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
 import type { RunInput } from "@/lib/agent/run-input";
 
 const STRATEGY = "(The analyst's strategy, as written on its page.)";
