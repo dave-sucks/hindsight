@@ -227,4 +227,40 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "Each analyst's slots against its limit, its largest trade and the most in one stock, at the portfolio level.",
     source: "lib/agent/analyst-scope.ts (analystRoomLines)",
   },
+  today: {
+    id: "today",
+    title: "Today's date",
+    about: "The date of the run, so a catalyst after it is read as not happened yet.",
+    source: "lib/agent/run-thesis-writer.ts (the run's date)",
+  },
+  date_awareness: {
+    id: "date_awareness",
+    title: "Date awareness",
+    about: "A catalyst after today hasn't happened; an earnings claim is checked against the reports in the data.",
+    source: "lib/agent/thesis-research/writer-rules.ts",
+  },
+  research_note: {
+    id: "research_note",
+    title: "The research note",
+    about: "Its three sections (Company, Bull Case, Bear Case), every bullet cited, the data block as the authority, the web for what it leaves open.",
+    source: "lib/agent/thesis-research/writer-rules.ts",
+  },
+  thesis_claim: {
+    id: "thesis_claim",
+    title: "The Street, the claim and conviction",
+    about: "How to read the Street's targets, and how to write the belief, the checkable assumptions, what would prove it wrong and the conviction.",
+    source: "lib/agent/thesis-research/writer-rules.ts",
+  },
+  earnings_triggers: {
+    id: "earnings_triggers",
+    title: "Earnings triggers",
+    about: "The report heads-up and the beat-or-miss measures, and when a thesis needs its own.",
+    source: "lib/agent/thesis-research/writer-rules.ts",
+  },
+  what_the_owner_reads: {
+    id: "what_the_owner_reads",
+    title: "What the owner reads",
+    about: "Which fields the owner reads first, and what to do when the save sends back errors.",
+    source: "lib/agent/thesis-research/writer-rules.ts",
+  },
 };

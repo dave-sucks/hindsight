@@ -11,6 +11,7 @@
  * adds no text of its own.
  */
 import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
+import { DATE_AWARENESS, EARNINGS_TRIGGERS, RESEARCH_NOTE, THESIS_CLAIM, WHAT_THE_OWNER_READS } from "@/lib/agent/thesis-research/writer-rules";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { BLOCKS, GROUP_HEADINGS } from "./blocks";
 import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltNewest, type BuiltRequest, type RecordPart, type SentPartManifest, type Sep, type Where } from "./types";
@@ -38,6 +39,11 @@ export const SEP = "\n\n";
 const BUILT_IN: Partial<Record<BlockId, string>> = {
   house_rules: HOUSE_LINES,
   how_you_write: HOW_YOU_WRITE,
+  date_awareness: DATE_AWARENESS,
+  research_note: RESEARCH_NOTE,
+  thesis_claim: THESIS_CLAIM,
+  earnings_triggers: EARNINGS_TRIGGERS,
+  what_the_owner_reads: WHAT_THE_OWNER_READS,
 };
 
 /** A block printed inside its group (the Market and portfolio block), not on its own. */

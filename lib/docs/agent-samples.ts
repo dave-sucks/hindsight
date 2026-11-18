@@ -78,6 +78,10 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     from: "a refresh of a watched stock, sent from a chat",
     build: () => ({ request: writerRequest(writerOpts(WRITER_CASES.refresh_watch), WRITER_MESSAGE) }),
   },
+  holding_refresh: {
+    from: "a refresh of a stock we hold",
+    build: () => ({ request: writerRequest(writerOpts(WRITER_CASES.refresh_held), WRITER_MESSAGE) }),
+  },
   trigger_run: {
     from: "a buy trigger firing on a watched stock",
     build: () => ({ request: triggerRunRequest(triggerArgs(TRIGGER_CASES.buy_on_watch), { facts: `Tactical run on $CASE. Buy if above $120.` }) }),
