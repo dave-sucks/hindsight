@@ -1622,7 +1622,16 @@
      "where": "instructions",
      "source": "lib/agent/house-rules.ts",
      "sep": "\n\n",
-     "chars": 389
+     "chars": 150
+    },
+    {
+     "id": "market_block_rule",
+     "title": "Weighing the Market and portfolio block",
+     "kind": "block",
+     "where": "instructions",
+     "source": "lib/agent/house-rules.ts",
+     "sep": "\n\n",
+     "chars": 237
     },
     {
      "id": "how_you_write",

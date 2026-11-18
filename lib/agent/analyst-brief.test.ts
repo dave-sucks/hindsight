@@ -23,7 +23,7 @@ import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
-import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { HOUSE_LINES, HOW_YOU_WRITE, MARKET_BLOCK_RULE } from "@/lib/agent/house-rules";
 import { VOICE_RULES } from "@/lib/agent/voice";
 import type { RunInput } from "@/lib/agent/run-input";
 
@@ -154,9 +154,15 @@ describe("every door reads the same brief, once", () => {
 
   it("each door carries the house rules once, and the voice rules once", () => {
     for (const door of Object.keys(DOORS) as Array<keyof typeof DOORS>) {
-      expect([door, count(prompts[door], HOUSE_RULES)]).toEqual([door, 1]);
+      expect([door, count(prompts[door], HOUSE_LINES)]).toEqual([door, 1]);
+      expect([door, count(prompts[door], HOW_YOU_WRITE)]).toEqual([door, 1]);
       expect([door, count(prompts[door], VOICE_RULES)]).toEqual([door, 1]);
     }
+  });
+
+  it("the rule on weighing the snapshot and the digests goes once to a door given them, and never to the trigger run, which gets the market numbers alone", () => {
+    for (const door of ["daily", "chat", "writer"] as const) expect([door, count(prompts[door], MARKET_BLOCK_RULE)]).toEqual([door, 1]);
+    expect(count(prompts.trigger, MARKET_BLOCK_RULE)).toBe(0);
   });
 
   it("no door renders the analyst its own way any more", () => {

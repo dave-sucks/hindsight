@@ -17,7 +17,7 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 import { statSync } from "fs";
 import { zodSchema } from "ai";
 import type { z } from "zod";
-import { SITUATIONS } from "@/lib/agent/situations";
+import { REVIEW_CASES } from "@/lib/agent/situations";
 import { updateThesis } from "./update-thesis";
 
 const DOOR = [
@@ -49,7 +49,7 @@ describe("the morning run's save", () => {
   });
 
   it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {
-    const text = SITUATIONS.REVIEW_DUE.guidance;
+    const text = REVIEW_CASES.no_view.text;
     for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
     for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([f, text.includes(f)]).toEqual([f, false]);
   });
