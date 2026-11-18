@@ -52,7 +52,7 @@ describe("the morning run on the engine", () => {
 
   it("the analyst opens the instructions; the regime and the refused calls end them, the refused calls only when there are some", () => {
     const full = build("full");
-    expect(full.parts.filter((p) => p.where === "instructions").map((p) => p.id)).toEqual(["analyst_brief", "instructions", "house_rules", "how_you_write", "regime", "blocked_last_time"]);
+    expect(full.parts.filter((p) => p.where === "instructions").map((p) => p.id)).toEqual(["analyst_brief", "instructions", "house_rules", "market_block_rule", "how_you_write", "regime", "blocked_last_time"]);
     expect(full.instructions.startsWith("## Analyst: Case Analyst\n")).toBe(true);
     expect(full.instructions.indexOf("## Regime and cash")).toBeGreaterThan(full.instructions.indexOf("## How tools work"));
     expect(full.instructions.endsWith("- 2026-11-16: Buy on $CCC (place_trade) — refused: The buy was refused: no sell price.")).toBe(true);
@@ -86,6 +86,7 @@ describe("the morning run on the engine", () => {
       "The analyst",
       "Its instructions",
       "House rules",
+      "Weighing the Market and portfolio block",
       "How you write",
       "Regime and cash",
       "Refused calls never redone",
@@ -97,6 +98,6 @@ describe("the morning run on the engine", () => {
       "Filings this week",
       "The start",
     ]);
-    expect(rowsOf(build("quiet"))?.map((r) => r.name)).toEqual(["The analyst", "Its instructions", "House rules", "How you write", "Regime and cash", "The start"]);
+    expect(rowsOf(build("quiet"))?.map((r) => r.name)).toEqual(["The analyst", "Its instructions", "House rules", "Weighing the Market and portfolio block", "How you write", "Regime and cash", "The start"]);
   });
 });

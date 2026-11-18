@@ -51,7 +51,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   const blockArgs: unknown[] = [];
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/agent/portfolio-block", () => ({
-      loadPortfolioPieces: async (a: unknown) => (blockArgs.push(a), [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]),
+      loadPortfolioPieces: async (a: unknown) => (blockArgs.push(a), [{ id: "market_numbers", text: "### Market numbers\nSTAND-IN" }, { id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]),
     }));
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
@@ -202,8 +202,9 @@ describe("what the run page opens with", () => {
     const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 });
     expect(r.opening).toBe(`Tactical run on $V. Sell if below $395.\n\n${askOf(TRIGGER_RUN)}`);
     for (const block of BLOCKS) expect([block, r.opening!.includes(block)]).toEqual([block, false]);
-    // The model still read every block.
-    for (const block of ["## Market and portfolio", "its row (get_theses)", "## The trigger that fired"]) expect(r.asked[0].prompt).toContain(block);
+    // The model still read every block: of the Market and portfolio block, the market numbers alone (2026-11-18).
+    for (const block of ["## Market and portfolio", "### Market numbers", "its row (get_theses)", "## The trigger that fired"]) expect(r.asked[0].prompt).toContain(block);
+    expect(r.asked[0].prompt).not.toContain("### Portfolio snapshot");
   });
 
   it("the post-trade write-up (IOT's Auto-sell): the fire's facts with the trade's line, and its ask", async () => {

@@ -31,9 +31,9 @@ describe("the Portfolio Manager's get_theses", () => {
     const held = rowForModel({ ...row, status: "HOLDING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
     const watch = rowForModel({ ...row, status: "WATCHING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
     expect(Object.keys(held)).toEqual(Object.keys(watch));
-    expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: ["a", "b", "c"], latestEarnings: ["Beat.", "Raised."] });
+    expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: ["a", "b", "c"] });
     for (const k of Object.keys(held)) expect(COMPARING_FIELDS).toContain(k);
-    for (const k of ["bull_case", "bear_case", "variant_view", "snapshot", "situations"]) expect(held[k]).toBeUndefined();
+    for (const k of ["bull_case", "bear_case", "variant_view", "snapshot", "latestEarnings", "situations"]) expect(held[k]).toBeUndefined();
   });
 });
 

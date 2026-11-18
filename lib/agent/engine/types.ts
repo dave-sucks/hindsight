@@ -10,6 +10,7 @@
 /** A context block in the library (./blocks.ts). */
 export type BlockId =
   | "house_rules"
+  | "market_block_rule"
   | "how_you_write"
   | "market_numbers"
   | "market_digest"

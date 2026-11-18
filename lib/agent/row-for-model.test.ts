@@ -175,10 +175,10 @@ describe("the short row", () => {
     expect(JSON.stringify(row)).not.toContain("**");
   });
 
-  it("notes the conviction rule on a LOW holding, the paper record on a promoted stock and a floor risk when they exist; no plan checks", () => {
+  it("notes the paper record on a promoted stock and a floor risk when they exist; no rule from code on a LOW holding; no plan checks", () => {
+    // A rule lives in a trigger, a playbook or a situation the owner can read, never in a line the read adds.
     const low = rowForModel({ ...held(), conviction: "LOW" }, { named: false, size: "short" }) as Row;
-    expect(low.note).toBe("Conviction is LOW: tighten the floor on this review.");
-    expect(row).not.toHaveProperty("note");
+    expect(low).not.toHaveProperty("note");
     const promoted = rowForModel({ ...held(), status: "PROMOTED", paperTenureDays: 41, paperRealizedPnl: 812.5, paperReviewCount: 3, position: null }, { named: false, size: "short" }) as Row;
     expect(promoted.paper_record).toBe("held 41 days on paper, realized $812.50, 3 reviews");
     expect(promoted).not.toHaveProperty("position");
@@ -213,7 +213,7 @@ describe("the full row", () => {
   });
 });
 
-/** The seven research sections in the three shapes the writer saves (IOT's, 2026-10-08): a paragraph with citations, cited bullets, plain text. */
+/** The seven research sections in the shapes the writer saved until 2026-11-03, when it stopped writing them (parse-sections.ts). */
 const research = {
   recentCatalysts: { text: "Raised guidance on Sept 3 [WEB:https://example.com/r].", citations: [{ url: "https://example.com/r", kind: "WEB", domain: "example.com" }] },
   fundamentals: { text: "**Revenue +30%** year on year [STRUCTURED:Financials].", citations: [{ kind: "STRUCTURED", title: "Financials" }] },
@@ -223,28 +223,14 @@ const research = {
   insiderTechnical: { text: "No open-market buys in 90 days [STRUCTURED:Insider Activity].", citations: [] },
   researchData: "Raw notes [STRUCTURED:Snapshot] with numbers.",
 };
-const SECTIONS = Object.keys(research);
+const FROZEN = Object.keys(research);
 
-describe("the research sections a read loads with include_research", () => {
-  it("the full row carries each under its own name, as text, with the citations and tags removed", () => {
-    const row = rowForModel({ ...held(), ...research }, { named: true, size: "full" }) as Row;
-    expect(row.recentCatalysts).toBe("Raised guidance on Sept 3.");
-    expect(row.fundamentals).toBe("Revenue +30% year on year.");
-    expect(row.latestEarnings).toEqual(["EPS beat by 25%", "Revenue beat by 5%"]);
-    expect(row.catalystsAndEvents).toEqual(["Q3 report in December"]);
-    expect(row.analystConsensus).toBe("Targets $51 to $58.");
-    expect(row.insiderTechnical).toBe("No open-market buys in 90 days.");
-    expect(row.researchData).toBe("Raw notes with numbers.");
-    const text = JSON.stringify(SECTIONS.map((k) => row[k]));
-    expect(text).not.toMatch(/\[(STRUCTURED|WEB)|citation|example\.com|\*\*/);
-  });
-  it("a full row without them carries none", () => {
-    const row = rowForModel(held(), { named: true, size: "full" }) as Row;
-    for (const k of SECTIONS) expect(row).not.toHaveProperty(k);
-  });
-  it("the short row never carries them, even when the row has them", () => {
-    const row = rowForModel({ ...held(), ...research }, { named: false, size: "short" }) as Row;
-    for (const k of SECTIONS) expect(row).not.toHaveProperty(k);
+describe("what nothing rewrites any more", () => {
+  it("no row carries the research sections, named or not, review or not", () => {
+    for (const [codes, opts] of [[[], { named: true, size: "full" }], [["REVIEW_DUE"], { named: false, size: "short" }], [["REVIEW_DUE"], { named: false, size: "full" }]] as const) {
+      const row = rowForModel({ ...held(), ...research, situations: [...codes] }, opts) as Row;
+      for (const k of FROZEN) expect([k, row[k]]).toEqual([k, undefined]);
+    }
   });
 });
 
@@ -255,7 +241,7 @@ describe("the trigger run's door (step 10): the short row with the setup's lines
     expect(row.playbook_checks).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
     expect(row).not.toHaveProperty("setup");
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
-    for (const k of ["history", ...SECTIONS]) expect([k, k in row]).toEqual([k, false]);
+    for (const k of ["history", ...FROZEN]) expect([k, k in row]).toEqual([k, false]);
     expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
   });
   it("every other short row is unchanged: the compact setup line, no playbook_checks", () => {

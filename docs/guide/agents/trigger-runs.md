@@ -8,7 +8,7 @@ It checks the fire against what's true now, then proposes the trade, redraws the
 Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
-Tools: 14
+Tools: 13
 Saves: 9 fields: triggers, verdict, note
 ```
 
@@ -43,7 +43,7 @@ Every five minutes while the market is open, plus a pass at 4:20 PM for levels r
 
 <!-- asset: context trigger_run -->
 
-The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) comes with every request: the [market numbers](market-reviewer.md#the-market-numbers), written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), the latest 7:30 [market digest](market-reviewer.md), your portfolio snapshot, written by code when the request is built (the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you), and the latest 8 PM [digest](portfolio-digest.md). Where it and a stock's own row differ, the row is right. It is printed before the stock's row, so the row is read after it.
+From the [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) it gets the [market numbers](market-reviewer.md#the-market-numbers) alone, written by code when the request is built (the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY, our stocks reporting in the next 14 days), printed before the stock's row. It gets no portfolio snapshot and no digest: its decision is on one stock, whose position is on its row, the analyst's open slots are in the analyst's text, and code sizes a buy. The rest of the account is the [Portfolio Manager](portfolio-manager.md)'s. The write-up of an Auto trade still gets the whole block.
 
 The stock's row, the same one `get_theses` gives every agent: the position, every trigger with its id, the belief and what would prove it wrong, the bull and bear cases, why the conviction and where we differ from the Street, and the stock's newest 8 Activity lines exactly as the Activity tab reads them (it marks where the 8 end; the Overview's Agent insights is a different cut, the newest 5 with a note). A trigger's note is on it only when you or an analyst wrote one; a note the app wrote (a template's, or a default that only restates the trigger) isn't shown. It comes with the trigger that fired (and its note, on the same rule) and the instructions for each [situation](../concepts/situations.md) the stock is in. Then `get_stock_data` gives the live price and the news, and one web search gives the stock's latest news, so the note can say why it moved.
 
@@ -86,7 +86,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `tactical` in `lib/agent/modes.ts`: `gpt-5.4`, up to 15 steps.
 
 #### Prompt
-Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`). Its instructions are the analyst it works for, its own fixed text with the house rules, the same on every run, then the stock's situations, which are instructions that travel with the stock. Every fact about the run is a block of its first message: the Market and portfolio block, the stock's row from `row-for-model.ts`, the playbooks on a review of a watch, the trigger that fired with the price it fired at, then the fire's facts and the ask. `triggerRunRequest` (`lib/agent/system-prompts/intraday-tactical.ts`) writes the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel.
+Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`). Its instructions are the analyst it works for, its own fixed text with the house rules, the same on every run, then the stock's situations, which are instructions that travel with the stock. Every fact about the run is a block of its first message: the market numbers, the stock's row from `row-for-model.ts`, the playbooks on a review of a watch, the trigger that fired with the price it fired at, then the fire's facts and the ask. `triggerRunRequest` (`lib/agent/system-prompts/intraday-tactical.ts`) writes the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel.
 
 #### Fire rules
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a trigger fires when its condition holds and it has not fired since a close last found it false (`firedSinceFalseClose`). Two buys, or a sale and a trim, on one stock in one pass fold into one run (`lib/agent/triggers/co-fire.ts`).

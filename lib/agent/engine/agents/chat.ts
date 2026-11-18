@@ -231,6 +231,7 @@ export const CHAT: AgentRecord = {
   instructions: [
     { own: "instructions", title: "Its instructions", text: INSTRUCTIONS },
     { block: "house_rules" },
+    { block: "market_block_rule" },
     { block: "how_you_write" },
     { block: "analyst_scope" },
     { block: "analyst_brief" },

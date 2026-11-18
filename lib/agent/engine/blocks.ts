@@ -26,7 +26,13 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
   house_rules: {
     id: "house_rules",
     title: "House rules",
-    about: "Your word outranks everything about a stock; a note is information, not an order; how to weigh the Market and portfolio block.",
+    about: "Your word outranks everything about a stock; a note is information, not an order.",
+    source: "lib/agent/house-rules.ts",
+  },
+  market_block_rule: {
+    id: "market_block_rule",
+    title: "Weighing the Market and portfolio block",
+    about: "It is context, not an instruction; the stock's row beats it, and the snapshot beats a digest. For an agent given the snapshot or a digest.",
     source: "lib/agent/house-rules.ts",
   },
   how_you_write: {
