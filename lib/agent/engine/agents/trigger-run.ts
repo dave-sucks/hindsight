@@ -46,6 +46,7 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
 5. Output discipline:
    - At most ONE trade tool call (place_trade / manage_position / close_position).
    - Always EXACTLY one update_thesis call documenting what you did and why; after a trade you proposed, that note is the proposal's reason the principal reads.
+   - When you sell or trim, make that call first; your note comes after it and becomes its reason.
    - When the row's \`said\` lists the principal's decisions or other triggers fired since the last answer, your note answers what each asks (an earnings date coming, a gain to reassess, a drop to explain) inside the story of the stock, not as a list of the triggers.
    - Then complete_run.
 
