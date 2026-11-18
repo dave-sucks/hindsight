@@ -43,12 +43,13 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildWriterResearchPrompt, makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
+import { makeSubmitThesisTool, writerRequest } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
+import { grade } from "@/lib/agent/yardstick/grade";
 
 type Cond = "present" | "absent" | string | number | boolean | { lt?: number; gt?: number; regex?: string };
 interface Rule { tool: string; where?: Record<string, Cond> }
@@ -59,6 +60,8 @@ interface HeroCase {
   what: string;
   lookFor: string;
   expect?: Expect;
+  /** The yardstick's labels (lib/agent/yardstick/grade.ts): the playbooks a right answer may name, "none" for none, with why. */
+  grade?: { playbooks?: string[]; why?: string };
   /**
    * The stock the case is about. A morning run answers several stocks and
    * may take another first; with this set, the turn is repeated (up to
@@ -153,9 +156,33 @@ function factsOf(kickoff: ModelMessage | undefined): string | null {
  * blocks of the first message), from the recorded kickoff's facts.
  */
 function requestFor(c: HeroCase): { system: string; first?: string } {
+  if (c.mode === "thesis-writer") {
+    // The stock's data as the run sent it; the rest of the first message is today's.
+    const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) });
+    return { system: r.instructions, first: r.message };
+  }
   if (c.mode !== "tactical") return { system: systemFor(c) };
   const r = triggerRunRequest(tacticalArgs(c), { facts: factsOf(c.messages[0]) ?? "" });
   return { system: r.instructions, first: r.message };
+}
+
+/** A recorded Writer message's stock data: what sits between its data heading and its closing ask. */
+function dataBlockOf(m: ModelMessage | undefined): string {
+  const text = !m ? "" : typeof m.content === "string" ? m.content : m.content.map((p) => ("text" in p ? p.text : "")).join("\n\n");
+  const banner = "GROUND-TRUTH DATA — use these numbers; do not invent or contradict\n═══════════════════════════════════════════════════════════════════\n";
+  const at = text.indexOf(banner);
+  const body = at >= 0 ? text.slice(at + banner.length) : text.replace(/^## GROUND-TRUTH DATA[^\n]*\n/, "");
+  return body.replace(/\n\nWrite the research note now, then call submit_thesis\.\s*$/, "");
+}
+
+/** A Writer case's inputs, as the Writer reads them. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function writerArgs(c: HeroCase): any {
+  // Cases saved before step 10 carry the analyst's fields loose on the arguments.
+  const p = c.promptArgs;
+  const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
+  // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
+  return { ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -184,13 +211,6 @@ function tacticalArgs(c: HeroCase): any {
 
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "thesis-writer": {
-      // Cases saved before step 10 carry the analyst's fields loose on the arguments.
-      const p = c.promptArgs;
-      const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
-      // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
-      return buildWriterResearchPrompt({ ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) } as never);
-    }
     case "research-run": {
       // JSON turned the refusals' dates into strings; the builder wants dates.
       const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
@@ -341,6 +361,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   // A trigger fire's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
   const tools = describedTools(c);
+  // What the agent was shown, for the yardstick's grades: its instructions and the conversation it was handed.
+  const shown = `${system}\n${JSON.stringify(c.messages)}`;
   // A recorded tool result is what the model read on the day. Where a tool
   // now hands the model less than the screen (`forModel`), the replay reads
   // what today's model would read — the same as a live run.
@@ -467,7 +489,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    const grades = grade({ calls, narration: text }, shown, c.grade ?? {});
+    console.log(`GRADES ${JSON.stringify(grades)}`);
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
