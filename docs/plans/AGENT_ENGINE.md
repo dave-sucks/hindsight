@@ -28,6 +28,7 @@ The audit is at https://claude.ai/artifact/LqoCe8qF1uo1Nb7A27hP2U.
 | **Saved record** | The request as sent, now with the manifest (`parts`) | `run-requests.ts` |
 | **Context panel** | One row per part, named and sized from the manifest. Records saved before the engine keep today's view | `RunContext.tsx` |
 | **Agents page** | Every agent as its record shows it: instructions, which blocks are on and which are off, which tools are on and which are off. Read-only | `/how-it-works/agents` |
+| **Framework page** | Every agent a tab: its parts in its record's order, each sized from the manifest of the request the engine built on its sample day (its engine test's case, `lib/docs/agent-samples.ts`), and its tools. The workflow chips and each agent doc's "What it reads" list come from the same build | `/how-it-works/framework`, `lib/docs/framework.ts` |
 
 A block's options are the record's choice of blocks. For example, the Portfolio Manager lists `watching` and leaves out `portfolio_digest`; it doesn't pass a flag to a loader.
 

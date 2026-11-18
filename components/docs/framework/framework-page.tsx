@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * /how-it-works/framework — how an agent is put together: one request taken apart
- * (the same parts for every agent), the read zoomed in, and the instructions that travel
- * with a stock. The numbers come measured from the server (lib/docs/framework.ts).
+ * /how-it-works/framework — how an agent is put together: every agent's
+ * request taken apart, as the engine builds it from the agent's record, the
+ * read zoomed in, and the instructions that travel with a stock. Everything
+ * is built on the server from the code (lib/docs/framework.ts).
  */
 
 import type { ReactNode } from "react";
@@ -27,8 +28,8 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
           <TwoTone
             as="h1"
             size="hero"
-            lead="One agent, many doors."
-            rest="Every agent is sent the same parts on every request: its job, the house rules, the analyst, the market and portfolio, its tools and the read. Only the sizes change."
+            lead="One engine, every agent."
+            rest="An agent is its own instructions, the blocks it is given from one library, and its tools. The engine builds each of its requests from its record, in the record's order, so the parts below are the parts it is sent."
           />
         </div>
 
@@ -39,7 +40,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
         id="read"
         eyebrow="The read"
         lead="Each stock at the size today needs."
-        rest="Every agent asks one tool for its stocks. Code decides which of each thesis's fields to send: one line when nothing changed, the fields the situation's decision reads when something did, the whole case on the review clock, everything when asked by name."
+        rest="The agents that decide on stocks read them through one tool. Code decides which of each thesis's fields to send: one line when nothing changed, the fields the situation's decision reads when something did, the whole case on the review clock, everything when asked by name."
       >
         <ReadDemo data={data} />
       </Block>
@@ -78,8 +79,8 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
       </Block>
 
       <footer className="flex flex-wrap justify-between gap-2 border-t pt-6 text-xs text-muted-foreground">
-        <span>Prompts, tool menus, models and the situation texts are measured from the code on this deploy.</span>
-        <span>The real request is a Secular Compounder morning, from the Agent Rebuild Roadmap.</span>
+        <span>Every agent&apos;s parts, tools and model are read from its record on this deploy, and the situation texts from their one table.</span>
+        <span>The sizes are each agent&apos;s request built on a sample day, from the cases its engine tests use.</span>
       </footer>
     </div>
   );

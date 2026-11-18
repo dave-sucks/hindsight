@@ -40,7 +40,7 @@ When you ask in [chat](chat.md). "Find drift names off this week's reports" is a
 
 ## What it reads
 
-<!-- asset: context discovery -->
+<!-- asset: context chat -->
 
 First, the analyst's brief: its strategy, universe, rules and record by setup. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
 

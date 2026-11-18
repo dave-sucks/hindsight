@@ -14,7 +14,7 @@ Saves: the market digest, and notes on stocks
 
 ## What it's given
 
-<!-- asset: context market-reviewer -->
+<!-- asset: context market_reviewer -->
 
 One request, with three things in it:
 - its instructions;

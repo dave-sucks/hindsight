@@ -14,6 +14,8 @@ Saves: a write-up, notes on stocks, proposals, research requests
 
 ## What it's given
 
+<!-- asset: context portfolio_manager -->
+
 - **Its job**, then the house rules.
 - **The [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) every agent gets**, with two settings of its own: it also gets the Watching block (every stock you watch, a line each), and it does not get the 8 PM portfolio digest, so its view of the proposals waiting for you is its own.
 - **Its own last write-up**, so it remembers what it was weighing.

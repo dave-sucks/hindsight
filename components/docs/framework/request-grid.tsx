@@ -1,178 +1,179 @@
 "use client";
 
 /**
- * One request to the model, drawn as squares of 1,000 characters. Every
- * agent gets the same parts: its job prompt, the house rules, the analyst
- * brief, its tool menu and the read, with situation guidance and a full row
- * added only when needed (drawn outlined). Picking an agent changes the
- * sizes, never the parts. Hovering a line lights its squares.
+ * One agent's request to the model, drawn as squares of 1,000 characters,
+ * beside its parts. Every agent is a tab, read from its record the same way:
+ * its parts in the record's order, under where each goes (its instructions,
+ * its first message, each new message of a conversation), then its tools.
+ * Each part is sized on the request the engine built on the agent's sample
+ * day (lib/docs/framework.ts). Hovering a line lights its squares.
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DOOR_COPY, MEASURED_REQUEST, type FrameworkData, type FrameworkDoorId } from "@/lib/docs/framework-content";
+import { WHERE_LABEL, type FrameworkAgent, type FrameworkData, type FrameworkPart, type FrameworkWhere } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { Mono } from "../primitives";
 import { SWATCH, type PartId } from "./swatch";
 
-
-interface Part {
-  id: PartId;
-  label: string;
-  body: string;
-  /** Characters; null when it varies too much to print one number. Squares still need a size. */
+/** A line of the list: a part of the request, or the tool menu. */
+interface Row {
+  key: string;
+  swatch: PartId;
+  title: string;
   chars: number | null;
-  squares: number;
-  source: string;
-  href?: string;
-  hrefLabel?: string;
+  body: string;
+  foot: string;
+  /** What its size says when it has none. */
+  unsized: string;
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US");
-const squaresOf = (n: number) => Math.max(1, Math.round(n / 1000));
+/** Squares for a size: one per 1,000 characters, and one for a part smaller than that so it can be found. */
+const squaresOf = (n: number | null) => (n ? Math.max(1, Math.round(n / 1000)) : 0);
+const steps = (a: FrameworkAgent) => (a.maxSteps === 1 ? "one call" : `up to ${a.maxSteps} steps`);
 
-/** The agents to pick between, in the order a stock meets them. */
-const AGENTS: ReadonlyArray<{ id: Exclude<FrameworkDoorId, "writer">; label: string }> = [
-  { id: "morning", label: "Morning" },
-  { id: "trigger", label: "Trigger" },
-  { id: "chat", label: "Chat" },
-];
+function rowOf(p: FrameworkPart, sampled: boolean): Row {
+  const own = p.kind === "own";
+  const body = own ? (p.about ? `“${p.about}”` : "Sent only on some runs.") : p.about;
+  const foot = own ? `Its own words${p.perRun ? ", written for each run" : ""} · ${p.source}` : `From the block library · ${p.source}`;
+  return { key: `${p.where}:${p.id}`, swatch: p.swatch, title: p.title, chars: p.chars, body, foot, unsized: sampled ? "Not on the sample" : "Not sized" };
+}
 
-/** How big the read is at each door. Only the morning's is measured; the rest are drawn at a typical size. */
-const READ: Record<(typeof AGENTS)[number]["id"], { chars: number | null; squares: number; source: string }> = {
-  morning: { chars: MEASURED_REQUEST.after.read, squares: squaresOf(MEASURED_REQUEST.after.read), source: "Measured on a real request" },
-  trigger: { chars: null, squares: 7, source: "One stock's row, up to about 7,000" },
-  chat: { chars: null, squares: 7, source: "Varies with the conversation" },
-};
-
-/** An example day: three flags up somewhere on the book. Their texts' real lengths. */
-const EXAMPLE_FLAGS = ["PROTECTION", "REVIEW_DUE", "PROTECTIVE_SALE"];
-
-/** `linkBase` puts the page in front of the in-page links when the picture sits outside the Framework page. */
-export function RequestGrid({ data, linkBase = "" }: { data: FrameworkData; linkBase?: string }) {
-  const [agent, setAgent] = useState<(typeof AGENTS)[number]["id"]>("morning");
-  const [hover, setHover] = useState<PartId | null>(null);
-
-  const door = data.doors.find((d) => d.id === agent);
-  const job = (door?.promptChars ?? 0) - (door?.houseRules ? data.houseRulesChars : 0);
-  const flags = data.situations.filter((s) => EXAMPLE_FLAGS.includes(s.code));
-  const guidanceChars = flags.reduce((a, s) => a + s.chars, 0);
-  const read = READ[agent];
-
-  const always: Part[] = [
-    { id: "job", label: "Job prompt", body: DOOR_COPY[agent].job, chars: job, squares: squaresOf(job), source: "Measured from this deploy" },
-    { id: "house", label: "House rules", body: "The few sentences true for every analyst everywhere: your word first, and how to write.", chars: data.houseRulesChars, squares: squaresOf(data.houseRulesChars), source: "Measured from this deploy" },
-    { id: "analyst", label: "Analyst brief", body: "Who it works for: the strategy you wrote, word for word, its rule numbers, how full it is, its setups.", chars: MEASURED_REQUEST.after.analystBrief, squares: squaresOf(MEASURED_REQUEST.after.analystBrief), source: "Measured on the Compounder" },
-    {
-      id: "portfolio",
-      label: "Market and portfolio",
-      body: "The market numbers, written by code: the S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY and our stocks reporting in the next 14 days. The latest 7:30 market digest. Your portfolio snapshot, written by code when the request is built: the value and cash, every holding and how it moved, the day's buys and sells, the proposals waiting for you. Then the latest 8 PM portfolio digest.",
-      chars: null,
-      squares: 11,
-      source: "About 10,800 on the live book, Nov 12: the market numbers about 850, the market digest 5,300, the snapshot 2,600, the portfolio digest 2,000",
-    },
-    { id: "tools", label: "Tool menu", body: `The ${door?.tools.length ?? ""} tools it may call, each described in full on every request, used or not.`, chars: door?.toolChars ?? 0, squares: squaresOf(door?.toolChars ?? 0), source: "Measured from this deploy", href: "/how-it-works#tools", hrefLabel: "Catalog" },
-    { id: "read", label: "The read", body: DOOR_COPY[agent].read, chars: read.chars, squares: read.squares, source: read.source, href: `${linkBase}#read`, hrefLabel: "Zoom in" },
+function toolsRow(a: FrameworkAgent): Row | null {
+  const { names, chars, unmeasured, provider } = a.tools;
+  if (!names.length && !provider.length) return null;
+  const lines = [
+    names.length ? `${names.length} tool${names.length === 1 ? "" : "s"}, each described in full on every request, used or not: ${names.join(", ")}.` : null,
+    provider.length ? `The model provider's own: ${provider.join(", ")}.` : null,
+    unmeasured.length ? `Not sized here: ${unmeasured.join(", ")}, made by its run.` : null,
   ];
-  const whenNeeded: Part[] = [
-    { id: "guidance", label: "Situation guidance", body: `The instructions for each flag that is up, once per read. On this example day: ${flags.map((s) => s.name).join(", ")}.`, chars: guidanceChars, squares: squaresOf(guidanceChars), source: "Measured from this deploy", href: `${linkBase}#situations`, hrefLabel: "How" },
-    { id: "named", label: "A full row, by name", body: "When it asks for one stock by name: the research sections, the history.", chars: null, squares: 20, source: "About 20,000, varies with the stock" },
-  ];
+  return { key: "tools", swatch: "tools", title: "Tool menu", chars, body: lines.filter(Boolean).join(" "), foot: "From its record's tool list · lib/agent/tools", unsized: "Not sized" };
+}
 
-  const parts = [...always, ...whenNeeded];
-  const cells: PartId[] = parts.flatMap((p) => Array<PartId>(p.squares).fill(p.id));
+export function RequestGrid({ data }: { data: FrameworkData }) {
+  const [id, setId] = useState(data.agents[0]?.id ?? "");
+  const [hover, setHover] = useState<string | null>(null);
+  const agent = data.agents.find((a) => a.id === id) ?? data.agents[0];
+  if (!agent) return null;
+
+  const groups = (Object.keys(WHERE_LABEL) as FrameworkWhere[])
+    .map((where) => ({ where, rows: agent.parts.filter((p) => p.where === where).map((p) => rowOf(p, agent.sample != null)) }))
+    .filter((g) => g.rows.length);
+  const tools = toolsRow(agent);
+  const rows = [...groups.flatMap((g) => g.rows), ...(tools ? [tools] : [])];
+  const cells = rows.flatMap((r) => Array<Row>(squaresOf(r.chars)).fill(r));
+  const total = rows.reduce((n, r) => n + (r.chars ?? 0), 0);
 
   return (
-    <div className="grid gap-8 lg:grid-cols-2">
-      <div className="flex min-w-0 flex-col">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">On every request</p>
-        <ul className="flex flex-col">
-          {always.map((p) => (
-            <PartRow key={p.id} part={p} hover={hover} setHover={setHover} />
-          ))}
-        </ul>
-        <p className="pt-6 text-xs font-medium uppercase tracking-wide text-muted-foreground">Added when needed</p>
-        <ul className="flex flex-col">
-          {whenNeeded.map((p) => (
-            <PartRow key={p.id} part={p} hover={hover} setHover={setHover} />
-          ))}
-          <li className="flex flex-col gap-1 border-b border-dashed py-3">
-            <span className="text-sm font-medium text-foreground">What its tools bring back</span>
-            <span className="text-sm text-muted-foreground">
-              Every result joins the conversation and is sent again on each request after it. It grows as the run goes, so it isn&apos;t drawn.
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      <div
-        className="flex min-w-0 flex-col gap-5 self-start rounded-2xl border bg-muted/40 p-5 sm:p-6 lg:sticky lg:top-6"
-        style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Tabs value={agent} onValueChange={(v) => setAgent(v as typeof agent)}>
+    <div className="flex flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="overflow-x-auto pb-1">
+          <Tabs
+            value={agent.id}
+            onValueChange={(v) => {
+              setId(String(v));
+              setHover(null);
+            }}
+          >
             <TabsList size="sm">
-              {AGENTS.map((a) => (
-                <TabsTrigger key={a.id} value={a.id}>{a.label}</TabsTrigger>
+              {data.agents.map((a) => (
+                <TabsTrigger key={a.id} value={a.id}>
+                  {a.name}
+                </TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
-          <Mono className="text-xs text-muted-foreground tabular-nums">{cells.length} squares</Mono>
         </div>
-        <div className="grid grid-cols-12 gap-1 sm:grid-cols-16 sm:gap-1.5" aria-hidden>
-          {cells.map((id, i) => (
-            <span
-              key={`${agent}-${i}`}
-              className={cn(
-                "aspect-square rounded-sm transition-opacity duration-300 animate-in fade-in-0 zoom-in-50",
-                SWATCH[id].className,
-                hover && hover !== id && "opacity-15",
-              )}
-              style={{ ...SWATCH[id].style, animationDelay: `${Math.min(i * 4, 900)}ms`, animationFillMode: "backwards" }}
-            />
-          ))}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Each square is 1,000 characters, about 250 tokens. Solid squares ride on every request; outlined ones are added when needed. Point at a line to find
-          its squares.
+        <p className="text-sm text-muted-foreground">
+          <span className="text-foreground">{agent.does}</span> {agent.runsWhen} Model {agent.model}, {steps(agent)}.{" "}
+          <Link href="/how-it-works/agents" className="inline-flex items-center gap-0.5 hover:text-foreground">
+            Its record
+            <ArrowUpRight className="size-3" />
+          </Link>
         </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col">
+          {groups.map((g, i) => (
+            <div key={g.where} className={cn("flex flex-col", i > 0 && "pt-6")}>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{WHERE_LABEL[g.where]}</p>
+              <ul className="flex flex-col">
+                {g.rows.map((r) => (
+                  <PartRow key={r.key} row={r} hover={hover} setHover={setHover} />
+                ))}
+              </ul>
+            </div>
+          ))}
+          {tools ? (
+            <div className="flex flex-col pt-6">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Its tools</p>
+              <ul className="flex flex-col">
+                <PartRow row={tools} hover={hover} setHover={setHover} />
+                <li className="flex flex-col gap-1 border-b border-dashed py-3">
+                  <span className="text-sm font-medium text-foreground">What its tools bring back</span>
+                  <span className="text-sm text-muted-foreground">
+                    Every result joins the conversation and is sent again on each request after it. It grows as the run goes, so it isn&apos;t drawn.
+                  </span>
+                </li>
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="flex min-w-0 flex-col gap-5 self-start rounded-2xl border bg-muted/40 p-5 sm:p-6 lg:sticky lg:top-6"
+          style={{ backgroundImage: "radial-gradient(var(--border) 1px, transparent 1.3px)", backgroundSize: "18px 18px" }}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span className="text-sm font-medium text-foreground">{agent.name}</span>
+            <Mono className="text-xs text-muted-foreground tabular-nums">{agent.sample ? `${fmt(total)} characters` : "Not sized"}</Mono>
+          </div>
+          {cells.length ? (
+            <div className="grid grid-cols-12 gap-1 sm:grid-cols-16 sm:gap-1.5" aria-hidden>
+              {cells.map((r, i) => (
+                <span
+                  key={`${agent.id}-${i}`}
+                  className={cn(
+                    "aspect-square rounded-sm transition-opacity duration-300 animate-in fade-in-0 zoom-in-50",
+                    SWATCH[r.swatch].className,
+                    hover && hover !== r.key && "opacity-15",
+                  )}
+                  style={{ ...SWATCH[r.swatch].style, animationDelay: `${Math.min(i * 4, 900)}ms`, animationFillMode: "backwards" }}
+                />
+              ))}
+            </div>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {agent.sample
+              ? `Built by the engine from its record on a sample day: ${agent.sample}. Its own words and the house rules are the same on every run; a block that holds data is the sample's size, and that day's on a real run. `
+              : "It has no sample day, so its parts are drawn from its record without sizes. "}
+            Each square is 1,000 characters, about 250 tokens; a part under 1,000 is one square, so it can be found. Point at a line to find its squares.
+          </p>
+        </div>
       </div>
     </div>
   );
 }
 
-function PartRow({ part, hover, setHover }: { part: Part; hover: PartId | null; setHover: (id: PartId | null) => void }) {
-  const sw = SWATCH[part.id];
+function PartRow({ row, hover, setHover }: { row: Row; hover: string | null; setHover: (key: string | null) => void }) {
+  const sw = SWATCH[row.swatch];
   return (
     <li
-      className={cn("flex flex-col gap-1 border-b py-3 transition-opacity", hover && hover !== part.id && "opacity-50")}
-      onMouseEnter={() => setHover(part.id)}
+      className={cn("flex flex-col gap-1 border-b py-3 transition-opacity", hover && hover !== row.key && "opacity-50")}
+      onMouseEnter={() => setHover(row.key)}
       onMouseLeave={() => setHover(null)}
     >
       <div className="flex items-center gap-2.5">
         <span className={cn("size-2.5 shrink-0 rounded-[3px]", sw.className)} style={sw.style} />
-        <span className="text-sm font-medium text-foreground">{part.label}</span>
-        <span className="ml-auto text-sm text-foreground tabular-nums">{part.chars != null ? fmt(part.chars) : "Varies"}</span>
+        <span className="text-sm font-medium text-foreground">{row.title}</span>
+        <span className="ml-auto shrink-0 text-sm text-foreground tabular-nums">{row.chars != null ? fmt(row.chars) : row.unsized}</span>
       </div>
-      <p className="pl-5 text-sm text-muted-foreground">{part.body}</p>
-      <div className="flex items-center gap-3 pl-5 text-xs text-muted-foreground">
-        <span>{part.source}</span>
-        {part.href ? (
-          part.href.startsWith("#") ? (
-            <a href={part.href} className="inline-flex items-center gap-0.5 hover:text-foreground">
-              {part.hrefLabel}
-              <ArrowDown className="size-3" />
-            </a>
-          ) : (
-            <Link href={part.href} className="inline-flex items-center gap-0.5 hover:text-foreground">
-              {part.hrefLabel}
-              <ArrowUpRight className="size-3" />
-            </Link>
-          )
-        ) : null}
-      </div>
+      <p className="break-words pl-5 text-sm text-muted-foreground">{row.body}</p>
+      <p className="break-words pl-5 text-xs text-muted-foreground">{row.foot}</p>
     </li>
   );
 }

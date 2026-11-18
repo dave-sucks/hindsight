@@ -21,7 +21,7 @@ import { ReadDemo } from "./framework/read-demo";
 import { RequestGrid } from "./framework/request-grid";
 import { AgentTools, useFrameworkData } from "./tool-catalog";
 import { ContextChip } from "@/components/domain/context-chip";
-import { AGENT_CONTEXT, type ContextAgent } from "@/lib/docs/agent-context";
+import { WHERE_LABEL, type FrameworkWhere } from "@/lib/docs/framework-content";
 
 export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   /** A concept's card from the docs home, as its doc's opening picture. `card theses` */
@@ -34,32 +34,57 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   "analyst-styles": AnalystStyles,
   playbook: Playbook,
   "system-layers": SystemLayers,
-  /** One request to the model as squares, per agent: the Framework page's picture. */
+  /** Every agent's request to the model as squares, a tab each: the Framework page's picture. */
   "request-grid": AgentRequests,
   /** A stock's facts into one function, out as its situations: what puts it on the work list. */
   "situation-flow": SituationFlow,
   /** A thesis's triggers to the agents their On fire reaches, what comes out, and the notes coming back. */
   "fire-loop": () => <FireCanvas />,
-  /** Everything one agent is sent, part by part: the list its workflow card's chips come from. `context morning-runs` */
-  context: ({ arg }) => <AgentContext agent={arg as ContextAgent} />,
+  /** Everything one agent is sent, part by part, read from its record (lib/agent/engine/agents). `context morning_run` */
+  context: ({ arg }) => <AgentContext agent={arg ?? ""} />,
 };
 
-function AgentContext({ agent }: { agent: ContextAgent }) {
+/** One agent's parts in its record's order, under where each goes, then its tools. */
+function AgentContext({ agent }: { agent: string }) {
+  const a = useFrameworkData()?.agents.find((x) => x.id === agent);
+  if (!a) return null;
+  const groups = (Object.keys(WHERE_LABEL) as FrameworkWhere[]).map((where) => ({ where, parts: a.parts.filter((p) => p.where === where) })).filter((g) => g.parts.length);
+  const tools = [a.tools.names.length ? `${a.tools.names.length} tool${a.tools.names.length === 1 ? "" : "s"}: ${a.tools.names.join(", ")}.` : "", a.tools.provider.length ? `The model provider's own: ${a.tools.provider.join(", ")}.` : ""].filter(Boolean).join(" ");
   return (
-    <ul className="flex flex-col divide-y border-y">
-      {(AGENT_CONTEXT[agent] ?? []).map((c) => (
-        <li key={c.label} className="flex flex-col items-start gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
-          <span className="shrink-0 sm:w-44">
-            <ContextChip part={c.part}>{c.label}</ContextChip>
-          </span>
-          <span className="text-sm text-muted-foreground">{c.about}</span>
-        </li>
+    <div className="flex flex-col gap-5">
+      {groups.map((g) => (
+        <div key={g.where} className="flex flex-col gap-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{WHERE_LABEL[g.where]}</p>
+          <ul className="flex flex-col divide-y border-y">
+            {g.parts.map((p) => (
+              <li key={`${p.kind}:${p.id}`} className="flex flex-col items-start gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
+                <span className="shrink-0 sm:w-44">
+                  <ContextChip part={p.swatch}>{p.title}</ContextChip>
+                </span>
+                <span className="text-sm text-muted-foreground">{p.kind === "own" ? (p.about ? `Its own words: “${p.about}”` : "Its own words, sent only on some runs.") : p.about}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ))}
-    </ul>
+      {tools ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Its tools</p>
+          <ul className="flex flex-col divide-y border-y">
+            <li className="flex flex-col items-start gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
+              <span className="shrink-0 sm:w-44">
+                <ContextChip part="tools">Tool menu</ContextChip>
+              </span>
+              <span className="break-words text-sm text-muted-foreground">{tools}</span>
+            </li>
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 function AgentRequests() {
   const data = useFrameworkData();
-  return data ? <RequestGrid data={data} linkBase="/how-it-works/framework" /> : null;
+  return data ? <RequestGrid data={data} /> : null;
 }

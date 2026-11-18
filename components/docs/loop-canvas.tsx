@@ -7,9 +7,10 @@
  * (run-outputs.tsx), fed through one bus since any of them can leave any of
  * the four: notes, edits and trades land back on the stock, stale research
  * goes back to the Writer. An agent card's bar is what
- * wakes it, its schedule is its doc's "Starts", and its chips are what it is
- * sent (lib/docs/agent-context.ts, the list its doc shows). The two digests
- * have no arrow: the amber chip each writes is the chip on the agents below.
+ * wakes it, its schedule is its doc's "Starts", and its chips are the blocks
+ * its record gives it, the ones fewest agents get first (built on the server,
+ * lib/docs/framework.ts; its doc lists every part). The two digests have no
+ * arrow: the amber chip each writes is the chip on the agents below.
  * The wires are measured from the nodes; on a phone the cards stack and the
  * wires drop away. Every ticker and number is an example.
  */
@@ -21,17 +22,22 @@ import { StockLogo } from "@/components/StockLogo";
 import { PriceChange } from "@/components/ui/price-change";
 import { rowLabel } from "@/lib/agent/triggers/condition";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
-import { AGENT_CONTEXT, CHIPS_SHOWN, MARKET_DIGEST, PORTFOLIO_DIGEST, type ContextAgent, type ContextPart } from "@/lib/docs/agent-context";
+import { swatchOf } from "@/components/docs/framework/swatch";
+import { BLOCKS } from "@/lib/agent/engine/blocks";
+import type { AgentId, BlockId } from "@/lib/agent/engine/types";
+import { blocksByRarity } from "@/lib/docs/framework-content";
 import { factsOf, parseDoc } from "@/lib/docs/guide-parse";
 import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { cn } from "@/lib/utils";
 import { RunOutputs, type OutputId } from "./run-outputs";
 import { Eyebrow } from "./primitives";
 import { docBySlug, type DocSlug } from "./registry";
-import { useGuideDoc } from "./tool-catalog";
+import { useFrameworkData, useGuideDoc } from "./tool-catalog";
 import { ExamplePill, type PillSpec } from "./trigger-bits";
 
-type NodeId = ContextAgent | OutputId | "thesis" | "outputs";
+/** The agents on the diagram, by their doc. */
+type AgentNode = Extract<DocSlug, "discovery" | "portfolio-digest" | "market-reviewer" | "writer" | "trigger-runs" | "morning-runs" | "chat">;
+type NodeId = AgentNode | OutputId | "thesis" | "outputs";
 type Wake = "clock" | "trigger" | "asked";
 
 const WAKE: Record<Wake, { bar: string; label: string }> = {
@@ -40,19 +46,26 @@ const WAKE: Record<Wake, { bar: string; label: string }> = {
   asked: { bar: "bg-wake-asked", label: "Wakes when asked" },
 };
 
-/** Each agent: its name, what wakes it, its place on the grid (columns 1, 3 and 5; 2 and 4 are the gaps), and what it creates for the others. */
-const AGENTS: Record<ContextAgent, { name: string; wake: Wake; place: string; creates?: ContextPart }> = {
-  discovery: { name: "Discovery", wake: "asked", place: "lg:col-start-1 lg:row-start-1 lg:mb-6" },
-  "portfolio-digest": { name: "Portfolio Digest", wake: "clock", place: "lg:col-start-3 lg:row-start-1 lg:mb-6", creates: PORTFOLIO_DIGEST },
-  "market-reviewer": { name: "Market Reviewer", wake: "clock", place: "lg:col-start-5 lg:row-start-1 lg:mb-6", creates: MARKET_DIGEST },
-  writer: { name: "The Writer", wake: "asked", place: "lg:col-start-1 lg:row-start-2 lg:mb-10" },
-  "trigger-runs": { name: "Trigger run", wake: "trigger", place: "lg:col-start-3 lg:row-start-3 lg:self-center" },
-  "morning-runs": { name: "Morning run", wake: "clock", place: "lg:col-start-3 lg:row-start-4 lg:self-center" },
-  chat: { name: "Chat", wake: "asked", place: "lg:col-start-3 lg:row-start-5 lg:self-center" },
+/**
+ * Each agent: its name, the record it runs on (Discovery is a job the chat
+ * does), what wakes it, its place on the grid (columns 1, 3 and 5; 2 and 4
+ * are the gaps), and the block it writes for the others.
+ */
+const AGENTS: Record<AgentNode, { name: string; record: AgentId; wake: Wake; place: string; creates?: BlockId }> = {
+  discovery: { name: "Discovery", record: "chat", wake: "asked", place: "lg:col-start-1 lg:row-start-1 lg:mb-6" },
+  "portfolio-digest": { name: "Portfolio Digest", record: "portfolio_digest", wake: "clock", place: "lg:col-start-3 lg:row-start-1 lg:mb-6", creates: "portfolio_digest" },
+  "market-reviewer": { name: "Market Reviewer", record: "market_reviewer", wake: "clock", place: "lg:col-start-5 lg:row-start-1 lg:mb-6", creates: "market_digest" },
+  writer: { name: "The Writer", record: "writer", wake: "asked", place: "lg:col-start-1 lg:row-start-2 lg:mb-10" },
+  "trigger-runs": { name: "Trigger run", record: "trigger_run", wake: "trigger", place: "lg:col-start-3 lg:row-start-3 lg:self-center" },
+  "morning-runs": { name: "Morning run", record: "morning_run", wake: "clock", place: "lg:col-start-3 lg:row-start-4 lg:self-center" },
+  chat: { name: "Chat", record: "chat", wake: "asked", place: "lg:col-start-3 lg:row-start-5 lg:self-center" },
 };
 
+/** How many chips a card draws before its "+N". */
+const CHIPS_SHOWN = 3;
+
 /** The three that answer a thesis, and what brings each to it. */
-const ANSWERERS: ReadonlyArray<[ContextAgent, string]> = [
+const ANSWERERS: ReadonlyArray<[AgentNode, string]> = [
   ["trigger-runs", "a trigger fires"],
   ["morning-runs", "in a situation"],
   ["chat", "you ask"],
@@ -172,7 +185,7 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
             </span>
           ))}
           <span>
-            Chips: what each is sent, in the{" "}
+            Chips: the blocks each is given, the rarest first, in the{" "}
             <Link href="/how-it-works/framework" className="underline underline-offset-4 hover:text-foreground">
               Framework&apos;s colors
             </Link>
@@ -198,9 +211,13 @@ export function LoopCanvas({ onOpen }: { onOpen: (slug: DocSlug) => void }) {
 }
 
 /** An agent: the bar for what wakes it, its name and schedule, its summary (which opens its doc) and what it is sent. */
-function AgentCard({ id, ref, onOpen }: { id: ContextAgent; ref: (el: HTMLElement | null) => void; onOpen: (slug: DocSlug) => void }) {
+function AgentCard({ id, ref, onOpen }: { id: AgentNode; ref: (el: HTMLElement | null) => void; onOpen: (slug: DocSlug) => void }) {
   const a = AGENTS[id];
   const source = useGuideDoc(id);
+  const agents = useFrameworkData()?.agents;
+  const record = agents?.find((r) => r.id === a.record);
+  const chips = record && agents ? blocksByRarity(record, agents).map((p) => ({ label: p.title, part: p.swatch })) : [];
+  const creates = a.creates ? BLOCKS[a.creates] : null;
   // The doc says the time zone; the card leaves it off.
   const starts = useMemo(() => (source ? (factsOf(parseDoc(source)).Starts ?? "").replace(/ ET$/, "") : ""), [source]);
   return (
@@ -214,10 +231,10 @@ function AgentCard({ id, ref, onOpen }: { id: ContextAgent; ref: (el: HTMLElemen
           </span>
           <span className="line-clamp-2 text-xs leading-snug text-muted-foreground transition-colors group-hover:text-foreground">{docBySlug(id)?.blurb}</span>
         </button>
-        <ContextChips parts={AGENT_CONTEXT[id]} shown={CHIPS_SHOWN} onMore={() => onOpen(id)} moreLabel={`Everything ${a.name} is sent`} />
-        {a.creates ? (
+        <ContextChips parts={chips} shown={CHIPS_SHOWN} onMore={() => onOpen(id)} moreLabel={`Everything ${a.name} is sent`} />
+        {creates ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Creates: <ContextChip part={a.creates.part}>{a.creates.label}</ContextChip>
+            Creates: <ContextChip part={swatchOf(creates)}>{creates.title}</ContextChip>
           </p>
         ) : null}
       </div>

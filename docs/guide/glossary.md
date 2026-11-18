@@ -59,7 +59,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
 - **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it. See [Discovery](agents/discovery.md).
 - **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).
-- **Door:** one way an agent is started: the morning run, the trigger run, chat or the Writer. The Framework tab compares them.
+- **Door:** one way an agent is started: the morning run, the trigger run, chat or the Writer. Each is an agent with its own record; the Framework page shows what each is sent.
 
 ## What an agent reads
 
