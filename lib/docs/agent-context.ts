@@ -5,7 +5,7 @@
  * takes the Framework page's color (components/docs/framework/swatch.ts).
  * Read off the code that builds each request: the four prompts
  * (lib/agent/system-prompt.ts, system-prompts/intraday-tactical.ts,
- * buildPrincipalSystemPrompt in modes.ts, run-thesis-writer.ts), the Market
+ * buildPrincipalSystemPrompt in system-prompts/chat.ts, run-thesis-writer.ts), the Market
  * and portfolio block (portfolio-block.ts), the Market Reviewer's first
  * message (market-reviewer/run.ts) and the Portfolio Digest's
  * (digest-writer.ts). agent-context.test.ts pins the prompt-built ones.

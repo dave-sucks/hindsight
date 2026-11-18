@@ -105,7 +105,7 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 `lib/market-data/street-consensus.ts` (Nasdaq's feed and its parser) → `StreetConsensus`, written by `indicator-snapshot.ts` and on demand by `get_analyst_coverage`.
 
 #### Prompts
-`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `buildPrincipalSystemPrompt` in `lib/agent/modes.ts` (chat), `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.
+`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `lib/agent/system-prompts/chat.ts` (chat), each agent's record in `lib/agent/engine/agents/`, `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.
 
 #### Plans
 `docs/plans/AGENT_ARCHITECTURE.md` · `docs/PRINCIPLES.md`

@@ -92,7 +92,7 @@ Everything chat can call, read from `lib/agent/modes.ts`.
 With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so its edits and trades are recorded like a morning run's.
 
 #### Prompt
-`buildPrincipalSystemPrompt` in `lib/agent/modes.ts`, with the analyst brief and the house rules.
+Its record, `CHAT` (`lib/agent/engine/agents/chat.ts`): its own words and where its blocks go (pinned to an analyst: the analyst with its room, its money and its book; at the portfolio level: each analyst's room; the house rules everywhere). `chatRequest` (`lib/agent/system-prompts/chat.ts`) reads the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the instructions, naming each part for the chat's Context. The Market and portfolio block rides on your newest message.
 
 #### Edits
 `update_thesis` saves chat's trigger edits as an agent's (`actor: "AGENT"`), so the floor ratchet applies. Your own edits on the thesis sheet are the principal's and skip it.
@@ -107,5 +107,5 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 `app/api/agent/[mode]/route.ts`
 
 #### What was sent
-The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
+The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`): its instructions one row per part, then your conversation.
 </details>

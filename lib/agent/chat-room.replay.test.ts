@@ -10,7 +10,7 @@ import book from "@/lib/agent/__fixtures__/master-chat-writes-2026-10-14.json";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const secularBrief = { id: SECULAR, name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], maxPositionSize: 10000, maxOpenPositions: 8 };
 
-async function withBook<T>(fn: (scope: typeof import("@/lib/agent/analyst-scope"), modes: typeof import("@/lib/agent/modes")) => Promise<T>): Promise<T> {
+async function withBook<T>(fn: (scope: typeof import("@/lib/agent/analyst-scope"), modes: typeof import("@/lib/agent/system-prompts/chat")) => Promise<T>): Promise<T> {
   const db = prismaDouble({
     agentConfig: book.analysts.map((a) => agentConfigRow({ ...a, accountId: REPLAY_ACCOUNT_ID })),
     position: book.positions.map((p) => positionRow({ ...p, accountId: REPLAY_ACCOUNT_ID, status: "OPEN" })),
@@ -18,7 +18,7 @@ async function withBook<T>(fn: (scope: typeof import("@/lib/agent/analyst-scope"
   let out: T | undefined;
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
-    out = await fn(await import("@/lib/agent/analyst-scope"), await import("@/lib/agent/modes"));
+    out = await fn(await import("@/lib/agent/analyst-scope"), await import("@/lib/agent/system-prompts/chat"));
   });
   jest.dontMock("@/lib/prisma");
   return out as T;

@@ -84,7 +84,7 @@ Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
 <summary>Technical details</summary>
 
 #### Prompt
-The batched-discovery section ("Triage flow") of the chat prompt, `buildPrincipalSystemPrompt` in `lib/agent/modes.ts`.
+The Batched discovery part of the chat's record, `CHAT` in `lib/agent/engine/agents/chat.ts`.
 
 #### Mode
 `principal` in `lib/agent/modes.ts`. The standalone `discovery` mode, its prompt and its run (`lib/inngest/functions/discovery-run.ts`) were deleted; old DISCOVERY runs still open on the runs page.

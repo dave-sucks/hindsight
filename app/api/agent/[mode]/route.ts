@@ -31,7 +31,8 @@ import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
-import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt, buildPrincipalSystemPrompt } from "@/lib/agent/modes";
+import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
+import { chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
@@ -263,7 +264,7 @@ export async function POST(
       //     + position tickers flow through ctx.
       resolvedAnalystId = analystId;
 
-      let scopedAnalyst: Parameters<typeof buildPrincipalSystemPrompt>[0]["scopedAnalyst"] = null;
+      let scopedAnalyst: ChatPromptOpts["scopedAnalyst"] = null;
       // Context follows the SCOPE, not the mode name (DAV-207 standing law).
       // Rendered below only when an analyst is actually pinned.
       let scopedMoneyBlock: string | null = null;
@@ -479,13 +480,18 @@ export async function POST(
 
       // The Market and portfolio block for this message: started now, read when the message is built. A chat waits 5 s at most.
       portfolioBlockLoad = loadPortfolioBlock({ accountId, environment: runEnvironment, waitMs: 5_000 });
-      systemPrompt = buildPrincipalSystemPrompt({
-        scopedAnalyst,
-        moneyBlock: scopedMoneyBlock,
-        bookBlock: scopedBookBlock,
-        room,
-        roomLines,
-      });
+      const chat = chatRequest(
+        {
+          scopedAnalyst,
+          moneyBlock: scopedMoneyBlock,
+          bookBlock: scopedBookBlock,
+          room,
+          roomLines,
+        },
+        runEnvironment,
+      );
+      systemPrompt = chat.instructions;
+      systemParts = chat.parts;
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;

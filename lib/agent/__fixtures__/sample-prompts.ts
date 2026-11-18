@@ -3,7 +3,7 @@
  * input. Shared by the field-contract test (is each rule stated?) and the
  * prompt-size test (did a prompt get longer?).
  */
-import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
+import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
