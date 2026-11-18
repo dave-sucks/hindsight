@@ -94,5 +94,5 @@ Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`). Its instru
 `fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`). The write-up is its own agent, `POST_TRADE_WRITEUP` (`lib/agent/engine/agents/post-trade-writeup.ts`): its own fixed instructions, no trade tools, the same stock and trigger blocks, and no situations (`recordFor` picks it).
 
 #### What was sent
-The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).
+The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`). The conversation on the page opens with what a person reads of the first message, the fire's facts and the ask (`openingOf`, `lib/agent/engine/engine.ts`); the blocks are in Context.
 </details>

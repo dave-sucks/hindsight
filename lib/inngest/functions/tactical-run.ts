@@ -28,6 +28,7 @@ import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { recordFor, triggerRunRequest, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { openingOf } from "@/lib/agent/engine/engine";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -929,10 +930,11 @@ export const tacticalRun = inngest.createFunction(
         // ── Persist conversation messages ──────────────────────────────────
         // /runs/[id] replays from this row (run-thread.ts). Includes any
         // retry sequence so the user sees the full recovery, not just the
-        // original tail.
+        // original tail. It opens with the fire's facts and the ask; the
+        // blocks the model read are on the Context panel.
         await saveRunThread(
           run.id,
-          { opening: [{ role: "user", content: [{ type: "text", text: userPrompt }] }], messages: responseMessages, steps: threadSteps },
+          { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }], messages: responseMessages, steps: threadSteps },
           "tactical-run",
         );
 

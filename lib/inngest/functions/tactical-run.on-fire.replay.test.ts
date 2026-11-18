@@ -8,6 +8,7 @@
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 import { POST_TRADE_WRITEUP } from "@/lib/agent/engine/agents/post-trade-writeup";
+import { TRIGGER_RUN } from "@/lib/agent/engine/agents/trigger-run";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
@@ -105,7 +106,10 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
   });
   for (const m of ["@/lib/agent/portfolio-block", "ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
-  return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate") };
+  // The run page opens with the saved thread's first message (run-thread.ts).
+  const thread = rows("runMessage").find((m) => m.role === "thread");
+  const opening = thread ? (JSON.parse(String(thread.content))[0] as { content: Array<{ text: string }> }).content.map((p) => p.text).join("") : null;
+  return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate"), opening };
 }
 
 const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength."};
@@ -183,5 +187,27 @@ describe("the trigger run, by fire mode", () => {
     // The note row is stamped with the order it wrote up, so the feed shows them as one line.
     expect(r.updates.find((u) => u.rationale === NOTE)?.tradeId).toBe("ord_trv");
     expect(r.runs[0]).toMatchObject({ status: "COMPLETE" });
+  });
+});
+
+// Since 2026-11-18 the first message carries the Market and portfolio block, the
+// stock's row and the fired trigger; the run page showed all of it as the opening.
+describe("what the run page opens with", () => {
+  const askOf = (record: typeof TRIGGER_RUN) => (record.message[record.message.length - 1] as { text: string }).text;
+  const BLOCKS = ["## Market and portfolio", "STAND-IN", "its row (get_theses)", "## The trigger that fired", "## Analyst:"];
+
+  it("a trigger run (V's floor, Send to Agent): the fire's facts and the ask, none of the blocks the model read", async () => {
+    const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 });
+    expect(r.opening).toBe(`Tactical run on $V. Sell if below $395.\n\n${askOf(TRIGGER_RUN)}`);
+    for (const block of BLOCKS) expect([block, r.opening!.includes(block)]).toEqual([block, false]);
+    // The model still read every block.
+    for (const block of ["## Market and portfolio", "its row (get_theses)", "## The trigger that fired"]) expect(r.asked[0].prompt).toContain(block);
+  });
+
+  it("the post-trade write-up (IOT's Auto-sell): the fire's facts with the trade's line, and its ask", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 });
+    expect(r.opening!.startsWith("Write-up on $IOT. Sell if below $41.42: set to Auto, so no analyst decided. The sale of all 300 shares is proposed and waits for the principal's approval.")).toBe(true);
+    expect(r.opening!.endsWith(`\n\n${askOf(POST_TRADE_WRITEUP)}`)).toBe(true);
+    for (const block of BLOCKS) expect([block, r.opening!.includes(block)]).toEqual([block, false]);
   });
 });

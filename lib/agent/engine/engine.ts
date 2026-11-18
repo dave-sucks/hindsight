@@ -77,6 +77,23 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
 }
 
 /**
+ * What the run page shows as the run's opening: what a person reads in the
+ * first message, the record's own words (its ask) and the run's own facts (a
+ * block marked `opening`, the fire). Never the context blocks: the Context
+ * panel shows those part by part. Cut from the first message by its parts.
+ */
+export function openingOf(built: BuiltRequest): string {
+  const read: string[] = [];
+  let at = 0;
+  for (const p of built.parts.filter((x) => x.where === "message")) {
+    at += (p.sep ?? "").length;
+    if (p.kind === "own" || BLOCKS[p.id as BlockId]?.opening) read.push(built.message.slice(at, at + p.chars));
+    at += p.chars;
+  }
+  return read.join(SEP);
+}
+
+/**
  * Build what rides on a conversation's newest message, from blocks already
  * read: each part its own text, the Market and portfolio block's parts one
  * text. Its parts are named as if the texts were joined by a blank line, the
