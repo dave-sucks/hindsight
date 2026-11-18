@@ -40,14 +40,16 @@
  * own its lifecycle.
  */
 
-import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
+import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { WRITER, WEB_SEARCH_MAX_USES, type WriterExtra } from "@/lib/agent/engine/agents/writer";
+import type { BuiltRequest, SentPartManifest } from "@/lib/agent/engine/types";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
@@ -98,7 +100,6 @@ import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 const RESEARCH_TIMEOUT_MS = 330_000;
 const SECTION_REPAIR_TIMEOUT_MS = 90_000;
 /** Native web-search budget for the research call (V1 synthesis used 3). */
-const WEB_SEARCH_MAX_USES = 4;
 /**
  * Minimum parsed sections before we spend one repair turn asking for the
  * missing ones. 9 is the full template; below 5 the note is materially
@@ -364,8 +365,8 @@ export interface WriterResearchPromptOpts {
     daysAgo: number;
     closeReason: string | null;
   } | null;
-  /** The Market and portfolio block (lib/agent/portfolio-block.ts), last in the prompt. */
-  portfolioBlock?: string | null;
+  /** The Market and portfolio block's parts (lib/agent/portfolio-block.ts), last in the prompt. */
+  portfolioPieces?: PortfolioPiece[] | null;
 }
 
 /**
@@ -406,21 +407,18 @@ can still leave a view; say so.
 `;
 }
 
-export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): string {
-  const T = opts.ticker.toUpperCase();
-
-  const existingBlock =
-    opts.mode === "refresh" && opts.existingThesis
-      ? `EXISTING THESIS (you are REFRESHING it, not starting fresh):
-  • status: ${opts.existingThesis.status}
-  • direction: ${opts.existingThesis.direction ?? "—"}
-  • horizon: ${opts.existingThesis.horizon ?? "—"}
-  • core belief: ${opts.existingThesis.coreBelief ?? "—"}
-  • company: ${opts.existingThesis.company ?? "—"}
+/** A refresh's thesis as it stands, its triggers with their ids: the existing_thesis block. */
+function existingThesisText(e: WriterExistingThesis): string {
+  return `EXISTING THESIS (you are REFRESHING it, not starting fresh):
+  • status: ${e.status}
+  • direction: ${e.direction ?? "—"}
+  • horizon: ${e.horizon ?? "—"}
+  • core belief: ${e.coreBelief ?? "—"}
+  • company: ${e.company ?? "—"}
   • triggers (edit by id — these ids are the handles):
 ${
-  opts.existingThesis.triggers.length
-    ? opts.existingThesis.triggers
+  e.triggers.length
+    ? e.triggers
         .map((t) => {
           const note = writtenNote(t);
           return `      - ${t.id}: ${describeTrigger(t)}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
@@ -430,257 +428,75 @@ ${
 }
 
 Where new evidence contradicts or supersedes the existing view, flag the
-change explicitly in the note.`
-      : `MODE: MINT — net-new coverage on $${T}. The thesis will be persisted
-as WATCHING (entry-gated). Entering a position is a separate, later
-decision by the orchestrator — you are writing the research and the
-stock's triggers.`;
+change explicitly in the note.`;
+}
 
-  // Trigger-template rules branch on position state. Held (HOLDING) theses
-  // protect an open position; everything else (mint / WATCHING / PROMOTED)
-  // has no position and describes entry conditions.
-  const isHeldRefresh =
-    opts.mode === "refresh" && opts.existingThesis?.status === "HOLDING";
-  const isPromotedRefresh =
-    opts.mode === "refresh" && opts.existingThesis?.status === "PROMOTED";
-
-  const triggerBlock = isHeldRefresh
-    ? `TRIGGERS — YOU ARE REFRESHING A STOCK WE HOLD (open position):
-  • Legal actions: EXIT, REVIEW, TRIM, ADD. NEVER ENTER —
-    we already own it.
-  • It carries its "Sell if below" trigger already. Most refreshes need
-    no trigger ops at all.
-  • A SALE'S PRICE ONLY TIGHTENS on a stock we own. Move the "Sell if
-    below" trigger (edit_triggers, by its id above) up, never down. A
-    looser one is refused by itself — the rest of the refresh still
-    lands. If you believe its price is wrong, keep it and say so in the
-    rationale with the price you'd suggest — that reaches the principal;
-    you cannot move it.`
-    : isPromotedRefresh
-      ? `TRIGGERS — YOU ARE REFRESHING A PROMOTED THESIS (no live position):
-  • The paper position was force-closed at promotion. Legal actions:
-    ENTER + REVIEW only. NEVER EXIT/TRIM/ADD — there is no
-    position to manage.
-  • You do NOT decide re-entry. Status stays PROMOTED; the next daily
-    run reads your refreshed research and decides RE-ENTER (place_trade)
-    / DEFER (downgrade to WATCHING) / KILL. Frame the note so that
-    decision is easy, and put your recommended call in the rationale.`
-      : `TRIGGERS — WATCHING thesis (no position; we're waiting for a reason to buy):
-  • Legal actions: ENTER, STOP_WATCHING and REVIEW. NEVER EXIT/TRIM/ADD
-    — there is no position, so nothing to sell.
-  • A price trigger is { watch: "price", is: "above" | "below", value };
-    settings: { close: true } is "only on the close".
-    "Stop watching if below $X · only on the close" retires the thesis on
-    a close below it, with no run. It never sells: the holding's sell
-    price comes with the buy.
-  • Nothing is added for you: a watch carries the triggers you write
-    and no others, no review clock included.
-  • A watch gets its playbook's watch triggers, its earnings review and
-    its own looks, and nothing that waits for the buy: never a profit
-    check, a partial sale or a sale-side review, and nothing on our buy
-    price, the high since we bought or the days since the buy (the save
-    refuses those on a watch; they come with the buy or at the fill).
-  • Taking the buy off on a refresh (no price worth holding): send
-    remove_trigger_ids naming the buy and Stop watching ids from
-    EXISTING THESIS, keeping ≥1 REVIEW wake.`;
-
-  // Earnings triggers fire off the published calendar (no news needed).
-  // The account already carries the basics for every name; the writer
-  // authors one only where the report IS the thesis.
-  const earningsTriggerBlock = `
-EARNINGS TRIGGERS — two measures, both live (they read the earnings
-calendar, not news):
-  • { watch: "report", is: "before", value: N } — N days before the
-    report, the heads-up. Fires once per approaching report.
-  • { watch: "surprise", is: "beat" | "miss", value: % (0 = any) } —
-    reported EPS against the estimate, at the first open after it.
-  The account rules already give EVERY name a heads-up and a
-  review on any beat or miss, so most theses need none of these. Author
-  one only when the report is the thesis: a CATALYST built on the print
-  wants a tighter bar (a beat of 5% or more → REVIEW, or the miss →
-  EXIT on a held name); a long-dated COMPOUNDER may want a wider
-  heads-up (7 days before). Never ENTER on a beat by itself — a beat
-  the stock sold on is the market saying it wanted more; price the entry.`;
-
-  const priorExitBlock = opts.priorExit
-    ? `
-⚠ RECENTLY SOLD — YOU exited this name ${opts.priorExit.daysAgo} day${opts.priorExit.daysAgo === 1 ? "" : "s"} ago${opts.priorExit.exitPrice != null ? ` at $${opts.priorExit.exitPrice}` : ""}${opts.priorExit.closeReason ? ` (${opts.priorExit.closeReason})` : ""}.
+/** A sale of this stock in the last 14 days: the prior_exit block ("" when none). */
+function priorExitText(x: WriterResearchPromptOpts["priorExit"]): string {
+  if (!x) return "";
+  return `
+⚠ RECENTLY SOLD — YOU exited this name ${x.daysAgo} day${x.daysAgo === 1 ? "" : "s"} ago${x.exitPrice != null ? ` at $${x.exitPrice}` : ""}${x.closeReason ? ` (${x.closeReason})` : ""}.
 If your buy is AT OR ABOVE that exit price, submit_thesis REQUIRES \`prior_exit_acknowledgment\`: one line that genuinely engages with the sale — why this is a NEW setup and not a re-buy of the dip you just sold (e.g. "stopped out at $66.53; re-entering only on a confirmed reclaim of the 20-day — different structure"). Below the exit price no acknowledgment is needed, but underwrite with the sale in view, not from amnesia.
-`
-    : "";
+`;
+}
 
-  const promotionBlock = opts.promotionContext
-    ? `
+/** A promotion's paper history: the promotion block ("" when none). */
+function promotionText(c: WriterResearchPromptOpts["promotionContext"], ticker: string): string {
+  if (!c) return "";
+  return `
 PROMOTION CONTEXT — this refresh is part of a PAPER→LIVE promotion.
-Paper history on $${T}: held ${opts.promotionContext.paperTenureDays ?? "?"} days,
-realized P&L ${opts.promotionContext.paperRealizedPnl != null ? `$${opts.promotionContext.paperRealizedPnl.toFixed(2)}` : "unknown"},
-reviewed ${opts.promotionContext.paperReviewCount ?? "?"} times, promoted ${opts.promotionContext.promotedAt ?? "today"}.
+Paper history on $${ticker}: held ${c.paperTenureDays ?? "?"} days,
+realized P&L ${c.paperRealizedPnl != null ? `$${c.paperRealizedPnl.toFixed(2)}` : "unknown"},
+reviewed ${c.paperReviewCount ?? "?"} times, promoted ${c.promotedAt ?? "today"}.
 Frame the decision explicitly around the three legal first-live-run
 outcomes: RE-ENTER (conviction intact at current prices) / DEFER
 (conviction softened — wait for a cleaner entry) / KILL (a key assumption
 broke). State which one you'd make, and why, in the submit_thesis
 rationale — the next daily run executes it, not you.
-`
-    : "";
+`;
+}
 
-  // Each playbook's words, then its watch triggers as Settings → Playbook lists them. A stock we own writes none of them.
-  const setupsBlock = isHeldRefresh ? "" : playbooksBlock(opts.setups ?? [], opts.playbooks ?? null);
+/** This analyst's record by playbook: the setup_record block ("" when none). */
+function setupRecordText(lines: string[] | undefined): string {
+  return lines?.length ? `   • your record by setup (closed trades since 2026-05-27):\n${lines.map((l) => `       ${l}`).join("\n")}\n` : "";
+}
 
-  return `${analystBrief(opts.analyst)}
+/**
+ * The Writer's request, built by the agent engine from its record
+ * (lib/agent/engine/agents/writer.ts). Its instructions, and its first
+ * message when the stock's data is given.
+ */
+export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }): BuiltRequest {
+  const T = opts.ticker.toUpperCase();
+  const refreshing = opts.mode === "refresh" && opts.existingThesis != null;
+  // Trigger-template rules branch on position state. Held (HOLDING) theses
+  // protect an open position; everything else (mint / WATCHING / PROMOTED)
+  // has no position and describes entry conditions.
+  const held = opts.mode === "refresh" && opts.existingThesis?.status === "HOLDING";
+  const promoted = opts.mode === "refresh" && opts.existingThesis?.status === "PROMOTED";
+  const extra: WriterExtra = { ticker: T, mode: opts.mode, held, promoted, existingDirection: opts.existingThesis?.direction, refreshing, runDate: opts.runDate };
+  return composeAgentRequest(WRITER, { now: new Date(), environment: "PAPER", extra }, {
+    pieces: opts.portfolioPieces ?? null,
+    blocks: {
+      analyst_brief: analystBrief(opts.analyst),
+      // Each playbook's words, then its watch triggers as Settings → Playbook lists them. A stock we own writes none of them.
+      playbooks: held ? "" : playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
+      why_sent: opts.reason,
+      sender_notes: researchNotesBlock(opts.researchNotes),
+      idea_source: ideaSourceBlock(opts.ideaSource),
+      existing_thesis: refreshing ? existingThesisText(opts.existingThesis!) : null,
+      promotion: promotionText(opts.promotionContext, T),
+      setup_record: setupRecordText(opts.setupRecord),
+      prior_exit: priorExitText(opts.priorExit),
+      stock_data: first ? first.dataBlock : null,
+      chat_found: first ? chatFoundBlock(first.chatFound, T) : null,
+    },
+  });
+}
 
-${HOUSE_RULES}
-
-You are writing one deep-research thesis on $${T}.
-${setupsBlock}
-WHY YOU WERE DISPATCHED
-${opts.reason}
-${researchNotesBlock(opts.researchNotes)}${ideaSourceBlock(opts.ideaSource)}
-${existingBlock}
-${promotionBlock}
-═══════════════════════════════════════════════════════════════════
-DATE-AWARENESS — read before any earnings or catalyst claim
-═══════════════════════════════════════════════════════════════════
-Today is ${opts.runDate}. Any catalyst dated later than today has NOT yet
-occurred. Frame future catalysts as "expected" / "consensus expects" —
-NEVER "reported" / "beat" / "missed". If a web search result claims a
-future-dated catalyst already printed (past-tense verbs + specific
-actuals), it is a hallucination — discard the ENTIRE claim, do not
-"fix" the number. Cross-check
-every earnings claim against the Earnings History rows in the
-ground-truth data: if the quarter isn't there, it hasn't reported.
-
-═══════════════════════════════════════════════════════════════════
-YOUR JOB — one research note, then one submit_thesis call
-═══════════════════════════════════════════════════════════════════
-
-STEP 1 — write the research note as plain markdown text, using EXACTLY
-these three section headers (the server parses them — a renamed or
-skipped header is dropped research):
-
-   ## Company
-   Two plain sentences: what the company does and how it makes money.
-   Written once and kept until the business changes. No numbers unless
-   they define the business ("revenue is subscription, growing about
-   30% a year").
-
-   ## Bull Case
-   3-5 cited bullets — each tied to a data point or recent event.
-
-   ## Bear Case
-   3-5 cited bullets — MANDATORY even on LONG. Specific risks with data,
-   each with the tell that would show it is happening; "market
-   volatility" and "competition" are forbidden.
-
-   Ground rules for the note:
-   • The GROUND-TRUTH DATA block in the user message is authoritative for
-     every number, date, rating, and transaction. NEVER invent or
-     contradict it. Use web search (up to ${WEB_SEARCH_MAX_USES} searches) only to fill
-     narrative gaps: transcript quotes, analyst rationale, dated upcoming
-     catalysts, this week's market story. When the user message has "What
-     the chat already found", research only what that leaves open.
-   • Every bullet carries at least one citation: [STRUCTURED:<field>]
-     for ground-truth claims, [WEB:<url>] for web claims. "Recently"
-     without a date is forbidden; "strong fundamentals" without a metric
-     is forbidden.
-   • Nothing else in the note. The company's numbers, its earnings
-     history, the street's view and the chart are live data on the
-     stock's page and in the row every agent reads; do not restate them.
-     No preamble — open directly with ## Company.
-
-STEP 2 — call submit_thesis ONCE with your decision. The schema documents
-every field; the judgment rules:
-
-   • direction: LONG / SHORT / PASS. The research decides it, never the
-     chart. PASS is a valid, gradeable outcome — use it when the research
-     doesn't support a directional edge from YOUR strategy's angle${opts.mode === "refresh" ? (opts.existingThesis?.direction == null ? " (this stock has no view yet: your direction commits it, and PASS retires it as researched and declined)" : " (on a refresh, a PASS view is flagged for the orchestrator; the stored direction doesn't change)") : ""}.
-${isHeldRefresh ? `   • WE OWN THIS STOCK. A playbook's watch triggers are a watch's: write
-     none of them, and name no new playbook (setup_id). The holding's
-     triggers came with the buy and at the fill; edit them by id only
-     where the research changed one.
-` : `   • THE PLAYBOOK WRITES THE TRIGGERS. Once the research gives you a
-     view, name the playbook that fits (setup_id) and write every one of
-     its watch triggers (YOUR PLAYBOOKS), each with "playbook": "WATCH",
-     exactly as listed: the trigger it shows, its action, condition and
-     fireMode as they are ("within 2% of the 50-day average" stays that,
-     never a price; no fireMode where it shows none), and every {chart
-     number} replaced by its price from this stock's chart today (the
-     Price structure block, chart.), never a round number, never a feel. A
-     trigger whose price the chart doesn't have yet (an episodic pivot's
-     buy before its gap) is left out, and the playbook's review that wakes
-     a run is written instead. Each gets its reason, with the price in it.
-     A stock has triggers and nothing else:
-       – a "Stop watching if below" trigger's reason opens with what a
-         close below it would say about core_belief, in one plain
-         sentence, then the chart, with the price. It never sells: the
-         holding's sell price comes with the buy;
-       – a trigger of your own (an earnings review, a price you'd look
-         again at) goes next to them, without "playbook";
-     If no playbook fits, name none: the view stays with no buy (NO PRICE
-     WORTH WAITING FOR YET, below) — not a PASS, and not a buy at an
-     invented price.
-   • A PLAYBOOK HAS A WINDOW AND PRECONDITIONS (its Needs). A stock past
-     its post-earnings window in an uptrend is written on MA_PULLBACK. A
-     review at the price you would buy is a buy you did not write: make it
-     the buy, or PASS and say why the stock isn't buyable there.
-   • NO PRICE WORTH WAITING FOR YET (the buying window opens later, the
-     chart hasn't formed, you want to price it after the report) → write
-     no buy and no "Stop watching if below". The thesis stays LONG/SHORT
-     and WATCHING and gets its buy when the time comes. It MUST carry the
-     review that brings it back, in \`triggers\`: a review at the price
-     you'd look again, or a short day-count review. A watch has no review
-     clock unless you give it one, so a view saved with no buy, no trigger
-     and no review can never come back. "I want to buy the pullback rather
-     than buy here" IS a playbook: write it on MA_PULLBACK. Put the when
-     ("price this after the January readout") in the rationale.
-     PASS is for a view the research does not support — not for a view
-     that isn't ready to price. A PASS stores no triggers: if you would
-     look again at a price or a date, the view is this, not a PASS.
-`}   • THE STREET (the Analyst Coverage block: targets low / average /
-     high, the rating split, EPS revisions) informs every price and sets
-     none; "target" means the Street's number, never ours. In
-     conviction_rationale say where the price sits against the Street's
-     average and high. A buy where the average target sits under the price
-     needs its reason there. An average target far above the price with
-     estimates revised up in the last 4 weeks is a reason for conviction; a
-     wide low–high spread says the Street is unsettled, not that the
-     midpoint is right.
-   • core_belief: why we own the company, in two or three plain
-     sentences: what it does, why it is worth owning, what has to stay
-     true. Never a stock price, a price path, a price target or "within
-     60 days". It is the claim of record every other agent reads.
-   • key_assumptions: two to four checkable premises with the number,
-     each ending with when and where it is checked ("net new ARR stays
-     above $120M, checked at the Q3 report on December 4"). A review
-     grades the thesis against these, so a premise nobody can check is
-     not one.
-   • invalidation_conditions: each a reading about the business and
-     where it is read (a guidance cut at the next report, a margin in the
-     10-Q, a lost customer). Never a stock price, an average, a high or
-     low, or a gap, with or without volume: the triggers hold the price.
-   • conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest
-     middle (most theses).
-   • You do not size the trade. The run that buys names the holding's
-     sale, and place_trade sizes the buy by risk from it, scaled by
-     conviction (LOW ×0.5 … STRONG ×1.25).
-${
-       opts.setupRecord?.length
-         ? `   • your record by setup (closed trades since 2026-05-27):\n${opts.setupRecord.map((l) => `       ${l}`).join("\n")}\n`
-         : ""
-     }
-${triggerBlock}
-${earningsTriggerBlock}
-${priorExitBlock}
-═══════════════════════════════════════════════════════════════════
-HOW YOU WRITE — what the owner reads
-═══════════════════════════════════════════════════════════════════
-The research note in STEP 1 keeps its citations. Your rationale, the
-company line, the belief and each trigger's note are what the owner
-reads first: write them by "How you write" above. On a new stock your
-rationale is the first Activity line the owner reads.
-
-If submit_thesis returns validation errors, fix EXACTLY the listed fields
-and call it again — do NOT rewrite the research note. When it returns
-accepted, STOP. Do not write anything after acceptance.${opts.portfolioBlock ? `\n\n${opts.portfolioBlock}` : ""}`;
+/** The Writer's instructions alone (writerRequest). */
+export function buildWriterResearchPrompt(opts: WriterResearchPromptOpts): string {
+  return writerRequest(opts).instructions;
 }
 
 // ── Idempotency guard ───────────────────────────────────────────────────
@@ -803,6 +619,8 @@ export interface WriterResearchPhaseOutput {
   userPrompt: string;
   /** The research system prompt — the save-time retry resubmits under it. */
   systemPrompt?: string;
+  /** Which part of the research request is which (the agent engine's), kept with the retry's request too. */
+  requestParts?: SentPartManifest[];
   stepCount: number;
   toolCallCount: number;
   submitAttempts: number;
@@ -893,7 +711,7 @@ export async function writerResearchPhase(
     const setupOverrides = await loadSetupOverrides(analyst.accountId);
     const seatSetups = setupsForAnalyst(analyst.setupIds, setupOverrides);
     const playbooks = await loadPlaybooks(analyst.accountId);
-    const systemPrompt = buildWriterResearchPrompt({
+    const request = writerRequest({
       analyst: { ...analyst, setupOverrides },
       ticker: T,
       mode: args.mode,
@@ -911,17 +729,14 @@ export async function writerResearchPhase(
         analystId: analyst.id,
         environment: analyst.tradingEnvironment ?? "PAPER",
       }),
-      portfolioBlock: await loadPortfolioBlock({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER" }),
-    });
-    const userPrompt = `═══════════════════════════════════════════════════════════════════
-GROUND-TRUTH DATA — use these numbers; do not invent or contradict
-═══════════════════════════════════════════════════════════════════
-${rawDataBlock}${chatFoundBlock(args.chatFound, T)}
+      portfolioPieces: await loadPortfolioPieces({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER" }),
+    }, { dataBlock: rawDataBlock, chatFound: args.chatFound });
+    const systemPrompt = request.instructions;
+    const userPrompt = request.message;
 
-Write the research note now, then call submit_thesis.`;
 
     const modeConfig = MODES["thesis-writer"];
-    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer" });
+    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer", parts: request.parts });
 
     let accepted: ValidatedThesisDecision | null = null;
     let submitAttempts = 0;
@@ -1091,6 +906,7 @@ Write the research note now, then call submit_thesis.`;
         args,
         pullOutput,
         systemPrompt,
+        requestParts: request.parts,
         userPrompt,
         noteText,
         analyst,
@@ -1117,6 +933,7 @@ Write the research note now, then call submit_thesis.`;
       threadMessages: capturedMessages as unknown[],
       userPrompt,
       systemPrompt,
+      requestParts: request.parts,
       stepCount,
       toolCallCount,
       submitAttempts,
@@ -1684,6 +1501,7 @@ async function resubmitWithFeedback(input: {
   args: RunThesisWriterArgs;
   pullOutput: WriterPullPhaseOutput;
   systemPrompt: string | undefined;
+  requestParts?: SentPartManifest[];
   userPrompt: string;
   noteText: string;
   analyst: WriterAnalyst;
@@ -1721,7 +1539,7 @@ async function resubmitWithFeedback(input: {
     },
   });
   const modeConfig = MODES["thesis-writer"];
-  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer" });
+  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer", parts: input.requestParts });
   try {
     const res = await generateText({
       model,
@@ -1849,6 +1667,7 @@ export async function writerPersistPhase(
             args,
             pullOutput,
             systemPrompt: research.systemPrompt,
+            requestParts: research.requestParts,
             userPrompt: research.userPrompt,
             noteText: research.noteText,
             analyst,

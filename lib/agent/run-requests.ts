@@ -152,10 +152,10 @@ export function viewOfRecord(r: RequestRecord): CallView {
 }
 
 /**
- * The engine's parts, one row each, cut from what was sent by their sizes. The
- * engine joins its parts with a blank line; when the text sent doesn't add up
- * to the parts (a request changed after it was built), this gives null and the
- * request is shown cut at its headings.
+ * The engine's parts, one row each, cut from what was sent by their sizes and
+ * the separator before each. When the text sent doesn't add up to the parts
+ * (a request changed after it was built), this gives null and the request is
+ * shown cut at its headings. A part with no text this run is not shown.
  */
 export function byParts(parts: SentPartManifest[], instructions: string, message: string): SentCategory[] | null {
   const out: SentCategory[] = [];
@@ -163,14 +163,15 @@ export function byParts(parts: SentPartManifest[], instructions: string, message
     const mine = parts.filter((p) => p.where === where);
     let at = 0;
     const cut: string[] = [];
-    for (const p of mine) {
+    mine.forEach((p, i) => {
+      at += i === 0 ? 0 : (p.sep ?? "\n\n").length;
       cut.push(text.slice(at, at + p.chars));
-      at += p.chars + 2;
-    }
-    if (cut.join("\n\n") !== text) return null;
-    mine.forEach((p, i) =>
-      out.push({ name: p.title, part: p.kind === "own" ? "job" : "read", chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }),
-    );
+      at += p.chars;
+    });
+    if (mine.map((p, i) => (i === 0 ? "" : (p.sep ?? "\n\n")) + cut[i]).join("") !== text) return null;
+    mine.forEach((p, i) => {
+      if (p.chars > 0) out.push({ name: p.title, part: p.kind === "own" ? "job" : "read", chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source });
+    });
   }
   return out;
 }

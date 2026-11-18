@@ -39,12 +39,31 @@ A block's options are the record's choice of blocks. For example, the Portfolio 
 
 ## The order
 
-1. The engine, the manifest, the Context panel by part, the Agents page, and the **Portfolio Manager** moved (its prompt is short and uses the shared blocks and the one switch).
-2. The portfolio digest and the Market Reviewer.
-3. The Writer.
+### Pass 1: one way to build a request
+
+1. The engine, the manifest, the Context panel by part, the Agents page, and the **Portfolio Manager** moved. It came first because its prompt is short and uses the shared blocks and the one switch (#1011).
+2. The portfolio digest and the Market Reviewer (#1012).
+3. The Writer. Its prompt has about 20 parts, many printed only in some runs, so a part names its own separator.
 4. The trigger run.
 5. The morning run.
 6. The chat.
-7. The Framework page drawn from the records; the heading split deleted from `run-requests.ts`.
+7. The Framework page is drawn from the records, and the heading split is deleted from `run-requests.ts`.
 
-After that come the agent changes on the audit page, each one an edit to a record: recipes, tools per agent, the playbook writing its triggers, and one way to make a view.
+### Pass 2: one way to run an agent
+
+Each agent still has its own loop: its own model call, tool assembly, retries, and saving of the thread, the token use and the run's status. That covers `run-thesis-writer.ts`, `morning-research.ts`, `tactical-run.ts`, `app/api/agent/[mode]/route.ts`, `portfolio-manager/run.ts`, `market-reviewer/run.ts` and `digest-writer.ts` (about 7,900 lines with the prompt files).
+
+One runner takes a record and its input, builds the request, calls the model with the record's tools, and saves the request, the thread, the token use and the status. Every scheduled job and the chat route call it. Behaviour that is one agent's own becomes that agent's tools or a small hook, not its own loop:
+- the Writer's data pull and its save checks;
+- the trigger run's Auto-trade path;
+- the morning run's coverage retry.
+
+Each agent moves on its own. Replays of its recorded real runs prove it behaves the same.
+
+### After
+
+Then come the agent changes on the audit page, each one an edit to a record:
+- what each agent is given;
+- tools per agent;
+- the playbook writing its triggers;
+- one way to make a view.
