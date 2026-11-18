@@ -1,13 +1,24 @@
 /**
  * The portfolio digest's model call as it goes over the wire: the HTTP body
- * the OpenAI client sends, and what the run keeps about the call (its
- * request record and its thread), from a fixed snapshot. Kept as a golden
- * file, written from today's direct call before the digest moves onto the
- * agent runner: the move must send the same body. `UPDATE_WIRE=1` rewrites it.
+ * its run sends, and what the run keeps about the call, from a fixed
+ * snapshot. Kept as a golden file. `UPDATE_WIRE=1` rewrites it.
+ *
+ * Written first from the direct OpenAI call, then rewritten when the digest
+ * moved onto the agent runner. The text the model reads is the same; the
+ * body differs from the direct call in two places:
+ *   1. The instructions go as role "developer", not "system": the AI SDK's
+ *      role for a gpt-5 model, and what every agent on the runner sends.
+ *   2. `prompt_cache_key` is the run's id, as on every run on the runner.
  */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
+
+const saved: string[] = [];
+jest.mock("@/lib/prisma", () => ({
+  prisma: { runMessage: { create: async ({ data }: { data: { content: string } }) => void saved.push(data.content), deleteMany: async () => ({}) } },
+}));
+
 import { writeDigestNarrative } from "./digest-writer";
 
 const GOLDEN = join(__dirname, "__fixtures__", "portfolio-digest.wire.json");
@@ -36,13 +47,19 @@ afterAll(() => {
 });
 beforeEach(() => {
   sent = [];
+  saved.length = 0;
 });
 
+/** What the run keeps about the call, without the clock. */
+const keptOf = (content: string) => {
+  const { startedAt: _s, endedAt: _e, ...rest } = JSON.parse(content) as Record<string, unknown>;
+  return rest;
+};
+
 it("sends the same body and keeps the same record of it", async () => {
-  const out = await writeDigestNarrative(STANDIN_SNAPSHOT);
+  const out = await writeDigestNarrative(STANDIN_SNAPSHOT, "run_digest_wire");
   expect(out.narrative).toBe("The account rose today.");
-  const { startedAt: _s, endedAt: _e, ...request } = out.request as unknown as Record<string, unknown>;
-  const wire = { calls: sent, kept: { request, thread: out.thread } };
+  const wire = { calls: sent, kept: saved.map(keptOf) };
   if (process.env.UPDATE_WIRE) writeFileSync(GOLDEN, JSON.stringify(wire, null, 1) + "\n");
   expect(wire).toEqual(JSON.parse(readFileSync(GOLDEN, "utf8")));
 });

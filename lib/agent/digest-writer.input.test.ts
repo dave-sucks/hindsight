@@ -3,17 +3,27 @@
  * logs, no ids, no borrowing money. On Nov 11 it was given every run's id and
  * "status COMPLETE", every quiet review, two buy proposals listed as trades,
  * and the margin buying power, and it urged "more aggressive deployment".
- * Through writeDigestNarrative, with only OpenAI stood in for; stand-in
+ * Through writeDigestNarrative on the agent runner, with only OpenAI's
+ * endpoint stood in for; stand-in
  * amounts (portfolio-snapshot-standin.ts).
  */
+// No run: nothing is kept.
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
+
 const sent: Array<{ messages: Array<{ role: string; content: string }> }> = [];
-let reply: () => Promise<unknown> = async () => ({ choices: [{ message: { content: "A digest." } }] });
-jest.mock("openai", () => ({
-  __esModule: true,
-  default: class {
-    chat = { completions: { create: async (body: { messages: Array<{ role: string; content: string }> }) => (sent.push(body), reply()) } };
-  },
-}));
+let reply: () => Response = () =>
+  new Response(JSON.stringify({ id: "c", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, message: { role: "assistant", content: "A digest." }, finish_reason: "stop" }] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+const realFetch = globalThis.fetch;
+beforeAll(() => {
+  process.env.OPENAI_API_KEY = "sk-test";
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => (sent.push(JSON.parse(String(init?.body))), reply())) as typeof fetch;
+});
+afterAll(() => {
+  globalThis.fetch = realFetch;
+});
 
 import { writeDigestNarrative } from "./digest-writer";
 import { snapshotText } from "@/lib/portfolio/snapshot";
@@ -25,7 +35,7 @@ describe("what the digest's model is given", () => {
   it("is its instructions, then the date line and the snapshot's text, exactly", async () => {
     await writeDigestNarrative(STANDIN_SNAPSHOT);
     expect(sent).toHaveLength(1);
-    expect(sent[0].messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(sent[0].messages.map((m) => m.role)).toEqual(["developer", "user"]);
     expect(sent[0].messages[1].content).toBe(`Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\n${snapshotText(STANDIN_SNAPSHOT)}`);
   });
 
@@ -41,9 +51,7 @@ describe("what the digest's model is given", () => {
 
   it("when the model writes nothing, the digest is the snapshot's account lines", async () => {
     jest.spyOn(console, "warn").mockImplementation(() => {});
-    reply = async () => {
-      throw new Error("503");
-    };
+    reply = () => new Response(JSON.stringify({ error: { message: "Bad request" } }), { status: 400, headers: { "content-type": "application/json" } });
     const out = await writeDigestNarrative(STANDIN_SNAPSHOT);
     expect(out.model).toBe("fallback");
     expect(out.narrative).toBe(

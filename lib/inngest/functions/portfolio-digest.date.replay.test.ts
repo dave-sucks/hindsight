@@ -35,8 +35,9 @@ async function runTheJobAt(now: string) {
       },
     }));
     jest.doMock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot }));
-    jest.doMock("@/lib/agent/digest-writer", () => ({ writeDigestNarrative: async () => ({ narrative: "Stand-in digest.", model: "gpt-4o" }) }));
-    jest.doMock("@/lib/runs/account-run", () => ({ runAccountCall: (_run: unknown, call: () => Promise<unknown>) => call() }));
+    jest.doMock("@/lib/auth/account", () => ({ getOwnerUserId: async () => "user_owner" }));
+    jest.doMock("@/lib/agent/engine/run", () => ({ runAgentAsRun: async () => ({ text: "Stand-in digest." }) }));
+    jest.doMock("@/lib/agent/digest-writer", () => ({ digestRun: () => ({}), narrativeOf: () => ({ narrative: "Stand-in digest.", model: "gpt-4o" }), writeDigestNarrative: async () => ({ run: {} }) }));
     await import("./portfolio-digest");
   });
   jest.useFakeTimers({ now: new Date(now) });
@@ -45,7 +46,7 @@ async function runTheJobAt(now: string) {
   } finally {
     jest.useRealTimers();
   }
-  for (const m of ["@/lib/inngest/client", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/agent/digest-writer", "@/lib/runs/account-run"]) jest.dontMock(m);
+  for (const m of ["@/lib/inngest/client", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/agent/digest-writer", "@/lib/agent/engine/run", "@/lib/auth/account"]) jest.dontMock(m);
   return { loadPortfolioSnapshot, upsert, runsQuery };
 }
 

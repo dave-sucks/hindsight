@@ -1,9 +1,9 @@
 /**
  * The 8 PM Portfolio Digest is a run Dave can open: its thread is the
- * portfolio snapshot and the digest, and beside it is the request the model
- * was sent, exactly as the OpenAI client got it. Through the job's own
- * handler, with today's writer and a stand-in snapshot; only the database,
- * the snapshot's loader and OpenAI are stood in for.
+ * digest, and beside it is the request the model was sent, exactly as it
+ * went over the wire, the snapshot among its parts. Through the job's own
+ * handler, on the agent runner, with a stand-in snapshot; only the database,
+ * the snapshot's loader and OpenAI's endpoint are stood in for.
  */
 import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
 import type { RequestRecord, viewOfRecord as ViewOf } from "@/lib/agent/run-requests";
@@ -15,11 +15,18 @@ type Digest = { key: string; narrative: string; createdAt: Date };
 type Upsert = { where: unknown; create: { narrative: string }; update: Record<string, unknown> };
 
 /** `digests` is the PortfolioDigest table, kept across runs: an upsert updates the row its where matches, or adds one stamped now (the column's default). */
-async function runTheJob(reply: () => Promise<unknown>, digests: Digest[] = []) {
+/** A Chat Completions reply that is `text`. */
+const says = (text: string) => async () =>
+  new Response(JSON.stringify({ id: "c", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+async function runTheJob(reply: () => Promise<Response>, digests: Digest[] = []) {
   const sent: unknown[] = [];
   const rows: Row[] = [];
-  const runCreate = jest.fn(async () => ({ id: "run_digest" }));
-  const runUpdate = jest.fn(async () => ({}));
+  const runCreate = jest.fn(async (_a: unknown) => ({ id: "run_digest" }));
+  const runUpdate = jest.fn(async (_a: unknown) => ({ count: 1 }));
   const upsert = jest.fn(async (a: Upsert) => {
     const key = JSON.stringify(a.where);
     const hit = digests.find((d) => d.key === key);
@@ -29,18 +36,22 @@ async function runTheJob(reply: () => Promise<unknown>, digests: Digest[] = []) 
   });
   let handler: Handler | null = null;
   let viewOfRecord: typeof ViewOf | null = null;
+  const realFetch = globalThis.fetch;
+  process.env.OPENAI_API_KEY = "sk-test";
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => (sent.push(JSON.parse(String(init?.body))), reply())) as typeof fetch;
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, h: Handler) => ((handler = h), {}) } }));
-    jest.doMock("openai", () => ({
-      __esModule: true,
-      default: class {
-        chat = { completions: { create: async (body: unknown) => (sent.push(JSON.parse(JSON.stringify(body))), reply()) } };
-      },
-    }));
     jest.doMock("@/lib/prisma", () => ({
       prisma: {
-        researchRun: { findMany: async () => [{ accountId: "account_live", environment: "LIVE" }], create: runCreate, update: runUpdate },
+        researchRun: {
+          findMany: async () => [{ accountId: "account_live", environment: "LIVE" }],
+          create: runCreate,
+          updateMany: runUpdate,
+          findUnique: async () => ({ parameters: {} }),
+          update: runUpdate,
+        },
         position: { findMany: async () => [] },
+        order: { findMany: async () => [] },
         agentConfig: { findMany: async () => [{ accountId: "account_live", tradingEnvironment: "LIVE" }] },
         portfolioDigest: { upsert },
         runMessage: {
@@ -62,10 +73,14 @@ async function runTheJob(reply: () => Promise<unknown>, digests: Digest[] = []) 
   });
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "log").mockImplementation(() => {});
-  await handler!({ step: { run: async (_name, fn) => fn() } });
-  for (const m of ["@/lib/inngest/client", "openai", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/auth/account"]) jest.dontMock(m);
+  try {
+    await handler!({ step: { run: async (_name, fn) => fn() } });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  for (const m of ["@/lib/inngest/client", "@/lib/prisma", "@/lib/portfolio/load-snapshot", "@/lib/auth/account"]) jest.dontMock(m);
   const record = JSON.parse(rows.find((r) => r.role === "request")!.content) as RequestRecord;
-  const thread = JSON.parse(rows.find((r) => r.role === "thread")!.content) as Array<{ role: string; content: unknown }>;
+  const thread = JSON.parse(rows.find((r) => r.role === "thread")?.content ?? "[]") as Array<{ role: string; content: unknown }>;
   return { sent, rows, record, thread, runCreate, runUpdate, upsert, view: viewOfRecord!(record) };
 }
 
@@ -75,31 +90,28 @@ const DIGEST = "The book is two holdings and mostly cash.";
 
 describe("the 8 PM Portfolio Digest's run", () => {
   it("is opened for the owner as a read-only run", async () => {
-    const { runCreate } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
+    const { runCreate } = await runTheJob(says(DIGEST));
     expect(runCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ userId: "user_owner", accountId: "account_live", mode: "PORTFOLIO_DIGEST", environment: "LIVE", status: "RUNNING" }) }),
     );
   });
 
-  it("keeps the request exactly as the model got it, and the thread is the snapshot and the digest", async () => {
-    const { sent, rows, record, thread, runUpdate, upsert } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
+  it("keeps the request exactly as it went over the wire, and the thread is the digest", async () => {
+    const { sent, rows, record, thread, runUpdate, upsert } = await runTheJob(says(DIGEST));
     expect(sent).toHaveLength(1);
     // The record is kept first; saving the thread after it leaves it.
     expect(rows.map((r) => r.role)).toEqual(["request", "thread"]);
     expect(record).toMatchObject({ v: 1, call: "Main", source: "portfolio-digest", model: "gpt-5.4" });
     expect(record.requests).toEqual(sent);
-    const snapshot = (sent[0] as { messages: Array<{ content: string }> }).messages[1].content;
-    expect(thread).toEqual([
-      { role: "user", content: snapshot },
-      { role: "assistant", content: [{ type: "text", text: DIGEST }] },
-    ]);
-    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "run_digest" }, data: expect.objectContaining({ status: "COMPLETE" }) }));
+    // Its first message is all context (the snapshot, in the Context panel), so the thread opens with the digest.
+    expect(thread).toEqual([expect.objectContaining({ role: "assistant", content: [expect.objectContaining({ type: "text", text: DIGEST })] })]);
+    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "run_digest", status: "RUNNING" }, data: expect.objectContaining({ status: "COMPLETE" }) }));
     // What the digest says and where it is saved are as before.
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ narrative: DIGEST, model: "gpt-5.4", facts: STANDIN_SNAPSHOT }) }));
   });
 
   it("shows in its Context panel part by part, in the order sent, adding up to what was sent", async () => {
-    const { sent, view } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
+    const { sent, view } = await runTheJob(says(DIGEST));
     const body = sent[0] as { messages: Array<{ content: string }> };
     // One row per part the agent engine built: its own text, then its context: the date line and the portfolio.
     expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
@@ -118,26 +130,23 @@ describe("the 8 PM Portfolio Digest's run", () => {
 
   it("a second run on the same day saves its own text and its own written time", async () => {
     const digests: Digest[] = [];
-    const reply = (text: string) => async () => ({ choices: [{ message: { content: text } }] });
     // Thu Nov 12: by hand at 4:23 PM ET, then on schedule at 8:00 PM ET.
     jest.useFakeTimers({ now: new Date("2026-11-12T21:23:00Z"), doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask"] });
     try {
-      await runTheJob(reply("Written by hand at 4:23."), digests);
+      await runTheJob(says("Written by hand at 4:23."), digests);
       jest.setSystemTime(new Date("2026-11-13T01:00:00Z"));
-      await runTheJob(reply("Written on schedule at 8."), digests);
+      await runTheJob(says("Written on schedule at 8."), digests);
     } finally {
       jest.useRealTimers();
     }
     expect(digests).toEqual([expect.objectContaining({ narrative: "Written on schedule at 8.", createdAt: new Date("2026-11-13T01:00:00Z") })]);
   });
 
-  it("ends FAILED when the model call fails, with the error kept; the digest is the plain facts, as before", async () => {
-    const { record, runUpdate, upsert } = await runTheJob(async () => {
-      throw new Error("429 rate limited");
-    });
-    expect(record.error).toBe("429 rate limited");
+  it("ends FAILED when the model call fails, with why kept on the run; the digest is the plain facts, as before", async () => {
+    const { record, runUpdate, upsert } = await runTheJob(async () => new Response(JSON.stringify({ error: { message: "Bad request" } }), { status: 400, headers: { "content-type": "application/json" } }));
     expect(record.requests).toHaveLength(1);
     expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED" }) }));
+    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { parameters: { error: "Bad request" } } }));
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ model: "fallback" }) }));
   });
 });

@@ -42,6 +42,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   instructions: ["the_analyst", "house_rules", "how_you_write", "research_rules", { own: `${JOB}\n\n${DECISION}` }],
   context: WRITER_CONTEXT,
   tools: ["submit_thesis"],
-  providerTools: [`Anthropic's web search, up to ${WEB_SEARCH_MAX_USES} searches`],
+  providerTools: ["web_search"],
+  searchesPerCall: WEB_SEARCH_MAX_USES,
   output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, the claim and any trigger edits; the save writes the thesis.",
 };

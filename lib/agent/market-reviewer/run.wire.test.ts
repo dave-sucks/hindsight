@@ -1,10 +1,22 @@
 /**
  * The Market Reviewer's model call as it goes over the wire: the HTTP body
- * the OpenAI client sends (its web search and its reply's format with it),
- * and what the run keeps about the call (its request record and its thread),
- * from fixed inputs. Kept as a golden file, written from today's direct call
- * before the Reviewer moves onto the agent runner: the move must send the
- * same body. `UPDATE_WIRE=1` rewrites it.
+ * its run sends (its web search and its reply's format with it), and what
+ * the run keeps about the call, from fixed inputs. Kept as a golden file.
+ * `UPDATE_WIRE=1` rewrites it.
+ *
+ * Written first from the direct OpenAI call, then rewritten when the
+ * Reviewer moved onto the agent runner. The text the model reads is the
+ * same, and so are its search, its reply's schema and its budget; the body
+ * differs from the direct call in five places, all the AI SDK's or the
+ * runner's:
+ *   1. The instructions go as role "developer", not "system" (the SDK's role
+ *      for a gpt-5 model, what every agent on the runner sends).
+ *   2. The first message's text goes as [{ type: "input_text", text }], not
+ *      a string.
+ *   3. `include: ["web_search_call.action.sources"]`: the SDK asks for the
+ *      search's sources back.
+ *   4. `tool_choice: "auto"`, OpenAI's default, sent by the SDK.
+ *   5. `prompt_cache_key` is the run's id, as on every run on the runner.
  */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -13,8 +25,10 @@ import { STANDIN_MARKET_NUMBERS } from "@/lib/agent/__fixtures__/market-numbers-
 
 jest.mock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => STANDIN_MARKET_NUMBERS }));
 jest.mock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: async () => STANDIN_SNAPSHOT }));
+const saved: string[] = [];
 jest.mock("@/lib/prisma", () => ({
   prisma: {
+    runMessage: { create: async ({ data }: { data: { content: string } }) => void saved.push(data.content), deleteMany: async () => ({}) },
     thesis: {
       findMany: async () => [
         { ticker: "MU", status: "HOLDING", coreBelief: "Memory prices keep rising into 2027. The rest is detail." },
@@ -67,15 +81,22 @@ afterAll(() => {
 });
 beforeEach(() => {
   sent = [];
+  saved.length = 0;
 });
 
+/** What the run keeps about the call, without the clock. */
+const keptOf = (content: string) => {
+  const { startedAt: _s, endedAt: _e, ...rest } = JSON.parse(content) as Record<string, unknown>;
+  return rest;
+};
+
 it("sends the same body and keeps the same record of it", async () => {
-  const out = await writeMarketReview({ accountId: "acct", environment: "LIVE", userId: "user_1" }, { now: NOW });
+  const out = await writeMarketReview({ accountId: "acct", environment: "LIVE", userId: "user_1" }, { now: NOW, runId: "run_review_wire" });
+  expect(out.error).toBeUndefined();
   expect(out.digest).toBe("### Market overview\n\nStocks fell.");
   expect(out.notes).toHaveLength(1);
   expect(out.searches).toEqual(["memory prices November 2026"]);
-  const { startedAt: _s, endedAt: _e, ...request } = out.request as unknown as Record<string, unknown>;
-  const wire = { calls: sent, kept: { request, thread: out.thread } };
+  const wire = { calls: sent, kept: saved.map(keptOf) };
   if (process.env.UPDATE_WIRE) writeFileSync(GOLDEN, JSON.stringify(wire, null, 1) + "\n");
   expect(wire).toEqual(JSON.parse(readFileSync(GOLDEN, "utf8")));
 });

@@ -41,7 +41,7 @@ import { loadBook } from "@/lib/agent/book";
 import { byParts } from "@/lib/agent/run-requests";
 import { PORTFOLIO_DIGEST } from "./agents/portfolio-digest";
 import { MARKET_REVIEWER } from "./agents/market-reviewer";
-import { isOwnPart } from "./types";
+import { isOwnPart, providerToolNames } from "./types";
 
 const NOW = new Date(GOLDEN.now);
 const book = { accountId: "acct", environment: "LIVE" as const };
@@ -168,7 +168,8 @@ describe("the Market Reviewer", () => {
     expect(built.parts.map((p) => p.title)).toEqual(["Its own text", "The date and account", "Market numbers", "The portfolio", "The book", "Its last output"]);
     expect(built.message.startsWith(`${dateLine(NOW, "LIVE")}\n\n## Market and portfolio\n\n### Market numbers (as of`)).toBe(true);
     expect(built.message.endsWith("\n\n## The book\nb\n\n## Your notes in the last 5 days\n- none\n\n## Your last digest\nd")).toBe(true);
-    expect(MARKET_REVIEWER.providerTools).toEqual(["OpenAI's web search"]);
+    expect(MARKET_REVIEWER.providerTools).toEqual(["web_search"]);
+    expect(providerToolNames(MARKET_REVIEWER)).toEqual(["OpenAI's web search"]);
   });
 });
 

@@ -58,10 +58,10 @@ Where each number comes from:
 <summary>Technical details</summary>
 
 #### Runs as
-`portfolio-digest` at 8:00 PM ET, Mon–Fri, one read-only run per traded book (`lib/inngest/functions/portfolio-digest.ts`, `lib/runs/account-run.ts`).
+`portfolio-digest` at 8:00 PM ET, Mon–Fri, one read-only run per traded book (`lib/inngest/functions/portfolio-digest.ts`), opened and kept by the agent runner (`runAgentAsRun`, `lib/agent/engine/run.ts`).
 
 #### Model
-`gpt-5.4`, one call (`lib/agent/digest-writer.ts`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash. Its instructions (its own text, the same on every run) and its context (the portfolio, after the date line) are its record, `PORTFOLIO_DIGEST` in `lib/agent/engine/agents/portfolio-digest.ts`, which the agent engine (`lib/agent/engine/engine.ts`) builds the request from, naming each part for the run's Context panel.
+`gpt-5.4` on OpenAI's Chat Completions API, one call with a 6,000-token budget and 120 seconds (`lib/agent/digest-writer.ts`). When the run writes nothing, the digest is the snapshot's own lines (`narrativeOf`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash. Its instructions (its own text, the same on every run) and its context (the portfolio, after the date line) are its record, `PORTFOLIO_DIGEST` in `lib/agent/engine/agents/portfolio-digest.ts`, which the agent engine (`lib/agent/engine/engine.ts`) builds the request from, naming each part for the run's Context panel.
 
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot`, `snapshotText` and `portfolioPieceText` (`lib/portfolio/snapshot.ts`) make the numbers and the text. A holding's 5- and 20-day moves are the trigger check's own measure off the 06:30 chart numbers, and its conviction is its thesis's. The digest row's `facts` column keeps the snapshot.

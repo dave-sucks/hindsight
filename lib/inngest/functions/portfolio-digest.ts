@@ -7,9 +7,10 @@
  * lib/portfolio/digest-pairs.ts for what qualifies):
  *   1. loadPortfolioSnapshot — the account, every holding and its moves, the
  *      day's buys and sells, the proposals waiting (lib/portfolio/snapshot.ts)
- *   2. writeDigestNarrative(snapshot) — the owner's summary of the day, saved
- *      as a read-only ResearchRun (mode PORTFOLIO_DIGEST) whose Context panel
- *      shows exactly what the model was sent
+ *   2. the digest's agent, run on the snapshot through the agent runner
+ *      (runAgentAsRun, lib/agent/digest-writer.ts) — the owner's summary of
+ *      the day, a read-only ResearchRun (mode PORTFOLIO_DIGEST) whose Context
+ *      panel shows exactly what the model was sent
  *   3. upsert a PortfolioDigest row, idempotent on (accountId, environment, date);
  *      its `facts` column keeps the snapshot
  *
@@ -21,8 +22,9 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { etTradingDayDate } from "@/lib/market-hours";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
-import { writeDigestNarrative } from "@/lib/agent/digest-writer";
-import { runAccountCall } from "@/lib/runs/account-run";
+import { getOwnerUserId } from "@/lib/auth/account";
+import { runAgentAsRun } from "@/lib/agent/engine/run";
+import { digestRun, narrativeOf, writeDigestNarrative } from "@/lib/agent/digest-writer";
 import {
   selectDigestPairs,
   TRADING_RUN_MODES,
@@ -127,12 +129,11 @@ export const portfolioDigest = inngest.createFunction(
         continue;
       }
 
-      // Saved as a read-only run with its one request (lib/runs/account-run.ts).
+      // A read-only run the runner opens and keeps the books of; an account with no owner gets the call with no run.
       const { narrative, model } = await step.run(`narrate-${key}`, async () => {
-        const out = await runAccountCall({ accountId, environment, mode: "PORTFOLIO_DIGEST", parameters: { date: dateStr } }, () =>
-          writeDigestNarrative(snapshot),
-        );
-        return { narrative: out.narrative, model: out.model };
+        const userId = await getOwnerUserId(accountId);
+        if (!userId) return narrativeOf((await writeDigestNarrative(snapshot)).run, snapshot);
+        return narrativeOf(await runAgentAsRun(digestRun(snapshot), { userId, accountId, environment: environment === "LIVE" ? "LIVE" : "PAPER" }), snapshot);
       });
 
       await step.run(`save-${key}`, async () => {

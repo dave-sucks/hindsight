@@ -45,7 +45,12 @@ export interface AgentInput {
   environment: "PAPER" | "LIVE";
   /** The run's task, written by whoever starts it; printed where the record's context lists "message". None in a conversation: there it is your message. */
   message?: string | null;
+  /** The stocks this run's book holds and watches, for a reply that may name only those (the Market Reviewer's notes). */
+  stocks?: readonly string[];
 }
+
+/** The model provider's own tools a record can name. */
+export type ProviderToolId = "web_search";
 
 export interface AgentRecord {
   id: AgentId;
@@ -76,8 +81,16 @@ export interface AgentRecord {
   conversation?: true;
   /** The tools it may call, by name (lib/agent/tools). */
   tools: readonly string[];
-  /** The model provider's own tools it is given (its web search), named for the page. */
-  providerTools?: readonly string[];
+  /** The model provider's own tools it is given, by id (its web search); the page names them (providerToolNames). */
+  providerTools?: readonly ProviderToolId[];
+  /** The most web searches one call makes (Anthropic's search; OpenAI's takes no cap). */
+  searchesPerCall?: number;
+  /** OpenAI's Chat Completions API instead of Responses. */
+  api?: "chat" | "responses";
+  /** The reply's budget, its thinking counted; a reply cut off there fails the run. */
+  maxOutputTokens?: number;
+  /** A reply that is data: its name, and its JSON schema, made from the run's input only. */
+  reply?: { name: string; schema: (input: AgentInput) => Record<string, unknown> };
   /** What it hands back. */
   output: string;
 }
@@ -137,3 +150,7 @@ export const readsOf = (r: Pick<AgentRecord, "context">): ContextId[] => r.conte
 
 /** The shared texts an agent's instructions use, in order. */
 export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedId[] => r.instructions.filter((p): p is SharedId => !isOwnPart(p));
+
+/** The provider's own tools a record is given, named for the page: whose web search, and its cap. */
+export const providerToolNames = (r: Pick<AgentRecord, "model" | "providerTools" | "searchesPerCall">): string[] =>
+  (r.providerTools ?? []).map(() => `${r.model.startsWith("claude") ? "Anthropic" : "OpenAI"}'s web search${r.searchesPerCall ? `, up to ${r.searchesPerCall} searches` : ""}`);

@@ -1,30 +1,21 @@
 /**
  * The Market Reviewer V1: one run per traded book at 7:30 AM ET each weekday
- * (lib/inngest/functions/market-reviewer.ts). One call to the model, like
- * the 8 PM Portfolio Digest's (lib/agent/digest-writer.ts): its instructions
- * and one first message (the market numbers, the portfolio snapshot, each
- * stock's belief in a line, its own last digest), built by the agent engine
- * from its record (lib/agent/engine/agents/market-reviewer.ts), with
- * OpenAI's own web search as its one tool.
- * The model searches inside that call; its reply is the digest and its notes
- * on the stocks its research touched (one JSON object, Structured Outputs),
- * and the job saves both. The request is kept exactly as sent, for the run
- * page's Context.
+ * (lib/inngest/functions/market-reviewer.ts). Its record
+ * (lib/agent/engine/agents/market-reviewer.ts) runs through the agent runner
+ * (lib/agent/engine/run.ts): its instructions and one first message (the
+ * market numbers, the portfolio snapshot, each stock's belief in a line, its
+ * own last digest), with OpenAI's own web search as its one tool. The model
+ * searches inside that one call; its reply is the digest and its notes on
+ * the stocks its research touched (one JSON object, Structured Outputs), and
+ * its own save keeps both.
  */
-import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { loadBook } from "@/lib/agent/book";
 import { etDateOf } from "@/lib/market-data/intraday-window";
-import type { OneCall } from "@/lib/runs/account-run";
-import { buildAgentRequest } from "@/lib/agent/engine/engine";
+import { writeSharedNote } from "@/lib/agent/shared-notes.server";
+import { runAgent, type AgentRun, type AgentToRun, type RunAgentArgs, type RunFor } from "@/lib/agent/engine/run";
 import { MARKET_REVIEWER, reviewDay as day } from "@/lib/agent/engine/agents/market-reviewer";
-
-export const REVIEWER_MODEL = MARKET_REVIEWER.model;
-/** The reply's budget: its thinking and its searches count against it. */
-const REPLY_TOKENS = 20_000;
-/** How long the call may take. */
-const CALL_MS = 600_000;
 /** A belief is its first sentence, cut here. */
 const BELIEF_CHARS = 160;
 
@@ -47,34 +38,8 @@ const PIN_MS = 3 * 86_400_000;
 /** A high note is pinned; a low or medium one is a line in each stock's Activity. */
 export const notePin = (n: Pick<ReviewNote, "impact">, now: Date): Date | null => (n.impact === "high" ? new Date(now.getTime() + PIN_MS) : null);
 
-/** The reply's shape: the digest and the notes. A note names only stocks from its first message. */
-const replyFormat = (tickers: string[]) => ({
-  type: "json_schema" as const,
-  name: "market_review",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    required: ["digest", "notes"],
-    properties: {
-      digest: { type: "string" },
-      notes: {
-        type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["tickers", "text", "impact", "effect"],
-          properties: {
-            tickers: { type: "array", minItems: 1, items: tickers.length ? { type: "string", enum: tickers } : { type: "string" } },
-            text: { type: "string" },
-            impact: { type: "string", enum: ["low", "medium", "high"] },
-            effect: { type: "string", enum: ["stronger", "weaker", "neutral"] },
-          },
-        },
-      },
-    },
-  },
-});
+export const REVIEWER_MODEL = MARKET_REVIEWER.model;
+export const REVIEWER_RUN_MODE = "MARKET_REVIEWER";
 
 /** A text's first sentence, cut at BELIEF_CHARS. */
 const firstSentence = (text: string | null) => {
@@ -130,18 +95,49 @@ export async function loadReviewBook(book: ReviewBook, now: Date): Promise<Revie
   };
 }
 
-/** The tokens the call used, from OpenAI's own count. */
-export interface ReviewUsage {
-  in: number;
-  out: number;
+/** What its run is given: its reads (the market and portfolio, the book, its own last output), and its stocks for its reply's schema. No tools of ours. */
+export async function reviewerArgs(book: Pick<RunFor, "accountId" | "environment" | "userId">, now: Date = new Date()): Promise<Omit<RunAgentArgs, "runId">> {
+  const parts = await loadReviewBook(book, now);
+  return {
+    input: { now, environment: book.environment, stocks: parts.tickers },
+    sources: {
+      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
+      context: { the_book: async () => parts.book, last_output: async () => parts.lastOutput },
+    },
+    toolset: {},
+    source: "market-reviewer",
+  };
+}
+
+export interface MarketReview {
+  /** The digest, or null when the run failed or its reply had none. */
+  digest: string | null;
+  notes: ReviewNote[];
+  /** What it searched the web for. */
+  searches: string[];
+  error?: string;
+}
+
+/** The review in its run's reply: the digest and its notes, and what it searched. */
+export function reviewOf(run: AgentRun): MarketReview {
+  const searches = run.steps.flatMap((s) =>
+    (s.toolResults ?? []).flatMap((r) => {
+      const action = (r.output as { action?: { type?: string; query?: string } } | undefined)?.action;
+      return action?.type === "search" && action.query ? [action.query] : [];
+    }),
+  );
+  if (run.error) return { digest: null, notes: [], searches, error: run.error };
+  const reply = run.output as { digest?: string; notes?: ReviewNote[] } | undefined;
+  if (!reply?.digest?.trim()) return { digest: null, notes: [], searches, error: "The reply wasn't the digest and its notes." };
+  return { digest: reply.digest.trim(), notes: reply.notes ?? [], searches };
 }
 
 const n = (x: number) => x.toLocaleString("en-US");
 /** What the call searched and the tokens it used, in one line for the run page. */
-const searchedLine = (searches: string[], usage: ReviewUsage | null) =>
+const searchedLine = (run: AgentRun, searches: string[]) =>
   [
     `Searched the web ${searches.length} time${searches.length === 1 ? "" : "s"}${searches.length ? `: ${searches.map((q) => `“${q}”`).join(" · ")}` : ""}.`,
-    usage ? `Tokens: ${n(usage.in)} in, ${n(usage.out)} out.` : null,
+    run.usage.requests ? `Tokens: ${n(run.usage.input)} in, ${n(run.usage.output)} out.` : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -149,65 +145,44 @@ const searchedLine = (searches: string[], usage: ReviewUsage | null) =>
 const noteText = (note: ReviewNote, now: Date) =>
   `**Note on ${note.tickers.join(", ")} · ${note.impact} · ${note.effect}${notePin(note, now) ? " · flagged for review" : ""}**\n\n${note.text}`;
 
-/**
- * The run's one call. Its reply is the digest (`digest`) and its notes, or a
- * null digest and no notes when the call failed, was cut off, or wasn't the
- * shape asked for; the record names why. Never throws.
- */
-export async function writeMarketReview(
-  book: ReviewBook,
-  opts: { now?: Date } = {},
-): Promise<OneCall & { digest: string | null; notes: ReviewNote[]; searches: string[]; usage: ReviewUsage | null }> {
-  const startedAt = new Date().toISOString();
-  const now = opts.now ?? new Date();
-  const parts = await loadReviewBook(book, now);
-  const built = await buildAgentRequest(MARKET_REVIEWER, { now, environment: book.environment }, {
-    portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-    context: { the_book: async () => parts.book, last_output: async () => parts.lastOutput },
+/** How its reply reads on the run page: what it searched, the digest, then each note. */
+export function reviewThread(run: AgentRun, now: Date = new Date()): unknown[] {
+  const review = reviewOf(run);
+  const said = [...(run.usage.requests || review.searches.length ? [searchedLine(run, review.searches)] : []), ...(review.digest ? [review.digest] : []), ...review.notes.map((note) => noteText(note, now))];
+  return said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [];
+}
+
+/** Its own save: the day's digest for the book, and each note on its stocks, a high one pinned. A note that doesn't save never fails the digest. */
+export async function keepReview(runId: string, run: AgentRun, book: RunFor): Promise<string | void> {
+  const review = reviewOf(run);
+  if (!review.digest) return review.error;
+  const now = new Date();
+  const day = new Date(`${etDateOf(now)}T00:00:00.000Z`);
+  await prisma.marketDigest.upsert({
+    where: { accountId_environment_date: { accountId: book.accountId, environment: book.environment, date: day } },
+    create: { accountId: book.accountId, environment: book.environment, date: day, digest: review.digest, model: REVIEWER_MODEL, runId },
+    update: { digest: review.digest, model: REVIEWER_MODEL, runId, createdAt: now },
   });
-  // The request body, kept as it goes to OpenAI.
-  const body = {
-    model: REVIEWER_MODEL,
-    input: [
-      { role: "system" as const, content: built.instructions },
-      { role: "user" as const, content: built.message },
-    ],
-    tools: [{ type: "web_search" as const }],
-    text: { format: replyFormat(parts.tickers) },
-    max_output_tokens: REPLY_TOKENS,
-  };
-  const done = (digest: string | null, notes: ReviewNote[], searches: string[], usage: ReviewUsage | null, error?: string) => {
-    const said = [...(usage || searches.length ? [searchedLine(searches, usage)] : []), ...(digest ? [digest] : []), ...notes.map((note) => noteText(note, now))];
-    return {
-      request: { v: 1 as const, call: "Main", agent: built.agent, source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
-      thread: [body.input[1], ...(said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [])],
-      digest,
-      notes,
-      searches,
-      usage,
-    };
-  };
-  try {
-    const resp = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" }).responses.create(body, { timeout: CALL_MS });
-    const searches = resp.output.flatMap((o) =>
-      o.type === "web_search_call" && o.action?.type === "search" ? (o.action.queries?.length ? o.action.queries : o.action.query ? [o.action.query] : []) : [],
-    );
-    const usage = resp.usage ? { in: resp.usage.input_tokens, out: resp.usage.output_tokens } : null;
-    const text = resp.output_text?.trim() ?? "";
-    if (resp.status === "incomplete") return done(null, [], searches, usage, `The reply was cut off: ${resp.incomplete_details?.reason ?? "incomplete"}.`);
-    if (!text) return done(null, [], searches, usage, "The model replied with no text.");
-    // The format is strict, so a reply that parses is the shape asked for.
-    let reply: { digest: string; notes: ReviewNote[] } | null = null;
+  for (const note of review.notes) {
     try {
-      reply = JSON.parse(text);
-    } catch {
-      /* answered below */
+      await writeSharedNote({ userId: book.userId, author: "MARKET_REVIEWER", runId, body: note.text, audience: "STOCKS", tickers: note.tickers, impact: note.impact, effect: note.effect, pinnedUntil: notePin(note, now) });
+    } catch (err) {
+      console.warn(`[market-reviewer] a note on ${note.tickers.join(", ")} didn't save:`, err instanceof Error ? err.message : err);
     }
-    if (!reply?.digest?.trim()) return done(null, [], searches, usage, "The reply wasn't the digest and its notes.");
-    return done(reply.digest.trim(), reply.notes ?? [], searches, usage);
-  } catch (err) {
-    const why = err instanceof Error ? err.message : String(err);
-    console.warn(`[market-reviewer] model call failed: ${why}`);
-    return done(null, [], [], null, why);
   }
+}
+
+/** The Market Reviewer as the runner runs it: one saved run per traded book, read only. */
+export const REVIEWER_RUN: AgentToRun = {
+  record: MARKET_REVIEWER,
+  mode: REVIEWER_RUN_MODE,
+  args: (book) => reviewerArgs(book),
+  thread: (run) => reviewThread(run),
+  keep: keepReview,
+};
+
+/** The review with no run of its own (the wire test). Never throws. */
+export async function writeMarketReview(book: ReviewBook, opts: { now?: Date; runId?: string | null } = {}): Promise<MarketReview & { run: AgentRun }> {
+  const run = await runAgent(MARKET_REVIEWER, { ...(await reviewerArgs(book, opts.now)), runId: opts.runId ?? null });
+  return { ...reviewOf(run), run };
 }
