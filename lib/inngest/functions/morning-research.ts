@@ -6,7 +6,7 @@ import { saveRunThread } from "@/lib/agent/run-thread";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
@@ -311,10 +311,11 @@ export const morningResearch = inngest.createFunction(
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
         // 2c. The prompt: the analyst's row (rendered once, lib/agent/analyst-brief.ts) and the run input.
-        const systemPrompt = buildDailyRunSystemPromptV2(
+        const request = dailyRunRequest(
           { ...config, setupOverrides: await loadSetupOverrides(config.accountId) },
           runInput,
         );
+        const systemPrompt = request.instructions;
 
         // 2d. Create tools with run context, then enforce the
         // research-run allowlist (Fix #5). The unified route already
@@ -382,7 +383,7 @@ export const morningResearch = inngest.createFunction(
         // model to treat cron runs like assistant-style conversations,
         // terminating on prose-style questions. The V2 string below makes
         // the lack of a human respondent explicit. V1 path deprecated.
-        const userPrompt = "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.";
+        const userPrompt = request.message;
 
         try {
           const { text, steps, response } = await generateText({
@@ -402,7 +403,7 @@ export const morningResearch = inngest.createFunction(
             // triggerInputSchema): the same request cached 71% before and
             // 97% after. Chat Completions is kept; it cached the head
             // further than Responses did in that probe.
-            model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Main", source: "morning-research" }),
+            model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Main", source: "morning-research", parts: request.parts }),
             system: systemPrompt,
             prompt: userPrompt,
             tools,
@@ -731,7 +732,7 @@ export const morningResearch = inngest.createFunction(
             const runRetry = async (messages: any[]): Promise<number> => {
               const retry = await generateText({
                 // Same model as the main run — switches with research-run config.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research" }),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research", parts: request.parts }),
                 system: systemPrompt,
                 messages,
                 tools,
@@ -1058,7 +1059,7 @@ export const morningResearch = inngest.createFunction(
             try {
               const recoveryResp = await generateText({
                 // Same model as the main run.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research" }),
+                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research", parts: request.parts }),
                 system: systemPrompt,
                 prompt:
                   `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +

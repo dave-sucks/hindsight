@@ -35,7 +35,10 @@ export type BlockId =
   | "stock_row"
   | "fired_trigger"
   | "situations"
-  | "fire_facts";
+  | "fire_facts"
+  | "earnings_week"
+  | "filings_week"
+  | "blocked_last_time";
 
 export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 

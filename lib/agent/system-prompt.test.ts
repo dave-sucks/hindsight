@@ -85,14 +85,14 @@ describe("buildDailyRunSystemPromptV2 — the analyst's room", () => {
 describe("buildDailyRunSystemPromptV2 — the Market and portfolio block", () => {
   const block = "## Market and portfolio\n\n### Portfolio snapshot\nThe account, stand-in";
   it("prints the block last, after every fixed instruction, and points the cash line to it", () => {
-    const p = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioBlock: block });
+    const p = buildDailyRunSystemPromptV2({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe account, stand-in" }] });
     expect(p.endsWith(block)).toBe(true);
     expect(p).toContain("Your cash is in the portfolio snapshot below.");
   });
   it("says the cash itself when the snapshot couldn't be read", () => {
     const p = buildDailyRunSystemPromptV2(
       { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 },
-      { ...runInput, portfolioBlock: "## Market and portfolio\n\n### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request." },
+      { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request." }] },
     );
     expect(p).toContain("Cash is $31,000.");
   });

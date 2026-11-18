@@ -18,7 +18,9 @@
 import type { RunInput } from "./run-input";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
-import { HOUSE_RULES } from "@/lib/agent/house-rules";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { MORNING_RUN, type MorningRunExtra } from "@/lib/agent/engine/agents/morning-run";
+import type { BuiltRequest } from "@/lib/agent/engine/types";
 
 // ─── Daily-Run System Prompt ──────────────────────────────────────────────────
 //
@@ -27,32 +29,8 @@ import { HOUSE_RULES } from "@/lib/agent/house-rules";
 // per-thesis trigger fires, matching-now state, and review-due math live
 // on each thesis row via get_theses' `needsAction` field.
 
-export function buildDailyRunSystemPromptV2(
-  analyst: BriefAnalyst,
-  runInput: RunInput,
-): string {
-  // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
-  // 2026-09-18 with seven priced buy plans it could not buy, and nothing
-  // said so until place_trade refused ETN.
-  // Counted the way place_trade counts: held positions PLUS buys awaiting
-  // approval, which have already taken their slot.
-  const queued = runInput.pendingApprovalCount ?? 0;
-  const capacity = {
-    open: (runInput.portfolio?.positions?.length ?? 0) + queued,
-    max: analyst.maxOpenPositions ?? null,
-    held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
-    awaitingApproval: queued,
-  };
-
-  const sections: string[] = [];
-
-  // ── The analyst (lib/agent/analyst-brief.ts, the same in every door) ───
-  sections.push(analystBrief(analyst, capacity));
-
-  // ── House rules (lib/agent/house-rules.ts, the same in every door) ─────
-  sections.push(HOUSE_RULES);
-
-  // ── Earnings on the book this week (live off the calendar) ─────────────
+/** The book's earnings this week (live off the calendar): the earnings_week block, or null when there are none. */
+function earningsWeekText(runInput: RunInput): string | null {
   const soon = runInput.earnings?.reportingSoon ?? [];
   const justReported = runInput.earnings?.justReported ?? [];
   if (soon.length > 0 || justReported.length > 0) {
@@ -71,10 +49,13 @@ export function buildDailyRunSystemPromptV2(
     lines.push(
       "A held name reporting this week is a sizing question before the print; a name that just reported is re-underwritten on the numbers. The earnings triggers on these names handle the wake — this line is so you see the week whole.",
     );
-    sections.push(lines.join("\n"));
+    return lines.join("\n");
   }
+  return null;
+}
 
-  // ── Filings on the book this week (live off EDGAR; DAV-269) ────────────
+/** The book's filings this week (live off EDGAR; DAV-269): the filings_week block, or null when there are none. */
+function filingsWeekText(runInput: RunInput): string | null {
   const filings = runInput.filings?.recent ?? [];
   if (filings.length > 0 || runInput.filings?.error) {
     const lines: string[] = ["## Filings on your book this week"];
@@ -83,72 +64,57 @@ export function buildDailyRunSystemPromptV2(
     lines.push(
       "The filing triggers on these names handle the wake; this is so you see the week whole. A serious filing on a held name is read today, not at its next review.",
     );
-    sections.push(lines.join("\n"));
+    return lines.join("\n");
   }
+  return null;
+}
 
-  // ── Regime and cash — inputs to the decision, never gates (DAV-253) ─────
+/**
+ * The morning run's request, built by the agent engine from its record
+ * (lib/agent/engine/agents/morning-run.ts): its instructions, and its
+ * first message (the start of the day) for a run the cron starts.
+ */
+export function dailyRunRequest(analyst: BriefAnalyst, runInput: RunInput): BuiltRequest {
+  // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
+  // 2026-09-18 with seven priced buy plans it could not buy, and nothing
+  // said so until place_trade refused ETN.
+  // Counted the way place_trade counts: held positions PLUS buys awaiting
+  // approval, which have already taken their slot.
+  const queued = runInput.pendingApprovalCount ?? 0;
+  const capacity = {
+    open: (runInput.portfolio?.positions?.length ?? 0) + queued,
+    max: analyst.maxOpenPositions ?? null,
+    held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
+    awaitingApproval: queued,
+  };
+
+
+  // Regime and cash — inputs to the decision, never gates (DAV-253).
   // The cash itself is in the Market and portfolio block's snapshot, so it isn't said twice, unless the snapshot couldn't be read.
-  const snapshotRead = !!runInput.portfolioBlock && !runInput.portfolioBlock.includes("couldn't be read");
-  {
-    const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
-    sections.push(
-      [
-        "## Regime and cash",
-        `${snapshotRead ? "Your cash is in the portfolio snapshot below." : `Cash is $${Math.round(runInput.portfolio?.cash ?? 0).toLocaleString()}.`} \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
-        "- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
-        `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
-      ].join("\n"),
-    );
-  }
+  const pieces = runInput.portfolioPieces ?? null;
+  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
+  const extra: MorningRunExtra = {
+    snapshotRead,
+    cash: runInput.portfolio?.cash ?? 0,
+    atBuy: (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker),
+  };
+  return composeAgentRequest(MORNING_RUN, { now: new Date(), environment: "PAPER", extra }, {
+    pieces,
+    blocks: {
+      // The analyst (lib/agent/analyst-brief.ts, the same in every door).
+      analyst_brief: analystBrief(analyst, capacity),
+      earnings_week: earningsWeekText(runInput),
+      filings_week: filingsWeekText(runInput),
+      // Refused calls never redone (2026-09-25): PLTR's buy was refused on
+      // 09-25, the run ended COMPLETE, and nothing said the buy never
+      // happened. An open refusal is carried here until the same tool lands
+      // on the stock — a refusal is an input, never an ending.
+      blocked_last_time: blockedLastTimeSection(runInput.openRefusals ?? []) || null,
+    },
+  });
+}
 
-  // ── Refused calls never redone (2026-09-25) ────────────────────────────
-  // PLTR's buy was refused on 09-25, the run ended COMPLETE, and nothing
-  // said the buy never happened. An open refusal is carried here until the
-  // same tool lands on the stock — a refusal is an input, never an ending.
-  {
-    const blocked = blockedLastTimeSection(runInput.openRefusals ?? []);
-    if (blocked) sections.push(blocked);
-  }
-
-  // ── Your job (the actual workflow) ─────────────────────────────────────
-  sections.push(
-    `═══════════════════════════════════════════════════════════════════
-## How you work
-═══════════════════════════════════════════════════════════════════
-
-You are a working analyst walking through your book.
-
-**Narration rule.** Before every tool call, write 1-3 sentences in your own voice naming the ticker, what you're checking and why, and what you're about to do. After a research tool returns, write 1-3 sentences on what you saw and what it implies. **Silent tool calls are a failure mode** — if the chat shows tool rows with no surrounding sentences, the run was useless even if it ended COMPLETE.
-
-**Research before action.** Each row carries the live price and the chart numbers. Before a buy, a sale, an add or a trim, **call \`get_stock_data\` on the ticker** for the news and a fresh quote, then act. The same before a review's answer when you suspect a material change.
-
-═══════════════════════════════════════════════════════════════════
-## Your job
-═══════════════════════════════════════════════════════════════════
-
-You are running UNATTENDED. No human will answer questions. Every assistant turn must include at least one tool call. Text-only turns end the run as FAILED. End with complete_run.
-
-Each morning:
-
-1. Read your book. Open with a brief sentence on what you're about to look at. Then call \`get_portfolio_context\` (live positions + PnL) and \`get_theses\`. Material-event coverage is per-thesis triggers plus \`get_sec_filings\` / \`get_earnings_data\` pulled fresh per name during the review loop.
-
-2. Walk your work list: every row in \`theses\` and every \`sold_to_review\` entry; the one-line entries in \`quiet_theses\` are not today's work. Narrate which one you're picking up, then take exactly ONE durable action on it. What to check and what answers it is in \`guidance\`, under each of the row's \`situations\`; one \`update_thesis\` on a stock answers all of its situations, and after a trade you proposed on it, that note is the proposal's reason the principal reads.
-
-3. \`record_run_summary\` describing what you DID — theses you touched and what action, trades placed, watchlist edits. Don't enumerate every thesis you read; the conversation IS the audit log. Then \`complete_run\`.`,
-  );
-
-  // ── How tools work ─────────────────────────────────────────────────────
-  sections.push(
-    `═══════════════════════════════════════════════════════════════════
-## How tools work
-═══════════════════════════════════════════════════════════════════
-
-Tools enforce all the constraints — confidence thresholds, a holding's sale on the far side of the price, duplicate positions — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`,
-  );
-
-  // ── Market and portfolio (lib/agent/portfolio-block.ts) ────────────────
-  // After every fixed instruction, before the read (get_theses).
-  if (runInput.portfolioBlock) sections.push(runInput.portfolioBlock);
-
-  return sections.join("\n\n");
+/** The morning run's instructions alone (dailyRunRequest). */
+export function buildDailyRunSystemPromptV2(analyst: BriefAnalyst, runInput: RunInput): string {
+  return dailyRunRequest(analyst, runInput).instructions;
 }

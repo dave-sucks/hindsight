@@ -9,6 +9,7 @@ import { PORTFOLIO_DIGEST } from "./portfolio-digest";
 import { MARKET_REVIEWER } from "./market-reviewer";
 import { WRITER } from "./writer";
 import { TRIGGER_RUN } from "./trigger-run";
+import { MORNING_RUN } from "./morning-run";
 
 export interface PendingAgent {
   id: AgentId;
@@ -28,10 +29,7 @@ export const AGENTS: readonly AgentEntry[] = [
   { onEngine: true, record: PORTFOLIO_DIGEST },
   { onEngine: true, record: WRITER },
   { onEngine: true, record: TRIGGER_RUN },
-  {
-    onEngine: false,
-    agent: { id: "morning_run", name: "Morning run", does: "Walks one analyst's book and answers each stock on its work list.", runsWhen: "8:00 AM ET on each analyst's run days.", builtBy: "lib/agent/system-prompt.ts and lib/agent/run-input.ts" },
-  },
+  { onEngine: true, record: MORNING_RUN },
   {
     onEngine: false,
     agent: { id: "chat", name: "Chat", does: "Answers you: explains, researches, edits triggers, writes notes and proposes trades.", runsWhen: "When you write to it.", builtBy: "lib/agent/modes.ts (buildPrincipalSystemPrompt)" },
