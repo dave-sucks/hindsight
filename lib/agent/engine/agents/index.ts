@@ -12,6 +12,7 @@ import { TRIGGER_RUN } from "./trigger-run";
 import { POST_TRADE_WRITEUP } from "./post-trade-writeup";
 import { MORNING_RUN } from "./morning-run";
 import { CHAT } from "./chat";
+import { DISCOVERY } from "./discovery";
 
 /** In the order they moved onto the engine. */
-export const AGENTS: readonly AgentRecord[] = [PORTFOLIO_MANAGER, MARKET_REVIEWER, PORTFOLIO_DIGEST, WRITER, HOLDING_REFRESH, TRIGGER_RUN, POST_TRADE_WRITEUP, MORNING_RUN, CHAT];
+export const AGENTS: readonly AgentRecord[] = [PORTFOLIO_MANAGER, MARKET_REVIEWER, PORTFOLIO_DIGEST, WRITER, HOLDING_REFRESH, TRIGGER_RUN, POST_TRADE_WRITEUP, MORNING_RUN, CHAT, DISCOVERY];

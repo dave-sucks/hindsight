@@ -16,10 +16,12 @@ import { runAgentAsRun, type AgentToRun, type RunFor } from "@/lib/agent/engine/
 import { dueAt, scheduleTriggers, type ScheduledAgent } from "@/lib/agent/engine/schedule";
 import type { AgentId } from "@/lib/agent/engine/types";
 import { PORTFOLIO_MANAGER_RUN } from "@/lib/agent/portfolio-manager/run";
+import { DISCOVERY_RUN } from "@/lib/agent/discovery/run";
 
 /** How each scheduled agent runs on its own: its record, its run's mode, its reads and tools, its own save. */
 export const SCHEDULED_RUNS: Partial<Record<AgentId, AgentToRun>> = {
   portfolio_manager: PORTFOLIO_MANAGER_RUN,
+  discovery: DISCOVERY_RUN,
 };
 
 /** Who each run is for: every traded book with an owner, or every enabled analyst in its own book. */
@@ -58,7 +60,7 @@ export const agentScheduler = inngest.createFunction(
         const key = t.analystId ?? `${t.accountId}-${t.environment}`;
         // One step a run: a retry would start a second run and could propose its trades twice.
         const out = await step.run(`${id}-${key}`, async () => {
-          const run = await runAgentAsRun(agent, t);
+          const run = await runAgentAsRun(agent, t, s.message);
           return { runId: run.runId, status: run.status };
         });
         done.push({ agent: id, for: key, run: out.runId, status: out.status });

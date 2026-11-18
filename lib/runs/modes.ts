@@ -18,8 +18,9 @@ export const RUNS_MODE_OPTIONS: { value: string; label: string }[] = [
 export const ACCOUNT_RUN_NAMES: Record<string, string> = { PORTFOLIO_DIGEST: "Portfolio Digest", MARKET_REVIEWER: "Market Reviewer", PORTFOLIO_MANAGER: "Portfolio Manager" };
 
 /**
- * Runs that take no messages. They run on the server and have no analyst, so
- * their page starts no agent and has no composer, and the agent route refuses
- * a message on one: it would reach the full trade tools on the book.
+ * Runs that take no messages. They run on the server (the scheduled agents
+ * among them, lib/agent/engine/schedule.ts), so their page starts no agent
+ * and has no composer, and the agent route refuses a message on one: it
+ * would start a second agent on the run, with the full trade tools.
  */
-export const READ_ONLY_RUN_MODES: ReadonlySet<string> = new Set(["PORTFOLIO_DIGEST", "MARKET_REVIEWER", "PORTFOLIO_MANAGER"]);
+export const READ_ONLY_RUN_MODES: ReadonlySet<string> = new Set(["PORTFOLIO_DIGEST", "MARKET_REVIEWER", "PORTFOLIO_MANAGER", "DISCOVERY"]);

@@ -13,7 +13,7 @@ type Handler = (ctx: { event: { data: { cron?: string } }; step: { run: (name: s
 const agentOf = (id: string): AgentToRun => ({ record: { id } as AgentToRun["record"], mode: id.toUpperCase(), args: () => Promise.reject(new Error("not run")) });
 
 async function load(schedule: ScheduledAgent[], opts: { tradingDay?: boolean; standIns?: boolean } = {}) {
-  const runs: Array<{ agent: string; target: RunFor }> = [];
+  const runs: Array<{ agent: string; target: RunFor; message?: string | null }> = [];
   let handler: Handler | null = null;
   let triggers: unknown = null;
   let scheduled: Partial<Record<AgentId, AgentToRun>> = {};
@@ -24,7 +24,9 @@ async function load(schedule: ScheduledAgent[], opts: { tradingDay?: boolean; st
       return { ...real, SCHEDULE: schedule, scheduleTriggers: () => real.scheduleTriggers(schedule), dueAt: (c: string) => real.dueAt(c, schedule) };
     });
     jest.doMock("@/lib/agent/engine/run", () => ({
-      runAgentAsRun: async (agent: AgentToRun, target: RunFor) => (runs.push({ agent: agent.record.id, target }), { runId: `run_${runs.length}`, status: "COMPLETE" }),
+      runAgentAsRun: async (agent: AgentToRun, target: RunFor, message?: string | null) => (
+        runs.push({ agent: agent.record.id, target, ...(message ? { message } : {}) }), { runId: `run_${runs.length}`, status: "COMPLETE" }
+      ),
     }));
     jest.doMock("@/lib/prisma", () => ({
       prisma: { agentConfig: { findMany: async () => [{ id: "analyst_a", userId: "user_1", accountId: "acct_1", tradingEnvironment: "PAPER" }, { id: "analyst_b", userId: "user_1", accountId: "acct_1", tradingEnvironment: "LIVE" }] } },
@@ -39,6 +41,7 @@ async function load(schedule: ScheduledAgent[], opts: { tradingDay?: boolean; st
     jest.doMock("@/lib/auth/account", () => ({ getOwnerUserId: async (a: string) => (a === "acct_orphan" ? null : "user_1") }));
     jest.doMock("@/lib/market-hours", () => ({ isTradingDay: () => opts.tradingDay ?? true }));
     jest.doMock("@/lib/agent/portfolio-manager/run", () => ({ PORTFOLIO_MANAGER_RUN: agentOf("portfolio_manager") }));
+    jest.doMock("@/lib/agent/discovery/run", () => ({ DISCOVERY_RUN: agentOf("discovery") }));
     const mod = await import("./agent-scheduler");
     scheduled = mod.SCHEDULED_RUNS;
     // Each line's agent, stood in, unless the test is of the real list.
@@ -70,6 +73,12 @@ it("runs each agent due once per traded book with an owner, or per enabled analy
     { agent: "morning_run", target: { accountId: "acct_1", environment: "PAPER", userId: "user_1", analystId: "analyst_a" } },
     { agent: "morning_run", target: { accountId: "acct_1", environment: "LIVE", userId: "user_1", analystId: "analyst_b" } },
   ]);
+});
+
+it("hands each run its line's kickoff, when the line writes one", async () => {
+  const { runs, fire } = await load([{ ...SCOUT, message: "Find this analyst's next stocks." }]);
+  await fire("TZ=America/New_York 0 10 * * 2,4");
+  expect(runs.map((r) => r.message)).toEqual(["Find this analyst's next stocks.", "Find this analyst's next stocks."]);
 });
 
 it("matches the time that fired with or without its time zone", async () => {
@@ -118,6 +127,21 @@ describe("the schedule", () => {
     expect(cronInWords("30 7 * * 1-5")).toBe("Weekdays at 7:30 AM ET");
     expect(cronInWords("0 20 * * *")).toBe("Every day at 8:00 PM ET");
     expect(cronInWords("15 16 * * 1,3,5")).toBe("Monday, Wednesday and Friday at 4:15 PM ET");
+  });
+
+  it("has Discovery per analyst, off, its kickoff its message", () => {
+    const { SCHEDULE, whenItRuns } = jest.requireActual("@/lib/agent/engine/schedule") as typeof import("@/lib/agent/engine/schedule");
+    expect(SCHEDULE.filter((s) => s.agent === "discovery")).toEqual([
+      { agent: "discovery", cron: "0 9 * * 2,4", per: "analyst", marketDaysOnly: true, on: false, message: "Find this analyst's next stocks." },
+    ]);
+    expect(whenItRuns({ id: "discovery" })).toBe("Tuesday and Thursday at 9:00 AM ET, one run per analyst. Off until you turn it on.");
+  });
+
+  it("runs every scheduled agent as a run that takes no messages, so its page never starts a second agent on it", () => {
+    const { SCHEDULE } = jest.requireActual("@/lib/agent/engine/schedule") as typeof import("@/lib/agent/engine/schedule");
+    const { READ_ONLY_RUN_MODES } = jest.requireActual("@/lib/runs/modes") as typeof import("@/lib/runs/modes");
+    const MODES: Record<string, string> = { portfolio_manager: "PORTFOLIO_MANAGER", discovery: "DISCOVERY" };
+    for (const s of SCHEDULE) expect([s.agent, READ_ONLY_RUN_MODES.has(MODES[s.agent])]).toEqual([s.agent, true]);
   });
 
   it("fits Inngest: one to ten distinct times", () => {

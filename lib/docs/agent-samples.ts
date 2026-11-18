@@ -27,6 +27,8 @@ import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
 import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
+import { analystBrief } from "@/lib/agent/analyst-brief";
+import { SCHEDULE } from "@/lib/agent/engine/schedule";
 
 
 /** The sample day: the stand-in book's morning, Thu Nov 12, 8 AM ET. */
@@ -105,5 +107,17 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
   chat: {
     from: "a chat pinned to an analyst, and your next message",
     build: () => ({ request: chatRequest(CHAT_CASES.pinned as never), newest: chatNewest(SAMPLE_NOW, PIECES, "PAPER", { book: BOOK }) }),
+  },
+  discovery: {
+    from: "the morning case's analyst and the stand-in book, on its schedule's kickoff",
+    build: (record) => ({
+      request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER", message: SCHEDULE.find((l) => l.agent === "discovery")?.message }, {
+        shared: { the_analyst: analystBrief(MORNING_CASES.full.analyst as never) },
+        context: {
+          the_book: BOOK,
+          earnings_calendar: "## The earnings calendar\n\nReported, last 7 days:\n- $DDD 2026-11-10: EPS $1.20 vs $1.00 est — beat by 20.0%\n\nReporting, next 14 days:\n- $EEE 2026-11-19: EPS est $0.85 after close",
+        },
+      }),
+    }),
   },
 };
