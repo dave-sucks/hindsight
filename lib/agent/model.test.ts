@@ -233,9 +233,13 @@ describe("the Writer", () => {
     expect(records[0].runId).toBe("writer_child_dyn");
     expect(records[0].record).toMatchObject({ call: "Research", source: "thesis-writer", model: "claude-sonnet-4-6" });
     expect(asSent(records[0].record)).toEqual([net.sent[0]]);
+    // The agent engine built it: the record keeps which part is which, and Context shows each by name.
+    expect(records[0].record.parts?.length).toBeGreaterThan(0);
     const categories = view!(records[0].record).categories;
-    expect(categories.map((c) => c.name)).toEqual(["Instructions", "First message", "Tool menu"]);
-    expect(categories[1].sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
-    expect(categories[2].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
+    const names = categories.map((c) => c.name);
+    expect(names.slice(0, 4)).toEqual(["The analyst", "House rules", "How you write", "The task"]);
+    expect(names.slice(-4)).toEqual(["The data's heading", "The stock's data", "Go", "Tool menu"]);
+    expect(categories.find((c) => c.name === "The stock's data")!.sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
+    expect(categories[categories.length - 1].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
   });
 });

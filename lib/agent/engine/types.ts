@@ -20,7 +20,18 @@ export type BlockId =
   | "held_beliefs"
   | "watched_beliefs"
   | "reviewer_notes"
-  | "last_digest";
+  | "last_digest"
+  | "analyst_brief"
+  | "playbooks"
+  | "why_sent"
+  | "sender_notes"
+  | "idea_source"
+  | "existing_thesis"
+  | "promotion"
+  | "setup_record"
+  | "prior_exit"
+  | "stock_data"
+  | "chat_found";
 
 export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
@@ -28,8 +39,10 @@ export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_
 export interface OwnPart {
   own: string;
   title: string;
-  /** The text, or the text for this run (a date, the account). */
-  text: string | ((input: AgentInput) => string);
+  /** The text, or the text for this run (a date, the account); null leaves the part out this run. */
+  text: string | ((input: AgentInput) => string | null);
+  /** What goes before it: a blank line unless the record says otherwise. */
+  sep?: string;
 }
 
 /**
@@ -42,6 +55,8 @@ export interface BlockPart {
   block: BlockId;
   alone?: true;
   heading?: string;
+  /** What goes before it: a blank line unless the record says otherwise. */
+  sep?: string;
 }
 
 export type RecordPart = OwnPart | BlockPart;
@@ -50,6 +65,8 @@ export type RecordPart = OwnPart | BlockPart;
 export interface AgentInput {
   now: Date;
   environment: "PAPER" | "LIVE";
+  /** What else one agent's own words need this run (the Writer's stock and mode), read by its record. */
+  extra?: unknown;
 }
 
 export interface AgentRecord {
@@ -71,6 +88,8 @@ export interface AgentRecord {
   providerTools?: readonly string[];
   /** What it hands back. */
   output: string;
+  /** For the Agents page: the run its own words are shown for, when they change with the run. */
+  example?: { extra: unknown; says: string };
 }
 
 /** Where a part of a request went. */
@@ -86,6 +105,8 @@ export interface SentPartManifest {
   /** The file the text comes from. */
   source: string;
   chars: number;
+  /** What was sent before it ("" for the first part); a record kept before this was a blank line. */
+  sep?: string;
 }
 
 export interface BuiltRequest {

@@ -38,7 +38,7 @@ function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly stri
   const parts = [...record.instructions.map((p) => ({ p, where: "instructions" as const })), ...record.message.map((p) => ({ p, where: "message" as const }))];
   const given = new Map<BlockId, "instructions" | "message">(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
   const own = parts.flatMap(({ p }) => (isOwn(p) ? [p] : []));
-  const sample = { now: new Date(), environment: "PAPER" as const };
+  const sample = { now: new Date(), environment: "PAPER" as const, extra: record.example?.extra };
   return (
     <Card>
       <CardHeader>
@@ -56,15 +56,17 @@ function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly stri
             <h2 className="text-lg font-medium">Instructions</h2>
             <p className="text-sm text-muted-foreground">Its own words, in the order they are sent. The context blocks go between them where the record places them.</p>
             <div className="flex flex-col gap-1">
+              {record.example && <p className="text-sm text-muted-foreground">{record.example.says}</p>}
               {own.map((o) => {
                 const text = typeof o.text === "string" ? o.text : o.text(sample);
                 return (
                   <Collapsible key={o.own}>
                     <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                      {o.title} · {n(text.length)} characters{typeof o.text === "string" ? "" : " (written for each run)"}
+                      {o.title} · {text == null ? "not in this example" : `${n(text.length)} characters`}
+                      {typeof o.text === "string" ? "" : " (written for each run)"}
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{text}</p>
+                      <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{text ?? "Sent only in some runs."}</p>
                     </CollapsibleContent>
                   </Collapsible>
                 );
