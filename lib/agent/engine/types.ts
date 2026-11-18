@@ -91,6 +91,8 @@ export interface AgentRecord {
   runsWhen: string;
   model: string;
   maxSteps: number;
+  /** How long its model call may run before it is stopped, in milliseconds. The agent runner (./run.ts) runs only a record that names one. */
+  timeoutMs?: number;
   /** The instructions, in order. */
   instructions: readonly RecordPart[];
   /** The first message, in order. */
@@ -110,6 +112,9 @@ export interface AgentRecord {
   /** For the Agents page: the run its own words are shown for, when they change with the run. */
   example?: { extra: unknown; says: string };
 }
+
+/** A record the agent runner (./run.ts) can run: one that names its time limit. */
+export type RunnableRecord = AgentRecord & { timeoutMs: number };
 
 /** Where a part of a request went: the instructions, the first message, or the newest message of a conversation. */
 export type Where = "instructions" | "message" | "newest";

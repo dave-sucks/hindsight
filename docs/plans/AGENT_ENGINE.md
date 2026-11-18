@@ -66,12 +66,30 @@ Where a block goes follows what it is. A fact (the analyst, the market and portf
 
 Each agent still has its own loop: its own model call, tool assembly, retries, and saving of the thread, the token use and the run's status. That covers `run-thesis-writer.ts`, `morning-research.ts`, `tactical-run.ts`, `app/api/agent/[mode]/route.ts`, `portfolio-manager/run.ts`, `market-reviewer/run.ts` and `digest-writer.ts` (about 7,900 lines with the prompt files).
 
-One runner takes a record and its input, builds the request, calls the model with the record's tools, and saves the request, the thread, the token use and the status. Every scheduled job and the chat route call it. Behaviour that is one agent's own becomes that agent's tools or a small hook, not its own loop:
+One runner (`runAgent`, `lib/agent/engine/run.ts`) takes a record and its input, builds the request, gives the model the record's tools and makes the call with the record's model, step limit and time limit. Every scheduled job and the chat route call it. Behaviour that is one agent's own becomes a small hook or that agent's tools, not its own loop:
 - the Writer's data pull and its save checks;
 - the trigger run's Auto-trade path;
 - the morning run's coverage retry.
 
-Each agent moves on its own. Replays of its recorded real runs prove it behaves the same.
+**The proof is the wire.** Before an agent moves, a test keeps the HTTP body its call sends from fixed inputs, and the record the run keeps of it, as a golden file written from the old loop. After the move the runner must send that body byte for byte (`lib/agent/portfolio-manager/run.wire.test.ts`). The test fails on a change of one field.
+
+**What the seven loops do differently today** (mapped 2026-11-18):
+- The 8 AM morning run stops at 30 steps (`morning-research.ts`). Its record, and so the Agents page, says 65, which is the Run button's limit; the Run button also sends temperature 0.2. One record is one setting: the move takes the 8 AM run's.
+- Token use: the morning run writes it into the run's parameters and never counts its recovery call; the Market Reviewer and the digest record none.
+- The run's status: the trigger run and the Portfolio Manager write it without checking the run is still running; the others check.
+- Time limits: the chat and the digest have none.
+- The Market Reviewer and the digest call OpenAI directly, not through the AI SDK, so their move has to show the same body sent through the SDK.
+- The Writer's record names `submit_thesis`, which its loop never reads: it makes its tools itself.
+
+The model call moves unchanged. The bookkeeping (the thread, the token use, the status) becomes one way once two or three agents run on the runner, where the differences above are settled one at a time.
+
+The order, each its own PR:
+1. The Portfolio Manager: one call, no retries.
+2. The trigger run and the post-trade write-up, once the open trigger-run PRs merge.
+3. The Writer, once the Writer split and the date fix merge.
+4. The morning run, once its simple record merges.
+5. The chat, once its simple record merges. It streams, so the runner gains a streaming call.
+6. The Market Reviewer and the digest.
 
 ### After
 
