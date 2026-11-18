@@ -45,8 +45,8 @@ A block's options are the record's choice of blocks. For example, the Portfolio 
 2. The portfolio digest and the Market Reviewer (#1012).
 3. The Writer. Its prompt has about 20 parts, many printed only in some runs, so a part names its own separator (#1013).
 4. The trigger run. A separator can depend on the run, when it follows a part only some runs print (#1014).
-5. The morning run. A request from the Run button names the parts of its instructions and shows the conversation as it is.
-6. The chat.
+5. The morning run. A request from the Run button names the parts of its instructions and shows the conversation as it is (#1015).
+6. The chat. Its builder moved out of `modes.ts` to `system-prompts/chat.ts`, so the record can read its model and tools from `MODES` without the two files importing each other. With every agent moved, the Agents page has no "not on the engine yet" card.
 7. The Framework page is drawn from the records, and the heading split is deleted from `run-requests.ts`.
 
 ### Pass 2: one way to run an agent

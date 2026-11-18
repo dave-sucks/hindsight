@@ -23,7 +23,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { MODES, buildPrincipalSystemPrompt, type AgentMode } from "@/lib/agent/modes";
+import { MODES, type AgentMode } from "@/lib/agent/modes";
+import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 
 /**
  * The registered tool names, read out of the source of `createResearchTools`.

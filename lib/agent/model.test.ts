@@ -196,10 +196,31 @@ describe("the chat", () => {
     expect(only.record).toMatchObject({ call: "Message", source: "agent/principal", model: "claude-sonnet-4-6" });
     expect(asSent(only.record)).toEqual([net.sent[1]]);
     const categories = view!(only.record).categories;
-    expect(categories.map((c) => c.name)).toEqual(["Instructions", "First message", "The conversation so far", "Newest message", "Tool menu"]);
+    // Its instructions one row per part of its record, then the conversation as it was.
+    expect(categories.map((c) => c.name)).toEqual([
+      "Who it is",
+      "At the portfolio level",
+      "Questions about the whole book",
+      "The system you operate",
+      "Data model",
+      "Trade-as-proposal",
+      "Notes",
+      "Universe",
+      "Deep-research thesis dispatch",
+      "Batched discovery",
+      "How to operate",
+      "House rules",
+      "How you write",
+      "Response style",
+      "First message",
+      "The conversation so far",
+      "Newest message",
+      "Tool menu",
+    ]);
     // The newest message: the time, the Market and portfolio block cut at its headings, then the question.
-    expect(categories[3].sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", expect.stringMatching(/^Market numbers \(as of .+\)$/), "Market digest", "Portfolio snapshot", "Portfolio digest"]);
-    expect(categories[3].sections.map((s) => s.text).join("")).toMatch(/Why hold it\?$/);
+    const newest = categories.find((c) => c.name === "Newest message")!;
+    expect(newest.sections.map((s) => s.label)).toEqual(["Opening", "Market and portfolio", expect.stringMatching(/^Market numbers \(as of .+\)$/), "Market digest", "Portfolio snapshot", "Portfolio digest"]);
+    expect(newest.sections.map((s) => s.text).join("")).toMatch(/Why hold it\?$/);
   });
 });
 

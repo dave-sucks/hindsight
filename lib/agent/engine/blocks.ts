@@ -206,4 +206,22 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "The chat's own results on the stock before it sent it, when there are any.",
     source: "lib/agent/run-thesis-writer.ts (chatFoundBlock)",
   },
+  money_context: {
+    id: "money_context",
+    title: "Its money",
+    about: "The pinned analyst's size band for one buy: its smallest and largest trade.",
+    source: "lib/agent/context-bundle.ts (formatMoneyContextBlock)",
+  },
+  book_context: {
+    id: "book_context",
+    title: "Its book",
+    about: "What the pinned analyst holds now, the stocks it covers, and what it has traded before.",
+    source: "lib/agent/context-bundle.ts (formatBookContextBlock)",
+  },
+  analyst_rooms: {
+    id: "analyst_rooms",
+    title: "Each analyst's room",
+    about: "Each analyst's slots against its limit, its largest trade and the most in one stock, at the portfolio level.",
+    source: "lib/agent/analyst-scope.ts (analystRoomLines)",
+  },
 };

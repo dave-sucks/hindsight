@@ -1,22 +1,20 @@
 /**
  * /how-it-works/agents — every agent as the engine runs it: its instructions,
  * which context blocks it is given and which tools it may call. Read from the
- * agent records (lib/agent/engine/agents), so it shows what an agent is sent;
- * an agent not on the engine yet says which code still builds it. Read-only.
+ * agent records (lib/agent/engine/agents), so it shows what an agent is sent.
+ * Read-only.
  */
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { BLOCKS } from "@/lib/agent/engine/blocks";
-import type { AgentEntry, PendingAgent } from "@/lib/agent/engine/agents";
 import { isOwn, type AgentRecord, type BlockId } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
 
 const n = (x: number) => x.toLocaleString("en-US");
 
-export function AgentsPage({ agents, tools }: { agents: readonly AgentEntry[]; tools: readonly string[] }) {
-  const moved = agents.filter((a) => a.onEngine).length;
+export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: readonly string[] }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 pb-24 pt-6 sm:px-6">
       <DocsNav />
@@ -25,16 +23,15 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentEntry[]; t
         <p className="text-sm text-muted-foreground">
           Every agent is its instructions, the context blocks it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
         </p>
-        <p className="text-sm text-muted-foreground">
-          {moved} of {agents.length} agents run on the engine. The rest are still built by their own code and move over one at a time; until then this page says so instead of describing them.
-        </p>
       </div>
-      {agents.map((a) => (a.onEngine ? <OnEngine key={a.record.id} record={a.record} tools={tools} /> : <NotYet key={a.agent.id} agent={a.agent} />))}
+      {agents.map((a) => (
+        <AgentCard key={a.id} record={a} tools={tools} />
+      ))}
     </div>
   );
 }
 
-function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
+function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
   const parts = [...record.instructions.map((p) => ({ p, where: "instructions" as const })), ...record.message.map((p) => ({ p, where: "message" as const }))];
   const given = new Map<BlockId, "instructions" | "message">(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
   const own = parts.flatMap(({ p }) => (isOwn(p) ? [p] : []));
@@ -110,22 +107,6 @@ function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly stri
             </ul>
           </section>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function NotYet({ agent }: { agent: PendingAgent }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{agent.name}</CardTitle>
-        <CardDescription>{agent.does}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground">
-          {agent.runsWhen} Not on the engine yet: its request is still built by {agent.builtBy}, so this page doesn&rsquo;t list its parts.
-        </p>
       </CardContent>
     </Card>
   );

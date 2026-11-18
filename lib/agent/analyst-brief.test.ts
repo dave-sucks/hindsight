@@ -21,7 +21,7 @@ import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
-import { buildPrincipalSystemPrompt } from "@/lib/agent/modes";
+import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
 import { VOICE_RULES } from "@/lib/agent/voice";

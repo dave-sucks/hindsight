@@ -16,7 +16,10 @@
  * `get_sec_filings` off "who took a stake this month" and off the approval
  * queue, and nothing told a review of a catalyst name to read the 8-K.
  */
-import { MODES, PRINCIPAL_SYSTEM_PROMPT } from "./modes";
+import { MODES } from "./modes";
+import { buildPrincipalSystemPrompt } from "./system-prompts/chat";
+
+const PRINCIPAL_SYSTEM_PROMPT = buildPrincipalSystemPrompt({ scopedAnalyst: null });
 
 const ALLOWLIST = new Set(MODES["principal"].toolAllowlist ?? []);
 
