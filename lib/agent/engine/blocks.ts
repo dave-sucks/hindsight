@@ -74,4 +74,28 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "The Portfolio Manager's own write-up from its last run.",
     source: "lib/agent/portfolio-manager/run.ts (the portfolio_writeup RunEvent)",
   },
+  held_beliefs: {
+    id: "held_beliefs",
+    title: "Why we hold each",
+    about: "Every stock we own with the first sentence of its belief, a line each.",
+    source: "lib/agent/market-reviewer/run.ts (the theses we hold)",
+  },
+  watched_beliefs: {
+    id: "watched_beliefs",
+    title: "What we watch, and why",
+    about: "Every stock we watch with the first sentence of its belief, a line each.",
+    source: "lib/agent/market-reviewer/run.ts (the theses we watch)",
+  },
+  reviewer_notes: {
+    id: "reviewer_notes",
+    title: "Its notes, last 5 days",
+    about: "The notes the Market Reviewer wrote on our stocks in the last 5 days, a line each.",
+    source: "lib/agent/market-reviewer/run.ts (its SharedNote rows)",
+  },
+  last_digest: {
+    id: "last_digest",
+    title: "Its last digest",
+    about: "The Market Reviewer's own digest from its last run.",
+    source: "lib/agent/market-reviewer/run.ts (the MarketDigest row)",
+  },
 };

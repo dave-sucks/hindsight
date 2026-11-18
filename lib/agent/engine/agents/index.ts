@@ -5,6 +5,8 @@
  */
 import type { AgentId, AgentRecord } from "../types";
 import { PORTFOLIO_MANAGER } from "./portfolio-manager";
+import { PORTFOLIO_DIGEST } from "./portfolio-digest";
+import { MARKET_REVIEWER } from "./market-reviewer";
 
 export interface PendingAgent {
   id: AgentId;
@@ -20,14 +22,8 @@ export type AgentEntry = { onEngine: true; record: AgentRecord } | { onEngine: f
 /** In the order they move onto the engine. */
 export const AGENTS: readonly AgentEntry[] = [
   { onEngine: true, record: PORTFOLIO_MANAGER },
-  {
-    onEngine: false,
-    agent: { id: "portfolio_digest", name: "Portfolio digest", does: "Writes your evening summary of the account.", runsWhen: "8:00 PM ET on market days.", builtBy: "lib/agent/digest-writer.ts" },
-  },
-  {
-    onEngine: false,
-    agent: { id: "market_reviewer", name: "Market Reviewer", does: "Writes the morning market digest, and notes on our stocks its research touches.", runsWhen: "7:30 AM ET on market days.", builtBy: "lib/agent/market-reviewer/" },
-  },
+  { onEngine: true, record: MARKET_REVIEWER },
+  { onEngine: true, record: PORTFOLIO_DIGEST },
   {
     onEngine: false,
     agent: { id: "writer", name: "Writer", does: "Researches one stock and writes its thesis and its triggers.", runsWhen: "When a stock is sent to it: from the chat, a run or the Portfolio Manager.", builtBy: "lib/agent/run-thesis-writer.ts" },

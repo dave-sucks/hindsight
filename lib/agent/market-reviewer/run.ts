@@ -3,8 +3,9 @@
  * (lib/inngest/functions/market-reviewer.ts). One call to the model, like
  * the 8 PM Portfolio Digest's (lib/agent/digest-writer.ts): its instructions
  * and one first message (the market numbers, the portfolio snapshot, each
- * stock's belief in a line, its own last digest), with OpenAI's own web
- * search as its one tool.
+ * stock's belief in a line, its own last digest), built by the agent engine
+ * from its record (lib/agent/engine/agents/market-reviewer.ts), with
+ * OpenAI's own web search as its one tool.
  * The model searches inside that call; its reply is the digest and its notes
  * on the stocks its research touched (one JSON object, Structured Outputs),
  * and the job saves both. The request is kept exactly as sent, for the run
@@ -16,13 +17,12 @@ import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
 import { snapshotText } from "@/lib/portfolio/snapshot";
 import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
-import { MODES } from "@/lib/agent/modes";
-import { buildMarketReviewerPrompt } from "@/lib/agent/market-reviewer/prompt";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import type { OneCall } from "@/lib/runs/account-run";
+import { buildAgentRequest } from "@/lib/agent/engine/engine";
+import { MARKET_REVIEWER, reviewDay as day } from "@/lib/agent/engine/agents/market-reviewer";
 
-/** The morning runs' model. */
-export const REVIEWER_MODEL = MODES["research-run"].model;
+export const REVIEWER_MODEL = MARKET_REVIEWER.model;
 /** The reply's budget: its thinking and its searches count against it. */
 const REPLY_TOKENS = 20_000;
 /** How long the call may take. */
@@ -78,8 +78,6 @@ const replyFormat = (tickers: string[]) => ({
   },
 });
 
-const day = (iso: string) =>
-  new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
 /** A text's first sentence, cut at BELIEF_CHARS. */
 const firstSentence = (text: string | null) => {
   const t = text?.replace(/\s+/g, " ").trim();
@@ -89,8 +87,19 @@ const firstSentence = (text: string | null) => {
 /** How far back its own notes are shown to it, so it doesn't file the same story again. */
 const NOTES_SHOWN_MS = 5 * 86_400_000;
 
-/** Its first message: the market numbers, the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, then its own last digest; and those stocks' tickers. */
-export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: string; tickers: string[] }> {
+/** The blocks of its first message, each without its heading (its record gives the headings), and the book's tickers. */
+export interface ReviewBookParts {
+  tickers: string[];
+  marketNumbers: string;
+  portfolio: string;
+  held: string;
+  watched: string;
+  notes: string;
+  lastDigest: string;
+}
+
+/** What its first message is made of: the market numbers, the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, and its own last digest. */
+export async function loadReviewBook(book: ReviewBook, now: Date): Promise<ReviewBookParts> {
   const today = etDateOf(now);
   const [numbers, theses, snapshot, last, notes] = await Promise.all([
     // The same numbers every agent's Market and portfolio block prints, from the same function.
@@ -127,32 +136,20 @@ export async function bookMessage(book: ReviewBook, now: Date): Promise<{ text: 
   const isHeld = (t: (typeof theses)[number]) => t.status === "HOLDING" || held.has(t.ticker.toUpperCase());
   const all = [...rows.values()];
   const list = (rows: typeof all) => (rows.length ? rows.map(line) : ["- none"]);
-  const text = [
-    `${day(today)}, the ${book.environment} book.`,
-    "",
-    "## Market numbers",
-    numbers ? marketNumbersText(numbers) : "The market numbers couldn't be read this run.",
-    "",
-    "## The portfolio",
-    snapshot ? snapshotText(snapshot) : "The portfolio couldn't be read this run.",
-    "",
-    "## Why we hold each, in a line",
-    ...list(all.filter(isHeld)),
-    "",
-    "## What we watch, and why",
-    ...list(all.filter((t) => !isHeld(t))),
-    "",
-    "## Your notes in the last 5 days",
-    ...(!notes
+  return {
+    tickers: all.map((t) => t.ticker.toUpperCase()),
+    marketNumbers: numbers ? marketNumbersText(numbers) : "The market numbers couldn't be read this run.",
+    portfolio: snapshot ? snapshotText(snapshot) : "The portfolio couldn't be read this run.",
+    held: list(all.filter(isHeld)).join("\n"),
+    watched: list(all.filter((t) => !isHeld(t))).join("\n"),
+    notes: (!notes
       ? ["Your notes couldn't be read this run."]
       : notes.length
         ? notes.map((n) => `- ${[day(etDateOf(n.createdAt)), n.tickers.join(", "), n.impact, n.effect, firstSentence(n.body)].filter(Boolean).join(" · ")}`)
-        : ["- none"]),
-    "",
-    "## Your last digest",
-    last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first.",
-  ].join("\n");
-  return { text, tickers: all.map((t) => t.ticker.toUpperCase()) };
+        : ["- none"]
+    ).join("\n"),
+    lastDigest: last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first.",
+  };
 }
 
 /** The tokens the call used, from OpenAI's own count. */
@@ -185,22 +182,33 @@ export async function writeMarketReview(
 ): Promise<OneCall & { digest: string | null; notes: ReviewNote[]; searches: string[]; usage: ReviewUsage | null }> {
   const startedAt = new Date().toISOString();
   const now = opts.now ?? new Date();
-  const first = await bookMessage(book, now);
+  const parts = await loadReviewBook(book, now);
+  const block = (text: string) => async () => text;
+  const built = await buildAgentRequest(MARKET_REVIEWER, { now, environment: book.environment }, {
+    blocks: {
+      market_numbers: block(parts.marketNumbers),
+      portfolio_snapshot: block(parts.portfolio),
+      held_beliefs: block(parts.held),
+      watched_beliefs: block(parts.watched),
+      reviewer_notes: block(parts.notes),
+      last_digest: block(parts.lastDigest),
+    },
+  });
   // The request body, kept as it goes to OpenAI.
   const body = {
     model: REVIEWER_MODEL,
     input: [
-      { role: "system" as const, content: buildMarketReviewerPrompt() },
-      { role: "user" as const, content: first.text },
+      { role: "system" as const, content: built.instructions },
+      { role: "user" as const, content: built.message },
     ],
     tools: [{ type: "web_search" as const }],
-    text: { format: replyFormat(first.tickers) },
+    text: { format: replyFormat(parts.tickers) },
     max_output_tokens: REPLY_TOKENS,
   };
   const done = (digest: string | null, notes: ReviewNote[], searches: string[], usage: ReviewUsage | null, error?: string) => {
     const said = [...(usage || searches.length ? [searchedLine(searches, usage)] : []), ...(digest ? [digest] : []), ...notes.map((note) => noteText(note, now))];
     return {
-      request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], ...(error ? { error } : {}) },
+      request: { v: 1 as const, call: "Main", source: "market-reviewer", model: REVIEWER_MODEL, startedAt, endedAt: new Date().toISOString(), requests: [body], parts: built.parts, ...(error ? { error } : {}) },
       thread: [body.input[1], ...(said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [])],
       digest,
       notes,

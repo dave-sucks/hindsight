@@ -208,12 +208,27 @@ describe("the 7:30 Market Reviewer", () => {
     expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
     expect(record!.error).toBeUndefined();
 
-    // Context shows the instructions, the first message and its one tool.
+    // Context shows each part the agent engine built, by name, then its one tool; the parts add up to what was sent.
     const view = viewOfRecord(record!);
-    expect(view.categories.map((c) => [c.name, c.part])).toEqual([["Instructions", "job"], ["Market numbers, portfolio, watchlist, notes and last digest", "read"], ["Tool menu", "tools"]]);
-    // The numbers are their own section in Context.
-    expect(view.categories[1].sections.map((s) => s.label)).toEqual(["Opening", "Market numbers", "The portfolio", "Why we hold each, in a line", "What we watch, and why", "Your notes in the last 5 days", "Your last digest", "Market overview"]);
-    expect(view.categories[2].sections.map((s) => s.label)).toEqual(["web_search"]);
+    expect(view.categories.map((c) => [c.name, c.part])).toEqual([
+      ["Its job", "job"],
+      ["Its tool", "job"],
+      ["The digest", "job"],
+      ["Notes", "job"],
+      ["Unattended", "job"],
+      ["The day", "job"],
+      ["Market numbers", "read"],
+      ["Portfolio snapshot", "read"],
+      ["Why we hold each", "read"],
+      ["What we watch, and why", "read"],
+      ["Its notes, last 5 days", "read"],
+      ["Its last digest", "read"],
+      ["Tool menu", "tools"],
+    ]);
+    const sent = (from: number, to: number) => view.categories.slice(from, to).map((c) => c.sections[0].text).join("\n\n");
+    expect(sent(0, 5)).toBe(body.input[0].content);
+    expect(sent(5, 12)).toBe(body.input[1].content);
+    expect(view.categories[12].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");

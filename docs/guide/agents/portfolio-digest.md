@@ -62,13 +62,13 @@ Where each number comes from:
 `portfolio-digest` at 8:00 PM ET, Mon–Fri, one read-only run per traded book (`lib/inngest/functions/portfolio-digest.ts`, `lib/runs/account-run.ts`).
 
 #### Model
-`gpt-5.4`, one call (`lib/agent/digest-writer.ts`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash.
+`gpt-5.4`, one call (`lib/agent/digest-writer.ts`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash. Its instructions and its first message (the snapshot's text alone) are its record, `PORTFOLIO_DIGEST` in `lib/agent/engine/agents/portfolio-digest.ts`, which the agent engine (`lib/agent/engine/engine.ts`) builds the request from, naming each part for the run's Context panel.
 
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot` and `snapshotText` (`lib/portfolio/snapshot.ts`) make the numbers and the text; `watchingText` writes the Watching block from the watches `loadPortfolioSnapshot` loads when asked (`watching`). A holding's 5- and 20-day moves are the trigger check's own measure off the 06:30 chart numbers, and its conviction is its thesis's. The digest row's `facts` column keeps the snapshot.
 
 #### Every agent's block
-`loadPortfolioBlock` (`lib/agent/portfolio-block.ts`): the market numbers (`loadMarketNumbers`, `lib/market-data/load-market-numbers.ts`), the latest market digest, the snapshot and the latest digest, under `## Market and portfolio`. The numbers and the snapshot are read in parallel, each given up after 15 seconds (5 in the chat) with one line saying it couldn't be read. The morning run gets it through `buildRunInput`, the trigger run in `tactical-run.ts` before the stock's row, the Writer in `run-thesis-writer.ts`, and the chat on its newest message (`withTheTime`, `lib/agent/old-lookups.ts`), so its system prompt stays cached.
+`loadPortfolioBlock` (`lib/agent/portfolio-block.ts`), built from its parts (`loadPortfolioPieces`; the agent engine gives each part as its own block): the market numbers (`loadMarketNumbers`, `lib/market-data/load-market-numbers.ts`), the latest market digest, the snapshot and the latest digest, under `## Market and portfolio`. The numbers and the snapshot are read in parallel, each given up after 15 seconds (5 in the chat) with one line saying it couldn't be read. The morning run gets it through `buildRunInput`, the trigger run in `tactical-run.ts` before the stock's row, the Writer in `run-thesis-writer.ts`, and the chat on its newest message (`withTheTime`, `lib/agent/old-lookups.ts`), so its system prompt stays cached.
 
 #### get_portfolio_context
 `lib/agent/tools/get-portfolio-context.ts` calls `loadPortfolioSnapshot` and matches each open position to the snapshot's holding by ticker. The open risk is `loadAccountRisk` given the snapshot, so its equity is the snapshot's value. Buying power is read from the broker (`getAccount`): the snapshot doesn't carry it.

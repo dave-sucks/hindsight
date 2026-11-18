@@ -101,15 +101,19 @@ describe("the 8 PM Portfolio Digest's run", () => {
   it("shows in its Context panel part by part, in the order sent, adding up to what was sent", async () => {
     const { sent, view } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
     const body = sent[0] as { messages: Array<{ content: string }> };
+    // One row per part the agent engine built: its four instructions, then the snapshot.
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([
-      ["Instructions", "job"],
+      ["Its job", "job"],
+      ["What it is given", "job"],
+      ["The paragraphs", "job"],
+      ["Its words", "job"],
       ["Portfolio snapshot", "read"],
     ]);
-    for (const [i, c] of view.categories.entries()) {
-      expect(c.sections.map((p) => p.text).join("")).toBe(body.messages[i].content);
-      expect(c.chars).toBe(body.messages[i].content.length);
-    }
-    expect(view.chars).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    expect(view.categories.slice(0, 4).map((c) => c.sections[0].text).join("\n\n")).toBe(body.messages[0].content);
+    expect(view.categories[4].sections[0].text).toBe(body.messages[1].content);
+    expect(view.categories.reduce((n, c) => n + c.chars, 0) + 3 * 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    // The panel's total counts the parts, not the blank lines between them.
+    expect(view.chars).toBe(body.messages[0].content.length + body.messages[1].content.length - 3 * 2);
     expect(view.raw).toEqual(body);
     expect(view.rawChars).toBe(JSON.stringify(body).length);
   });
