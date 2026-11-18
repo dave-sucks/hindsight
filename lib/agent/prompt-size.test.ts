@@ -31,7 +31,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
   // 2026-11-18: −422, the trigger run's instructions are one fixed text and its stock, trigger and fire are blocks of the first message (now counted here, its ask included): the ═══ banners, the PATH block, the hard wraps and the decline line (the buy and add situations carry it) go.
-  tactical: 14_603,
+  // 2026-11-18: −1, the analyst opens the instructions (the morning run's measurement, #1021) and the situations line says where they are: at the end of the instructions, not the first message.
+  tactical: 14_602,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
