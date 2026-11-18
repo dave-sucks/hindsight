@@ -1,6 +1,6 @@
 {
  "what": "2026-10-05, a chat with no analyst selected. The owner asks for a review of what we own: nearly out of cash, more proposals than money, is anything worth selling, and do the winners' sell levels lock in enough. The question is paraphrased. In the real chat the portfolio read came back 'No analyst context \u2014 portfolio context unavailable', so the chat listed positions and theses separately and pulled ten single-stock reads to rebuild prices and gains, and still had no cash, equity, open risk or market line.",
- "lookFor": "Does the chat get the account (cash, equity, open risk, the market, each position's gain and stop) from one portfolio read, with nothing refused?",
+ "lookFor": "Does the chat get the account (cash, equity, open risk, the market, each position's gain and give-back from its high) from one portfolio read, with nothing refused? The read no longer carries a stop: a stock's sale is a trigger, read with get_theses.",
  "source": {
   "runId": "cmuw09ivh000504jy77wnixw0",
   "cutBeforeMessage": 1,
@@ -21,7 +21,7 @@
     "data.book.openRiskPct",
     "data.book.market",
     "data.positions.*.unrealizedPnlPct",
-    "data.positions.*.stopLoss"
+    "data.positions.*.distanceFromPeak"
    ]
   },
   "never": [

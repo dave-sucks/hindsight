@@ -40,6 +40,7 @@ export type BlockId =
   | "filings_week"
   | "regime"
   | "blocked_last_time"
+  | "analyst_scope"
   | "money_context"
   | "book_context"
   | "analyst_rooms"

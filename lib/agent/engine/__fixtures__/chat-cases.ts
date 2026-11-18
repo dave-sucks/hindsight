@@ -1,9 +1,7 @@
 /**
  * The chat's instructions in each shape they take: at the portfolio level
  * with and without each analyst's room, and pinned to an analyst with its
- * money and book and with neither. The engine test checks the engine's
- * instructions against what the old builder made from the same cases
- * (./chat.golden.json).
+ * money and book and with neither (../chat.engine.test.ts).
  */
 export const CHAT_ANALYST = {
   id: "analyst_case",

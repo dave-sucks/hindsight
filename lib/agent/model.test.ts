@@ -209,20 +209,9 @@ describe("the chat", () => {
     const categories = view!(only.record).categories;
     // Its instructions one row per part of its record, the conversation as it was, then the newest message: what rides on it, each part named, then your words.
     expect(categories.map((c) => c.name)).toEqual([
-      "Who it is",
-      "At the portfolio level",
-      "Questions about the whole book",
-      "The system you operate",
-      "Data model",
-      "Trade-as-proposal",
-      "Notes",
-      "Universe",
-      "Deep-research thesis dispatch",
-      "Batched discovery",
-      "How to operate",
+      "Its instructions",
       "House rules",
       "How you write",
-      "Response style",
       "First message",
       "The conversation so far",
       "The time",

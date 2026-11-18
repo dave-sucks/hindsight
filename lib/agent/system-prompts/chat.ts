@@ -5,10 +5,12 @@
  */
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
-import { CHAT, type ChatExtra } from "@/lib/agent/engine/agents/chat";
+import { CHAT } from "@/lib/agent/engine/agents/chat";
 import { composeAgentRequest, composeNewest } from "@/lib/agent/engine/engine";
 import type { BuiltNewest, BuiltRequest } from "@/lib/agent/engine/types";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
+
+type ScopedAnalyst = BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] };
 
 export interface ChatPromptOpts {
   /**
@@ -20,23 +22,26 @@ export interface ChatPromptOpts {
   moneyBlock?: string | null;
   bookBlock?: string | null;
   /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
-  scopedAnalyst?: (BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] }) | null;
+  scopedAnalyst?: ScopedAnalyst | null;
   /** Its slots, counted as place_trade counts them (pinned); every analyst's room line (unpinned). */
   room?: AnalystCapacity | null;
   roomLines?: string[];
 }
 
-const UNPINNED: ChatExtra = { pinned: false, name: "", id: "", universe: [], watchlist: [] };
+/** The pinned analyst's scope: its id, its fence and its watchlist. */
+function scopeBlock(a: ScopedAnalyst): string {
+  return [`## Current scope — pinned to ${a.name}`, "", `  • Analyst ID: \`${a.id}\``, ...universeLines(a).map((l) => `  • ${l}`), `  • Watchlist: ${a.watchlist.join(", ") || "(empty)"}`].join("\n");
+}
 
 /** The chat's request: its instructions, each part named for the run's Context panel. */
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
-  const extra: ChatExtra = scope ? { pinned: true, name: scope.name, id: scope.id, universe: universeLines(scope), watchlist: scope.watchlist } : UNPINNED;
   return composeAgentRequest(
     CHAT,
-    { now: new Date(), environment, extra },
+    { now: new Date(), environment },
     {
       blocks: {
+        analyst_scope: scope ? scopeBlock(scope) : null,
         analyst_brief: scope ? analystBrief(scope, opts.room) : null,
         money_context: scope && opts.moneyBlock ? opts.moneyBlock : null,
         book_context: scope && opts.bookBlock ? opts.bookBlock : null,
@@ -48,7 +53,7 @@ export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" 
 
 /** What rides on your newest message: the time and the Market and portfolio block, each part named for the chat's Context. */
 export function chatNewest(now: Date, pieces: PortfolioPiece[] | null, environment: "PAPER" | "LIVE" = "PAPER"): BuiltNewest {
-  return composeNewest(CHAT, { now, environment, extra: UNPINNED }, { pieces });
+  return composeNewest(CHAT, { now, environment }, { pieces });
 }
 
 /** The chat's instructions as one string. */
