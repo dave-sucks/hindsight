@@ -8,8 +8,9 @@ import { PORTFOLIO_DIGEST } from "./portfolio-digest";
 import { MARKET_REVIEWER } from "./market-reviewer";
 import { WRITER } from "./writer";
 import { TRIGGER_RUN } from "./trigger-run";
+import { POST_TRADE_WRITEUP } from "./post-trade-writeup";
 import { MORNING_RUN } from "./morning-run";
 import { CHAT } from "./chat";
 
 /** In the order they moved onto the engine. */
-export const AGENTS: readonly AgentRecord[] = [PORTFOLIO_MANAGER, MARKET_REVIEWER, PORTFOLIO_DIGEST, WRITER, TRIGGER_RUN, MORNING_RUN, CHAT];
+export const AGENTS: readonly AgentRecord[] = [PORTFOLIO_MANAGER, MARKET_REVIEWER, PORTFOLIO_DIGEST, WRITER, TRIGGER_RUN, POST_TRADE_WRITEUP, MORNING_RUN, CHAT];

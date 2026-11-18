@@ -2,7 +2,7 @@
 
 **When a stock moves, an analyst looks.** A trigger comes true, and within minutes its analyst reads that one stock and decides.
 
-It checks the fire against what's true now, then proposes the trade, redraws the line, or holds and says why. When the trigger was set to Auto, the trade is already made, and the run writes it up.
+It checks the fire against what's true now, then proposes the trade, redraws the line, or holds and says why. When the trigger was set to Auto, the trade is already made, and a different agent, the post-trade write-up, writes the note on it.
 
 ```facts
 Model: gpt-5.4
@@ -82,7 +82,7 @@ Everything a trigger run can call, read from `lib/agent/modes.ts`.
 `tactical` in `lib/agent/modes.ts`: `gpt-5.4`, up to 15 steps.
 
 #### Prompt
-Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`): its own words and where its blocks go (the analyst, the Market and portfolio block, the stock's row from `row-for-model.ts`, the playbooks on a review of a watch, the house rules, what fired, its situations; the fire's facts in its first message). `triggerRunRequest` (`lib/agent/system-prompts/intraday-tactical.ts`) reads the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel.
+Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`). Its instructions are its own fixed text with the house rules, the same on every run, then the stock's situations, which are instructions that travel with the stock. Every fact about the run is a block of its first message: the analyst, the Market and portfolio block, the stock's row from `row-for-model.ts`, the playbooks on a review of a watch, the trigger that fired with the price it fired at, then the fire's facts and the ask. `triggerRunRequest` (`lib/agent/system-prompts/intraday-tactical.ts`) writes the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel.
 
 #### Fire rules
 `shouldFire` in `lib/agent/triggers/evaluate.ts`: a trigger fires when its condition holds and it has not fired since a close last found it false (`firedSinceFalseClose`). Two buys, or a sale and a trim, on one stock in one pass fold into one run (`lib/agent/triggers/co-fire.ts`).
@@ -91,7 +91,7 @@ Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`): its own wo
 `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.
 
 #### Auto
-`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`); the write-up has no trade tools (`NOT_IN_A_WRITEUP`) and reads its own text (`AUTO_WRITEUP`, in its record `lib/agent/engine/agents/trigger-run.ts`), not a situation.
+`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`). The write-up is its own agent, `POST_TRADE_WRITEUP` (`lib/agent/engine/agents/post-trade-writeup.ts`): its own fixed instructions, no trade tools, the same stock and trigger blocks, and no situations (`recordFor` picks it).
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`).

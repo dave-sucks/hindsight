@@ -1,18 +1,10 @@
 /**
- * Intraday Tactical system prompt.
- *
- * Spawned when a structured trigger fires (the 5-min cron in
- * trigger-evaluator.ts). Single-thesis, single-decision scope. The
- * agent's job: find out what is going on with the company and the stock,
- * decide (the declared action, another, or nothing), and write the review
- * the owner and the next run read. When the trigger was set to Auto, the
- * trade is already made and the job is the write-up alone (`autoTrade`):
- * the same stock, the same read, no trade tools.
- *
- * Why a separate prompt: the daily run prompt is about walking the
- * book and deciding per-thesis. The tactical prompt is about ONE
- * (thesis, trigger, quote) tuple — the budget, scope, and
- * tool path are all narrower.
+ * The request when a trigger fires (the 5-min check in trigger-evaluator.ts,
+ * run by tactical-run.ts): one stock, one trigger. A trigger set to Send to
+ * Agent wakes the trigger run, which decides (lib/agent/engine/agents/trigger-run.ts);
+ * one set to Auto has made its trade, and the post-trade write-up writes the
+ * note on it (lib/agent/engine/agents/post-trade-writeup.ts). Both read the
+ * same stock the same way; this file writes the blocks they are given.
  */
 
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -24,14 +16,9 @@ import { rowForModel } from "@/lib/agent/row-for-model";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import { TRIGGER_RUN, type TriggerRunExtra } from "@/lib/agent/engine/agents/trigger-run";
-import type { BuiltRequest } from "@/lib/agent/engine/types";
-
-/** The tools a write-up of an Auto trade is not given: the trade is made, and this run only writes. */
-export const NOT_IN_A_WRITEUP: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
-
-/** What the write-up of an Auto trade asks: its text is the record's (lib/agent/engine/agents/trigger-run.ts). */
-export { AUTO_WRITEUP } from "@/lib/agent/engine/agents/trigger-run";
+import { TRIGGER_RUN } from "@/lib/agent/engine/agents/trigger-run";
+import { POST_TRADE_WRITEUP } from "@/lib/agent/engine/agents/post-trade-writeup";
+import type { AgentRecord, BuiltRequest } from "@/lib/agent/engine/types";
 
 interface TacticalPromptArgs {
   /** The analyst's row and the account's setup numbers (lib/agent/analyst-brief.ts). */
@@ -68,7 +55,7 @@ interface TacticalPromptArgs {
    * guidance in rank order.
    */
   situations?: { codes: SituationCode[]; guidance: Partial<Record<SituationCode, string>> } | null;
-  /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The run writes it up. */
+  /** The trigger was set to Auto and the trade is made: what it was, in one sentence. The post-trade write-up writes it up. */
   autoTrade?: { line: string } | null;
   /** The Market and portfolio block's parts (lib/agent/portfolio-block.ts). Null: none. */
   portfolioPieces?: PortfolioPiece[] | null;
@@ -99,23 +86,6 @@ export function stockFromRead(
     row: notes?.length ? { ...short, notes_to_the_account: notes } : short,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
     situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL") },
-  };
-}
-
-/** The run's facts its words need (the record's TriggerRunExtra), from the prompt's args. */
-function extraOf(args: TacticalPromptArgs): TriggerRunExtra {
-  const { stock, trigger, fired } = args;
-  const auto = args.autoTrade ?? null;
-  return {
-    ticker: stock.ticker,
-    auto: auto != null,
-    autoLine: auto?.line ?? "",
-    predicateSummary: conditionSentence(trigger.predicate),
-    action: trigger.action,
-    triggerId: trigger.id,
-    firedPrice: fired?.price ?? null,
-    hasPlaybooks: Boolean(args.playbooks),
-    declineLine: !auto && (trigger.action === "ENTER" || trigger.action === "ADD"),
   };
 }
 
@@ -155,30 +125,26 @@ function trailingPeakText(args: TacticalPromptArgs): string {
 function firedTriggerText(args: TacticalPromptArgs): string {
   const { trigger } = args;
   const predicateSummary = conditionSentence(trigger.predicate);
-  return `═══════════════════════════════════════════════════════════════════
-TRIGGER THAT FIRED (id: ${trigger.id})
-═══════════════════════════════════════════════════════════════════
-  predicate: ${predicateSummary}
+  const price = args.fired?.price ?? null;
+  return `## The trigger that fired (id: ${trigger.id})
+  predicate: ${predicateSummary}${price != null ? `\n  fired at: $${price.toFixed(2)}` : ""}
   declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakText(args)}`;
 }
 
 /** The stock's row, under its heading: the stock_row block. */
 function stockRowText(stock: TacticalPromptArgs["stock"]): string {
-  return `═══════════════════════════════════════════════════════════════════
-$${stock.ticker}, its row (get_theses)
-═══════════════════════════════════════════════════════════════════
+  return `## $${stock.ticker}, its row (get_theses)
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}`;
 }
 
-/** The situations the stock is in and what each asks, printed inside the decision framework: the situations block. */
-function situationsText(args: TacticalPromptArgs): string {
+/** The situations the stock is in and what each asks: the situations block. Null when it is in none the trigger run answers. */
+function situationsText(args: TacticalPromptArgs): string | null {
   const { stock } = args;
   const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
   return guidance.length
-    ? `   - The situations $${stock.ticker} is in (${(args.situations?.codes ?? []).join(", ")}), and what each asks:\n\n` +
-      guidance.map(([code, text]) => `${code} — ${SITUATIONS[code].name}\n${text}`).join("\n\n") +
-      "\n\n"
-    : "";
+    ? `## Its situations\nThe situations $${stock.ticker} is in (${(args.situations?.codes ?? []).join(", ")}), and what each asks:\n\n` +
+      guidance.map(([code, text]) => `${code} — ${SITUATIONS[code].name}\n${text}`).join("\n\n")
+    : null;
 }
 
 /** The kickoff's facts (tactical-run.ts writes them): the fire_facts block. */
@@ -187,32 +153,32 @@ export interface TriggerRunKickoff {
 }
 
 /**
- * The trigger run's request, built by the agent engine from its record
- * (lib/agent/engine/agents/trigger-run.ts): its instructions, and its first
- * message when the kickoff's facts are given.
+ * The request when a trigger fires, built by the agent engine from the
+ * record for the job: the trigger run's, or on an Auto trade the post-trade
+ * write-up's. Each record's instructions are the same on every run; the
+ * stock, the trigger and the fire are the blocks of its first message, the
+ * fire's facts last when they are given.
  */
 export function triggerRunRequest(args: TacticalPromptArgs, kickoff?: TriggerRunKickoff): BuiltRequest {
-  const auto = args.autoTrade ?? null;
   // The Market and portfolio block goes in before the stock's row, so the
   // row is read after it. On 2026-10-07 a day-old digest told the trigger
   // runs "no pending proposals" while ASML's row carried its sale awaiting
   // approval: the block's snapshot is written when this request is built,
   // and the house rules say the stock's row wins where they differ.
-  return composeAgentRequest(TRIGGER_RUN, { now: new Date(), environment: "PAPER", extra: extraOf(args) }, {
+  return composeAgentRequest(recordFor(args), { now: new Date(), environment: "PAPER" }, {
     pieces: args.portfolioPieces ?? null,
     blocks: {
       analyst_brief: analystBrief(args.analyst, args.capacity),
       stock_row: stockRowText(args.stock),
       playbooks: args.playbooks || null,
       fired_trigger: firedTriggerText(args),
-      // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
-      situations: auto ? null : situationsText(args),
+      situations: situationsText(args),
       fire_facts: kickoff ? kickoff.facts : null,
     },
   });
 }
 
-/** The trigger run's instructions alone (triggerRunRequest). */
-export function buildTacticalSystemPrompt(args: TacticalPromptArgs): string {
-  return triggerRunRequest(args).instructions;
+/** The agent a fire wakes: the post-trade write-up when an Auto trigger made its trade, else the trigger run. */
+export function recordFor(args: { autoTrade?: { line: string } | null }): AgentRecord {
+  return args.autoTrade ? POST_TRADE_WRITEUP : TRIGGER_RUN;
 }

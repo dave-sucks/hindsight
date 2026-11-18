@@ -7,7 +7,7 @@
  * Auto-buy calls place_trade with the trigger's arguments, then the write-up's note is the buy's whole reason.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
-import { AUTO_WRITEUP } from "@/lib/agent/system-prompts/intraday-tactical";
+import { POST_TRADE_WRITEUP } from "@/lib/agent/engine/agents/post-trade-writeup";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
@@ -114,9 +114,9 @@ describe("the trigger run's Market and portfolio block", () => {
   it("is loaded once for the analyst's book and printed before the stock's row", async () => {
     const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 });
     expect(r.blockArgs).toEqual([expect.objectContaining({ environment: "LIVE", accountId: expect.any(String) })]);
-    const system = r.asked[0].system;
-    expect(system.split("## Market and portfolio")).toHaveLength(2);
-    expect(system.indexOf("## Market and portfolio")).toBeLessThan(system.indexOf("$IOT, its row (get_theses)"));
+    const prompt = r.asked[0].prompt;
+    expect(`${r.asked[0].system}${prompt}`.split("## Market and portfolio")).toHaveLength(2);
+    expect(prompt.indexOf("## Market and portfolio")).toBeLessThan(prompt.indexOf("$IOT, its row (get_theses)"));
   });
 });
 
@@ -140,10 +140,10 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].tools).not.toEqual(expect.arrayContaining(["place_trade"]));
     expect(r.asked[0].tools.some((t) => ["place_trade", "close_position", "manage_position"].includes(t))).toBe(false);
-    expect(r.asked[0].system).toContain("THE WRITE-UP");
-    expect(r.asked[0].system).toContain("   - What the write-up asks:\n\n" + AUTO_WRITEUP);
-    expect(r.asked[0].system).not.toContain("AUTO_TRADE");
-    expect(r.asked[0].system).not.toContain("DECISION FRAMEWORK");
+    // The post-trade write-up's own instructions, the same on every run.
+    expect(r.asked[0].system.startsWith((POST_TRADE_WRITEUP.instructions[0] as { text: string }).text)).toBe(true);
+    expect(r.asked[0].system).not.toContain("## Decision framework");
+    expect(r.asked[0].prompt).not.toContain("AUTO_TRADE");
     expect(r.asked[0].prompt).toContain("The sale of all 300 shares is proposed and waits for the principal's approval.");
     // The card and the email read the analyst's note, and the email is told it's there.
     expect(r.orders.find((o) => o.id === "ord_iot")?.rationale).toBe(NOTE);
@@ -159,17 +159,17 @@ describe("the trigger run, by fire mode", () => {
     expect(r.closes).toHaveLength(0);
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].tools).toEqual(expect.arrayContaining(["close_position"]));
-    expect(r.asked[0].system).toContain("DECISION FRAMEWORK");
+    expect(r.asked[0].system).toContain("## Decision framework");
     expect(r.runs[0].parameters).not.toHaveProperty("autoTrade");
     // A default note ("Sell if below $395. You set this.") restates the trigger: the run isn't shown it.
-    expect(r.asked[0].system).not.toContain("You set this.");
+    expect(r.asked[0].prompt).not.toContain("You set this.");
   });
 
   it("a review set to Send to Agent starts a trigger run", async () => {
     const asked = { ...IOT_TARGET, fireMode: "ASK_NOW" };
     const r = await fire({ thesisId: "iot", triggerId: asked.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.4 }, stocks(asked));
     expect(r.asked).toHaveLength(1);
-    expect(r.asked[0].system).toContain('its note: "Using $52 as the objective."');
+    expect(r.asked[0].prompt).toContain('its note: "Using $52 as the objective."');
   });
 
   it("TRV's Auto-buy calls place_trade with the trigger's arguments, paid from cash; the write-up's note is the proposal's whole reason", async () => {

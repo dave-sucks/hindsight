@@ -20,7 +20,7 @@ import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import { HOUSE_RULES } from "@/lib/agent/house-rules";
@@ -64,7 +64,7 @@ const runInput = (held: string[]) =>
 const trail = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };
 const buy = { id: "trig_buy", predicate: { watch: "price", is: "below", value: 67 }, action: "ENTER", rationale: "The pullback level." };
 const tactical = (analyst: BriefAnalyst, extra: Record<string, unknown> = {}) =>
-  buildTacticalSystemPrompt({
+  triggerRunSent({
     analyst,
     stock: { ticker: "DOCU", direction: "LONG", row: { stock: "DOCU · held · LONG · MA_PULLBACK", id: "thesis_1" } },
     trigger: trail,

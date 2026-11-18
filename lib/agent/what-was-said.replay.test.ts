@@ -31,7 +31,7 @@ import {
 } from "@/lib/replay";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
 import { activityFeed, recentItems } from "@/lib/thesis/activity-feed";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -184,7 +184,7 @@ describe("the 09-14 trigger runs", () => {
     const context = stockContextFor({ ticker: "CEG", rows }).text;
     const trail = { id: "cacca7f6-ab5e-4f8c-9922-f2c2c94ce5d8", action: "EXIT", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, rationale: "Gave back 8% from the high." } as Trigger;
     // Since step 10 the trigger run reads the stock as get_theses's short row with the setup's lines; what's been said is its `said`.
-    const prompt = buildTacticalSystemPrompt({
+    const prompt = triggerRunSent({
       analyst: { name: fl.analyst.name, analystPrompt: null },
       stock: {
         ticker: "CEG",
@@ -239,7 +239,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
 
   it("the run reads the morning's note and the three fires as lines, and is told its note answers what each asks", () => {
     const context = stockContextFor({ ticker: "MU", rows: loaded }).text!;
-    const prompt = buildTacticalSystemPrompt({
+    const prompt = triggerRunSent({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
       stock: {
         ticker: "MU",
@@ -255,7 +255,7 @@ describe("a trigger run with other reviews open (MU 09-28 10:45 ET)", () => {
     expect(prompt).toContain("Trigger: Up 15% from entry — review");
     expect(prompt).toContain("Trigger: Price down 4% today — review");
     expect(prompt).toContain(
-      "When the row's `said` lists the principal's decisions or other triggers\n     fired since the last answer, your note answers what each asks (an\n     earnings date coming, a gain to reassess, a drop to explain) inside the\n     story of the stock, not as a list of the triggers.",
+      "When the row's `said` lists the principal's decisions or other triggers fired since the last answer, your note answers what each asks (an earnings date coming, a gain to reassess, a drop to explain) inside the story of the stock, not as a list of the triggers.",
     );
   });
 });

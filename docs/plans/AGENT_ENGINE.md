@@ -49,6 +49,18 @@ A block's options are the record's choice of blocks. For example, the Portfolio 
 6. The chat. Its builder moved out of `modes.ts` to `system-prompts/chat.ts`, so the record can read its model and tools from `MODES` without the two files importing each other. With every agent moved, the Agents page has no "not on the engine yet" card.
 7. The heading split is deleted from `run-requests.ts`: what rides on the chat's newest message (the time, the Market and portfolio block) is a third place in the record, `newest`, so every part the panel shows is named. A request saved before the engine shows each piece whole.
 
+### Simple records (2026-11-18, before the Framework page and pass 2)
+
+Every record takes the shape the owner described: its instructions are one fixed markdown text, the same on every run; everything that changes by run is a context block; a blank line between parts, no separator of its own. Where the old instructions branched on the run, the branch is either two agents or one text for both.
+
+Where a block goes follows what it is. A fact (the analyst, the market and portfolio, the stock's row, what fired) goes in the first message. An instruction that travels with the stock (its situations) ends the instructions, after the fixed text. Measured on the trigger run (`scripts/hero-case.ts`, 6 runs a case): with the situations among the facts in the first message, the NVDA declined-sale case went from 6 of 6 right to 3 of 6 and the CEG sale tried to lower its sale price in 2 of 9 runs; with the situations ending the instructions, 6 of 6 and 0 of 6, the same as before the split. Putting the agent's own text after the house rules instead made it worse (2 of 6, and 5 of 6 lowering).
+
+1. The trigger run splits in two: the trigger run decides, and the post-trade write-up writes the note on a trade an Auto trigger made (its own instructions, no trade tools). The stock, the trigger, the price it fired at and the fire are blocks of the first message; the situations end the trigger run's instructions. Checked on seven real fires and two saved cases with `scripts/hero-case.ts`, before and after.
+2. The Writer.
+3. The chat.
+4. The morning run, then the three whose words already don't change (the Portfolio Manager, the Market Reviewer, the portfolio digest) move their blocks to the same places.
+5. The engine drops what no record uses any more: own text that changes by run, and a part's own separator.
+
 ### Pass 2: one way to run an agent
 
 Each agent still has its own loop: its own model call, tool assembly, retries, and saving of the thread, the token use and the run's status. That covers `run-thesis-writer.ts`, `morning-research.ts`, `tactical-run.ts`, `app/api/agent/[mode]/route.ts`, `portfolio-manager/run.ts`, `market-reviewer/run.ts` and `digest-writer.ts` (about 7,900 lines with the prompt files).

@@ -244,7 +244,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   it("the trigger run and the morning run are not told to narrate their triggers", () => {
     expect(SAMPLE_PROMPTS.tactical()).not.toMatch(/Floor stays \$X|RE-LADDER|Not acting\s+yet: <reason>|validation (HOLDS|FAILS)/);
     // PLTR's case, 1 of 3 runs, once "Floor stays $X" went: it tried to move a held stock's sale line down.
-    expect(SAMPLE_PROMPTS.tactical()).toContain("On a stock we hold you can raise a sale's price, never\n   lower it; if you think it is wrong, say so in the note and name the price.");
+    expect(SAMPLE_PROMPTS.tactical()).toContain("On a stock we hold you can raise a sale's price, never lower it; if you think it is wrong, say so in the note and name the price.");
     expect(SAMPLE_PROMPTS.daily()).not.toContain("what triggered it");
   });
 });
