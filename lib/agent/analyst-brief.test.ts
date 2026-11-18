@@ -19,7 +19,7 @@ import { analystBrief, playbookChecks, universeLines, type BriefAnalyst } from "
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
@@ -73,7 +73,7 @@ const tactical = (analyst: BriefAnalyst, extra: Record<string, unknown> = {}) =>
   } as never);
 
 const DOORS = {
-  daily: () => buildDailyRunSystemPromptV2(CATALYST, runInput(["MRNA", "IONS"])),
+  daily: () => morningRunSent(CATALYST, runInput(["MRNA", "IONS"])),
   trigger: () => tactical(CATALYST),
   chat: () => buildPrincipalSystemPrompt({ scopedAnalyst: CATALYST }),
   writer: () => buildWriterResearchPrompt({ analyst: CATALYST, ticker: "DOCU", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-10-08", setups: setupsForAnalyst(CATALYST.setupIds), playbooks: (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES] }),

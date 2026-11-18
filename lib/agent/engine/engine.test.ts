@@ -108,7 +108,7 @@ describe("the portfolio digest on the engine", () => {
     expect(built.instructions).toBe(DIGEST_GOLDEN.system);
     expect(built.message).toBe(DIGEST_GOLDEN.message);
     expect(built.tools).toEqual([]);
-    expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual(["instructions:Its job", "instructions:What it is given", "instructions:The paragraphs", "instructions:Its words", "message:Portfolio snapshot"]);
+    expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual(["instructions:Its instructions", "message:Portfolio snapshot"]);
   });
 });
 

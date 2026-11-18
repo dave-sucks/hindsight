@@ -197,6 +197,12 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "Serious and material filings on the book in the last 7 days, from EDGAR.",
     source: "lib/agent/run-input.ts (filingsOnBook)",
   },
+  regime: {
+    id: "regime",
+    title: "Regime and cash",
+    about: "How the market's regime sizes a buy, and the cash duty: the cash when the snapshot can't be read, and the watched stocks at their buy price this morning.",
+    source: "lib/agent/system-prompt.ts (regimeText)",
+  },
   blocked_last_time: {
     id: "blocked_last_time",
     title: "Refused calls never redone",

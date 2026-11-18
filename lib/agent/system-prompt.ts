@@ -1,11 +1,6 @@
 /**
- * System prompt builder for the daily research agent.
- *
- * The only builder is `buildDailyRunSystemPromptV2` (~170 lines) per
- * docs/MORNING_RUN_V2_DESIGN.md. The legacy ~600-line procedural builder
- * (formerly exported as `buildV2SystemPrompt` — confusingly named) was
- * deleted in this PR. Use `git log` on this file if you need to diff
- * against the prior shape; do NOT recreate it.
+ * The morning run's request: its record (lib/agent/engine/agents/morning-run.ts)
+ * with this run's blocks, built by the agent engine (`dailyRunRequest`).
  *
  * Three-layer principle (see docs/PRINCIPLES.md):
  *   - Layer 1 (tool gates) enforce invariants. Not the prompt's job.
@@ -19,7 +14,7 @@ import type { RunInput } from "./run-input";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import { MORNING_RUN, type MorningRunExtra } from "@/lib/agent/engine/agents/morning-run";
+import { MORNING_RUN } from "@/lib/agent/engine/agents/morning-run";
 import type { BuiltRequest } from "@/lib/agent/engine/types";
 
 // ─── Daily-Run System Prompt ──────────────────────────────────────────────────
@@ -70,9 +65,29 @@ function filingsWeekText(runInput: RunInput): string | null {
 }
 
 /**
+ * Regime and cash, inputs to the decision, never gates (DAV-253): the regime
+ * block. The cash itself is in the Market and portfolio block's snapshot, so
+ * it isn't said twice, unless the snapshot couldn't be read.
+ */
+function regimeText(runInput: RunInput): string {
+  const pieces = runInput.portfolioPieces ?? null;
+  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
+  const cash = runInput.portfolio?.cash ?? 0;
+  // Watched stocks at their buy price this morning.
+  const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
+  return [
+    "## Regime and cash",
+    `${snapshotRead ? "Your cash is in the portfolio snapshot below." : `Cash is $${Math.round(cash).toLocaleString()}.`} \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.`,
+    "- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.",
+    `- **Cash duty.** Cash above 25% of equity, a watch name at its buy level${atBuy.length ? ` (today: ${atBuy.join(", ")})` : ""}, and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`,
+  ].join("\n");
+}
+
+/**
  * The morning run's request, built by the agent engine from its record
- * (lib/agent/engine/agents/morning-run.ts): its instructions, and its
- * first message (the start of the day) for a run the cron starts.
+ * (lib/agent/engine/agents/morning-run.ts): its instructions, and its first
+ * message (the analyst, the market and portfolio, the book's week, the start
+ * of the day). The cron and the Run button send the same request.
  */
 export function dailyRunRequest(analyst: BriefAnalyst, runInput: RunInput): BuiltRequest {
   // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
@@ -88,23 +103,14 @@ export function dailyRunRequest(analyst: BriefAnalyst, runInput: RunInput): Buil
     awaitingApproval: queued,
   };
 
-
-  // Regime and cash — inputs to the decision, never gates (DAV-253).
-  // The cash itself is in the Market and portfolio block's snapshot, so it isn't said twice, unless the snapshot couldn't be read.
-  const pieces = runInput.portfolioPieces ?? null;
-  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
-  const extra: MorningRunExtra = {
-    snapshotRead,
-    cash: runInput.portfolio?.cash ?? 0,
-    atBuy: (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker),
-  };
-  return composeAgentRequest(MORNING_RUN, { now: new Date(), environment: "PAPER", extra }, {
-    pieces,
+  return composeAgentRequest(MORNING_RUN, { now: new Date(), environment: "PAPER" }, {
+    pieces: runInput.portfolioPieces ?? null,
     blocks: {
       // The analyst (lib/agent/analyst-brief.ts, the same in every door).
       analyst_brief: analystBrief(analyst, capacity),
       earnings_week: earningsWeekText(runInput),
       filings_week: filingsWeekText(runInput),
+      regime: regimeText(runInput),
       // Refused calls never redone (2026-09-25): PLTR's buy was refused on
       // 09-25, the run ended COMPLETE, and nothing said the buy never
       // happened. An open refusal is carried here until the same tool lands
@@ -112,9 +118,4 @@ export function dailyRunRequest(analyst: BriefAnalyst, runInput: RunInput): Buil
       blocked_last_time: blockedLastTimeSection(runInput.openRefusals ?? []) || null,
     },
   });
-}
-
-/** The morning run's instructions alone (dailyRunRequest). */
-export function buildDailyRunSystemPromptV2(analyst: BriefAnalyst, runInput: RunInput): string {
-  return dailyRunRequest(analyst, runInput).instructions;
 }

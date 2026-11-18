@@ -3,9 +3,7 @@
  * morning; a full one (reports this week and just in, filings, a buy price
  * reached, a refused call never redone, a buy waiting, two holdings, the
  * account's block); a morning whose snapshot couldn't be read; and one whose
- * filings couldn't be read. The engine test checks the engine's request
- * against what the old builder made from the same cases
- * (./morning-run.golden.json).
+ * filings couldn't be read (../morning-run.engine.test.ts).
  */
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";

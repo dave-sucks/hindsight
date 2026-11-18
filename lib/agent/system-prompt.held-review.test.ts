@@ -7,7 +7,7 @@
  *
  *   1. #720 wrote the new review sentence into `system-prompt-template.ts`,
  *      which is the PREVIEW shown on the workflow page. The prompt a run
- *      actually receives is built by `buildDailyRunSystemPromptV2`, and it
+ *      actually receives is built by `dailyRunRequest`, and it
  *      still said "update_thesis with the substantive change you decide."
  *      The run was never told. So this test reads the built prompt. (The
  *      preview and its template were deleted with the workflow page.)
@@ -17,7 +17,7 @@
  *      account, morning runs, 21 days to 2026-09-27: CEG's answers name
  *      them 5 times in 5; MU's once in 6; NVDA's never.
  */
-import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
 import { SITUATIONS } from "./situations";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/replay";
@@ -35,7 +35,7 @@ const runInput = () =>
   }) as unknown as RunInput;
 
 const built = () =>
-  buildDailyRunSystemPromptV2(
+  morningRunSent(
     { name: "Secular Compounder", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
     runInput(),
   );

@@ -211,11 +211,7 @@ describe("the 7:30 Market Reviewer", () => {
     // Context shows each part the agent engine built, by name and in the Framework page's color, then its one tool; the parts add up to what was sent.
     const view = viewOfRecord(record!);
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([
-      ["Its job", "job"],
-      ["Its tool", "job"],
-      ["The digest", "job"],
-      ["Notes", "job"],
-      ["Unattended", "job"],
+      ["Its instructions", "job"],
       ["The day", "job"],
       ["Market numbers", "portfolio"],
       ["Portfolio snapshot", "portfolio"],
@@ -226,9 +222,9 @@ describe("the 7:30 Market Reviewer", () => {
       ["Tool menu", "tools"],
     ]);
     const sent = (from: number, to: number) => view.categories.slice(from, to).map((c) => c.sections[0].text).join("\n\n");
-    expect(sent(0, 5)).toBe(body.input[0].content);
-    expect(sent(5, 12)).toBe(body.input[1].content);
-    expect(view.categories[12].sections.map((s) => s.label)).toEqual(["web_search"]);
+    expect(sent(0, 1)).toBe(body.input[0].content);
+    expect(sent(1, 8)).toBe(body.input[1].content);
+    expect(view.categories[8].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");

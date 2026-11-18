@@ -33,19 +33,15 @@
    {
     "tool": "update_thesis",
     "where": {
+     "thesis_id": "cmsplcu9u000004l71leub93x",
      "remove_trigger_ids": "present"
     }
    },
    {
     "tool": "update_thesis",
     "where": {
+     "thesis_id": "cmsplcu9u000004l71leub93x",
      "edit_triggers": "present"
-    }
-   },
-   {
-    "tool": "update_thesis",
-    "where": {
-     "entry_price": "present"
     }
    }
   ]

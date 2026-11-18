@@ -12,7 +12,7 @@ import thread from "@/lib/agent/__fixtures__/chat-old-lookups-2026-11-04.json";
 import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 import { historyForModel } from "@/lib/agent/prompt-cache";
-import { hideOldLookups, withNewestParts } from "@/lib/agent/old-lookups";
+import { hideOldLookups, withFirstMessage, withNewestParts } from "@/lib/agent/old-lookups";
 import { chatNewest } from "@/lib/agent/system-prompts/chat";
 
 const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE" } as never) as Record<string, unknown>;
@@ -85,5 +85,18 @@ describe("the chat's Market and portfolio block", () => {
     expect(parts[1]).toBe("## Market and portfolio\n\nSTAND-IN");
     expect(parts[2]).toBe("second");
     expect(parts[0]).toMatch(/^\[/);
+  });
+});
+
+describe("a morning run's first message from the Run button", () => {
+  it("is the morning run's own, in place of the page's \"Run\"; the rest of the conversation is as sent", () => {
+    const mm: ModelMessage[] = [
+      { role: "user", content: [{ type: "text", text: "Run" }] },
+      { role: "assistant", content: "answer" },
+      { role: "user", content: "a follow-up" },
+    ];
+    const out = withFirstMessage(mm, "## Analyst: Case Analyst\n\nIt's the start of the trading day.");
+    expect(out[0]).toEqual({ role: "user", content: [{ type: "text", text: "## Analyst: Case Analyst\n\nIt's the start of the trading day." }] });
+    expect(out.slice(1)).toEqual(mm.slice(1));
   });
 });

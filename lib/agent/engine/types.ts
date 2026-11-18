@@ -38,6 +38,7 @@ export type BlockId =
   | "fire_facts"
   | "earnings_week"
   | "filings_week"
+  | "regime"
   | "blocked_last_time"
   | "money_context"
   | "book_context"

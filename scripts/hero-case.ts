@@ -44,7 +44,7 @@ import { recordFor, stockFromRead, triggerRunRequest } from "@/lib/agent/system-
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool, writerRequest } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
@@ -149,14 +149,19 @@ function factsOf(kickoff: ModelMessage | undefined): string | null {
 }
 
 /**
- * The request for a case, built by TODAY'S code: its instructions, and for a
- * trigger fire its first message too (the stock, the trigger and the fire are
- * blocks of the first message), from the recorded kickoff's facts.
+ * The request for a case, built by TODAY'S code: its instructions, and for a Writer,
+ * trigger fire or a morning run its first message too (the stock, the trigger
+ * and the fire, or the analyst, the account and the book's week, are blocks of
+ * the first message); a trigger fire's from the recorded kickoff's facts.
  */
 function requestFor(c: HeroCase): { system: string; first?: string } {
   if (c.mode === "thesis-writer") {
     // The stock's data as the run sent it; the rest of the first message is today's.
     const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) });
+    return { system: r.instructions, first: r.message };
+  }
+  if (c.mode === "research-run") {
+    const r = morningRequest(c);
     return { system: r.instructions, first: r.message };
   }
   if (c.mode !== "tactical") return { system: systemFor(c) };
@@ -209,17 +214,21 @@ function tacticalArgs(c: HeroCase): any {
 
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "research-run": {
-      // JSON turned the refusals' dates into strings; the builder wants dates.
-      const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
-      for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
-      // Cases saved before step 10 carry the count on the run input's analyst copy.
-      runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
-      return buildDailyRunSystemPromptV2(c.promptArgs.config as never, runInput as never);
-    }
+    case "research-run":
+      return morningRequest(c).instructions;
     default:
       return buildPrincipalSystemPrompt(c.promptArgs as never);
   }
+}
+
+/** A morning case's request, built by today's code from its inputs. */
+function morningRequest(c: HeroCase) {
+  // JSON turned the refusals' dates into strings; the builder wants dates.
+  const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
+  for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
+  // Cases saved before step 10 carry the count on the run input's analyst copy.
+  runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
+  return dailyRunRequest(c.promptArgs.config as never, runInput as never);
 }
 
 /**
@@ -293,7 +302,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
   const { system, first } = requestFor(c);
-  // A trigger fire's first message is today's too; the recorded one is replaced.
+  // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
   const tools = describedTools(c);
   // What the agent was shown, for the yardstick's grades: its instructions and the conversation it was handed.

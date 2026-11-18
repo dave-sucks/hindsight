@@ -9,7 +9,7 @@
  * PEAD Specialist — 4 open against a limit of 6 — was told "4 of 2, this
  * analyst is FULL" and not to buy. Two free slots, told to stand down.
  */
-import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
 
 const pos = (symbol: string) => ({
@@ -26,7 +26,7 @@ const runInput = (symbols: string[]) =>
 
 describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
   it("reads 4 of 6 with two free, and carries no full-analyst rule", () => {
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
       runInput(["FIVE", "IOT", "MU", "NVDA"]),
     );
@@ -38,7 +38,7 @@ describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
   it("what the cron used to hand it — the remainder in the limit's place — reads as full", () => {
     // The bug, pinned so it cannot come back: 2 slots left, passed as the
     // limit, against 4 open.
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 2 },
       runInput(["FIVE", "IOT", "MU", "NVDA"]),
     );
@@ -46,7 +46,7 @@ describe("the PEAD Specialist on 2026-09-18 — 4 open, limit 6", () => {
   });
 
   it("a genuinely full analyst still reads full", () => {
-    const p = buildDailyRunSystemPromptV2(
+    const p = morningRunSent(
       { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       runInput(["ABT", "ASML", "CEG", "WST"]),
     );

@@ -11,7 +11,7 @@
  * protective stop, eight weeks before the November 14 PDUFA it was bought
  * for. 163 stocks sold, 9 ever back on the watchlist.
  */
-import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
 import { SITUATIONS } from "./situations";
 
@@ -28,7 +28,7 @@ const runInput = () =>
   }) as unknown as RunInput;
 
 const prompt = () =>
-  buildDailyRunSystemPromptV2(
+  morningRunSent(
     { name: "Catalyst Event PM", maxPositionSize: 14000, minPositionSize: 3000, maxOpenPositions: 6 },
     runInput(),
   );

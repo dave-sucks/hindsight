@@ -1,7 +1,7 @@
 /** The daily run is told about refused calls it never redid (2026-09-25). */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { buildDailyRunSystemPromptV2 } from "./system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
 import fixture from "./__fixtures__/refusals-2026-09-25.json";
 
@@ -15,7 +15,7 @@ const cfg = { name: "Secular Compounder", maxPositionSize: 10000, minPositionSiz
 describe("Blocked last time", () => {
   it("the Monday after PLTR: the prompt names the refused buy and says it is still owed", () => {
     const r = fixture.pltr_buy_refused;
-    const prompt = buildDailyRunSystemPromptV2(cfg, {
+    const prompt = morningRunSent(cfg, {
       ...base,
       openRefusals: [{ id: r.id, tool: r.tool, ticker: r.ticker, thesisId: null, summary: r.summary, detail: r.detail, runId: r.runId, createdAt: new Date(r.createdAt) }],
     } as unknown as RunInput);
@@ -23,11 +23,11 @@ describe("Blocked last time", () => {
     expect(prompt).toContain("- 2026-09-25: Buy on $PLTR (place_trade) — refused: Trade blocked: requested $11,222");
   });
   it("carries no such section when nothing is open", () => {
-    const prompt = buildDailyRunSystemPromptV2(cfg, { ...base, openRefusals: [] } as unknown as RunInput);
+    const prompt = morningRunSent(cfg, { ...base, openRefusals: [] } as unknown as RunInput);
     expect(prompt).not.toContain("Blocked last time");
   });
   it("the size band no longer promises a refusal place_trade does not make", () => {
-    const prompt = buildDailyRunSystemPromptV2(cfg, { ...base, openRefusals: [] } as unknown as RunInput);
+    const prompt = morningRunSent(cfg, { ...base, openRefusals: [] } as unknown as RunInput);
     expect(prompt).toContain("place_trade sizes every buy inside this band by risk");
     expect(prompt).not.toContain("an undersized entry is rejected, not resized");
   });

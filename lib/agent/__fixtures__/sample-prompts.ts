@@ -4,7 +4,7 @@
  * prompt-size test (did a prompt get longer?).
  */
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { writerSent } from "@/lib/agent/__fixtures__/writer-sent";
 import type { RunInput } from "@/lib/agent/run-input";
@@ -23,7 +23,7 @@ const runInput = {
 const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };
 
 export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
-  daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
+  daily: () => morningRunSent({ name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
   tactical: () =>
     triggerRunSent({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
