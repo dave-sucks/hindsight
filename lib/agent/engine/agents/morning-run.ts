@@ -64,7 +64,7 @@ export const MORNING_RUN: AgentRecord = {
   maxSteps: MODES["research-run"].maxSteps,
   // The analyst opens the instructions: in the first message, MU's review stopped lowering its conviction (3 of 3 runs to 0 of 3).
   instructions: ["the_analyst", { own: INSTRUCTIONS }, "house_rules", "how_you_write"],
-  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls"],
+  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls", "message"],
   tools: MODES["research-run"].toolAllowlist ?? [],
   output: "A note or a trade proposal on each stock on its work list, then record_run_summary and complete_run.",
 };

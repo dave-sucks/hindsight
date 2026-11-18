@@ -29,7 +29,7 @@ export const PORTFOLIO_DIGEST: AgentRecord = {
   model: "gpt-5.4",
   maxSteps: 1,
   instructions: [{ own: INSTRUCTIONS }],
-  context: ["portfolio"],
+  context: ["portfolio", "message"],
   tools: [],
   output: "One reply: 3 to 5 paragraphs of plain prose, saved as the digest on the home page.",
 };

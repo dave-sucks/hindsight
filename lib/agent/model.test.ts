@@ -272,7 +272,9 @@ describe("the Writer", () => {
     const categories = view!(records[0].record).categories;
     const names = categories.map((c) => c.name);
     expect(names.slice(0, 6)).toEqual(["The analyst", "House rules", "How you write", "The playbooks", "Research rules", "Its own text"]);
-    expect(names.slice(-3)).toEqual(["The stock's data", "The message", "Tool menu"]);
+    // Its first message: the date line, the sender's brief, then the reads.
+    expect(names.indexOf("The message")).toBe(names.indexOf("The date and account") + 1);
+    expect(names.slice(-2)).toEqual(["The stock's data", "Tool menu"]);
     expect(categories.find((c) => c.name === "The stock's data")!.sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
     expect(categories[categories.length - 1].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
   });

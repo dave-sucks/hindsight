@@ -69,7 +69,7 @@ export const TRIGGER_RUN: AgentRecord = {
   instructions: ["the_analyst", { own: INSTRUCTIONS }, "house_rules", "how_you_write", "playbooks"],
   // The market numbers alone: the snapshot and the digests are the rest of the account (2026-11-18). The stock's
   // position is on its row, the analyst's room in its text, and code sizes a buy.
-  context: ["market_numbers", "the_stock"],
+  context: ["market_numbers", "the_stock", "message"],
   tools: MODES["tactical"].toolAllowlist ?? [],
   output: "One update_thesis note on the stock (the reason on any trade it proposed), at most one trade proposal, then complete_run.",
 };

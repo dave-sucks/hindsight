@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
-import { ownText, sharedOf, type AgentRecord, type ContextId, type SharedId } from "@/lib/agent/engine/types";
+import { ownText, readsOf, sharedOf, type AgentRecord, type ContextId, type SharedId } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
 
 const n = (x: number) => x.toLocaleString("en-US");
@@ -34,7 +34,9 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
 function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
   const own = ownText(record);
   const shared = new Set<SharedId>(sharedOf(record));
-  const reads = new Set<ContextId>(record.context);
+  const reads = new Set<ContextId>(readsOf(record));
+  // Its first message in order: the date line, then each read and its message where the record lists it.
+  const order = ["the date line", ...record.context.map((id) => (id === "message" ? "its message" : CONTEXT[id].title))].join(", ");
   return (
     <Card>
       <CardHeader>
@@ -64,7 +66,7 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Context</h2>
             <p className="text-sm text-muted-foreground">
-              {record.conversation ? "On each message you send" : "In its first message"}: the date line (the date and time in New York, and whether the account is paper or live), then each read checked here.
+              {record.conversation ? "On each message you send" : "In its first message"}, in order: {order}. The date line is the date and time in New York, and whether the account is paper or live.
             </p>
             <Checklist items={(Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, ...CONTEXT[id], on: reads.has(id) }))} />
           </section>

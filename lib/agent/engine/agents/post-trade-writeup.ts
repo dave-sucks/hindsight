@@ -70,7 +70,7 @@ export const POST_TRADE_WRITEUP: AgentRecord = {
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   instructions: ["the_analyst", { own: INSTRUCTIONS }, "house_rules", "how_you_write"],
-  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_stock"],
+  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_stock", "message"],
   tools: (MODES["tactical"].toolAllowlist ?? []).filter((name) => !NOT_ITS_TOOLS.has(name)),
   output: "One update_thesis note on the stock, which becomes the reason on the trade, then complete_run.",
 };

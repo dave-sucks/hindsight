@@ -14,7 +14,7 @@ The design (2026-11-18) is the top section of the audit page, https://claude.ai/
 
 Two more things are in every request, and neither is a part an agent chooses:
 
-- **The message**: the run's task, written by whoever starts the run (you in the chat, another agent's brief, the trigger check, the schedule's kickoff). The engine prints it last in the first message (`AgentInput.message`).
+- **The message**: the run's task, written by whoever starts the run (you in the chat, another agent's brief, the trigger check, the schedule's kickoff), `AgentInput.message`. The record's context list says where it goes ("message"): last for every agent but the Writer and the Holding refresh, which list it right after the date line. Measured on sndk-writer-watch, 10 runs each: with the brief last the Writer kept the view 3 times, with it before the stock's data 9, as before the three parts.
 - **The date line**: the first line of every first message, "Wed, Nov 18, 2026, 10:00 AM ET, the PAPER account." (`dateLine`, `engine.ts`). Not configurable.
 
 **The shared texts (5):**
@@ -35,7 +35,7 @@ Two more things are in every request, and neither is a part an agent chooses:
 | Morning run | the analyst, its own text (with the regime's rules), house rules, how you write | the four Market and portfolio reads, earnings this week, filings this week, refused calls | the schedule's kickoff (or the Run button), with the watched stocks at their buy price |
 | Trigger run | the analyst, its own text, house rules, how you write, the playbooks (a review of a watch only); the stock's situations | market numbers, the stock | the trigger check: the trigger that fired, its price and the fire's facts, said once, then the ask |
 | Post-trade write-up | the analyst, its own text, house rules, how you write | the four Market and portfolio reads, the stock | the trigger check: the trade the Auto trigger made, then the ask |
-| Writer | the analyst, house rules, how you write, the playbooks, the research rules, its own text | market numbers, the stock (on a refresh), record by playbook, the stock's data | the sender's brief: why it was sent, what the sender found, whose idea it was, what the chat found |
+| Writer | the analyst, house rules, how you write, the playbooks, the research rules, its own text | market numbers, the stock (on a refresh), record by playbook, the stock's data | the sender's brief: why it was sent, what the sender found, whose idea it was, what the chat found; right after the date line, before its context |
 | Holding refresh | the analyst, house rules, how you write, the research rules, its own text | the Writer's | the sender's brief |
 | Portfolio Manager | its own text, house rules, how you write | market numbers, market digest, the portfolio, the book, its last write-up | none: the date line is its start |
 | Market Reviewer | its own text | market numbers, the portfolio, the book, its last digest and notes | none |

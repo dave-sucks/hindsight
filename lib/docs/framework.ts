@@ -148,8 +148,12 @@ export function recordParts(r: AgentRecord): Listed[] {
     ),
     ...(r.context.includes("the_stock") ? [{ id: "situations", ...SITUATIONS_PART, kind: "situations" as const, where: "instructions" as const, section: "instructions" as const, someRuns: true }] : []),
     { id: "line", ...DATE_LINE, kind: "line", where: first, section: "context" },
-    ...r.context.map((id): Listed => ({ id, title: CONTEXT[id].title, kind: "context", where: first, section: "context", about: CONTEXT[id].about, source: CONTEXT[id].source })),
-    ...(r.conversation ? [] : [{ id: "message", title: "The message", kind: "message" as const, where: "message" as const, section: "message" as const, about: r.messageFrom, source: r.messageFrom }]),
+    // Each read and the message, where the record lists it.
+    ...r.context.map((id): Listed =>
+      id === "message"
+        ? { id: "message", title: "The message", kind: "message", where: "message", section: "message", about: r.messageFrom, source: r.messageFrom }
+        : { id, title: CONTEXT[id].title, kind: "context", where: first, section: "context", about: CONTEXT[id].about, source: CONTEXT[id].source },
+    ),
   ];
 }
 

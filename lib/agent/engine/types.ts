@@ -7,8 +7,9 @@
  * - Context: the reads put in its first message, each one text.
  * - Tools: the tools it may call.
  * The run's task is the message, written by whoever starts the run; the
- * engine prints it last in the first message. Every first message opens with
- * one line the engine writes: the date and time in ET, and the account.
+ * record's context list says where it goes in the first message. Every first
+ * message opens with one line the engine writes: the date and time in ET, and
+ * the account.
  */
 
 /** A text more than one agent's instructions use (./parts.ts). */
@@ -32,6 +33,9 @@ export type ContextId =
 
 export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
+/** One entry of an agent's first message, after the date line: a read, or "message", where the run's task goes. */
+export type FirstMessagePart = ContextId | "message";
+
 /** One entry of an agent's instructions: its own text, or a shared text by name. */
 export type InstructionPart = SharedId | { own: string };
 
@@ -39,7 +43,7 @@ export type InstructionPart = SharedId | { own: string };
 export interface AgentInput {
   now: Date;
   environment: "PAPER" | "LIVE";
-  /** The run's task, written by whoever starts it; printed last in the first message. None in a conversation: there it is your message. */
+  /** The run's task, written by whoever starts it; printed where the record's context lists "message". None in a conversation: there it is your message. */
   message?: string | null;
 }
 
@@ -62,10 +66,12 @@ export interface AgentRecord {
    */
   instructions: readonly InstructionPart[];
   /**
-   * The reads in its first message, in order, after the date line. In a
-   * conversation (`conversation`), they ride on each message you send instead.
+   * Its first message after the date line, in order: each read, and
+   * "message", where the run's task goes (last, for every agent but the two
+   * Writers). In a conversation (`conversation`) the reads ride on each
+   * message you send instead, and there is no "message": the message is yours.
    */
-  context: readonly ContextId[];
+  context: readonly FirstMessagePart[];
   /** A conversation (the chat): its first message is yours, and the date line and its context ride on each new one. */
   conversation?: true;
   /** The tools it may call, by name (lib/agent/tools). */
@@ -125,6 +131,9 @@ export const isOwnPart = (p: InstructionPart): p is { own: string } => typeof p 
 
 /** An agent's own text. */
 export const ownText = (r: Pick<AgentRecord, "instructions">): string => r.instructions.find(isOwnPart)?.own ?? "";
+
+/** The reads an agent's first message carries, in order. */
+export const readsOf = (r: Pick<AgentRecord, "context">): ContextId[] => r.context.filter((c): c is ContextId => c !== "message");
 
 /** The shared texts an agent's instructions use, in order. */
 export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedId[] => r.instructions.filter((p): p is SharedId => !isOwnPart(p));

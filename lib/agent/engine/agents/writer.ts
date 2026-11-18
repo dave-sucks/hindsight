@@ -6,14 +6,14 @@
  * rules both follow are one shared text (lib/agent/thesis-research/writer-rules.ts).
  *
  * Its instructions: the analyst, the house rules, how you write, the
- * playbooks, the research rules and its own text. Its context: the market
- * numbers, the stock (on a refresh), the analyst's record by playbook and
- * the stock's data. Its message is the sender's brief: why it was sent, what
- * the sender found, whose idea it was.
+ * playbooks, the research rules and its own text. Its message, the sender's
+ * brief (why it was sent, what the sender found, whose idea it was), comes
+ * right after the date line; then its context: the market numbers, the stock
+ * (on a refresh), the analyst's record by playbook and the stock's data.
  */
 import { MODES } from "@/lib/agent/modes";
 import { WEB_SEARCH_MAX_USES } from "@/lib/agent/thesis-research/writer-rules";
-import type { AgentRecord, ContextId } from "../types";
+import type { AgentRecord, FirstMessagePart } from "../types";
 
 export { WEB_SEARCH_MAX_USES };
 
@@ -49,8 +49,13 @@ Call submit_thesis ONCE with your decision. The schema documents every field; th
 - Whose idea it was: their thesis is evidence, not your view. List the claims it rests on (a number, the reason the market is wrong, what they watch) and check each against the GROUND-TRUTH DATA. In the rationale say which held, which didn't and which you couldn't check. What they watch becomes a dated check in key_assumptions where the data supports it. A claim that fails can still leave a view; say so.
 - A promotion (the row's paper_record: this refresh is part of a PAPER→LIVE promotion): the paper position was force-closed at promotion, so the legal actions are ENTER + REVIEW only, NEVER EXIT/TRIM/ADD — there is no position to manage. You do NOT decide re-entry: status stays PROMOTED, and the next daily run reads your refreshed research and decides RE-ENTER (place_trade, conviction intact at current prices) / DEFER (downgrade to WATCHING, conviction softened — wait for a cleaner entry) / KILL (a key assumption broke). State which one you'd make, and why, in the submit_thesis rationale; frame the note so that decision is easy.`;
 
-/** The reads in the first message: the same for both Writer agents. */
-export const WRITER_CONTEXT: readonly ContextId[] = ["market_numbers", "the_stock", "playbook_record", "stock_data"];
+/**
+ * The first message, the same for both Writer agents: the sender's brief right
+ * after the date line, then the reads. Measured on sndk-writer-watch (10 runs
+ * each): the brief before the stock's data kept the view 9 times of 10, as the
+ * old message did; the brief last, 3 times.
+ */
+export const WRITER_CONTEXT: readonly FirstMessagePart[] = ["message", "market_numbers", "the_stock", "playbook_record", "stock_data"];
 
 /** The last line of the sender's brief. */
 export const WRITER_GO = "Write the research note now, then call submit_thesis.";

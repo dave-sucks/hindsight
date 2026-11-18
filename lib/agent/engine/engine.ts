@@ -6,9 +6,10 @@
  * - The instructions: its own text and the shared texts it uses, in the
  *   record's order; when its context has the stock, the stock's situations
  *   end them.
- * - The first message: the date line, then each read the record lists, then
- *   the message, the run's task as whoever started it wrote it. In a
- *   conversation the date line and the reads ride on each new message.
+ * - The first message: the date line, then each read and the message (the
+ *   run's task as whoever started it wrote it) in the order the record
+ *   lists them. In a conversation the date line and the reads ride on each
+ *   new message.
  *
  * Each part is put in a blank line after the one before, and the request
  * says which part is which, so the run can keep that with what it sent and
@@ -19,7 +20,7 @@ import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
 import { RESEARCH_RULES } from "@/lib/agent/thesis-research/writer-rules";
 import type { PortfolioPiece, PortfolioPieceId } from "@/lib/agent/portfolio-block";
 import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED, SITUATIONS_PART } from "./parts";
-import { isOwnPart, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type SharedId, type Where } from "./types";
+import { isOwnPart, readsOf, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type SharedId, type Where } from "./types";
 
 /** The shared texts a run reads (the rest are the same on every run, written once in code). */
 export type RunShared = "the_analyst" | "playbooks";
@@ -74,7 +75,7 @@ export function dateLine(now: Date, environment: "PAPER" | "LIVE"): string {
 /** Read every text the record needs, then build the request. */
 export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
   const loaded: Loaded = { shared: {}, context: {} };
-  if (record.context.some(isPiece)) {
+  if (readsOf(record).some(isPiece)) {
     if (!sources.portfolioPieces) throw new Error(`${record.id} reads the Market and portfolio context but its run gave no way to read it`);
     loaded.pieces = await sources.portfolioPieces({ portfolioDigest: record.context.includes("portfolio_digest") });
   }
@@ -84,7 +85,7 @@ export async function buildAgentRequest(record: AgentRecord, input: AgentInput, 
     if (!load) throw new Error(`${record.id} uses the shared text ${p} but its run gave no way to read it`);
     loaded.shared![p as RunShared] = await load();
   }
-  for (const id of record.context) {
+  for (const id of readsOf(record)) {
     if (isPiece(id)) continue;
     const load = sources.context?.[id];
     if (!load) throw new Error(`${record.id} reads ${id} but its run gave no way to read it`);
@@ -114,7 +115,6 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
 
   const message = new Printer("message");
   printFirst(record, input, loaded, (m, text) => message.push(m, text));
-  if (input.message?.trim()) message.push({ id: "message", title: "The message", kind: "message", source: record.messageFrom }, input.message.trim());
   return { agent: record.id, instructions: instructions.text, message: message.text, parts: [...instructions.parts, ...message.parts], tools: record.tools };
 }
 
@@ -153,14 +153,22 @@ export function openingOf(built: BuiltRequest): string {
 
 type PartHead = Omit<SentPartManifest, "where" | "chars" | "sep">;
 
-/** The date line, then each read in the record's order, the Market and portfolio reads under their one heading. */
+/**
+ * The date line, then each read and the message in the record's order, the
+ * Market and portfolio reads under their one heading.
+ */
 function printFirst(record: AgentRecord, input: AgentInput, loaded: Loaded, put: (m: PartHead, text: string, continuesGroup: boolean) => void): void {
   put({ id: "line", ...DATE_LINE, kind: "line" }, dateLine(input.now, input.environment), false);
   const pieces = loaded.pieces ?? null;
   const unreadable = pieces?.find((p) => p.id === "unreadable") ?? null;
-  const firstPiece = record.context.find(isPiece);
+  const firstPiece = readsOf(record).find(isPiece);
   let groupOpen: string | null = null;
   for (const id of record.context) {
+    if (id === "message") {
+      groupOpen = null;
+      if (input.message?.trim()) put({ id: "message", title: "The message", kind: "message", source: record.messageFrom }, input.message.trim(), false);
+      continue;
+    }
     const def = CONTEXT[id];
     const m: PartHead = { id, title: def.title, kind: "context", source: def.source };
     if (!isPiece(id)) {

@@ -68,6 +68,15 @@ describe("every agent is instructions, context and tools", () => {
     }
   });
 
+  it("each record says where its message goes, once: last for every agent but the two Writers, right after the date line for them, none in the chat", () => {
+    for (const r of AGENTS) {
+      const at = r.context.filter((c) => c === "message").length;
+      if (r.conversation) expect([r.id, at]).toEqual([r.id, 0]);
+      else if (r.id === "writer" || r.id === "holding_refresh") expect([r.id, r.context.indexOf("message")]).toEqual([r.id, 0]);
+      else expect([r.id, at, r.context[r.context.length - 1]]).toEqual([r.id, 1, "message"]);
+    }
+  });
+
   it("the date line opens every first message: the date and time in New York, and the account", () => {
     expect(dateLine(NOW, "LIVE")).toBe("Thu, Nov 12, 2026, 10:00 AM ET, the LIVE account.");
     expect(dateLine(new Date("2026-07-01T23:05:00Z"), "PAPER")).toBe("Wed, Jul 1, 2026, 7:05 PM ET, the PAPER account.");

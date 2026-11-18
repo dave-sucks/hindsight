@@ -1,7 +1,7 @@
 /**
  * The Writer's first message carries the market numbers when it is given
- * them, after the date line, and none of the rest of the Market and
- * portfolio reads; its instructions never do.
+ * them, after the date line and the sender's brief, and none of the rest of
+ * the Market and portfolio reads; its instructions never do.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: jest.fn() }));
@@ -17,7 +17,9 @@ it("the Writer's first message has the market numbers after the date line, and n
     undefined,
     NOW,
   );
-  expect(built.message.startsWith("Fri, Sep 25, 2026, 9:00 AM ET, the PAPER account.\n\n## Market and portfolio\n\n### Market numbers\nN\n\n## Why you were dispatched")).toBe(true);
+  expect(built.message).toBe(
+    "Fri, Sep 25, 2026, 9:00 AM ET, the PAPER account.\n\n## Why you were dispatched\na screen\n\nWrite the research note now, then call submit_thesis.\n\n## Market and portfolio\n\n### Market numbers\nN",
+  );
   expect(built.message).not.toContain("STAND-IN");
   expect(built.instructions).not.toContain("## Market and portfolio");
   expect(writerRequest(base).message).not.toContain("## Market and portfolio");

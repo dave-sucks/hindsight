@@ -58,7 +58,7 @@ export const MARKET_REVIEWER: AgentRecord = {
   model: MODES["research-run"].model,
   maxSteps: 1,
   instructions: [{ own: INSTRUCTIONS }],
-  context: ["market_numbers", "portfolio", "the_book", "last_output"],
+  context: ["market_numbers", "portfolio", "the_book", "last_output", "message"],
   tools: [],
   providerTools: ["OpenAI's web search"],
   output: "One reply (JSON): the digest, saved for the day, and its notes, each saved on the stocks it names. A high note flags its stocks for the next run.",
