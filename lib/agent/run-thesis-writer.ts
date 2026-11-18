@@ -42,7 +42,7 @@
 
 import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import { WRITER, WEB_SEARCH_MAX_USES } from "@/lib/agent/engine/agents/writer";
+import { WRITER, WRITER_GO, WEB_SEARCH_MAX_USES } from "@/lib/agent/engine/agents/writer";
 import { HOLDING_REFRESH } from "@/lib/agent/engine/agents/holding-refresh";
 import type { AgentId, AgentRecord, BuiltRequest, SentPartManifest } from "@/lib/agent/engine/types";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
@@ -52,7 +52,6 @@ import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { etDateOf } from "@/lib/market-data/intraday-window";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -85,9 +84,9 @@ import {
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
 import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
+import { getTheses } from "@/lib/agent/tools/get-theses";
+import { stockFromRead, stockRowText } from "@/lib/agent/system-prompts/intraday-tactical";
 import { parseTriggersResilient, triggerInputSchema } from "@/lib/agent/triggers/schema";
-import { describeTrigger } from "@/lib/agent/triggers/ops";
-import { writtenNote } from "@/lib/agent/triggers/note";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 
@@ -213,6 +212,8 @@ interface WriterAnalyst {
   holdDurations: string[];
   maxOpenPositions: number;
   sectors: string[];
+  marketCapMin: unknown;
+  marketCapMax: unknown;
   exclusionList: string[];
   tradingEnvironment: string | null;
   minPositionSize: unknown;
@@ -235,6 +236,8 @@ export async function loadWriterAnalyst(analystId: string): Promise<WriterAnalys
       holdDurations: true,
       maxOpenPositions: true,
       sectors: true,
+      marketCapMin: true,
+      marketCapMax: true,
       exclusionList: true,
       tradingEnvironment: true,
       minPositionSize: true,
@@ -344,33 +347,29 @@ export interface WriterResearchPromptOpts {
   analyst: BriefAnalyst;
   ticker: string;
   mode: "mint" | "refresh";
-  existingThesis: WriterExistingThesis | null;
+  /** On a refresh, the thesis as it stands: its status picks the agent (writerRecordFor). */
+  existingThesis: Pick<WriterExistingThesis, "status"> | null;
+  /** On a refresh, the stock as every run reads it (get_theses's short row); null when it couldn't be read. */
+  stockRow?: Record<string, unknown> | null;
   reason: string;
   /** What the dispatcher found before sending the stock. */
   researchNotes?: string | null;
   /** Whose thesis the stock came from, when it came from one. */
   ideaSource?: IdeaSource | null;
-  /** ISO YYYY-MM-DD (UTC) — date-awareness block. */
-  runDate: string;
-  promotionContext?: RunThesisWriterArgs["promotionContext"];
   /**
    * This analyst's own closed-trade record by setup (DAV-248), one data line
    * each — "Base breakout: 12 trades, 42% win, +1.9R, 11d held, …". Empty or
-   * absent → no block.
+   * absent → none.
    */
   setupRecord?: string[];
   /** The playbooks this analyst writes on (setupsForAnalyst) — the prompt lists each in full (playbookChecks), with its watch triggers. */
   setups?: Setup[];
   /** The account's playbooks (loadPlaybooks); null when they couldn't be read, and then no trigger is written from one. */
   playbooks?: ((setupId: string) => Template[]) | null;
-  /** P1-35: this analyst sold this ticker within the last 14 days. */
-  priorExit?: {
-    exitPrice: number | null;
-    daysAgo: number;
-    closeReason: string | null;
-  } | null;
-  /** The Market and portfolio block's parts (lib/agent/portfolio-block.ts), last in the prompt. */
+  /** The Market and portfolio reads (lib/agent/portfolio-block.ts): the Writer reads the market numbers. */
   portfolioPieces?: PortfolioPiece[] | null;
+  /** The analyst's account: paper or live. */
+  environment?: "PAPER" | "LIVE";
 }
 
 /**
@@ -400,70 +399,59 @@ function ideaSourceBlock(raw: IdeaSource | null | undefined): string | null {
   return `## Whose idea it was\nThe idea came from ${s.author}${s.posted_on ? `, posted ${s.posted_on}` : ""}${s.url ? ` (${s.url})` : ""}.${words}`;
 }
 
-/** A refresh's thesis as it stands, its triggers with their ids: the existing_thesis block. */
-function existingThesisText(e: WriterExistingThesis): string {
-  return `## Existing thesis (you are refreshing it)
-  • status: ${e.status}
-  • direction: ${e.direction ?? "—"}
-  • horizon: ${e.horizon ?? "—"}
-  • core belief: ${e.coreBelief ?? "—"}
-  • company: ${e.company ?? "—"}
-  • triggers (edit by id — these ids are the handles):
-${
-  e.triggers.length
-    ? e.triggers
-        .map((t) => {
-          const note = writtenNote(t);
-          return `      - ${t.id}: ${describeTrigger(t)}${note ? ` — "${note.slice(0, 90)}"` : ""}`;
-        })
-        .join("\n")
-    : "      (none)"
-}`;
-}
-
-/** A sale of this stock in the last 14 days: the prior_exit block ("" when none). */
-function priorExitText(x: WriterResearchPromptOpts["priorExit"]): string | null {
-  if (!x) return null;
-  return `## A recent sale\nYou exited this name ${x.daysAgo} day${x.daysAgo === 1 ? "" : "s"} ago${x.exitPrice != null ? ` at $${x.exitPrice}` : ""}${x.closeReason ? ` (${x.closeReason})` : ""}.`;
-}
-
-/** A promotion's paper history: the promotion block ("" when none). */
-function promotionText(c: WriterResearchPromptOpts["promotionContext"], ticker: string): string | null {
-  if (!c) return null;
-  return `## The promotion\nThis refresh is part of a PAPER→LIVE promotion. Paper history on $${ticker}: held ${c.paperTenureDays ?? "?"} days, realized P&L ${c.paperRealizedPnl != null ? `$${c.paperRealizedPnl.toFixed(2)}` : "unknown"}, reviewed ${c.paperReviewCount ?? "?"} times, promoted ${c.promotedAt ?? "today"}.`;
-}
-
-/** This analyst's record by playbook: the setup_record block ("" when none). */
+/** This analyst's record by playbook: the read "playbook_record" (null when none). */
 function setupRecordText(lines: string[] | undefined): string | null {
   return lines?.length ? `## Your record by playbook (closed trades since 2026-05-27)\n${lines.map((l) => `- ${l}`).join("\n")}` : null;
 }
 
 /**
- * The Writer's request, built by the agent engine from its record
- * (lib/agent/engine/agents/writer.ts). Its instructions, and its first
- * message when the stock's data is given.
+ * The Writer's message: the sender's brief as it wrote it (why it sent the
+ * stock, what it found, whose idea it was), what the chat found under its
+ * own heading when the chat sent it, and the ask.
  */
-export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }): BuiltRequest {
+export function writerMessage(o: Pick<WriterResearchPromptOpts, "ticker" | "reason" | "researchNotes" | "ideaSource">, chatFound?: string | null): string {
+  return [`## Why you were dispatched\n${o.reason}`, researchNotesBlock(o.researchNotes), ideaSourceBlock(o.ideaSource), chatFoundBlock(chatFound, o.ticker.toUpperCase()) || null, WRITER_GO]
+    .filter((x): x is string => Boolean(x))
+    .join("\n\n");
+}
+
+/** The stock's data under its banner: the read "stock_data". */
+export const stockDataText = (dataBlock: string) => `## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\n${dataBlock}`;
+
+/**
+ * The Writer's request, built by the agent engine from its record
+ * (lib/agent/engine/agents/writer.ts, or the Holding refresh's for a stock we
+ * own): its instructions, and with the stock's data its first message (the
+ * market numbers, the stock on a refresh, the record by playbook, the data,
+ * then the sender's brief).
+ */
+export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }, now: Date = new Date()): BuiltRequest {
   const T = opts.ticker.toUpperCase();
   const refreshing = opts.mode === "refresh" && opts.existingThesis != null;
-  return composeAgentRequest(writerRecordFor(opts), { now: new Date(), environment: "PAPER" }, {
-    pieces: opts.portfolioPieces ?? null,
-    blocks: {
-      analyst_brief: analystBrief(opts.analyst),
+  return composeAgentRequest(writerRecordFor(opts), { now, environment: opts.environment ?? "PAPER", message: writerMessage(opts, first?.chatFound) }, {
+    shared: {
+      the_analyst: analystBrief(opts.analyst),
       // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
       playbooks: playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
-      today: `## Today\nToday is ${opts.runDate}.`,
-      why_sent: opts.reason,
-      sender_notes: researchNotesBlock(opts.researchNotes),
-      idea_source: ideaSourceBlock(opts.ideaSource),
-      existing_thesis: refreshing ? existingThesisText(opts.existingThesis!) : null,
-      promotion: promotionText(opts.promotionContext, T),
-      setup_record: setupRecordText(opts.setupRecord),
-      prior_exit: priorExitText(opts.priorExit),
-      stock_data: first ? `## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\n${first.dataBlock}` : null,
-      chat_found: first ? chatFoundBlock(first.chatFound, T) || null : null,
+    },
+    pieces: opts.portfolioPieces ?? null,
+    context: {
+      the_stock: refreshing ? stockRowText({ ticker: T, row: opts.stockRow ?? null }) : null,
+      playbook_record: setupRecordText(opts.setupRecord),
+      stock_data: first ? stockDataText(first.dataBlock) : null,
     },
   });
+}
+
+/** The stock as every run reads it, for a refresh: get_theses's short row (the trigger run reads the same). Null when the read fails. */
+async function readStockRow(ctx: ToolContext, ticker: string, thesisId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const out = (await getTheses(ctx).execute!({ tickers: [ticker] } as never, { toolCallId: "read-the-stock", messages: [] })) as { ok?: boolean; data?: unknown };
+    return stockFromRead(out, thesisId)?.row ?? null;
+  } catch (err) {
+    console.warn(`[thesis-writer] the read of ${ticker} failed:`, err);
+    return null;
+  }
 }
 
 /** The agent a stock is written by: the Holding refresh for a stock we own, else the Writer. */
@@ -642,49 +630,13 @@ export async function writerResearchPhase(
     const currentPrice = pullOutput.pull?.currentPrice ?? null;
 
 
-    // ── P1-35 (#524): recently-sold context for mints ───────────────────
-    // record_thesis refuses a mint at/above a ≤14-day exit price without an
-    // explicit acknowledge_prior_exit. Surface the exit into the prompt and
-    // require the acknowledgment in-loop so the model engages with the sale
-    // instead of the run dying at persist.
-    let priorExit: {
-      exitPrice: number | null;
-      daysAgo: number;
-      closeReason: string | null;
-    } | null = null;
-    if (args.mode === "mint") {
-      try {
-        const soldSibling = await prisma.thesis.findFirst({
-          where: {
-            ticker: T,
-            status: "RETIRED",
-            retiredReason: "SOLD",
-            closedAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
-            researchRun: { agentConfigId: analyst.id },
-          },
-          orderBy: { closedAt: "desc" },
-          select: { id: true, closedAt: true, closeReason: true },
-        });
-        if (soldSibling?.closedAt) {
-          const closedRow = await prisma.thesisUpdate.findFirst({
-            where: { thesisId: soldSibling.id, type: "CLOSED" },
-            orderBy: { timestamp: "desc" },
-            select: { priceAtTime: true },
-          });
-          const exitPrice =
-            closedRow?.priceAtTime != null && Number.isFinite(Number(closedRow.priceAtTime))
-              ? Number(closedRow.priceAtTime)
-              : null;
-          priorExit = {
-            exitPrice,
-            daysAgo: Math.floor((Date.now() - soldSibling.closedAt.getTime()) / 86_400_000),
-            closeReason: soldSibling.closeReason ?? null,
-          };
-        }
-      } catch {
-        /* non-fatal — persist-side guard still enforces */
-      }
-    }
+    // A sale of this stock in the last 14 days is in the data's "Our history"
+    // (get_stock_data's prior coverage); record_thesis still refuses a mint at
+    // or above a ≤14-day exit price without acknowledge_prior_exit.
+
+    // The save's own check, run in check-only mode from the submit step; its context also reads the stock on a refresh.
+    const saveCtx = await buildWriterToolCtx(args, analyst);
+    const stockRow = existingThesis ? await readStockRow(saveCtx, T, existingThesis.id) : null;
 
     // The playbook's numbers as this account set them (DAV-273), and its triggers.
     const setupOverrides = await loadSetupOverrides(analyst.accountId);
@@ -695,12 +647,10 @@ export async function writerResearchPhase(
       ticker: T,
       mode: args.mode,
       existingThesis,
+      stockRow,
       reason: args.reason,
       researchNotes: args.researchNotes ?? null,
       ideaSource: args.ideaSource ?? null,
-      runDate: etDateOf(new Date()),
-      promotionContext: args.promotionContext ?? null,
-      priorExit,
       setups: seatSetups,
       playbooks,
       setupRecord: await loadScorecardLines({
@@ -708,7 +658,8 @@ export async function writerResearchPhase(
         analystId: analyst.id,
         environment: analyst.tradingEnvironment ?? "PAPER",
       }),
-      portfolioPieces: await loadPortfolioPieces({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER" }),
+      portfolioPieces: await loadPortfolioPieces({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER", portfolioDigest: false }),
+      environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER",
     }, { dataBlock: rawDataBlock, chatFound: args.chatFound });
     const systemPrompt = request.instructions;
     const userPrompt = request.message;
@@ -721,8 +672,6 @@ export async function writerResearchPhase(
     let submitAttempts = 0;
     let lastRejected: { raw: unknown; errors: string[] } | null = null;
 
-    // The save's own check, run in check-only mode from the submit step.
-    const saveCtx = await buildWriterToolCtx(args, analyst);
     const submitThesisTool = makeSubmitThesisTool({
       ticker: T,
       onReject: (raw, errors) => {

@@ -36,11 +36,10 @@ describe("the morning run — the daily run as a portfolio manager", () => {
   it("the prompt does not restate the deleted plan checks", () => {
     expect(prompt).not.toContain("give it a wake, or let it go");
   });
-  it("regime and cash are inputs: the cash line names today's names at their buy level", () => {
+  it("regime and cash are inputs: the rules are its own text, and the kickoff names today's stocks at their buy price", () => {
     expect(prompt).toContain("## Regime and cash");
-    // No block in this sample: the snapshot wasn't read, so the cash is said here.
-    expect(prompt).toContain("Cash is $31,000.");
-    expect(prompt).toContain("(today: IOT)");
+    expect(prompt).toContain("Your cash is in the portfolio snapshot.");
+    expect(prompt).toContain("Watched stocks at their buy price this morning: IOT.");
     expect(prompt).toContain("Cautious** (SPY more than 1% under its 50-day)");
     expect(prompt).toContain("Risk-off** (SPY more than 1% under its 200-day)");
   });
@@ -85,17 +84,10 @@ describe("the morning run — the analyst's room", () => {
 
 describe("the morning run — the Market and portfolio block", () => {
   const block = "## Market and portfolio\n\n### Portfolio snapshot\nThe account, stand-in";
-  it("prints the block in the first message, before the book's week, and points the cash line to it", () => {
-    const r = dailyRunRequest({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe account, stand-in" }] });
-    expect(r.message.startsWith(`${block}\n\n## Filings on your book this week`)).toBe(true);
+  it("prints the block in the first message, after the date line and before the book's week", () => {
+    const now = new Date("2026-07-06T12:00:00Z");
+    const r = dailyRunRequest({ name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 }, { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe account, stand-in" }] }, now);
+    expect(r.message.startsWith(`Mon, Jul 6, 2026, 8:00 AM ET, the PAPER account.\n\n${block}\n\n## Filings on your book this week`)).toBe(true);
     expect(r.instructions).not.toContain("## Market and portfolio");
-    expect(r.instructions).toContain("Your cash is in the portfolio snapshot below.");
-  });
-  it("says the cash itself when the snapshot couldn't be read", () => {
-    const p = morningRunSent(
-      { name: "PEAD Specialist", maxPositionSize: 14000, minPositionSize: 3000 },
-      { ...runInput, portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nThe portfolio snapshot couldn't be read for this request." }] },
-    );
-    expect(p).toContain("Cash is $31,000.");
   });
 });

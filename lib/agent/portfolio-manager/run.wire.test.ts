@@ -3,7 +3,10 @@
  * its run sends, and what the run keeps about the call, from fixed inputs
  * (the engine tests' stand-ins). Kept as a golden file, written from the run
  * before it moved onto the agent runner: the runner must send the same body,
- * byte for byte. `UPDATE_WIRE=1` rewrites it.
+ * byte for byte. Rewritten once since, for the three parts (2026-11-18): only
+ * the instructions and the first message changed, as lib/agent/engine/engine.test.ts
+ * proves part by part; the tools and every other field are the same bytes.
+ * `UPDATE_WIRE=1` rewrites it.
  */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -19,6 +22,7 @@ jest.mock("@/lib/prisma", () => ({
     portfolioDigest: { findFirst: async () => ({ narrative: "The account had a good day.", createdAt: new Date("2026-11-12T01:00:00Z") }) },
     marketDigest: { findFirst: async () => ({ digest: "### Market overview\n\nStocks rose.", createdAt: new Date("2026-11-11T12:40:00Z") }) },
     runEvent: { findFirst: async () => ({ message: "### Where the money is\nTwo stocks, one bet.", createdAt: new Date("2026-11-10T15:30:00Z") }) },
+    thesis: { findMany: async () => [{ ticker: "AAA", status: "HOLDING", coreBelief: "The company sells a product people keep buying.", triggers: [], researchRun: { agentConfig: { name: "Case Analyst" } } }] },
     runMessage: { create: async ({ data }: { data: { content: string } }) => void saved.push(data.content), deleteMany: async () => ({}) },
   },
 }));

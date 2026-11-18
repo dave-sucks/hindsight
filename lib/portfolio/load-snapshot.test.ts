@@ -117,13 +117,9 @@ describe("New York's midnight", () => {
     expect(nyMidnight("2026-11-01").toISOString()).toBe("2026-11-01T04:00:00.000Z");
   });
 
-  it("puts the conviction and the 5- and 20-day moves on a holding, and loads the watchlist only when asked", async () => {
+  it("puts the conviction and the 5- and 20-day moves on a holding", async () => {
     const plain = await loadPortfolioSnapshot({ accountId: "acct", environment: "LIVE", now: NOW });
     expect(plain!.holdings[0]).toMatchObject({ ticker: "CEG", conviction: "HIGH" });
     expect(plain!.holdings[0].move5dPct).toBeCloseTo(9.89, 1);
-    expect(plain!.watching).toBeUndefined();
-    getLiveQuotes.mockResolvedValue({ CEG: { quote: { c: 274.73, pc: 267.76, t: CLOSE_AT } }, WST: { quote: { c: 415, pc: 410, dp: 1.2, t: CLOSE_AT } } });
-    const withWatching = await loadPortfolioSnapshot({ accountId: "acct", environment: "LIVE", now: NOW, watching: true });
-    expect(withWatching!.watching).toEqual([{ ticker: "WST", price: 415, dayPct: 1.2, move5dPct: null, move20dPct: null, conviction: "MEDIUM", analyst: "Analyst One", since: "2026-08-12T14:00:00.000Z", buyIf: [], belief: "West compounds as margins recover." }]);
   });
 });

@@ -90,7 +90,7 @@ describe("NVDA's trim, sized 30%, in every mode", () => {
   it("Send to Agent tells the analyst \"Trim 30%\", and its tools carry the size", async () => {
     const r = await fire("ASK_NOW");
     expect(r.told).toContain("Trim 30% if above 16.6% from our entry");
-    expect(r.told).toContain("declared action: TRIM 30% of the position");
+    expect(r.told).toMatch(/"Trim 30% if [^"]+" fired/);
     expect(r.contexts.at(-1)).toMatchObject({ firedTrim: { ticker: "NVDA", pct: 30 } });
   });
 

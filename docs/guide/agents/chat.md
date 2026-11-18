@@ -48,13 +48,14 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 
 <!-- asset: context chat -->
 
-- **Your portfolio, on every message:** the [Market and portfolio block](portfolio-digest.md#the-portfolio-snapshot) rides on your newest message: the [market numbers](market-reviewer.md#the-market-numbers), the latest 7:30 [market digest](market-reviewer.md), the portfolio snapshot (the numbers and the snapshot both written by code for that message), and the latest 8 PM [digest](portfolio-digest.md).
+- **Your portfolio, on every message:** the Market and portfolio reads ride on your newest message: the [market numbers](market-reviewer.md#the-market-numbers), the latest 7:30 [market digest](market-reviewer.md), the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (the numbers and the snapshot both written by code for that message), and the latest 8 PM [digest](portfolio-digest.md).
+- **Pinned to an analyst:** the analyst ends its instructions (its strategy, its rules, the stocks it may cover, its playbooks a line each), and the analyst's book rides on each message: every stock it holds and watches, a line each with its belief. At the portfolio level, each analyst's room rides on each message instead.
 - **Your book:** `get_theses` and `get_portfolio_context`, the stocks, positions and cash.
 - **Your queue:** `list_proposals`, what's waiting for you, each with its reason and time left.
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
 - **Research:** the market data, filings, earnings, the web and X, the same tools as every other agent.
 
-Every message you send reaches chat with the day, the time and whether the market is open. A lookup older than 15 minutes is hidden from it, so it looks again before it quotes a price. A conversation picked up days later never answers from the old numbers. What chat changed (a trade, an edit, a note) stays visible, so it never does it twice.
+Every message you send reaches chat with the date line: the day, the time and whether the account is paper or live. A lookup older than 15 minutes is hidden from it, so it looks again before it quotes a price. A conversation picked up days later never answers from the old numbers. What chat changed (a trade, an edit, a note) stays visible, so it never does it twice.
 
 ## What it decides
 
@@ -101,11 +102,11 @@ Its record, `CHAT` (`lib/agent/engine/agents/chat.ts`). Its instructions are one
 `write_note`, only after a yes on `ask_question` or when you asked for one. It writes on one stock, or once to several stocks, one analyst or the whole account.
 
 #### Old lookups
-`hideOldLookups` and `withNewestParts` in `lib/agent/old-lookups.ts`; the time line itself is the chat's record (`newest`). Every tool result carries `at`, the time it ran (`defineTool`).
+`hideOldLookups` and `withNewestParts` in `lib/agent/old-lookups.ts`; the date line is the engine's (`dateLine`, `lib/agent/engine/engine.ts`), and the chat's record lists the reads that ride with it (`context`, `conversation`). Every tool result carries `at`, the time it ran (`defineTool`).
 
 #### Route
 `app/api/agent/[mode]/route.ts`
 
 #### What was sent
-The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`): its instructions one row per part, your conversation, then your newest message: the time and each part of the Market and portfolio block, then your words.
+The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`): its instructions one row per part, your conversation, then your newest message: the date line and each read, then your words.
 </details>

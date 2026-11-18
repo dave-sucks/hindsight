@@ -14,6 +14,7 @@ import type { ToolSet } from "ai";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
 import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
+import { loadBook } from "@/lib/agent/book";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
@@ -85,7 +86,7 @@ export async function runPortfolioManager(
     input: { now, environment: book.environment },
     sources: {
       portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-      blocks: { last_writeup: () => lastWriteup(book) },
+      context: { the_book: () => loadBook(book), last_output: async () => `## Your last write-up\n${await lastWriteup(book)}` },
     },
     runId,
     toolset,

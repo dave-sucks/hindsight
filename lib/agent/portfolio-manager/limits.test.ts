@@ -1,7 +1,9 @@
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import type { ToolSet } from "ai";
 import { PROPOSALS_A_RUN, WATCHES_A_RUN, managerPick, withRunLimits } from "./limits";
 import { COMPARING_FIELDS, rowForModel } from "@/lib/agent/row-for-model";
-import { watchingText, buildSnapshot, snapshotText, firstSentence } from "@/lib/portfolio/snapshot";
+import { buildSnapshot, snapshotText, firstSentence } from "@/lib/portfolio/snapshot";
+import { bookText } from "@/lib/agent/book";
 
 const names = (n: number, from = 0) => Array.from({ length: n }, (_, i) => `T${from + i}`);
 const HELD = new Set(["V", "CEG"]);
@@ -70,15 +72,11 @@ describe("the run's limits, held by its tools", () => {
   });
 });
 
-describe("the snapshot's holdings and the Watching block", () => {
+describe("the snapshot's holdings and the book", () => {
   const snap = buildSnapshot({
     day: "2026-11-17", live: false, at: "2026-11-17T21:00:00Z", cash: 1000, contributed: 2000, trades: [],
     holdings: [{ ticker: "V", shares: 2, avgCost: 400, price: 420, prevClose: 410, analyst: "Secular Compounder", move5dPct: -0.9, move20dPct: 3.1, conviction: "HIGH" }],
     waiting: [{ side: "BUY", ticker: "WST", shares: 18, firstProposed: "2026-11-09T15:00:00Z", times: 4, note: null, analyst: "Secular Compounder" }],
-    watching: [
-      { ticker: "WST", price: 415.37, dayPct: -0.6, move5dPct: 0.7, move20dPct: 6.8, conviction: "HIGH", analyst: "Secular Compounder", since: "2026-08-12T14:00:00Z", buyIf: ["Buy if below $415.14"], belief: "West compounds as its margins recover." },
-      { ticker: "ACN", price: null, dayPct: null, move5dPct: null, move20dPct: null, conviction: null, analyst: null, since: "2026-11-17T14:00:00Z" },
-    ],
   });
 
   it("a holding's line carries its 5- and 20-day moves, and its conviction", () => {
@@ -90,12 +88,22 @@ describe("the snapshot's holdings and the Watching block", () => {
     expect(snapshotText(plain)).toMatch(/since bought at \$400\.00: \+5\.0% \(\+\$40\)$/m);
   });
 
-  it("a watch is one line in the same style, with its buy trigger and its belief's first sentence", () => {
-    expect(watchingText(snap)).toBe(
+  it("the book: a line a stock with its belief's first sentence, a watch with its buy triggers, a stock held by one analyst and watched by another held", () => {
+    expect(
+      bookText([
+        { ticker: "WST", status: "WATCHING", analyst: "Secular Compounder", belief: "West compounds as its margins recover. More.", buyIf: ["Buy if below $415.14"] },
+        { ticker: "ACN", status: "WATCHING", analyst: null, belief: null },
+        { ticker: "V", status: "WATCHING", analyst: "PEAD Specialist", belief: "A watch." },
+        { ticker: "V", status: "HOLDING", analyst: "Secular Compounder", belief: "Payments keep growing." },
+      ]),
+    ).toBe(
       [
+        "## The book",
+        "Holding (1):",
+        "- V · Secular Compounder · Payments keep growing.",
         "Watching (2):",
-        "- WST: $415.37 · day −0.6% · 5-day +0.7%, 20-day +6.8% · conviction HIGH · Secular Compounder · watching since Aug 12 · a buy proposal is waiting · Buy if below $415.14 · Belief: West compounds as its margins recover.",
-        "- ACN: no price · watching since Nov 17",
+        "- ACN · no belief written",
+        "- WST · Secular Compounder · West compounds as its margins recover. · Buy if below $415.14",
       ].join("\n"),
     );
   });

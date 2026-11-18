@@ -42,10 +42,10 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
     } as never),
   chat: () =>
     buildPrincipalSystemPrompt({
-      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, watchlist: [], exclusionList: [], maxPositionSize: 10000, maxOpenPositions: 8 },
+      scopedAnalyst: { id: "an", name: "Secular Compounder", analystPrompt: null, directionBias: "LONG_ONLY", holdDurations: ["SWING"], sectors: [], marketCapMin: null, marketCapMax: null, exclusionList: [], maxPositionSize: 10000, maxOpenPositions: 8 },
       // Its room on 2026-10-15: full (the holdings themselves are in the book block).
       room: { open: 8, max: 8, held: [], awaitingApproval: 0 },
     }),
   writer: () =>
-    writerSent({ analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
+    writerSent({ analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen" } as never),
 };

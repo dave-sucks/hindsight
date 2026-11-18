@@ -21,7 +21,7 @@ import { ReadDemo } from "./framework/read-demo";
 import { RequestGrid } from "./framework/request-grid";
 import { AgentTools, useFrameworkData } from "./tool-catalog";
 import { ContextChip } from "@/components/domain/context-chip";
-import { WHERE_LABEL, type FrameworkWhere } from "@/lib/docs/framework-content";
+import { SECTION_LABEL, type FrameworkSection } from "@/lib/docs/framework-content";
 
 export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   /** A concept's card from the docs home, as its doc's opening picture. `card theses` */
@@ -44,24 +44,24 @@ export const ASSETS: Record<GuideAsset, ComponentType<{ arg?: string }>> = {
   context: ({ arg }) => <AgentContext agent={arg ?? ""} />,
 };
 
-/** One agent's parts in its record's order, under where each goes, then its tools. */
+/** One agent's parts in its record's order, under its instructions, its context and its message, then its tools. */
 function AgentContext({ agent }: { agent: string }) {
   const a = useFrameworkData()?.agents.find((x) => x.id === agent);
   if (!a) return null;
-  const groups = (Object.keys(WHERE_LABEL) as FrameworkWhere[]).map((where) => ({ where, parts: a.parts.filter((p) => p.where === where) })).filter((g) => g.parts.length);
+  const groups = (Object.keys(SECTION_LABEL) as FrameworkSection[]).map((section) => ({ section, parts: a.parts.filter((p) => p.section === section) })).filter((g) => g.parts.length);
   const tools = [a.tools.names.length ? `${a.tools.names.length} tool${a.tools.names.length === 1 ? "" : "s"}: ${a.tools.names.join(", ")}.` : "", a.tools.provider.length ? `The model provider's own: ${a.tools.provider.join(", ")}.` : ""].filter(Boolean).join(" ");
   return (
     <div className="flex flex-col gap-5">
       {groups.map((g) => (
-        <div key={g.where} className="flex flex-col gap-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{WHERE_LABEL[g.where]}</p>
+        <div key={g.section} className="flex flex-col gap-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{SECTION_LABEL[g.section]}</p>
           <ul className="flex flex-col divide-y border-y">
             {g.parts.map((p) => (
               <li key={`${p.kind}:${p.id}`} className="flex flex-col items-start gap-1.5 py-3 sm:flex-row sm:items-baseline sm:gap-4">
                 <span className="shrink-0 sm:w-44">
                   <ContextChip part={p.swatch}>{p.title}</ContextChip>
                 </span>
-                <span className="text-sm text-muted-foreground">{p.kind === "own" ? (p.about ? `Its own words: “${p.about}”` : "Its own words, sent only on some runs.") : p.about}</span>
+                <span className="text-sm text-muted-foreground">{p.kind === "own" ? `Its own text: “${p.about}”` : p.about}</span>
               </li>
             ))}
           </ul>

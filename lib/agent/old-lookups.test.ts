@@ -61,19 +61,19 @@ describe("the chat never reads an old lookup as today's numbers", () => {
     expect(JSON.stringify(resultOf(mm, "close_position").output)).toContain("Close proposed: $ASML");
   });
 
-  it("the owner's newest message carries the day, the time and whether the market is open", async () => {
+  it("the owner's newest message carries the date line: the day, the time and the account", async () => {
     const mm = read(await historyForModel(hideOldLookups(messages, NOV_4), tools));
     const last = mm.at(-1)! as { role: string; content: Array<{ type: string; text: string }> };
     expect(last.role).toBe("user");
     expect(last.content[0].text).toBe(
-      "[Wed Nov 4, 1:30 PM ET, the market is open. A price in an earlier message is from when that message was written.]",
+      "Wed, Nov 4, 2026, 1:30 PM ET, the PAPER account.",
     );
     expect(last.content[1].text).toBe("(eight days later: what do I do with MU and PLTR?)");
   });
 });
 
-describe("the chat's Market and portfolio block", () => {
-  it("rides on the newest owner message after the time line, and nowhere else", () => {
+describe("the chat's Market and portfolio reads", () => {
+  it("ride on the newest owner message after the date line, and nowhere else", () => {
     const mm: ModelMessage[] = [
       { role: "user", content: "first" },
       { role: "assistant", content: "answer" },
@@ -84,7 +84,7 @@ describe("the chat's Market and portfolio block", () => {
     const parts = (out[2] as { content: Array<{ type: string; text: string }> }).content.map((p) => p.text);
     expect(parts[1]).toBe("## Market and portfolio\n\nSTAND-IN");
     expect(parts[2]).toBe("second");
-    expect(parts[0]).toMatch(/^\[/);
+    expect(parts[0]).toMatch(/^Wed, Nov 4, 2026, 1:30 PM ET, the PAPER account\.$/);
   });
 });
 

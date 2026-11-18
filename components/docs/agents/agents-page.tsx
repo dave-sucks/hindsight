@@ -1,19 +1,18 @@
 /**
- * /how-it-works/agents — every agent as the engine runs it: its instructions,
- * which context blocks it is given and which tools it may call. Read from the
- * agent records (lib/agent/engine/agents), so it shows what an agent is sent.
- * Read-only.
+ * /how-it-works/agents — every agent as the engine runs it: its instructions
+ * (its own text and the shared texts it uses), its context (the reads in its
+ * first message), its message and its tools. Read from the agent records
+ * (lib/agent/engine/agents), so it shows what an agent is sent. Read-only.
  */
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { BLOCKS } from "@/lib/agent/engine/blocks";
-import { isOwn, type AgentRecord, type BlockId, type Where } from "@/lib/agent/engine/types";
+import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
+import { ownText, readsOf, sharedOf, type AgentRecord, type ContextId, type SharedId } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
 
 const n = (x: number) => x.toLocaleString("en-US");
-const PLACE: Record<Where, string> = { instructions: "In its instructions", message: "In its first message", newest: "On each new message you send" };
 
 export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: readonly string[] }) {
   return (
@@ -22,7 +21,7 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Agents</h1>
         <p className="text-sm text-muted-foreground">
-          Every agent is its instructions, the context blocks it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
+          An agent is its instructions, its context and its tools. Its instructions are its own text and the shared texts it uses. Its context is what it is handed when it starts: the facts in its first message, after a line with the date and the account. Then comes its message, the run&rsquo;s task, written by whoever starts it. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
         </p>
       </div>
       {agents.map((a) => (
@@ -33,14 +32,11 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
 }
 
 function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
-  const parts = [
-    ...record.instructions.map((p) => ({ p, where: "instructions" as const })),
-    ...record.message.map((p) => ({ p, where: "message" as const })),
-    ...(record.newest ?? []).map((p) => ({ p, where: "newest" as const })),
-  ];
-  const given = new Map<BlockId, Where>(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
-  const own = parts.flatMap(({ p }) => (isOwn(p) ? [p] : []));
-  const sample = { now: new Date(), environment: "PAPER" as const, extra: record.example?.extra };
+  const own = ownText(record);
+  const shared = new Set<SharedId>(sharedOf(record));
+  const reads = new Set<ContextId>(readsOf(record));
+  // Its first message in order: the date line, then each read and its message where the record lists it.
+  const order = ["the date line", ...record.context.map((id) => (id === "message" ? "its message" : CONTEXT[id].title))].join(", ");
   return (
     <Card>
       <CardHeader>
@@ -57,46 +53,27 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Instructions</h2>
-            <p className="text-sm text-muted-foreground">Its own words, in the order they are sent. The context blocks go between them where the record places them.</p>
-            <div className="flex flex-col gap-1">
-              {record.example && <p className="text-sm text-muted-foreground">{record.example.says}</p>}
-              {own.map((o) => {
-                const text = typeof o.text === "string" ? o.text : o.text(sample);
-                return (
-                  <Collapsible key={o.own}>
-                    <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                      {o.title} · {text == null ? "not in this example" : `${n(text.length)} characters`}
-                      {typeof o.text === "string" ? "" : " (written for each run)"}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{text ?? "Sent only in some runs."}</p>
-                    </CollapsibleContent>
-                  </Collapsible>
-                );
-              })}
-            </div>
+            <p className="text-sm text-muted-foreground">Its own text, the same on every run, and the shared texts it uses, in the order they are sent.{reads.has("the_stock") ? " The stock's situations end them, when it is in one." : ""}</p>
+            <Collapsible>
+              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its own text · {n(own.length)} characters</CollapsibleTrigger>
+              <CollapsibleContent>
+                <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{own}</p>
+              </CollapsibleContent>
+            </Collapsible>
+            <Checklist items={(Object.keys(SHARED) as SharedId[]).map((id) => ({ id, ...SHARED[id], on: shared.has(id) }))} />
           </section>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Context</h2>
-            <p className="text-sm text-muted-foreground">The block library. A checked block is given to this agent, every run.</p>
-            <ul className="flex flex-col gap-3">
-              {Object.values(BLOCKS).map((b) => {
-                const where = given.get(b.id);
-                return (
-                  <li key={b.id} className="flex items-start gap-3">
-                    <Checkbox checked={where != null} disabled aria-label={`${b.title}${where ? " is given" : " is not given"}`} />
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-sm font-medium">{b.title}</span>
-                      <span className="text-sm text-muted-foreground">{b.about}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {where ? PLACE[where] : "Not given"} · {b.source}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            <p className="text-sm text-muted-foreground">
+              {record.conversation ? "On each message you send" : "In its first message"}, in order: {order}. The date line is the date and time in New York, and whether the account is paper or live.
+            </p>
+            <Checklist items={(Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, ...CONTEXT[id], on: reads.has(id) }))} />
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-lg font-medium">Message</h2>
+            <p className="text-sm text-muted-foreground">{record.messageFrom}</p>
           </section>
 
           <section className="flex flex-col gap-2">
@@ -115,5 +92,23 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Every shared text or read an agent can be given: a checked one is given to this agent. */
+function Checklist({ items }: { items: Array<{ id: string; title: string; about: string; source: string; on: boolean }> }) {
+  return (
+    <ul className="flex flex-col gap-3">
+      {items.map((b) => (
+        <li key={b.id} className="flex items-start gap-3">
+          <Checkbox checked={b.on} disabled aria-label={`${b.title}${b.on ? " is given" : " is not given"}`} />
+          <div className="flex min-w-0 flex-col">
+            <span className="text-sm font-medium">{b.title}</span>
+            <span className="text-sm text-muted-foreground">{b.about}</span>
+            <span className="text-xs text-muted-foreground">{b.source}</span>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

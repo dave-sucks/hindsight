@@ -115,7 +115,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
-    expect(prompt).toContain(`## The trigger that fired (id: ${fx.docu.fire.triggerId})`);
+    expect(prompt).toContain(`(trigger ${fx.docu.fire.triggerId}; declared action: `);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "DOCU");
   });
@@ -135,7 +135,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);
-    expect(prompt).toContain(`## The trigger that fired (id: ${fx.nvda.fire.triggerId})`);
+    expect(prompt).toContain(`(trigger ${fx.nvda.fire.triggerId}; declared action: `);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "NVDA");
   });

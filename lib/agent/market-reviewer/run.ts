@@ -13,10 +13,8 @@
  */
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
-import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
-import { snapshotText } from "@/lib/portfolio/snapshot";
-import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
-import { marketNumbersText } from "@/lib/market-data/market-numbers";
+import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
+import { loadBook } from "@/lib/agent/book";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import type { OneCall } from "@/lib/runs/account-run";
 import { buildAgentRequest } from "@/lib/agent/engine/engine";
@@ -87,30 +85,22 @@ const firstSentence = (text: string | null) => {
 /** How far back its own notes are shown to it, so it doesn't file the same story again. */
 const NOTES_SHOWN_MS = 5 * 86_400_000;
 
-/** The blocks of its first message, each without its heading (its record gives the headings), and the book's tickers. */
+/** What its context reads beyond the Market and portfolio reads: the book, and its own last output. And the book's tickers, which its notes may name. */
 export interface ReviewBookParts {
   tickers: string[];
-  marketNumbers: string;
-  portfolio: string;
-  held: string;
-  watched: string;
-  notes: string;
-  lastDigest: string;
+  book: string;
+  lastOutput: string;
 }
 
-/** What its first message is made of: the market numbers, the portfolio snapshot, each stock held or watched with its belief in a line, its own notes of the last 5 days, and its own last digest. */
+/** The book (every stock held or watched, with its belief), and its own notes of the last 5 days and its last digest. */
 export async function loadReviewBook(book: ReviewBook, now: Date): Promise<ReviewBookParts> {
   const today = etDateOf(now);
-  const [numbers, theses, snapshot, last, notes] = await Promise.all([
-    // The same numbers every agent's Market and portfolio block prints, from the same function.
-    loadMarketNumbers({ now, book }).catch(() => null),
+  const [theses, text, last, notes] = await Promise.all([
     prisma.thesis.findMany({
-      where: { userId: book.userId, status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
-      select: { ticker: true, status: true, coreBelief: true },
-      orderBy: [{ researchUpdatedAt: "desc" }, { id: "asc" }],
+      where: { status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
+      select: { ticker: true },
     }),
-    // The account's numbers come from the one snapshot, never worked out here.
-    loadPortfolioSnapshot({ accountId: book.accountId, environment: book.environment, now }).catch(() => null),
+    loadBook(book),
     // A last digest that can't be read is no reason to skip the morning: it reads as none.
     prisma.marketDigest
       .findFirst({ where: { accountId: book.accountId, environment: book.environment, date: { lt: new Date(`${today}T00:00:00.000Z`) } }, orderBy: { date: "desc" }, select: { date: true, digest: true } })
@@ -125,30 +115,18 @@ export async function loadReviewBook(book: ReviewBook, now: Date): Promise<Revie
       })
       .catch(() => null),
   ]);
-  const held = new Set((snapshot?.holdings ?? []).map((h) => h.ticker.toUpperCase()));
-  // One line a stock: its holding's thesis when two analysts cover it.
-  const rows = new Map<string, (typeof theses)[number]>();
-  for (const t of theses) {
-    const k = t.ticker.toUpperCase();
-    if (!rows.has(k) || (t.status === "HOLDING" && rows.get(k)!.status !== "HOLDING")) rows.set(k, t);
-  }
-  const line = (t: (typeof theses)[number]) => `- ${t.ticker.toUpperCase()} · ${firstSentence(t.coreBelief)}`;
-  const isHeld = (t: (typeof theses)[number]) => t.status === "HOLDING" || held.has(t.ticker.toUpperCase());
-  const all = [...rows.values()];
-  const list = (rows: typeof all) => (rows.length ? rows.map(line) : ["- none"]);
+  const noteLines = !notes
+    ? ["Your notes couldn't be read this run."]
+    : notes.length
+      ? notes.map((n) => `- ${[day(etDateOf(n.createdAt)), n.tickers.join(", "), n.impact, n.effect, firstSentence(n.body)].filter(Boolean).join(" · ")}`)
+      : ["- none"];
   return {
-    tickers: all.map((t) => t.ticker.toUpperCase()),
-    marketNumbers: numbers ? marketNumbersText(numbers) : "The market numbers couldn't be read this run.",
-    portfolio: snapshot ? snapshotText(snapshot) : "The portfolio couldn't be read this run.",
-    held: list(all.filter(isHeld)).join("\n"),
-    watched: list(all.filter((t) => !isHeld(t))).join("\n"),
-    notes: (!notes
-      ? ["Your notes couldn't be read this run."]
-      : notes.length
-        ? notes.map((n) => `- ${[day(etDateOf(n.createdAt)), n.tickers.join(", "), n.impact, n.effect, firstSentence(n.body)].filter(Boolean).join(" · ")}`)
-        : ["- none"]
-    ).join("\n"),
-    lastDigest: last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first.",
+    tickers: [...new Set(theses.map((t) => t.ticker.toUpperCase()))],
+    book: text ?? "## The book\nThe book couldn't be read this run.",
+    lastOutput: [
+      `## Your notes in the last 5 days\n${noteLines.join("\n")}`,
+      `## Your last digest\n${last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first."}`,
+    ].join("\n\n"),
   };
 }
 
@@ -183,16 +161,9 @@ export async function writeMarketReview(
   const startedAt = new Date().toISOString();
   const now = opts.now ?? new Date();
   const parts = await loadReviewBook(book, now);
-  const block = (text: string) => async () => text;
   const built = await buildAgentRequest(MARKET_REVIEWER, { now, environment: book.environment }, {
-    blocks: {
-      market_numbers: block(parts.marketNumbers),
-      portfolio_snapshot: block(parts.portfolio),
-      held_beliefs: block(parts.held),
-      watched_beliefs: block(parts.watched),
-      reviewer_notes: block(parts.notes),
-      last_digest: block(parts.lastDigest),
-    },
+    portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
+    context: { the_book: async () => parts.book, last_output: async () => parts.lastOutput },
   });
   // The request body, kept as it goes to OpenAI.
   const body = {

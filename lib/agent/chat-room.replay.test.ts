@@ -33,7 +33,7 @@ describe("the chat's prompt carries each analyst's room", () => {
   });
 
   it("unpinned: one line per analyst, the full one named", async () => {
-    const prompt = await withBook(async (scope, modes) => modes.buildPrincipalSystemPrompt({ scopedAnalyst: null, roomLines: await scope.analystRoomLines(REPLAY_ACCOUNT_ID, []) }));
+    const prompt = await withBook(async (scope, modes) => modes.analystsText(await scope.analystRoomLines(REPLAY_ACCOUNT_ID, [])) ?? "");
     expect(prompt).toContain("## Each analyst's room (a buy for a FULL analyst is refused)\n");
     expect(prompt).toContain("  • Secular Compounder: Positions: 8 of 8 — this analyst is FULL. place_trade will refuse any new buy until one closes. Largest trade $10,000; most in one stock $20,000.");
     expect(prompt).toContain("  • PEAD Specialist: Positions: 1 of 6 — 5 free. Largest trade $14,000; most in one stock $28,000.");

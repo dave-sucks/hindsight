@@ -3,7 +3,7 @@ import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical"
 
 export type TriggerRunArgs = Parameters<typeof triggerRunRequest>[0];
 
-export function triggerRunSent(args: TriggerRunArgs, facts?: string): string {
-  const r = triggerRunRequest(args, facts ? { facts } : undefined);
+export function triggerRunSent(args: TriggerRunArgs, more?: string): string {
+  const r = triggerRunRequest(args, more ? { more } : undefined);
   return `${r.instructions}\n\n${r.message}`;
 }

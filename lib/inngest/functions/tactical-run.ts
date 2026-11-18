@@ -176,6 +176,8 @@ export const tacticalRun = inngest.createFunction(
             holdDurations: true,
             setupIds: true,
             sectors: true,
+            marketCapMin: true,
+            marketCapMax: true,
             minPositionSize: true,
             maxPositionSize: true,
             maxOpenPositions: true,
@@ -247,7 +249,8 @@ export const tacticalRun = inngest.createFunction(
         trigger,
         // The resolved list, for the shape each co-fired rule keeps on its own line.
         ladder,
-        agentConfig,
+        // The market-cap band as numbers: a BigInt doesn't cross the step boundary.
+        agentConfig: { ...agentConfig, marketCapMin: agentConfig.marketCapMin == null ? null : Number(agentConfig.marketCapMin), marketCapMax: agentConfig.marketCapMax == null ? null : Number(agentConfig.marketCapMax) },
         capacity,
         position: position
           ? {
@@ -649,13 +652,11 @@ export const tacticalRun = inngest.createFunction(
         }
       })();
 
-      // Build the kickoff message so the chat replay shows WHY this run
-      // fired without the user having to dig. Same English sentence the
-      // audit row stores so the chat reads naturally.
+      // The message from the trigger check, so the run (and its page) starts
+      // with WHY it fired: the trigger's sentence, its price, then these.
       // Casts mirror the existing pattern in this file — ctx is loaded
       // via step.run which Inngest types as unknown.
       const triggerTyped = trigger as Trigger;
-      const fireSentence = sentenceOf(triggerTyped);
       // The numbers behind an earnings fire, when the evaluator sent them.
       const contextSuffix = fired.firedContext ? ` ${fired.firedContext}` : "";
       const coFiredSuffix = fired.coFired?.length
@@ -673,14 +674,11 @@ export const tacticalRun = inngest.createFunction(
         thesis.id,
         (thesis as { ticker: string }).ticker,
       );
-      const ticker = (thesis as { ticker: string }).ticker;
       const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
-      // The Market and portfolio block's parts: the portfolio snapshot, written now, and the latest digest. Never throws.
+      // The Market and portfolio reads: the portfolio snapshot, written now, and the latest digest. Never throws.
       const portfolioPieces = await loadPortfolioPieces({ accountId: agentConfig.accountId, environment: agentConfig.tradingEnvironment ?? "PAPER" });
-      // The fire's facts start the kickoff; the record adds what it asks.
-      const facts = auto
-        ? `Write-up on $${ticker}. ${fireSentence}: set to Auto, so no analyst decided. ${auto.line}${contextSuffix}${coFiredSuffix}`
-        : `Tactical run on $${ticker}. ${fireSentence}.${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}`;
+      // What the check knows beyond the trigger and its price: the message says the trigger once, then these.
+      const more = auto ? `${contextSuffix}${coFiredSuffix}` : `${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}`;
       const request = triggerRunRequest({
         analyst: { ...agentConfig, setupOverrides },
         stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
@@ -697,7 +695,8 @@ export const tacticalRun = inngest.createFunction(
           !auto && trigger.action === "REVIEW" && !position
             ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
             : null,
-      }, { facts });
+        environment: agentConfig.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER",
+      }, { more });
       const systemPrompt = request.instructions;
       const userPrompt = request.message;
 
