@@ -2,18 +2,16 @@
  * /how-it-works/agents — every agent as the engine runs it: its instructions,
  * which context blocks it is given and which tools it may call. Read from the
  * agent records (lib/agent/engine/agents), so it shows what an agent is sent.
- * Read-only.
+ * A grid of cards; each opens a sheet with the agent's configuration
+ * (./agent-grid.tsx). Read-only.
+ *
+ * A record's own text can be a function of the run, which cannot cross to the
+ * browser, so the words are written here, on the server, into plain data.
  */
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
 import { BLOCKS } from "@/lib/agent/engine/blocks";
 import { isOwn, type AgentRecord, type BlockId, type Where } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
-
-const n = (x: number) => x.toLocaleString("en-US");
-const PLACE: Record<Where, string> = { instructions: "In its instructions", message: "In its first message", newest: "On each new message you send" };
+import { AgentGrid, type AgentView } from "./agent-grid";
 
 export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: readonly string[] }) {
   return (
@@ -22,98 +20,41 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Agents</h1>
         <p className="text-sm text-muted-foreground">
-          Every agent is its instructions, the context blocks it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
+          Every agent is its instructions, the context blocks it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. Open an agent to see its configuration. It is read-only for now.
         </p>
       </div>
-      {agents.map((a) => (
-        <AgentCard key={a.id} record={a} tools={tools} />
-      ))}
+      <AgentGrid agents={agents.map((a) => viewOf(a, tools))} />
     </div>
   );
 }
 
-function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
+function viewOf(record: AgentRecord, tools: readonly string[]): AgentView {
   const parts = [
     ...record.instructions.map((p) => ({ p, where: "instructions" as const })),
     ...record.message.map((p) => ({ p, where: "message" as const })),
     ...(record.newest ?? []).map((p) => ({ p, where: "newest" as const })),
   ];
   const given = new Map<BlockId, Where>(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
-  const own = parts.flatMap(({ p }) => (isOwn(p) ? [p] : []));
   const sample = { now: new Date(), environment: "PAPER" as const, extra: record.example?.extra };
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{record.name}</CardTitle>
-        <CardDescription>{record.does}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-6">
-          <p className="text-sm text-muted-foreground">
-            {record.runsWhen} Model {record.model}, {record.maxSteps === 1 ? "one call" : `up to ${record.maxSteps} steps`}
-            {record.timeoutMs ? `, stopped after ${Math.floor(record.timeoutMs / 60_000)} min ${Math.round((record.timeoutMs % 60_000) / 1000)} s` : ""}.
-          </p>
-          <p className="text-sm text-muted-foreground">Hands back: {record.output}</p>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Instructions</h2>
-            <p className="text-sm text-muted-foreground">Its own words, in the order they are sent. The context blocks go between them where the record places them.</p>
-            <div className="flex flex-col gap-1">
-              {record.example && <p className="text-sm text-muted-foreground">{record.example.says}</p>}
-              {own.map((o) => {
-                const text = typeof o.text === "string" ? o.text : o.text(sample);
-                return (
-                  <Collapsible key={o.own}>
-                    <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>
-                      {o.title} · {text == null ? "not in this example" : `${n(text.length)} characters`}
-                      {typeof o.text === "string" ? "" : " (written for each run)"}
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{text ?? "Sent only in some runs."}</p>
-                    </CollapsibleContent>
-                  </Collapsible>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Context</h2>
-            <p className="text-sm text-muted-foreground">The block library. A checked block is given to this agent, every run.</p>
-            <ul className="flex flex-col gap-3">
-              {Object.values(BLOCKS).map((b) => {
-                const where = given.get(b.id);
-                return (
-                  <li key={b.id} className="flex items-start gap-3">
-                    <Checkbox checked={where != null} disabled aria-label={`${b.title}${where ? " is given" : " is not given"}`} />
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-sm font-medium">{b.title}</span>
-                      <span className="text-sm text-muted-foreground">{b.about}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {where ? PLACE[where] : "Not given"} · {b.source}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Tools</h2>
-            <p className="text-sm text-muted-foreground">Every tool an agent can be given. A checked tool is on this agent&rsquo;s menu, every run.</p>
-            {record.providerTools?.length ? <p className="text-sm text-muted-foreground">Also given the model provider&rsquo;s own tool: {record.providerTools.join(", ")}.</p> : null}
-            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {tools.map((t) => (
-                <li key={t} className="flex items-center gap-2">
-                  <Checkbox checked={record.tools.includes(t)} disabled aria-label={`${t}${record.tools.includes(t) ? " is on" : " is off"}`} />
-                  <span className="font-mono text-sm">{t}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  return {
+    id: record.id,
+    name: record.name,
+    does: record.does,
+    runsWhen: record.runsWhen,
+    output: record.output,
+    model: record.model,
+    maxSteps: record.maxSteps,
+    timeoutMs: record.timeoutMs ?? null,
+    says: record.example?.says ?? null,
+    parts: parts.flatMap(({ p, where }) => {
+      if (!isOwn(p)) return [];
+      const text = typeof p.text === "string" ? p.text : p.text(sample);
+      return [{ key: p.own, title: p.title, where, perRun: typeof p.text !== "string", chars: text == null ? null : text.length, text }];
+    }),
+    blocks: Object.values(BLOCKS)
+      .map((b) => ({ id: b.id, title: b.title, about: b.about, where: given.get(b.id) ?? null }))
+      .sort((a, b) => Number(b.where != null) - Number(a.where != null)),
+    tools: tools.map((t) => ({ name: t, on: record.tools.includes(t) })),
+    providerTools: [...(record.providerTools ?? [])],
+  };
 }
