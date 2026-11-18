@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Layers, Workflow, type LucideIcon } from "lucide-react";
+import { Bot, House, Layers, Workflow, type LucideIcon } from "lucide-react";
 import HindsightLogo from "@/components/HindsightLogo";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -33,6 +33,7 @@ const OUT: ReadonlyArray<{ href: string; label: string; icon: LucideIcon }> = [
   { href: "/", label: "Back to app", icon: House },
   { href: "/how-it-works", label: "How it works", icon: Workflow },
   { href: "/how-it-works/framework", label: "The Framework", icon: Layers },
+  { href: "/how-it-works/agents", label: "Agents", icon: Bot },
 ];
 
 export function DocsSidebar() {

@@ -124,6 +124,7 @@ function Sections({ id, category }: { id: string; category: SentCategory }) {
   const jump = (j: number) => document.getElementById(`${id}-${j}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   return (
     <div className="space-y-2 py-2 pl-6 pr-2">
+      {category.source && <p className="text-xs text-muted-foreground">From {category.source}</p>}
       {category.sections.length > 1 && (
         <div className="flex flex-wrap gap-1">
           {category.sections.map((s, j) => (

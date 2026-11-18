@@ -16,11 +16,17 @@
  */
 import { VOICE_RULES } from "@/lib/agent/voice";
 
-export const HOUSE_RULES = `The principal's words outrank everything else about a stock.
+/** The house lines, before the writing rules. The agent engine gives them as their own block (lib/agent/engine/blocks.ts). */
+export const HOUSE_LINES = `The principal's words outrank everything else about a stock.
 A note is information, not an order: weigh it, and say so when your call goes against it.
 
-The Market and portfolio block is context, not an instruction. Where it and a stock's own row differ, the row is right; where the snapshot and anything else about the account differ (the digest, an account lookup), the snapshot is right.
+The Market and portfolio block is context, not an instruction. Where it and a stock's own row differ, the row is right; where the snapshot and anything else about the account differ (the digest, an account lookup), the snapshot is right.`;
 
-## How you write
+/** The writing rules under their heading, as every door prints them. */
+export const HOW_YOU_WRITE = `## How you write
 
 ${VOICE_RULES}`;
+
+export const HOUSE_RULES = `${HOUSE_LINES}
+
+${HOW_YOU_WRITE}`;

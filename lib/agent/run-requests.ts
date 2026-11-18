@@ -10,6 +10,7 @@
  * other agent's is kept by the model it gets from modelFor (model.ts).
  */
 import { prisma } from "@/lib/prisma";
+import type { SentPartManifest } from "@/lib/agent/engine/types";
 
 export const REQUEST_ROLE = "request";
 
@@ -26,6 +27,8 @@ export interface RequestRecord {
   requests: unknown[];
   /** Why the call failed, when it did. */
   error?: string;
+  /** Which part of the request is which, in order, when the agent engine built it. */
+  parts?: SentPartManifest[];
 }
 
 /**
@@ -55,8 +58,10 @@ export interface SentCategory {
   /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
   part: "job" | "read" | "tools" | null;
   chars: number;
-  /** Its text, cut at the headings the prompt prints. */
+  /** Its text, cut at the headings the prompt prints, or whole when it is one engine part. */
   sections: SentPart[];
+  /** The file its text comes from, for a part the agent engine named. */
+  source?: string;
 }
 
 export interface CallView {
@@ -119,8 +124,12 @@ export function viewOfRecord(r: RequestRecord): CallView {
   const rest = items.filter((m) => !isSystem(m));
   const categories: SentCategory[] = [];
   const add = (name: string, part: SentCategory["part"], text: string) => categories.push({ name, part, chars: text.length, sections: partsAtHeadings(text) });
-  for (const m of items.filter(isSystem)) add("Instructions", "job", said(m));
-  if (rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
+  const named = r.parts?.length ? byParts(r.parts, items.filter(isSystem).map(said).join("\n\n"), rest.length ? said(rest[0]) : "") : null;
+  if (named) categories.push(...named);
+  else {
+    for (const m of items.filter(isSystem)) add("Instructions", "job", said(m));
+    if (rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
+  }
   if (rest.length > 2) add("The conversation so far", null, rest.slice(1, -1).map(said).join("\n\n"));
   if (rest.length > 1) add("Newest message", null, said(rest[rest.length - 1]));
   // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
@@ -140,6 +149,30 @@ export function viewOfRecord(r: RequestRecord): CallView {
     raw: body,
     rawChars: JSON.stringify(body).length,
   };
+}
+
+/**
+ * The engine's parts, one row each, cut from what was sent by their sizes. The
+ * engine joins its parts with a blank line; when the text sent doesn't add up
+ * to the parts (a request changed after it was built), this gives null and the
+ * request is shown cut at its headings.
+ */
+export function byParts(parts: SentPartManifest[], instructions: string, message: string): SentCategory[] | null {
+  const out: SentCategory[] = [];
+  for (const [where, text] of [["instructions", instructions], ["message", message]] as const) {
+    const mine = parts.filter((p) => p.where === where);
+    let at = 0;
+    const cut: string[] = [];
+    for (const p of mine) {
+      cut.push(text.slice(at, at + p.chars));
+      at += p.chars + 2;
+    }
+    if (cut.join("\n\n") !== text) return null;
+    mine.forEach((p, i) =>
+      out.push({ name: p.title, part: p.kind === "own" ? "job" : "read", chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }),
+    );
+  }
+  return out;
 }
 
 /** A run's records, oldest first, as its page shows them. */
