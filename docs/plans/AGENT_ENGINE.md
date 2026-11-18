@@ -25,10 +25,10 @@ The audit is at https://claude.ai/artifact/LqoCe8qF1uo1Nb7A27hP2U.
 | **Block** | One named piece of context an agent can be given: a title, the file that builds it, one line on what it holds, and a loader | `lib/agent/engine/blocks.ts` |
 | **Agent record** | The agent's own instructions (its job, in sections), the blocks it gets and where (instructions or first message), its tools, its model, its step limit, when it runs | `lib/agent/engine/agents/*.ts` |
 | **Engine** | `buildAgentRequest(record, sources)`: loads each block, puts the record's parts in order, and returns the instructions, the first message, the tools and a manifest of every part (id, title, source, where, size) | `lib/agent/engine/engine.ts` |
-| **Saved record** | The request as sent, now with the manifest (`parts`) | `run-requests.ts` |
-| **Context panel** | One row per part, named and sized from the manifest. Records saved before the engine keep today's view | `RunContext.tsx` |
+| **Saved record** | The request as sent, now with the manifest (`parts`) and the agent whose record built it (`agent`, saved right after `call`) | `run-requests.ts` |
+| **Context panel** | One row per part, named and sized from the manifest, each in the Framework page's color for its kind (`swatchOf`). Records saved before the engine keep today's view | `RunContext.tsx` |
 | **Agents page** | Every agent as its record shows it: instructions, which blocks are on and which are off, which tools are on and which are off. Read-only | `/how-it-works/agents` |
-| **Framework page** | Every agent a tab: its parts in its record's order, each sized from the manifest of the request the engine built on its sample day (its engine test's case, `lib/docs/agent-samples.ts`), and its tools. The workflow chips and each agent doc's "What it reads" list come from the same build | `/how-it-works/framework`, `lib/docs/framework.ts` |
+| **Framework page** | Every agent a tab: its parts in its record's order, each sized from the manifest of the latest request the account's runs saved for it (`RequestRecord.agent`), the Context panel's numbers; an agent with no such run yet is sized on its sample day (its engine test's case, `lib/docs/agent-samples.ts`), and the tab says which. Its tools. The workflow chips and each agent doc's "What it reads" list come from the same build | `/how-it-works/framework`, `lib/docs/framework.ts` |
 
 A block's options are the record's choice of blocks. For example, the Portfolio Manager lists `watching` and leaves out `portfolio_digest`; it doesn't pass a flag to a loader.
 
