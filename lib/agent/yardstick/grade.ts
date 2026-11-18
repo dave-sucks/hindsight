@@ -98,11 +98,28 @@ export function pricesSet(calls: GradedCall[]): number[] {
   return out;
 }
 
+/**
+ * The stock prices a text names: a bare dollar figure ("$72.40", "below $80").
+ * A business figure is not one: a size ("$200M", "$1.3B", "$11.6 billion") or
+ * a per-share number ("EPS of $1.10", "a $0.25 dividend").
+ */
+export function stockPricesIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/\$\d[\d,]*(?:\.\d+)?/g)) {
+    const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 12);
+    const before = text.slice(Math.max(0, m.index! - 30), m.index!);
+    if (/^\s*(?:[MBKT]\b|mm\b|bn\b|million|billion|thousand|trillion)/i.test(after)) continue;
+    if (/(EPS|per share|earnings per|dividend|a share)\b[^.$]*$/i.test(before) || /^\s*(?:a|per) share/i.test(after)) continue;
+    out.push(m[0]);
+  }
+  return out;
+}
+
 /** The fields of a thesis it wrote that make the belief hard to check. */
 export function beliefProblems(thesis: Record<string, unknown>): string[] {
   const problems: string[] = [];
   const belief = String(thesis.core_belief ?? "");
-  if (/\$\d/.test(belief)) problems.push("the belief names a price");
+  if (stockPricesIn(belief).length) problems.push("the belief names a price");
   if (/price target|within \d+ (days|weeks)/i.test(belief)) problems.push("the belief names a target or a time to a price");
   const assumptions = Array.isArray(thesis.key_assumptions) ? (thesis.key_assumptions as unknown[]).map(String) : [];
   if (assumptions.length < 2 || assumptions.length > 4) problems.push(`${assumptions.length} assumptions (two to four)`);
@@ -111,7 +128,7 @@ export function beliefProblems(thesis: Record<string, unknown>): string[] {
     if (!/(check|report|quarter|Q[1-4]|10-[QK]|earnings|guidance|call|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i.test(a)) problems.push(`an assumption with no point it is checked at: "${a.slice(0, 80)}"`);
   }
   const wrong = Array.isArray(thesis.invalidation_conditions) ? (thesis.invalidation_conditions as unknown[]).map(String) : [];
-  for (const w of wrong) if (/\$\d|\d+-day|moving average|52-week|gap-day|\bgap\b|closes? (below|above)/i.test(w)) problems.push(`proof it's wrong reads a price: "${w.slice(0, 80)}"`);
+  for (const w of wrong) if (stockPricesIn(w).length || /\d+-day|moving average|52-week|gap-day|\bgap\b|clos(?:e|es|ed|ing) (below|above|under|over)|trades? (below|above|under|over)/i.test(w)) problems.push(`proof it's wrong reads a price: "${w.slice(0, 80)}"`);
   return problems;
 }
 
@@ -139,13 +156,17 @@ export function salePricesShown(inputs: string): Map<string, number> {
   return out;
 }
 
-/** What it wrote that the owner or the next agent reads: notes, reasons, the thesis's words, its narration. */
+/**
+ * What it states as fact for the owner or the next agent: notes, reasons, the
+ * belief, its narration. Not its assumptions or what would prove it wrong:
+ * the numbers there are bars it sets ("revenue stays above $230M"), its call
+ * to make, not facts it claims.
+ */
 export function writtenText(calls: GradedCall[], narration: string): string {
   const parts = [narration];
   for (const c of calls) {
     const a = input(c);
     for (const k of ["rationale", "entry_rationale", "sell_reason", "notes", "reason", "core_belief", "conviction_rationale", "company"]) if (typeof a[k] === "string") parts.push(a[k] as string);
-    for (const k of ["key_assumptions", "invalidation_conditions"]) if (Array.isArray(a[k])) parts.push(...(a[k] as unknown[]).map(String));
     for (const t of [...list(a.triggers), ...list(a.add_triggers), ...list(a.edit_triggers), ...list(a.triggers_with_buy)]) if (typeof t.rationale === "string") parts.push(t.rationale);
   }
   return parts.join("\n");

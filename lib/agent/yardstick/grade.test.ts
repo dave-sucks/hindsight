@@ -54,6 +54,29 @@ describe("the yardstick's grades", () => {
     ]);
   });
 
+  it("a business figure is not a price: CORT's revenue and guidance bars pass; a share price fails (2026-11-18)", () => {
+    const thesis = (belief: string, wrong: string[]) => ({
+      core_belief: belief,
+      key_assumptions: ["Korlym revenue stays above $200M a quarter, checked at the Q4 report in February 2027.", "EPS above $1.10, checked at the Q4 report."],
+      invalidation_conditions: wrong,
+    });
+    expect(beliefProblems(thesis("Corcept sells Korlym ($91M a quarter) and is worth more once relacorilant is approved.", [
+      "Korlym revenue falls below $200M in a quarter.",
+      "Full-year guidance cut below $1.0B at the Q4 report.",
+      "EPS below $1.10 at the next report.",
+    ]))).toEqual([]);
+    expect(beliefProblems(thesis("Worth more at $72.40 than the market thinks.", ["A dilutive raise at a price below $80.", "The stock closes below its 200-day average."]))).toEqual([
+      "the belief names a price",
+      'proof it\'s wrong reads a price: "A dilutive raise at a price below $80."',
+      'proof it\'s wrong reads a price: "The stock closes below its 200-day average."',
+    ]);
+  });
+
+  it("the bars it sets in its assumptions are not facts it claims", () => {
+    const calls = [{ toolName: "submit_thesis", input: { rationale: "Sales grew 84%.", key_assumptions: ["Revenue stays above $230M, checked at the Q4 report."], invalidation_conditions: ["Guidance below $1.3B."] } }];
+    expect(grade({ calls, narration: "" }, INPUTS, {}).invented).toEqual([]);
+  });
+
   it("reads the sale prices it was shown, on a row's lines and a thesis's triggers", () => {
     expect([...salePricesShown(INPUTS)]).toEqual([["sale_1", 280], ["sale_2", 236]]);
   });
