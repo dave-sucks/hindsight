@@ -118,6 +118,13 @@ describe("the yardstick's rules", () => {
       expect(ids("market_reviewer", r).sort()).toEqual(["reviewer.book_only", "reviewer.length", "reviewer.market_numbers", "reviewer.note_linked", "reviewer.only_sections", "reviewer.upcoming_links", "reviewer.waiting"].sort());
       expect(reviewerInvented(r)).toEqual(["31%"]);
     });
+
+    it("news on a stock whose sale is waiting is fair, and a link after a sentence's full stop is that sentence's", () => {
+      const reply = pad(DIGEST).replace("CNTS fell with its group.", `Its supplier raised prices. ${link(8)} For CNTS, nothing new beyond its earnings timing and its 10-Q. ${link(9)} Revenue there grew 31%. ${link(10)}`);
+      const r = run({ reply, marketNumbers: NUMBERS, book, shown: `${PORTFOLIO}\n${NUMBERS}` });
+      expect(brokenRules("market_reviewer", r)).toEqual([]);
+      expect(reviewerInvented(r)).toEqual([]);
+    });
   });
 
   describe("the portfolio digest", () => {

@@ -69,7 +69,8 @@ import { PORTFOLIO_DIGEST } from "@/lib/agent/engine/agents/portfolio-digest";
 import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
 import type { AgentRecord } from "@/lib/agent/engine/types";
 import { loadedFrom, type StoredContext } from "@/lib/agent/yardstick/context";
-import { brokenRules, holdingsOf, reviewerInvented, type RuleRun } from "@/lib/agent/yardstick/rules";
+import type { RuleRun } from "@/lib/agent/yardstick/rules";
+import { caseRules } from "@/lib/agent/yardstick/case-rules";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
 
 interface HeroCase {
@@ -134,9 +135,6 @@ function fromContext(c: HeroCase): { system: string; first: string; record: Agen
   const built = composeAgentRequest(record, { now: new Date(p.now ?? Date.now()), environment: p.environment ?? "PAPER" }, loaded);
   return { system: built.instructions, first: built.message, record };
 }
-
-/** A stored block's text, by today's block id. */
-const contextText = (c: HeroCase, block: string) => c.context?.find((x) => x.block === block)?.text ?? null;
 
 /** The rows a recorded get_theses returned, by ticker. */
 function recordedRows(c: HeroCase): Map<string, Record<string, unknown>> {
@@ -528,25 +526,15 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     });
     // A read the case runs for real is part of what the run was shown.
     const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
-    if (c.mode === "portfolio-manager") {
-      const thesisTickers = new Map([...rows.values()].map((r) => [String(r.id), String(r.ticker).toUpperCase()]));
-      grades.rules = brokenRules("portfolio_manager", { calls, reply: lastText, shown, portfolio: contextText(c, "portfolio_snapshot"), thesisTickers });
-    }
+    const own = RECORDS[c.mode] ? caseRules(RECORDS[c.mode]!.id, c, { calls, reply: lastText, shown }) : null;
+    if (own) grades.rules = own.rules;
     console.log(`GRADES ${JSON.stringify(grades)}`);
     for (const b of grades.rules ?? []) console.log(`RULE ${b.rule}: ${b.problem}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, agent: RECORDS[c.mode]?.id ?? c.mode, hasExpect: c.expect != null, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, agent: RECORDS[c.mode]?.id ?? c.mode, hasExpect: c.expect != null, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })), ...(untilDone ? { reply: lastText } : {}) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };
 }
-
-/** The stocks a reviewer's first message lists, held and watched ("- NVDA · …"). */
-const bookOf = (c: HeroCase) => [
-  ...new Set([
-    ...[contextText(c, "held_beliefs"), contextText(c, "watched_beliefs")].flatMap((t) => (t ?? "").split("\n").flatMap((l) => l.match(/^- ([A-Z][A-Z.\-]*) ·/)?.[1] ?? [])),
-    ...holdingsOf(contextText(c, "portfolio_snapshot")),
-  ]),
-];
 
 /**
  * A one-call agent's case (the Market Reviewer, the portfolio digest): its
@@ -601,11 +589,11 @@ async function runOneCall(name: string, c: HeroCase, runs: number, writtenPath: 
     const written = [reply, ...notes.map((n) => n.text)].join("\n\n");
     const verdict = error ? { pass: false, why: error } : score(c.expect, [], written);
     if (verdict.pass) passes++;
-    const run: RuleRun = { calls: [], reply, notes, shown, portfolio: contextText(c, "portfolio_snapshot"), marketNumbers: contextText(c, "market_numbers"), book: bookOf(c) };
     const grades = grade({ calls: [], narration: written }, shown, {});
     // A number in a sentence with its link is from a page it found; the replay can't read the page.
-    if (reviewer) grades.invented = reviewerInvented(run);
-    grades.rules = error ? [] : brokenRules(record.id, run);
+    const own = caseRules(record.id, c, { calls: [], reply, notes, shown });
+    if (own?.invented) grades.invented = own.invented;
+    grades.rules = error ? [] : own?.rules ?? [];
     console.log(`## run ${i} — ${error ? `failed: ${error}` : c.expect ? (verdict.pass ? "pass" : `fail: ${verdict.why}`) : "written"}${reviewer ? ` (${searches} searches, ${notes.length} notes: ${notes.map((n) => `${n.tickers.join("/")} ${n.impact}`).join(", ") || "none"})` : ""}`);
     console.log(reply.length > 900 ? reply.slice(0, 900) + "…" : reply);
     for (const b of grades.rules) console.log(`RULE ${b.rule}: ${b.problem}`);

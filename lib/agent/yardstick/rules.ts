@@ -289,7 +289,7 @@ export const RULES: Rule[] = [
       const names = [...new Set([...(block.match(/\b(?:SPY|QQQ|VIXY|XL[A-Z]{1,2})\b/g) ?? []), ...(/S&P 500/.test(block) ? ["S&P 500"] : []), ...(/Nasdaq 100/.test(block) ? ["Nasdaq 100"] : [])])];
       // An index's percent is the first one within 40 characters after its name ("the S&P 500 fell 1.01%").
       const out: string[] = [];
-      for (const s of sentences(withoutLinks(r.reply))) {
+      for (const s of sentences(r.reply).map(withoutLinks)) {
         for (const n of names) {
           for (let at = s.indexOf(n); at >= 0; at = s.indexOf(n, at + n.length)) {
             const p = s.slice(at + n.length, at + n.length + 40).match(/\d+(?:\.\d+)?%/)?.[0];
@@ -309,9 +309,11 @@ export const RULES: Rule[] = [
       const waiting = waitingOf(r.portfolio).map((w) => w.ticker);
       const texts = [r.reply, ...(r.notes ?? []).map((n) => n.text)];
       const out: string[] = [];
-      for (const s of texts.flatMap((t) => sentences(withoutLinks(t)))) {
+      // Words about the proposal itself: its approval, its being proposed or waiting, its timing or size. A company's own news ("earnings timing") is not one.
+      const onProposal = /\b(approv\w*|declin\w*|proposals?|proposed|pending|awaiting|waiting for (?:you|the owner)|(?:timing|size) of the (?:sale|buy|trim|order)|(?:sale|buy|trim)['’]s (?:timing|size))\b/i;
+      for (const s of texts.flatMap((t) => sentences(t).map(withoutLinks))) {
         const on = waiting.filter((t) => named(s, t));
-        if (on.length && /\b(approv\w*|declin\w*|proposals?|proposed|pending|awaiting|the (?:sale|buy|trim|order)|timing|sizing|size of)\b/i.test(s)) out.push(`on the waiting ${on.join(", ")}: "${s.slice(0, 120)}"`);
+        if (on.length && onProposal.test(s)) out.push(`on the waiting ${on.join(", ")}: "${s.slice(0, 120)}"`);
       }
       return out;
     },
