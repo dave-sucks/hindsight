@@ -265,7 +265,7 @@ describe("the Writer", () => {
     net.restore();
     const records = runMessage.filter((m) => m.role === "request").map((m) => ({ runId: m.runId, record: JSON.parse(m.content) as RequestRecord }));
     expect(records[0].runId).toBe("writer_child_dyn");
-    expect(records[0].record).toMatchObject({ call: "Research", agent: "writer", source: "thesis-writer", model: "claude-sonnet-4-6" });
+    expect(records[0].record).toMatchObject({ call: "Main", agent: "writer", source: "thesis-writer", model: "claude-sonnet-4-6" });
     expect(asSent(records[0].record)).toEqual([net.sent[0]]);
     // The agent engine built it: the record keeps which part is which, and Context shows each by name.
     expect(records[0].record.parts?.length).toBeGreaterThan(0);

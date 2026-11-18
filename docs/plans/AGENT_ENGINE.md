@@ -122,7 +122,7 @@ The model call moves unchanged. The bookkeeping (the thread, the token use, the 
 The order, each its own PR:
 1. The Portfolio Manager: one call, no retries. Then the runner keeps the books: `runAgentAsRun` opens the run, runs the agent and saves its thread (its opening by `openingOf`, as the morning and trigger runs save theirs), its token use, its notes on its proposals, the agent's own save (the PM's write-up) and its status, FAILED when the call failed or ended without its last reply, set only while the run is RUNNING.
 2. The trigger run and the post-trade write-up, once the open trigger-run PRs merge.
-3. The Writer, once the Writer split and the date fix merge.
+3. The Writer, once the Writer split and the date fix merge. Done on top of the Reviewer and the digest: the research call goes through `runAgent` (the body byte for byte the loop's; the kept record names the call "Main"), and the runner learned what it needed: Anthropic's cache marks, its web search with a cap, a save that ends the run (`endsWith`), every step's text, and what a call cut short had done. Its data pull, its repair turns and its save stay its own. Its toolset is every research tool and its save; its record names the ones it gets.
 4. The morning run, once its simple record merges.
 5. The chat, once its simple record merges. It streams, so the runner gains a streaming call.
 6. The Market Reviewer and the digest.

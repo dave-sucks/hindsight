@@ -60,7 +60,7 @@ it("AAON 2026-11-17, 7:10 PM ET: the Writer's date line says the 17th in New Yor
   const sent: string[] = [];
   mockGenerateText.mockImplementation(async (opts: Record<string, unknown>) => {
     sent.push(JSON.stringify([opts.system, opts.prompt, opts.messages]));
-    return { text: "", response: { messages: [] } };
+    return { text: "", steps: [], response: { messages: [] } };
   });
 
   await writerResearchPhase({ childRunId: "writer_child_aaon", analystId: "analyst_pead", ticker: "AAON", mode: "mint", reason: "A PEAD re-scan." }, pullOutput);

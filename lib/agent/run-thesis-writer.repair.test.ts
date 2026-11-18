@@ -100,7 +100,7 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       const r = await opts.tools.submit_thesis.execute(refusedFirst, { toolCallId: "t1", messages: [] });
       expect(r.accepted).toBe(false);
       expect(r.errors?.join(" ")).toMatch(/invalidation_conditions/);
-      return { text: "", response: { messages: [] } };
+      return { text: "", steps: [], response: { messages: [] } };
     }
     if (repair) {
       seen.push("repair");
@@ -109,10 +109,10 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       expect(opts.messages?.[2]?.content).toMatch(/invalidation_conditions/);
       const r = await opts.tools!.submit_thesis!.execute(fx.last.input, { toolCallId: "t2", messages: [] });
       expect(r.accepted).toBe(true);
-      return { text: "", response: { messages: [] } };
+      return { text: "", steps: [], response: { messages: [] } };
     }
     seen.push("other");
-    return { text: "", response: { messages: [] } };
+    return { text: "", steps: [], response: { messages: [] } };
   });
 
   const research = await writerResearchPhase(args, pullOutput);
@@ -132,7 +132,7 @@ it("DYN: a repair that is refused again ends the phase honestly — one repair, 
     if (opts.tools?.submit_thesis) {
       await opts.tools.submit_thesis.execute(refusedFirst, { toolCallId: "t", messages: [] });
     }
-    return { text: "", response: { messages: [] } };
+    return { text: "", steps: [], response: { messages: [] } };
   });
 
   const research = await writerResearchPhase(args, pullOutput);

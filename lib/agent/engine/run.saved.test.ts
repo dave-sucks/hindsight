@@ -10,7 +10,7 @@ const threads: Array<{ runId: string; opening: unknown[]; messages: unknown }> =
 const tokens: Array<{ runId: string; model: string }> = [];
 const noted: Array<{ runId: string; analystId: string | null }> = [];
 const errors: Array<Record<string, unknown>> = [];
-let reply: { text: string; fail?: boolean; finish?: string; output?: unknown } = { text: "Done." };
+let reply: { text: string; fail?: boolean; finish?: string; output?: unknown; stepsFirst?: Array<Record<string, unknown>> } = { text: "Done." };
 const calls: Array<Record<string, unknown>> = [];
 const models: Array<Record<string, unknown>> = [];
 
@@ -39,6 +39,8 @@ jest.mock("ai", () => ({
   ...jest.requireActual("ai"),
   generateText: async (args: Record<string, unknown> & { onStepFinish: (s: unknown) => void }) => {
     calls.push(args);
+    // Steps that finish before the call fails (a time limit mid-run).
+    for (const step of reply.stepsFirst ?? []) args.onStepFinish(step);
     if (reply.fail) throw new Error("the model is down");
     args.onStepFinish({ usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } });
     return { text: reply.text, steps: [], response: { messages: [{ role: "assistant", content: reply.text }] }, finishReason: reply.finish ?? "stop", output: reply.output };
@@ -146,5 +148,31 @@ describe("how the model is called, from the record", () => {
     expect(run.status).toBe("FAILED");
     expect(run.error).toBe("The reply had no digest.");
     expect(errors).toEqual([{ date: "2026-11-18", error: "The reply had no digest." }]);
+  });
+});
+
+describe("on Anthropic, and an agent with a save", () => {
+  const WRITER_LIKE = { ...RECORD, model: "claude-sonnet-4-6", tools: ["save"], providerTools: ["web_search" as const], searchesPerCall: 4, endsWith: "save" };
+  const toolset = { save: { description: "Save.", execute: async () => ({ accepted: true }) } };
+
+  it("marks its instructions and its last tool for the cache, puts the provider's search first with its cap, and stops once its save goes through", async () => {
+    await runAgentAsRun(agent({ record: WRITER_LIKE, args: () => ({ ...args(), toolset: toolset as never }) }), FOR);
+    const call = calls[0] as { system: { role: string; providerOptions: unknown }; tools: Record<string, { providerOptions?: unknown; args?: { maxUses?: number } }>; stopWhen: Array<(o: { steps: unknown[] }) => boolean> };
+    expect(call.system).toEqual(expect.objectContaining({ role: "system", providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } }));
+    expect(Object.keys(call.tools)).toEqual(["web_search", "save"]);
+    expect(call.tools.save.providerOptions).toEqual({ anthropic: { cacheControl: { type: "ephemeral" } } });
+    expect(call.tools.web_search.args).toEqual({ maxUses: 4 });
+    const stop = call.stopWhen[2];
+    expect(stop({ steps: [{ toolResults: [{ toolName: "save", output: { accepted: false } }] }] })).toBe(false);
+    expect(stop({ steps: [{ toolResults: [{ toolName: "save", output: { accepted: true } }] }] })).toBe(true);
+  });
+
+  it("a call cut short hands back what it wrote and called, so its thread is kept", async () => {
+    reply = { text: "", fail: true, stepsFirst: [{ text: "## Company\nIt makes chips.", toolCalls: [{ toolName: "web_search", input: {} }], response: { messages: [{ role: "assistant", content: "## Company\nIt makes chips." }] }, usage: { inputTokens: 5, outputTokens: 1, totalTokens: 6 } }] };
+    const run = await runAgentAsRun(agent({ record: WRITER_LIKE, args: () => ({ ...args(), toolset: toolset as never }) }), FOR);
+    expect(run.error).toBe("the model is down");
+    expect(run.texts).toEqual(["## Company\nIt makes chips."]);
+    expect(run.toolCalls).toEqual([{ tool: "web_search", input: {} }]);
+    expect(threads[0].messages).toEqual([{ role: "assistant", content: "## Company\nIt makes chips." }]);
   });
 });
