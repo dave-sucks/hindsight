@@ -56,7 +56,7 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 `situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by its action (`fireCodes`); one on a report or a filing is a review too. A sale or trim card waiting for you is read there, as a waiting buy is: `computeNeedsAction` leaves out the sale fires, the sales true now and the declined sale, and nothing else. The close-out owes the stocks the read lists (`listsTheStock`), so it owes these too.
 
 #### The texts
-`SITUATIONS`, the one table of what an agent is told per situation; each text is held under 2,200 characters by test, and the three that end in a paragraph per case (the buy, the review, the note) just above their length. The Auto write-up's text is `AUTO_WRITEUP` in `lib/agent/system-prompts/intraday-tactical.ts`.
+`SITUATIONS`, the one table of what an agent is told per situation; each text is held under 2,200 characters by test, and the three that end in a paragraph per case (the buy, the review, the note) just above their length. An Auto trade's note is written by its own agent, the post-trade write-up (`lib/agent/engine/agents/post-trade-writeup.ts`), which gets no situations.
 
 #### One feed
 `loadWorkInputs` and `loadStockFacts`, shared by the read, the thesis sheet, the quote route and the run close-out.

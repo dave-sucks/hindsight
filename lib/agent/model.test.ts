@@ -142,7 +142,7 @@ describe("a trigger run", () => {
     expect(main.record.parts?.length).toBeGreaterThan(0);
     const categories = view!(main.record).categories;
     const names = categories.map((c) => c.name);
-    expect(names.slice(0, 3)).toEqual(["The analyst", "What happened", "Tool-call discipline"]);
+    expect(names.slice(0, 4)).toEqual(["Its instructions", "House rules", "How you write", "The analyst"]);
     expect(names.slice(-3)).toEqual(["The fire", "The ask", "Tool menu"]);
     expect(categories.find((c) => c.name === "The fire")!.sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
   });

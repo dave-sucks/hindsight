@@ -165,8 +165,9 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     // The trigger reads as the pill says it now; the rest is production's, word for word.
     const said = head.replace("Within 3% of the 50-day — consider entry.", "Buy if within 3% of the 50-day average.");
     // 2026-10-28: the run is told to find out what is going on, not to validate the fire.
+    // 2026-11-18: the fire's facts are the last block of the first message, then the ask after a blank line.
     const tailNow = tail.replace("Validate, decide, act if warranted, then close out via update_thesis.", "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis.");
-    expect(kickoff).toBe(`${said} ${FIRED_CONTEXT} ${LINE} ${tailNow}`);
+    expect(kickoff.endsWith(`\n\n${said} ${FIRED_CONTEXT} ${LINE}\n\n${tailNow}`)).toBe(true);
   });
 
   it("the buy's reply carries the same line, the proposal's reason is the run's words alone, and it is still a proposal", async () => {

@@ -37,7 +37,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
-import { NOT_IN_A_WRITEUP, buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { recordFor, stockFromRead, triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -107,9 +107,8 @@ function describedTools(c: HeroCase): ToolSet {
   const all = createResearchTools({
     runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
-  // A write-up of an Auto trade (promptArgs.autoTrade) gets no trade tools, as the live run does.
-  const writeUp = c.mode === "tactical" && (c.promptArgs as { autoTrade?: unknown }).autoTrade != null;
-  const allowed = (MODES[c.mode].toolAllowlist ?? Object.keys(all)).filter((name) => !writeUp || !NOT_IN_A_WRITEUP.has(name));
+  // A fire's tools are its agent's: the post-trade write-up (promptArgs.autoTrade) has no trade tools, as the live run.
+  const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : (MODES[c.mode].toolAllowlist ?? Object.keys(all));
   const scoped = c.mode !== "principal" || c.toolCtx.analystId != null;
   return Object.fromEntries(
     allowed
@@ -140,30 +139,51 @@ async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string
   return Object.fromEntries(c.execute.map((name) => [name, all[name]]));
 }
 
+/** The words a recorded trigger-run kickoff opens with, before what it asked: the facts of the fire. */
+function factsOf(kickoff: ModelMessage | undefined): string | null {
+  if (!kickoff || kickoff.role !== "user") return null;
+  const text = typeof kickoff.content === "string" ? kickoff.content : kickoff.content.map((p) => ("text" in p ? p.text : "")).join("\n\n");
+  const asks = [" Find out what is going on with the company", " Validate, decide"].map((a) => text.indexOf(a)).filter((i) => i > 0);
+  return asks.length ? text.slice(0, Math.min(...asks)) : text;
+}
+
+/**
+ * The request for a case, built by TODAY'S code: its instructions, and for a
+ * trigger fire its first message too (the stock, the trigger and the fire are
+ * blocks of the first message), from the recorded kickoff's facts.
+ */
+function requestFor(c: HeroCase): { system: string; first?: string } {
+  if (c.mode !== "tactical") return { system: systemFor(c) };
+  const r = triggerRunRequest(tacticalArgs(c), { facts: factsOf(c.messages[0]) ?? "" });
+  return { system: r.instructions, first: r.message };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tacticalArgs(c: HeroCase): any {
+  // Cases saved before step 10 carry the analyst as { name, mandate }.
+  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const a = p.analyst as Record<string, unknown>;
+  // The stock as the trigger run reads it: get_theses's saved row (a case
+  // saved since step 10), or, for an older case, the row rebuilt from the
+  // stock the old prompt was handed.
+  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
+  const stock = stockFromRead({ ok: true, data: { theses: [saved] } }, String(saved.id));
+  return {
+    analyst: { ...a, analystPrompt: (a.analystPrompt ?? a.mandate ?? null) as string | null },
+    stock: { ticker: String(saved.ticker), direction: (saved.direction as string | null) ?? null, row: stock?.row ?? null },
+    trigger: p.trigger,
+    position: p.position ? { peakPrice: p.position.peakPrice ?? null } : null,
+    fired: { price: p.fired?.price ?? null },
+    capacity: p.capacity ?? null,
+    // A case that names its situations takes their text from today's
+    // table, so a recorded case prints the guidance a live run prints.
+    situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
+    autoTrade: p.autoTrade ?? null,
+  };
+}
+
 function systemFor(c: HeroCase): string {
   switch (c.mode) {
-    case "tactical": {
-      // Cases saved before step 10 carry the analyst as { name, mandate }.
-      const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-      const a = p.analyst as Record<string, unknown>;
-      // The stock as the trigger run reads it: get_theses's saved row (a case
-      // saved since step 10), or, for an older case, the row rebuilt from the
-      // stock the old prompt was handed.
-      const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
-      const stock = stockFromRead({ ok: true, data: { theses: [saved] } }, String(saved.id));
-      return buildTacticalSystemPrompt({
-        analyst: { ...a, analystPrompt: (a.analystPrompt ?? a.mandate ?? null) as string | null },
-        stock: { ticker: String(saved.ticker), direction: (saved.direction as string | null) ?? null, row: stock?.row ?? null },
-        trigger: p.trigger,
-        position: p.position ? { peakPrice: p.position.peakPrice ?? null } : null,
-        fired: { price: p.fired?.price ?? null },
-        capacity: p.capacity ?? null,
-        // A case that names its situations takes their text from today's
-        // table, so a recorded case prints the guidance a live run prints.
-        situations: p.situations?.guidance ? p.situations : stock?.situations ?? null,
-        autoTrade: p.autoTrade ?? null,
-      });
-    }
     case "thesis-writer": {
       // Cases saved before step 10 carry the analyst's fields loose on the arguments.
       const p = c.promptArgs;
@@ -317,7 +337,9 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
-  const system = systemFor(c);
+  const { system, first } = requestFor(c);
+  // A trigger fire's first message is today's too; the recorded one is replaced.
+  if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
   const tools = describedTools(c);
   // A recorded tool result is what the model read on the day. Where a tool
   // now hands the model less than the screen (`forModel`), the replay reads

@@ -27,7 +27,7 @@ import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { NOT_IN_A_WRITEUP, triggerRunRequest, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { recordFor, triggerRunRequest, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
@@ -620,8 +620,8 @@ export const tacticalRun = inngest.createFunction(
       const firedTrim = trigger.action === "TRIM" ? { ticker: thesis.ticker, pct: trimPctOf(trigger as Trigger) } : undefined;
       const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel, firedTrim });
 
-      // A write-up has no trade tools: the Auto trade is made.
-      const allowlist = (MODES["tactical"].toolAllowlist ?? []).filter((name) => !auto || !NOT_IN_A_WRITEUP.has(name));
+      // The agent's own tools: the post-trade write-up has no trade tools, the Auto trade is made.
+      const allowlist = recordFor({ autoTrade: auto }).tools;
       const tools = allowlist
         ? Object.fromEntries(
             allowlist
@@ -686,7 +686,7 @@ export const tacticalRun = inngest.createFunction(
         position,
         fired: { price: fired.firedPrice ?? null },
         capacity: ctx.capacity ?? null,
-        // A write-up reads its own text (AUTO_WRITEUP), not a situation's.
+        // The post-trade write-up writes up the trade; a situation asks for a decision it doesn't make.
         situations: auto ? null : read?.situations ?? null,
         autoTrade: auto ? { line: auto.line } : null,
         portfolioPieces,

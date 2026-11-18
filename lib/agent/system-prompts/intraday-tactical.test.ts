@@ -9,7 +9,8 @@
  * protection alarm.
  */
 
-import { buildTacticalSystemPrompt, stockFromRead } from "./intraday-tactical";
+import { stockFromRead, type triggerRunRequest } from "./intraday-tactical";
+import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
@@ -50,9 +51,9 @@ function makeArgs(overrides: Record<string, any> = {}): any {
   };
 }
 
-describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", () => {
+describe("a trigger fire's request — tracked peak on trail fires (DAV-186)", () => {
   it("hands the agent the tracked peak, the exact fire line, and the do-not-re-derive rule", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs());
+    const prompt = triggerRunSent(makeArgs());
     // The HPE numbers: peak 62.70, 12% give-back → fire line 55.176.
     expect(prompt).toContain("$62.70");
     expect(prompt).toContain("$55.18");
@@ -61,7 +62,7 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
   });
 
   it("inverts the fire line for SHORT positions (peak is the low-water mark)", () => {
-    const prompt = buildTacticalSystemPrompt(
+    const prompt = triggerRunSent(
       makeArgs({
         stock: { ticker: "HPE", direction: "SHORT", row: row({ direction: "SHORT" }) },
         position: { peakPrice: 50 },
@@ -73,7 +74,7 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
   });
 
   it("still forbids re-deriving when the peak is missing from context", () => {
-    const prompt = buildTacticalSystemPrompt(
+    const prompt = triggerRunSent(
       makeArgs({
         position: { peakPrice: null },
       }),
@@ -89,7 +90,7 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
       action: "EXIT",
       rationale: "Hard stop.",
     };
-    const prompt = buildTacticalSystemPrompt(
+    const prompt = triggerRunSent(
       makeArgs({ trigger: floorTrigger }),
     );
     expect(prompt).not.toContain("DO NOT RE-DERIVE");
@@ -98,12 +99,12 @@ describe("buildTacticalSystemPrompt — tracked peak on trail fires (DAV-186)", 
   });
 });
 
-describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, the fired price (DAV-254, DAV-265)", () => {
+describe("a trigger fire's request — confirm by the setup, one run per fire, the fired price (DAV-254, DAV-265)", () => {
   const stop: Trigger = { id: "stop-969", predicate: { watch: "price", is: "below", value: 969 }, action: "EXIT", rationale: "Stop." };
   const trail: Trigger = { id: "trail-8", predicate: { watch: "move", is: "below", value: 8, variable: "peak" }, action: "EXIT", rationale: "Trail." };
 
   it("the row carries the lines a fire checks for the plan's setup and horizon; the old block is gone", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", { templates: PLAYBOOK_TEMPLATES.PEAD }) }) } }));
+    const prompt = triggerRunSent(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", { templates: PLAYBOOK_TEMPLATES.PEAD }) }) } }));
     for (const line of playbookChecks(getSetup("PEAD")!, "decision")) expect(prompt).toContain(JSON.stringify(line));
     // A watch's row carries the triggers that come with its buy, as Settings → Playbook says them.
     for (const text of playbookTriggerText(PLAYBOOK_TEMPLATES.PEAD, "PROPOSAL")) expect(prompt).toContain(JSON.stringify(text));
@@ -116,14 +117,14 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   });
 
   it("with no setup recorded, no setup lines and none of the old block's text", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs());
+    const prompt = triggerRunSent(makeArgs());
     expect(prompt).not.toContain('"playbook_checks"');
     expect(prompt).not.toContain("(none recorded — a plan from before setups were named");
   });
 
   it("MU 09-14: a stop and a trail that fired together both read as fired on the row, with their ids", () => {
     const fired = "2026-09-14T15:05:00Z";
-    const prompt = buildTacticalSystemPrompt(
+    const prompt = triggerRunSent(
       makeArgs({
         trigger: stop,
         stock: { ticker: "MU", direction: "LONG", row: row({ ticker: "MU", triggers: [stop, trail].map((t) => ({ id: t.id, says: sentenceOf(t), rationale: t.rationale, lastFiredAt: fired })) }) },
@@ -137,7 +138,7 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
   });
 
   it("the stock's situations print with what each asks, where the per-situation text sat", () => {
-    const prompt = buildTacticalSystemPrompt(
+    const prompt = triggerRunSent(
       makeArgs({
         trigger: stop,
         stock: { ticker: "MU", direction: "LONG", row: row({ ticker: "MU" }) },
@@ -148,36 +149,37 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
     expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
     expect(prompt).toContain("Two sales fired together: one decision covers both");
     expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NOTE_TO_ANSWER — "));
-    expect(prompt.indexOf("YOUR_WORD_UNANSWERED — ")).toBeLessThan(prompt.indexOf("3. If it no longer holds"));
+    // The end of the instructions, before the stock's facts in the first message.
+    expect(prompt.indexOf("## Its situations")).toBeLessThan(prompt.indexOf("its row (get_theses)"));
   });
 
   it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
     const declined = { floorPrice: 1835, declined: 1, lapsed: 0, rejectMessage: null, recentLow: 1785.74 };
-    const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
+    const prompt = triggerRunSent(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
     expect(prompt).toContain(`"heldThroughFloor": ${JSON.stringify(declined, null, 2).replace(/\n/g, "\n  ")}`);
     expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the sale's price, the recent low and their note");
   });
 
   it("no declined sale: nothing prints", () => {
-    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain("heldThroughFloor");
+    expect(triggerRunSent(makeArgs())).not.toContain("heldThroughFloor");
   });
 
   it("no situations: no block, and none of the old per-situation text", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs());
+    const prompt = triggerRunSent(makeArgs());
     expect(prompt).not.toContain("and what each asks:");
     expect(prompt).not.toContain("An EARNINGS trigger.");
     expect(prompt).not.toContain("Confirmation gate before place_trade");
   });
 
   it("CEG 09-14: the fired price is the price to act on when the tool's quote fails", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ fired: { price: 264.91 } }));
-    expect(prompt).toContain("It fired at $264.91.");
-    expect(prompt).toContain("act on the fired price above, never on yesterday's");
+    const prompt = triggerRunSent(makeArgs({ fired: { price: 264.91 } }));
+    expect(prompt).toContain("fired at: $264.91");
+    expect(prompt).toContain("act on the price the trigger fired at, never on yesterday's close");
   });
 
   it("the re-ladder duty re-sets off the chart, not a prose list or a deleted Manage line", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs());
-    expect(prompt).toContain("re-set it off the NEW structure the\n   chart gives (the swing low, the breakout price, the average), not a\n   round number.");
+    const prompt = triggerRunSent(makeArgs());
+    expect(prompt).toContain("re-set it off the NEW structure the chart gives (the swing low, the breakout price, the average), not a round number.");
     expect(prompt).not.toContain("Manage line");
     expect(prompt).not.toContain("Set levels like an analyst");
   });
@@ -188,10 +190,10 @@ describe("buildTacticalSystemPrompt — confirm by the setup, one run per fire, 
 // confirmed the buy by its setup, called place_trade, and only then learned
 // the analyst held 4 of 4. Since step 10 the room is a line of the analyst's
 // brief, and what a buy into a full analyst should do is the buy's paragraph on it.
-describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () => {
+describe("a trigger fire's request — the analyst's room on a buy fire", () => {
   const stock = { ticker: "ETN", direction: "LONG", row: row({ ticker: "ETN", status: "WATCHING", setupId: "COMPOUNDER_ACCUMULATION", position: null }) };
   it("a full analyst: the brief says so before the stock; the answer is the situation's", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({
+    const prompt = triggerRunSent(makeArgs({
       stock,
       capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] },
       situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"]) },
@@ -204,11 +206,11 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
     expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH");
   });
   it("an analyst with room: the line only", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ stock, capacity: { open: 4, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"] } }));
+    const prompt = triggerRunSent(makeArgs({ stock, capacity: { open: 4, max: 6, held: ["FIVE", "IOT", "MU", "NVDA"] } }));
     expect(prompt).toContain("- Positions: 4 of 6 — 2 free.");
   });
   it("not a buy fire: no room line at all", () => {
-    expect(buildTacticalSystemPrompt(makeArgs({ stock }))).not.toContain("Positions:");
+    expect(triggerRunSent(makeArgs({ stock }))).not.toContain("Positions:");
   });
 });
 
@@ -218,20 +220,20 @@ describe("buildTacticalSystemPrompt — the analyst's room on a buy fire", () =>
 // whatever fired. On the NVDA case (scripts/hero-cases/nvda-declined-sale)
 // twelve runs each, same hour: with it 1 of 12 proposed the sale and 8 tried
 // to delete the trailing stop; without it 11 of 12 proposed the sale.
-describe("buildTacticalSystemPrompt — a declined sale is asked again", () => {
+describe("a trigger fire's request — a declined sale is asked again", () => {
   const PASS = "say so and pass";
   it("a protective sale fire carries no pass-after-decline line", () => {
-    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain(PASS);
+    expect(triggerRunSent(makeArgs())).not.toContain(PASS);
   });
-  it("a buy or add fire keeps it: a declined buy is not re-proposed unchanged", () => {
+  it("a buy or add fire reads it in its situation: a declined buy is not re-proposed unchanged", () => {
     const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
-    expect(buildTacticalSystemPrompt(makeArgs({ trigger: enter, position: null }))).toContain(PASS);
-    expect(buildTacticalSystemPrompt(makeArgs({ trigger: add }))).toContain(PASS);
+    expect(triggerRunSent(makeArgs({ trigger: enter, position: null, situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"], "INTRADAY_TACTICAL") } }))).toContain(PASS);
+    expect(triggerRunSent(makeArgs({ trigger: add, situations: { codes: ["ADD_OR_WINNER"], guidance: guidanceFor(["ADD_OR_WINNER"], "INTRADAY_TACTICAL") } }))).toContain(PASS);
   });
 });
 
-describe("buildTacticalSystemPrompt — the stock's own row wins over the digest", () => {
+describe("a trigger fire's request — the stock's own row wins over the digest", () => {
   // ASML's real sale proposal (Order cmux0e18w000m04jhodrm7pn3): a CLOSE of 5 shares, placed 2026-10-06 18:25 UTC, expiring a
   // day later. The 10-07 digest that the trigger run printed said "no pending proposals"; the row said this.
   const asml = () =>
@@ -241,7 +243,7 @@ describe("buildTacticalSystemPrompt — the stock's own row wins over the digest
     });
 
   it("prints the row's waiting sale with its times, and no digest without the block", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
+    const prompt = triggerRunSent(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
     expect(prompt).not.toContain("### Portfolio digest");
     expect(prompt).toContain("Where it and a stock's own row differ, the row is right");
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"');
@@ -252,7 +254,7 @@ describe("buildTacticalSystemPrompt — the stock's own row wins over the digest
       { id: "portfolio_snapshot", text: "### Portfolio snapshot\nYour portfolio, stand-in" },
       { id: "portfolio_digest", text: "### Portfolio digest (written Wed, Nov 11, 8:00 PM ET)\nNo pending proposals." },
     ];
-    const prompt = buildTacticalSystemPrompt({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioPieces });
+    const prompt = triggerRunSent({ ...makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }), portfolioPieces });
     expect(prompt.split("## Market and portfolio")).toHaveLength(2);
     expect(prompt.indexOf("## Market and portfolio")).toBeLessThan(prompt.indexOf("$ASML, its row (get_theses)"));
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh');
@@ -260,9 +262,9 @@ describe("buildTacticalSystemPrompt — the stock's own row wins over the digest
 
   it("takes no digest argument of its own: the digest comes only inside the Market and portfolio block", () => {
     // Compile time: latestDigest is not an argument of the trigger run's prompt.
-    const noDigestArgument: "latestDigest" extends keyof Parameters<typeof buildTacticalSystemPrompt>[0] ? false : true = true;
+    const noDigestArgument: "latestDigest" extends keyof Parameters<typeof triggerRunRequest>[0] ? false : true = true;
     expect(noDigestArgument).toBe(true);
-    const prompt = buildTacticalSystemPrompt({ ...makeArgs(), latestDigest: { narrative: "No pending proposals.", date: "2026-10-07" } });
+    const prompt = triggerRunSent({ ...makeArgs(), latestDigest: { narrative: "No pending proposals.", date: "2026-10-07" } });
     expect(prompt).not.toContain("No pending proposals.");
   });
 });
@@ -283,12 +285,12 @@ describe("the trigger run's situation words (step 12, part 2)", () => {
   });
 });
 
-describe("buildTacticalSystemPrompt — a watch's review gets the Writer's playbooks block (2026-11-17)", () => {
+describe("a trigger fire's request — a watch's review gets the Writer's playbooks block (2026-11-17)", () => {
   const review: Trigger = { id: "ep-gap", action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below." };
   const block = playbooksBlock(setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), (id) => playbookTemplates(null, id));
 
   it("prints the same block the Writer reads; what to do with it is REVIEW_DUE's, the one copy", () => {
-    const prompt = buildTacticalSystemPrompt(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
+    const prompt = triggerRunSent(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
     expect(prompt).toContain(block);
     expect(prompt).not.toContain("a playbook's way in");
     const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
@@ -298,10 +300,10 @@ describe("buildTacticalSystemPrompt — a watch's review gets the Writer's playb
 
   it("a playbook that couldn't be read says so, and the run writes none from it", () => {
     const unread = playbooksBlock(setupsForAnalyst(["EPISODIC_PIVOT"]), null);
-    expect(buildTacticalSystemPrompt(makeArgs({ trigger: review, position: null, playbooks: unread }))).toContain("The playbook couldn't be read: write no trigger from it.");
+    expect(triggerRunSent(makeArgs({ trigger: review, position: null, playbooks: unread }))).toContain("The playbook couldn't be read: write no trigger from it.");
   });
 
   it("any other run gets none", () => {
-    expect(buildTacticalSystemPrompt(makeArgs())).not.toContain("YOUR PLAYBOOKS");
+    expect(triggerRunSent(makeArgs())).not.toContain("YOUR PLAYBOOKS");
   });
 });

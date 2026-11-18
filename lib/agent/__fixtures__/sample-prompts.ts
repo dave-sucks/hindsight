@@ -5,7 +5,7 @@
  */
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
-import { buildTacticalSystemPrompt } from "@/lib/agent/system-prompts/intraday-tactical";
+import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
@@ -25,7 +25,7 @@ const trailTrigger = { id: "trig_trail", predicate: { watch: "move", is: "below"
 export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
   daily: () => buildDailyRunSystemPromptV2({ name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 3000, maxOpenPositions: 6 }, runInput),
   tactical: () =>
-    buildTacticalSystemPrompt({
+    triggerRunSent({
       analyst: { name: "PEAD Specialist", analystPrompt: null },
       // The same stock as before step 10, as the trigger run reads it: get_theses's short row with the setup's lines.
       stock: {

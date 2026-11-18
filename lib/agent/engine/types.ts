@@ -43,7 +43,7 @@ export type BlockId =
   | "book_context"
   | "analyst_rooms";
 
-export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
+export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
 /** Part of the agent's own instructions: its job, in its own words. */
 export interface OwnPart {

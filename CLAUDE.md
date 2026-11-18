@@ -24,8 +24,9 @@ which has no 24 hours: it waits while its trigger holds and the 16:20 ET close
 pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On fire
 is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
-the same trigger run then writes it up with no trade tools, and its note is the
-trade's reason (`lib/proposals/auto-writeup.ts`; its text is `AUTO_WRITEUP`);
+then its own agent, the post-trade write-up, writes it up with no trade tools,
+and its note is the trade's reason (`lib/proposals/auto-writeup.ts`; the agent
+is `lib/agent/engine/agents/post-trade-writeup.ts`);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
 run answers it; never a sell or trim, since a sale can't wait for the morning).

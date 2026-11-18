@@ -16,7 +16,8 @@ import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import raw from "@/lib/agent/__fixtures__/trigger-run-reads-2026-10.json";
 import { replayTool, thesisRow, positionRow, agentConfigRow, REPLAY_ANALYST_ID } from "@/lib/replay";
-import { buildTacticalSystemPrompt, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
 import { SITUATIONS } from "@/lib/agent/situations";
@@ -84,7 +85,7 @@ async function triggerRun(c: Fire) {
     });
     const stock = stockFromRead(result, t.id);
     const trigger = t.triggers.find((x) => x.id === c.fire.triggerId)!;
-    const prompt = buildTacticalSystemPrompt({
+    const prompt = triggerRunSent({
       analyst: fx.analyst,
       stock: { ticker: t.ticker, direction: String(t.direction), row: stock?.row ?? null },
       trigger,
@@ -114,7 +115,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
-    expect(prompt).toContain(`TRIGGER THAT FIRED (id: ${fx.docu.fire.triggerId})`);
+    expect(prompt).toContain(`## The trigger that fired (id: ${fx.docu.fire.triggerId})`);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "DOCU");
   });
@@ -134,7 +135,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);
-    expect(prompt).toContain(`TRIGGER THAT FIRED (id: ${fx.nvda.fire.triggerId})`);
+    expect(prompt).toContain(`## The trigger that fired (id: ${fx.nvda.fire.triggerId})`);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "NVDA");
   });
