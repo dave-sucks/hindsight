@@ -305,7 +305,7 @@ describe("the chat's discovery path, check-only", () => {
     const chatRun = { id: "run_chat", accountId: REPLAY_ACCOUNT_ID, status: "RUNNING", mode: "PRINCIPAL_CHAT", agentConfigId: null, parameters: {}, startedAt: new Date(), completedAt: null };
     const d = await replayTool("dispatch-thesis-research", "dispatchThesisResearch", {
       seed: { agentConfig: [agentConfigRow({ setupIds: ["MA_PULLBACK"] })], account: [accountRow()], researchRun: [chatRun] },
-      args: { ticker: T, mode: "mint", reason: "HTFL beat and raised, then sold off 17%. Write it on the 50-day pullback.", analyst_id: REPLAY_ANALYST_ID },
+      args: { ticker: T, brief: "HTFL beat and raised, then sold off 17%. Write it on the 50-day pullback.", analyst_id: REPLAY_ANALYST_ID },
       ctx: { runId: chatRun.id, runMode: "PRINCIPAL_CHAT", analystId: undefined },
       mocks: {
         "@/lib/market-data/sec-filings": () => ({ ...jest.requireActual("@/lib/market-data/sec-filings"), fetchBookFilings: async () => ({ byTicker: new Map() }) }),

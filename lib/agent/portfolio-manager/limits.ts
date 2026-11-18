@@ -71,13 +71,11 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
     );
   }
   out.dispatch_thesis_research = wrap("dispatch_thesis_research", () => null, (input) => {
-    if (typeof input.existing_thesis_id === "string") researched.add(input.existing_thesis_id);
+    if (typeof input.ticker === "string") researched.add(input.ticker.toUpperCase());
   });
   out.update_thesis = wrap("update_thesis", async (input) => {
-    const id = String(input.thesis_id ?? "");
-    if (researched.has(id)) return null;
-    const ticker = (await tickerOf(id))?.toUpperCase();
-    return ticker && proposed.includes(ticker) ? null : "A note goes with a trade or a research request you made on that stock this run. Put this view in your write-up.";
+    const ticker = (await tickerOf(String(input.thesis_id ?? "")))?.toUpperCase();
+    return ticker && (proposed.includes(ticker) || researched.has(ticker)) ? null : "A note goes with a trade or a research request you made on that stock this run. Put this view in your write-up.";
   });
   return out as ToolSet;
 }

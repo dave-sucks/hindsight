@@ -342,7 +342,7 @@ describe("a seed's claim is the writer's (step 12, part 1)", () => {
 
   it("the review's paragraph on a watch with no view sends the claim through the writer, and never asks a run to write it", () => {
     const text = SITUATIONS.REVIEW_DUE.guidance.slice(SITUATIONS.REVIEW_DUE.guidance.indexOf("If it is a watch with no view yet:"));
-    for (const words of ["dispatch_thesis_research", 'mode "refresh"', "existing_thesis_id", "wait_for_thesis_refresh", "commits the view", "never write the claim yourself"]) expect([words, text.includes(words)]).toEqual([words, true]);
+    for (const words of ["dispatch_thesis_research", "wait_for_thesis_refresh", "commits the view", "never write the claim yourself"]) expect([words, text.includes(words)]).toEqual([words, true]);
     for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([field, SITUATIONS.REVIEW_DUE.guidance.includes(field)]).toEqual([field, false]);
     expect(text).toContain("No write-up yet");
     expect(text).toContain("A failed write-up is dispatched again");

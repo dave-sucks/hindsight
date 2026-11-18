@@ -217,89 +217,28 @@
      {
       "type": "function",
       "name": "dispatch_thesis_research",
-      "description": "Dispatch a thesis-writer sub-agent to write or refresh a deep-research thesis on one ticker. Use this whenever the user (or your orchestration logic) wants a fresh, multi-section equity-research note — it spawns a focused child agent that pulls the structured data, calls the deep-research model, and persists the thesis. Returns immediately with a child run ID; the research itself typically takes ~3-4 minutes and runs asynchronously in an Inngest function. The user can watch the child run stream live at /runs/<childRunId>.",
+      "description": "Send a stock to the Writer, which researches it and writes its thesis, or refreshes the one it has. It returns at once with the Writer's run id; the write-up takes a few minutes, and wait_for_thesis_refresh waits for it.",
       "parameters": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "type": "object",
        "properties": {
         "ticker": {
          "type": "string",
-         "description": "Stock ticker symbol, e.g. NVDA"
+         "description": "The stock, e.g. NVDA."
         },
-        "mode": {
+        "brief": {
+         "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",
          "type": "string",
-         "enum": [
-          "mint",
-          "refresh"
-         ],
-         "description": "mint = net-new coverage; refresh = update an existing thesis with new evidence."
+         "minLength": 20
         },
-        "existing_thesis_id": {
-         "description": "Required when mode='refresh' — the Thesis.id whose research should be updated.",
+        "source_link": {
+         "description": "The link to the post or article the idea came from, when there is one.",
          "type": "string"
-        },
-        "reason": {
-         "type": "string",
-         "minLength": 20,
-         "description": "Why this dispatch is happening (e.g. 'User asked for a fresh thesis on $F via Principal Chat'). Persisted on the child run's parameters for traceability."
-        },
-        "setup_id": {
-         "description": "The setup you think this is. The writer checks it against the chart; omit to let it choose.",
-         "type": "string",
-         "enum": [
-          "BASE_BREAKOUT",
-          "MOMENTUM_FLAG",
-          "EPISODIC_PIVOT",
-          "PEAD",
-          "MA_PULLBACK",
-          "RSI2_BOUNCE",
-          "RS_52W_HIGH",
-          "PRE_CATALYST",
-          "INSIDER_CLUSTER",
-          "ESTIMATE_REVISION",
-          "COMPOUNDER_ACCUMULATION",
-          "SECTOR_ROTATION"
-         ]
-        },
-        "screen_row": {
-         "description": "The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\").",
-         "type": "string"
-        },
-        "research_notes": {
-         "description": "What you found on this stock before sending it, in your own words: the numbers you pulled, what you read, why it made the cut. The writer reads it before its own research, so it doesn't start from scratch. Up to 2,000 characters; longer is trimmed.",
-         "type": "string"
-        },
-        "idea_source": {
-         "description": "When the stock came from someone's thesis (a post, an article, a write-up), who wrote it and what they said. The writer checks their claims against the data, and the thesis records them as where it came from.",
-         "type": "object",
-         "properties": {
-          "author": {
-           "type": "string",
-           "description": "Who wrote it: an X handle, a site or newsletter, or \"the owner\" for the owner's own research."
-          },
-          "url": {
-           "description": "The link to the post or article, when there is one.",
-           "type": "string"
-          },
-          "posted_on": {
-           "description": "The day it was posted, YYYY-MM-DD, when known.",
-           "type": "string"
-          },
-          "text": {
-           "description": "The idea in the author's own words, as pasted. Up to 3,000 characters; longer is trimmed.",
-           "type": "string"
-          }
-         },
-         "required": [
-          "author"
-         ],
-         "additionalProperties": false
         }
        },
        "required": [
         "ticker",
-        "mode",
-        "reason"
+        "brief"
        ],
        "additionalProperties": false
       }
@@ -532,89 +471,28 @@
       {
        "type": "function",
        "name": "dispatch_thesis_research",
-       "description": "Dispatch a thesis-writer sub-agent to write or refresh a deep-research thesis on one ticker. Use this whenever the user (or your orchestration logic) wants a fresh, multi-section equity-research note — it spawns a focused child agent that pulls the structured data, calls the deep-research model, and persists the thesis. Returns immediately with a child run ID; the research itself typically takes ~3-4 minutes and runs asynchronously in an Inngest function. The user can watch the child run stream live at /runs/<childRunId>.",
+       "description": "Send a stock to the Writer, which researches it and writes its thesis, or refreshes the one it has. It returns at once with the Writer's run id; the write-up takes a few minutes, and wait_for_thesis_refresh waits for it.",
        "parameters": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
          "ticker": {
           "type": "string",
-          "description": "Stock ticker symbol, e.g. NVDA"
+          "description": "The stock, e.g. NVDA."
          },
-         "mode": {
+         "brief": {
+          "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",
           "type": "string",
-          "enum": [
-           "mint",
-           "refresh"
-          ],
-          "description": "mint = net-new coverage; refresh = update an existing thesis with new evidence."
+          "minLength": 20
          },
-         "existing_thesis_id": {
-          "description": "Required when mode='refresh' — the Thesis.id whose research should be updated.",
+         "source_link": {
+          "description": "The link to the post or article the idea came from, when there is one.",
           "type": "string"
-         },
-         "reason": {
-          "type": "string",
-          "minLength": 20,
-          "description": "Why this dispatch is happening (e.g. 'User asked for a fresh thesis on $F via Principal Chat'). Persisted on the child run's parameters for traceability."
-         },
-         "setup_id": {
-          "description": "The setup you think this is. The writer checks it against the chart; omit to let it choose.",
-          "type": "string",
-          "enum": [
-           "BASE_BREAKOUT",
-           "MOMENTUM_FLAG",
-           "EPISODIC_PIVOT",
-           "PEAD",
-           "MA_PULLBACK",
-           "RSI2_BOUNCE",
-           "RS_52W_HIGH",
-           "PRE_CATALYST",
-           "INSIDER_CLUSTER",
-           "ESTIMATE_REVISION",
-           "COMPOUNDER_ACCUMULATION",
-           "SECTOR_ROTATION"
-          ]
-         },
-         "screen_row": {
-          "description": "The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\").",
-          "type": "string"
-         },
-         "research_notes": {
-          "description": "What you found on this stock before sending it, in your own words: the numbers you pulled, what you read, why it made the cut. The writer reads it before its own research, so it doesn't start from scratch. Up to 2,000 characters; longer is trimmed.",
-          "type": "string"
-         },
-         "idea_source": {
-          "description": "When the stock came from someone's thesis (a post, an article, a write-up), who wrote it and what they said. The writer checks their claims against the data, and the thesis records them as where it came from.",
-          "type": "object",
-          "properties": {
-           "author": {
-            "type": "string",
-            "description": "Who wrote it: an X handle, a site or newsletter, or \"the owner\" for the owner's own research."
-           },
-           "url": {
-            "description": "The link to the post or article, when there is one.",
-            "type": "string"
-           },
-           "posted_on": {
-            "description": "The day it was posted, YYYY-MM-DD, when known.",
-            "type": "string"
-           },
-           "text": {
-            "description": "The idea in the author's own words, as pasted. Up to 3,000 characters; longer is trimmed.",
-            "type": "string"
-           }
-          },
-          "required": [
-           "author"
-          ],
-          "additionalProperties": false
          }
         },
         "required": [
          "ticker",
-         "mode",
-         "reason"
+         "brief"
         ],
         "additionalProperties": false
        }

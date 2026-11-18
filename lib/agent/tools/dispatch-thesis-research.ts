@@ -22,23 +22,10 @@ import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
 import { findInFlightWriter } from "@/lib/agent/thesis-writer-dispatch";
 
-import { SETUP_IDS } from "@/lib/agent/knowledge/setups";
 
 /** The longest screen row the writer's prompt carries. */
-export const SCREEN_ROW_MAX = 400;
-
-/** A long screen row is cut at the last whole word that fits, with "…". */
-export function trimScreenRow(row: string): string {
-  const s = row.trim();
-  if (s.length <= SCREEN_ROW_MAX) return s;
-  const cut = s.slice(0, SCREEN_ROW_MAX - 1);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > SCREEN_ROW_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
-}
-
-/** The longest notes and pasted idea the writer's prompt carries. */
-export const RESEARCH_NOTES_MAX = 2_000;
-export const IDEA_TEXT_MAX = 3_000;
+/** The brief: what the old reason, research notes (2,000) and pasted idea (3,000) carried, together. */
+export const BRIEF_MAX = 5_000;
 
 /** A long text is cut at the last whole word that fits, with "…". */
 export function trimTo(text: string, max: number): string {
@@ -53,84 +40,29 @@ const namesAnalyst = (ctx: ToolContext) => ctx.runMode === "PRINCIPAL_CHAT" && !
 
 export const dispatchThesisResearch = defineTool({
   description:
-    "Dispatch a thesis-writer sub-agent to write or refresh a deep-research thesis on one " +
-    "ticker. Use this whenever the user (or your orchestration logic) wants a fresh, " +
-    "multi-section equity-research note — it spawns a focused child agent that pulls the " +
-    "structured data, calls the deep-research model, and persists the thesis. Returns " +
-    "immediately with a child run ID; the research itself typically takes ~3-4 minutes and " +
-    "runs asynchronously in an Inngest function. The user can watch the child run stream " +
-    "live at /runs/<childRunId>.",
+    "Send a stock to the Writer, which researches it and writes its thesis, or refreshes the one it has. " +
+    "It returns at once with the Writer's run id; the write-up takes a few minutes, and wait_for_thesis_refresh waits for it.",
   schema: z.object({
-    ticker: z.string().describe("Stock ticker symbol, e.g. NVDA"),
-    analyst_id: z
-      .string()
-      .describe(
-        "AgentConfig.id — whose voice to write in. The thesis row is FK'd to this analyst.",
-      ),
-    mode: z
-      .enum(["mint", "refresh"])
-      .describe(
-        "mint = net-new coverage; refresh = update an existing thesis with new evidence.",
-      ),
-    existing_thesis_id: z
-      .string()
-      .optional()
-      .describe(
-        "Required when mode='refresh' — the Thesis.id whose research should be updated.",
-      ),
-    reason: z
+    ticker: z.string().describe("The stock, e.g. NVDA."),
+    analyst_id: z.string().describe("The analyst the stock is for, by its id (list_analysts)."),
+    brief: z
       .string()
       .min(20)
-      .describe(
-        "Why this dispatch is happening (e.g. 'User asked for a fresh thesis on $F via " +
-          "Principal Chat'). Persisted on the child run's parameters for traceability.",
-      ),
-    setup_id: z
-      .enum(SETUP_IDS)
-      .optional()
-      .describe("The setup you think this is. The writer checks it against the chart; omit to let it choose."),
-    // Seed context for the writer's prompt — nothing downstream depends on
-    // its length, so a long one is trimmed, never a reason to refuse the
-    // whole dispatch (LUXE 2026-09-17: a 400+ character row killed the call).
-    screen_row: z
-      .string()
-      .transform(trimScreenRow)
-      .optional()
-      .describe("The numbers that put this name in front of you, one line (\"reported 09-10, EPS +22% vs est, revenue +6%, gapped 9% on 3.1× volume, holding above the gap-day low $41.20\")."),
-    research_notes: z
-      .string()
-      .transform((s) => trimTo(s, RESEARCH_NOTES_MAX))
-      .optional()
-      .describe(
-        "What you found on this stock before sending it, in your own words: the numbers you pulled, what you read, why it made the cut. " +
-          "The writer reads it before its own research, so it doesn't start from scratch. Up to 2,000 characters; longer is trimmed.",
-      ),
-    idea_source: z
-      .object({
-        author: z.string().describe("Who wrote it: an X handle, a site or newsletter, or \"the owner\" for the owner's own research."),
-        url: z.string().optional().describe("The link to the post or article, when there is one."),
-        posted_on: z.string().optional().describe("The day it was posted, YYYY-MM-DD, when known."),
-        text: z
-          .string()
-          .transform((s) => trimTo(s, IDEA_TEXT_MAX))
-          .optional()
-          .describe("The idea in the author's own words, as pasted. Up to 3,000 characters; longer is trimmed."),
-      })
-      .optional()
-      .describe(
-        "When the stock came from someone's thesis (a post, an article, a write-up), who wrote it and what they said. " +
-          "The writer checks their claims against the data, and the thesis records them as where it came from.",
-      ),
+      .transform((s) => trimTo(s, BRIEF_MAX))
+      .describe("What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view."),
+    source_link: z.string().optional().describe("The link to the post or article the idea came from, when there is one."),
   }),
   // Only the chat with no analyst pinned names one; any other run writes for its own (ETN 10-15: a made-up slug).
-  schemaFor: (ctx, schema) => (namesAnalyst(ctx) ? schema : schema.omit({ analyst_id: true })),
+  // A trigger run sends its own stock (fromRun).
+  schemaFor: (ctx, schema) => {
+    const mine = namesAnalyst(ctx) ? schema : schema.omit({ analyst_id: true });
+    return ctx.runMode === "INTRADAY_TACTICAL" ? mine.omit({ ticker: true }) : mine;
+  },
+  fromRun: (ctx) => (ctx.runStock ? { ticker: ctx.runStock.ticker } : null),
   ui: "thesis-card" as const,
   groupId: "thesis-dispatch",
 
-  progressLabel: ({ ticker, mode }) =>
-    mode === "refresh"
-      ? `Refreshing $${ticker.toUpperCase()} thesis`
-      : `Dispatching $${ticker.toUpperCase()} thesis-writer`,
+  progressLabel: ({ ticker }) => `Sending $${ticker.toUpperCase()} to the Writer`,
 
   execute: async (args, ctx, call) => {
     const T = args.ticker.toUpperCase();
@@ -140,9 +72,9 @@ export const dispatchThesisResearch = defineTool({
     // Verify the analyst exists + belongs to this account before inserting
     // the child run row. The FK on ResearchRun.agentConfigId is SetNull, so
     // a bogus id wouldn't fail at insert — it'd just orphan the run.
-    // The Portfolio Manager has no analyst: a refresh goes to the analyst whose thesis it is.
+    // The Portfolio Manager has no analyst: the stock goes to the analyst whose live thesis it is.
     const thesisAnalyst = async () =>
-      (await prisma.thesis.findFirst({ where: { id: args.existing_thesis_id ?? "", userId: ctx.userId }, select: { researchRun: { select: { agentConfigId: true } } } }))?.researchRun?.agentConfigId;
+      (await prisma.thesis.findFirst({ where: { ticker: T, userId: ctx.userId, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] } }, orderBy: { createdAt: "desc" }, select: { researchRun: { select: { agentConfigId: true } } } }))?.researchRun?.agentConfigId;
     const analystId = namesAnalyst(ctx) ? args.analyst_id : (ctx.analystId ?? (ctx.runMode === "PORTFOLIO_MANAGER" ? await thesisAnalyst() : undefined));
     const analyst = await prisma.agentConfig.findFirst({
       where: { id: analystId ?? "", accountId: ctx.accountId },
@@ -168,20 +100,6 @@ export const dispatchThesisResearch = defineTool({
       };
     }
 
-    if (args.mode === "refresh" && !args.existing_thesis_id) {
-      return {
-        summary: `Dispatch failed for $${T}: refresh mode requires existing_thesis_id.`,
-        data: {
-          childRunId: null,
-          status: "FAILED" as const,
-          note:
-            "When mode='refresh', pass existing_thesis_id — the Thesis.id whose research " +
-            "should be updated. For net-new coverage, use mode='mint' instead.",
-        },
-        sources: [],
-      };
-    }
-
     // Promotion context for refreshes on PROMOTED theses, read off the row.
     // The model is never shown a field for it: no stock has ever been
     // promoted, and the row is the only source of these numbers. We read the
@@ -190,34 +108,29 @@ export const dispatchThesisResearch = defineTool({
     let effectivePromotionContext:
       | { paperTenureDays: number | null; paperRealizedPnl: number | null; paperReviewCount: number | null; promotedAt: string | null }
       | undefined;
-    // A passed or retired thesis takes no refresh (update_thesis refuses a
-    // terminal row): HTFL 11-13 spent 248K tokens on one passed in August.
-    // The analyst's live thesis on the stock is refreshed instead; with none,
-    // it is new research linked to the old one (code decides, not the chat).
-    let mode = args.mode;
-    let existingThesisId = args.existing_thesis_id;
-    let parentThesisId: string | null = null;
-    let sentAs: string | null = null;
-    if (mode === "refresh" && existingThesisId) {
-      const last = await prisma.thesis.findUnique({ where: { id: existingThesisId }, select: { status: true, createdAt: true } });
-      if (last && (last.status === "PASSED" || last.status === "RETIRED")) {
-        const live = await prisma.thesis.findFirst({
-          where: { ticker: T, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] }, researchRun: { agentConfigId: analyst.id } },
+    // Code finds the thesis by the stock: the analyst's live thesis is
+    // refreshed. With none, it is new research, linked to its last passed or
+    // retired thesis on the stock (a terminal thesis takes no refresh:
+    // update_thesis refuses it, and HTFL 11-13 spent 248K tokens on one
+    // passed in August).
+    const live = await prisma.thesis.findFirst({
+      where: { ticker: T, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] }, researchRun: { agentConfigId: analyst.id } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    const last = live
+      ? null
+      : await prisma.thesis.findFirst({
+          where: { ticker: T, status: { in: ["PASSED", "RETIRED"] }, researchRun: { agentConfigId: analyst.id } },
           orderBy: { createdAt: "desc" },
-          select: { id: true },
+          select: { id: true, status: true, createdAt: true },
         });
-        const was = `Its thesis from ${last.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })} is ${last.status === "PASSED" ? "passed" : "retired"}`;
-        if (live) {
-          sentAs = `${was}, so its live thesis is refreshed instead.`;
-          existingThesisId = live.id;
-        } else {
-          sentAs = `${was}, so this is new research on the stock, linked to it.`;
-          mode = "mint";
-          parentThesisId = existingThesisId;
-          existingThesisId = undefined;
-        }
-      }
-    }
+    const mode: "mint" | "refresh" = live ? "refresh" : "mint";
+    const existingThesisId = live?.id;
+    const parentThesisId = last?.id ?? null;
+    const sentAs = last
+      ? `Its thesis from ${last.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })} is ${last.status === "PASSED" ? "passed" : "retired"}, so this is new research on the stock, linked to it.`
+      : null;
     if (mode === "refresh" && existingThesisId) {
       const existing = await prisma.thesis.findUnique({
         where: { id: existingThesisId },
@@ -329,8 +242,7 @@ export const dispatchThesisResearch = defineTool({
     // mode is intentionally a String column on ResearchRun (not a Prisma
     // enum) so new values like "THESIS_WRITER" don't need a migration. See
     // docs/plans/THESIS_RESEARCH_V2.md §7.
-    // The suggested setup and the screen numbers ride in the reason, so the
-    // writer's "WHY YOU WERE DISPATCHED" block shows them (DAV-249).
+    // The brief is the writer's "Why you were dispatched" block.
     // The red-flag check before a writer is sent (DAV-269, SEC plan §6): a
     // serious filing in the last 90 days — restatement, bankruptcy,
     // delisting notice, auditor change, late report — is shown, in the
@@ -346,13 +258,7 @@ export const dispatchThesisResearch = defineTool({
         return `Red-flag check: EDGAR couldn't be read (${err instanceof Error ? err.message : String(err)}).`;
       }
     })();
-    const reason = [
-      args.reason,
-      sentAs,
-      args.setup_id ? `Suggested setup: ${args.setup_id} — check it against the chart; pick another, or keep the view unpriced with a review if none fits.` : null,
-      args.screen_row ? `Numbers: ${args.screen_row}` : null,
-      redFlag,
-    ]
+    const reason = [args.brief, sentAs, redFlag]
       .filter(Boolean)
       .join("\n");
 
@@ -383,9 +289,8 @@ export const dispatchThesisResearch = defineTool({
           existingThesisId: existingThesisId ?? null,
           parentThesisId,
           reason,
-          researchNotes: args.research_notes ?? null,
           chatFound,
-          ideaSource: args.idea_source ?? null,
+          ideaSource: args.source_link?.trim() ? { url: args.source_link.trim() } : null,
           parentRunId: resolvedParentRunId ?? null,
           dispatchedAt: new Date().toISOString(),
           promotionContext: effectivePromotionContext ?? null,
@@ -426,9 +331,8 @@ export const dispatchThesisResearch = defineTool({
         existingThesisId: existingThesisId ?? null,
         parentThesisId,
         reason,
-        researchNotes: args.research_notes ?? null,
         chatFound,
-        ideaSource: args.idea_source ?? null,
+        ideaSource: args.source_link?.trim() ? { url: args.source_link.trim() } : null,
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: mode === "mint",
         promotionContext: effectivePromotionContext ?? null,

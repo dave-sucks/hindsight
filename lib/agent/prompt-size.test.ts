@@ -95,10 +95,11 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −377 each, get_theses no longer offers include_research (the read stopped sending the research sections).
   // 2026-11-18: −432 each, place_trade takes no company, exchange or price: the tool reads the live quote, and the other two it never read.
   // 2026-11-18: −5,706 each, place_trade takes no triggers_with_buy: the fill writes the playbook's triggers that come with the buy, from the chart and the buy.
-  "research-run": 30_820,
+  // 2026-11-18: −2,157 each, send to the Writer takes the stock, a brief and a source link: code finds the thesis by the stock, and the Writer picks the playbook (−2,231 on the trigger run, whose stock is code's).
+  "research-run": 28_663,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
-  tactical: 25_716,
+  tactical: 23_485,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -115,7 +116,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −377, the same get_theses description and fields.
   // 2026-11-18: −432, the same place_trade fields.
   // 2026-11-18: −5,706, the same place_trade field.
-  principal: 62_061,
+  // 2026-11-18: −2,157, the same send.
+  principal: 59_904,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 
