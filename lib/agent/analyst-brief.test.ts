@@ -142,6 +142,13 @@ describe("every door reads the same brief, once", () => {
     for (const gone of ["- Position size:", "- Most in one stock:", "- Max open positions:", "Playbooks:\n"]) expect([gone, prompts.writer.includes(gone)]).toEqual([gone, false]);
   });
 
+  it("the Holding refresh, which gets no playbooks block: the same cut with the one-line playbook list kept, and no open-slot line even when the room is counted", () => {
+    const room = { open: 3, max: 5, held: ["MRNA", "IONS"], awaitingApproval: 1 };
+    const holding = analystBrief(CATALYST, room, "holding");
+    expect(holding).toBe(analystBrief(CATALYST, null, "research") + "\n\n" + brief.slice(brief.indexOf("Playbooks:\n")));
+    expect(holding).not.toContain("Positions: 3 of 5");
+  });
+
   it("the morning run: the same brief with its room line", () => {
     expect(count(prompts.daily, analystBrief(CATALYST, { open: 3, max: 5, held: ["MRNA", "IONS"], awaitingApproval: 1 }))).toBe(1);
     expect(prompts.daily).not.toContain("## Regime and cash\nPositions:");

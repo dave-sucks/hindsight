@@ -107,4 +107,10 @@ describe("a stock's two Writer agents", () => {
     const holding = writerRequest(opts("refresh_held"), { dataBlock: WRITER_MESSAGE.dataBlock });
     expect(rowsOf(holding)?.map((r) => r.name)).not.toContain("Its playbooks");
   });
+
+  it("each record prints its own cut of the analyst, from the three the request is handed every run", () => {
+    const analystParts = (name: WriterCaseName) => writerRequest(opts(name)).parts.filter((p) => p.id.startsWith("analyst_")).map((p) => p.id);
+    expect(analystParts("mint_plain")).toEqual(["analyst_research"]);
+    expect(analystParts("refresh_held")).toEqual(["analyst_holding"]);
+  });
 });

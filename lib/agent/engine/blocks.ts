@@ -115,7 +115,13 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
   analyst_research: {
     id: "analyst_research",
     title: "The analyst, for research",
-    about: "The analyst's own strategy text, its direction and its hold style: no trade sizes, no slots and no list of playbooks, for an agent that researches a stock and never trades.",
+    about: "The analyst's name and strategy, its direction and hold style; no size band, open slots or playbook list.",
+    source: "lib/agent/analyst-brief.ts",
+  },
+  analyst_holding: {
+    id: "analyst_holding",
+    title: "The analyst, for a holding's research",
+    about: "The analyst's name and strategy, its direction and hold style, and its playbooks in a line each; no size band or open slots.",
     source: "lib/agent/analyst-brief.ts",
   },
   playbooks: {

@@ -39,7 +39,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
   instructions: [
-    { block: "analyst_research" },
+    { block: "analyst_holding" },
     { block: "house_rules" },
     { block: "how_you_write" },
     { own: "job", title: "Its job", text: JOB },

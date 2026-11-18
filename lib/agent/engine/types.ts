@@ -24,6 +24,7 @@ export type BlockId =
   | "last_digest"
   | "analyst_brief"
   | "analyst_research"
+  | "analyst_holding"
   | "playbooks"
   | "why_sent"
   | "sender_notes"
