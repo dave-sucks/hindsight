@@ -115,6 +115,8 @@ One runner (`runAgent`, `lib/agent/engine/run.ts`) takes a record and its input,
 - The Market Reviewer and the digest call OpenAI directly, not through the AI SDK, so their move has to show the same body sent through the SDK.
 - The Writer's record names `submit_thesis`, which its loop never reads: it makes its tools itself.
 
+**One scheduler.** The schedule is one list (`SCHEDULE`, `lib/agent/engine/schedule.ts`): each scheduled agent, its time in New York as a cron, one run per traded book or per enabled analyst, whether a closed market skips it, on or off. One Inngest function (`agent-scheduler`) is triggered at each time an agent that is on runs, and runs every agent due then through `runAgentAsRun`. A new scheduled agent is a line there, and how it runs one entry in the scheduler's `SCHEDULED_RUNS`; a change to its times needs an Inngest sync after the deploy. A scheduled agent's "when it runs" is read from its line (`whenItRuns`): its record keeps no second copy, and `runsWhen` stays only on the agents an event starts. The Portfolio Manager moved first; its own cron job is deleted.
+
 The model call moves unchanged. The bookkeeping (the thread, the token use, the status) becomes one way once two or three agents run on the runner, where the differences above are settled one at a time.
 
 The order, each its own PR:

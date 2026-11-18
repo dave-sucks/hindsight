@@ -52,8 +52,8 @@ export interface AgentRecord {
   name: string;
   /** What it decides, in a sentence. */
   does: string;
-  /** When it runs. */
-  runsWhen: string;
+  /** When it runs, for an agent an event starts. A scheduled agent's is its line in the schedule (whenItRuns, ./schedule.ts), never a second copy here. */
+  runsWhen?: string;
   /** Who writes its message: a person, another agent, the trigger check or the schedule. */
   messageFrom: string;
   model: string;

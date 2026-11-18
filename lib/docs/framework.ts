@@ -16,6 +16,7 @@
  * than the page failing.
  */
 
+import { whenItRuns } from "@/lib/agent/engine/schedule";
 import { zodSchema } from "ai";
 import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
@@ -179,7 +180,7 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
     id: record.id,
     name: record.name,
     does: record.does,
-    runsWhen: record.runsWhen,
+    runsWhen: whenItRuns(record),
     messageFrom: record.messageFrom,
     model: record.model,
     maxSteps: record.maxSteps,

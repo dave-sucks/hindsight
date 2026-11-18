@@ -1,6 +1,6 @@
 /**
  * The Portfolio Manager: one run per traded book, Tuesday and Thursday at
- * 10:00 AM ET (lib/inngest/functions/portfolio-manager.ts). Its record
+ * 10:00 AM ET (its line in lib/agent/engine/schedule.ts). Its record
  * (lib/agent/engine/agents/portfolio-manager.ts) holds its job, the blocks it
  * is given and its tools; the agent engine builds its request from it, and
  * the run keeps which part is which. It asks get_theses for the stocks it
