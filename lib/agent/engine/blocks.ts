@@ -16,6 +16,8 @@ export interface BlockDef {
   /** The file its text comes from. */
   source: string;
   group?: "market_and_portfolio";
+  /** The run's own facts: the run page shows it as the opening, with the record's own words in the first message. */
+  opening?: true;
 }
 
 export const GROUP_HEADINGS = { market_and_portfolio: "## Market and portfolio" } as const;
@@ -181,6 +183,7 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     title: "The fire",
     about: "What fired and when, in a sentence, with an Auto trade's line, a report's numbers, a pre-catalyst buy's window, what else fired with it and any refused call on the stock.",
     source: "lib/inngest/functions/tactical-run.ts (the kickoff)",
+    opening: true,
   },
   earnings_week: {
     id: "earnings_week",
