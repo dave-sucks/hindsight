@@ -44,5 +44,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   tools: ["submit_thesis"],
   providerTools: ["web_search"],
   searchesPerCall: WEB_SEARCH_MAX_USES,
+  // The run ends once its save goes through.
+  endsWith: "submit_thesis",
   output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, the claim and any trigger edits; the save writes the thesis.",
 };

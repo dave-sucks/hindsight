@@ -8,7 +8,10 @@
  * Every call keeps its request on the run (lib/agent/model.ts). The same
  * refused call sent again gets one line asking the model not to, and a third
  * time ends the loop (lib/agent/repeat-refusal.ts). An OpenAI call asks for
- * strict tool schemas and, on a run, caches its prompt under the run's id.
+ * strict tool schemas and, on a run, caches its prompt under the run's id;
+ * an Anthropic call marks its instructions and its last tool for the cache.
+ * A call ends at its step limit, its time limit, or once its save goes
+ * through (the record's `endsWith`); one cut short hands back what it did.
  * How the model is called sits beside the model on the record: the API, the
  * reply's budget, the provider's own tools (its web search) and the reply's
  * JSON schema when the reply is data.
@@ -22,6 +25,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/prisma";
 import { modelFor } from "@/lib/agent/model";
+import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
@@ -37,6 +41,19 @@ const providerOf = (model: string): Provider => (model.startsWith("claude") ? "a
 const PROVIDER_TOOLS: Record<ProviderToolId, (provider: Provider, record: RunnableRecord) => unknown> = {
   web_search: (provider, record) =>
     provider === "anthropic" ? anthropic.tools.webSearch_20250305(record.searchesPerCall ? { maxUses: record.searchesPerCall } : {}) : openai.tools.webSearch({}),
+};
+
+/** A step as the runner reads it. */
+interface StepLike {
+  text?: string;
+  toolCalls?: ReadonlyArray<{ toolName: string; input: unknown }>;
+  toolResults?: ReadonlyArray<{ toolName: string; output?: unknown }>;
+}
+
+/** A save went through: our tools say `ok`, the Writer's save says `accepted`. */
+const wentThrough = (output: unknown) => {
+  const o = output as { ok?: unknown; accepted?: unknown } | null | undefined;
+  return o?.ok === true || o?.accepted === true;
 };
 
 export interface RunAgentArgs {
@@ -64,6 +81,8 @@ export interface AgentRun {
   usage: TokenUsage;
   /** Input tokens of each model request, in order. */
   requests: number[];
+  /** Each step's text, in order: everything it wrote, not only its last reply. */
+  texts: string[];
   /** A reply that is data (the record's `reply`), parsed. */
   output?: unknown;
   /** Why the model stopped ("stop", "length", "tool-calls"…). */
@@ -76,36 +95,42 @@ export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Prom
   const picked = Object.fromEntries(request.tools.map((name) => [name, args.toolset[name]])) as ToolSet;
   const provider = providerOf(record.model);
   const provided = Object.fromEntries((record.providerTools ?? []).map((id) => [id, PROVIDER_TOOLS[id](provider, record)]));
-  const tools = { ...(args.wrapTools ? args.wrapTools(picked) : picked), ...provided } as ToolSet;
+  // The provider's tools first: on Anthropic the cache mark goes on the last tool.
+  const tools = cachedTools(provider, { ...provided, ...(args.wrapTools ? args.wrapTools(picked) : picked) }) as ToolSet;
   const reply = record.reply ? Output.object({ schema: jsonSchema(record.reply.schema(args.input)), name: record.reply.name }) : undefined;
   const usage = emptyTokenUsage();
   const requests: number[] = [];
-  const done = (out: Partial<AgentRun>): AgentRun => ({ request, text: null, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
+  // What the call has done so far, kept step by step so a call cut short still hands it back.
+  let soFar: { messages: unknown[]; steps: StepLike[] } = { messages: [], steps: [] };
+  const fromSteps = (steps: StepLike[]) => ({
+    steps: steps as unknown as RunStep[],
+    toolCalls: steps.flatMap((s) => (s.toolCalls ?? []).map((c) => ({ tool: c.toolName, input: c.input }))),
+    texts: steps.flatMap((s) => (s.text?.trim() ? [s.text] : [])),
+  });
+  const done = (out: Partial<AgentRun>): AgentRun => ({ request, text: null, messages: [], steps: [], toolCalls: [], texts: [], usage, requests, ...out });
+  const saved = ({ steps }: { steps: ReadonlyArray<StepLike> }) =>
+    Boolean(record.endsWith && steps.at(-1)?.toolResults?.some((r) => r.toolName === record.endsWith && wentThrough(r.output)));
   try {
     const result = await generateText({
       model: modelFor(record.model, { runId: args.runId, call: "Main", source: args.source, parts: request.parts, agent: request.agent, api: record.api }),
-      system: request.instructions,
+      system: cachedSystem(provider, request.instructions),
       prompt: request.message,
       tools,
       ...(reply ? { output: reply } : {}),
       ...(record.maxOutputTokens ? { maxOutputTokens: record.maxOutputTokens } : {}),
       providerOptions: { openai: { strictJsonSchema: true, ...(args.runId ? { promptCacheKey: args.runId } : {}) } },
-      stopWhen: [stepCountIs(record.maxSteps), repeatRefusalGuard.stopWhen],
+      stopWhen: [stepCountIs(record.maxSteps), repeatRefusalGuard.stopWhen, saved],
       prepareStep: repeatRefusalGuard.prepareStep,
       abortSignal: AbortSignal.timeout(record.timeoutMs),
-      onStepFinish({ usage: u }) {
-        addTokenUsage(usage, u);
-        requests.push(u?.inputTokens ?? 0);
+      onStepFinish(step) {
+        addTokenUsage(usage, step.usage);
+        requests.push(step.usage?.inputTokens ?? 0);
+        // A step's messages are the whole call's so far: replace, never append.
+        soFar = { messages: step.response?.messages ?? soFar.messages, steps: [...soFar.steps, step as unknown as StepLike] };
       },
     });
     const { steps, response, text, finishReason } = result;
-    const ran = {
-      text: text?.trim() || null,
-      messages: response.messages,
-      steps: steps as unknown as RunStep[],
-      toolCalls: steps.flatMap((s) => (s.toolCalls ?? []).map((c) => ({ tool: c.toolName, input: c.input }))),
-      finishReason,
-    };
+    const ran = { text: text?.trim() || null, messages: response.messages, ...fromSteps(steps as unknown as StepLike[]), finishReason };
     if (record.maxOutputTokens && finishReason === "length") return done({ ...ran, error: "The reply was cut off at its limit." });
     return done(reply ? { ...ran, output: result.output } : ran);
   } catch (err) {
@@ -118,7 +143,7 @@ export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Prom
         ? err.message
         : String(err);
     console.warn(`[${args.source}] the run failed: ${error}`);
-    return done({ error });
+    return done({ error, messages: soFar.messages, ...fromSteps(soFar.steps) });
   }
 }
 
@@ -198,7 +223,7 @@ export async function runAgentAsRun(agent: AgentToRun, target: RunFor, message?:
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.warn(`[${source}] run ${runId} couldn't start: ${error}`);
-    done = { request: { agent: record.id, instructions: "", message: "", parts: [], tools: [] }, text: null, messages: [], steps: [], toolCalls: [], usage: emptyTokenUsage(), requests: [], error };
+    done = { request: { agent: record.id, instructions: "", message: "", parts: [], tools: [] }, text: null, messages: [], steps: [], toolCalls: [], texts: [], usage: emptyTokenUsage(), requests: [], error };
   }
   // The opening is what a person reads in the first message; a first message that is all context has none.
   const said = openingOf(done.request);

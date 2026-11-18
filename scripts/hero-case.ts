@@ -47,7 +47,7 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
-import { makeSubmitThesisTool, writerRequest } from "@/lib/agent/run-thesis-writer";
+import { makeSubmitThesisTool, writerRecordFor, writerRequest } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
@@ -94,7 +94,7 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
 }
 
 /** The tools a case may run for real: each only reads. */
-const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data"]);
+const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings", "read_knowledge_library"]);
 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
 const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
@@ -116,9 +116,15 @@ function codeFills(c: HeroCase): Record<string, () => Record<string, unknown> | 
 /** The mode's tools as the model sees them: description and schema, no execute. */
 function describedTools(c: HeroCase): ToolSet {
   if (c.mode === "thesis-writer") {
-    // The writer's one tool. Its web search is left off: the note is written from the recorded data block.
+    // The tools its record names, its save among them. Its web search is left off: the note is written from the recorded data block.
     const submit = makeSubmitThesisTool({ ticker: String(c.promptArgs.ticker) } as never);
-    return { submit_thesis: { description: submit.description, inputSchema: submit.inputSchema } } as ToolSet;
+    const reads = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: "THESIS_WRITER", runEnvironment: "PAPER", ...c.toolCtx } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
+    const named = (name: string) => (name === "submit_thesis" ? { description: submit.description, inputSchema: submit.inputSchema, toModelOutput: undefined } : reads[name]);
+    return Object.fromEntries(
+      writerRecordFor(writerArgs(c))
+        .tools.filter((name) => named(name))
+        .map((name) => [name, { description: named(name).description, inputSchema: named(name).inputSchema, toModelOutput: named(name).toModelOutput }]),
+    ) as ToolSet;
   }
   const all = createResearchTools({
     runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
@@ -142,17 +148,23 @@ type LiveRead = { execute: (input: unknown, opts: { toolCallId: string; messages
  * has first claim on (quote-budget.ts), and its prices move between runs.
  */
 async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string, LiveRead> | null> {
-  if (!c.execute?.length) return null;
+  // A Writer's reads are the tools its record names besides its save, and they run for real, as in its run.
+  const execute = c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).tools.filter((name) => name !== "submit_thesis") : (c.execute ?? []);
+  if (!execute.length) return null;
   if (isMarketOpen() && !inSession) {
-    throw new Error(`the case runs ${c.execute.join(", ")} for real and the market is open; run it after the close, or pass --live-reads-in-session`);
+    throw new Error(`the case runs ${execute.join(", ")} for real and the market is open; run it after the close, or pass --live-reads-in-session`);
   }
-  for (const name of c.execute) if (!READS.has(name)) throw new Error(`${name} is not a read; a case can run only ${[...READS].join(", ")}`);
-  if (!c.source?.runId) throw new Error("a case that runs reads needs source.runId");
-  const run = await prisma.researchRun.findUniqueOrThrow({ where: { id: c.source.runId }, select: { userId: true, accountId: true } });
+  for (const name of execute) if (!READS.has(name)) throw new Error(`${name} is not a read; a case can run only ${[...READS].join(", ")}`);
+  // A Writer case cut before cases kept their run reads as its analyst's account.
+  const analystName = c.mode === "thesis-writer" ? (c.promptArgs as { analyst?: { name?: string } }).analyst?.name : undefined;
+  if (!c.source?.runId && !analystName) throw new Error("a case that runs reads needs source.runId");
+  const run = c.source?.runId
+    ? await prisma.researchRun.findUniqueOrThrow({ where: { id: c.source.runId }, select: { userId: true, accountId: true } })
+    : await prisma.agentConfig.findFirstOrThrow({ where: { name: analystName }, select: { userId: true, accountId: true } });
   const all = createResearchTools({
     runId: "hero-case", userId: run.userId, accountId: run.accountId, runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
   } as never) as unknown as Record<string, LiveRead>;
-  return Object.fromEntries(c.execute.map((name) => [name, all[name]]));
+  return Object.fromEntries(execute.map((name) => [name, all[name]]));
 }
 
 /** The words a recorded trigger-run kickoff opens with, before what it asked: the facts of the fire. */
@@ -430,7 +442,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   const search = liveSearch
     ? (createResearchTools({ runId: `hero-${name}`, userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx } as never) as unknown as Record<string, LiveRead>).web_search
     : null;
-  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? 3) : 2;
+  // A Writer that reads gets its record's steps, as in its run, to read and then save.
+  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? (c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).maxSteps : 3)) : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -465,7 +478,11 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       calls.push(...turnCalls);
       text += (text ? "\n" : "") + result.text;
       // Done when the model answers without a call, or (with scoreOn) decides on the stock.
-      const decided = turnCalls.length === 0 || (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
+      // A Writer is done once it calls its save, as its run ends there.
+      const decided =
+        turnCalls.length === 0 ||
+        (c.mode === "thesis-writer" && turnCalls.some((t) => t.toolName === "submit_thesis")) ||
+        (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
       if (refusals.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
       // Not there yet: answer every call and let the model go on. A read the
       // case runs for real gets its real reply, as the model would read it;
@@ -487,7 +504,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
           if (read && !refusals.has(t.toolCallId)) {
             const output = await read.execute(t.input, { toolCallId: t.toolCallId, messages });
             reads.push({ toolName: t.toolName, output });
-            const forModel = read.toModelOutput ? await read.toModelOutput({ toolCallId: t.toolCallId, input: t.input, output }) : { type: "json" as const, value: output };
+            // As it goes over the wire: plain JSON (a date as its string, an undefined field left out).
+            const forModel = JSON.parse(JSON.stringify(read.toModelOutput ? await read.toModelOutput({ toolCallId: t.toolCallId, input: t.input, output }) : { type: "json" as const, value: output }));
             readShown.push(forModel);
             return { type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: forModel as { type: "json"; value: never } };
           }

@@ -42,9 +42,11 @@
 
 import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import { WRITER, WRITER_GO, WEB_SEARCH_MAX_USES } from "@/lib/agent/engine/agents/writer";
+import { WRITER, WRITER_GO } from "@/lib/agent/engine/agents/writer";
 import { HOLDING_REFRESH } from "@/lib/agent/engine/agents/holding-refresh";
-import type { AgentId, AgentRecord, BuiltRequest, SentPartManifest } from "@/lib/agent/engine/types";
+import type { AgentId, AgentRecord, BuiltRequest, RunnableRecord, SentPartManifest } from "@/lib/agent/engine/types";
+import { runAgent } from "@/lib/agent/engine/run";
+import { createResearchTools } from "@/lib/agent/tools";
 import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
@@ -53,8 +55,7 @@ import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
-import type { ModelMessage } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import type { ModelMessage, ToolSet } from "ai";
 import { modelFor } from "@/lib/agent/model";
 import { prisma } from "@/lib/prisma";
 import { saveRunThread } from "@/lib/agent/run-thread";
@@ -426,21 +427,40 @@ export const stockDataText = (dataBlock: string) => `## GROUND-TRUTH DATA — us
  * then the sender's brief).
  */
 export function writerRequest(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }, now: Date = new Date()): BuiltRequest {
+  const t = writerTexts(opts, first);
+  return composeAgentRequest(writerRecordFor(opts), writerInput(opts, first, now), { shared: t.shared, pieces: opts.portfolioPieces ?? null, context: t.context });
+}
+
+/** The Writer's input for its run: the date, its account, and its message (the sender's brief). */
+function writerInput(opts: WriterResearchPromptOpts, first: { chatFound?: string | null } | undefined, now: Date) {
+  return { now, environment: opts.environment ?? "PAPER", message: writerMessage(opts, first?.chatFound) };
+}
+
+/** The Writer's texts that change by run: the analyst and its playbooks, and its context reads. */
+function writerTexts(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }) {
   const T = opts.ticker.toUpperCase();
   const refreshing = opts.mode === "refresh" && opts.existingThesis != null;
-  return composeAgentRequest(writerRecordFor(opts), { now, environment: opts.environment ?? "PAPER", message: writerMessage(opts, first?.chatFound) }, {
+  return {
     shared: {
       the_analyst: analystBrief(opts.analyst),
       // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
       playbooks: playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
     },
-    pieces: opts.portfolioPieces ?? null,
     context: {
       the_stock: refreshing ? stockRowText({ ticker: T, row: opts.stockRow ?? null }) : null,
       playbook_record: setupRecordText(opts.setupRecord),
       stock_data: first ? stockDataText(first.dataBlock) : null,
     },
-  });
+  };
+}
+
+/**
+ * The Writer's record for this stock (the Writer, or the Holding refresh for
+ * a stock we own), as the runner runs it: its time limit. Everything else
+ * about how it is called is on the record.
+ */
+export function writerRun(opts: Pick<WriterResearchPromptOpts, "mode" | "existingThesis">): RunnableRecord {
+  return { ...writerRecordFor(opts), timeoutMs: RESEARCH_TIMEOUT_MS };
 }
 
 /** The stock as every run reads it, for a refresh: get_theses's short row (the trigger run reads the same). Null when the read fails. */
@@ -642,7 +662,7 @@ export async function writerResearchPhase(
     const setupOverrides = await loadSetupOverrides(analyst.accountId);
     const seatSetups = setupsForAnalyst(analyst.setupIds, setupOverrides);
     const playbooks = await loadPlaybooks(analyst.accountId);
-    const request = writerRequest({
+    const writerOpts: WriterResearchPromptOpts = {
       analyst: { ...analyst, setupOverrides },
       ticker: T,
       mode: args.mode,
@@ -660,13 +680,11 @@ export async function writerResearchPhase(
       }),
       portfolioPieces: await loadPortfolioPieces({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER", portfolioDigest: false }),
       environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER",
-    }, { dataBlock: rawDataBlock, chatFound: args.chatFound });
-    const systemPrompt = request.instructions;
-    const userPrompt = request.message;
-
+    };
+    const first = { dataBlock: rawDataBlock, chatFound: args.chatFound };
+    const texts = writerTexts(writerOpts, first);
 
     const modeConfig = MODES["thesis-writer"];
-    const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Research", source: "thesis-writer", parts: request.parts, agent: request.agent });
 
     let accepted: ValidatedThesisDecision | null = null;
     let submitAttempts = 0;
@@ -698,75 +716,38 @@ export async function writerResearchPhase(
       },
     });
 
-    // Accumulate text + messages step-by-step so a timeout mid-run still
-    // leaves a persistable thread (V1's timeout path persisted NOTHING —
-    // the runs that most needed debugging left no trace).
-    const capturedMessages: ModelMessage[] = [];
-    const noteParts: string[] = [];
-    let stepCount = 0;
-    let toolCallCount = 0;
-    let searchCount = 0;
-
-    const tools =
-      modeConfig.provider === "anthropic"
-        ? {
-            // The basic search, called directly. The 20260209 version runs
-            // its "dynamic filtering" through a code-execution tool that this
-            // loop never provides. That stray call does not cost steps — it
-            // ENDS the loop: the SDK (ai 6.0.116) files the "unavailable
-            // tool" error as a client tool output but, because the call is
-            // provider-executed, not as a client tool call, so its
-            // "all client calls answered" check fails and the loop stops
-            // after that step. On 2026-09-25 IBRX, BBIO and DYN each ran ONE
-            // step: the submit was refused and the stray call in the same
-            // step ended the run with the refusal unread (agentSteps = 1).
-            // EXEL's refusal step had no stray call and got its second turn.
-            // Do not re-enable the 20260209 search thinking it only costs
-            // steps. DAV-316; the mechanism was found by the discovery review.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            web_search: anthropic.tools.webSearch_20250305({ maxUses: WEB_SEARCH_MAX_USES }) as any,
-            submit_thesis: submitThesisTool,
-          }
-        : { submit_thesis: submitThesisTool };
-
-    let loopError: string | null = null;
+    // The research call, through the agent runner (lib/agent/engine/run.ts):
+    // its record's request and tools, Anthropic's web search and its save,
+    // until the save goes through, its steps run out or its time does. A
+    // call cut short still hands back what it wrote, so the thread is kept.
+    // Its toolset is every research tool, made for this run, and its save;
+    // its record names the ones it is given.
+    const run = await runAgent(writerRun(writerOpts), {
+      input: writerInput(writerOpts, first, new Date()),
+      sources: {
+        portfolioPieces: async () => writerOpts.portfolioPieces ?? [],
+        shared: { the_analyst: async () => texts.shared.the_analyst, playbooks: async () => texts.shared.playbooks },
+        context: Object.fromEntries(Object.entries(texts.context).map(([id, text]) => [id, async () => text ?? null])),
+      },
+      runId: args.childRunId,
+      toolset: { ...(createResearchTools(saveCtx) as ToolSet), submit_thesis: submitThesisTool } as ToolSet,
+      source: "thesis-writer",
+    });
+    const request = run.request;
+    const systemPrompt = request.instructions;
+    const userPrompt = request.message;
+    const capturedMessages = [...run.messages] as ModelMessage[];
+    const noteParts = run.texts;
+    const stepCount = run.steps.length;
+    const toolCallCount = run.toolCalls.length;
+    const searchCount = run.toolCalls.filter((c) => c.tool === "web_search").length;
+    const loopError = run.error ?? null;
     // Every request this phase makes, recorded on the child run at the end
     // (token-usage.ts); the save phase's retry records its own.
-    const tokenUsage = emptyTokenUsage();
-    try {
-      await generateText({
-        model,
-        system: cachedSystem(modeConfig.provider, systemPrompt),
-        prompt: userPrompt,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: cachedTools(modeConfig.provider, tools) as any,
-        stopWhen: [stepCountIs(modeConfig.maxSteps), () => accepted !== null],
-        abortSignal: AbortSignal.timeout(RESEARCH_TIMEOUT_MS),
-        onStepFinish(step) {
-          addTokenUsage(tokenUsage, step.usage);
-          stepCount++;
-          toolCallCount += step.toolCalls.length;
-          searchCount += step.toolCalls.filter((c) => c.toolName === "web_search").length;
-          if (step.text) noteParts.push(step.text);
-          // step.response.messages is the CUMULATIVE whole-call array
-          // (ai@6.0.116 structuredClones responseMessages per step) —
-          // REPLACE, don't append, or the thread duplicates step 1's
-          // messages N times (review finding #2). The last snapshot is the
-          // full conversation so far, which is exactly what a mid-run
-          // abort should persist.
-          capturedMessages.length = 0;
-          capturedMessages.push(...(step.response?.messages ?? []));
-          console.log(
-            `[thesis-writer] STEP #${stepCount} child=${args.childRunId} ticker=${T} tools=[${step.toolCalls.map((c) => c.toolName).join(", ") || "none"}] text=${step.text?.length ?? 0}ch`,
-          );
-        },
-      });
-    } catch (err) {
-      loopError = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[thesis-writer] research loop error ticker=${T} child=${args.childRunId}: ${loopError}`,
-      );
-    }
+    const tokenUsage = run.usage;
+    console.log(`[thesis-writer] research call child=${args.childRunId} ticker=${T}: ${stepCount} step(s), tools=[${run.toolCalls.map((c) => c.tool).join(", ") || "none"}]${loopError ? `, ended: ${loopError}` : ""}`);
+    // The repair turn's model: its request is not kept (the research call's is).
+    const model = modelFor(modeConfig.model, { runId: null, call: "Repair", source: "thesis-writer" });
 
     let noteText = noteParts.join("\n\n");
     let sections = parseIntoSections(noteText);

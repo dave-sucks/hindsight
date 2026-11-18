@@ -90,6 +90,8 @@ export interface AgentRecord {
   api?: "chat" | "responses";
   /** The reply's budget, its thinking counted; a reply cut off there fails the run. */
   maxOutputTokens?: number;
+  /** Its save: the tool that, once a call to it goes through, ends the run (the Writer's submit_thesis). */
+  endsWith?: string;
   /** A reply that is data: its name, and its JSON schema, made from the run's input only. */
   reply?: { name: string; schema: (input: AgentInput) => Record<string, unknown> };
   /** What it hands back. */
