@@ -50,7 +50,8 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
       <CardContent>
         <div className="flex flex-col gap-6">
           <p className="text-sm text-muted-foreground">
-            {record.runsWhen} Model {record.model}, {record.maxSteps === 1 ? "one call" : `up to ${record.maxSteps} steps`}.
+            {record.runsWhen} Model {record.model}, {record.maxSteps === 1 ? "one call" : `up to ${record.maxSteps} steps`}
+            {record.timeoutMs ? `, stopped after ${Math.floor(record.timeoutMs / 60_000)} min ${Math.round((record.timeoutMs % 60_000) / 1000)} s` : ""}.
           </p>
           <p className="text-sm text-muted-foreground">Hands back: {record.output}</p>
 

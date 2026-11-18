@@ -10,24 +10,21 @@
  * reply is its write-up, kept on the run as a RunEvent and read first by its
  * next run.
  */
-import { generateText, stepCountIs, type ToolSet } from "ai";
+import type { ToolSet } from "ai";
 import { prisma } from "@/lib/prisma";
-import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
-import { addTokenUsage, emptyTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
+import type { TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
 import { withRunLimits } from "@/lib/agent/portfolio-manager/limits";
-import { buildAgentRequest } from "@/lib/agent/engine/engine";
 import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
+import { runAgent } from "@/lib/agent/engine/run";
 
 export const MANAGER_RUN_MODE = "PORTFOLIO_MANAGER";
 /** The RunEvent that keeps a run's write-up. */
 export const WRITEUP_EVENT = "portfolio_writeup";
 export const MANAGER_MODEL = PORTFOLIO_MANAGER.model;
-const CALL_MS = 770_000;
 
 export interface ManagerBook {
   accountId: string;
@@ -63,9 +60,10 @@ export interface ManagerResult {
 }
 
 /**
- * The run's model call. Saves nothing itself beyond what its tools save: the
- * job keeps the thread and the write-up. `tools` lets a dry run swap the
- * writes for ones that save nothing. Never throws.
+ * The run: its record through the agent runner (lib/agent/engine/run.ts).
+ * Saves nothing itself beyond what its tools save: the job keeps the thread
+ * and the write-up. `tools` lets a dry run swap the writes for ones that save
+ * nothing. Never throws.
  */
 export async function runPortfolioManager(
   book: ManagerBook,
@@ -73,15 +71,8 @@ export async function runPortfolioManager(
   opts: { now?: Date; tools?: (real: ToolSet) => ToolSet } = {},
 ): Promise<ManagerResult> {
   const now = opts.now ?? new Date();
-  const [request, alpacaCreds] = await Promise.all([
-    buildAgentRequest(PORTFOLIO_MANAGER, { now, environment: book.environment }, {
-      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-      blocks: { last_writeup: () => lastWriteup(book) },
-    }),
-    resolveAlpacaCredentials(book.userId, book.environment),
-  ]);
-  const firstMessage = request.message;
-  const every = createResearchTools({
+  const alpacaCreds = await resolveAlpacaCredentials(book.userId, book.environment);
+  const toolset = createResearchTools({
     runId: runId ?? "",
     userId: book.userId,
     accountId: book.accountId,
@@ -90,39 +81,23 @@ export async function runPortfolioManager(
     alpacaCreds: alpacaCreds ?? undefined,
   }) as ToolSet;
   const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
-  // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
-  const mine = Object.fromEntries(request.tools.map((name) => [name, every[name]])) as ToolSet;
-  const real = withRunLimits(opts.tools ? opts.tools(mine) : mine, tickerOf);
-  const usage = emptyTokenUsage();
-  const requests: number[] = [];
-  const done = (out: Partial<ManagerResult>): ManagerResult => ({ writeup: null, firstMessage, messages: [], steps: [], toolCalls: [], usage, requests, ...out });
-  try {
-    const { steps, response, text } = await generateText({
-      model: modelFor(MANAGER_MODEL, { runId, call: "Main", source: "portfolio-manager", parts: request.parts, agent: request.agent }),
-      system: request.instructions,
-      prompt: firstMessage,
-      tools: real,
-      providerOptions: { openai: { strictJsonSchema: true, ...(runId ? { promptCacheKey: runId } : {}) } },
-      // The same refused call three times ends the loop (repeat-refusal.ts).
-      stopWhen: [stepCountIs(PORTFOLIO_MANAGER.maxSteps), repeatRefusalGuard.stopWhen],
-      prepareStep: repeatRefusalGuard.prepareStep,
-      abortSignal: AbortSignal.timeout(CALL_MS),
-      onStepFinish({ usage: u }) {
-        addTokenUsage(usage, u);
-        requests.push(u?.inputTokens ?? 0);
-      },
-    });
-    const writeup = text?.trim() || null;
-    return done({
-      writeup,
-      messages: response.messages,
-      steps: steps as unknown as RunStep[],
-      toolCalls: steps.flatMap((s) => (s.toolCalls ?? []).map((c) => ({ tool: c.toolName, input: c.input }))),
-      ...(writeup ? {} : { error: "The run ended without its write-up." }),
-    });
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    console.warn(`[portfolio-manager] the run failed: ${error}`);
-    return done({ error });
-  }
+  const run = await runAgent(PORTFOLIO_MANAGER, {
+    input: { now, environment: book.environment },
+    sources: {
+      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
+      blocks: { last_writeup: () => lastWriteup(book) },
+    },
+    runId,
+    toolset,
+    // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
+    wrapTools: (mine) => withRunLimits(opts.tools ? opts.tools(mine) : mine, tickerOf),
+    source: "portfolio-manager",
+  });
+  const { request, text, ...rest } = run;
+  return {
+    ...rest,
+    writeup: text,
+    firstMessage: request.message,
+    ...(run.error || text ? {} : { error: "The run ended without its write-up." }),
+  };
 }

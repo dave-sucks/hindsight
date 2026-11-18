@@ -8,11 +8,11 @@
  */
 import { MODES } from "@/lib/agent/modes";
 import { PROPOSALS_A_RUN } from "@/lib/agent/portfolio-manager/limits";
-import type { AgentRecord } from "../types";
+import type { RunnableRecord } from "../types";
 
 const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
 
-export const PORTFOLIO_MANAGER: AgentRecord = {
+export const PORTFOLIO_MANAGER: RunnableRecord = {
   id: "portfolio_manager",
   name: "Portfolio Manager",
   does: "Looks across the whole account and may propose up to three trades, each waiting for you.",
@@ -20,6 +20,8 @@ export const PORTFOLIO_MANAGER: AgentRecord = {
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 40,
+  // 30 seconds inside the 800 the function it runs in may take (app/api/inngest/route.ts).
+  timeoutMs: 770_000,
   instructions: [
     {
       own: "role",
