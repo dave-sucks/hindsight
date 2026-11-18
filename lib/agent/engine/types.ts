@@ -41,9 +41,15 @@ export type BlockId =
   | "blocked_last_time"
   | "money_context"
   | "book_context"
-  | "analyst_rooms";
+  | "analyst_rooms"
+  | "today"
+  | "date_awareness"
+  | "research_note"
+  | "thesis_claim"
+  | "earnings_triggers"
+  | "what_the_owner_reads";
 
-export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
+export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
 /** Part of the agent's own instructions: its job, in its own words. */
 export interface OwnPart {

@@ -2,7 +2,7 @@
 
 **Deep research on one stock, in about three minutes.** The Writer researches one stock for one analyst and writes its thesis: the case, the belief and the stock's first triggers.
 
-Every thesis on the book is written here, whoever found the stock. It never trades and never sizes.
+Every thesis on the book is written here, whoever found the stock. It never trades and never sizes. A stock we already own is refreshed by its own agent, the Holding refresh: the same research and the same shared rules, but it keeps the holding's sale, trim and add triggers current and writes none of a watch's.
 
 ```facts
 Model: claude-sonnet-4-6
@@ -59,6 +59,10 @@ It also reads what the agent that sent the stock found first: its reason, its no
 
 When a chat sends the stock, code also hands over what the Writer can't pull itself: the chat's web searches on the stock, with their links. The model doesn't retype them; they arrive under "What the chat already found" in the Writer's first message (newest first, about 12,000 characters at most), and the Writer searches only for what they leave open. Everything its own pull fetches (the news, filings, the calendars, prices, the Street, our trades on the stock) comes fresh from that pull, never as a second copy. The run page's Context shows the section as sent.
 
+A stock we own goes to the Holding refresh instead, with the same pull and the same shared rules. It is sent this:
+
+<!-- asset: context holding_refresh -->
+
 ## What it decides
 
 First, a research note in three parts: the company in two sentences (what it does and how it makes money), the bull case and the bear case, with a bear case even on a buy. The company's numbers, its earnings history, the street's view and the chart are live data on the stock's page, not prose in the note. On a new stock the Writer's own decision note is the first line you read. Then the decision:
@@ -97,7 +101,7 @@ Its own run, started by `dispatch_thesis_research` through `app/thesis.write.req
 `claude-sonnet-4-6` with Anthropic's web search, up to 4 searches (`WEB_SEARCH_MAX_USES`) and 8 steps.
 
 #### Pipeline
-`lib/agent/run-thesis-writer.ts`, which builds its request with the agent engine (`writerRequest`, `composeAgentRequest` in `lib/agent/engine/engine.ts`) from its record, `WRITER` (`lib/agent/engine/agents/writer.ts`): its own instructions, the blocks it is given (the analyst, its playbooks, why the stock was sent, the thesis now on a refresh, a recent sale, its record by playbook, the Market and portfolio block; the stock's data and what the chat found in its first message) and its tools, each part named for the run's Context panel; the seven pulls in `thesis-research/pull-data.ts` (our history with the stock is `get_stock_data`'s `priorCoverage`, printed first by `format-data-block.ts`); the decision's checks in `thesis-research/decision.ts`.
+`lib/agent/run-thesis-writer.ts`, which builds its request with the agent engine (`writerRequest`, `composeAgentRequest` in `lib/agent/engine/engine.ts`) from one of two records, picked by the thesis's status (`writerRecordFor`): `WRITER` (`lib/agent/engine/agents/writer.ts`) for a new stock, a watch or a promoted stock, and `HOLDING_REFRESH` (`holding-refresh.ts`) for a stock we own. Each is its own fixed text, the analyst it works for, the house rules, and five rule blocks both share (`lib/agent/thesis-research/writer-rules.ts`: date awareness, the research note, the Street and the claim, earnings triggers, what the owner reads); the Writer adds its playbooks. Every fact about the stock is a block of its first message: the date, the Market and portfolio block, why it was sent, the sender's notes, whose idea it was, the existing thesis, the promotion, a recent sale, its record by playbook, the stock's data and what the chat found. Each part is named for the run's Context panel; the seven pulls in `thesis-research/pull-data.ts` (our history with the stock is `get_stock_data`'s `priorCoverage`, printed first by `format-data-block.ts`); the decision's checks in `thesis-research/decision.ts`.
 
 #### Saved through
 `submit_thesis`, then `record_thesis` or `update_thesis`, with the same checks as every other save. `submit_thesis` runs the save's check on every decision and says accepted only when it would save. Its input reaches the tool as the model wrote it (`submitThesisInput`: checked against the schema the model is sent, never converted), so each trigger is converted to its stored shape once, by the save; triggers are read with the save's own schema (`readOneTrigger`), and past two hand-backs `saveWhatCan` leaves out what the save refuses, written on the stock as `fieldChanges.notApplied`. A refused real save goes without the same way before the one model retry (120 s at most). A rewrite on a passed or retired thesis becomes new research in `dispatch_thesis_research`.

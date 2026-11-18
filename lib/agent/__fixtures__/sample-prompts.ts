@@ -6,7 +6,7 @@
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
-import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
+import { writerSent } from "@/lib/agent/__fixtures__/writer-sent";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
 import { guidanceFor } from "@/lib/agent/situations";
@@ -47,5 +47,5 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
       room: { open: 8, max: 8, held: [], awaitingApproval: 0 },
     }),
   writer: () =>
-    buildWriterResearchPrompt({ analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
+    writerSent({ analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never),
 };

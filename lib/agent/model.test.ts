@@ -272,8 +272,8 @@ describe("the Writer", () => {
     expect(records[0].record.parts?.length).toBeGreaterThan(0);
     const categories = view!(records[0].record).categories;
     const names = categories.map((c) => c.name);
-    expect(names.slice(0, 4)).toEqual(["The analyst", "House rules", "How you write", "The task"]);
-    expect(names.slice(-4)).toEqual(["The data's heading", "The stock's data", "Go", "Tool menu"]);
+    expect(names.slice(0, 4)).toEqual(["The analyst", "House rules", "How you write", "Its playbooks"]);
+    expect(names.slice(-3)).toEqual(["The stock's data", "Go", "Tool menu"]);
     expect(categories.find((c) => c.name === "The stock's data")!.sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
     expect(categories[categories.length - 1].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
   });
