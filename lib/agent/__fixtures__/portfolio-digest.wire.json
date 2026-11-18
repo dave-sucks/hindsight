@@ -1,0 +1,91 @@
+{
+ "calls": [
+  {
+   "url": "https://api.openai.com/v1/chat/completions",
+   "body": {
+    "model": "gpt-5.4",
+    "messages": [
+     {
+      "role": "system",
+      "content": "You write the owner's end-of-day summary of their stock account. The owner reads it on the home page.\n\nYou are given the account as code wrote it: its value and cash, the day's change and the change since the owner started, every holding with its price, its move that day and since it was bought, the day's buys and sells, and the proposals waiting for the owner's approval, each with its reason. Every number you write comes from it. Never invent a number, a reason or a stock.\n\nWrite 3 to 5 short paragraphs of plain prose, with no headings and no lists:\n1. How the account did that day, and which holdings moved it most.\n2. What was bought or sold that day. If nothing was, say so in a few words.\n3. Every proposal waiting, each one, none left out. For each: what it would do, then your own view, in plain words: would you approve it or not, and why, from what the snapshot shows (the stock's move, how long it has been proposed, its reason). Don't just repeat the reason. A proposal is not a trade until the owner approves it. When one has been proposed many times, say how many and since when. Never name a new price level for a stock.\n4. What stands out about the account as a whole: the biggest gains and losses since bought, a holding that has grown large. State the cash and its share of the account; never suggest what to do with it.\n\nName stocks by their ticker, as the snapshot does; never write out a company name it doesn't give. Write the way you would say it to a friend: short sentences, everyday words, and only the two or three numbers that matter in each paragraph."
+     },
+     {
+      "role": "user",
+      "content": "Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\nThe account, Wed, Nov 11 at the close\nValue $80,000.00 · cash $40,000.00 (50.0% of the account)\nWed, Nov 11: +0.6% (+$500) · since the start: −20.0% (−$20,000) on $100,000 put in\n\nHoldings (2), largest first:\n- AAA: 100 shares at $250.00 = $25,000 (31.3%) · day +4.2% (+$1,000) · since bought at $200.00: +25.0% (+$5,000) · Analyst One\n- BBB: 50 shares at $300.00 = $15,000 (18.8%) · day −3.2% (−$500) · since bought at $400.00: −25.0% (−$5,000) · Analyst Two\n\nBought or sold on Wed, Nov 11: nothing.\n\nWaiting for the owner's approval (proposals, not trades, until approved):\n- Sell 50 shares of BBB, proposed 9 times since Tue, Oct 20 · Analyst Two. Its reason: \"BBB closed under your sell line again, and I proposed selling all 50 shares. Nothing new broke at the company today.\"\n- Buy 10 shares of CCC, proposed Wed, Nov 11 · Analyst One. Its reason: \"CCC crossed your buy level after a strong quarter.\""
+     }
+    ],
+    "max_completion_tokens": 6000
+   }
+  }
+ ],
+ "kept": {
+  "request": {
+   "v": 1,
+   "call": "Main",
+   "agent": "portfolio_digest",
+   "source": "portfolio-digest",
+   "model": "gpt-5.4",
+   "requests": [
+    {
+     "model": "gpt-5.4",
+     "messages": [
+      {
+       "role": "system",
+       "content": "You write the owner's end-of-day summary of their stock account. The owner reads it on the home page.\n\nYou are given the account as code wrote it: its value and cash, the day's change and the change since the owner started, every holding with its price, its move that day and since it was bought, the day's buys and sells, and the proposals waiting for the owner's approval, each with its reason. Every number you write comes from it. Never invent a number, a reason or a stock.\n\nWrite 3 to 5 short paragraphs of plain prose, with no headings and no lists:\n1. How the account did that day, and which holdings moved it most.\n2. What was bought or sold that day. If nothing was, say so in a few words.\n3. Every proposal waiting, each one, none left out. For each: what it would do, then your own view, in plain words: would you approve it or not, and why, from what the snapshot shows (the stock's move, how long it has been proposed, its reason). Don't just repeat the reason. A proposal is not a trade until the owner approves it. When one has been proposed many times, say how many and since when. Never name a new price level for a stock.\n4. What stands out about the account as a whole: the biggest gains and losses since bought, a holding that has grown large. State the cash and its share of the account; never suggest what to do with it.\n\nName stocks by their ticker, as the snapshot does; never write out a company name it doesn't give. Write the way you would say it to a friend: short sentences, everyday words, and only the two or three numbers that matter in each paragraph."
+      },
+      {
+       "role": "user",
+       "content": "Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\nThe account, Wed, Nov 11 at the close\nValue $80,000.00 · cash $40,000.00 (50.0% of the account)\nWed, Nov 11: +0.6% (+$500) · since the start: −20.0% (−$20,000) on $100,000 put in\n\nHoldings (2), largest first:\n- AAA: 100 shares at $250.00 = $25,000 (31.3%) · day +4.2% (+$1,000) · since bought at $200.00: +25.0% (+$5,000) · Analyst One\n- BBB: 50 shares at $300.00 = $15,000 (18.8%) · day −3.2% (−$500) · since bought at $400.00: −25.0% (−$5,000) · Analyst Two\n\nBought or sold on Wed, Nov 11: nothing.\n\nWaiting for the owner's approval (proposals, not trades, until approved):\n- Sell 50 shares of BBB, proposed 9 times since Tue, Oct 20 · Analyst Two. Its reason: \"BBB closed under your sell line again, and I proposed selling all 50 shares. Nothing new broke at the company today.\"\n- Buy 10 shares of CCC, proposed Wed, Nov 11 · Analyst One. Its reason: \"CCC crossed your buy level after a strong quarter.\""
+      }
+     ],
+     "max_completion_tokens": 6000
+    }
+   ],
+   "parts": [
+    {
+     "id": "own",
+     "title": "Its own text",
+     "kind": "own",
+     "source": "lib/agent/engine/agents (portfolio_digest)",
+     "where": "instructions",
+     "sep": "",
+     "chars": 1585
+    },
+    {
+     "id": "line",
+     "title": "The date and account",
+     "about": "The date and time in New York, and whether the account is paper or live. Every first message opens with it.",
+     "source": "lib/agent/engine/engine.ts (dateLine)",
+     "kind": "line",
+     "where": "message",
+     "sep": "",
+     "chars": 49
+    },
+    {
+     "id": "portfolio",
+     "title": "The portfolio",
+     "kind": "context",
+     "source": "lib/portfolio/snapshot.ts",
+     "where": "message",
+     "sep": "\n\n",
+     "chars": 954
+    }
+   ]
+  },
+  "thread": [
+   {
+    "role": "user",
+    "content": "Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\nThe account, Wed, Nov 11 at the close\nValue $80,000.00 · cash $40,000.00 (50.0% of the account)\nWed, Nov 11: +0.6% (+$500) · since the start: −20.0% (−$20,000) on $100,000 put in\n\nHoldings (2), largest first:\n- AAA: 100 shares at $250.00 = $25,000 (31.3%) · day +4.2% (+$1,000) · since bought at $200.00: +25.0% (+$5,000) · Analyst One\n- BBB: 50 shares at $300.00 = $15,000 (18.8%) · day −3.2% (−$500) · since bought at $400.00: −25.0% (−$5,000) · Analyst Two\n\nBought or sold on Wed, Nov 11: nothing.\n\nWaiting for the owner's approval (proposals, not trades, until approved):\n- Sell 50 shares of BBB, proposed 9 times since Tue, Oct 20 · Analyst Two. Its reason: \"BBB closed under your sell line again, and I proposed selling all 50 shares. Nothing new broke at the company today.\"\n- Buy 10 shares of CCC, proposed Wed, Nov 11 · Analyst One. Its reason: \"CCC crossed your buy level after a strong quarter.\""
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "The account rose today."
+     }
+    ]
+   }
+  ]
+ }
+}
