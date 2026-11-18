@@ -261,13 +261,14 @@ async function latestRuns(accountId: string): Promise<Map<string, RunSizes>> {
  */
 export async function loadFrameworkData(): Promise<FrameworkData> {
   const base = buildFrameworkData();
+  // The sign-in is read outside the catch: reading the session's cookies is how Next knows the page is rendered per request.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const accountId = user ? await getAccountId(user.id) : null;
+  if (!accountId) return base;
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const accountId = user ? await getAccountId(user.id) : null;
-    if (!accountId) return base;
     const runs = await latestRuns(accountId);
     return { ...base, agents: base.agents.map((a) => (runs.has(a.id) ? sizedOnRun(a, runs.get(a.id)!) : a)) };
   } catch (err) {

@@ -208,7 +208,7 @@ describe("the 7:30 Market Reviewer", () => {
     expect(record!.requests).toEqual([mockOpenAI.bodies[0]]);
     expect(record!.error).toBeUndefined();
 
-    // Context shows each part the agent engine built, by name, then its one tool; the parts add up to what was sent.
+    // Context shows each part the agent engine built, by name and in the Framework page's color, then its one tool; the parts add up to what was sent.
     const view = viewOfRecord(record!);
     expect(view.categories.map((c) => [c.name, c.part])).toEqual([
       ["Its job", "job"],
@@ -217,8 +217,8 @@ describe("the 7:30 Market Reviewer", () => {
       ["Notes", "job"],
       ["Unattended", "job"],
       ["The day", "job"],
-      ["Market numbers", "read"],
-      ["Portfolio snapshot", "read"],
+      ["Market numbers", "portfolio"],
+      ["Portfolio snapshot", "portfolio"],
       ["Why we hold each", "read"],
       ["What we watch, and why", "read"],
       ["Its notes, last 5 days", "read"],

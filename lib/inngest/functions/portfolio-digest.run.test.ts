@@ -107,7 +107,7 @@ describe("the 8 PM Portfolio Digest's run", () => {
       ["What it is given", "job"],
       ["The paragraphs", "job"],
       ["Its words", "job"],
-      ["Portfolio snapshot", "read"],
+      ["Portfolio snapshot", "portfolio"],
     ]);
     expect(view.categories.slice(0, 4).map((c) => c.sections[0].text).join("\n\n")).toBe(body.messages[0].content);
     expect(view.categories[4].sections[0].text).toBe(body.messages[1].content);
