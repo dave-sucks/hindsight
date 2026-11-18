@@ -53,7 +53,7 @@ const pullOutput = {
 
 afterEach(() => jest.useRealTimers());
 
-it("AAON 2026-11-17, 7:10 PM ET: the Writer is told it is the 17th, not the UTC date", async () => {
+it("AAON 2026-11-17, 7:10 PM ET: the Writer's date line says the 17th in New York, not the UTC date", async () => {
   // Only the clock is fixed; the run's own waits use real timers.
   jest.useFakeTimers({ now: new Date("2026-11-18T00:10:00Z"), doNotFake: ["setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval", "nextTick", "queueMicrotask"] });
   (prisma.agentConfig.findUnique as jest.Mock).mockResolvedValue(analystRow);
@@ -66,6 +66,6 @@ it("AAON 2026-11-17, 7:10 PM ET: the Writer is told it is the 17th, not the UTC 
   await writerResearchPhase({ childRunId: "writer_child_aaon", analystId: "analyst_pead", ticker: "AAON", mode: "mint", reason: "A PEAD re-scan." }, pullOutput);
 
   expect(sent.length).toBeGreaterThan(0);
-  expect(sent[0]).toContain("Today is 2026-11-17.");
-  expect(sent[0]).not.toContain("2026-11-18.");
+  expect(sent[0]).toContain("Tue, Nov 17, 2026, 7:10 PM ET, the LIVE account.");
+  expect(sent[0]).not.toContain("Nov 18");
 });

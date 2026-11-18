@@ -167,28 +167,32 @@ describe("the 7:30 Market Reviewer", () => {
     expect(body.input[0].content).toContain("Do not make trades.");
     expect(body.input[0].content).toContain("The Market numbers in your first message are the index, sector and earnings numbers to use: search the web for what moved them, not for the numbers.");
     expect(body.input[0].content).toContain("search the economic calendar for the next two weeks (Fed decisions, CPI, PPI, PCE, the jobs report)");
-    // Its first message: the market numbers, the portfolio snapshot's own text, each stock's belief in a line, its notes (none yet), then its last digest. Nothing else.
+    // Its first message: the date line, the market numbers and the portfolio snapshot's own text (as every agent's
+    // Market and portfolio reads print them), the book with each stock's belief in a line, its notes (none yet), then
+    // its last digest. Nothing else.
     const snapshot = (await loadPortfolioSnapshot({ accountId: ACCOUNT, environment: "LIVE" })) as PortfolioSnapshot;
     expect(body.input[1].content).toBe(
       [
-        "Wed Nov 11, the LIVE book.",
+        "Wed, Nov 11, 2026, 7:30 AM ET, the LIVE account.",
         "",
-        // The same numbers every agent's block prints: the stand-in closes, the regime from SPY's snapshot row, the book's coming report.
-        "## Market numbers",
+        "## Market and portfolio",
+        "",
+        // The same numbers every agent's reads print: the stand-in closes, the regime from SPY's snapshot row, the book's coming report.
+        "### Market numbers (as of Wed, Nov 11, 7:30 AM ET)",
         "- S&P 500 (SPY) $600.00 −0.50% · Nasdaq 100 (QQQ) $500.00 −0.99%, at Tuesday's close, Nov 10.",
         "- Market risk-on: SPY $603.00, above its 50-day ($590.00) and above its 200-day ($560.00), so full size (as of Tuesday's close, Nov 10).",
         "- Sectors on the day, best to worst: XLU utilities +1.20%, XLE energy +0.80%, XLV health care +0.50%, XLP staples +0.30%, XLRE real estate +0.10%, XLB materials −0.10%, XLI industrials −0.30%, XLF financials −0.40%, XLC communications −0.60%, XLY discretionary −0.90%, XLK tech −1.40%.",
         "- VIXY, a fund of VIX futures (not the VIX itself): +3.09% on the day.",
         "- Our stocks reporting in the next 14 days: MU (held) Tue, Nov 17 after the close.",
         "",
-        "## The portfolio",
+        "### Portfolio snapshot",
         snapshotText(snapshot),
         "",
-        "## Why we hold each, in a line",
-        "- MU · Micron compounds for years as high-bandwidth memory stays scarce.",
-        "",
-        "## What we watch, and why",
-        "- ASML · ASML compounds as High-NA EUV ramps.",
+        "## The book",
+        "Holding (1):",
+        "- MU · Secular Compounder · Micron compounds for years as high-bandwidth memory stays scarce.",
+        "Watching (1):",
+        "- ASML · Secular Compounder · ASML compounds as High-NA EUV ramps.",
         "",
         "## Your notes in the last 5 days",
         "- none",
@@ -210,21 +214,19 @@ describe("the 7:30 Market Reviewer", () => {
 
     // Context shows each part the agent engine built, by name and in the Framework page's color, then its one tool; the parts add up to what was sent.
     const view = viewOfRecord(record!);
-    expect(view.categories.map((c) => [c.name, c.part])).toEqual([
-      ["Its instructions", "job"],
-      ["The day", "job"],
-      ["Market numbers", "portfolio"],
-      ["Portfolio snapshot", "portfolio"],
-      ["Why we hold each", "read"],
-      ["What we watch, and why", "read"],
-      ["Its notes, last 5 days", "read"],
-      ["Its last digest", "read"],
-      ["Tool menu", "tools"],
+    expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
+      ["Instructions", "Its own text", "job"],
+      ["Context", "The date and account", "read"],
+      ["Context", "Market numbers", "portfolio"],
+      ["Context", "The portfolio", "portfolio"],
+      ["Context", "The book", "read"],
+      ["Context", "Its last output", "read"],
+      ["Tools", "Tool menu", "tools"],
     ]);
     const sent = (from: number, to: number) => view.categories.slice(from, to).map((c) => c.sections[0].text).join("\n\n");
     expect(sent(0, 1)).toBe(body.input[0].content);
-    expect(sent(1, 8)).toBe(body.input[1].content);
-    expect(view.categories[8].sections.map((s) => s.label)).toEqual(["web_search"]);
+    expect(sent(1, 6)).toBe(body.input[1].content);
+    expect(view.categories[6].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the first message, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");

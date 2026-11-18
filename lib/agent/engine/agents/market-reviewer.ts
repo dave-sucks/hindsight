@@ -3,13 +3,11 @@
  * traded book at 7:30 AM ET (lib/agent/market-reviewer/run.ts,
  * lib/inngest/functions/market-reviewer.ts). One call with OpenAI's own web
  * search; its reply is the digest and its notes on our stocks. Its
- * instructions are one fixed text, the same on every run; the day, the
- * market numbers, the book and its own last notes and digest are its first
- * message. Its request is what its old builder sent, character for character
- * (lib/agent/engine/engine.test.ts and the run test's pinned first message).
+ * instructions are its own text, the same on every run. Its context: the
+ * market numbers, the portfolio, the book, and its own last digest and notes.
+ * The schedule writes it no message: the date line is its start.
  */
 import { MODES } from "@/lib/agent/modes";
-import { etDateOf } from "@/lib/market-data/intraday-window";
 import type { AgentRecord } from "../types";
 
 /** The six sections together, the links not counted; each section gets a sixth. */
@@ -55,19 +53,12 @@ export const MARKET_REVIEWER: AgentRecord = {
   name: "Market Reviewer",
   does: "Researches the market's day and writes the morning digest, and notes on our stocks its research touches.",
   runsWhen: "7:30 AM ET on market days, one run per traded book.",
+  messageFrom: "The schedule (lib/inngest/functions/market-reviewer.ts), which writes it no message: the date line is its start.",
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 1,
-  instructions: [{ own: "instructions", title: "Its instructions", text: INSTRUCTIONS }],
-  message: [
-    { own: "kickoff", title: "The day", text: ({ now, environment }) => `${reviewDay(etDateOf(now))}, the ${environment} book.` },
-    { block: "market_numbers", alone: true, heading: "## Market numbers" },
-    { block: "portfolio_snapshot", alone: true, heading: "## The portfolio" },
-    { block: "held_beliefs", heading: "## Why we hold each, in a line" },
-    { block: "watched_beliefs", heading: "## What we watch, and why" },
-    { block: "reviewer_notes", heading: "## Your notes in the last 5 days" },
-    { block: "last_digest", heading: "## Your last digest" },
-  ],
+  instructions: [{ own: INSTRUCTIONS }],
+  context: ["market_numbers", "portfolio", "the_book", "last_output"],
   tools: [],
   providerTools: ["OpenAI's web search"],
   output: "One reply (JSON): the digest, saved for the day, and its notes, each saved on the stocks it names. A high note flags its stocks for the next run.",

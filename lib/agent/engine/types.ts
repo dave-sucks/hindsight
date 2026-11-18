@@ -2,93 +2,45 @@
  * The agent engine's shapes (docs/plans/AGENT_ENGINE.md). Client-safe: the
  * Agents page and the Context panel read them.
  *
- * An agent is a record: its own instructions, the context blocks it is given
- * and where, its tools, its model and its step limit. The engine builds the
- * model request from the record and says which part of the request is which.
+ * An agent is three things: its instructions, its context and its tools.
+ * - Instructions: its own text, and the shared texts it uses (./parts.ts).
+ * - Context: the reads put in its first message, each one text.
+ * - Tools: the tools it may call.
+ * The run's task is the message, written by whoever starts the run; the
+ * engine prints it last in the first message. Every first message opens with
+ * one line the engine writes: the date and time in ET, and the account.
  */
 
-/** A context block in the library (./blocks.ts). */
-export type BlockId =
-  | "house_rules"
-  | "market_block_rule"
-  | "how_you_write"
+/** A text more than one agent's instructions use (./parts.ts). */
+export type SharedId = "house_rules" | "how_you_write" | "the_analyst" | "playbooks" | "research_rules";
+
+/** A read put in an agent's first message (./parts.ts). */
+export type ContextId =
   | "market_numbers"
   | "market_digest"
-  | "portfolio_snapshot"
-  | "watching"
+  | "portfolio"
   | "portfolio_digest"
-  | "last_writeup"
-  | "held_beliefs"
-  | "watched_beliefs"
-  | "reviewer_notes"
-  | "last_digest"
-  | "analyst_brief"
-  | "playbooks"
-  | "why_sent"
-  | "sender_notes"
-  | "idea_source"
-  | "existing_thesis"
-  | "promotion"
-  | "setup_record"
-  | "prior_exit"
+  | "the_book"
+  | "the_analysts"
+  | "the_stock"
   | "stock_data"
-  | "chat_found"
-  | "stock_row"
-  | "fired_trigger"
-  | "situations"
-  | "fire_facts"
-  | "earnings_week"
-  | "filings_week"
-  | "regime"
-  | "blocked_last_time"
-  | "analyst_scope"
-  | "money_context"
-  | "book_context"
-  | "analyst_rooms"
-  | "today"
-  | "date_awareness"
-  | "research_note"
-  | "thesis_claim"
-  | "earnings_triggers"
-  | "what_the_owner_reads";
+  | "playbook_record"
+  | "earnings_this_week"
+  | "filings_this_week"
+  | "refused_calls"
+  | "last_output";
 
 export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
-/** Part of the agent's own instructions: its job, in its own words. */
-export interface OwnPart {
-  own: string;
-  title: string;
-  /** The text, or the text for this run (a date, the account); null leaves the part out this run. */
-  text: string | ((input: AgentInput) => string | null);
-  /** What goes before it: a blank line unless the record says otherwise. */
-  sep?: Sep;
-}
-
-/** The separator before a part, or the one for this run (when it follows a part only some runs print). */
-export type Sep = string | ((input: AgentInput) => string);
-
-/**
- * A block from the library, given to the agent. A block of the Market and
- * portfolio group prints inside that block, under the group's heading;
- * `alone` prints it on its own instead. A block on its own prints under
- * `heading` when the record gives one, else as its text alone.
- */
-export interface BlockPart {
-  block: BlockId;
-  alone?: true;
-  heading?: string;
-  /** What goes before it: a blank line unless the record says otherwise. */
-  sep?: Sep;
-}
-
-export type RecordPart = OwnPart | BlockPart;
+/** One entry of an agent's instructions: its own text, or a shared text by name. */
+export type InstructionPart = SharedId | { own: string };
 
 /** What a run hands the engine about itself. */
 export interface AgentInput {
   now: Date;
   environment: "PAPER" | "LIVE";
-  /** What else one agent's own words need this run (the Writer's stock and mode), read by its record. */
-  extra?: unknown;
+  /** The run's task, written by whoever starts it; printed last in the first message. None in a conversation: there it is your message. */
+  message?: string | null;
 }
 
 export interface AgentRecord {
@@ -98,28 +50,30 @@ export interface AgentRecord {
   does: string;
   /** When it runs. */
   runsWhen: string;
+  /** Who writes its message: a person, another agent, the trigger check or the schedule. */
+  messageFrom: string;
   model: string;
   maxSteps: number;
   /** How long its model call may run before it is stopped, in milliseconds. The agent runner (./run.ts) runs only a record that names one. */
   timeoutMs?: number;
-  /** The instructions, in order. */
-  instructions: readonly RecordPart[];
-  /** The first message, in order. */
-  message: readonly RecordPart[];
   /**
-   * In a conversation (the chat): what rides on each new message you send,
-   * before your words. Each part is its own text on the message, the Market
-   * and portfolio block one text, so none takes a separator.
+   * Its instructions, in order: its own text, once, and the shared texts it
+   * uses. When its context has the stock, the stock's situations end them.
    */
-  newest?: readonly RecordPart[];
+  instructions: readonly InstructionPart[];
+  /**
+   * The reads in its first message, in order, after the date line. In a
+   * conversation (`conversation`), they ride on each message you send instead.
+   */
+  context: readonly ContextId[];
+  /** A conversation (the chat): its first message is yours, and the date line and its context ride on each new one. */
+  conversation?: true;
   /** The tools it may call, by name (lib/agent/tools). */
   tools: readonly string[];
   /** The model provider's own tools it is given (its web search), named for the page. */
   providerTools?: readonly string[];
   /** What it hands back. */
   output: string;
-  /** For the Agents page: the run its own words are shown for, when they change with the run. */
-  example?: { extra: unknown; says: string };
 }
 
 /** A record the agent runner (./run.ts) can run: one that names its time limit. */
@@ -128,17 +82,24 @@ export type RunnableRecord = AgentRecord & { timeoutMs: number };
 /** Where a part of a request went: the instructions, the first message, or the newest message of a conversation. */
 export type Where = "instructions" | "message" | "newest";
 
+/**
+ * What a part of a request is: the agent's own text, a shared text, the
+ * stock's situations (instructions), the date line, a read (context), or the
+ * run's task (the message).
+ */
+export type PartKind = "own" | "shared" | "situations" | "line" | "context" | "message";
+
 /** One part of a built request, as the run keeps it (lib/agent/run-requests.ts). */
 export interface SentPartManifest {
-  /** The own part's key, or the block's id. */
+  /** "own", "line", "message", "situations", or the shared text's or read's id. */
   id: string;
   title: string;
-  kind: "own" | "block";
+  kind: PartKind;
   where: Where;
   /** The file the text comes from. */
   source: string;
   chars: number;
-  /** What was sent before it ("" for the first part); a record kept before this was a blank line. */
+  /** What was sent before it ("" for the first part). */
   sep?: string;
 }
 
@@ -160,4 +121,10 @@ export interface BuiltNewest {
   parts: SentPartManifest[];
 }
 
-export const isOwn = (p: RecordPart): p is OwnPart => "own" in p;
+export const isOwnPart = (p: InstructionPart): p is { own: string } => typeof p !== "string";
+
+/** An agent's own text. */
+export const ownText = (r: Pick<AgentRecord, "instructions">): string => r.instructions.find(isOwnPart)?.own ?? "";
+
+/** The shared texts an agent's instructions use, in order. */
+export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedId[] => r.instructions.filter((p): p is SharedId => !isOwnPart(p));

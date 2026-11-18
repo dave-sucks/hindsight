@@ -2,9 +2,8 @@
  * The portfolio digest's record (docs/plans/AGENT_ENGINE.md): the owner's
  * evening summary of the account, from the portfolio snapshot and nothing
  * else (lib/agent/digest-writer.ts runs it, lib/inngest/functions/portfolio-digest.ts
- * at 8 PM ET). Its instructions are one fixed text, the same on every run;
- * the snapshot is its first message. Its request is what its old builder
- * sent, character for character (lib/agent/engine/engine.test.ts).
+ * at 8 PM ET). Its instructions are its own text, the same on every run;
+ * its context is the portfolio. The schedule writes it no message.
  */
 import type { AgentRecord } from "../types";
 
@@ -25,12 +24,12 @@ export const PORTFOLIO_DIGEST: AgentRecord = {
   name: "Portfolio digest",
   does: "Writes your evening summary of the account, with its view on each proposal waiting for you.",
   runsWhen: "8:00 PM ET on market days, one run per traded book.",
+  messageFrom: "The schedule (lib/inngest/functions/portfolio-digest.ts), which writes it no message.",
   // GPT-4o ignored "never suggest what to do with the cash" and skipped a waiting proposal on the Nov 11 book.
   model: "gpt-5.4",
   maxSteps: 1,
-  instructions: [{ own: "instructions", title: "Its instructions", text: INSTRUCTIONS }],
-  // The snapshot alone, as code wrote it: no heading.
-  message: [{ block: "portfolio_snapshot", alone: true }],
+  instructions: [{ own: INSTRUCTIONS }],
+  context: ["portfolio"],
   tools: [],
   output: "One reply: 3 to 5 paragraphs of plain prose, saved as the digest on the home page.",
 };

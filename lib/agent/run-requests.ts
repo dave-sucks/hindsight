@@ -5,15 +5,15 @@
  * A record is one RunMessage row (role "request") beside the run's thread
  * (role "thread", lib/agent/run-thread.ts): each request the call made, as
  * the JSON body that went to the provider. The run page's Context panel shows
- * each part the agent engine named (lib/agent/engine), each message of the
- * conversation, the tool menu, and the raw request.
+ * it as the agent is made: its instructions (its own text and each shared
+ * text, named), its context (each read, named), its message, and its tools,
+ * then the raw request.
  * The 8 PM Portfolio Digest and the Market Reviewer keep their own; every
  * other agent's is kept by the model it gets from modelFor (model.ts).
  */
 import { prisma } from "@/lib/prisma";
 import { swatchOf, type PartId } from "@/components/docs/framework/swatch";
-import { BLOCKS } from "@/lib/agent/engine/blocks";
-import type { AgentId, BlockId, SentPartManifest, Where } from "@/lib/agent/engine/types";
+import type { AgentId, SentPartManifest, Where } from "@/lib/agent/engine/types";
 
 export const REQUEST_ROLE = "request";
 
@@ -57,9 +57,13 @@ export interface SentPart {
   text: string;
 }
 
+/** Which of an agent's parts a part of a request is: its instructions, its context, its message (or the conversation), its tools. */
+export type SentGroup = "Instructions" | "Context" | "Message" | "Conversation" | "Tools";
+
 /** One part of a request, in the order it was sent. */
 export interface SentCategory {
   name: string;
+  group: SentGroup;
   /** Its color on the Framework page (components/docs/framework/swatch.ts); null when it has none. */
   part: PartId | null;
   chars: number;
@@ -82,7 +86,7 @@ export interface CallView {
 }
 
 /** What a call's first message is, by the code that made it. */
-const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot", "market-reviewer": "Market numbers, portfolio, watchlist, notes and last digest" };
+const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot", "market-reviewer": "Market numbers, portfolio, the book, notes and last digest" };
 
 /** A message's content as text: a string as is, a list of parts by their text (any other part, a tool call or its result, as JSON). */
 function textOf(content: unknown): string {
@@ -107,14 +111,14 @@ export function viewOfRecord(r: RequestRecord): CallView {
   const isSystem = (m: Record<string, unknown>) => m.role === "system" || m.role === "developer";
   const rest = items.filter((m) => !isSystem(m));
   const categories: SentCategory[] = [];
-  const whole = (name: string, part: SentCategory["part"], text: string) => categories.push({ name, part, chars: text.length, sections: [{ label: name, chars: text.length, text }] });
+  const whole = (name: string, group: SentGroup, part: SentCategory["part"], text: string) => categories.push({ name, group, part, chars: text.length, sections: [{ label: name, chars: text.length, text }] });
   const named = (where: Where) => (r.parts ?? []).filter((p) => p.where === where);
   /** A text by the parts the engine named in it: the parts, then what follows them (the person's words) as `after`. Whole when they don't add up. */
   const show = (where: Where, text: string, name: string, after?: string) => {
     const cut = byParts(named(where), text);
-    if (!cut || (cut.after && !after)) return void whole(name, "read", text);
+    if (!cut || (cut.after && !after)) return void whole(name, where === "instructions" ? "Instructions" : "Message", "read", text);
     categories.push(...cut.parts);
-    if (cut.after) whole(after!, null, cut.after);
+    if (cut.after) whole(after!, "Message", "message", cut.after);
   };
   const instructions = items.filter(isSystem).map(said).join("\n\n");
   if (instructions) show("instructions", instructions, "Instructions");
@@ -123,13 +127,13 @@ export function viewOfRecord(r: RequestRecord): CallView {
     // A conversation's only message carries what rides on its newest one.
     if (named("message").length) show("message", said(rest[0]), first);
     else if (rest.length === 1 && named("newest").length) show("newest", said(rest[0]), first, first);
-    else whole(first, "read", said(rest[0]));
+    else whole(first, "Message", "read", said(rest[0]));
   }
-  if (rest.length > 2) whole("The conversation so far", null, rest.slice(1, -1).map(said).join("\n\n"));
+  if (rest.length > 2) whole("The conversation so far", "Conversation", null, rest.slice(1, -1).map(said).join("\n\n"));
   if (rest.length > 1) {
     const newest = said(rest[rest.length - 1]);
     if (named("newest").length) show("newest", newest, "Newest message", "Newest message");
-    else whole("Newest message", null, newest);
+    else whole("Newest message", "Conversation", null, newest);
   }
   // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
   // A function tool by its name, a provider's own (OpenAI's web search) by its type.
@@ -138,7 +142,7 @@ export function viewOfRecord(r: RequestRecord): CallView {
     chars: JSON.stringify(t).length,
     text: JSON.stringify(t, null, 2),
   }));
-  if (tools.length) categories.push({ name: "Tool menu", part: "tools", chars: tools.reduce((n, t) => n + t.chars, 0), sections: tools });
+  if (tools.length) categories.push({ name: "Tool menu", group: "Tools", part: "tools", chars: tools.reduce((n, t) => n + t.chars, 0), sections: tools });
   return {
     call: r.call,
     model: r.model,
@@ -171,13 +175,19 @@ export function byParts(parts: SentPartManifest[], text: string): { parts: SentC
   const tail = text.slice(at);
   if (tail && !tail.startsWith("\n\n")) return null;
   return {
-    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, part: partOf(p), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
+    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, group: groupOf(p), part: swatchOf(p), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
     after: tail.slice(2),
   };
 }
 
-/** A named part's color, the Framework page's: its own words one, each kind of library block its own (a block no longer in the library, the stock and the run's). */
-const partOf = (p: SentPartManifest): PartId => (p.kind === "own" ? "job" : BLOCKS[p.id as BlockId] ? swatchOf(BLOCKS[p.id as BlockId]) : "read");
+/**
+ * A named part's group: the agent's own text, a shared text and the
+ * situations are its instructions; the date line and the reads its context;
+ * the message its message. A part kept before the three parts (kind "block")
+ * reads by where it went.
+ */
+const groupOf = (p: SentPartManifest): SentGroup =>
+  p.kind === "own" || p.kind === "shared" || p.kind === "situations" ? "Instructions" : p.kind === "message" ? "Message" : p.kind === "line" || p.kind === "context" ? "Context" : p.where === "instructions" ? "Instructions" : "Context";
 
 /** A run's records, oldest first, as its page shows them. */
 export async function loadRunRequests(runId: string): Promise<CallView[]> {

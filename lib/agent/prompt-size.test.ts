@@ -27,7 +27,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-12: +223 / +239 each, the house rules' sentence on the Market and portfolio block (the snapshot wins over the digest and an account lookup); the daily run's cash line points to the snapshot (lib/agent/portfolio-block.ts).
   // 2026-11-16: +10 / −8, a stock has triggers and nothing else: the situation texts say the buy, the floor and an upside level, edited by id, with no plan.
   // 2026-11-18: −193, the morning run's instructions are one fixed text and the analyst, the market and portfolio and the book's week are blocks of the first message (now counted here, its start of the day included): the ═══ banners go.
-  daily: 9_247,
+  // 2026-11-18: +168, an agent is instructions, context and tools: the date line opens the first message, the house rules carry the line on weighing the Market and portfolio context again, the analyst carries its fence, and the regime's rules are its own text (no cash line that changes by run).
+  daily: 9_415,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -35,7 +36,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −1, the analyst opens the instructions (the morning run's measurement, #1021) and the situations line says where they are: at the end of the instructions, not the first message.
   // 2026-11-18: −1,023, the tool-call discipline section goes (the ask says it once), three sentences that pointed at a belief field, a type field and a price-only fire are corrected, and the rule on weighing the snapshot and the digests leaves with them.
   // 2026-11-18: −90, the trigger run is no longer told to pass trigger_id: its save is handed the trigger that fired.
-  tactical: 13_489,
+  // 2026-11-18: +297, the same three moves (the date line, the house rule, the fence), and the fire said once in the message from the trigger check.
+  tactical: 13_786,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -48,13 +50,15 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-17: +114, each price comes from the chart today and a trigger whose price it doesn't have yet is left out; "a view with no buy names no playbook" goes; the Street is its own rule.
   // 2026-11-17: +356, a watch gets its watch triggers, its earnings review and its own looks, nothing that waits for the buy; the pre-catalyst buys carry "within 70 days before the event date".
   // 2026-11-18: +1,240, the Writer's request measured whole (its first message's date, reason and ask now counted), and its instructions one fixed text: the rules for a recent sale, someone's idea and a promotion are always there, where they printed only when they applied; a stock we own goes to the Holding refresh, whose instructions carry none of a watch's rules.
-  writer: 17_325,
+  // 2026-11-18: +116, the same three moves; its five rule texts are one, its own text one, and its brief its message (the "## Today" line goes).
+  writer: 17_441,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
   // 2026-11-16: +1, the same situation texts.
   // 2026-11-18: −331, the chat's instructions are one fixed text for both scopes and the pinned analyst's id, fence and watchlist are a block that ends them (its scope): the ═══ banners go; the whole-book paragraph, once only at the portfolio level, is in every run's text.
-  chat: 35_598,
+  // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
+  chat: 35_531,
 };
 
 /**

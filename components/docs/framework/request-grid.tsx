@@ -15,7 +15,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WHERE_LABEL, type FrameworkAgent, type FrameworkData, type FrameworkPart, type FrameworkWhere } from "@/lib/docs/framework-content";
+import { SECTION_LABEL, type FrameworkAgent, type FrameworkData, type FrameworkPart, type FrameworkSection } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { Mono } from "../primitives";
 import { SWATCH, type PartId } from "./swatch";
@@ -41,10 +41,19 @@ const UNSIZED = { run: "Not in that run", sample: "Not on the sample", none: "No
 const when = (iso: string) => `${new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} ET`;
 const steps = (a: FrameworkAgent) => (a.maxSteps === 1 ? "one call" : `up to ${a.maxSteps} steps`);
 
-function rowOf(p: FrameworkPart, unsized: string): Row {
-  const own = p.kind === "own";
-  const body = own ? (p.about ? `“${p.about}”` : "Sent only on some runs.") : p.about;
-  const foot = own ? `Its own words${p.perRun ? ", written for each run" : ""} · ${p.source}` : `From the block library · ${p.source}`;
+/** Where a part's text comes from, by what it is. */
+const FROM: Record<FrameworkPart["kind"], string> = {
+  own: "Its own text",
+  shared: "A shared text",
+  situations: "The stock's situations, on some runs",
+  line: "Written by the engine",
+  context: "A read",
+  message: "Written by whoever starts the run",
+};
+
+function rowOf(p: FrameworkPart, unsized: string, onEachMessage: boolean): Row {
+  const body = p.kind === "own" ? `“${p.about}”` : p.about;
+  const foot = p.kind === "message" ? FROM.message : `${FROM[p.kind]}${p.section === "context" && onEachMessage ? ", on each message you send" : ""} · ${p.source}`;
   return { key: `${p.where}:${p.id}`, swatch: p.swatch, title: p.title, chars: p.chars, body, foot, unsized };
 }
 
@@ -65,8 +74,9 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
   const agent = data.agents.find((a) => a.id === id) ?? data.agents[0];
   if (!agent) return null;
 
-  const groups = (Object.keys(WHERE_LABEL) as FrameworkWhere[])
-    .map((where) => ({ where, rows: agent.parts.filter((p) => p.where === where).map((p) => rowOf(p, UNSIZED[agent.sizedOn?.kind ?? "none"])) }))
+  const onEachMessage = agent.parts.some((p) => p.where === "newest");
+  const groups = (Object.keys(SECTION_LABEL) as FrameworkSection[])
+    .map((section) => ({ section, rows: agent.parts.filter((p) => p.section === section).map((p) => rowOf(p, UNSIZED[agent.sizedOn?.kind ?? "none"], onEachMessage)) }))
     .filter((g) => g.rows.length);
   const tools = toolsRow(agent);
   const rows = [...groups.flatMap((g) => g.rows), ...(tools ? [tools] : [])];
@@ -105,8 +115,8 @@ export function RequestGrid({ data }: { data: FrameworkData }) {
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col">
           {groups.map((g, i) => (
-            <div key={g.where} className={cn("flex flex-col", i > 0 && "pt-6")}>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{WHERE_LABEL[g.where]}</p>
+            <div key={g.section} className={cn("flex flex-col", i > 0 && "pt-6")}>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{SECTION_LABEL[g.section]}</p>
               <ul className="flex flex-col">
                 {g.rows.map((r) => (
                   <PartRow key={r.key} row={r} hover={hover} setHover={setHover} />

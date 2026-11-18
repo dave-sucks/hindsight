@@ -1,18 +1,24 @@
 /**
- * The Writer's first message carries the Market and portfolio block when it
- * is given one, after the date; its instructions never do.
+ * The Writer's first message carries the market numbers when it is given
+ * them, after the date line, and none of the rest of the Market and
+ * portfolio reads; its instructions never do.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: jest.fn() }));
 
 import { writerRequest } from "@/lib/agent/run-thesis-writer";
 
-const base = { analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen", runDate: "2026-09-25" } as never;
+const base = { analyst: { analystPrompt: null }, ticker: "TEST", mode: "mint", existingThesis: null, reason: "a screen" } as never;
+const NOW = new Date("2026-09-25T13:00:00Z");
 
-it("the Writer's first message has the block after the date, and has none without it", () => {
-  const block = "## Market and portfolio\n\n### Portfolio snapshot\nSTAND-IN";
-  const built = writerRequest({ ...(base as object), portfolioPieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }] } as never);
-  expect(built.message.startsWith(`## Today\nToday is 2026-09-25.\n\n${block}`)).toBe(true);
+it("the Writer's first message has the market numbers after the date line, and no snapshot", () => {
+  const built = writerRequest(
+    { ...(base as object), portfolioPieces: [{ id: "market_numbers", text: "### Market numbers\nN" }, { id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }] } as never,
+    undefined,
+    NOW,
+  );
+  expect(built.message.startsWith("Fri, Sep 25, 2026, 9:00 AM ET, the PAPER account.\n\n## Market and portfolio\n\n### Market numbers\nN\n\n## Why you were dispatched")).toBe(true);
+  expect(built.message).not.toContain("STAND-IN");
   expect(built.instructions).not.toContain("## Market and portfolio");
   expect(writerRequest(base).message).not.toContain("## Market and portfolio");
 });

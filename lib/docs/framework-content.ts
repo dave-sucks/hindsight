@@ -6,31 +6,35 @@
  */
 
 import type { PartId } from "@/components/docs/framework/swatch";
+import type { PartKind } from "@/lib/agent/engine/types";
 
 /** Where a part of a request goes: the instructions, the first message, or each new message of a conversation. */
 export type FrameworkWhere = "instructions" | "message" | "newest";
 
-/** Each place a part can go, in the order a request is read, as the page names it. */
-export const WHERE_LABEL: Record<FrameworkWhere, string> = {
+/** Which of an agent's three parts a part is (its tools are the third, shown on their own). */
+export type FrameworkSection = "instructions" | "context" | "message";
+
+/** Each of an agent's parts, in the order a request is read, as the page names it. */
+export const SECTION_LABEL: Record<FrameworkSection, string> = {
   instructions: "Its instructions",
-  message: "Its first message",
-  newest: "On each new message you send",
+  context: "Its context",
+  message: "Its message",
 };
 
 /** One part of an agent's request, in its record's order. */
 export interface FrameworkPart {
-  /** The own part's key, or the block's id. */
+  /** "own", "line", "message", "situations", or the shared text's or read's id. */
   id: string;
   title: string;
-  /** Its own words, or a block from the library. */
-  kind: "own" | "block";
+  kind: PartKind;
   where: FrameworkWhere;
-  /** A block's line from the library; for its own words, how they open on the sample. */
+  section: FrameworkSection;
+  /** Its line; for its own text, how it opens. */
   about: string;
   /** The file its text comes from. */
   source: string;
-  /** Its own words, written for each run (a date, the account) rather than one fixed text. */
-  perRun?: boolean;
+  /** Sent only on some runs (the stock's situations). */
+  someRuns?: boolean;
   /** Characters on what it is sized on (its run, or its sample); null when that didn't send it (it goes only on some runs). */
   chars: number | null;
   swatch: PartId;
@@ -42,6 +46,8 @@ export interface FrameworkAgent {
   name: string;
   does: string;
   runsWhen: string;
+  /** Who writes its message. */
+  messageFrom: string;
   model: string;
   maxSteps: number;
   output: string;
@@ -235,14 +241,15 @@ export function fieldsLit(keys: readonly string[]): Set<string> {
 }
 
 /**
- * The blocks an agent is given, the ones the fewest agents get first (a tie
- * in its record's order), so what sets it apart leads: the chips on the
- * workflow diagram.
+ * The shared texts and reads an agent is given, the ones the fewest agents
+ * get first (a tie in its record's order), so what sets it apart leads: the
+ * chips on the workflow diagram.
  */
-export function blocksByRarity(agent: FrameworkAgent, agents: readonly FrameworkAgent[]): FrameworkPart[] {
-  const blockIds = (a: FrameworkAgent) => [...new Set(a.parts.filter((p) => p.kind === "block").map((p) => p.id))];
+export function partsByRarity(agent: FrameworkAgent, agents: readonly FrameworkAgent[]): FrameworkPart[] {
+  const given_ = (p: FrameworkPart) => p.kind === "shared" || p.kind === "context";
+  const blockIds = (a: FrameworkAgent) => [...new Set(a.parts.filter(given_).map((p) => p.id))];
   const given = new Map<string, number>();
   for (const a of agents) for (const id of blockIds(a)) given.set(id, (given.get(id) ?? 0) + 1);
-  const first = blockIds(agent).map((id) => agent.parts.find((p) => p.kind === "block" && p.id === id)!);
+  const first = blockIds(agent).map((id) => agent.parts.find((p) => given_(p) && p.id === id)!);
   return first.map((p, i) => ({ p, i })).sort((a, b) => (given.get(a.p.id) ?? 0) - (given.get(b.p.id) ?? 0) || a.i - b.i).map((x) => x.p);
 }

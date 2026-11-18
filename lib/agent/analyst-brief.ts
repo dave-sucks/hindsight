@@ -6,10 +6,10 @@
  * renders no part of the analyst itself: the morning run and the Run button,
  * the trigger run, the chat pinned to an analyst, the writer and discovery.
  * The brief is the analyst's name, its strategy word for word, its rules'
- * numbers, the room it has when the caller knows it, and one line per setup
- * it has chosen. Nothing else: the universe fence is `universeLines`, used by
- * the two doors that show it; the job, the stock and the house rules are each
- * door's own.
+ * numbers and the stocks it may cover (its fence), the room it has when the
+ * caller knows it, and one line per setup it has chosen. It is the shared
+ * instruction text "the_analyst" (lib/agent/engine/parts.ts). Nothing else:
+ * the job, the stock and the house rules are each agent's own.
  *
  * A playbook is written once, by `playbookChecks`. The brief takes its first sentence;
  * the writer takes all of them, with the playbook's watch triggers.
@@ -28,7 +28,7 @@ import { positionTotalCap } from "@/lib/agent/position-sizing";
  * number or a bigint). Unset fields render as the morning run always rendered
  * them.
  */
-export interface BriefAnalyst {
+export interface BriefAnalyst extends UniverseAnalyst {
   name?: string | null;
   analystPrompt?: string | null;
   directionBias?: string | null;
@@ -54,6 +54,7 @@ export interface UniverseAnalyst {
 export const BRIEF_FIELDS = [
   "name", "analystPrompt", "directionBias", "holdDurations", "minPositionSize",
   "maxPositionSize", "maxPositionTotal", "maxOpenPositions", "setupIds",
+  "sectors", "marketCapMin", "marketCapMax", "exclusionList",
 ] as const;
 
 function amount(v: unknown): number | undefined {
@@ -113,6 +114,7 @@ export function analystBrief(analyst: BriefAnalyst, room?: AnalystCapacity | nul
       : `- Max position size: ${dollars(max)}`,
     `- Most in one stock: ${dollars(positionTotalCap({ maxPositionSize: max, maxPositionTotal: amount(analyst.maxPositionTotal) }))}`,
     `- Max open positions: ${analyst.maxOpenPositions ?? 5}`,
+    ...universeLines(analyst).map((l) => `- ${l}`),
   ];
   const roomLine = capacityLine(room);
   if (roomLine) rules.push(`- ${roomLine}`);

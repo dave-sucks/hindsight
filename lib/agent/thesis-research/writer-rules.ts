@@ -1,9 +1,9 @@
 /**
- * The rules both Writer agents follow: the Writer (a new stock or a watch)
- * and the Holding refresh (a stock we own). Each is a shared block in the
- * agent engine's library (lib/agent/engine/blocks.ts), the same text for
- * both, the way the house rules are for every agent. Their words are the
- * Writer's own from before the split. Client-safe.
+ * The research rules both Writer agents follow: the Writer (a new stock or a
+ * watch) and the Holding refresh (a stock we own). Together they are one
+ * shared instruction text, "research_rules" (lib/agent/engine/parts.ts), the
+ * same for both, the way the house rules are for every agent. Their words are
+ * the Writer's own from before the split. Client-safe.
  */
 
 /** How many web searches one research call may make. */
@@ -48,3 +48,6 @@ export const WHAT_THE_OWNER_READS = `## What the owner reads
 The research note in Step 1 keeps its citations. Your rationale, the company line, the belief and each trigger's note are what the owner reads first: write them by "How you write" above. On a new stock your rationale is the first Activity line the owner reads.
 
 If submit_thesis returns validation errors, fix EXACTLY the listed fields and call it again — do NOT rewrite the research note. When it returns accepted, STOP. Do not write anything after acceptance.`;
+
+/** The shared text "research_rules": the five, in this order. */
+export const RESEARCH_RULES = [DATE_AWARENESS, RESEARCH_NOTE, THESIS_CLAIM, EARNINGS_TRIGGERS, WHAT_THE_OWNER_READS].join("\n\n");

@@ -1,8 +1,9 @@
 /**
  * What /how-it-works/framework shows, built on the server from the code this
  * deploy runs. Every agent is read from its record (lib/agent/engine/agents),
- * the same way for each: its parts in the record's order, a block's title and
- * line from the library (lib/agent/engine/blocks.ts), and each part sized from
+ * the same way for each: its instructions (its own text and the shared texts,
+ * in the record's order), its context (the date line and each read), its
+ * message, each with its title and line (lib/agent/engine/parts.ts), and each part sized from
  * the latest request the account's runs saved for that agent: the manifest
  * the run kept with it (lib/agent/run-requests.ts), the same numbers the
  * run's Context panel shows. An agent with no saved run yet is sized on its
@@ -18,8 +19,8 @@
 import { zodSchema } from "ai";
 import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
-import { BLOCKS } from "@/lib/agent/engine/blocks";
-import { isOwn, type AgentRecord, type BuiltNewest, type BuiltRequest, type RecordPart, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
+import { CONTEXT, DATE_LINE, SHARED, SITUATIONS_PART } from "@/lib/agent/engine/parts";
+import { isOwnPart, type AgentRecord, type BuiltNewest, type BuiltRequest, type PartKind, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
 import { getAccountId } from "@/lib/auth/account";
 import { REQUEST_ROLE, byParts, viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { prisma } from "@/lib/prisma";
@@ -122,42 +123,52 @@ function sampleOf(record: AgentRecord): { sent: Sent[]; from: string } | null {
 }
 
 const keyOf = (where: Where, id: string) => `${where}:${id}`;
-const recordParts = (r: AgentRecord): Array<{ part: RecordPart; where: Where }> => [
-  ...r.instructions.map((part) => ({ part, where: "instructions" as const })),
-  ...r.message.map((part) => ({ part, where: "message" as const })),
-  ...(r.newest ?? []).map((part) => ({ part, where: "newest" as const })),
-];
+
+/** A part an agent's record lists: where it goes, which of the agent's three parts it is, and its line. */
+interface Listed {
+  id: string;
+  title: string;
+  kind: PartKind;
+  where: Where;
+  section: FrameworkPart["section"];
+  about: string;
+  source: string;
+  /** Sent only on some runs (the stock's situations). */
+  someRuns?: boolean;
+}
+
+/** The parts a record lists, in the order they are sent: its instructions, then its first message (or what rides on each message you send). */
+export function recordParts(r: AgentRecord): Listed[] {
+  const first: Where = r.conversation ? "newest" : "message";
+  return [
+    ...r.instructions.map((p): Listed =>
+      isOwnPart(p)
+        ? { id: "own", title: "Its own text", kind: "own", where: "instructions", section: "instructions", about: openingOf(p.own), source: `lib/agent/engine/agents (${r.id})` }
+        : { id: p, title: SHARED[p].title, kind: "shared", where: "instructions", section: "instructions", about: SHARED[p].about, source: SHARED[p].source },
+    ),
+    ...(r.context.includes("the_stock") ? [{ id: "situations", ...SITUATIONS_PART, kind: "situations" as const, where: "instructions" as const, section: "instructions" as const, someRuns: true }] : []),
+    { id: "line", ...DATE_LINE, kind: "line", where: first, section: "context" },
+    ...r.context.map((id): Listed => ({ id, title: CONTEXT[id].title, kind: "context", where: first, section: "context", about: CONTEXT[id].about, source: CONTEXT[id].source })),
+    ...(r.conversation ? [] : [{ id: "message", title: "The message", kind: "message" as const, where: "message" as const, section: "message" as const, about: r.messageFrom, source: r.messageFrom }]),
+  ];
+}
 
 /** One agent, read from its record: its parts in order, each sized on its sample, and its tools. */
 export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDef> = allTools()): FrameworkAgent {
   const sample = sampleOf(record);
+  const listedParts = recordParts(record);
   // The sample must be this record's: every part it sent is one the record lists, in the same place.
-  const listed = new Set(recordParts(record).map(({ part, where }) => keyOf(where, isOwn(part) ? part.own : part.block)));
+  const listed = new Set(listedParts.map((p) => keyOf(p.where, p.id)));
   const foreign = sample?.sent.find((s) => !listed.has(keyOf(s.manifest.where, s.manifest.id)));
   if (foreign) console.warn(`[framework] ${record.id}'s sample sent a part its record doesn't list: ${foreign.manifest.where} ${foreign.manifest.id}`);
   const sent = new Map((foreign ? [] : (sample?.sent ?? [])).map((s) => [keyOf(s.manifest.where, s.manifest.id), s]));
 
-  const parts: FrameworkPart[] = recordParts(record).map(({ part, where }) => {
-    if (isOwn(part)) {
-      const s = sent.get(keyOf(where, part.own));
-      const fixed = typeof part.text === "string" ? (part.text as string) : null;
-      const text = s?.text || fixed || "";
-      return {
-        id: part.own,
-        title: part.title,
-        kind: "own",
-        where,
-        about: openingOf(text, part.title),
-        source: `lib/agent/engine/agents (${record.id})`,
-        ...(fixed == null ? { perRun: true } : {}),
-        chars: s?.manifest.chars ?? null,
-        swatch: "job",
-      };
-    }
-    const def = BLOCKS[part.block];
-    const s = sent.get(keyOf(where, part.block));
-    return { id: def.id, title: def.title, kind: "block", where, about: def.about, source: def.source, chars: s?.manifest.chars ?? null, swatch: swatchOf(def) };
-  });
+  const parts: FrameworkPart[] = listedParts.map(({ someRuns, ...p }) => ({
+    ...p,
+    ...(someRuns ? { someRuns } : {}),
+    chars: sent.get(keyOf(p.where, p.id))?.manifest.chars ?? null,
+    swatch: swatchOf(p),
+  }));
 
   const measured = record.tools.filter((n) => tools[n]);
   return {
@@ -165,6 +176,7 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
     name: record.name,
     does: record.does,
     runsWhen: record.runsWhen,
+    messageFrom: record.messageFrom,
     model: record.model,
     maxSteps: record.maxSteps,
     output: record.output,

@@ -5,13 +5,12 @@
  * trigger set to Auto makes its trade itself, and the post-trade write-up
  * (./post-trade-writeup.ts) writes the note on it.
  *
- * Its own text is the same on every run, and its instructions end with the
- * stock's situations: instructions that travel with the stock, kept with the
- * instructions because among the facts they were followed less (the NVDA
- * declined sale went from 6 of 6 to 3 of 6, docs/plans/AGENT_ENGINE.md). The
- * market numbers, the stock's row, the trigger that fired and the fire come in
- * its first message, as context blocks; the analyst it works for opens its
- * instructions, as the morning run's does.
+ * Its instructions: the analyst it works for, its own text (the same on every
+ * run), the house rules, how you write, and on a review of a stock we watch
+ * the playbooks; the stock's situations end them, because among the facts
+ * they were followed less (the NVDA declined sale went from 6 of 6 to 3 of 6,
+ * docs/plans/AGENT_ENGINE.md). Its context: the market numbers and the stock.
+ * Its message is the fire, from the trigger check.
  */
 import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
@@ -55,29 +54,22 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
 - 15 step max. Be ruthlessly concise.
 - You are NOT reviewing your other theses. Only this stock matters on this run.`;
 
+/** The ask that ends the trigger run's message. */
+export const TRIGGER_RUN_ASK = "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.";
+
 export const TRIGGER_RUN: AgentRecord = {
   id: "trigger_run",
   name: "Trigger run",
   does: "Decides on one stock when one of its triggers fires: a trade (it waits for you), a trigger moved, or a note on why nothing.",
   runsWhen: "Every 5 minutes in market hours and at the 4:20 PM close check, when a trigger set to Send to Agent fires.",
+  messageFrom: "The trigger check (lib/inngest/functions/tactical-run.ts): the trigger that fired, the price it fired at and the fire's facts, then the ask.",
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
-  // A situation's text is an instruction that travels with the stock: it ends the instructions, after the fixed text.
-  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "how_you_write" }, { block: "situations" }],
-  message: [
-    // From the Market and portfolio block, the market numbers alone: the snapshot and the digests are the rest of
-    // the account (2026-11-18). The stock's position is on its row, the analyst's room in its brief, and code sizes a buy.
-    { block: "market_numbers" },
-    { block: "stock_row" },
-    { block: "playbooks" },
-    { block: "fired_trigger" },
-    { block: "fire_facts" },
-    {
-      own: "ask",
-      title: "The ask",
-      text: "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.",
-    },
-  ],
+  // The playbooks only on a review of a stock we watch (the run passes none otherwise); the stock's situations end the instructions.
+  instructions: ["the_analyst", { own: INSTRUCTIONS }, "house_rules", "how_you_write", "playbooks"],
+  // The market numbers alone: the snapshot and the digests are the rest of the account (2026-11-18). The stock's
+  // position is on its row, the analyst's room in its text, and code sizes a buy.
+  context: ["market_numbers", "the_stock"],
   tools: MODES["tactical"].toolAllowlist ?? [],
   output: "One update_thesis note on the stock (the reason on any trade it proposed), at most one trade proposal, then complete_run.",
 };

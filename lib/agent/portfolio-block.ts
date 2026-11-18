@@ -1,10 +1,8 @@
 /**
- * portfolio-block.ts — the Market and portfolio block: what every agent that
- * decides on stocks is given about the whole account, on every request. The
- * morning run, the trigger run, the owner's chat and the Writer each print it
- * once, from here.
+ * portfolio-block.ts — the Market and portfolio context: four reads of an
+ * agent's context (lib/agent/engine/parts.ts), loaded together, each printed
+ * under its own heading and all under "## Market and portfolio".
  *
- * Four parts, each under its own heading:
  * - **Market numbers:** the indexes, the regime, the sectors, VIXY and the
  *   book's coming reports, written by code when the request is built
  *   (lib/market-data/market-numbers.ts). The same numbers get_market_context
@@ -23,7 +21,9 @@
  */
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";
-import { snapshotText, watchingText } from "@/lib/portfolio/snapshot";
+import { portfolioPieceText } from "@/lib/portfolio/snapshot";
+
+export { portfolioPieceText };
 import { loadMarketNumbers } from "@/lib/market-data/load-market-numbers";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
 
@@ -50,15 +50,11 @@ function withinTime<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-/**
- * Which parts a reader gets beyond the standing four: `watching` adds the
- * Watching block (every stock we watch, a line each); `portfolioDigest: false`
- * leaves the 8 PM digest out, for a reader that must form its own view.
- */
-export interface BlockArgs { accountId: string; environment: string; now?: Date; waitMs?: number; watching?: boolean; portfolioDigest?: boolean }
+/** `portfolioDigest: false` leaves the 8 PM digest out, for a reader that must form its own view. */
+export interface BlockArgs { accountId: string; environment: string; now?: Date; waitMs?: number; portfolioDigest?: boolean }
 
-/** The block's parts, each a context block of its own in the agent engine (lib/agent/engine/blocks.ts). */
-export type PortfolioPieceId = "market_numbers" | "market_digest" | "portfolio_snapshot" | "watching" | "portfolio_digest";
+/** The block's parts, each a read of its own in the agent engine (lib/agent/engine/parts.ts): market_numbers, market_digest, portfolio, portfolio_digest. */
+export type PortfolioPieceId = "market_numbers" | "market_digest" | "portfolio_snapshot" | "portfolio_digest";
 /** One part of the block, its own heading first. `unreadable` stands in for the whole block when nothing could be read. */
 export interface PortfolioPiece { id: PortfolioPieceId | "unreadable"; text: string }
 
@@ -86,7 +82,7 @@ async function readPieces(args: BlockArgs): Promise<PortfolioPiece[]> {
     prisma.marketDigest
       .findFirst({ where: { accountId: args.accountId, environment }, orderBy: { date: "desc" }, select: { digest: true, createdAt: true } })
       .catch(() => null),
-    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now, watching: args.watching }), wait).catch((err) => {
+    withinTime(loadPortfolioSnapshot({ accountId: args.accountId, environment, now }), wait).catch((err) => {
       console.warn(`[portfolio-block] the snapshot couldn't be read: ${err instanceof Error ? err.message : err}`);
       return null;
     }),
@@ -110,8 +106,7 @@ async function readPieces(args: BlockArgs): Promise<PortfolioPiece[]> {
     text: market && marketFresh ? `### Market digest (written ${stamp(market.createdAt)} ET)\n${market.digest.trim().replace(/^#{1,3} /gm, "#### ")}` : `### Market digest\nNo market digest in the last ${DIGEST_SHELF_DAYS} days.`,
   });
   const read = snapshot && snapshot !== "timeout" ? snapshot : null;
-  pieces.push({ id: "portfolio_snapshot", text: `### Portfolio snapshot\n${read ? snapshotText(read) : "The portfolio snapshot couldn't be read for this request."}` });
-  if (args.watching && read) pieces.push({ id: "watching", text: `### Watching\n${watchingText(read)}` });
+  pieces.push({ id: "portfolio_snapshot", text: portfolioPieceText(read) });
   if (args.portfolioDigest === false) return pieces;
   const fresh = digest && now.getTime() - digest.createdAt.getTime() <= DIGEST_SHELF_DAYS * 86_400_000;
   pieces.push({

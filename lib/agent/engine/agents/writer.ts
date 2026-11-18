@@ -2,22 +2,24 @@
  * The Writer's record (docs/plans/AGENT_ENGINE.md): it researches a new stock
  * or a stock we watch and writes its thesis and its watch triggers
  * (lib/agent/run-thesis-writer.ts runs it). A stock we own is refreshed by
- * its own agent, the Holding refresh (./holding-refresh.ts); the rules both
- * follow are shared blocks (lib/agent/thesis-research/writer-rules.ts).
+ * its own agent, the Holding refresh (./holding-refresh.ts); the research
+ * rules both follow are one shared text (lib/agent/thesis-research/writer-rules.ts).
  *
- * Its instructions are the same on every run. The stock's facts (the date,
- * why it was sent, the thesis now, a recent sale, its data) come in its
- * first message, as context blocks.
+ * Its instructions: the analyst, the house rules, how you write, the
+ * playbooks, the research rules and its own text. Its context: the market
+ * numbers, the stock (on a refresh), the analyst's record by playbook and
+ * the stock's data. Its message is the sender's brief: why it was sent, what
+ * the sender found, whose idea it was.
  */
 import { MODES } from "@/lib/agent/modes";
 import { WEB_SEARCH_MAX_USES } from "@/lib/agent/thesis-research/writer-rules";
-import type { AgentRecord, RecordPart } from "../types";
+import type { AgentRecord, ContextId } from "../types";
 
 export { WEB_SEARCH_MAX_USES };
 
 const JOB = `## Your job
 
-You are writing one deep-research thesis on the stock the first message names. A new stock is saved as WATCHING (entry-gated); a refresh starts from the existing thesis in the first message, not from scratch, and where new evidence contradicts or supersedes the existing view, flag the change explicitly in the note. Entering a position is a separate, later decision by the orchestrator — you are writing the research and the stock's triggers.
+You are writing one deep-research thesis on the stock the first message names. A new stock is saved as WATCHING (entry-gated); a refresh starts from the existing thesis (the stock's row in the first message), not from scratch, and where new evidence contradicts or supersedes the existing view, flag the change explicitly in the note. Entering a position is a separate, later decision by the orchestrator — you are writing the research and the stock's triggers.
 
 One research note, then one submit_thesis call.`;
 
@@ -39,55 +41,30 @@ Call submit_thesis ONCE with your decision. The schema documents every field; th
 - A price trigger is \`{ watch: "price", is: "above" | "below", value }\`; settings: \`{ close: true }\` is "only on the close". "Stop watching if below $X · only on the close" retires the thesis on a close below it, with no run. It never sells: the holding's sell price comes with the buy.
 - Nothing is added for you: a watch carries the triggers you write and no others, no review clock included.
 - A watch gets its playbook's watch triggers, its earnings review and its own looks, and nothing that waits for the buy: never a profit check, a partial sale or a sale-side review, and nothing on our buy price, the high since we bought or the days since the buy (the save refuses those on a watch; they come with the buy or at the fill).
-- Taking the buy off on a refresh (no price worth holding): send remove_trigger_ids naming the buy and Stop watching ids from the existing thesis, keeping ≥1 REVIEW wake.
+- Taking the buy off on a refresh (no price worth holding): send remove_trigger_ids naming the buy and Stop watching ids from the stock's row, keeping ≥1 REVIEW wake.
 
 ## When the first message has…
 
 - A recent sale (you exited this name in the last 14 days): if your buy is AT OR ABOVE that exit price, submit_thesis REQUIRES \`prior_exit_acknowledgment\`: one line that genuinely engages with the sale — why this is a NEW setup and not a re-buy of the dip you just sold (e.g. "stopped out at $66.53; re-entering only on a confirmed reclaim of the 20-day — different structure"). Below the exit price no acknowledgment is needed, but underwrite with the sale in view, not from amnesia.
 - Whose idea it was: their thesis is evidence, not your view. List the claims it rests on (a number, the reason the market is wrong, what they watch) and check each against the GROUND-TRUTH DATA. In the rationale say which held, which didn't and which you couldn't check. What they watch becomes a dated check in key_assumptions where the data supports it. A claim that fails can still leave a view; say so.
-- The promotion (this refresh is part of a PAPER→LIVE promotion): the paper position was force-closed at promotion, so the legal actions are ENTER + REVIEW only, NEVER EXIT/TRIM/ADD — there is no position to manage. You do NOT decide re-entry: status stays PROMOTED, and the next daily run reads your refreshed research and decides RE-ENTER (place_trade, conviction intact at current prices) / DEFER (downgrade to WATCHING, conviction softened — wait for a cleaner entry) / KILL (a key assumption broke). State which one you'd make, and why, in the submit_thesis rationale; frame the note so that decision is easy.`;
+- A promotion (the row's paper_record: this refresh is part of a PAPER→LIVE promotion): the paper position was force-closed at promotion, so the legal actions are ENTER + REVIEW only, NEVER EXIT/TRIM/ADD — there is no position to manage. You do NOT decide re-entry: status stays PROMOTED, and the next daily run reads your refreshed research and decides RE-ENTER (place_trade, conviction intact at current prices) / DEFER (downgrade to WATCHING, conviction softened — wait for a cleaner entry) / KILL (a key assumption broke). State which one you'd make, and why, in the submit_thesis rationale; frame the note so that decision is easy.`;
 
-/** The stock's facts, in the first message: the same blocks for both Writer agents. */
-export const WRITER_FACTS: readonly RecordPart[] = [
-  { block: "today" },
-  { block: "market_numbers" },
-  { block: "market_digest" },
-  { block: "portfolio_snapshot" },
-  { block: "portfolio_digest" },
-  { block: "why_sent", heading: "## Why you were dispatched" },
-  { block: "sender_notes" },
-  { block: "idea_source" },
-  { block: "existing_thesis" },
-  { block: "promotion" },
-  { block: "prior_exit" },
-  { block: "setup_record" },
-  { block: "stock_data" },
-  { block: "chat_found" },
-  { own: "go", title: "Go", text: "Write the research note now, then call submit_thesis." },
-];
+/** The reads in the first message: the same for both Writer agents. */
+export const WRITER_CONTEXT: readonly ContextId[] = ["market_numbers", "the_stock", "playbook_record", "stock_data"];
+
+/** The last line of the sender's brief. */
+export const WRITER_GO = "Write the research note now, then call submit_thesis.";
 
 export const WRITER: AgentRecord = {
   id: "writer",
   name: "Writer",
   does: "Researches a new stock or one we watch and writes its thesis: the view, the playbook, the watch triggers at prices from the chart, and the claim every other agent reads.",
   runsWhen: "When a stock is sent to it: from the chat, a run or the Portfolio Manager.",
+  messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
-  instructions: [
-    { block: "analyst_brief" },
-    { block: "house_rules" },
-    { block: "market_block_rule" },
-    { block: "how_you_write" },
-    { block: "playbooks" },
-    { own: "job", title: "Its job", text: JOB },
-    { block: "date_awareness" },
-    { block: "research_note" },
-    { own: "decision", title: "Its decision and triggers", text: DECISION },
-    { block: "thesis_claim" },
-    { block: "earnings_triggers" },
-    { block: "what_the_owner_reads" },
-  ],
-  message: WRITER_FACTS,
+  instructions: ["the_analyst", "house_rules", "how_you_write", "playbooks", "research_rules", { own: `${JOB}\n\n${DECISION}` }],
+  context: WRITER_CONTEXT,
   // submit_thesis is the Writer's own tool (makeSubmitThesisTool, lib/agent/run-thesis-writer.ts).
   tools: ["submit_thesis"],
   providerTools: [`Anthropic's web search, up to ${WEB_SEARCH_MAX_USES} searches`],

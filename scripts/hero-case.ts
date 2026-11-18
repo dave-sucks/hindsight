@@ -40,6 +40,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
+import { bookText } from "@/lib/agent/book";
 import { recordFor, stockFromRead, triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
@@ -163,24 +164,68 @@ function factsOf(kickoff: ModelMessage | undefined): string | null {
 }
 
 /**
- * The request for a case, built by TODAY'S code: its instructions, and for a Writer,
- * trigger fire or a morning run its first message too (the stock, the trigger
- * and the fire, or the analyst, the account and the book's week, are blocks of
- * the first message); a trigger fire's from the recorded kickoff's facts.
+ * What a recorded kickoff knew beyond the trigger's sentence: after "Tactical
+ * run on $T. <sentence>." (or the write-up's "...: set to Auto, so no
+ * analyst decided. <the trade>"), a report's numbers, what fired with it, a
+ * refused call. Today's message says the trigger itself, once.
  */
-function requestFor(c: HeroCase): { system: string; first?: string } {
+function moreOf(facts: string, autoLine: string | null): string {
+  const after = facts.replace(/^(?:Tactical run on|Write-up on) \$[A-Z.]+\. /, "");
+  const auto = after.indexOf(": set to Auto, so no analyst decided.");
+  if (auto >= 0) {
+    const rest = after.slice(auto + ": set to Auto, so no analyst decided.".length);
+    return autoLine && rest.trimStart().startsWith(autoLine) ? rest.trimStart().slice(autoLine.length) : rest;
+  }
+  const end = after.search(/[.!?](?= |$)/);
+  return end >= 0 ? after.slice(end + 1).replace(/\s+$/, "") : "";
+}
+
+/**
+ * When the case happened, for the date line: the start of the run it was
+ * cut from, else the Writer's run date, else the newest time in its saved
+ * inputs, else now.
+ */
+async function caseNow(c: HeroCase): Promise<Date> {
+  if (c.source?.runId) {
+    const run = await prisma.researchRun.findUnique({ where: { id: c.source.runId }, select: { startedAt: true } }).catch(() => null);
+    if (run?.startedAt) return run.startedAt;
+  }
+  const day = typeof c.promptArgs.runDate === "string" ? c.promptArgs.runDate : null;
+  if (day) return new Date(`${day}T14:00:00Z`);
+  const stamps = JSON.stringify(c.promptArgs).match(/20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z/g) ?? [];
+  return stamps.length ? new Date(stamps.sort().at(-1)!) : new Date();
+}
+
+/**
+ * The request for a case, built by TODAY'S code: its instructions, and for a
+ * Writer, trigger fire or a morning run its first message too (the date line,
+ * the reads, then the message); a trigger fire's message from the recorded
+ * kickoff's facts, a Writer's data block as the run sent it.
+ */
+function requestFor(c: HeroCase, now: Date): { system: string; first?: string } {
   if (c.mode === "thesis-writer") {
     // The stock's data as the run sent it; the rest of the first message is today's.
-    const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) });
+    const r = writerRequest(writerArgs(c), { dataBlock: dataBlockOf(c.messages[0]) }, now);
     return { system: r.instructions, first: r.message };
   }
   if (c.mode === "research-run") {
-    const r = morningRequest(c);
+    const r = morningRequest(c, now);
     return { system: r.instructions, first: r.message };
   }
-  if (c.mode !== "tactical") return { system: systemFor(c) };
-  const r = triggerRunRequest(tacticalArgs(c), { facts: factsOf(c.messages[0]) ?? "" });
+  if (c.mode !== "tactical") return { system: systemFor(c, now) };
+  const args = tacticalArgs(c);
+  const r = triggerRunRequest(args, { more: moreOf(factsOf(c.messages[0]) ?? "", args.autoTrade?.line ?? null) }, now);
   return { system: r.instructions, first: r.message };
+}
+
+/**
+ * A chat case's analyst book, from the watchlist it saved (no beliefs were
+ * saved): it rides on the newest message, as the chat's context does.
+ */
+function chatBookOf(c: HeroCase): string | null {
+  const a = c.promptArgs.scopedAnalyst as { watchlist?: string[]; name?: string } | null | undefined;
+  if (!a?.watchlist) return null;
+  return bookText(a.watchlist.map((ticker) => ({ ticker, status: "WATCHING" as const, analyst: a.name ?? null, belief: null })));
 }
 
 /** A recorded Writer message's stock data: what sits between its data heading and its closing ask. */
@@ -198,8 +243,13 @@ function writerArgs(c: HeroCase): any {
   // Cases saved before step 10 carry the analyst's fields loose on the arguments.
   const p = c.promptArgs;
   const analyst = (p.analyst as Record<string, unknown> | undefined) ?? { name: p.analystName, analystPrompt: p.analystPrompt, minConfidence: p.minConfidence, setupIds: p.setupIds };
+  // On a refresh, the stock as the Writer reads it: get_theses's short row, built from the thesis the case saved.
+  const e = p.existingThesis as { id: string; status: string; direction: string | null; horizon: string | null; coreBelief: string | null; company?: string | null; triggers: Trigger[] } | null;
+  const ticker = String(p.ticker).toUpperCase();
+  const saved = e ? { id: e.id, ticker, status: e.status, direction: e.direction, horizon: e.horizon, company: e.company ?? null, coreBelief: e.coreBelief, triggers: e.triggers.map((x) => ({ id: x.id, says: sentenceOf(x), rationale: x.rationale })), situations: [] } : null;
+  const stockRow = saved ? (stockFromRead({ ok: true, data: { theses: [saved] } }, e!.id)?.row ?? null) : null;
   // The playbooks as an account that hasn't edited them reads them (the catalog's seed).
-  return { ...p, analyst, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) };
+  return { ...p, analyst, stockRow, setups: setupsForAnalyst(analyst.setupIds as string[]), playbooks: (id: string) => playbookTemplates(null, id) };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -226,23 +276,23 @@ function tacticalArgs(c: HeroCase): any {
   };
 }
 
-function systemFor(c: HeroCase): string {
+function systemFor(c: HeroCase, now: Date): string {
   switch (c.mode) {
     case "research-run":
-      return morningRequest(c).instructions;
+      return morningRequest(c, now).instructions;
     default:
       return buildPrincipalSystemPrompt(c.promptArgs as never);
   }
 }
 
 /** A morning case's request, built by today's code from its inputs. */
-function morningRequest(c: HeroCase) {
+function morningRequest(c: HeroCase, now: Date) {
   // JSON turned the refusals' dates into strings; the builder wants dates.
   const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
   for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
   // Cases saved before step 10 carry the count on the run input's analyst copy.
   runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
-  return dailyRunRequest(c.promptArgs.config as never, runInput as never);
+  return dailyRunRequest(c.promptArgs.config as never, runInput as never, now);
 }
 
 /**
@@ -315,9 +365,17 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
-  const { system, first } = requestFor(c);
+  const { system, first } = requestFor(c, await caseNow(c));
   // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
+  // A chat's analyst book rides on its newest message.
+  const book = c.mode === "principal" ? chatBookOf(c) : null;
+  const lastUser = c.messages.map((m) => m.role).lastIndexOf("user");
+  if (book && lastUser >= 0) {
+    const m = c.messages[lastUser];
+    const said = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
+    c.messages[lastUser] = { ...m, content: [{ type: "text", text: book }, ...said] } as ModelMessage;
+  }
   const tools = describedTools(c);
   const fills = codeFills(c);
   // What the agent was shown, for the yardstick's grades: its instructions and the conversation it was handed.
@@ -482,7 +540,7 @@ async function main() {
   if (args.includes("--print")) {
     for (const name of names) {
       const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
-      console.log(`===== ${name} (${c.mode})\n${systemFor(c)}`);
+      console.log(`===== ${name} (${c.mode})\n${systemFor(c, await caseNow(c))}`);
     }
     return;
   }

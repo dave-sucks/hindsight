@@ -4,56 +4,44 @@
  * rides on your newest message. Its first message is your conversation.
  */
 import type { AnalystCapacity } from "@/lib/agent/capacity";
-import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
+import { analystBrief, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 import { CHAT } from "@/lib/agent/engine/agents/chat";
 import { composeAgentRequest, composeNewest } from "@/lib/agent/engine/engine";
 import type { BuiltNewest, BuiltRequest } from "@/lib/agent/engine/types";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 
-type ScopedAnalyst = BriefAnalyst & UniverseAnalyst & { id: string; name: string; watchlist: string[] };
+type ScopedAnalyst = BriefAnalyst & UniverseAnalyst & { id: string; name: string };
 
 export interface ChatPromptOpts {
-  /**
-   * Pinned to an analyst, the seat's money and book travel with the scope,
-   * rendered by formatMoneyContextBlock / formatBookContextBlock
-   * (lib/agent/context-bundle.ts) so every surface quotes the same numbers.
-   * Null prints nothing.
-   */
-  moneyBlock?: string | null;
-  bookBlock?: string | null;
-  /** The analyst the chat is pinned to: its row, its watchlist, and the account's setup numbers. */
+  /** The analyst the chat is pinned to: its row and the account's setup numbers. */
   scopedAnalyst?: ScopedAnalyst | null;
-  /** Its slots, counted as place_trade counts them (pinned); every analyst's room line (unpinned). */
+  /** Its slots, counted as place_trade counts them (pinned). */
   room?: AnalystCapacity | null;
-  roomLines?: string[];
 }
 
-/** The pinned analyst's scope: its id, its fence and its watchlist. */
-function scopeBlock(a: ScopedAnalyst): string {
-  return [`## Current scope — pinned to ${a.name}`, "", `  • Analyst ID: \`${a.id}\``, ...universeLines(a).map((l) => `  • ${l}`), `  • Watchlist: ${a.watchlist.join(", ") || "(empty)"}`].join("\n");
-}
-
-/** The chat's request: its instructions, each part named for the run's Context panel. */
+/** The chat's instructions, each part named for the run's Context panel. */
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
-  return composeAgentRequest(
-    CHAT,
-    { now: new Date(), environment },
-    {
-      blocks: {
-        analyst_scope: scope ? scopeBlock(scope) : null,
-        analyst_brief: scope ? analystBrief(scope, opts.room) : null,
-        money_context: scope && opts.moneyBlock ? opts.moneyBlock : null,
-        book_context: scope && opts.bookBlock ? opts.bookBlock : null,
-        analyst_rooms: !scope && opts.roomLines?.length ? opts.roomLines.map((l) => `  • ${l}`).join("\n") : null,
-      },
-    },
-  );
+  return composeAgentRequest(CHAT, { now: new Date(), environment }, { shared: { the_analyst: scope ? analystBrief(scope, opts.room) : null } });
 }
 
-/** What rides on your newest message: the time and the Market and portfolio block, each part named for the chat's Context. */
-export function chatNewest(now: Date, pieces: PortfolioPiece[] | null, environment: "PAPER" | "LIVE" = "PAPER"): BuiltNewest {
-  return composeNewest(CHAT, { now, environment }, { pieces });
+/** The read "the_analysts": each analyst's room, at the portfolio level. Null when there are none. */
+export function analystsText(roomLines: string[]): string | null {
+  return roomLines.length ? `## Each analyst's room (a buy for a FULL analyst is refused)\n${roomLines.map((l) => `  • ${l}`).join("\n")}` : null;
+}
+
+/**
+ * What rides on your newest message: the date line, the Market and portfolio
+ * reads, and pinned the analyst's book or at the portfolio level each
+ * analyst's room, each part named for the chat's Context.
+ */
+export function chatNewest(
+  now: Date,
+  pieces: PortfolioPiece[] | null,
+  environment: "PAPER" | "LIVE" = "PAPER",
+  reads: { book?: string | null; analysts?: string | null } = {},
+): BuiltNewest {
+  return composeNewest(CHAT, { now, environment }, { pieces, context: { the_book: reads.book ?? null, the_analysts: reads.analysts ?? null } });
 }
 
 /** The chat's instructions as one string. */

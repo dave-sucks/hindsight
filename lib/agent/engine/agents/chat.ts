@@ -1,27 +1,24 @@
 /**
  * The chat's record (docs/plans/AGENT_ENGINE.md): your conversation with
  * the desk, at the portfolio level or pinned to one analyst
- * (app/api/agent/[mode]/route.ts, mode "principal"). `chatRequest`
- * (lib/agent/system-prompts/chat.ts) reads its blocks.
+ * (app/api/agent/[mode]/route.ts, mode "principal"). `chatRequest` and
+ * `chatNewest` (lib/agent/system-prompts/chat.ts) read its texts.
  *
- * Its own text is the same on every run and says what both scopes mean.
- * Pinned to an analyst, the analyst's blocks end the instructions, after the
- * fixed text: its scope (its id, fence and watchlist), its brief, its money
- * and its book. At the portfolio level, each analyst's room does. Its first
- * message is your conversation, so these standing facts stay in the
- * instructions. The time and the Market and portfolio block ride on your
- * newest message (`chatNewest`).
+ * Its instructions: its own text (the same on every run; it says what both
+ * scopes mean), the house rules, how you write, and pinned to an analyst, the
+ * analyst. It is a conversation: its first message is yours, and the date
+ * line and its context ride on each message you send: the market and the
+ * portfolio, and pinned, the analyst's book; at the portfolio level, each
+ * analyst's room.
  */
-import { isMarketOpen } from "@/lib/market-hours";
 import { MODES } from "@/lib/agent/modes";
-import { ET, whenET } from "@/lib/agent/old-lookups";
 import type { AgentRecord } from "../types";
 
 const INSTRUCTIONS = `You are the Principal Chat agent for Hindsight — an AI-operated paper-trading platform. The user is the PRINCIPAL; you are their right hand at the portfolio level. You have the same operational understanding and tool authority a senior portfolio manager + head of research + head of engineering would, scoped to this one user's setup.
 
 ## Pinned to an analyst
 
-When these instructions end with an analyst's blocks (its scope, its brief, its money and its book), this chat is pinned to one analyst. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst; a buy goes to its thesis's analyst.
+When these instructions end with an analyst (its strategy, its rules and its playbooks), this chat is pinned to one analyst, and its book rides on each of your messages. Every write tool (place_trade, close_position, manage_position, record_thesis, update_thesis) executes AGAINST this analyst; a buy goes to its thesis's analyst.
 
 The market cap band is this analyst's range, and you keep to it: a name outside it is not a candidate however good the setup reads. Nothing in the code stops a trade outside it (place_trade checks only the exclusion list, and record_thesis checks neither), so the check is yours.
 
@@ -224,33 +221,14 @@ export const CHAT: AgentRecord = {
   name: "Chat",
   does: "Answers you: explains, researches, finds stocks, sends them to the Writer, edits triggers, writes notes and proposes trades (each waits for you).",
   runsWhen: "When you write to it, at the portfolio level or pinned to one analyst.",
+  messageFrom: "You: the conversation. The date line and its context ride on each message you send.",
   model: MODES["principal"].model,
   maxSteps: MODES["principal"].maxSteps,
   tools: MODES["principal"].toolAllowlist ?? [],
-  // The pinned analyst's facts, or each analyst's room, end the instructions, after the fixed text.
-  instructions: [
-    { own: "instructions", title: "Its instructions", text: INSTRUCTIONS },
-    { block: "house_rules" },
-    { block: "market_block_rule" },
-    { block: "how_you_write" },
-    { block: "analyst_scope" },
-    { block: "analyst_brief" },
-    { block: "money_context" },
-    { block: "book_context" },
-    { block: "analyst_rooms", heading: "## Each analyst's room (a buy for a FULL analyst is refused)" },
-  ],
-  // Its first message is your conversation.
-  message: [],
-  newest: [
-    {
-      own: "the_time",
-      title: "The time",
-      text: (i) => `[${ET({ weekday: "short" }).format(i.now)} ${whenET(i.now)}, ${isMarketOpen(i.now) ? "the market is open" : "the market is closed"}. A price in an earlier message is from when that message was written.]`,
-    },
-    { block: "market_numbers" },
-    { block: "market_digest" },
-    { block: "portfolio_snapshot" },
-    { block: "portfolio_digest" },
-  ],
+  // Pinned to an analyst, the analyst ends the instructions, after the fixed text.
+  instructions: [{ own: INSTRUCTIONS }, "house_rules", "how_you_write", "the_analyst"],
+  // On each message you send: pinned, the analyst's book; at the portfolio level, each analyst's room.
+  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "the_analysts"],
+  conversation: true,
   output: "Its reply to you, and whatever its tools did: a note, a trigger edit, a stock sent to the Writer, a trade proposal (each waits for you).",
 };
