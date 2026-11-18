@@ -8,6 +8,8 @@
  * ./__fixtures__/portfolio-manager.golden.json.
  */
 import GOLDEN from "./__fixtures__/portfolio-manager.golden.json";
+import DIGEST_GOLDEN from "./__fixtures__/portfolio-digest.golden.json";
+import REVIEWER_GOLDEN from "./__fixtures__/market-reviewer.golden.json";
 import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
 import { STANDIN_MARKET_NUMBERS } from "@/lib/agent/__fixtures__/market-numbers-standin";
 
@@ -28,12 +30,15 @@ import { PORTFOLIO_MANAGER } from "./agents/portfolio-manager";
 import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { lastWriteup } from "@/lib/agent/portfolio-manager/run";
 import { byParts } from "@/lib/agent/run-requests";
+import { PORTFOLIO_DIGEST } from "./agents/portfolio-digest";
+import { MARKET_REVIEWER } from "./agents/market-reviewer";
+import { snapshotText } from "@/lib/portfolio/snapshot";
 
 const NOW = new Date(GOLDEN.now);
 const book = { accountId: "acct", environment: "LIVE" as const };
 const sources: Sources = {
   portfolioPieces: (want) => loadPortfolioPieces({ ...book, now: NOW, ...want }),
-  lastWriteup: () => lastWriteup(book),
+  blocks: { last_writeup: () => lastWriteup(book) },
 };
 
 beforeEach(() => {
@@ -93,6 +98,29 @@ describe("the Portfolio Manager on the engine", () => {
     const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { ...sources, portfolioPieces: async () => [{ id: "unreadable", text: "The portfolio snapshot and the digest couldn't be read for this request." }] });
     expect(built.instructions).toContain("\n\n## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request.\n\n## Your job\n");
     expect(built.parts.filter((p) => p.where === "instructions").map((p) => p.title)).toContain("Market numbers");
+  });
+});
+
+describe("the portfolio digest on the engine", () => {
+  it("is sent what its old builder sent: its instructions, and the snapshot alone as its first message", async () => {
+    const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER" }, { blocks: { portfolio_snapshot: async () => snapshotText(STANDIN_SNAPSHOT) } });
+    expect(built.instructions).toBe(DIGEST_GOLDEN.system);
+    expect(built.message).toBe(DIGEST_GOLDEN.message);
+    expect(built.tools).toEqual([]);
+    expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual(["instructions:Its job", "instructions:What it is given", "instructions:The paragraphs", "instructions:Its words", "message:Portfolio snapshot"]);
+  });
+});
+
+describe("the Market Reviewer on the engine", () => {
+  it("is sent the instructions its old builder sent; its first message is pinned whole by its run test", async () => {
+    const block = (text: string) => async () => text;
+    const built = await buildAgentRequest(MARKET_REVIEWER, { now: NOW, environment: "LIVE" }, {
+      blocks: { market_numbers: block("n"), portfolio_snapshot: block("p"), held_beliefs: block("h"), watched_beliefs: block("w"), reviewer_notes: block("- none"), last_digest: block("d") },
+    });
+    expect(built.instructions).toBe(REVIEWER_GOLDEN.system);
+    expect(built.message).toBe(["Thu Nov 12, the LIVE book.", "", "## Market numbers", "n", "", "## The portfolio", "p", "", "## Why we hold each, in a line", "h", "", "## What we watch, and why", "w", "", "## Your notes in the last 5 days", "- none", "", "## Your last digest", "d"].join("\n"));
+    expect(built.tools).toEqual([]);
+    expect(MARKET_REVIEWER.providerTools).toEqual(["OpenAI's web search"]);
   });
 });
 

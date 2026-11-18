@@ -48,8 +48,9 @@ function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly stri
       <CardContent>
         <div className="flex flex-col gap-6">
           <p className="text-sm text-muted-foreground">
-            {record.runsWhen} Model {record.model}, up to {record.maxSteps} steps.
+            {record.runsWhen} Model {record.model}, {record.maxSteps === 1 ? "one call" : `up to ${record.maxSteps} steps`}.
           </p>
+          <p className="text-sm text-muted-foreground">Hands back: {record.output}</p>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Instructions</h2>
@@ -96,6 +97,7 @@ function OnEngine({ record, tools }: { record: AgentRecord; tools: readonly stri
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Tools</h2>
             <p className="text-sm text-muted-foreground">Every tool an agent can be given. A checked tool is on this agent&rsquo;s menu, every run.</p>
+            {record.providerTools?.length ? <p className="text-sm text-muted-foreground">Also given the model provider&rsquo;s own tool: {record.providerTools.join(", ")}.</p> : null}
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {tools.map((t) => (
                 <li key={t} className="flex items-center gap-2">

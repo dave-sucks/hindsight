@@ -80,8 +80,9 @@ When you are done, reply with the write-up and call no tool. It is saved as you 
   ],
   message: [
     { own: "kickoff", title: "The day", text: ({ now, environment }) => `${day(now)}, the ${environment} account.` },
-    { block: "last_writeup" },
+    { block: "last_writeup", heading: "## Your last write-up" },
   ],
   // get_theses by ticker, a limited number of stocks a run (lib/agent/portfolio-manager/limits.ts); its save is a note.
   tools: ["get_theses", "get_stock_data", "update_thesis", "place_trade", "manage_position", "close_position", "dispatch_thesis_research"],
+  output: "Its write-up: where the money is, its ranking, what it did, its open questions and what the account needs. Its next run reads it first.",
 };

@@ -37,7 +37,7 @@ export interface ManagerBook {
 
 const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
 
-/** Its last write-up, under its heading: the second part of its first message, after the day. */
+/** Its last write-up: the second part of its first message, after the day, under its heading (the record's). */
 export async function lastWriteup(book: Pick<ManagerBook, "accountId" | "environment">): Promise<string> {
   const last = await prisma.runEvent
     .findFirst({
@@ -46,7 +46,7 @@ export async function lastWriteup(book: Pick<ManagerBook, "accountId" | "environ
       select: { message: true, createdAt: true },
     })
     .catch(() => null);
-  return ["## Your last write-up", last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first."].join("\n");
+  return last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first.";
 }
 
 export interface ManagerResult {
@@ -76,7 +76,7 @@ export async function runPortfolioManager(
   const [request, alpacaCreds] = await Promise.all([
     buildAgentRequest(PORTFOLIO_MANAGER, { now, environment: book.environment }, {
       portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-      lastWriteup: () => lastWriteup(book),
+      blocks: { last_writeup: () => lastWriteup(book) },
     }),
     resolveAlpacaCredentials(book.userId, book.environment),
   ]);

@@ -16,7 +16,11 @@ export type BlockId =
   | "portfolio_snapshot"
   | "watching"
   | "portfolio_digest"
-  | "last_writeup";
+  | "last_writeup"
+  | "held_beliefs"
+  | "watched_beliefs"
+  | "reviewer_notes"
+  | "last_digest";
 
 export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
@@ -28,9 +32,16 @@ export interface OwnPart {
   text: string | ((input: AgentInput) => string);
 }
 
-/** A block from the library, given to the agent. */
+/**
+ * A block from the library, given to the agent. A block of the Market and
+ * portfolio group prints inside that block, under the group's heading;
+ * `alone` prints it on its own instead. A block on its own prints under
+ * `heading` when the record gives one, else as its text alone.
+ */
 export interface BlockPart {
   block: BlockId;
+  alone?: true;
+  heading?: string;
 }
 
 export type RecordPart = OwnPart | BlockPart;
@@ -56,6 +67,10 @@ export interface AgentRecord {
   message: readonly RecordPart[];
   /** The tools it may call, by name (lib/agent/tools). */
   tools: readonly string[];
+  /** The model provider's own tools it is given (its web search), named for the page. */
+  providerTools?: readonly string[];
+  /** What it hands back. */
+  output: string;
 }
 
 /** Where a part of a request went. */
