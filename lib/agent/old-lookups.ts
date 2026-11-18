@@ -13,7 +13,6 @@
  * keeps its result, so the chat never redoes one it already made.
  */
 import type { ModelMessage, UIMessage } from "ai";
-import { isMarketOpen } from "@/lib/market-hours";
 
 export const LOOKUP_SHELF_LIFE_MS = 15 * 60_000;
 
@@ -30,8 +29,8 @@ const CHANGES = new Set([
   "suggest_config",
 ]);
 
-const ET = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...opts });
-const whenET = (d: Date) => `${ET({ month: "short", day: "numeric" }).format(d)}, ${ET({ hour: "numeric", minute: "2-digit" }).format(d)} ET`;
+export const ET = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", ...opts });
+export const whenET = (d: Date) => `${ET({ month: "short", day: "numeric" }).format(d)}, ${ET({ hour: "numeric", minute: "2-digit" }).format(d)} ET`;
 
 function howLongAgo(ms: number): string {
   const min = Math.round(ms / 60_000);
@@ -69,19 +68,18 @@ export function hideOldLookups<M extends Omit<UIMessage, "id">>(messages: M[], n
 }
 
 /**
- * The newest owner message, with the time in front of it and, when given, the
- * account's Market and portfolio block (lib/agent/portfolio-block.ts). Both
- * ride on the newest message, not the system prompt, so the system prompt and
- * the history before it stay cached between messages.
+ * The newest owner message with what rides on it in front: the time and the
+ * account's Market and portfolio block, each its own text (the chat's record,
+ * `newest`, lib/agent/engine/agents/chat.ts). They ride on the newest message,
+ * not the system prompt, so the system prompt and the history before it stay
+ * cached between messages.
  */
-export function withTheTime(messages: ModelMessage[], now: Date, context?: string | null): ModelMessage[] {
+export function withNewestParts(messages: ModelMessage[], texts: readonly string[]): ModelMessage[] {
   const i = messages.findLastIndex((m) => m.role === "user");
   if (i < 0) return messages;
-  const market = isMarketOpen(now) ? "the market is open" : "the market is closed";
-  const line = `[${ET({ weekday: "short" }).format(now)} ${whenET(now)}, ${market}. A price in an earlier message is from when that message was written.]`;
   const m = messages[i] as Extract<ModelMessage, { role: "user" }>;
   const content = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
   const out = [...messages];
-  out[i] = { ...m, content: [{ type: "text", text: line }, ...(context ? [{ type: "text" as const, text: context }] : []), ...content] };
+  out[i] = { ...m, content: [...texts.map((text) => ({ type: "text" as const, text })), ...content] };
   return out;
 }

@@ -21,7 +21,7 @@ const inBook = (over: Record<string, unknown>) =>
   thesisRow({ ...over, researchRun: { agentConfigId: "analyst_1", agentConfig: { name: "Analyst One", setupIds: [], accountId: ACCOUNT, tradingEnvironment: "LIVE" } } });
 const BOOK = [inBook({ id: "t_mu", ticker: "MU", status: "HOLDING" }), inBook({ id: "t_asml", ticker: "ASML", status: "WATCHING" })];
 
-/** The block, through loadPortfolioBlock, with only the vendors and the broker stood in. */
+/** The block as an agent prints it, with only the vendors and the broker stood in. */
 async function block(finnhubAnswer: { data: unknown; error?: string } = { data: STANDIN_CALENDAR }): Promise<string> {
   let text = "";
   await jest.isolateModulesAsync(async () => {
@@ -30,8 +30,8 @@ async function block(finnhubAnswer: { data: unknown; error?: string } = { data: 
     jest.doMock("@/lib/market-data/live-quote", liveQuotes);
     jest.doMock("@/lib/agent/research-helpers", calendar(finnhubAnswer));
     jest.doMock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: async () => null }));
-    const { loadPortfolioBlock } = await import("@/lib/agent/portfolio-block");
-    text = await loadPortfolioBlock({ accountId: ACCOUNT, environment: "LIVE", now: NOW });
+    const { BLOCK_HEADING, loadPortfolioPieces } = await import("@/lib/agent/portfolio-block");
+    text = [BLOCK_HEADING, ...(await loadPortfolioPieces({ accountId: ACCOUNT, environment: "LIVE", now: NOW })).map((p) => p.text)].join("\n\n");
   });
   return text;
 }

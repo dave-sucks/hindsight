@@ -95,6 +95,12 @@ export interface AgentRecord {
   instructions: readonly RecordPart[];
   /** The first message, in order. */
   message: readonly RecordPart[];
+  /**
+   * In a conversation (the chat): what rides on each new message you send,
+   * before your words. Each part is its own text on the message, the Market
+   * and portfolio block one text, so none takes a separator.
+   */
+  newest?: readonly RecordPart[];
   /** The tools it may call, by name (lib/agent/tools). */
   tools: readonly string[];
   /** The model provider's own tools it is given (its web search), named for the page. */
@@ -105,8 +111,8 @@ export interface AgentRecord {
   example?: { extra: unknown; says: string };
 }
 
-/** Where a part of a request went. */
-export type Where = "instructions" | "message";
+/** Where a part of a request went: the instructions, the first message, or the newest message of a conversation. */
+export type Where = "instructions" | "message" | "newest";
 
 /** One part of a built request, as the run keeps it (lib/agent/run-requests.ts). */
 export interface SentPartManifest {
@@ -128,6 +134,12 @@ export interface BuiltRequest {
   /** Every part, in order: its instructions first, then its first message. */
   parts: SentPartManifest[];
   tools: readonly string[];
+}
+
+/** What rides on a conversation's newest message: each text in order, and its parts named. */
+export interface BuiltNewest {
+  texts: string[];
+  parts: SentPartManifest[];
 }
 
 export const isOwn = (p: RecordPart): p is OwnPart => "own" in p;

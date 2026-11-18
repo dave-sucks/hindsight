@@ -3,7 +3,7 @@
  * is given one, after every fixed instruction.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
-jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: jest.fn(), loadPortfolioPieces: jest.fn() }));
+jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: jest.fn() }));
 
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 

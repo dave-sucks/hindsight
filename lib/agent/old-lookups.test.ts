@@ -12,7 +12,8 @@ import thread from "@/lib/agent/__fixtures__/chat-old-lookups-2026-11-04.json";
 import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 import { historyForModel } from "@/lib/agent/prompt-cache";
-import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
+import { hideOldLookups, withNewestParts } from "@/lib/agent/old-lookups";
+import { chatNewest } from "@/lib/agent/system-prompts/chat";
 
 const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE" } as never) as Record<string, unknown>;
 const tools = Object.fromEntries((MODES.principal.toolAllowlist as readonly string[]).filter((n) => all[n]).map((n) => [n, all[n]])) as ToolSet;
@@ -23,7 +24,7 @@ const results = (mm: ModelMessage[]) =>
   mm.flatMap((m) => (Array.isArray(m.content) ? (m.content as Array<{ type: string; toolName?: string; output?: { type: string; value: unknown } }>) : []))
     .filter((p) => p.type === "tool-result");
 const resultOf = (mm: ModelMessage[], tool: string) => results(mm).find((p) => p.toolName === tool)!;
-const read = (mm: ModelMessage[]) => withTheTime(mm, NOV_4);
+const read = (mm: ModelMessage[]) => withNewestParts(mm, chatNewest(NOV_4, null).texts);
 
 describe("the chat never reads an old lookup as today's numbers", () => {
   it("the Oct 27 portfolio lookup reaches the model on Nov 4 as 'look again', with no price in it", async () => {
@@ -78,7 +79,7 @@ describe("the chat's Market and portfolio block", () => {
       { role: "assistant", content: "answer" },
       { role: "user", content: "second" },
     ];
-    const out = withTheTime(mm, NOV_4, "## Market and portfolio\n\nSTAND-IN");
+    const out = withNewestParts(mm, chatNewest(NOV_4, [{ id: "market_numbers", text: "STAND-IN" }]).texts);
     expect(out[0]).toEqual(mm[0]);
     const parts = (out[2] as { content: Array<{ type: string; text: string }> }).content.map((p) => p.text);
     expect(parts[1]).toBe("## Market and portfolio\n\nSTAND-IN");

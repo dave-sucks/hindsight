@@ -64,12 +64,6 @@ export interface PortfolioPiece { id: PortfolioPieceId | "unreadable"; text: str
 
 const UNREADABLE = "The portfolio snapshot and the digest couldn't be read for this request.";
 
-/** The block's text for one book: its heading, then its parts. Never throws. */
-export async function loadPortfolioBlock(args: BlockArgs): Promise<string> {
-  const pieces = await loadPortfolioPieces(args);
-  return [BLOCK_HEADING, ...pieces.map((p) => p.text)].join("\n\n");
-}
-
 /** The block's parts for one book, in order, without the block's heading. Never throws. */
 export async function loadPortfolioPieces(args: BlockArgs): Promise<PortfolioPiece[]> {
   try {

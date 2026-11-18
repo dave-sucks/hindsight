@@ -1,0 +1,109 @@
+{
+  "builtBy": "lib/agent/old-lookups.ts withTheTime with loadPortfolioBlock's block, before the engine",
+  "messages": {
+    "open": [
+      {
+        "role": "user",
+        "content": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "answer"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[Wed Nov 4, 1:30 PM ET, the market is open. A price in an earlier message is from when that message was written.]"
+          },
+          {
+            "type": "text",
+            "text": "## Market and portfolio\n\n### Market numbers (as of Wed, Nov 4, 1:30 PM ET)\nS&P 500 6,800, up 0.4% today.\n\n### Market digest (written Wed, Nov 4, 7:30 AM ET)\nStocks opened higher after the jobs report.\n\n### Portfolio snapshot\nValue $100,000 · cash $20,000.\n\n### Portfolio digest (written Tue, Nov 3, 8:00 PM ET)\nThe book held up."
+          },
+          {
+            "type": "text",
+            "text": "second"
+          }
+        ]
+      }
+    ],
+    "closed": [
+      {
+        "role": "user",
+        "content": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "answer"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[Sat Nov 7, 10:00 AM ET, the market is closed. A price in an earlier message is from when that message was written.]"
+          },
+          {
+            "type": "text",
+            "text": "## Market and portfolio\n\n### Market numbers (as of Wed, Nov 4, 1:30 PM ET)\nS&P 500 6,800, up 0.4% today.\n\n### Market digest (written Wed, Nov 4, 7:30 AM ET)\nStocks opened higher after the jobs report.\n\n### Portfolio snapshot\nValue $100,000 · cash $20,000.\n\n### Portfolio digest (written Tue, Nov 3, 8:00 PM ET)\nThe book held up."
+          },
+          {
+            "type": "text",
+            "text": "second"
+          }
+        ]
+      }
+    ],
+    "unreadable": [
+      {
+        "role": "user",
+        "content": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "answer"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[Wed Nov 4, 1:30 PM ET, the market is open. A price in an earlier message is from when that message was written.]"
+          },
+          {
+            "type": "text",
+            "text": "## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request."
+          },
+          {
+            "type": "text",
+            "text": "second"
+          }
+        ]
+      }
+    ],
+    "no_block": [
+      {
+        "role": "user",
+        "content": "first"
+      },
+      {
+        "role": "assistant",
+        "content": "answer"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "[Wed Nov 4, 1:30 PM ET, the market is open. A price in an earlier message is from when that message was written.]"
+          },
+          {
+            "type": "text",
+            "text": "second"
+          }
+        ]
+      }
+    ]
+  }
+}
