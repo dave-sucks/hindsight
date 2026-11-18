@@ -11,7 +11,7 @@
  */
 
 import OpenAI from "openai";
-import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
+import { portfolioPieceText, snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 import type { RequestRecord } from "@/lib/agent/run-requests";
 import { buildAgentRequest } from "@/lib/agent/engine/engine";
 import { PORTFOLIO_DIGEST } from "@/lib/agent/engine/agents/portfolio-digest";
@@ -38,7 +38,9 @@ function getOpenAI() {
 export async function writeDigestNarrative(
   snapshot: PortfolioSnapshot,
 ): Promise<DigestWriterResult> {
-  const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: new Date(snapshot.at), environment: snapshot.live ? "LIVE" : "PAPER" }, { blocks: { portfolio_snapshot: async () => snapshotText(snapshot) } });
+  const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: new Date(snapshot.at), environment: snapshot.live ? "LIVE" : "PAPER" }, {
+    portfolioPieces: async () => [{ id: "portfolio_snapshot", text: portfolioPieceText(snapshot) }],
+  });
   // The request body, kept as it goes to OpenAI.
   const body = {
     model: DIGEST_MODEL,

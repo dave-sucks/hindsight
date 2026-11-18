@@ -32,16 +32,11 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
-import { chatNewest, chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
+import { analystsText, chatNewest, chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
+import { loadBook } from "@/lib/agent/book";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
-import {
-  getMoneyContext,
-  getBookContext,
-  formatMoneyContextBlock,
-  formatBookContextBlock,
-} from "@/lib/agent/context-bundle";
 import { suggestConfigFor } from "@/lib/agent/tools/suggest-config";
 import { suggestPodcastConfigTool } from "@/lib/agent/tools/suggest-podcast-config";
 import { PODCAST_BUILDER_SYSTEM_PROMPT } from "@/lib/podcast/builder-prompt";
@@ -164,6 +159,8 @@ export async function POST(
     let savedMode: string | null = null;
     // The chat's Market and portfolio block, started once its book is known and read with the newest message.
     let portfolioPiecesLoad: Promise<PortfolioPiece[]> | null = null;
+    // The chat's other reads on each message: pinned, the analyst's book; at the portfolio level, each analyst's room.
+    let chatReads: { book: Promise<string | null> | null; analysts: string | null } = { book: null, analysts: null };
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
@@ -275,10 +272,9 @@ export async function POST(
       resolvedAnalystId = analystId;
 
       let scopedAnalyst: ChatPromptOpts["scopedAnalyst"] = null;
-      // Context follows the SCOPE, not the mode name (DAV-207 standing law).
-      // Rendered below only when an analyst is actually pinned.
-      let scopedMoneyBlock: string | null = null;
-      let scopedBookBlock: string | null = null;
+      // Context follows the SCOPE, not the mode name (DAV-207 standing law):
+      // pinned, the analyst's book rides on each message; at the portfolio level, each analyst's room.
+      let bookLoad: Promise<string | null> | null = null;
       // How full the analysts are, before the chat offers a buy (counted as place_trade counts).
       let room: Awaited<ReturnType<typeof analystRoom>> | null = null;
       let roomLines: string[] = [];
@@ -312,39 +308,21 @@ export async function POST(
         const scope = await analystScope(ac, user.id);
         ({ runEnvironment, alpacaCreds } = scope);
         agentConfig = scope;
-        scopedAnalyst = {
-          ...ac,
-          watchlist: scope.watchlist ?? [],
-          setupOverrides: await loadSetupOverrides(ac.accountId),
-        };
+        scopedAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
 
-        // ── The seat's money + book (DAV-207 Move 1) ──────────────────────
-        // A chat pinned to an analyst is that analyst's desk: it must open
-        // with the same context the daily run opens with. Both calls are
-        // fail-open — a vendor outage degrades the prompt and nothing else.
+        // ── The seat's book (DAV-207 Move 1) ─────────────────────────────
+        // A chat pinned to an analyst is that analyst's desk: its book rides
+        // on each message, as a morning run's context does. Fail-open: a
+        // read that fails says so in one line and nothing else.
         //
         // 2026-08-25: a Catalyst triage run in this exact scope graded 13
         // candidates without ever calling get_theses or
         // get_portfolio_context, scored them on the scout's approval record
         // instead of our P&L, and wrote 20 PASS rows. A tool the agent MAY
         // call is not context — hand it over.
+        bookLoad = loadBook({ accountId: ac.accountId, environment: ac.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", analystId: ac.id });
         try {
-          const [money, book] = await Promise.all([
-            getMoneyContext({
-              userId: user.id,
-              tradingEnvironment: ac.tradingEnvironment,
-              minPositionSize: ac.minPositionSize,
-              maxPositionSize: ac.maxPositionSize,
-              maxPositionTotal: ac.maxPositionTotal,
-            }),
-            getBookContext({
-              analystId: ac.id,
-              environment: ac.tradingEnvironment,
-            }),
-          ]);
-          scopedMoneyBlock = formatMoneyContextBlock(money) || null;
-          scopedBookBlock = formatBookContextBlock(book) || null;
-          room = { ...(await analystRoom(ac)), held: [] }; // the book block already lists the holdings
+          room = { ...(await analystRoom(ac)), held: [] }; // the book lists the holdings
         } catch {
           /* fail-open — context can never be why a chat dies */
         }
@@ -490,16 +468,8 @@ export async function POST(
 
       // The Market and portfolio block's parts for this message: started now, read when the message is built. A chat waits 5 s at most.
       portfolioPiecesLoad = loadPortfolioPieces({ accountId, environment: runEnvironment, waitMs: 5_000 });
-      const chat = chatRequest(
-        {
-          scopedAnalyst,
-          moneyBlock: scopedMoneyBlock,
-          bookBlock: scopedBookBlock,
-          room,
-          roomLines,
-        },
-        runEnvironment,
-      );
+      const chat = chatRequest({ scopedAnalyst, room }, runEnvironment);
+      chatReads = { book: bookLoad, analysts: analystsText(roomLines) };
       systemPrompt = chat.instructions;
       systemParts = chat.parts;
       systemAgent = chat.agent;
@@ -786,8 +756,11 @@ export async function POST(
     const askedAt = new Date();
     let modelMessages: ModelMessage[];
     if (agentMode === "principal") {
-      // The time and the Market and portfolio block ride on the newest message, each part named with the instructions'.
-      const newest = chatNewest(askedAt, portfolioPiecesLoad ? await portfolioPiecesLoad : null, runEnvironment);
+      // The date line and the chat's context ride on the newest message, each part named with the instructions'.
+      const newest = chatNewest(askedAt, portfolioPiecesLoad ? await portfolioPiecesLoad : null, runEnvironment, {
+        book: chatReads.book ? ((await chatReads.book) ?? "## The book\nThe book couldn't be read for this message.") : null,
+        analysts: chatReads.analysts,
+      });
       systemParts = [...(systemParts ?? []), ...newest.parts];
       modelMessages = withNewestParts(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), newest.texts);
     } else {

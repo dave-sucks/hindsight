@@ -1,175 +1,203 @@
 /**
- * The agent engine: one way to build an agent's model request, from its
- * record (docs/plans/AGENT_ENGINE.md). It takes each block the record lists,
- * puts every part in the record's order, each after its separator (a blank
- * line unless the record says otherwise), and says which part of the request
- * is which, so the run can keep that with what it sent and the Context panel
- * can name each part.
+ * The agent engine: one way to build an agent's model request from its
+ * record (docs/plans/AGENT_ENGINE.md). An agent is its instructions, its
+ * context and its tools.
  *
- * A block's text comes from the code that already wrote it (the house rules,
- * the Market and portfolio block's parts, the agent's own data); the engine
- * adds no text of its own.
+ * - The instructions: its own text and the shared texts it uses, in the
+ *   record's order; when its context has the stock, the stock's situations
+ *   end them.
+ * - The first message: the date line, then each read and the message (the
+ *   run's task as whoever started it wrote it) in the order the record
+ *   lists them. In a conversation the date line and the reads ride on each
+ *   new message.
+ *
+ * Each part is put in a blank line after the one before, and the request
+ * says which part is which, so the run can keep that with what it sent and
+ * the Context panel can name each part. The engine writes one text of its
+ * own, the date line; every other text comes from the code that writes it.
  */
-import { HOUSE_LINES, HOW_YOU_WRITE, MARKET_BLOCK_RULE } from "@/lib/agent/house-rules";
-import { DATE_AWARENESS, EARNINGS_TRIGGERS, RESEARCH_NOTE, THESIS_CLAIM, WHAT_THE_OWNER_READS } from "@/lib/agent/thesis-research/writer-rules";
-import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
-import { BLOCKS, GROUP_HEADINGS } from "./blocks";
-import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltNewest, type BuiltRequest, type RecordPart, type SentPartManifest, type Sep, type Where } from "./types";
+import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
+import { RESEARCH_RULES } from "@/lib/agent/thesis-research/writer-rules";
+import type { PortfolioPiece, PortfolioPieceId } from "@/lib/agent/portfolio-block";
+import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED, SITUATIONS_PART } from "./parts";
+import { isOwnPart, readsOf, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type SharedId, type Where } from "./types";
 
-/** Where the blocks that read live data get it, handed in by the run. */
-export interface Sources {
-  /** The Market and portfolio block's parts, for the parts the record lists inside it. */
-  portfolioPieces?: (want: { watching: boolean; portfolioDigest: boolean }) => Promise<PortfolioPiece[]>;
-  /** A block printed on its own: its text for this run, without its heading (null: none this run). */
-  blocks?: Partial<Record<BlockId, () => Promise<string | null>>>;
-}
+/** The shared texts a run reads (the rest are the same on every run, written once in code). */
+export type RunShared = "the_analyst" | "playbooks";
 
-/** Every block's text for one request, already read. */
+/** Every text for one request, already read. */
 export interface Loaded {
-  /** The Market and portfolio block's parts; null when the run has none. */
+  /** The analyst and its playbooks for this run (null: none this run). */
+  shared?: Partial<Record<RunShared, string | null>>;
+  /** The stock's situations and what each asks (null or absent: none). Given only to an agent whose context has the stock. */
+  situations?: string | null;
+  /** The Market and portfolio reads, from their one loader (lib/agent/portfolio-block.ts); null when the run has none. */
   pieces?: PortfolioPiece[] | null;
-  /** Each block printed on its own, without its heading (null: none this run). */
-  blocks?: Partial<Record<BlockId, string | null>>;
+  /** Every other read: its text for this run (null: none this run). */
+  context?: Partial<Record<ContextId, string | null>>;
 }
 
-/** The separator before a part when the record names none: a blank line. */
+/** Where the texts that change by run come from, handed in by the run. */
+export interface Sources {
+  /** The Market and portfolio reads; `portfolioDigest` is false when the agent doesn't get the 8 PM digest. */
+  portfolioPieces?: (want: { portfolioDigest: boolean }) => Promise<PortfolioPiece[]>;
+  shared?: Partial<Record<RunShared, () => Promise<string | null>>>;
+  situations?: () => Promise<string | null>;
+  context?: Partial<Record<ContextId, () => Promise<string | null>>>;
+}
+
+/** Between two parts: a blank line. */
 export const SEP = "\n\n";
 
-/** Blocks whose text is the same for every run, written once in code. */
-const BUILT_IN: Partial<Record<BlockId, string>> = {
+/** The shared texts that are the same on every run. */
+const FIXED: Partial<Record<SharedId, string>> = {
   house_rules: HOUSE_LINES,
-  market_block_rule: MARKET_BLOCK_RULE,
   how_you_write: HOW_YOU_WRITE,
-  date_awareness: DATE_AWARENESS,
-  research_note: RESEARCH_NOTE,
-  thesis_claim: THESIS_CLAIM,
-  earnings_triggers: EARNINGS_TRIGGERS,
-  what_the_owner_reads: WHAT_THE_OWNER_READS,
+  research_rules: RESEARCH_RULES,
 };
 
-/** A block printed inside its group (the Market and portfolio block), not on its own. */
-const inGroup = (p: RecordPart): boolean => !isOwn(p) && Boolean(BLOCKS[p.block].group) && !p.alone && p.heading == null;
+/** The Market and portfolio reads, and the part of their loader each one is. */
+const PIECE_OF: Partial<Record<ContextId, PortfolioPieceId>> = {
+  market_numbers: "market_numbers",
+  market_digest: "market_digest",
+  portfolio: "portfolio_snapshot",
+  portfolio_digest: "portfolio_digest",
+};
+const isPiece = (id: ContextId) => PIECE_OF[id] != null;
 
-const allParts = (record: AgentRecord) => [...record.instructions, ...record.message, ...(record.newest ?? [])];
-
-/** Read every block the record lists, then build the request. */
-export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
-  const grouped = new Set<BlockId>(allParts(record).flatMap((p) => (!isOwn(p) && inGroup(p) ? [p.block] : [])));
-  let pieces: PortfolioPiece[] | null = null;
-  if (grouped.size) {
-    if (!sources.portfolioPieces) throw new Error(`${record.id} lists a Market and portfolio block but its run gave no way to read it`);
-    pieces = await sources.portfolioPieces({ watching: grouped.has("watching"), portfolioDigest: grouped.has("portfolio_digest") });
-  }
-  const blocks: Partial<Record<BlockId, string | null>> = {};
-  for (const p of allParts(record)) {
-    if (isOwn(p) || inGroup(p) || BUILT_IN[p.block] != null || p.block in blocks) continue;
-    const load = sources.blocks?.[p.block];
-    if (!load) throw new Error(`${record.id} lists the block ${p.block} but its run gave no way to read it`);
-    blocks[p.block] = await load();
-  }
-  return composeAgentRequest(record, input, { pieces, blocks });
+/** The line every first message opens with: the date and time in New York, and the account. */
+export function dateLine(now: Date, environment: "PAPER" | "LIVE"): string {
+  const day = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
+  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+  return `${day}, ${time} ET, the ${environment} account.`;
 }
 
-/** Build the request from blocks already read. */
+/** Read every text the record needs, then build the request. */
+export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
+  const loaded: Loaded = { shared: {}, context: {} };
+  if (readsOf(record).some(isPiece)) {
+    if (!sources.portfolioPieces) throw new Error(`${record.id} reads the Market and portfolio context but its run gave no way to read it`);
+    loaded.pieces = await sources.portfolioPieces({ portfolioDigest: record.context.includes("portfolio_digest") });
+  }
+  for (const p of record.instructions) {
+    if (isOwnPart(p) || FIXED[p] != null) continue;
+    const load = sources.shared?.[p as RunShared];
+    if (!load) throw new Error(`${record.id} uses the shared text ${p} but its run gave no way to read it`);
+    loaded.shared![p as RunShared] = await load();
+  }
+  for (const id of readsOf(record)) {
+    if (isPiece(id)) continue;
+    const load = sources.context?.[id];
+    if (!load) throw new Error(`${record.id} reads ${id} but its run gave no way to read it`);
+    loaded.context![id] = await load();
+  }
+  if (sources.situations) loaded.situations = await sources.situations();
+  return composeAgentRequest(record, input, loaded);
+}
+
+/** Build the request from texts already read. */
 export function composeAgentRequest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltRequest {
-  const instructions = printParts(record, record.instructions, "instructions", input, loaded);
-  const message = printParts(record, record.message, "message", input, loaded);
-  const join = (ps: Printed[]) => ps.map((p) => p.manifest.sep + p.text).join("");
-  return {
-    agent: record.id,
-    instructions: join(instructions),
-    message: join(message),
-    parts: [...instructions, ...message].map((p) => p.manifest),
-    tools: record.tools,
-  };
+  const instructions = new Printer("instructions");
+  for (const p of record.instructions) {
+    if (isOwnPart(p)) {
+      instructions.push({ id: "own", title: "Its own text", kind: "own", source: `lib/agent/engine/agents (${record.id})` }, p.own);
+      continue;
+    }
+    const text = FIXED[p] ?? loaded.shared?.[p as RunShared];
+    if (text === undefined) throw new Error(`${record.id} uses the shared text ${p} but it wasn't read`);
+    if (text != null) instructions.push({ id: p, title: SHARED[p].title, kind: "shared", source: SHARED[p].source }, text);
+  }
+  if (loaded.situations) {
+    if (!record.context.includes("the_stock")) throw new Error(`${record.id} was given a stock's situations but its context has no stock`);
+    instructions.push({ id: "situations", ...SITUATIONS_PART, kind: "situations" }, loaded.situations);
+  }
+  if (record.conversation) return { agent: record.id, instructions: instructions.text, message: "", parts: instructions.parts, tools: record.tools };
+
+  const message = new Printer("message");
+  printFirst(record, input, loaded, (m, text) => message.push(m, text));
+  return { agent: record.id, instructions: instructions.text, message: message.text, parts: [...instructions.parts, ...message.parts], tools: record.tools };
 }
 
 /**
- * What the run page shows as the run's opening: what a person reads in the
- * first message, the record's own words (its ask) and the run's own facts (a
- * block marked `opening`, the fire). Never the context blocks: the Context
- * panel shows those part by part. Cut from the first message by its parts.
+ * What rides on a conversation's newest message: the date line, then each
+ * read, each its own text, the Market and portfolio reads one text. Its parts
+ * are named as if the texts were joined by a blank line, the way the run's
+ * Context panel reads a message.
+ */
+export function composeNewest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltNewest {
+  if (!record.conversation) throw new Error(`${record.id} is not a conversation`);
+  const texts: string[] = [];
+  const parts: SentPartManifest[] = [];
+  printFirst(record, input, loaded, (m, text, continuesGroup) => {
+    parts.push({ ...m, where: "newest", sep: parts.length ? SEP : "", chars: text.length });
+    if (continuesGroup && texts.length) texts[texts.length - 1] += SEP + text;
+    else texts.push(text);
+  });
+  return { agent: record.id, texts, parts };
+}
+
+/**
+ * What the run page shows as the run's opening: the message, the run's task
+ * as whoever started it wrote it. Never the reads: the Context panel shows
+ * those part by part.
  */
 export function openingOf(built: BuiltRequest): string {
-  const read: string[] = [];
   let at = 0;
   for (const p of built.parts.filter((x) => x.where === "message")) {
     at += (p.sep ?? "").length;
-    if (p.kind === "own" || BLOCKS[p.id as BlockId]?.opening) read.push(built.message.slice(at, at + p.chars));
+    if (p.kind === "message") return built.message.slice(at, at + p.chars);
     at += p.chars;
   }
-  return read.join(SEP);
+  return "";
 }
+
+type PartHead = Omit<SentPartManifest, "where" | "chars" | "sep">;
 
 /**
- * Build what rides on a conversation's newest message, from blocks already
- * read: each part its own text, the Market and portfolio block's parts one
- * text. Its parts are named as if the texts were joined by a blank line, the
- * way the run's Context panel reads a message.
+ * The date line, then each read and the message in the record's order, the
+ * Market and portfolio reads under their one heading.
  */
-export function composeNewest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltNewest {
-  const parts = record.newest ?? [];
-  const set = parts.find((p) => p.sep !== undefined);
-  if (set) throw new Error(`${record.id}: a part on the newest message is its own text and takes no separator (${isOwn(set) ? set.own : set.block})`);
-  const printed = printParts(record, parts, "newest", input, loaded);
-  const texts: string[] = [];
-  for (const p of printed) {
-    if (p.continuesGroup && texts.length) texts[texts.length - 1] += p.manifest.sep + p.text;
-    else texts.push(p.text);
-  }
-  return { agent: record.id, texts, parts: printed.map((p) => p.manifest) };
-}
-
-interface Printed {
-  manifest: SentPartManifest;
-  text: string;
-  /** A Market and portfolio part after the first: it prints inside the same block. */
-  continuesGroup: boolean;
-}
-
-function printParts(record: AgentRecord, parts: readonly RecordPart[], where: Where, input: AgentInput, loaded: Loaded): Printed[] {
-  const firstOfGroup = allParts(record).flatMap((p) => (!isOwn(p) && inGroup(p) ? [p.block] : []))[0];
-
-  /** A Market and portfolio part's text, or null when the read left it out. */
-  function groupText(id: BlockId): string | null {
-    const all = loaded.pieces;
-    if (!all) return null;
-    // Nothing could be read: the one line stands where the first part would be.
-    const unreadable = all.find((p) => p.id === "unreadable");
-    if (unreadable) return firstOfGroup === id ? unreadable.text : null;
-    return all.find((p) => p.id === id)?.text ?? null;
-  }
-
-  const out: Printed[] = [];
+function printFirst(record: AgentRecord, input: AgentInput, loaded: Loaded, put: (m: PartHead, text: string, continuesGroup: boolean) => void): void {
+  put({ id: "line", ...DATE_LINE, kind: "line" }, dateLine(input.now, input.environment), false);
+  const pieces = loaded.pieces ?? null;
+  const unreadable = pieces?.find((p) => p.id === "unreadable") ?? null;
+  const firstPiece = readsOf(record).find(isPiece);
   let groupOpen: string | null = null;
-  const push = (m: Omit<SentPartManifest, "chars" | "sep">, sep: Sep | undefined, text: string, continuesGroup = false) =>
-    out.push({ manifest: { ...m, sep: out.length ? (typeof sep === "function" ? sep(input) : (sep ?? SEP)) : "", chars: text.length }, text, continuesGroup });
-  for (const part of parts) {
-    if (isOwn(part)) {
+  for (const id of record.context) {
+    if (id === "message") {
       groupOpen = null;
-      const text = typeof part.text === "string" ? part.text : part.text(input);
-      if (text == null) continue;
-      push({ id: part.own, title: part.title, kind: "own", where, source: `lib/agent/engine/agents (${record.id})` }, part.sep, text);
+      if (input.message?.trim()) put({ id: "message", title: "The message", kind: "message", source: record.messageFrom }, input.message.trim(), false);
       continue;
     }
-    const def = BLOCKS[part.block];
-    const manifest = { id: def.id, title: def.title, kind: "block" as const, where, source: def.source };
-    if (!inGroup(part)) {
+    const def = CONTEXT[id];
+    const m: PartHead = { id, title: def.title, kind: "context", source: def.source };
+    if (!isPiece(id)) {
       groupOpen = null;
-      const body = BUILT_IN[part.block] ?? loaded.blocks?.[part.block];
-      if (body === undefined) throw new Error(`${record.id} lists the block ${part.block} but it wasn't read`);
-      if (body == null) continue;
-      push(manifest, part.sep, part.heading != null ? `${part.heading}\n${body}` : body);
+      const text = loaded.context?.[id];
+      if (text === undefined) throw new Error(`${record.id} reads ${id} but it wasn't read`);
+      if (text != null) put(m, text, false);
       continue;
     }
-    let text = groupText(part.block);
+    // Nothing could be read: the one line stands where the first read would be.
+    let text = unreadable ? (id === firstPiece ? unreadable.text : null) : (pieces?.find((p) => p.id === PIECE_OF[id])?.text ?? null);
     if (text == null) continue;
-    const continuesGroup = Boolean(def.group) && groupOpen === def.group;
+    const continuesGroup = groupOpen === def.group;
     if (def.group && !continuesGroup) {
       text = `${GROUP_HEADINGS[def.group]}${SEP}${text}`;
       groupOpen = def.group;
     }
-    push(manifest, part.sep, text, continuesGroup);
+    put(m, text, continuesGroup);
   }
-  return out;
+}
+
+/** Parts joined by a blank line, each one named. */
+class Printer {
+  text = "";
+  parts: SentPartManifest[] = [];
+  constructor(private where: Where) {}
+  push(m: PartHead, text: string) {
+    const sep = this.parts.length ? SEP : "";
+    this.parts.push({ ...m, where: this.where, sep, chars: text.length });
+    this.text += sep + text;
+  }
 }

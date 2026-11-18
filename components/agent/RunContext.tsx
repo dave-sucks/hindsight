@@ -3,8 +3,10 @@
 /**
  * RunContext — what a run's latest model call was sent, read only from its
  * saved record (lib/agent/run-requests.ts), never rebuilt. The model, the
- * total, one bar with a color per part (the Framework page's colors), a line
- * per part that opens its full text by section, and the raw request, copyable.
+ * total, one bar with a color per part (the Framework page's colors), then
+ * the parts as the agent is made, under Instructions, Context, Message and
+ * Tools, a line each that opens its full text by section, and the raw
+ * request, copyable.
  *
  * Beside the conversation on a desktop, pushing it left so it still scrolls,
  * as a floating card like the thesis sheet (inset from the edges, a border, a
@@ -92,19 +94,24 @@ function ContextBody({ call }: { call: CallView | null }) {
         {/* The rows pull out by their own padding so their dots line up with the text above. */}
         <div className="-mx-2 space-y-1">
           {call.categories.map((c, i) => (
-            <Collapsible key={i}>
-              <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
-                <span className={cn("size-2 shrink-0 rounded-full", color(c))} />
-                <span className="flex-1 font-medium">{c.name}</span>
-                <span className="text-muted-foreground tabular-nums">
-                  {n(c.chars)} · {share(c.chars, call.chars).toFixed(0)}%
-                </span>
-                <ChevronRight className="size-4 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <Sections id={`part-${i}`} category={c} />
-              </CollapsibleContent>
-            </Collapsible>
+            <div key={i}>
+              {c.group !== call.categories[i - 1]?.group && (
+                <p className={cn("px-2 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground", i > 0 && "pt-3")}>{c.group}</p>
+              )}
+              <Collapsible>
+                <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
+                  <span className={cn("size-2 shrink-0 rounded-full", color(c))} />
+                  <span className="flex-1 font-medium">{c.name}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {n(c.chars)} · {share(c.chars, call.chars).toFixed(0)}%
+                  </span>
+                  <ChevronRight className="size-4 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <Sections id={`part-${i}`} category={c} />
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           ))}
         </div>
       </div>

@@ -22,11 +22,11 @@ import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-st
 beforeEach(() => (sent.length = 0));
 
 describe("what the digest's model is given", () => {
-  it("is its instructions and the snapshot's text, exactly", async () => {
+  it("is its instructions, then the date line and the snapshot's text, exactly", async () => {
     await writeDigestNarrative(STANDIN_SNAPSHOT);
     expect(sent).toHaveLength(1);
     expect(sent[0].messages.map((m) => m.role)).toEqual(["system", "user"]);
-    expect(sent[0].messages[1].content).toBe(snapshotText(STANDIN_SNAPSHOT));
+    expect(sent[0].messages[1].content).toBe(`Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\n${snapshotText(STANDIN_SNAPSHOT)}`);
   });
 
   it("the instructions ask for the day, the trades and a view on each proposal, and never for deploying cash", async () => {

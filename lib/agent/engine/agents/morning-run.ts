@@ -3,11 +3,11 @@
  * walked at 8 AM on its run days (lib/inngest/functions/morning-research.ts)
  * or from the Run button (app/api/agent/[mode]/route.ts).
  *
- * Its own text is the same on every run, after the analyst it works for.
- * Its instructions end with what travels with the run: the regime and cash,
- * and the calls refused last time that no run has redone. The market and
- * portfolio and the book's earnings and filings this week come in its first
- * message, as context blocks.
+ * Its instructions: the analyst it works for, its own text (the same on every
+ * run, the regime's rules with it), the house rules and how you write. Its
+ * context: the market and the portfolio, the book's earnings and filings this
+ * week, and the calls refused last time that no run has redone. Its message
+ * is the schedule's kickoff, with the watched stocks at their buy price.
  */
 import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
@@ -34,31 +34,37 @@ Each morning:
 
 ## How tools work
 
-Tools enforce all the constraints — confidence thresholds, a holding's sale on the far side of the price, duplicate positions — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.`;
+Tools enforce all the constraints — confidence thresholds, a holding's sale on the far side of the price, duplicate positions — and compute the ones that are arithmetic (the size of every buy and add). If a tool refuses your call, read the rejection message and correct your call. Don't work around it.
+
+## Regime and cash
+Your cash is in the portfolio snapshot. \`get_portfolio_context\` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.
+- **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.
+- **Cash duty.** Cash above 25% of equity, a watch name at its buy level (the start of the day names them), and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.`;
+
+/**
+ * The schedule's kickoff: the start of the day, the cash when the portfolio
+ * snapshot couldn't be read (else the snapshot says it), and the watched
+ * stocks at their buy price this morning.
+ */
+export function morningKickoff(atBuy: readonly string[], cashUnread: number | null = null): string {
+  return [
+    "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.",
+    ...(cashUnread != null ? [`The portfolio snapshot couldn't be read: cash is $${Math.round(cashUnread).toLocaleString()}.`] : []),
+    ...(atBuy.length ? [`Watched stocks at their buy price this morning: ${atBuy.join(", ")}.`] : []),
+  ].join("\n\n");
+}
 
 export const MORNING_RUN: AgentRecord = {
   id: "morning_run",
   name: "Morning run",
   does: "Walks one analyst's book and answers each stock on its work list: a trade (it waits for you), a trigger moved, or a note; then the run summary.",
   runsWhen: "8:00 AM ET on each analyst's run days, or when you press Run.",
+  messageFrom: "The schedule's kickoff (lib/inngest/functions/morning-research.ts, or the Run button): the start of the day, and the watched stocks at their buy price.",
   model: MODES["research-run"].model,
   maxSteps: MODES["research-run"].maxSteps,
   // The analyst opens the instructions: in the first message, MU's review stopped lowering its conviction (3 of 3 runs to 0 of 3).
-  // The regime and the refused calls travel with the run: they end the instructions, after the fixed text.
-  instructions: [{ block: "analyst_brief" }, { own: "instructions", title: "Its instructions", text: INSTRUCTIONS }, { block: "house_rules" }, { block: "market_block_rule" }, { block: "how_you_write" }, { block: "regime" }, { block: "blocked_last_time" }],
-  message: [
-    { block: "market_numbers" },
-    { block: "market_digest" },
-    { block: "portfolio_snapshot" },
-    { block: "portfolio_digest" },
-    { block: "earnings_week" },
-    { block: "filings_week" },
-    {
-      own: "kickoff",
-      title: "The start",
-      text: "It's the start of the trading day. Run your morning playbook unattended — there is no human to respond to questions. Every turn must call a tool; text-only turns terminate the run as FAILED. End with complete_run.",
-    },
-  ],
+  instructions: ["the_analyst", { own: INSTRUCTIONS }, "house_rules", "how_you_write"],
+  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls", "message"],
   tools: MODES["research-run"].toolAllowlist ?? [],
   output: "A note or a trade proposal on each stock on its work list, then record_run_summary and complete_run.",
 };

@@ -29,7 +29,7 @@ export function FrameworkPage({ data }: { data: FrameworkData }) {
             as="h1"
             size="hero"
             lead="One engine, every agent."
-            rest="An agent is its own instructions, the blocks it is given from one library, and its tools. The engine builds each of its requests from its record, in the record's order, so the parts below are the parts it is sent."
+            rest="An agent is its instructions, its context and its tools. The engine builds each of its requests from its record, in the record's order, so the parts below are the parts it is sent."
           />
         </div>
 

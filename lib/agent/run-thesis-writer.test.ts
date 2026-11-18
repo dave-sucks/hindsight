@@ -55,6 +55,7 @@ import {
   ideaSourceLine,
   runThesisWriterAgent,
   writerRecordFor,
+  writerRequest,
   type WriterResearchPromptOpts,
 } from "./run-thesis-writer";
 import { writerSent } from "./__fixtures__/writer-sent";
@@ -65,7 +66,6 @@ const baseOpts: Omit<WriterResearchPromptOpts, "mode" | "existingThesis"> = {
   analyst: { name: "Test Analyst", analystPrompt: null },
   ticker: "NVDA",
   reason: "Promotion refresh — write PROMOTED triggers",
-  runDate: "2026-05-27",
 };
 
 function existingThesis(status: string) {
@@ -93,7 +93,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
 
     it("is the Writer's, with the promotion's rules", () => {
       expect(writerRecordFor({ mode: "refresh", existingThesis: existingThesis("PROMOTED") }).id).toBe("writer");
-      expect(prompt).toContain("The promotion (this refresh is part of a PAPER→LIVE promotion)");
+      expect(prompt).toContain("A promotion (the row's paper_record: this refresh is part of a PAPER→LIVE promotion)");
     });
 
     it("forbids position-management trigger actions (no position exists)", () => {
@@ -134,7 +134,7 @@ describe("buildWriterResearchPrompt — status branching", () => {
 
     it("has none of a watch's or a promotion's rules", () => {
       expect(prompt).not.toContain("## Triggers on a watch");
-      expect(prompt).not.toContain("The promotion (");
+      expect(prompt).not.toContain("A promotion (");
     });
   });
 
@@ -200,15 +200,10 @@ describe("buildWriterResearchPrompt — status branching", () => {
 });
 
 describe("buildWriterResearchPrompt — date-awareness gate (P1-5 / PR #354)", () => {
-  it("renders today's date in the date-awareness header", () => {
-    const prompt = writerSent({
-      ...baseOpts,
-      runDate: "2026-08-15",
-      mode: "mint",
-      existingThesis: null,
-    });
-    expect(prompt).toContain("## Date awareness");
-    expect(prompt).toContain("## Today\nToday is 2026-08-15.");
+  it("the date line opens the first message, and the date-awareness rule points at it", () => {
+    const built = writerRequest({ ...baseOpts, mode: "mint", existingThesis: null }, { dataBlock: "STRUCTURED DATA" }, new Date("2026-08-15T14:00:00Z"));
+    expect(built.instructions).toContain("Today's date is at the top of the first message.");
+    expect(built.message.startsWith("Sat, Aug 15, 2026, 10:00 AM ET, the PAPER account.")).toBe(true);
   });
 
   it("instructs the writer to discard hallucinated past-tense claims on future catalysts", () => {
@@ -456,7 +451,6 @@ describe("the writer's prompt — what the sender found and whose idea it was", 
     mode: "mint" as const,
     existingThesis: null,
     reason: ESTC_REASON,
-    runDate: "2026-10-30",
   };
 
   it("shows the notes and the post as data, with the order to test the author's claims", () => {

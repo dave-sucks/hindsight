@@ -101,15 +101,17 @@ describe("the 8 PM Portfolio Digest's run", () => {
   it("shows in its Context panel part by part, in the order sent, adding up to what was sent", async () => {
     const { sent, view } = await runTheJob(async () => ({ choices: [{ message: { content: DIGEST } }] }));
     const body = sent[0] as { messages: Array<{ content: string }> };
-    // One row per part the agent engine built: its instructions, then the snapshot.
-    expect(view.categories.map((c) => [c.name, c.part])).toEqual([
-      ["Its instructions", "job"],
-      ["Portfolio snapshot", "portfolio"],
+    // One row per part the agent engine built: its own text, then its context: the date line and the portfolio.
+    expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
+      ["Instructions", "Its own text", "job"],
+      ["Context", "The date and account", "read"],
+      ["Context", "The portfolio", "portfolio"],
     ]);
     expect(view.categories[0].sections[0].text).toBe(body.messages[0].content);
-    expect(view.categories[1].sections[0].text).toBe(body.messages[1].content);
-    expect(view.categories.reduce((n, c) => n + c.chars, 0)).toBe(body.messages[0].content.length + body.messages[1].content.length);
-    expect(view.chars).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    expect(`${view.categories[1].sections[0].text}\n\n${view.categories[2].sections[0].text}`).toBe(body.messages[1].content);
+    // The blank line between the two reads is sent and isn't a part.
+    expect(view.categories.reduce((n, c) => n + c.chars, 0) + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    expect(view.chars + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
     expect(view.raw).toEqual(body);
     expect(view.rawChars).toBe(JSON.stringify(body).length);
   });

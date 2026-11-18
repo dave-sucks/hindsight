@@ -36,23 +36,6 @@ export interface SnapshotHolding {
   conviction?: string | null;
 }
 
-/** A stock we watch, for the Watching block. */
-export interface SnapshotWatch {
-  ticker: string;
-  price: number | null;
-  dayPct: number | null;
-  move5dPct: number | null;
-  move20dPct: number | null;
-  conviction: string | null;
-  analyst: string | null;
-  /** When we started watching (ISO). */
-  since: string;
-  /** The watch's own buy triggers, each as its sentence. */
-  buyIf?: string[];
-  /** The first sentence of the thesis's belief. */
-  belief?: string | null;
-}
-
 export interface SnapshotTrade {
   /** ISO time of the fill. Strings, not Dates, so a snapshot passes through a job step unchanged. */
   at: string;
@@ -94,8 +77,6 @@ export interface SnapshotInputs {
   /** Stocks with a fill on `day` whose price wasn't recorded: their day can't be worked out. */
   unrecordedFills?: string[];
   waiting: SnapshotProposal[];
-  /** The stocks we watch; loaded only for a reader that gets the Watching block. */
-  watching?: SnapshotWatch[];
 }
 
 type Change = { dollars: number; pct: number };
@@ -125,7 +106,6 @@ export interface PortfolioSnapshot {
   holdings: HoldingLine[];
   trades: SnapshotTrade[];
   waiting: SnapshotProposal[];
-  watching?: SnapshotWatch[];
   /** Holdings with no price: valued at the broker's figure, so the value is not exact. */
   unpriced: string[];
 }
@@ -202,7 +182,6 @@ export function buildSnapshot(i: SnapshotInputs): PortfolioSnapshot {
     holdings: lines,
     trades: i.trades,
     waiting: i.waiting,
-    ...(i.watching ? { watching: i.watching } : {}),
     unpriced,
   };
 }
@@ -272,26 +251,8 @@ export function firstSentence(text: string | null | undefined): string | null {
   return flat;
 }
 
-/** The Watching block: every stock we watch, one line each, in the holdings' style. */
-export function watchingText(s: Pick<PortfolioSnapshot, "watching" | "waiting">): string {
-  const watching = s.watching ?? [];
-  if (!watching.length) return "Watching: none.";
-  const buyWaiting = new Set(s.waiting.filter((p) => p.side === "BUY").map((p) => p.ticker));
-  return [
-    `Watching (${watching.length}):`,
-    ...watching.map(
-      (w) =>
-        `- ${w.ticker}: ${w.price != null ? usd(w.price, true) : "no price"}` +
-        (w.dayPct != null ? ` · day ${signedPct(w.dayPct)}` : "") +
-        movesAndConviction(w) +
-        (w.analyst ? ` · ${w.analyst}` : "") +
-        ` · watching since ${dayLabel(nyDay(new Date(w.since))).replace(/^\w+, /, "")}` +
-        (buyWaiting.has(w.ticker) ? " · a buy proposal is waiting" : "") +
-        (w.buyIf?.length ? ` · ${w.buyIf.join("; ")}` : "") +
-        (w.belief ? ` · Belief: ${w.belief}` : ""),
-    ),
-  ].join("\n");
-}
+/** The read "portfolio" (lib/agent/engine/parts.ts): the snapshot under its heading, or the line that says it couldn't be read. */
+export const portfolioPieceText = (s: PortfolioSnapshot | null): string => `### Portfolio snapshot\n${s ? snapshotText(s) : "The portfolio snapshot couldn't be read for this request."}`;
 
 /** The snapshot as every reader gets it: plain lines, no ids. */
 export function snapshotText(s: PortfolioSnapshot): string {

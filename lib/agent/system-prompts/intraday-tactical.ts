@@ -4,20 +4,21 @@
  * Agent wakes the trigger run, which decides (lib/agent/engine/agents/trigger-run.ts);
  * one set to Auto has made its trade, and the post-trade write-up writes the
  * note on it (lib/agent/engine/agents/post-trade-writeup.ts). Both read the
- * same stock the same way; this file writes the blocks they are given.
+ * same stock the same way; this file writes what they are given: the stock,
+ * its situations, and the message from the trigger check, the fire.
  */
 
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { conditionSentence, isGroup, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
+import { isGroup, sentenceOf, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
 import { SITUATIONS, guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import { TRIGGER_RUN } from "@/lib/agent/engine/agents/trigger-run";
-import { POST_TRADE_WRITEUP } from "@/lib/agent/engine/agents/post-trade-writeup";
+import { TRIGGER_RUN, TRIGGER_RUN_ASK } from "@/lib/agent/engine/agents/trigger-run";
+import { POST_TRADE_WRITEUP, WRITEUP_ASK } from "@/lib/agent/engine/agents/post-trade-writeup";
 import type { AgentRecord, BuiltRequest } from "@/lib/agent/engine/types";
 
 interface TacticalPromptArgs {
@@ -59,8 +60,10 @@ interface TacticalPromptArgs {
   autoTrade?: { line: string } | null;
   /** The Market and portfolio block's parts (lib/agent/portfolio-block.ts). Null: none. */
   portfolioPieces?: PortfolioPiece[] | null;
-  /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's block (playbooksBlock); REVIEW_DUE says what to do with them. Null: none. */
+  /** A review fired on a stock we only watch: the analyst's playbooks, the Writer's text (playbooksBlock); REVIEW_DUE says what to do with them. Null: none. */
   playbooks?: string | null;
+  /** The analyst's account: paper or live. */
+  environment?: "PAPER" | "LIVE";
 }
 
 /**
@@ -91,7 +94,7 @@ export function stockFromRead(
 
 /**
  * On a give-back off the high since we bought, the tracked high and the line:
- * part of the fired_trigger block.
+ * part of the fire's message.
  */
 function trailingPeakText(args: TacticalPromptArgs): string {
   const { stock, trigger, position } = args;
@@ -121,23 +124,13 @@ function trailingPeakText(args: TacticalPromptArgs): string {
   evidence — not a different peak.`;
 }
 
-/** What fired: the fired_trigger block. */
-function firedTriggerText(args: TacticalPromptArgs): string {
-  const { trigger } = args;
-  const predicateSummary = conditionSentence(trigger.predicate);
-  const price = args.fired?.price ?? null;
-  return `## The trigger that fired (id: ${trigger.id})
-  predicate: ${predicateSummary}${price != null ? `\n  fired at: $${price.toFixed(2)}` : ""}
-  declared action: ${trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action}${writtenNote(trigger) ? `\n  ${trigger.source === "PRINCIPAL" ? "the principal's note on it" : "its note"}: "${writtenNote(trigger)}"` : ""}${trailingPeakText(args)}`;
-}
-
-/** The stock's row, under its heading: the stock_row block. */
-function stockRowText(stock: TacticalPromptArgs["stock"]): string {
+/** The stock's row, under its heading: the read "the_stock", for every agent given the stock. */
+export function stockRowText(stock: Pick<TacticalPromptArgs["stock"], "ticker" | "row">): string {
   return `## $${stock.ticker}, its row (get_theses)
 ${stock.row ? JSON.stringify(stock.row, null, 2) : `(not read on this pass: get_theses(tickers: ["${stock.ticker}"]))`}`;
 }
 
-/** The situations the stock is in and what each asks: the situations block. Null when it is in none the trigger run answers. */
+/** The situations the stock is in and what each asks: they end the instructions. Null when it is in none the trigger run answers. */
 function situationsText(args: TacticalPromptArgs): string | null {
   const { stock } = args;
   const guidance = Object.entries(args.situations?.guidance ?? {}) as Array<[SituationCode, string]>;
@@ -147,35 +140,52 @@ function situationsText(args: TacticalPromptArgs): string | null {
     : null;
 }
 
-/** The kickoff's facts (tactical-run.ts writes them): the fire_facts block. */
-export interface TriggerRunKickoff {
-  facts: string;
+/**
+ * What the trigger check knows about the fire beyond the trigger and its
+ * price, written by tactical-run.ts: a report's numbers, a pre-catalyst
+ * buy's window, what fired with it, a refused call on the stock. Each starts
+ * with a space; "" when there is nothing more.
+ */
+export interface FireFacts {
+  more: string;
+}
+
+/**
+ * The message from the trigger check: the fire, said once. The trigger's
+ * sentence, its price, its id and its declared action (the instructions act
+ * on it); its note is on the stock's row beside its id, so it is said here
+ * only when the row couldn't be read. Then the ask.
+ */
+export function fireMessage(args: TacticalPromptArgs, facts: FireFacts): string {
+  const { stock, trigger } = args;
+  const price = args.fired?.price ?? null;
+  const by = trigger.source === "PRINCIPAL" ? ", which the principal wrote" : "";
+  const note = !stock.row && writtenNote(trigger) ? ` Its note: "${writtenNote(trigger)}"` : "";
+  const action = trigger.action === "TRIM" ? `TRIM ${trimPctOf(trigger)}% of the position` : trigger.action;
+  const fired = `"${sentenceOf(trigger)}" fired${price != null ? ` at $${price.toFixed(2)}` : ""} (trigger ${trigger.id}${by}; declared action: ${action}).${note}`;
+  const auto = args.autoTrade ?? null;
+  const head = auto
+    ? `Write-up on $${stock.ticker}. ${fired} It is set to Auto, so no analyst decided. ${auto.line}${facts.more}`
+    : `Tactical run on $${stock.ticker}. ${fired}${facts.more}`;
+  const peak = trailingPeakText(args).trim();
+  return [head, ...(peak ? [peak] : []), auto ? WRITEUP_ASK : TRIGGER_RUN_ASK].join("\n\n");
 }
 
 /**
  * The request when a trigger fires, built by the agent engine from the
  * record for the job: the trigger run's, or on an Auto trade the post-trade
- * write-up's. Each record's instructions are the same on every run; the
- * stock, the trigger and the fire are the blocks of its first message, the
- * fire's facts last when they are given.
+ * write-up's. Its context is the stock (and the market); its message the fire.
  */
-export function triggerRunRequest(args: TacticalPromptArgs, kickoff?: TriggerRunKickoff): BuiltRequest {
-  // The Market and portfolio block goes in before the stock's row, so the
-  // row is read after it: the trigger run's is the market numbers alone; the
-  // write-up's has the snapshot and the digests, and the rule on weighing
-  // them (the stock's row wins where they differ). On 2026-10-07 a day-old
-  // digest told the trigger runs "no pending proposals" while ASML's row
-  // carried its sale awaiting approval.
-  return composeAgentRequest(recordFor(args), { now: new Date(), environment: "PAPER" }, {
+export function triggerRunRequest(args: TacticalPromptArgs, facts: FireFacts = { more: "" }, now: Date = new Date()): BuiltRequest {
+  return composeAgentRequest(recordFor(args), { now, environment: args.environment ?? "PAPER", message: fireMessage(args, facts) }, {
+    shared: { the_analyst: analystBrief(args.analyst, args.capacity), playbooks: args.playbooks || null },
+    situations: situationsText(args),
+    // The trigger run's Market and portfolio context is the market numbers alone; the write-up's has the snapshot
+    // and the digests, and the house rules say how to weigh them (the stock's row wins where they differ). On
+    // 2026-10-07 a day-old digest told the trigger runs "no pending proposals" while ASML's row carried its sale
+    // awaiting approval.
     pieces: args.portfolioPieces ?? null,
-    blocks: {
-      analyst_brief: analystBrief(args.analyst, args.capacity),
-      stock_row: stockRowText(args.stock),
-      playbooks: args.playbooks || null,
-      fired_trigger: firedTriggerText(args),
-      situations: situationsText(args),
-      fire_facts: kickoff ? kickoff.facts : null,
-    },
+    context: { the_stock: stockRowText(args.stock) },
   });
 }
 

@@ -23,9 +23,9 @@ import { PriceChange } from "@/components/ui/price-change";
 import { rowLabel } from "@/lib/agent/triggers/condition";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { swatchOf } from "@/components/docs/framework/swatch";
-import { BLOCKS } from "@/lib/agent/engine/blocks";
-import type { AgentId, BlockId } from "@/lib/agent/engine/types";
-import { blocksByRarity } from "@/lib/docs/framework-content";
+import { CONTEXT } from "@/lib/agent/engine/parts";
+import type { AgentId, ContextId } from "@/lib/agent/engine/types";
+import { partsByRarity } from "@/lib/docs/framework-content";
 import { factsOf, parseDoc } from "@/lib/docs/guide-parse";
 import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { cn } from "@/lib/utils";
@@ -49,9 +49,9 @@ const WAKE: Record<Wake, { bar: string; label: string }> = {
 /**
  * Each agent: its name, the record it runs on (Discovery is a job the chat
  * does), what wakes it, its place on the grid (columns 1, 3 and 5; 2 and 4
- * are the gaps), and the block it writes for the others.
+ * are the gaps), and the read it writes for the others.
  */
-const AGENTS: Record<AgentNode, { name: string; record: AgentId; wake: Wake; place: string; creates?: BlockId }> = {
+const AGENTS: Record<AgentNode, { name: string; record: AgentId; wake: Wake; place: string; creates?: ContextId }> = {
   discovery: { name: "Discovery", record: "chat", wake: "asked", place: "lg:col-start-1 lg:row-start-1 lg:mb-6" },
   "portfolio-digest": { name: "Portfolio Digest", record: "portfolio_digest", wake: "clock", place: "lg:col-start-3 lg:row-start-1 lg:mb-6", creates: "portfolio_digest" },
   "market-reviewer": { name: "Market Reviewer", record: "market_reviewer", wake: "clock", place: "lg:col-start-5 lg:row-start-1 lg:mb-6", creates: "market_digest" },
@@ -216,8 +216,8 @@ function AgentCard({ id, ref, onOpen }: { id: AgentNode; ref: (el: HTMLElement |
   const source = useGuideDoc(id);
   const agents = useFrameworkData()?.agents;
   const record = agents?.find((r) => r.id === a.record);
-  const chips = record && agents ? blocksByRarity(record, agents).map((p) => ({ label: p.title, part: p.swatch })) : [];
-  const creates = a.creates ? BLOCKS[a.creates] : null;
+  const chips = record && agents ? partsByRarity(record, agents).map((p) => ({ label: p.title, part: p.swatch })) : [];
+  const creates = a.creates ? { ...CONTEXT[a.creates], id: a.creates } : null;
   // The doc says the time zone; the card leaves it off.
   const starts = useMemo(() => (source ? (factsOf(parseDoc(source)).Starts ?? "").replace(/ ET$/, "") : ""), [source]);
   return (
@@ -234,7 +234,7 @@ function AgentCard({ id, ref, onOpen }: { id: AgentNode; ref: (el: HTMLElement |
         <ContextChips parts={chips} shown={CHIPS_SHOWN} onMore={() => onOpen(id)} moreLabel={`Everything ${a.name} is sent`} />
         {creates ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Creates: <ContextChip part={swatchOf(creates)}>{creates.title}</ContextChip>
+            Creates: <ContextChip part={swatchOf({ kind: "context", id: creates.id })}>{creates.title}</ContextChip>
           </p>
         ) : null}
       </div>

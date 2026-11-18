@@ -173,7 +173,7 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
 
   it("CEG 09-14: the fired price is the price to act on when the tool's quote fails", () => {
     const prompt = triggerRunSent(makeArgs({ fired: { price: 264.91 } }));
-    expect(prompt).toContain("fired at: $264.91");
+    expect(prompt).toContain('fired at $264.91 (trigger');
     expect(prompt).toContain("act on the price the trigger fired at, never on yesterday's close");
   });
 
@@ -242,11 +242,11 @@ describe("a trigger fire's request — the stock's row, and of the account only 
       proposals: [{ side: "SELL", intent: "CLOSE", quantity: 5, createdAt: "2026-10-06T18:25:18.399Z", expiresAt: "2026-10-07T18:25:18.399Z" }],
     });
 
-  it("prints the row's waiting sale with its times, and no digest without the block", () => {
+  it("prints the row's waiting sale with its times, and no digest without the reads", () => {
     const prompt = triggerRunSent(makeArgs({ stock: { ticker: "ASML", direction: "LONG", row: row({ id: "cmqooyvy8000004l5a9njg6n5", ticker: "ASML", proposals: asml().proposals }) } }));
     expect(prompt).not.toContain("### Portfolio digest");
-    // With no snapshot and no digest there is nothing for the rule on weighing them to settle (2026-11-18).
-    expect(prompt).not.toContain("Where it and a stock's own row differ, the row is right");
+    // The rule on weighing the Market and portfolio context is a house rule again, given to every agent (2026-11-18).
+    expect(prompt).toContain("Where it and a stock's own row differ, the row is right");
     expect(prompt).toContain('"proposal_waiting": "sell 5 sh, placed 10-06 14:25 ET, expires 10-07 14:25 ET"');
   });
 

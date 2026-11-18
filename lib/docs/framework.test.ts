@@ -9,13 +9,12 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
 import { AGENTS } from "@/lib/agent/engine/agents";
-import { BLOCKS } from "@/lib/agent/engine/blocks";
-import { isOwn } from "@/lib/agent/engine/types";
+import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
 import { MODES } from "@/lib/agent/modes";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { AGENT_SAMPLES } from "./agent-samples";
-import { buildFrameworkData, openingOf, runSizesOf, sizedOnRun } from "./framework";
-import { blocksByRarity } from "./framework-content";
+import { buildFrameworkData, openingOf, recordParts, runSizesOf, sizedOnRun } from "./framework";
+import { partsByRarity } from "./framework-content";
 import { loadGuide } from "./guide";
 import { parseDoc } from "./guide-parse";
 import { WRITER_TOOLS } from "./tools";
@@ -49,29 +48,25 @@ describe("the framework page's agents", () => {
     const agent = sizedOnRun(byId.get(record.id)!, runSizesOf(saved, new Date("2026-11-17T20:55:00Z"), "run_1"));
     const panel = viewOfRecord(saved).categories;
     expect(agent.sizedOn).toEqual({ kind: "run", at: "2026-11-17T20:55:00.000Z", runId: "run_1", gone: [] });
-    expect(agent.parts.filter((p) => p.chars != null).map((p) => [p.title, p.chars, p.swatch])).toEqual(panel.filter((c) => c.part && c.part !== "tools").map((c) => [c.name, c.chars, c.part]));
+    expect(agent.parts.filter((p) => p.chars != null).map((p) => [p.title, p.chars, p.swatch])).toEqual(panel.filter((c) => c.source).map((c) => [c.name, c.chars, c.part]));
     expect(agent.tools.chars).toBe(panel.find((c) => c.part === "tools")?.chars ?? null);
   });
 
   it("a part the run didn't send has no size, and one it sent that the record no longer lists is named", () => {
     const pm = byId.get("portfolio_manager")!;
-    const run = { at: "2026-11-17T20:55:00.000Z", runId: "run_1", toolChars: 100, parts: [{ id: "role", title: "Its role", kind: "own" as const, where: "instructions" as const, source: "x", chars: 181 }, { id: "old_part", title: "An old part", kind: "own" as const, where: "instructions" as const, source: "x", chars: 50 }] };
+    const run = { at: "2026-11-17T20:55:00.000Z", runId: "run_1", toolChars: 100, parts: [{ id: "own", title: "Its own text", kind: "own" as const, where: "instructions" as const, source: "x", chars: 181 }, { id: "old_part", title: "An old part", kind: "own" as const, where: "instructions" as const, source: "x", chars: 50 }] };
     const sized = sizedOnRun(pm, run);
-    expect(sized.parts.find((p) => p.id === "role")!.chars).toBe(181);
-    expect(sized.parts.filter((p) => p.id !== "role").every((p) => p.chars == null)).toBe(true);
+    expect(sized.parts.find((p) => p.id === "own")!.chars).toBe(181);
+    expect(sized.parts.filter((p) => p.id !== "own").every((p) => p.chars == null)).toBe(true);
     expect(sized.sizedOn).toMatchObject({ kind: "run", gone: ["An old part"] });
   });
 
-  it.each(AGENTS.map((r) => [r.id, r] as const))("%s: its parts are its record's, in order; a block's title and line are the library's", (_, record) => {
+  it.each(AGENTS.map((r) => [r.id, r] as const))("%s: its parts are its record's, in order: its instructions, its context, its message; a shared text's and a read's title and line are the registry's", (_, record) => {
     const a = byId.get(record.id)!;
-    const listed = [
-      ...record.instructions.map((p) => ({ p, where: "instructions" })),
-      ...record.message.map((p) => ({ p, where: "message" })),
-      ...(record.newest ?? []).map((p) => ({ p, where: "newest" })),
-    ];
-    expect(a.parts.map((p) => `${p.where}:${p.id}`)).toEqual(listed.map(({ p, where }) => `${where}:${isOwn(p) ? p.own : p.block}`));
-    for (const p of a.parts.filter((x) => x.kind === "block")) {
-      const def = BLOCKS[p.id as keyof typeof BLOCKS];
+    expect(a.parts.map((p) => `${p.where}:${p.id}`)).toEqual(recordParts(record).map((p) => `${p.where}:${p.id}`));
+    expect([...new Set(a.parts.map((p) => p.section))]).toEqual(record.conversation ? ["instructions", "context"] : ["instructions", "context", "message"]);
+    for (const p of a.parts.filter((x) => x.kind === "shared" || x.kind === "context")) {
+      const def = p.kind === "shared" ? SHARED[p.id as keyof typeof SHARED] : CONTEXT[p.id as keyof typeof CONTEXT];
       expect({ title: p.title, about: p.about, source: p.source }).toEqual({ title: def.title, about: def.about, source: def.source });
     }
     expect({ model: a.model, steps: a.maxSteps, tools: a.tools.names, provider: a.tools.provider }).toEqual({ model: record.model, steps: record.maxSteps, tools: [...record.tools], provider: [...(record.providerTools ?? [])] });
@@ -101,10 +96,10 @@ describe("the framework page's agents", () => {
     for (const a of data.agents) for (const p of a.parts.filter((x) => x.kind === "own" && x.chars != null)) expect([a.id, p.id, p.about.length > 0]).toEqual([a.id, p.id, true]);
   });
 
-  it("puts the blocks fewest agents get first on the workflow chips", () => {
-    const given = (id: string) => data.agents.filter((a) => a.parts.some((p) => p.kind === "block" && p.id === id)).length;
+  it("puts the shared texts and reads fewest agents get first on the workflow chips", () => {
+    const given = (id: string) => data.agents.filter((a) => a.parts.some((p) => (p.kind === "shared" || p.kind === "context") && p.id === id)).length;
     for (const a of data.agents) {
-      const counts = blocksByRarity(a, data.agents).map((p) => given(p.id));
+      const counts = partsByRarity(a, data.agents).map((p) => given(p.id));
       expect([a.id, counts]).toEqual([a.id, [...counts].sort((x, y) => x - y)]);
     }
   });
