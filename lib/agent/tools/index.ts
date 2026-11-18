@@ -105,6 +105,8 @@ interface ToolCtx {
   firedTrim?: { ticker: string; pct: number };
   /** A trigger run woken by a trade — see ToolContext.firedTrigger. */
   firedTrigger?: import("@/lib/proposals/staged").FiredTrigger;
+  /** A trigger fire's one stock — see ToolContext.runStock. */
+  runStock?: { ticker: string; thesisId: string; triggerId: string };
   /** An Auto trigger: the account's cash — see ToolContext.payFromCash. */
   payFromCash?: number | null;
 }

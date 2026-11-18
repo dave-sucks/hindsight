@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
 Tools: 13
-Saves: 9 fields: triggers, verdict, note
+Saves: 7 fields: triggers, verdict, note
 ```
 
 ```chat

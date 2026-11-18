@@ -434,6 +434,7 @@ export const tacticalRun = inngest.createFunction(
     const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; firedTrim?: { ticker: string; pct: number }; payFromCash?: number | null } = {}) =>
       createResearchTools({
         firedTrigger: triggerTrade,
+        runStock: { ticker: thesis.ticker, thesisId: thesis.id, triggerId: fired.triggerId },
         runId: run.id,
         userId: agentConfig.userId,
         accountId: agentConfig.accountId,

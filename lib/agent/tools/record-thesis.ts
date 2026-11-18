@@ -158,15 +158,8 @@ const recordFields = z.object({
   acknowledge_prior_exit: F.prior_exit.optional(),
   research_data: F.research_data.optional(),
   company: F.company.optional(),
-  snapshot: F.snapshot.optional(),
-  recent_catalysts: F.recent_catalysts.optional(),
-  fundamentals: F.fundamentals.optional(),
-  latest_earnings: F.latest_earnings.optional(),
-  catalysts_and_events: F.catalysts_and_events.optional(),
   bull_case: F.bull_case.optional(),
   bear_case: F.bear_case.optional(),
-  analyst_consensus: F.analyst_consensus.optional(),
-  insider_technical: F.insider_technical.optional(),
 });
 
 function refineThesis(val: { source_kind?: string; source_rationale?: string }, ctx: z.RefinementCtx) {
@@ -193,15 +186,8 @@ export const thesisSchema = recordFields.superRefine(refineThesis);
  */
 const WRITER_ONLY_FIELDS = {
   company: true,
-  snapshot: true,
   bull_case: true,
   bear_case: true,
-  recent_catalysts: true,
-  fundamentals: true,
-  latest_earnings: true,
-  catalysts_and_events: true,
-  analyst_consensus: true,
-  insider_technical: true,
   research_data: true,
   thesis_bullets: true,
   risk_flags: true,
@@ -641,7 +627,6 @@ export const recordThesis = defineTool({
       // section args (snapshot / bull_case / bear_case). V2 wins when both
       // are supplied. Legacy wraps in the new shape with empty citations.
       const snapshotPayload: object | undefined =
-        args.snapshot ??
         (typeof args.reasoning_summary === "string" && args.reasoning_summary.length > 0
           ? { text: args.reasoning_summary, citations: [] }
           : undefined);
@@ -661,22 +646,15 @@ export const recordThesis = defineTool({
       // section; fall back to legacy reasoning_summary; empty string when
       // neither is supplied (PASS theses may carry only invalidation_conditions).
       const narrativeText: string =
-        args.snapshot?.text ?? args.reasoning_summary ?? "";
+        args.reasoning_summary ?? "";
 
       // researchUpdatedAt stamps whenever ANY V2 section landed — the daily-
       // run staleness gate (Phase 3) keys off it. The legacy-wrapped fallback
       // doesn't stamp it (those theses are pre-V2; no fresh research).
       const v2SectionSupplied =
         args.company ||
-        args.snapshot ||
-        args.recent_catalysts ||
-        args.fundamentals ||
-        args.latest_earnings ||
-        args.catalysts_and_events ||
         args.bull_case ||
-        args.bear_case ||
-        args.analyst_consensus ||
-        args.insider_technical;
+        args.bear_case;
 
       // P1-24 PASS-off-direction: a pass stores `direction=null`; the pass
       // fact lives entirely on status=PASSED (effectiveStatusForTriggers
@@ -740,14 +718,8 @@ export const recordThesis = defineTool({
             : undefined,
         company: args.company ?? undefined,
         snapshot: snapshotPayload,
-        recentCatalysts: args.recent_catalysts ?? undefined,
-        fundamentals: args.fundamentals ?? undefined,
-        latestEarnings: args.latest_earnings ?? undefined,
-        catalystsAndEvents: args.catalysts_and_events ?? undefined,
         bullCase: bullCasePayload,
         bearCase: bearCasePayload,
-        analystConsensus: args.analyst_consensus ?? undefined,
-        insiderTechnical: args.insider_technical ?? undefined,
         researchUpdatedAt: v2SectionSupplied ? new Date() : undefined,
       };
 
@@ -1083,14 +1055,8 @@ export const recordThesis = defineTool({
             researchData: _rdata,
             researchUpdatedAt: _rupdated,
             snapshot: _snap,
-            recentCatalysts: _rcat,
-            fundamentals: _fund,
-            latestEarnings: _learn,
-            catalystsAndEvents: _cae,
             bullCase: _bcase,
             bearCase: _xcase,
-            analystConsensus: _acons,
-            insiderTechnical: _itech,
             ...fallbackData
           } = coreData;
           void _ids;
@@ -1105,14 +1071,8 @@ export const recordThesis = defineTool({
           void _rdata;
           void _rupdated;
           void _snap;
-          void _rcat;
-          void _fund;
-          void _learn;
-          void _cae;
           void _bcase;
           void _xcase;
-          void _acons;
-          void _itech;
           thesis = await prisma.thesis.create({
             data: { ...fallbackData, status: effectiveStatus },
           });

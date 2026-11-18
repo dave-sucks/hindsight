@@ -124,14 +124,7 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
 
     // The writer's research note, saved section by section.
     research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),
-    snapshot: sectionText.describe("Snapshot: what the company does, how the business is doing and where the stock is and why, in one cited paragraph."),
-    recent_catalysts: sectionText.describe("Recent catalysts: the last one to two weeks in one cited paragraph."),
-    fundamentals: sectionText.describe("Fundamentals: one cited paragraph, with the segment breakdown when there is one."),
-    latest_earnings: sectionBullets.describe("Latest earnings: five specific, cited bullets."),
-    catalysts_and_events: sectionBullets.describe("Catalysts and events: three to five dated, cited bullets."),
     bull_case: sectionBullets.describe("Bull case: three to five cited bullets."),
     bear_case: sectionBullets.describe("Bear case: three to five cited bullets, on a LONG too."),
-    analyst_consensus: sectionText.describe("Analyst consensus: one cited paragraph, firm by firm."),
-    insider_technical: sectionText.describe("Insider and technical: one cited paragraph."),
   };
 }

@@ -59,7 +59,9 @@ export const closePosition = defineTool({
   // A run writes one note on the stock with update_thesis after the sale, and
   // that note is the proposal's reason (lib/proposals/auto-writeup.ts); only
   // your chat gives the sale its own words.
-  schemaFor: (ctx, schema) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : schema.omit({ notes: true })),
+  schemaFor: (ctx, schema) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : ctx.runMode === "INTRADAY_TACTICAL" ? schema.omit({ notes: true, ticker: true }) : schema.omit({ notes: true })),
+  // A trigger run sells its own stock.
+  fromRun: (ctx) => (ctx.runStock ? { ticker: ctx.runStock.ticker } : null),
   ui: "tool-ui" as const,
   gateLog: "close_position",
   groupId: "Executing",

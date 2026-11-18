@@ -2,14 +2,15 @@
  * update-thesis-doors.test.ts — what a save may change, by who is saving
  * (Roadmap step 12, part 1), and a refusal that names only tools the door has.
  *
- * The rule, as a table the test prints: the write-up (the eight research
- * sections and the raw data block) is the writer's; the claim (core_belief,
+ * The rule, as a table the test prints: the write-up (the company line, the
+ * bull and bear cases and the raw data block) is the writer's; the claim (core_belief,
  * key_assumptions, invalidation_conditions) is the writer's and the owner's
  * chat's; everything else (the plan, the view, the note) is everyone's,
  * except the trigger run, whose save takes the plan and the note only. A
  * review's verdict and the line it answers are every door's but the writer's. The
- * score, the variant view, the cited snapshot and the price the caller read
- * are the writer's too (step 12, part 2). A field present gets filled: 224 of
+ * score, the variant view and the price the caller read are the writer's too
+ * (step 12, part 2); the snapshot and six research sections nothing wrote
+ * since 2026-11-03 are no field at all. A field present gets filled: 224 of
  * 285 morning saves in 30 days sent price_at_time back, 25 rewrote the
  * writer's snapshot, and CORT's research sections were overwritten by a
  * morning run — so a door offers only what its caller may change.
@@ -38,7 +39,7 @@ const fieldsOf = (runMode: string): string[] => {
 
 /** Every field update_thesis has, in its row of the rule. */
 const ROWS: Record<string, string[]> = {
-  "write-up": ["company", "snapshot", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "bull_case", "bear_case", "analyst_consensus", "insider_technical", "research_data", "variant_view"],
+  "write-up": ["company", "bull_case", "bear_case", "research_data", "variant_view"],
   claim: ["core_belief", "key_assumptions", "invalidation_conditions"],
   plan: ["setup_id", "horizon", "catalyst_date", "add_triggers", "edit_triggers", "remove_trigger_ids"],
   view: ["direction", "conviction", "conviction_rationale", "change_status"],
@@ -56,7 +57,7 @@ const EXPECTED: Record<(typeof DOORS)[number][1], string[]> = {
   THESIS_WRITER: EVERY_FIELD.filter((f) => !ROWS.review.includes(f)),
   PRINCIPAL_CHAT: EVERY_FIELD.filter((f) => !WRITER_ONLY.includes(f) && f !== "trigger_id"),
   MORNING_PLAN: [...ROWS.plan, "conviction", "conviction_rationale", "change_status", "thesis_id", "rationale", "trigger_id", ...ROWS.review].sort(),
-  INTRADAY_TACTICAL: ["thesis_id", "trigger_id", "rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", ...ROWS.review].sort(),
+  INTRADAY_TACTICAL: ["rationale", "add_triggers", "edit_triggers", "remove_trigger_ids", ...ROWS.review].sort(),
 };
 
 describe("what a save may change, by who is saving", () => {
@@ -70,7 +71,7 @@ describe("what a save may change, by who is saving", () => {
     }
     lines.push(`| **fields** | | ${DOORS.map(([, m]) => byDoor[m].length).join(" | ")} |`);
     console.log(lines.join("\n"));
-    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([29, 18, 15, 9]);
+    expect(DOORS.map(([, m]) => byDoor[m].length)).toEqual([22, 18, 15, 7]);
   });
 
   it("every field of the tool is in one row of the rule", () => {
@@ -85,7 +86,7 @@ describe("what a save may change, by who is saving", () => {
     expect(byDoor[runMode]).toEqual(EXPECTED[runMode]);
   });
 
-  it("the write-up (the eight sections, the data block, the snapshot, the variant view) and the read price are the writer's only", () => {
+  it("the write-up (the company line, the cases, the data block, the variant view) and the read price are the writer's only", () => {
     for (const f of WRITER_ONLY) expect([f, DOORS.filter(([, m]) => byDoor[m].includes(f)).map(([n]) => n)]).toEqual([f, ["writer"]]);
   });
 

@@ -75,7 +75,9 @@ async function sentVerbatim(call: Record<string, unknown>, floor: number | null,
         inputSchema: (await buySchema()) as never,
         execute: async (input: Record<string, unknown>) => {
           out.received = input;
-          out.buy = await replayTool("place-trade", "placeTrade", { seed: seed(floor, target), args: input, ctx: CTX, quotes: { ANET: entry.price } });
+          // The trigger run's stock, as tactical-run.ts hands it: its schema asks the model for none of it.
+          const runStock = { ticker: "ANET", thesisId: entry.thesis.id, triggerId: entry.thesis.triggers.find((t) => t.action === "ENTER")?.id ?? "fired" };
+          out.buy = await replayTool("place-trade", "placeTrade", { seed: seed(floor, target), args: input, ctx: { ...CTX, runStock }, quotes: { ANET: entry.price } });
           return out.buy.result;
         },
       }),

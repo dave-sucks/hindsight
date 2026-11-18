@@ -47,6 +47,11 @@ interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
    */
   schemaFor?: (ctx: ToolContext, schema: TSchema) => z.ZodTypeAny;
   /**
+   * The fields code already knows for this caller (a trigger run's stock),
+   * set before `execute`: schemaFor leaves them out of what the model sees.
+   */
+  fromRun?: (ctx: ToolContext) => Partial<z.infer<TSchema>> | null;
+  /**
    * What the model reads of the result, when it differs from what the
    * screen gets. The full result still streams to the chat and is what a
    * saved run replays (`saveRunThread`); the model gets this. For copy
@@ -115,7 +120,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
     // `$ZodType` internals, which TS can't unify with our generic
     // `z.ZodTypeAny` parameter at the factory boundary. Runtime behavior
     // is fine; cast is scoped to the tool() call-site only.
-    return tool<TSchema, ToolResult<TData>>({
+    const built = tool<TSchema, ToolResult<TData>>({
       description: options.description,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputSchema: (options.schemaFor ? options.schemaFor(ctx, options.schema) : options.schema) as any,
@@ -128,8 +133,9 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
             }),
           }
         : {}),
-      execute: async (args, callOptions?: { messages?: ModelMessage[] }): Promise<ToolResult<TData>> => {
+      execute: async (given, callOptions?: { messages?: ModelMessage[] }): Promise<ToolResult<TData>> => {
         const t0 = Date.now();
+        const args = { ...given, ...(options.fromRun?.(ctx) ?? {}) };
         const resolvedGroupId = options.groupId
           ? ctx.groupId(options.groupId)
           : undefined;
@@ -219,5 +225,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
         }
       },
     });
+    // What code fills for this caller, so a replay grades a call as the tool receives it (scripts/hero-case.ts).
+    return options.fromRun ? Object.assign(built, { fromRun: () => options.fromRun!(ctx) }) : built;
   };
 }

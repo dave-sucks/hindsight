@@ -120,15 +120,8 @@ const updateSchema = z.object({
   edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
   remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
   company: F.company.optional(),
-  snapshot: F.snapshot.optional(),
-  recent_catalysts: F.recent_catalysts.optional(),
-  fundamentals: F.fundamentals.optional(),
-  latest_earnings: F.latest_earnings.optional(),
-  catalysts_and_events: F.catalysts_and_events.optional(),
   bull_case: F.bull_case.optional(),
   bear_case: F.bear_case.optional(),
-  analyst_consensus: F.analyst_consensus.optional(),
-  insider_technical: F.insider_technical.optional(),
 
   // ── Status transitions (deliberate) ───────────────────────────────────
   // PROMOTED is intentionally excluded — only the promote-analyst action
@@ -167,12 +160,6 @@ type UpdatePatch = Partial<{
   snapshot: object;
   bullCase: object;
   bearCase: object;
-  recentCatalysts: object;
-  fundamentals: object;
-  latestEarnings: object;
-  catalystsAndEvents: object;
-  analystConsensus: object;
-  insiderTechnical: object;
   researchUpdatedAt: Date;
   coreBelief: string | null;
   keyAssumptions: string[];
@@ -249,12 +236,6 @@ const WRITER_ONLY_UPDATE_FIELDS = {
   company: true,
   bull_case: true,
   bear_case: true,
-  recent_catalysts: true,
-  fundamentals: true,
-  latest_earnings: true,
-  catalysts_and_events: true,
-  analyst_consensus: true,
-  insider_technical: true,
   research_data: true,
 } as const;
 
@@ -273,7 +254,7 @@ const WRITER_ONLY_UPDATE_FIELDS = {
  * holding it ends is sold with close_position, which retires the thesis.
  */
 const triggerRunSchema = updateSchema.pick({
-  thesis_id: true, trigger_id: true, rationale: true,
+  rationale: true,
   add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
   ...THE_REVIEW,
 });
@@ -308,7 +289,7 @@ const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_condi
  * 14 of its 25 update_thesis calls in the 60 days to 2026-10-09; HPE
  * 2026-10-02 rewrote the snapshot and took the score 9 → 7 uncited.
  */
-const THE_WRITE_UPS_REST = { price_at_time: true, snapshot: true, variant_view: true } as const;
+const THE_WRITE_UPS_REST = { price_at_time: true, variant_view: true } as const;
 const morningRunSchema = updateSchema.omit({
   ...WRITER_ONLY_UPDATE_FIELDS,
   ...THE_WRITE_UPS_REST,
@@ -409,10 +390,7 @@ const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
   ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],
   ["invalidation_conditions", "invalidationConds"], ["conviction", "conviction"],
   ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
-  ["snapshot", "snapshot"], ["bull_case", "bullCase"], ["bear_case", "bearCase"],
-  ["recent_catalysts", "recentCatalysts"], ["fundamentals", "fundamentals"], ["latest_earnings", "latestEarnings"],
-  ["catalysts_and_events", "catalystsAndEvents"], ["analyst_consensus", "analystConsensus"],
-  ["insider_technical", "insiderTechnical"], ["research_data", "researchData"],
+  ["bull_case", "bullCase"], ["bear_case", "bearCase"], ["research_data", "researchData"],
 ];
 /** Every field a hand edit can have set, with its column (the fields compared above). */
 const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"]];
@@ -516,6 +494,8 @@ export const updateThesis = defineTool({
             : ctx.runMode === "PRINCIPAL_CHAT"
             ? chatSchema
             : updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_REVIEW }),
+  // A trigger run's stock and the trigger that fired: code knows both (tactical-run.ts).
+  fromRun: (ctx) => (isTriggerRun(ctx) && ctx.runStock ? { thesis_id: ctx.runStock.thesisId, trigger_id: ctx.runStock.triggerId } : null),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -554,12 +534,6 @@ export const updateThesis = defineTool({
         snapshot: true,
         bullCase: true,
         bearCase: true,
-        recentCatalysts: true,
-        fundamentals: true,
-        latestEarnings: true,
-        catalystsAndEvents: true,
-        analystConsensus: true,
-        insiderTechnical: true,
         company: true,
         coreBelief: true,
         keyAssumptions: true,
@@ -1092,12 +1066,9 @@ export const updateThesis = defineTool({
     const patch: UpdatePatch = {};
 
     // ── Narrative section reconciliation (PR-9 flat schema) ──────────────
-    // V2 section args (snapshot / bull_case / bear_case) take precedence
-    // over the legacy plain-string args (reasoning_summary / thesis_bullets
-    // / risk_flags). Legacy values are wrapped in the new JSONB shape.
-    if (args.snapshot !== undefined) {
-      patch.snapshot = args.snapshot;
-    }
+    // The section args (bull_case / bear_case) take precedence over the
+    // legacy plain-string args (thesis_bullets / risk_flags). Legacy values
+    // are wrapped in the new JSONB shape.
     if (args.bull_case !== undefined) {
       patch.bullCase = args.bull_case;
     }
@@ -1105,26 +1076,12 @@ export const updateThesis = defineTool({
       patch.bearCase = args.bear_case;
     }
     if (args.company !== undefined) patch.company = args.company;
-    // 6 new V2 sections — no legacy fallback.
-    if (args.recent_catalysts !== undefined) patch.recentCatalysts = args.recent_catalysts;
-    if (args.fundamentals !== undefined) patch.fundamentals = args.fundamentals;
-    if (args.latest_earnings !== undefined) patch.latestEarnings = args.latest_earnings;
-    if (args.catalysts_and_events !== undefined) patch.catalystsAndEvents = args.catalysts_and_events;
-    if (args.analyst_consensus !== undefined) patch.analystConsensus = args.analyst_consensus;
-    if (args.insider_technical !== undefined) patch.insiderTechnical = args.insider_technical;
     // Stamp researchUpdatedAt if any V2 section was touched (drives the
     // daily-run staleness gate).
     if (
       args.company !== undefined ||
-      args.snapshot !== undefined ||
       args.bull_case !== undefined ||
-      args.bear_case !== undefined ||
-      args.recent_catalysts !== undefined ||
-      args.fundamentals !== undefined ||
-      args.latest_earnings !== undefined ||
-      args.catalysts_and_events !== undefined ||
-      args.analyst_consensus !== undefined ||
-      args.insider_technical !== undefined
+      args.bear_case !== undefined
     ) {
       patch.researchUpdatedAt = new Date();
     }
@@ -1549,13 +1506,6 @@ export const updateThesis = defineTool({
       "snapshot",
       "bullCase",
       "bearCase",
-      // Research sections (V2)
-      "recentCatalysts",
-      "fundamentals",
-      "latestEarnings",
-      "catalystsAndEvents",
-      "analystConsensus",
-      "insiderTechnical",
       "researchData",
       // Belief
       "coreBelief",
@@ -1579,12 +1529,6 @@ export const updateThesis = defineTool({
       "snapshot",
       "bullCase",
       "bearCase",
-      "recentCatalysts",
-      "fundamentals",
-      "latestEarnings",
-      "catalystsAndEvents",
-      "analystConsensus",
-      "insiderTechnical",
       "researchData",
     ] as const;
     const prevSnapshot = Object.fromEntries(
@@ -1647,13 +1591,7 @@ export const updateThesis = defineTool({
         "researchUpdatedAt" in patch ||
         "snapshot" in patch ||
         "bullCase" in patch ||
-        "bearCase" in patch ||
-        "recentCatalysts" in patch ||
-        "fundamentals" in patch ||
-        "latestEarnings" in patch ||
-        "catalystsAndEvents" in patch ||
-        "analystConsensus" in patch ||
-        "insiderTechnical" in patch;
+        "bearCase" in patch;
       if (isUnknownArgError && hasV2Field) {
         console.error(
           `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping V2 research columns. Prisma client appears out of sync. Full error: ${errMsg}`,
@@ -1664,12 +1602,6 @@ export const updateThesis = defineTool({
           snapshot: _snap,
           bullCase: _bcase,
           bearCase: _xcase,
-          recentCatalysts: _rcat,
-          fundamentals: _fund,
-          latestEarnings: _learn,
-          catalystsAndEvents: _cae,
-          analystConsensus: _acons,
-          insiderTechnical: _itech,
           ...fallbackPatch
         } = patch;
         void _rdata;
@@ -1677,12 +1609,6 @@ export const updateThesis = defineTool({
         void _snap;
         void _bcase;
         void _xcase;
-        void _rcat;
-        void _fund;
-        void _learn;
-        void _cae;
-        void _acons;
-        void _itech;
         await prisma.thesis.update({
           where: { id: existing.id },
           data: fallbackPatch as object,
@@ -1717,12 +1643,6 @@ export const updateThesis = defineTool({
       summaryParts.push("rationale updated");
     }
     if (
-      fieldChanges.recentCatalysts ||
-      fieldChanges.fundamentals ||
-      fieldChanges.latestEarnings ||
-      fieldChanges.catalystsAndEvents ||
-      fieldChanges.analystConsensus ||
-      fieldChanges.insiderTechnical ||
       fieldChanges.researchData
     ) {
       summaryParts.push("research refreshed");

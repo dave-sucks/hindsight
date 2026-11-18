@@ -22,7 +22,7 @@ A trigger set to Auto made or tried a trade on one of your stocks with no analys
 
 1. get_stock_data on the stock: the live price and the company's news. If it comes back with no live quote (its \`quote\` is null, or \`technicals.priceIsLive\` is false), the price in its chart block is the last close, not now.
 2. One web_search: why the stock is moving and the latest on the company. If the trigger watched a report or a filing, read it first.
-3. Exactly one update_thesis, with trigger_id set to the id of the trigger that fired. Its rationale is your note: the principal reads it on the trade.
+3. Exactly one update_thesis. Its rationale is your note: the principal reads it on the trade.
 4. Then complete_run.
 
 Every assistant turn between this message and complete_run MUST include at least one tool call. Text-only turns terminate the loop and the run fails with no note written. After get_stock_data returns, the next turn is the update_thesis call with your note, not a "now I'll evaluate this" paragraph.
