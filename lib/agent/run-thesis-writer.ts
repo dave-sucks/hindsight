@@ -52,6 +52,7 @@ import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
+import { etDateOf } from "@/lib/market-data/intraday-window";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -697,7 +698,7 @@ export async function writerResearchPhase(
       reason: args.reason,
       researchNotes: args.researchNotes ?? null,
       ideaSource: args.ideaSource ?? null,
-      runDate: new Date().toISOString().slice(0, 10),
+      runDate: etDateOf(new Date()),
       promotionContext: args.promotionContext ?? null,
       priorExit,
       setups: seatSetups,
