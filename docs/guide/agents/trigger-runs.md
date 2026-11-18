@@ -65,7 +65,7 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 ## What happens next
 
-The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
+The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
 - **A buy goes through:** the stock becomes a holding. Its buy and its Stop watching line come off, "Sell if below" goes on at the price approved on the proposal, and its sell side takes over.
 - **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.

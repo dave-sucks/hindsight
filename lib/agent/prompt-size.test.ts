@@ -41,7 +41,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +297, the same three moves (the date line, the house rule, the fence), and the fire said once in the message from the trigger check.
   // 2026-11-18: +23, the fire names its declared action, which the instructions act on.
   // 2026-11-18: −61, the same.
-  tactical: 13_748,
+  // 2026-11-18: +99, when the run sells or trims, it makes that call first and its note after (the note becomes the proposal's reason).
+  tactical: 13_847,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
