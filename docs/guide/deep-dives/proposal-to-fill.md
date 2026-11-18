@@ -67,7 +67,7 @@ A sale waiting for you is yours to answer, so no agent proposes it again or argu
 `lib/inngest/functions/reconcile-orders.ts` (`applyFillByIntent`, `restampThesisEntryOnFill`) and `lib/inngest/functions/proposal-expiry.ts`. Decline versus lapse: `lib/agent/declined-sale.ts` (`REJECTED` versus `EXPIRED`, seven-day window, protective sales only).
 
 #### Thesis flips
-`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the triggers that come with a buy: `Position.buyTriggers`, read by `lib/proposals/buy-triggers.ts`), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
+`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the playbook's triggers that come with the buy are written there, from the chart: `withTheBuyTriggers`, `lib/proposals/fill-chart.ts`), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
 
 #### Labels
 `enforceCloseReason` in `lib/agent/triggers/enforce-close-reason.ts`.

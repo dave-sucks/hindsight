@@ -559,8 +559,8 @@ export const getTheses = defineTool({
         // `supersededBy` flags rows killed by a newer sister thesis.
         resolved: resolvedByThesisId.get(t.id) ?? null,
         // The playbook the stock was written on, compact (DAV-253): its failure
-        // signs and confirmation, and on a watch the playbook's triggers that
-        // come with the buy. Null on rows written before playbooks were named.
+        // signs and confirmation, and on a watch the playbook's "Sell if
+        // below". Null on rows written before playbooks were named.
         setup: t.setupId ? setupChecklist(t.setupId, { overrides: setupOverrides, held: t.status === "HOLDING", templates: playbookOf ? playbookOf(t.setupId) : null }) : null,
         // Its buy fired (or is live) and the analyst is full: the portfolio
         // decision, on the row (DAV-286). Null otherwise.

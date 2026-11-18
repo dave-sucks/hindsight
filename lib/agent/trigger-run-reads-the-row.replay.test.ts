@@ -107,8 +107,9 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     const row = stock!.row;
     expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy price reached)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
-    // A watch: what a fire checks, then the playbook's triggers that come with the buy.
-    expect(row.playbook_checks).toEqual([...playbookChecks(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(PLAYBOOK_TEMPLATES.MA_PULLBACK, "PROPOSAL")]);
+    // A watch: what a fire checks, then the playbook's "Sell if below", the one trigger that comes with the buy the run names.
+    const sale = PLAYBOOK_TEMPLATES.MA_PULLBACK.filter((t) => t.writtenOn === "PROPOSAL" && t.action === "EXIT");
+    expect(row.playbook_checks).toEqual([...playbookChecks(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(sale, "PROPOSAL")]);
     // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
     // Plan checks were deleted (2026-11-13): no plan_checks line, and the writer's own read of the case waits for the review clock.
     shortRow(row, saved, [], ["position", "plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"]);

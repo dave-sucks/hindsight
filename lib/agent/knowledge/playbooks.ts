@@ -15,7 +15,8 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { TriggerOp } from "@/lib/agent/triggers/ops";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { TRIGGER_LIST_NAME, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
-import { PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import { CHASE_LIMIT_PCT, PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
@@ -28,7 +29,7 @@ export const templateSchema = triggerSchema
     const marks = templatePlaceholders(t.predicate as TemplatePredicate);
     const unknown = marks.find((m) => !Object.hasOwn(PLACEHOLDERS, m));
     if (unknown) return refuse(`${unknown} isn't a chart level a template can name: ${Object.keys(PLACEHOLDERS).join(", ")}.`);
-    if (t.writtenOn === "FILL" && marks.length) return refuse("A fill template is written as listed. A number that depends on the chart or the buy is filled by the run with the buy proposal.");
+    if (t.writtenOn === "FILL" && marks.length) return refuse("A fill template is written as listed. A number that depends on the chart or the buy belongs on a trigger that comes with the buy.");
     const problem = refusalOf(fillTemplate(t.predicate as TemplatePredicate, () => 1)) ?? actionProblem(t.action, { held: t.writtenOn !== "WATCH" });
     if (problem) refuse(problem);
   });
@@ -73,7 +74,7 @@ export function playbookTriggerText(templates: Template[] | null, on: WrittenOn)
   return [
     `${TRIGGER_LIST_NAME[on]}:`,
     ...mine.map((t) => {
-      // A trim's size travels with the buy's triggers (place_trade takes it).
+      // A trim's size is the template's own.
       const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
       const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
       return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
@@ -116,4 +117,64 @@ export function fillTemplateOps(templates: Template[] | null, stored: Trigger[],
     else ops.push({ op: "add", trigger });
   }
   return { ops, notWritten };
+}
+
+/** What a fill reads a {placeholder} from: the chart then, the buy, and its sale price. */
+export interface FillPrices {
+  chart: PriceStructure | null;
+  buy: number;
+  sale: number | null;
+}
+
+/**
+ * The number a {placeholder} stands for at the fill, read as PLACEHOLDERS
+ * says. Undefined where there is none: no base, no gap, no prior high above
+ * the buy, no chart.
+ */
+export function fillValue(name: Placeholder, at: FillPrices): number | undefined {
+  const c = at.chart;
+  const values: Record<string, number | null | undefined> = {
+    "{pivot}": c?.base?.pivot,
+    "{pivotChase}": c?.base ? c.base.pivot * (1 + CHASE_LIMIT_PCT / 100) : null,
+    "{flagHigh}": c?.range.high20,
+    "{gapDayHigh}": c?.gaps[0]?.high,
+    "{gapDayMid}": c?.gaps[0]?.mid,
+    "{gapDayLow}": c?.gaps[0]?.low,
+    "{swingLow}": c?.swings.lastLow?.price,
+    "{high20}": c?.range.high20,
+    "{baseLow}": c?.base?.low,
+    "{priorHigh}": c?.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : null,
+    "{low52}": c?.range.low52w,
+    "{flagLow}": c?.range.low20,
+    "{price}": c?.price,
+    "{sellPrice}": at.sale,
+    "{riskPct}": at.sale != null && at.buy > 0 ? ((at.buy - at.sale) / at.buy) * 100 : null,
+  };
+  const v = values[name];
+  return v != null && Number.isFinite(v) ? Math.round(v * 100) / 100 : undefined;
+}
+
+/**
+ * The playbook's triggers that come with the buy, written at the fill: each
+ * template with its {chart numbers} filled (fillValue). The sale ("Sell if
+ * below {sellPrice}") is the buy's own price and is written beside them. A
+ * template whose number the chart doesn't have is not written, and
+ * `notWritten` says so. A playbook that couldn't be read (null) writes none;
+ * fillTemplateOps says so.
+ */
+export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices, mintId: () => string = randomUUID): { triggers: Trigger[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
+  const triggers: Trigger[] = [];
+  const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
+  for (const { writtenOn, predicate, ...rest } of templates ?? []) {
+    if (writtenOn !== "PROPOSAL") continue;
+    const marks = templatePlaceholders(predicate) as Placeholder[];
+    if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
+    const missing = marks.filter((m) => fillValue(m, at) == null);
+    if (missing.length) {
+      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${missing.join(", ")}` });
+      continue;
+    }
+    triggers.push({ ...rest, id: mintId(), predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], source: "DEFAULT", playbook: "PROPOSAL" });
+  }
+  return { triggers, notWritten };
 }

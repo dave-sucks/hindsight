@@ -1,11 +1,12 @@
 /**
  * setup-checklist.ts — the compact playbook block a thesis row carries into
  * every run (DAV-253): what a review checks, from the playbook the stock was
- * written on, and, on a stock we don't hold, the playbook's triggers that
- * come with the buy, for the run that proposes it.
+ * written on, and, on a stock we don't hold, the playbook's "Sell if below",
+ * the one trigger that comes with the buy the run names (the fill writes the
+ * rest, withTheBuyTriggers).
  */
 
-import { getSetup } from "./setups";
+import { getSetup, templatePlaceholders } from "./setups";
 import type { SetupOverrides } from "./setup-overrides";
 import type { Template } from "./playbook-templates";
 import { playbookTriggerText } from "./playbooks";
@@ -16,7 +17,7 @@ export interface SetupChecklist {
   name: string;
   /** What must still be true for the setup to be working. */
   failureSigns: string[];
-  /** What a fire checks (playbookChecks' decision cut), and on a watch the playbook's triggers that come with the buy: a row's `playbook_checks`. */
+  /** What a fire checks (playbookChecks' decision cut), and on a watch the playbook's "Sell if below": a row's `playbook_checks`. */
   lines: string[];
 }
 
@@ -31,6 +32,9 @@ export function setupChecklist(
     id: s.id,
     name: s.name,
     failureSigns: s.failureSigns,
-    lines: [...playbookChecks(s, "decision"), ...(opts.held || opts.templates === undefined ? [] : playbookTriggerText(opts.templates, "PROPOSAL"))],
+    lines: [...playbookChecks(s, "decision"), ...(opts.held || opts.templates === undefined ? [] : playbookTriggerText(opts.templates && opts.templates.filter(isTheSale), "PROPOSAL"))],
   };
 }
+
+/** The "Sell if below {sellPrice}" template: the sale the run names with the buy (place_trade's sell_if_below). */
+const isTheSale = (t: Template) => t.action === "EXIT" && templatePlaceholders(t.predicate).includes("{sellPrice}");

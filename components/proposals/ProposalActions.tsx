@@ -115,8 +115,6 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
   const [editIntent, setEditIntent] = useState<string>("OPEN");
   const [editShares, setEditShares] = useState("");
   const [editStop, setEditStop] = useState("");
-  /** The triggers that come with the buy, as sentences: shown, never edited here. */
-  const [editWithBuy, setEditWithBuy] = useState<string[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
 
   // One read of the proposal context, shared by Edit & Approve (reads
@@ -125,7 +123,6 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
     intent?: string;
     quantity?: number | null;
     stopLoss?: number | null;
-    triggersWithBuy?: string[];
     thesisId?: string | null;
     thesisDirection?: string | null;
   }> {
@@ -143,7 +140,6 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
       setEditIntent(ctx.intent ?? "OPEN");
       setEditShares(ctx.quantity != null ? String(ctx.quantity) : "");
       setEditStop(ctx.stopLoss != null ? String(ctx.stopLoss) : "");
-      setEditWithBuy(ctx.triggersWithBuy ?? []);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -500,18 +496,6 @@ export function ProposalActions({ orderId, expiresAt, align = "end", className, 
                 </div>
                 {editIntent === "OPEN" ? (
                   <>
-                    {/* The triggers that come with the buy, shown; they are edited on the stock after the fill. */}
-                    {editWithBuy.length ? (
-                      <div className="grid gap-1.5">
-                        <Label>Comes with the buy</Label>
-                        <ul className="text-sm text-muted-foreground tabular-nums">
-                          {editWithBuy.map((t, i) => (
-                            <li key={`${i}:${t}`}>{t}</li>
-                          ))}
-                        </ul>
-                        <p className="text-xs text-muted-foreground">Change these on the stock once the buy fills.</p>
-                      </div>
-                    ) : null}
                     <div className="grid gap-1.5">
                       <Label htmlFor="proposal-edit-stop">Sell if below</Label>
                       <Input
