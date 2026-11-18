@@ -135,9 +135,13 @@ describe("a trigger run", () => {
     expect(main.runId).toBe((db.store.researchRun as Array<{ id: string }>)[0].id);
     expect(main.record).toMatchObject({ call: "Main", source: "tactical-run", model: "gpt-5.4" });
     expect(asSent(main.record)).toEqual([net.sent[0]]);
+    // The agent engine built it: Context shows each part by name, the fire's facts opening the first message.
+    expect(main.record.parts?.length).toBeGreaterThan(0);
     const categories = view!(main.record).categories;
-    expect(categories.map((c) => c.name)).toEqual(["Instructions", "First message", "Tool menu"]);
-    expect(categories[1].sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
+    const names = categories.map((c) => c.name);
+    expect(names.slice(0, 3)).toEqual(["The analyst", "What happened", "Tool-call discipline"]);
+    expect(names.slice(-3)).toEqual(["The fire", "The ask", "Tool menu"]);
+    expect(categories.find((c) => c.name === "The fire")!.sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
   });
 });
 

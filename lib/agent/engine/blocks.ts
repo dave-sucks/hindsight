@@ -158,6 +158,30 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "Price and chart levels, financials, earnings history, the Street's view, insiders, peers, filings and headlines.",
     source: "lib/agent/thesis-research/format-data-block.ts",
   },
+  stock_row: {
+    id: "stock_row",
+    title: "The stock's row",
+    about: "The stock as every run reads it (get_theses): the belief, its triggers with ids, the position, the last notes, the chart and the Street, and what its playbook checks before a buy.",
+    source: "lib/agent/row-for-model.ts (stockFromRead)",
+  },
+  fired_trigger: {
+    id: "fired_trigger",
+    title: "What fired",
+    about: "The trigger that fired: its condition, its action and its note; on a sale off the high, the tracked high and the line.",
+    source: "lib/agent/system-prompts/intraday-tactical.ts (the fired trigger)",
+  },
+  situations: {
+    id: "situations",
+    title: "Its situations",
+    about: "The situations the stock is in now, and what each asks, from the one table.",
+    source: "lib/agent/situations.ts",
+  },
+  fire_facts: {
+    id: "fire_facts",
+    title: "The fire",
+    about: "What fired and when, in a sentence, with an Auto trade's line, a report's numbers, a pre-catalyst buy's window, what else fired with it and any refused call on the stock.",
+    source: "lib/inngest/functions/tactical-run.ts (the kickoff)",
+  },
   chat_found: {
     id: "chat_found",
     title: "What the chat found",

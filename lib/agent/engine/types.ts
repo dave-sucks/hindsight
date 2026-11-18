@@ -31,7 +31,11 @@ export type BlockId =
   | "setup_record"
   | "prior_exit"
   | "stock_data"
-  | "chat_found";
+  | "chat_found"
+  | "stock_row"
+  | "fired_trigger"
+  | "situations"
+  | "fire_facts";
 
 export type AgentId = "portfolio_manager" | "writer" | "trigger_run" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest";
 
@@ -42,8 +46,11 @@ export interface OwnPart {
   /** The text, or the text for this run (a date, the account); null leaves the part out this run. */
   text: string | ((input: AgentInput) => string | null);
   /** What goes before it: a blank line unless the record says otherwise. */
-  sep?: string;
+  sep?: Sep;
 }
+
+/** The separator before a part, or the one for this run (when it follows a part only some runs print). */
+export type Sep = string | ((input: AgentInput) => string);
 
 /**
  * A block from the library, given to the agent. A block of the Market and
@@ -56,7 +63,7 @@ export interface BlockPart {
   alone?: true;
   heading?: string;
   /** What goes before it: a blank line unless the record says otherwise. */
-  sep?: string;
+  sep?: Sep;
 }
 
 export type RecordPart = OwnPart | BlockPart;

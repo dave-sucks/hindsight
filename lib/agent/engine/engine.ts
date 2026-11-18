@@ -13,7 +13,7 @@
 import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { BLOCKS, GROUP_HEADINGS } from "./blocks";
-import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltRequest, type RecordPart, type SentPartManifest, type Where } from "./types";
+import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltRequest, type RecordPart, type SentPartManifest, type Sep, type Where } from "./types";
 
 /** Where the blocks that read live data get it, handed in by the run. */
 export interface Sources {
@@ -80,8 +80,8 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
   function print(parts: readonly RecordPart[], where: Where): Array<{ manifest: SentPartManifest; text: string }> {
     const out: Array<{ manifest: SentPartManifest; text: string }> = [];
     let groupOpen: string | null = null;
-    const push = (m: Omit<SentPartManifest, "chars" | "sep">, sep: string | undefined, text: string) =>
-      out.push({ manifest: { ...m, sep: out.length ? (sep ?? SEP) : "", chars: text.length }, text });
+    const push = (m: Omit<SentPartManifest, "chars" | "sep">, sep: Sep | undefined, text: string) =>
+      out.push({ manifest: { ...m, sep: out.length ? (typeof sep === "function" ? sep(input) : (sep ?? SEP)) : "", chars: text.length }, text });
     for (const part of parts) {
       if (isOwn(part)) {
         groupOpen = null;
