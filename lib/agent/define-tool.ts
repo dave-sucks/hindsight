@@ -120,7 +120,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
     // `$ZodType` internals, which TS can't unify with our generic
     // `z.ZodTypeAny` parameter at the factory boundary. Runtime behavior
     // is fine; cast is scoped to the tool() call-site only.
-    return tool<TSchema, ToolResult<TData>>({
+    const built = tool<TSchema, ToolResult<TData>>({
       description: options.description,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputSchema: (options.schemaFor ? options.schemaFor(ctx, options.schema) : options.schema) as any,
@@ -225,5 +225,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
         }
       },
     });
+    // What code fills for this caller, so a replay grades a call as the tool receives it (scripts/hero-case.ts).
+    return options.fromRun ? Object.assign(built, { fromRun: () => options.fromRun!(ctx) }) : built;
   };
 }
