@@ -49,6 +49,44 @@ A `where` names fields of the call's input by path (`edit_triggers.*.level`,
 many) and what each must be: `"present"`, `"absent"`, a value, or
 `{ lt, gt, regex }`.
 
+## A case that keeps what its run was sent
+
+A run that saved its request (every agent's since the engine; the Portfolio
+Manager's, the reviewer's and the digest's from their first) is cut with its
+facts as it sent them: `context`, a list of `{ name, block, piece, text }`.
+`name` is what the fact will be called once the engine has three parts
+(`market_numbers`, `market_digest`, `portfolio`, `portfolio_digest`,
+`the_book`, `the_analysts`, `the_stock`, `stock_data`, `playbook_record`,
+`earnings_this_week`, `filings_this_week`, `refused_calls`, `last_output`);
+`block` is the block it is today (`CONTEXT_NAMES` in
+`lib/agent/yardstick/context.ts` maps one to the other). The replay puts the
+facts together with today's record, so its own words, the house rules and the
+order are today's, and prints any block today's record reads that the case
+doesn't have. The cutter prints how today's request differs from the run's:
+nothing, when only the facts were the day's.
+
+```
+npx tsx --env-file=.env.local scripts/hero-case-from-run.ts <morning runId> <TICKER> local-morning-<date>-<ticker>
+npx tsx --env-file=.env.local scripts/hero-case-from-run.ts <Portfolio Manager runId> - local-pm-<date>
+npx tsx --env-file=.env.local scripts/hero-case-from-run.ts <Market Reviewer runId> - local-reviewer-<date>
+npx tsx --env-file=.env.local scripts/hero-case-from-run.ts <portfolio digest runId> - local-digest-<date>
+```
+
+- **The Portfolio Manager** is cut before its first decision (a trade, a
+  research request or its write-up) and replayed until it writes its
+  write-up, up to 8 turns; a get_theses again is answered from the recorded
+  read. Fill in `expect` and `why` by hand.
+- **The Market Reviewer and the portfolio digest** are one call each, sent
+  the way their run files send it, with the rest of the saved body (`sent`).
+  The reviewer's web search runs for real, on today's web. They have no
+  `expect`: there is no action, only text.
+- Each case says in `why` the situation text or instruction that makes its
+  expected answer right.
+
+All three are graded on their own rules (`lib/agent/yardstick/rules.ts`), each
+quoting the sentence of the agent's instructions it checks; the report's
+`rules` column counts the ones broken, by rule.
+
 ## The facts on a recorded row
 
 A recorded `get_theses` full row carries what the live row has carried since

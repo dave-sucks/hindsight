@@ -235,7 +235,7 @@ async function oneCallRun(runId: string, run: { mode: string; startedAt: Date; e
   const context = await contextOfRun(runId, record, run.startedAt, run.environment as "PAPER" | "LIVE");
   if (!req || !context) throw new Error("no saved request on this run");
   // The body as sent, less what the replay sends itself: the model and the messages.
-  const { model: _model, messages: _messages, input: _input, ...sent } = req.requests[0] as Record<string, unknown>;
+  const sent = Object.fromEntries(Object.entries(req.requests[0] as Record<string, unknown>).filter(([k]) => !["model", "messages", "input"].includes(k)));
   const out = {
     what: `${etDateOf(run.startedAt)}, the ${reviewer ? "Market Reviewer" : "portfolio digest"} run ${runId} on the ${run.environment} book.`,
     lookFor: reviewer ? "The digest and its notes keep the rules of its instructions: its six sections, its numbers sourced, nothing on a waiting proposal." : "The digest keeps the rules of its instructions: every waiting proposal with a view, nothing invented, no advice on the cash.",
