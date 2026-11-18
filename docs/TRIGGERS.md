@@ -520,8 +520,9 @@ function — `applyTriggerOps` in `lib/agent/triggers/ops.ts` (DAV-242):
   "Sell if below $X" at the order's approved sell price (`Position.stopLoss`:
   the analyst's `sell_if_below` on `place_trade`, with its `sell_reason` as
   the trigger's note; a price you set in Edit & Approve or on the Trade
-  ticket is yours), the triggers that came with the buy (`Position.buyTriggers`,
-  with a trim's size and a wait as the playbook lists them), and the
+  ticket is yours), the playbook's triggers that come with the buy (each
+  number from the chart then and the buy, `withTheBuyTriggers`; a trim's
+  size as the playbook lists it), and the
   playbook's fill triggers where the stock has none of that kind
   (`armHeldLadderOnFill`). A trigger that comes with the buy where you wrote
   one of the same kind is not written: yours stays, and the fill's Activity

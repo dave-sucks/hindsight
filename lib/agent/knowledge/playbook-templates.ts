@@ -5,8 +5,9 @@
  * (`Account.playbooks`, ./playbooks).
  *
  * A template is a stored trigger plus when it is written: on a watch (the
- * Writer), with the buy proposal (the trigger run), or at the fill. A
- * `{placeholder}` is a chart level the run fills when it writes the line
+ * Writer), with the buy (the run names the "Sell if below"; the fill writes
+ * the rest, withTheBuyTriggers in ./playbooks), or at the fill. A
+ * `{placeholder}` is a chart level filled when the line is written
  * (PLACEHOLDERS in ./setups). A fill template is written as listed, so it has
  * none. Session counts are stored as calendar days (5 sessions = 7 days).
  */

@@ -8,8 +8,6 @@
  * the reason again while the analyst is still writing up an Auto trade.
  */
 
-import { parseBuyTriggers } from "@/lib/proposals/buy-triggers";
-import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAccountId } from "@/lib/auth/account";
@@ -48,7 +46,6 @@ export async function GET(
           targetPrice: true,
           stopLoss: true,
           avgCost: true,
-          buyTriggers: true,
         },
       },
     },
@@ -90,8 +87,6 @@ export async function GET(
     targetPrice: order.position.targetPrice,
     stopLoss: order.position.stopLoss,
     estimatedPrice: order.position.avgCost,
-    // The triggers that come with the buy, each as its sentence: Edit & Approve shows them, the owner edits them on the stock.
-    triggersWithBuy: parseBuyTriggers(order.position.buyTriggers).map(sentenceOf),
     // For the reject dialog's inline trigger editor.
     thesisId: thesis?.id ?? null,
     thesisDirection: thesis?.direction ?? order.position.direction ?? null,
