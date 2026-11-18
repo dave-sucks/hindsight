@@ -51,7 +51,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
   // 2026-11-16: +1, the same situation texts.
-  chat: 35_929,
+  // 2026-11-18: −331, the chat's instructions are one fixed text for both scopes and the pinned analyst's id, fence and watchlist are a block that ends them (its scope): the ═══ banners go; the whole-book paragraph, once only at the portfolio level, is in every run's text.
+  chat: 35_598,
 };
 
 /**

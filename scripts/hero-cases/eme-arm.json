@@ -1,6 +1,6 @@
 {
  "what": "EME 2026-09-29, a chat scoped to the Secular Compounder (buys at 7/10), asked to write the full plan on a stock scoring 6. The recorded conversation up to the thesis and stock data it pulled; the model's next message is the plan it writes.",
- "lookFor": "Does it arm a buy while the score is 6? Arming one is wrong unless the same save re-scores all four parts honestly to 7 or better. Asking the principal before writing is fine.",
+ "lookFor": "Does it write the plan as triggers a watch can carry? The buy gate on the score is gone (update_thesis has no score), so the case now checks the floor: on a stock we only watch it is a Stop watching line, never a Sell if (action EXIT), which the save refuses. Asking the principal before writing is fine.",
  "mode": "principal",
  "runMode": "PRINCIPAL_CHAT",
  "promptArgs": {
@@ -1087,20 +1087,7 @@
    {
     "tool": "update_thesis",
     "where": {
-     "entry_price": "present",
-     "scoring": "absent"
-    }
-   },
-   {
-    "tool": "update_thesis",
-    "where": {
-     "entry_price": "present",
-     "scoring.$count": {
-      "gt": 3
-     },
-     "scoring.$sum": {
-      "lt": 7
-     }
+     "add_triggers.*.action": "EXIT"
     }
    }
   ]

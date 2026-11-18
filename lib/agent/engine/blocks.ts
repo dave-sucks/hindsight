@@ -215,6 +215,12 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "The chat's own results on the stock before it sent it, when there are any.",
     source: "lib/agent/run-thesis-writer.ts (chatFoundBlock)",
   },
+  analyst_scope: {
+    id: "analyst_scope",
+    title: "Its scope",
+    about: "The analyst the chat is pinned to: its id, its fence (sectors, market cap, exclusions) and its watchlist.",
+    source: "lib/agent/system-prompts/chat.ts (scopeBlock)",
+  },
   money_context: {
     id: "money_context",
     title: "Its money",
