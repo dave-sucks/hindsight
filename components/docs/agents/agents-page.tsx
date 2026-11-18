@@ -1,6 +1,7 @@
 /**
- * /how-it-works/agents — every agent as the engine runs it: its instructions,
- * which context blocks it is given and which tools it may call. Read from the
+ * /how-it-works/agents — every agent as the engine runs it: its instructions
+ * (its own and the shared ones it is given), the context it is given and the
+ * tools it may call. Read from the
  * agent records (lib/agent/engine/agents), so it shows what an agent is sent.
  * A grid of cards; each opens a sheet with the agent's configuration
  * (./agent-grid.tsx). Read-only.
@@ -20,7 +21,7 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Agents</h1>
         <p className="text-sm text-muted-foreground">
-          Every agent is its instructions, the context blocks it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. Open an agent to see its configuration. It is read-only for now.
+          Every agent is its instructions (its own and the shared ones it is given), the context it is given and the tools it may call. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. Open an agent to see its configuration. It is read-only for now.
         </p>
       </div>
       <AgentGrid agents={agents.map((a) => viewOf(a, tools))} />
@@ -46,12 +47,19 @@ function viewOf(record: AgentRecord, tools: readonly string[]): AgentView {
     maxSteps: record.maxSteps,
     timeoutMs: record.timeoutMs ?? null,
     says: record.example?.says ?? null,
-    parts: parts.flatMap(({ p, where }) => {
-      if (!isOwn(p)) return [];
+    parts: parts.flatMap(({ p, where }): AgentView["parts"] => {
+      if (!isOwn(p)) {
+        const b = BLOCKS[p.block];
+        return b.kind === "instruction" ? [{ kind: "shared", id: b.id, title: b.title, about: b.about, where }] : [];
+      }
       const text = typeof p.text === "string" ? p.text : p.text(sample);
-      return [{ key: p.own, title: p.title, where, perRun: typeof p.text !== "string", chars: text == null ? null : text.length, text }];
+      return [{ kind: "own", key: p.own, title: p.title, where, perRun: typeof p.text !== "string", chars: text == null ? null : text.length, text }];
     }),
+    unusedInstructions: Object.values(BLOCKS)
+      .filter((b) => b.kind === "instruction" && !given.has(b.id))
+      .map((b) => ({ id: b.id, title: b.title, about: b.about })),
     blocks: Object.values(BLOCKS)
+      .filter((b) => b.kind === "context")
       .map((b) => ({ id: b.id, title: b.title, about: b.about, where: given.get(b.id) ?? null }))
       .sort((a, b) => Number(b.where != null) - Number(a.where != null)),
     tools: tools.map((t) => ({ name: t, on: record.tools.includes(t) })),
