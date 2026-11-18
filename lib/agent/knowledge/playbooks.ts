@@ -16,7 +16,7 @@ import type { TriggerOp } from "@/lib/agent/triggers/ops";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { TRIGGER_LIST_NAME, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
 import { CHASE_LIMIT_PCT, PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
-import type { PriceStructure } from "@/lib/market-data/price-structure";
+import type { Gap, PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
@@ -119,11 +119,25 @@ export function fillTemplateOps(templates: Template[] | null, stored: Trigger[],
   return { ops, notWritten };
 }
 
-/** What a fill reads a {placeholder} from: the chart then, the buy, and its sale price. */
+/** What a fill reads a {placeholder} from: the chart then, the buy, its sale price, and the playbook's gap (playbookGap). */
 export interface FillPrices {
   chart: PriceStructure | null;
   buy: number;
   sale: number | null;
+  gap?: Gap | null;
+}
+
+/**
+ * The gap a playbook's {gapDay*} read, as PLACEHOLDERS says: the newest up
+ * gap that meets the playbook's own gap condition and the volume condition
+ * beside it (EPISODIC_PIVOT's review: at least 8% on at least 3× volume), or
+ * the newest up gap when the playbook has none.
+ */
+export function playbookGap(templates: Template[] | null, chart: PriceStructure | null): Gap | null {
+  const conds = (t: Template) => ("match" in t.predicate ? t.predicate.conditions : [t.predicate]);
+  const screen = (templates ?? []).map(conds).find((cs) => cs.some((c) => c.watch === "gap"));
+  const least = (watch: string) => Number(screen?.find((c) => c.watch === watch)?.value ?? 0);
+  return chart?.gaps.find((g) => g.direction === "UP" && g.pct >= least("gap") && (g.volumeRatio ?? 0) >= least("volume")) ?? null;
 }
 
 /**
@@ -134,13 +148,13 @@ export interface FillPrices {
 export function fillValue(name: Placeholder, at: FillPrices): number | undefined {
   const c = at.chart;
   const values: Record<string, number | null | undefined> = {
-    "{pivot}": c?.base?.pivot,
+    "{pivot}": c?.base ? c.base.pivot * 1.002 : null,
     "{pivotChase}": c?.base ? c.base.pivot * (1 + CHASE_LIMIT_PCT / 100) : null,
     "{flagHigh}": c?.range.high20,
-    "{gapDayHigh}": c?.gaps[0]?.high,
-    "{gapDayMid}": c?.gaps[0]?.mid,
-    "{gapDayLow}": c?.gaps[0]?.low,
-    "{swingLow}": c?.swings.lastLow?.price,
+    "{gapDayHigh}": at.gap?.high,
+    "{gapDayMid}": at.gap?.mid,
+    "{gapDayLow}": at.gap?.low,
+    "{swingLow}": c?.swings.lastLow && c.swings.lastLow.price < c.price ? c.swings.lastLow.price : null,
     "{high20}": c?.range.high20,
     "{baseLow}": c?.base?.low,
     "{priorHigh}": c?.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : null,
@@ -166,18 +180,39 @@ export function fillValue(name: Placeholder, at: FillPrices): number | undefined
  * fillTemplateOps says so.
  */
 export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices, mintId: () => string = randomUUID): { triggers: Trigger[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
+  const { triggers, skipped } = writeTemplates(templates, "PROPOSAL", at, mintId);
+  return { triggers, notWritten: skipped.map((s) => ({ op: "kept" as const, id: "", text: `Not written: the playbook's ${s.sentence}; the chart had no ${s.missing.join(", ")}` })) };
+}
+
+/**
+ * The playbook's watch triggers, written by the Writer's save: each template
+ * with its {chart numbers} filled from the chart the Writer was shown. A
+ * template whose number the chart doesn't have is not written, and
+ * `skipped` says which and why.
+ */
+export function watchTriggers(templates: Template[] | null, chart: PriceStructure | null, mintId: () => string = randomUUID): { triggers: Trigger[]; skipped: Array<{ sentence: string; missing: Placeholder[] }> } {
+  return writeTemplates(templates, "WATCH", { chart, buy: chart?.price ?? 0, sale: null }, mintId);
+}
+
+function writeTemplates(templates: Template[] | null, on: "WATCH" | "PROPOSAL", fill: FillPrices, mintId: () => string) {
+  const at = { ...fill, gap: fill.gap !== undefined ? fill.gap : playbookGap(templates, fill.chart) };
   const triggers: Trigger[] = [];
-  const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
+  const skipped: Array<{ sentence: string; missing: Placeholder[] }> = [];
   for (const { writtenOn, predicate, judged, ...rest } of templates ?? []) {
-    if (writtenOn !== "PROPOSAL" || judged) continue;
+    if (writtenOn !== on || judged) continue;
     const marks = templatePlaceholders(predicate) as Placeholder[];
     if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
     const missing = marks.filter((m) => fillValue(m, at) == null);
     if (missing.length) {
-      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${missing.join(", ")}` });
+      skipped.push({ sentence: sentenceOf({ ...rest, predicate } as unknown as Trigger), missing });
       continue;
     }
-    triggers.push({ ...rest, id: mintId(), predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], source: "DEFAULT", playbook: "PROPOSAL" });
+    triggers.push({ ...rest, id: mintId(), predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], source: "DEFAULT", playbook: on });
   }
-  return { triggers, notWritten };
+  return { triggers, skipped };
+}
+
+/** A stored trigger as an agent's save takes it (the save converts it to the stored shape once): an average a price is read against goes in `value`. */
+export function asWrittenTrigger(t: Trigger): Record<string, unknown> {
+  return { action: t.action, predicate: asWritten(t.predicate as TemplatePredicate), rationale: t.rationale, ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...(t.playbook ? { playbook: t.playbook } : {}) };
 }

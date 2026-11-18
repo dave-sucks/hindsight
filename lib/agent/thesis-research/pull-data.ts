@@ -101,11 +101,8 @@ export interface ThesisPullResult {
   pullErrors: string[];
   /** Live quote price, when the stock pull succeeded — used by decision validation. */
   currentPrice: number | null;
-  /** The 20- and 50-day averages, for the reply to a view with nothing on it. */
-  chart: {
-    sma20: { value: number; rising: boolean } | null;
-    sma50: { value: number; rising: boolean } | null;
-  };
+  /** The chart the Writer is shown: its save writes the playbook's watch triggers from it. */
+  chart: PriceStructure | null;
   /** Company name / exchange passthrough for record_thesis card data. */
   companyName: string | null;
   exchange: string | null;
@@ -285,14 +282,7 @@ export async function pullThesisData(
     rawDataBlock,
     pullErrors,
     currentPrice: sd?.quote?.price ?? sd?.technicals?.price ?? null,
-    chart: {
-      sma20: sd?.technicals?.sma.d20
-        ? { value: sd.technicals.sma.d20.value, rising: sd.technicals.sma.d20.slope === "RISING" }
-        : null,
-      sma50: sd?.technicals?.sma.d50
-        ? { value: sd.technicals.sma.d50.value, rising: sd.technicals.sma.d50.slope === "RISING" }
-        : null,
-    },
+    chart: sd?.technicals ?? null,
     companyName: sd?.company?.name ?? null,
     exchange: sd?.company?.exchange ?? null,
     pulledAt: pulledAt.toISOString(),

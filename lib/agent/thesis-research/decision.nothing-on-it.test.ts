@@ -56,16 +56,15 @@ const check = (d: ThesisDecisionInput) =>
   validateThesisDecision(d, { mode: "mint", currentPrice: 9.48 });
 
 describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
-  it("is sent back to its playbook's watch triggers, with no price of the code's", () => {
+  it("is sent back to name its playbook or a look-again review, with no price of the code's", () => {
     const r = check(LUXE_SUBMIT);
     expect(r.ok).toBe(false);
     const msg = r.errors.join(" | ");
-    expect(msg).toMatch(/can never come back/);
-    expect(msg).toContain("the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart");
+    expect(msg).toMatch(/nothing on this LONG can bring it back/);
+    expect(msg).toContain("add the playbook that fits (setup_id) or a price or day to look again (look_again_price or look_again_date, with look_again_why)");
     // The playbook's triggers carry every price: the reply names none from the chart.
     expect(msg).not.toMatch(/7\.91|7\.75|\$\d/);
     expect(msg).not.toMatch(/floor|ATR/);
-    expect(msg).toContain('{watch:"repeat", value: days}');
   });
 
   it("the same view with a wake is accepted — an unpriced view is still legal", () => {

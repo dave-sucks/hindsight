@@ -20,6 +20,8 @@ jest.mock("ai", () => ({ ...jest.requireActual("ai"), generateText: (...a: unkno
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     agentConfig: { findUnique: jest.fn() },
+    // An account that hasn't edited its playbooks: the catalog's lists.
+    account: { findUnique: jest.fn().mockResolvedValue(null) },
     thesis: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
     thesisUpdate: { findFirst: jest.fn().mockResolvedValue(null) },
     position: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -41,6 +43,9 @@ import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.j
 import { prisma } from "@/lib/prisma";
 import type { ThesisDecisionInput } from "@/lib/agent/thesis-research/decision";
 import { writerResearchPhase } from "./run-thesis-writer";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { triggerInputSchema } from "@/lib/agent/triggers/schema";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 const fx = (raw as unknown as { DYN: { runId: string; last: { input: ThesisDecisionInput } } }).DYN;
 const CATALYST = "cmmqxola3000004lbj7c11bfn";
@@ -67,7 +72,7 @@ const pullOutput = {
     rawDataBlock: "STRUCTURED DATA: $DYN",
     pullErrors: [],
     currentPrice: 16.51,
-    chart: { atr14: null, pivot: null, brokenOut: null, sma20: null, sma50: null, daysSinceReport: null },
+    chart: null,
     companyName: "Dyne Therapeutics",
     exchange: "NASDAQ",
     pulledAt: "2026-09-25T04:06:00.000Z",
@@ -121,6 +126,12 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
   expect(research.ok).toBe(true);
   expect(research.decision?.direction).toBe("LONG");
   expect(research.decision?.setup_id).toBe("PRE_CATALYST");
+  // The triggers are the save's, from the playbook: with no chart, those that name no chart number (the triggers the model sent are not the Writer's to write).
+  expect((research.decision?.triggers ?? []).map((t) => sentenceOf(triggerInputSchema.parse(t) as unknown as Trigger))).toEqual([
+    "Buy if within 2% of the 50-day average and within 70 days before the event date",
+    "Review every 7 days",
+    "Stop watching 21 days before the event date",
+  ]);
   expect(research.submitAttempts).toBe(2);
   const titles = mockRunEventCreate.mock.calls.map((c) => c[0].data.title);
   expect(titles).toContain("Decision refused — repairing");

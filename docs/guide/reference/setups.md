@@ -109,7 +109,7 @@ A neglected stock reprices on unexpected news with volume many times average; in
 **Triggers on a watch:**
 
 - Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the triggers below.
-- Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
+- Buy if above {gapDayHigh} · only on the close. The gap day's high.
 - Review if below {gapDayMid} · only on the close. The gap day's middle.
 - Review every 7 days. Moves the levels to the finished gap day.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
@@ -191,7 +191,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Triggers on a watch:**
 
-- Buy if within 2% of the 50-day average. The average the stock's pullbacks held (or the 20-day), only while it is rising.
+- Buy if within 2% of the 50-day average. The average the stock's pullbacks held, only while it is rising.
 - Review every 7 days. Re-checks that the average is still rising.
 - Stop watching if below the 50-day average and at least 1.5× normal volume. A close below the 50-day on volume ends the pullback. It reads during the day.
 

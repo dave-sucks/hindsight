@@ -11,7 +11,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { readFileSync } from "fs";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { PLAYBOOK_TEMPLATES, type Template, type WrittenOn } from "./playbook-templates";
-import { fillTemplateOps, fillValue, playbookTemplates, templateSchema, withTheBuyTriggers } from "./playbooks";
+import { fillTemplateOps, fillValue, playbookGap, playbookTemplates, templateSchema, withTheBuyTriggers } from "./playbooks";
 import { PLACEHOLDERS, SETUPS, templatePlaceholders, type Placeholder } from "./setups";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -150,7 +150,7 @@ describe("the triggers that come with the buy, written at the fill", () => {
   const written = SETUPS.flatMap((s) => s.triggers.filter((t) => t.writtenOn === "PROPOSAL" && !isTheSale(t) && !t.judged).map((t) => [s.id, t] as const));
 
   it("every placeholder a template may name resolves from PLACEHOLDERS alone", () => {
-    for (const name of Object.keys(PLACEHOLDERS) as Placeholder[]) expect([name, typeof fillValue(name, { chart: FULL, buy: 100, sale: 95 })]).toEqual([name, "number"]);
+    for (const name of Object.keys(PLACEHOLDERS) as Placeholder[]) expect([name, typeof fillValue(name, { chart: FULL, buy: 100, sale: 95, gap: FULL.gaps[0] })]).toEqual([name, "number"]);
     for (const [id, t] of written) for (const m of templatePlaceholders(t.predicate)) expect([id, m, Object.hasOwn(PLACEHOLDERS, m)]).toEqual([id, m, true]);
   });
 
@@ -160,6 +160,31 @@ describe("the triggers that come with the buy, written at the fill", () => {
       expect([id, /only if/i.test(t.rationale)]).toEqual([id, false]);
     }
     expect(PLAYBOOK_TEMPLATES.PRE_CATALYST.find((t) => t.action === "TRIM")).toMatchObject({ judged: true, rationale: "The prior high. Only if the analyst believes it." });
+  });
+
+  it("each placeholder's definition is complete: no buffer, alternative or range left to the reader", () => {
+    for (const [name, says] of Object.entries(PLACEHOLDERS)) {
+      expect([name, /\badd\b|\(or |\d–\d|day 2|\bentry\)/.test(says)]).toEqual([name, false]);
+    }
+    // What the chart can't hold is no number: a swing low at or above the price, a gap no playbook screen meets.
+    const above = { ...FULL, swings: { ...FULL.swings, lastLow: { price: 101, date: "2026-11-06" } } } as PriceStructure;
+    expect(fillValue("{swingLow}", { chart: above, buy: 100, sale: 95 })).toBeUndefined();
+    expect(fillValue("{pivot}", { chart: FULL, buy: 100, sale: 95 })).toBe(105.21);
+  });
+
+  it("the playbook's gap: EPISODIC_PIVOT's meets its own screen (at least 8% on at least 3× volume), PEAD's is the newest up gap", () => {
+    const gaps = { ...FULL, gaps: [
+      { date: "2026-11-13", direction: "UP", pct: 6.45, volumeRatio: 0.93, low: 78.64, mid: 82.31, high: 85.99 },
+      { date: "2026-11-10", direction: "UP", pct: 13.9, volumeRatio: 3.7, low: 67.72, mid: 73.96, high: 80.19 },
+    ] } as PriceStructure;
+    expect(playbookGap(PLAYBOOK_TEMPLATES.EPISODIC_PIVOT, gaps)?.date).toBe("2026-11-10");
+    expect(playbookGap(PLAYBOOK_TEMPLATES.PEAD, gaps)?.date).toBe("2026-11-13");
+    expect(playbookGap(PLAYBOOK_TEMPLATES.PEAD, { ...gaps, gaps: [{ ...gaps.gaps[0], direction: "DOWN", pct: -6 }] } as PriceStructure)).toBeNull();
+  });
+
+  it("no reason the code writes describes a choice code doesn't make: an alternative is the run's a review wakes", () => {
+    const codeWritten = SETUPS.flatMap((s) => s.triggers.filter((t) => (t.writtenOn === "WATCH" || (t.writtenOn === "PROPOSAL" && !isTheSale(t))) && !t.judged && t.action !== "REVIEW").map((t) => [s.id, t.rationale] as const));
+    for (const [id, why] of codeWritten) expect([id, why, / or /.test(why)]).toEqual([id, why, false]);
   });
 
   // AAPL 2026-11-13: buy $359.36, sale $325.33, the chart's last swing high $351.73 (under the buy).

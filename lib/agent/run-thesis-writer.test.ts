@@ -96,10 +96,6 @@ describe("buildWriterResearchPrompt — status branching", () => {
       expect(prompt).toContain("A promotion (the row's paper_record: this refresh is part of a PAPER→LIVE promotion)");
     });
 
-    it("forbids position-management trigger actions (no position exists)", () => {
-      expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
-    });
-
     it("keeps the role split — the writer does not decide re-entry, status stays PROMOTED", () => {
       expect(prompt).toContain("You do NOT decide re-entry");
       expect(prompt).toContain("status stays PROMOTED");
@@ -145,11 +141,11 @@ describe("buildWriterResearchPrompt — status branching", () => {
       existingThesis: existingThesis("WATCHING"),
     });
 
-    it("is the Writer's, with a watch's triggers", () => {
+    it("is the Writer's: it names the playbook and writes no trigger", () => {
       expect(writerRecordFor({ mode: "refresh", existingThesis: existingThesis("WATCHING") }).id).toBe("writer");
-      expect(prompt).toContain("## Triggers on a watch (no position");
-      expect(prompt).toContain("NEVER EXIT/TRIM/ADD");
-      expect(prompt).toContain("Stop watching if below $X");
+      expect(prompt).toContain("name the playbook that fits (setup_id). If no playbook fits");
+      expect(prompt).not.toContain("## Triggers on a watch");
+      expect(prompt).not.toContain("remove_trigger_ids");
     });
 
     it("does NOT include the holding's triggers", () => {
@@ -169,8 +165,9 @@ describe("buildWriterResearchPrompt — status branching", () => {
       expect(prompt).toContain("A new stock is saved as WATCHING (entry-gated)");
     });
 
-    it("uses a watch's triggers", () => {
-      expect(prompt).toContain("## Triggers on a watch (no position");
+    it("names the playbook, and its own review is a price or a day", () => {
+      expect(prompt).toContain("name the playbook that fits (setup_id)");
+      expect(prompt).toContain("the price you'd look again (look_again_price) or a day (look_again_date), with look_again_why");
     });
   });
 
@@ -515,9 +512,9 @@ describe("buildWriterResearchPrompt — #1003 fixed forward (2026-11-17)", () =>
     expect(block).not.toMatch(/While parked/);
   });
 
-  it("each price comes from this stock's chart today; one the chart doesn't have yet is left out, and the review that wakes a run is written", () => {
-    expect(catalyst).toContain("replaced by its price from this stock's chart today");
-    expect(catalyst).toContain("A trigger whose price the chart doesn't have yet (an episodic pivot's buy before its gap) is left out, and the playbook's review that wakes a run is written instead.");
+  it("the Writer is not told to write the triggers: the save writes them from the chart (writer-triggers.test.ts)", () => {
+    expect(catalyst).not.toContain("write every one of its watch triggers");
+    expect(catalyst).not.toContain("replaced by its price from this stock's chart today");
   });
 
   it("no longer says a view with no buy names no playbook", () => {

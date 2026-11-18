@@ -76,11 +76,16 @@ import {
 import {
   droppedTrigger,
   submitThesisInput,
+  submitWriterInput,
+  nothingOnIt,
   validateThesisDecision,
   type DroppedItem,
   type ThesisDecisionInput,
   type ValidatedThesisDecision,
+  type WriterDecisionInput,
 } from "@/lib/agent/thesis-research/decision";
+import { writerTriggers, type WriterTriggerInputs } from "@/lib/agent/thesis-research/writer-triggers";
+import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
 import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
@@ -674,6 +679,7 @@ export async function writerResearchPhase(
 
     const submitThesisTool = makeSubmitThesisTool({
       ticker: T,
+      writes: writerWrites({ record: writerRecordFor({ mode: args.mode, existingThesis }), playbooks, chart: pullOutput.pull?.chart ?? null, price: currentPrice, existing: existingThesis }),
       onReject: (raw, errors) => {
         lastRejected = { raw, errors };
       },
@@ -1311,6 +1317,29 @@ export async function saveWhatCan(
 }
 
 /**
+ * What the Writer's save writes its triggers from: the named playbook's
+ * templates, the chart the Writer was shown, the live price, and on a refresh
+ * the stock's triggers. Null on the Holding refresh, which writes its own.
+ */
+export function writerWrites(o: {
+  record: AgentRecord;
+  playbooks: ((setupId: string) => Template[]) | null;
+  chart: PriceStructure | null;
+  price: number | null;
+  existing: Pick<WriterExistingThesis, "triggers" | "direction"> | null;
+  today?: Date;
+}): ((d: WriterDecisionInput) => WriterTriggerInputs) | undefined {
+  if (o.record !== WRITER) return undefined;
+  return (d) => ({
+    templates: o.playbooks ? (d.setup_id ? o.playbooks(d.setup_id) : []) : null,
+    chart: o.chart,
+    price: o.price,
+    today: o.today ?? new Date(),
+    existing: o.existing ? { triggers: o.existing.triggers, direction: o.existing.direction } : null,
+  });
+}
+
+/**
  * The submit_thesis tool: the decision's own rules, then the save's check.
  * Used by the research loop and by the one save-time retry.
  */
@@ -1322,12 +1351,19 @@ export function makeSubmitThesisTool(opts: {
   /** The last refused submit, kept so the repair step can hand it back. */
   onReject?: (raw: unknown, errors: string[]) => void;
   ticker: string;
+  /**
+   * The Writer's save: it names the playbook, and the save writes the triggers
+   * from what this returns (writer-triggers.ts). Absent on the Holding
+   * refresh, which edits a holding's triggers by id.
+   */
+  writes?: (d: WriterDecisionInput) => WriterTriggerInputs;
 }) {
   let handBacks = 0;
   return tool({
-    description:
-      "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
-      "If the result lists validation errors, fix exactly those fields and call again.",
+    description: opts.writes
+      ? "Saves your thesis and the playbook you name; the save writes that playbook's watch triggers at prices from this stock's chart."
+      : "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
+        "If the result lists validation errors, fix exactly those fields and call again.",
     // NOT strict, on purpose. Anthropic's strict mode compiles the schema
     // into a grammar and refuses one with more than 24 optional parameters
     // or 16 union-typed parameters; this schema has 119 and 121 (measured
@@ -1342,10 +1378,13 @@ export function makeSubmitThesisTool(opts: {
     // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
     // would mean moving every range into a description.)
     // The model's call reaches execute as it wrote it: a trigger is converted to its stored shape once, by the save.
-    inputSchema: submitThesisInput,
+    inputSchema: (opts.writes ? submitWriterInput : submitThesisInput) as typeof submitThesisInput,
     execute: async (raw: ThesisDecisionInput) => {
       const attempt = opts.onAttempt();
-      const v = validateThesisDecision(raw, opts.validate);
+      const written = opts.writes ? writerTriggers(raw as WriterDecisionInput, opts.writes(raw as WriterDecisionInput)) : null;
+      const checked = validateThesisDecision(written?.decision ?? raw, opts.validate);
+      const v = written?.nothingLeft ? { ok: false, errors: [...checked.errors, nothingOnIt(String(raw.direction))] } : checked;
+      if (v.ok && written?.notWritten.length) v.decision!.dropped = [...(v.decision!.dropped ?? []), ...written.notWritten];
       if (!v.ok) {
         console.log(
           `[thesis-writer] submit_thesis attempt ${attempt} rejected ticker=${opts.ticker}: ${v.errors.length} error(s)`,
@@ -1451,6 +1490,13 @@ async function resubmitWithFeedback(input: {
   const messages: ModelMessage[] = [];
   const submit = makeSubmitThesisTool({
     ticker: T,
+    writes: writerWrites({
+      record: writerRecordFor({ mode: args.mode, existingThesis: existing }),
+      playbooks: await loadPlaybooks(analyst.accountId),
+      chart: pullOutput.pull?.chart ?? null,
+      price: pullOutput.pull?.currentPrice ?? null,
+      existing,
+    }),
     validate: {
       mode: args.mode,
       existingStatus: existing?.status ?? null,

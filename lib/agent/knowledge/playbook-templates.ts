@@ -72,7 +72,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: { watch: "move", is: "above", value: "{riskPct}", variable: "entry" }, rationale: "One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.", writtenOn: "PROPOSAL" },
   ],
   MA_PULLBACK: [
-    { action: "ENTER", predicate: near50, rationale: "The average the stock's pullbacks held (or the 20-day), only while it is rising.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: near50, rationale: "The average the stock's pullbacks held, only while it is rising.", writtenOn: "WATCH" },
     ...clock(7, "Re-checks that the average is still rising."),
     { action: "STOP_WATCHING", predicate: under50OnVolume, rationale: "A close below the 50-day on volume ends the pullback. It reads during the day.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
@@ -90,7 +90,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   ],
   EPISODIC_PIVOT: [
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: onClose("above", "{gapDayHigh}"), rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: onClose("above", "{gapDayHigh}"), rationale: "The gap day's high.", writtenOn: "WATCH" },
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "Moves the levels to the finished gap day."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },

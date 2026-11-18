@@ -56,7 +56,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +1,240, the Writer's request measured whole (its first message's date, reason and ask now counted), and its instructions one fixed text: the rules for a recent sale, someone's idea and a promotion are always there, where they printed only when they applied; a stock we own goes to the Holding refresh, whose instructions carry none of a watch's rules.
   // 2026-11-18: +116, the same three moves; its five rule texts are one, its own text one, and its brief its message (the "## Today" line goes).
   // 2026-11-18: −61, the same.
-  writer: 17_380,
+  // 2026-11-18: −2,251, the Writer names the playbook and writes no trigger: the save writes the playbook's watch triggers from the chart; "## Triggers on a watch" and the trigger-writing text go, and its own review is a price or a day (look_again_price, look_again_date).
+  writer: 15_129,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.

@@ -48,7 +48,7 @@ const analystRow = {
 
 const pullOutput = {
   ok: true,
-  pull: { rawDataBlock: "STRUCTURED DATA: $AAON", pullErrors: [], currentPrice: 78.71, chart: { atr14: null, pivot: null, brokenOut: null, sma20: null, sma50: null, daysSinceReport: null }, companyName: "AAON", exchange: "NASDAQ", pulledAt: "2026-11-18T00:10:00.000Z", catalystOnFile: null },
+  pull: { rawDataBlock: "STRUCTURED DATA: $AAON", pullErrors: [], currentPrice: 78.71, chart: null, companyName: "AAON", exchange: "NASDAQ", pulledAt: "2026-11-18T00:10:00.000Z", catalystOnFile: null },
 } as never;
 
 afterEach(() => jest.useRealTimers());

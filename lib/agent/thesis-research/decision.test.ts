@@ -78,7 +78,7 @@ describe("validateThesisDecision — accept paths", () => {
   it("a mint with no triggers is sent back: nothing is added for it (a stock has triggers and nothing else)", () => {
     const v = validateThesisDecision({ ...validLong, triggers: undefined }, mintOpts);
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/can never come back/);
+    expect(v.errors.join(" ")).toMatch(/nothing on this LONG can bring it back/);
   });
 
   it("accepts a well-formed WATCHING trigger ladder (ENTER + REVIEW)", () => {
@@ -141,7 +141,7 @@ describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHO
   it("mint: no levels AND no triggers is sent back — a watch's defaults carry no wake (LUXE 2026-09-18 saved with an empty trigger list)", () => {
     const v = validateThesisDecision(unpriced, mintOpts);
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/can never come back/);
+    expect(v.errors.join(" ")).toMatch(/nothing on this LONG can bring it back/);
   });
 
   it("mint: accepted with no levels and the wake that brings it back", () => {
@@ -368,7 +368,7 @@ describe("validateThesisDecision — persist-gate mirrors (review finding #4)", 
       mintOpts,
     );
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("a PASS stores no triggers");
+    expect(v.errors.join(" ")).toContain("a PASS stores no review");
   });
 
   it("a refresh on a thesis with no triggers may omit triggers — zero is legal (DAV-209)", () => {
@@ -479,7 +479,7 @@ describe("validateThesisDecision — a view with no setup yet is a watch, not a 
   it("the PASS it sent with its reviews is sent back as the watch it described", () => {
     const v = validateThesisDecision(sndk, pead);
     expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/send your direction \(LONG or SHORT\) with no buy, and keep these triggers/);
+    expect(v.errors.join(" ")).toMatch(/the view is LONG or SHORT with no playbook/);
   });
 
   it("the same view as a LONG with no levels and no setup is accepted: the setup prices a view, it never decides one", () => {

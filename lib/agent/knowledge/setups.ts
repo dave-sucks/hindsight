@@ -141,17 +141,20 @@ export interface Setup {
 // ── Placeholders the writer fills ─────────────────────────────────────────
 
 /** Where each `{placeholder}` comes from. `chart.` paths are PriceStructure fields. */
+/** Which gap a playbook's {gapDay*} read (playbookGap in ./playbooks). */
+const PLAYBOOK_GAP = "the newest up gap in chart.gaps that meets the playbook's own gap condition and the volume condition beside it (EPISODIC_PIVOT: at least 8% on at least 3× volume), or the newest up gap when the playbook has no gap condition";
+
 export const PLACEHOLDERS: Record<Placeholder, string> = {
-  "{pivot}": "chart.base.pivot — the base's high; add 0.1–0.3% buffer",
+  "{pivot}": "chart.base.pivot × 1.002 — the base's high plus a 0.2% buffer",
   "{pivotChase}": `chart.base.pivot × ${1 + CHASE_LIMIT_PCT / 100} — the chase ceiling`,
-  "{flagHigh}": "chart.range.high20 — the flag's high (or the last swing high inside the flag)",
-  "{gapDayHigh}": "chart.gaps[0].high — day-1 high of the gap",
-  "{gapDayMid}": "chart.gaps[0].mid — the gap-day midpoint (a hold above it on day 2 is the entry)",
-  "{gapDayLow}": "chart.gaps[0].low — the gap-day low, the market's own line",
-  "{swingLow}": "chart.swings.lastLow.price",
+  "{flagHigh}": "chart.range.high20 — the flag's high",
+  "{gapDayHigh}": `the playbook's gap's high — ${PLAYBOOK_GAP}`,
+  "{gapDayMid}": `the playbook's gap's midpoint — ${PLAYBOOK_GAP}`,
+  "{gapDayLow}": `the playbook's gap's low, the market's own line — ${PLAYBOOK_GAP}`,
+  "{swingLow}": "chart.swings.lastLow.price, when it is below today's price",
   "{high20}": "chart.range.high20 — the 20-day high",
   "{baseLow}": "chart.base.low — the base's low",
-  "{priorHigh}": "chart.swings.lastHigh.price — the prior high above the buy",
+  "{priorHigh}": "chart.swings.lastHigh.price, when it is above the buy — the prior high",
   "{priorHighOrTwiceRisk}": "chart.swings.lastHigh.price when it is above the buy, else the buy price + 2 × (the buy price − the sell price)",
   "{low52}": "chart.range.low52w — the 52-week low",
   "{flagLow}": "chart.range.low20 — the flag's low",

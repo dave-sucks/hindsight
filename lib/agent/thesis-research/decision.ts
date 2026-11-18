@@ -63,8 +63,41 @@ export const thesisDecisionSchema = z.object({
   remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
 });
 
+/** A watch's view saved with nothing on it can never come back: what the Writer is told. */
+export const nothingOnIt = (direction: string) =>
+  `setup_id: nothing on this ${direction} can bring it back, so add the playbook that fits (setup_id) or a price or day to look again (look_again_price or look_again_date, with look_again_why).`;
+
 /** The decision as the model wrote it: each trigger in the condition shape the save reads, not yet the stored one. */
 export type ThesisDecisionInput = z.input<typeof thesisDecisionSchema>;
+
+/**
+ * The Writer's submit_thesis: the thesis and the playbook, and no trigger.
+ * The save writes the playbook's watch triggers from the stock's chart and
+ * the Writer's own review from look_again_* (./writer-triggers.ts). The Holding
+ * refresh keeps thesisDecisionSchema: it edits a holding's triggers by id.
+ */
+export const writerDecisionSchema = z.object({
+  direction: W.direction.describe("LONG or SHORT for a view, or PASS: you researched it and won't trade it."),
+  rationale: z.string().describe("Your decision, by How you write: what the company is doing, where the stock is and why, then your call."),
+  horizon: W.horizon.describe("How the trade ends: CATALYST (a dated event), TARGET (a move over weeks to months), TRADE (days to weeks) or COMPOUNDER (months to years)."),
+  setup_id: W.setup_id.optional().describe("The playbook that fits this stock, from your playbooks: the save writes its watch triggers at prices from this stock's chart; leave it out when none fits."),
+  catalyst_date: W.catalyst_day.optional().describe("The day of the dated event as the company announced it (YYYY-MM-DD), needed when horizon is CATALYST."),
+  core_belief: W.core_belief.optional().describe("Why we own the company, in two or three plain sentences about the business, never the stock's price, a target or a date."),
+  key_assumptions: W.key_assumptions.optional().describe("Two or more checkable premises the belief needs, each ending with when and where it is checked (\"…, at the Q3 report on December 4\")."),
+  invalidation_conditions: W.invalidation_conditions.optional().describe("Two or more things you could see in the business that would prove the thesis wrong, each with where it is read, never a stock price."),
+  conviction: W.conviction.optional().describe("Your own view: STRONG a top call to buy in size now, HIGH a clear edge, MEDIUM probably works, LOW tracking without enthusiasm."),
+  conviction_rationale: W.conviction_rationale.optional().describe("Why you feel this strongly about the company and the stock, in a few plain sentences."),
+  variant_view: W.variant_view.optional().describe("Where you differ from Wall Street, as 'analysts expect X, I think Y, because Z'; a STRONG or HIGH call without one is saved as MEDIUM."),
+  prior_exit_acknowledgment: W.prior_exit.optional().describe("One line on how this buy differs from our sale of this stock in the last 14 days, needed only when the buy is at or above that sale's price."),
+  look_again_price: z.number().optional().describe("Your own extra review, if you want one: look at this stock again when it reaches this price."),
+  look_again_date: z.string().optional().describe("Your own extra review, if you want one: look at this stock again on this day (YYYY-MM-DD), and every as many days after."),
+  look_again_why: z.string().optional().describe("Why you'd look again, in one sentence, with the price or the day in it."),
+});
+
+/** The Writer's decision as it wrote it, before the save adds the triggers. */
+export type WriterDecisionInput = z.input<typeof writerDecisionSchema>;
+
+export const submitWriterInput: Schema<WriterDecisionInput> = asWritten(writerDecisionSchema);
 
 /**
  * submit_thesis's input as the SDK reads it. The model is sent
@@ -197,7 +230,7 @@ export function validateThesisDecision(
 
   if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
     errors.push(
-      "triggers: a PASS stores no triggers. If you would look again at these, the view is not a PASS: send your direction (LONG or SHORT) with no buy, and keep these triggers. If the research doesn't support a view at all, omit the triggers.",
+      "look_again_price / look_again_date: a PASS stores no review. If you would look again at a price or a day, the view is LONG or SHORT with no playbook; if the research doesn't support a view at all, leave them out.",
     );
   }
   if (opts.mode === "refresh" && d.triggers !== undefined) {
@@ -221,9 +254,7 @@ export function validateThesisDecision(
   // leaves zero wakes. Said here, in the writer's loop, with the level it
   // said it was waiting for — never a refusal at the save.
   if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
-    errors.push(
-      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. Write what you are waiting for as triggers: the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart. If no price is honest yet, send \`triggers\` with a review that brings it back: a review at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
-    );
+    errors.push(nothingOnIt(d.direction));
   }
 
   // ── Triggers ─────────────────────────────────────────────────────────

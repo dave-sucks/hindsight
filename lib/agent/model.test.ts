@@ -257,7 +257,7 @@ describe("the Writer", () => {
       jest.doMock("@/lib/performance/load-setup-scorecard", () => ({ loadScorecardLines: async () => [] }));
       jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
       const { writerResearchPhase } = await import("@/lib/agent/run-thesis-writer");
-      const pull = { rawDataBlock: "STRUCTURED DATA: $DYN", pullErrors: [], currentPrice: 16.51, chart: { atr14: null, pivot: null, brokenOut: null, sma20: null, sma50: null, daysSinceReport: null }, companyName: "Dyne Therapeutics", exchange: "NASDAQ", pulledAt: "2026-09-25T04:06:00.000Z", catalystOnFile: null };
+      const pull = { rawDataBlock: "STRUCTURED DATA: $DYN", pullErrors: [], currentPrice: 16.51, chart: null, companyName: "Dyne Therapeutics", exchange: "NASDAQ", pulledAt: "2026-09-25T04:06:00.000Z", catalystOnFile: null };
       await writerResearchPhase({ childRunId: "writer_child_dyn", analystId: ANALYST, ticker: "DYN", mode: "mint", reason: "PRE_CATALYST dispatch." } as never, { ok: true, pull } as never);
       view = (await import("@/lib/agent/run-requests")).viewOfRecord;
     });
