@@ -218,7 +218,8 @@ interface WriterAnalyst {
   maxPositionTotal: unknown;
 }
 
-async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | null> {
+/** The analyst a Writer run writes for (also read by scripts/hero-case-from-run.ts). */
+export async function loadWriterAnalyst(analystId: string): Promise<WriterAnalyst | null> {
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: analystId },
     select: {
@@ -253,7 +254,8 @@ interface WriterExistingThesis {
   triggers: Trigger[];
 }
 
-async function loadExistingThesis(
+/** The thesis a refresh starts from (also read by scripts/hero-case-from-run.ts). */
+export async function loadExistingThesis(
   existingThesisId: string,
 ): Promise<WriterExistingThesis | null> {
   const row = await prisma.thesis.findUnique({
