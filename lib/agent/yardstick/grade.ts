@@ -88,7 +88,7 @@ export function pricesSet(calls: GradedCall[]): number[] {
   const out: number[] = [];
   for (const c of calls) {
     const a = input(c);
-    for (const t of [...list(a.triggers), ...list(a.add_triggers), ...list(a.triggers_with_buy)]) {
+    for (const t of [...list(a.triggers), ...list(a.add_triggers)]) {
       const p = (t.predicate ?? t.condition ?? {}) as Record<string, unknown>;
       if (p.watch === "price" && typeof p.value === "number") out.push(p.value);
     }
@@ -167,7 +167,7 @@ export function writtenText(calls: GradedCall[], narration: string): string {
   for (const c of calls) {
     const a = input(c);
     for (const k of ["rationale", "entry_rationale", "sell_reason", "notes", "reason", "core_belief", "conviction_rationale", "company"]) if (typeof a[k] === "string") parts.push(a[k] as string);
-    for (const t of [...list(a.triggers), ...list(a.add_triggers), ...list(a.edit_triggers), ...list(a.triggers_with_buy)]) if (typeof t.rationale === "string") parts.push(t.rationale);
+    for (const t of [...list(a.triggers), ...list(a.add_triggers), ...list(a.edit_triggers)]) if (typeof t.rationale === "string") parts.push(t.rationale);
   }
   return parts.join("\n");
 }

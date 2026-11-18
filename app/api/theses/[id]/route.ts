@@ -22,7 +22,7 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { buyTriggerSentences } from "@/lib/proposals/buy-triggers";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import {
@@ -209,10 +209,9 @@ export async function GET(
         closePrice: true,
         realizedPnl: true,
         closeReason: true,
-        // What a buy proposal shows: its "Sell if below" and the triggers that come with it.
+        // What a buy proposal shows: its "Sell if below".
         direction: true,
         stopLoss: true,
-        buyTriggers: true,
         // The order the trade block describes — either awaiting your
         // decision (AWAITING_APPROVAL) or already approved and sitting at
         // Alpaca waiting to fill (PENDING). Both keep the block; only the
@@ -289,7 +288,10 @@ export async function GET(
               writing,
               proposedAt: picked.order.createdAt.toISOString(),
               proposedPrice: picked.order.proposedPrice ?? null,
-              triggerSentences: picked.order.intent === "OPEN" ? buyTriggerSentences(pos) : undefined,
+              triggerSentences:
+                picked.order.intent === "OPEN" && pos.stopLoss != null
+                  ? [sentenceOf({ action: "EXIT", predicate: { watch: "price", is: pos.direction === "SHORT" ? "above" : "below", value: pos.stopLoss } })]
+                  : undefined,
             }
           : null,
       };

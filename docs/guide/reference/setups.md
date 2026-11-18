@@ -35,7 +35,7 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 **Triggers with the buy:**
 
 - Sell if below {sellPrice}. Under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8%.
-- Trim 50% if above {priorHigh}. The prior high above the buy, else twice the risk above the buy.
+- Trim 50% if above {priorHighOrTwiceRisk}. The prior high above the buy, else twice the risk above the buy.
 - Review if above {riskPct} from our entry. One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.
 
 **Triggers at the fill:**
@@ -159,7 +159,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 **Triggers with the buy:**
 
 - Sell if below {sellPrice}. The gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy.
-- Trim 50% if above {priorHigh}. The prior high above the buy, else twice the risk above the buy.
+- Trim 50% if above {priorHighOrTwiceRisk}. The prior high above the buy, else twice the risk above the buy.
 
 **Triggers at the fill:**
 
