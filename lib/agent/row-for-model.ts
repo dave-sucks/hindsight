@@ -62,7 +62,6 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   triggers: "always",
   belief: "always",
   research: "always",
-  note: "always",
   // This morning's averages, range, RSI and strength: every decision reads a level off them.
   chart: "always",
   // The facts a situation's text refers to, by name: each with its situation.
@@ -83,15 +82,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   bear_case: "review",
   conviction_rationale: "review",
   variant_view: ["BUY_ARRIVES"],
-  snapshot: "review",
   // Only when asked for by name.
-  recentCatalysts: "named",
-  fundamentals: "named",
-  latestEarnings: "named",
-  catalystsAndEvents: "named",
-  analystConsensus: "named",
-  insiderTechnical: "named",
-  researchData: "named",
   history: "named",
 };
 
@@ -99,16 +90,14 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
  * The fields a stock is sent with when it is being compared with other stocks
  * as a use of the account's money (the Portfolio Manager's get_theses): the
  * same for a holding and a watch. `said` is its newest INSIGHTS_COMPARED
- * Activity lines with a written paragraph, `latestEarnings` the section's
- * first EARNINGS_BULLETS_COMPARED bullets; a watch carries `playbook_checks`
+ * Activity lines with a written paragraph; a watch carries `playbook_checks`
  * (the triggers that come with the buy) where a holding carries `setup`.
  */
 export const COMPARING_FIELDS: readonly string[] = [
   "stock", "id", "analyst", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
-  "triggers", "said", "street", "catalyst", "latestEarnings", "chart", "setup", "playbook_checks", "research",
+  "triggers", "said", "street", "catalyst", "chart", "setup", "playbook_checks", "research",
 ];
 export const INSIGHTS_COMPARED = 3;
-export const EARNINGS_BULLETS_COMPARED = 2;
 
 /** The situation that reads the whole case. */
 export const REVIEW_SITUATION: SituationCode = "REVIEW_DUE";
@@ -170,18 +159,6 @@ function stance(status: unknown): string {
   }
 }
 
-/** The text's sentences up to `max` characters, never a cut word. */
-function firstParagraph(text: string, max: number): string {
-  const clean = stripSourceTags(text);
-  if (clean.length <= max) return clean;
-  let out = "";
-  for (const sentence of clean.split(/(?<=[.!?])\s+/)) {
-    const next = out ? `${out} ${sentence}` : sentence;
-    if (next.length > max) break;
-    out = next;
-  }
-  return out || clean.slice(0, max).replace(/\s+\S*$/, "");
-}
 
 /**
  * The stock's write-up, read off the `writerRun` fact (get_theses: the newest
@@ -369,32 +346,11 @@ function paperRecord(row: Row): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
-/**
- * The lower-priority research sections a read loads with include_research,
- * under their own names. The full row carries the ones a row has, as text
- * with the screen's citations removed; the short row and the one line never do.
- */
-const RESEARCH_SECTIONS = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"] as const;
-
-/** A research section as text: a paragraph, a list of bullets, or a plain string; citations dropped, tags stripped. */
-function sectionText(v: unknown): string | string[] | null {
-  if (typeof v === "string") return str(v) ? stripSourceTags(v) : null;
-  const o = obj(v);
-  if (!o) return null;
-  if (Array.isArray(o.bullets)) {
-    const bullets = strings(list<{ text?: unknown }>(o.bullets).map((b) => (typeof b === "string" ? b : b?.text)));
-    return bullets.length ? bullets : null;
-  }
-  return str(o.text) ? stripSourceTags(o.text as string) : null;
-}
-
 /** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
 function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false, comparing = false): Row {
-  const held = row.status === "HOLDING";
   const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
   const resolved = obj(row.resolved);
   const codes = list<SituationCode>(row.situations);
-  const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
   const out: Row = {};
   const sent = comparing ? new Set(COMPARING_FIELDS) : rowKeysFor(codes, { size, named });
   const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
@@ -429,21 +385,12 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   put("buyBlockedByFull", row.buyBlockedByFull);
   put("heldThroughFloor", row.heldThroughFloor);
   put("supersededBy", resolved?.supersededBy);
-  put("snapshot", snapshot ? (size === "full" ? stripSourceTags(snapshot) : firstParagraph(snapshot, 300)) : null);
-  if (size === "full") {
-    for (const k of RESEARCH_SECTIONS) put(k, sectionText(row[k]));
-  } else if (comparing) {
-    const earnings = sectionText(row.latestEarnings);
-    put("latestEarnings", Array.isArray(earnings) ? earnings.slice(0, EARNINGS_BULLETS_COMPARED) : earnings);
-  }
   put("chart", chartLine(row));
   put("street", streetLine(row));
   put("research", researchLine(row, comparing ? "full" : size));
   const catalyst = date(row.catalystDate);
   put("catalyst", catalyst ? isoDay(catalyst) : catalystDateMissing(row) ? "date missing" : null);
   put("repeat", str(obj(row.needsAction)?.repeatLine));
-  // The conviction rule, on the row it applies to.
-  if (held && row.conviction === "LOW") put("note", "Conviction is LOW: tighten the floor on this review.");
   put("paper_record", paperRecord(row));
   if (size === "full" && named) put("history", list(row.history));
   return out;

@@ -14,17 +14,17 @@ it("the short row prints these keys, in this order", () => {
     "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price",
     "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
     "bull_case", "bear_case", "conviction_rationale", "variant_view",
-    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
-    "research", "catalyst", "repeat", "note",
+    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "chart",
+    "research", "catalyst", "repeat",
   ]);
 });
 
-it("the full row is the short row plus the seven research sections and the history", () => {
+it("the full row is the short row plus the history", () => {
   // The trigger run's short row, so both carry the setup's lines (the full row always does).
   const short = Object.keys(rowForModel(saved(), { named: true, size: "short", playbookChecks: true }) as Row);
   const full = Object.keys(rowForModel(saved(), { named: true, size: "full" }) as Row);
-  const sections = ["recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
-  expect([...full].sort()).toEqual([...short, ...sections, "history"].sort());
+  // The seven research sections the Writer stopped writing on 2026-11-03 are on the saved row and never sent.
+  expect([...full].sort()).toEqual([...short, "history"].sort());
   expect(full.filter((k) => short.includes(k))).toEqual(short);
 });
 

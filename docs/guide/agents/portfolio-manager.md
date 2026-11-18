@@ -29,10 +29,10 @@ It asks `get_theses` for stocks by ticker, the tool every agent uses. One field 
 - the belief, its key assumptions, what would prove it wrong, and the reason for its conviction
 - its triggers
 - the newest three Activity lines someone wrote a paragraph on (the Overview's Agent insights)
-- Wall Street's view, the catalyst date, and the first two bullets of the latest earnings
+- Wall Street's view and the catalyst date
 - the chart numbers, the playbook (on a watch, the triggers that come with the buy), the position and any proposal waiting
 
-It does not get the bull and bear cases or the other research sections; those go to the analyst on the stock's review.
+It does not get the bull and bear cases; those go to the analyst on the stock's review.
 
 It may ask about any stock you own, and 8 watched stocks a run. It has no web search: the Market Reviewer reads the news each morning, and a thesis that looks out of date goes to research.
 

@@ -87,12 +87,6 @@ const schema = z.object({
     .describe(
       "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries the stock's newest 8 Activity lines as the owner sees them.",
     ),
-  include_research: z
-    .boolean()
-    .optional()
-    .describe(
-      "Also return the lower-priority deep-research sections (researchData, recentCatalysts, fundamentals, latestEarnings, catalystsAndEvents, analystConsensus, insiderTechnical). The snapshot and the bull and bear cases are already on every row.",
-    ),
   history_limit: z
     .number()
     .int()
@@ -117,7 +111,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, the research sections, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed; include_research adds the lower-priority research sections.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -199,8 +193,7 @@ export const getTheses = defineTool({
       const pick = managerPick(ctx, args, new Set(open.map((p) => p.symbol.toUpperCase())));
       if (pick.refused) return { summary: pick.refused, data: { count: 0, theses: [], manager: { note: pick.refused } }, sources: [] };
       manager = { note: pick.note };
-      // The research sections are loaded for the latest earnings; the comparing rule sends two bullets of it.
-      args = { tickers: pick.tickers, include_research: true };
+      args = { tickers: pick.tickers };
     }
     if (!ctx.analystId && !ctx.userId) {
       return {
@@ -286,12 +279,6 @@ export const getTheses = defineTool({
         : {}),
     };
 
-    // Default select skips the heavy deep-research blobs (`researchData`
-    // ~3-5KB + `researchSections`). The agent opts in with
-    // `include_research: true` when refreshing a thesis via the
-    // thesis-writer agent, or when the synthesis is needed for grading.
-    // Daily-run and tactical reads stay light by default.
-    const includeResearch = args.include_research === true;
     const theses = await prisma.thesis.findMany({
       where,
       orderBy: { updatedAt: "desc" },
@@ -346,23 +333,6 @@ export const getTheses = defineTool({
         setupId: true,
         // On an account-wide read, each stock's analyst: its rules, its minimum score, its name on the row.
         researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
-        // Deep-research artifacts — opt in via include_research. PR-9
-        // flattened `researchSections` blob into 9 first-class columns;
-        // selecting all of them by name. snapshot/bullCase/bearCase are
-        // already in the default select above (used by the helpers for
-        // narrative extraction); the six below are the lower-priority
-        // sections that only thesis-writer and the thesis sheet need.
-        ...(includeResearch
-          ? {
-              researchData: true,
-              recentCatalysts: true,
-              fundamentals: true,
-              latestEarnings: true,
-              catalystsAndEvents: true,
-              analystConsensus: true,
-              insiderTechnical: true,
-            }
-          : {}),
       },
     });
 
