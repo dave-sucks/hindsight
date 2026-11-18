@@ -53,7 +53,7 @@ jest.mock("@/lib/agent/triggers/earnings", () => ({
 jest.mock("@/lib/agent/filings-on-book", () => ({ filingsOnBook: async () => [] }));
 jest.mock("@/lib/agent/gate-rejections", () => ({ listOpenRefusalsForAnalyst: async () => [] }));
 const blockArgs: unknown[] = [];
-jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioBlock: async (a: unknown) => (blockArgs.push(a), "## Market and portfolio\n\nSTAND-IN") }));
+jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: async (a: unknown) => (blockArgs.push(a), [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]) }));
 
 import { buildRunInput } from "./run-input";
 
@@ -68,5 +68,5 @@ it("carries the Market and portfolio block, loaded for the analyst's own account
   blockArgs.length = 0;
   const input = await buildRunInput("analyst_1", "u");
   expect(blockArgs).toEqual([{ accountId: "acct_1", environment: "LIVE" }]);
-  expect(input.portfolioBlock).toBe("## Market and portfolio\n\nSTAND-IN");
+  expect(input.portfolioPieces).toEqual([{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]);
 });

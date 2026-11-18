@@ -20,7 +20,8 @@ import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
 import { analystToolSettings, type AnalystToolSettings } from "@/lib/agent/tool-context";
-import { buildDailyRunSystemPromptV2 } from "@/lib/agent/system-prompt";
+import { dailyRunRequest } from "@/lib/agent/system-prompt";
+import type { SentPartManifest } from "@/lib/agent/engine/types";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -182,6 +183,8 @@ export async function POST(
     // ── System prompt + tools ──────────────────────────────────────────────
 
     let systemPrompt: string;
+    // The parts of the instructions, when the agent engine built them (the conversation is the person's).
+    let systemParts: SentPartManifest[] | undefined;
     // The analyst's fence and limits the tools enforce: the body's when no
     // analyst row is loaded, else the row's (analystToolSettings).
     let agentConfig: AnalystToolSettings = (config as AnalystToolSettings) || {};
@@ -226,7 +229,7 @@ export async function POST(
       // V2 is the only path as of 2026-05-16. P0-11 (manual UI runs got
       // V1) is closed by this swap. The legacy V1 builder is marked
       // @deprecated in lib/agent/system-prompt.ts; no caller remains.
-      systemPrompt = buildDailyRunSystemPromptV2(
+      const daily = dailyRunRequest(
         briefAnalyst,
         runInput ?? {
           portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
@@ -239,6 +242,8 @@ export async function POST(
           openRefusals: [],
         },
       );
+      systemPrompt = daily.instructions;
+      systemParts = daily.parts.filter((p) => p.where === "instructions");
 
     } else if (agentMode === "builder") {
       systemPrompt = BUILDER_SYSTEM_PROMPT;
@@ -776,7 +781,7 @@ export async function POST(
       : modeConfig.model;
     const effectiveProvider = effectiveModel.startsWith("claude") ? "anthropic" : "openai";
 
-    const resolvedModel = modelFor(effectiveModel, { runId, call: "Message", source: `agent/${agentMode}`, replace: true });
+    const resolvedModel = modelFor(effectiveModel, { runId, call: "Message", source: `agent/${agentMode}`, replace: true, parts: systemParts });
 
     // Every request of this turn, recorded on the run row in onFinish and
     // added to the turns before it (token-usage.ts). Builder and editor

@@ -90,7 +90,10 @@ describe("the morning run", () => {
     expect(asSent(main.record)).toEqual([net.sent[0]]);
     // The run's retry, when it made one, keeps its own first request.
     for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
-    expect(view!(main.record).categories.map((c) => c.name)).toEqual(["Instructions", "First message", "Tool menu"]);
+    // The agent engine built it: Context shows each part by name.
+    const names = view!(main.record).categories.map((c) => c.name);
+    expect(names.slice(0, 3)).toEqual(["The analyst", "House rules", "How you write"]);
+    expect(names.slice(-2)).toEqual(["The start", "Tool menu"]);
   });
 });
 

@@ -182,6 +182,24 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
     about: "What fired and when, in a sentence, with an Auto trade's line, a report's numbers, a pre-catalyst buy's window, what else fired with it and any refused call on the stock.",
     source: "lib/inngest/functions/tactical-run.ts (the kickoff)",
   },
+  earnings_week: {
+    id: "earnings_week",
+    title: "Earnings this week",
+    about: "The book's stocks reporting in the next 7 days, and those that reported in the last 3 with their numbers.",
+    source: "lib/agent/run-input.ts (the earnings calendar)",
+  },
+  filings_week: {
+    id: "filings_week",
+    title: "Filings this week",
+    about: "Serious and material filings on the book in the last 7 days, from EDGAR.",
+    source: "lib/agent/run-input.ts (filingsOnBook)",
+  },
+  blocked_last_time: {
+    id: "blocked_last_time",
+    title: "Refused calls never redone",
+    about: "This analyst's refused calls from the last 7 days that no run has redone yet.",
+    source: "lib/agent/refusal-carryover.ts",
+  },
   chat_found: {
     id: "chat_found",
     title: "What the chat found",

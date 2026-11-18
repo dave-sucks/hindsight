@@ -11,7 +11,7 @@
  * (e.g., Alpaca down) does NOT kill watchlist/theses/briefs.
  */
 
-import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
+import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import {
@@ -38,7 +38,7 @@ import {
 
 export interface RunInput {
   /** The Market and portfolio block (lib/agent/portfolio-block.ts): the portfolio snapshot and the latest digest. */
-  portfolioBlock?: string;
+  portfolioPieces?: PortfolioPiece[];
   /** Buys awaiting approval — they have taken their slot already (place_trade counts them). */
   pendingApprovalCount?: number;
   portfolio: {
@@ -596,8 +596,8 @@ export async function buildRunInput(
   // 12b. Refused calls never redone — what the run is told to resolve.
   const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
 
-  // 13. The Market and portfolio block: the portfolio snapshot and the latest digest. Never throws.
-  const portfolioBlock = await loadPortfolioBlock({ accountId: config.accountId, environment: config.tradingEnvironment });
+  // 13. The Market and portfolio block's parts: the portfolio snapshot and the latest digest. Never throws.
+  const portfolioPieces = await loadPortfolioPieces({ accountId: config.accountId, environment: config.tradingEnvironment });
 
   // ── Structured load summary ────────────────────────────────────────
   console.log(
@@ -606,7 +606,7 @@ export async function buildRunInput(
 
   const reviewSources = (await loadLevelSources([config.id]).catch(() => new Map())).get(config.id);
   return {
-    portfolioBlock,
+    portfolioPieces,
     pendingApprovalCount,
     portfolio: {
       cash,

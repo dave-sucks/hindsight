@@ -125,8 +125,11 @@ export function viewOfRecord(r: RequestRecord): CallView {
   const categories: SentCategory[] = [];
   const add = (name: string, part: SentCategory["part"], text: string) => categories.push({ name, part, chars: text.length, sections: partsAtHeadings(text) });
   const named = r.parts?.length ? byParts(r.parts, items.filter(isSystem).map(said).join("\n\n"), rest.length ? said(rest[0]) : "") : null;
-  if (named) categories.push(...named);
-  else {
+  if (named) {
+    categories.push(...named);
+    // A record that names only its instructions (a conversation's first message is the person's): the message as before.
+    if (!r.parts!.some((p) => p.where === "message") && rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
+  } else {
     for (const m of items.filter(isSystem)) add("Instructions", "job", said(m));
     if (rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
   }
@@ -161,6 +164,8 @@ export function byParts(parts: SentPartManifest[], instructions: string, message
   const out: SentCategory[] = [];
   for (const [where, text] of [["instructions", instructions], ["message", message]] as const) {
     const mine = parts.filter((p) => p.where === where);
+    // Parts named for the instructions only (a conversation): the message isn't cut.
+    if (mine.length === 0 && where === "message") continue;
     let at = 0;
     const cut: string[] = [];
     mine.forEach((p, i) => {

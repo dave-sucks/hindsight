@@ -95,7 +95,7 @@ Everything the morning run can call, read from `lib/agent/modes.ts`.
 `research-run` in `lib/agent/modes.ts`: `gpt-5.4`, up to 65 steps, an 800-second limit.
 
 #### Prompt
-`lib/agent/system-prompt.ts`, with the analyst brief and the house rules. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
+Its record, `MORNING_RUN` (`lib/agent/engine/agents/morning-run.ts`): its own words and where its blocks go (the analyst with its room, the house rules, earnings and filings this week, refused calls never redone, the Market and portfolio block). `dailyRunRequest` (`lib/agent/system-prompt.ts`) reads the blocks and the agent engine (`composeAgentRequest`, `lib/agent/engine/engine.ts`) builds the request, naming each part for the run's Context panel. Situation texts come from `SITUATIONS` in `lib/agent/situations.ts`, never the prompt.
 
 #### The read
 `get_theses` builds each row with `lib/agent/row-for-model.ts` at one of three sizes. A trigger's note is on the row only when someone wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
