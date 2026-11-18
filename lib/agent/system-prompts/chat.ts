@@ -1,13 +1,14 @@
 /**
  * The chat's request, from its record (lib/agent/engine/agents/chat.ts): its
- * instructions, at the portfolio level or pinned to one analyst. Its first
- * message is your conversation.
+ * instructions, at the portfolio level or pinned to one analyst, and what
+ * rides on your newest message. Its first message is your conversation.
  */
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, universeLines, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 import { CHAT, type ChatExtra } from "@/lib/agent/engine/agents/chat";
-import { composeAgentRequest } from "@/lib/agent/engine/engine";
-import type { BuiltRequest } from "@/lib/agent/engine/types";
+import { composeAgentRequest, composeNewest } from "@/lib/agent/engine/engine";
+import type { BuiltNewest, BuiltRequest } from "@/lib/agent/engine/types";
+import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 
 export interface ChatPromptOpts {
   /**
@@ -25,12 +26,12 @@ export interface ChatPromptOpts {
   roomLines?: string[];
 }
 
+const UNPINNED: ChatExtra = { pinned: false, name: "", id: "", universe: [], watchlist: [] };
+
 /** The chat's request: its instructions, each part named for the run's Context panel. */
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
-  const extra: ChatExtra = scope
-    ? { pinned: true, name: scope.name, id: scope.id, universe: universeLines(scope), watchlist: scope.watchlist }
-    : { pinned: false, name: "", id: "", universe: [], watchlist: [] };
+  const extra: ChatExtra = scope ? { pinned: true, name: scope.name, id: scope.id, universe: universeLines(scope), watchlist: scope.watchlist } : UNPINNED;
   return composeAgentRequest(
     CHAT,
     { now: new Date(), environment, extra },
@@ -43,6 +44,11 @@ export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" 
       },
     },
   );
+}
+
+/** What rides on your newest message: the time and the Market and portfolio block, each part named for the chat's Context. */
+export function chatNewest(now: Date, pieces: PortfolioPiece[] | null, environment: "PAPER" | "LIVE" = "PAPER"): BuiltNewest {
+  return composeNewest(CHAT, { now, environment, extra: UNPINNED }, { pieces });
 }
 
 /** The chat's instructions as one string. */

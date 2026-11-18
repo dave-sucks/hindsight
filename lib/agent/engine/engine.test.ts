@@ -84,13 +84,14 @@ describe("the Portfolio Manager on the engine", () => {
       "message:The day",
       "message:Its last write-up",
     ]);
-    const rows = byParts(built.parts, built.instructions, built.message);
-    expect(rows?.map((r) => r.name)).toEqual(built.parts.map((p) => p.title));
-    const textOf = (where: string) => rows!.filter((_, i) => built.parts[i].where === where).map((r) => r.sections[0].text).join("\n\n");
+    const cut = (where: "instructions" | "message", text: string) => byParts(built.parts.filter((p) => p.where === where), text)!;
+    const rows = [...cut("instructions", built.instructions).parts, ...cut("message", built.message).parts];
+    expect(rows.map((r) => r.name)).toEqual(built.parts.map((p) => p.title));
+    const textOf = (where: string) => rows.filter((_, i) => built.parts[i].where === where).map((r) => r.sections[0].text).join("\n\n");
     expect(textOf("instructions")).toBe(built.instructions);
     expect(textOf("message")).toBe(built.message);
     // The Market and portfolio heading prints once, on the first of its parts.
-    expect(rows?.find((r) => r.name === "Market numbers")?.sections[0].text.startsWith("## Market and portfolio\n\n### Market numbers")).toBe(true);
+    expect(rows.find((r) => r.name === "Market numbers")?.sections[0].text.startsWith("## Market and portfolio\n\n### Market numbers")).toBe(true);
     expect(built.instructions.match(/^## Market and portfolio$/gm)).toHaveLength(1);
   });
 
@@ -125,7 +126,13 @@ describe("the Market Reviewer on the engine", () => {
 });
 
 describe("the Context panel's rows", () => {
-  it("a request that doesn't add up to its parts falls back to the headings", () => {
-    expect(byParts([{ id: "role", title: "Its role", kind: "own", where: "instructions", source: "x", chars: 5 }], "Hello world", "")).toBeNull();
+  it("a request that doesn't add up to its parts is shown whole", () => {
+    expect(byParts([{ id: "role", title: "Its role", kind: "own", where: "instructions", source: "x", chars: 5 }], "Hello world")).toBeNull();
+  });
+
+  it("what follows a message's parts, after a blank line, is the person's words", () => {
+    const cut = byParts([{ id: "the_time", title: "The time", kind: "own", where: "newest", source: "x", chars: 5 }], "[3pm]\n\nWhy hold it?");
+    expect(cut?.parts.map((p) => p.name)).toEqual(["The time"]);
+    expect(cut?.after).toBe("Why hold it?");
   });
 });

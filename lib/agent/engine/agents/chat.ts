@@ -6,10 +6,13 @@
  * character, in every shape they take (lib/agent/engine/chat.engine.test.ts,
  * ../__fixtures__/chat-cases.ts). `chatRequest`
  * (lib/agent/system-prompts/chat.ts) reads its blocks. Its first message is
- * your conversation, and the Market and portfolio block rides on your newest
- * message.
+ * your conversation. The time and the Market and portfolio block ride on your
+ * newest message (`chatNewest`), the same as the route put them there before
+ * the move (../__fixtures__/chat-newest-cases.ts).
  */
+import { isMarketOpen } from "@/lib/market-hours";
 import { MODES } from "@/lib/agent/modes";
+import { ET, whenET } from "@/lib/agent/old-lookups";
 import type { AgentInput, AgentRecord } from "../types";
 
 /** What the chat's own words need from the run. */
@@ -262,6 +265,17 @@ For READ questions, prefer one well-shaped tool call to multiple shallow ones. F
   ],
   // Its first message is your conversation.
   message: [],
+  newest: [
+    {
+      own: "the_time",
+      title: "The time",
+      text: (i) => `[${ET({ weekday: "short" }).format(i.now)} ${whenET(i.now)}, ${isMarketOpen(i.now) ? "the market is open" : "the market is closed"}. A price in an earlier message is from when that message was written.]`,
+    },
+    { block: "market_numbers" },
+    { block: "market_digest" },
+    { block: "portfolio_snapshot" },
+    { block: "portfolio_digest" },
+  ],
   output: "Its reply to you, and whatever its tools did: a note, a trigger edit, a stock sent to the Writer, a trade proposal (each waits for you).",
   example: {
     extra: { pinned: false, name: "", id: "", universe: [], watchlist: [] } satisfies ChatExtra,

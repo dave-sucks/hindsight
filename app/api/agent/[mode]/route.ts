@@ -9,10 +9,10 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { loadPortfolioBlock } from "@/lib/agent/portfolio-block";
-import { streamText, stepCountIs, hasToolCall, type ToolSet } from "ai";
+import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
+import { streamText, stepCountIs, hasToolCall, type ModelMessage, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
-import { hideOldLookups, withTheTime } from "@/lib/agent/old-lookups";
+import { hideOldLookups, withNewestParts } from "@/lib/agent/old-lookups";
 import { modelFor } from "@/lib/agent/model";
 import { waitUntil } from "@vercel/functions";
 import { createClient } from "@/lib/supabase/server";
@@ -32,7 +32,7 @@ import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
-import { chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
+import { chatNewest, chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
@@ -161,7 +161,7 @@ export async function POST(
 
     let runEnvironment: "PAPER" | "LIVE" = "PAPER";
     // The chat's Market and portfolio block, started once its book is known and read with the newest message.
-    let portfolioBlockLoad: Promise<string> | null = null;
+    let portfolioPiecesLoad: Promise<PortfolioPiece[]> | null = null;
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
@@ -478,8 +478,8 @@ export async function POST(
         }
       }
 
-      // The Market and portfolio block for this message: started now, read when the message is built. A chat waits 5 s at most.
-      portfolioBlockLoad = loadPortfolioBlock({ accountId, environment: runEnvironment, waitMs: 5_000 });
+      // The Market and portfolio block's parts for this message: started now, read when the message is built. A chat waits 5 s at most.
+      portfolioPiecesLoad = loadPortfolioPieces({ accountId, environment: runEnvironment, waitMs: 5_000 });
       const chat = chatRequest(
         {
           scopedAnalyst,
@@ -773,10 +773,15 @@ export async function POST(
     // A tool missing from this set (a turn under another scope) passes its result through as is.
     // The chat is one long thread: it reads the time on each message and never an old lookup.
     const askedAt = new Date();
-    const modelMessages =
-      agentMode === "principal"
-        ? withTheTime(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), askedAt, portfolioBlockLoad ? await portfolioBlockLoad : null)
-        : await historyForModel(messages, tools as ToolSet);
+    let modelMessages: ModelMessage[];
+    if (agentMode === "principal") {
+      // The time and the Market and portfolio block ride on the newest message, each part named with the instructions'.
+      const newest = chatNewest(askedAt, portfolioPiecesLoad ? await portfolioPiecesLoad : null, runEnvironment);
+      systemParts = [...(systemParts ?? []), ...newest.parts];
+      modelMessages = withNewestParts(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), newest.texts);
+    } else {
+      modelMessages = await historyForModel(messages, tools as ToolSet);
+    }
 
     // Allow client to override model (validated to known model IDs).
     // gpt-5.5 added 2026-05-15 alongside the research-run / tactical model

@@ -107,8 +107,8 @@ async function block(): Promise<string> {
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     for (const [path, factory] of Object.entries(edges)) jest.doMock(path, factory);
     jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => STANDIN_MARKET_NUMBERS }));
-    const { loadPortfolioBlock } = await import("@/lib/agent/portfolio-block");
-    text = await loadPortfolioBlock({ accountId: REPLAY_ACCOUNT_ID, environment: "LIVE", now: NOW });
+    const { BLOCK_HEADING, loadPortfolioPieces } = await import("@/lib/agent/portfolio-block");
+    text = [BLOCK_HEADING, ...(await loadPortfolioPieces({ accountId: REPLAY_ACCOUNT_ID, environment: "LIVE", now: NOW })).map((p) => p.text)].join("\n\n");
   });
   return text;
 }

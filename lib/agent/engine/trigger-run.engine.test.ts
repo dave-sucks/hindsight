@@ -8,7 +8,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import GOLDEN from "./__fixtures__/trigger-run.golden.json";
 import { TRIGGER_CASES, TRIGGER_KICKOFF, type TriggerCaseName } from "./__fixtures__/trigger-run-cases";
 import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
-import { byParts } from "@/lib/agent/run-requests";
+import { rowsOf } from "./__fixtures__/rows-of";
 
 const args = (name: TriggerCaseName) => {
   const { pieces, ...rest } = TRIGGER_CASES[name] as (typeof TRIGGER_CASES)[TriggerCaseName] & { pieces?: unknown };
@@ -33,7 +33,7 @@ describe("the trigger run on the engine", () => {
 
   it("names every part, and the parts add up to what is sent", () => {
     const built = triggerRunRequest(args("buy_on_watch"), { facts: "Tactical run on $CASE. Buy if above $120." });
-    const rows = byParts(built.parts, built.instructions, built.message);
+    const rows = rowsOf(built);
     expect(rows?.map((r) => r.name)).toEqual([
       "The analyst",
       "What happened",

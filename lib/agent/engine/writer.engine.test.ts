@@ -8,7 +8,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import GOLDEN from "./__fixtures__/writer.golden.json";
 import { WRITER_CASES, WRITER_MESSAGE, type WriterCaseName } from "./__fixtures__/writer-cases";
 import { writerRequest, type WriterResearchPromptOpts } from "@/lib/agent/run-thesis-writer";
-import { byParts } from "@/lib/agent/run-requests";
+import { rowsOf } from "./__fixtures__/rows-of";
 
 const opts = (name: WriterCaseName) => {
   const { pieces, ...rest } = WRITER_CASES[name] as (typeof WRITER_CASES)[WriterCaseName] & { pieces?: WriterResearchPromptOpts["portfolioPieces"] };
@@ -29,7 +29,7 @@ describe("the Writer on the engine", () => {
 
   it("names every part, and the parts add up to what is sent; a part with nothing this run isn't shown", () => {
     const built = writerRequest(opts("refresh_watch"), { dataBlock: WRITER_MESSAGE.dataBlock, chatFound: WRITER_MESSAGE.chatFound });
-    const rows = byParts(built.parts, built.instructions, built.message);
+    const rows = rowsOf(built);
     expect(rows).not.toBeNull();
     expect(rows!.map((r) => r.name)).toEqual([
       "The analyst",

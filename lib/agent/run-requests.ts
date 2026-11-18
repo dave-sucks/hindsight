@@ -5,12 +5,13 @@
  * A record is one RunMessage row (role "request") beside the run's thread
  * (role "thread", lib/agent/run-thread.ts): each request the call made, as
  * the JSON body that went to the provider. The run page's Context panel shows
- * each part of it, cut at the headings the prompt prints, and the raw request.
+ * each part the agent engine named (lib/agent/engine), each message of the
+ * conversation, the tool menu, and the raw request.
  * The 8 PM Portfolio Digest and the Market Reviewer keep their own; every
  * other agent's is kept by the model it gets from modelFor (model.ts).
  */
 import { prisma } from "@/lib/prisma";
-import type { SentPartManifest } from "@/lib/agent/engine/types";
+import type { SentPartManifest, Where } from "@/lib/agent/engine/types";
 
 export const REQUEST_ROLE = "request";
 
@@ -58,7 +59,7 @@ export interface SentCategory {
   /** Its Framework page part, for its color (components/docs/framework/swatch.ts); null when it has none. */
   part: "job" | "read" | "tools" | null;
   chars: number;
-  /** Its text, cut at the headings the prompt prints, or whole when it is one engine part. */
+  /** Its text: whole, or for the tool menu, each tool. */
   sections: SentPart[];
   /** The file its text comes from, for a part the agent engine named. */
   source?: string;
@@ -78,27 +79,6 @@ export interface CallView {
 
 /** What a call's first message is, by the code that made it. */
 const FIRST_MESSAGE: Record<string, string> = { "portfolio-digest": "Portfolio snapshot", "market-reviewer": "Market numbers, portfolio, watchlist, notes and last digest" };
-
-/** A heading as the prompts print one: a markdown heading, or a line opening with a label in capitals ("HELD POSITIONS:", "WHAT TO COVER (in roughly this order):"). */
-const HEADING = /^(?:#{1,3} +(.+)|([A-Z][A-Z0-9&/' -]*[A-Z0-9])(?= *[:(—]))/;
-
-/** A message's text cut at its headings, each part named by its heading. The parts add up to the text. */
-export function partsAtHeadings(text: string): SentPart[] {
-  const parts: { label: string; lines: string[] }[] = [];
-  for (const line of text.split("\n")) {
-    const m = line.match(HEADING);
-    const cur = parts[parts.length - 1];
-    // A heading with nothing after it ("FACTS:") stays with the line under it.
-    const lone = cur?.lines.length === 1 && /:\s*$/.test(cur.lines[0]);
-    if (m && !lone) parts.push({ label: (m[1] ?? m[2]).trim(), lines: [line] });
-    else if (cur) cur.lines.push(line);
-    else parts.push({ label: "Opening", lines: [line] });
-  }
-  return parts.map((p, i) => {
-    const t = p.lines.join("\n") + (i < parts.length - 1 ? "\n" : "");
-    return { label: p.label, chars: t.length, text: t };
-  });
-}
 
 /** A message's content as text: a string as is, a list of parts by their text (any other part, a tool call or its result, as JSON). */
 function textOf(content: unknown): string {
@@ -123,18 +103,30 @@ export function viewOfRecord(r: RequestRecord): CallView {
   const isSystem = (m: Record<string, unknown>) => m.role === "system" || m.role === "developer";
   const rest = items.filter((m) => !isSystem(m));
   const categories: SentCategory[] = [];
-  const add = (name: string, part: SentCategory["part"], text: string) => categories.push({ name, part, chars: text.length, sections: partsAtHeadings(text) });
-  const named = r.parts?.length ? byParts(r.parts, items.filter(isSystem).map(said).join("\n\n"), rest.length ? said(rest[0]) : "") : null;
-  if (named) {
-    categories.push(...named);
-    // A record that names only its instructions (a conversation's first message is the person's): the message as before.
-    if (!r.parts!.some((p) => p.where === "message") && rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
-  } else {
-    for (const m of items.filter(isSystem)) add("Instructions", "job", said(m));
-    if (rest.length) add(FIRST_MESSAGE[r.source] ?? "First message", "read", said(rest[0]));
+  const whole = (name: string, part: SentCategory["part"], text: string) => categories.push({ name, part, chars: text.length, sections: [{ label: name, chars: text.length, text }] });
+  const named = (where: Where) => (r.parts ?? []).filter((p) => p.where === where);
+  /** A text by the parts the engine named in it: the parts, then what follows them (the person's words) as `after`. Whole when they don't add up. */
+  const show = (where: Where, text: string, name: string, after?: string) => {
+    const cut = byParts(named(where), text);
+    if (!cut || (cut.after && !after)) return void whole(name, "read", text);
+    categories.push(...cut.parts);
+    if (cut.after) whole(after!, null, cut.after);
+  };
+  const instructions = items.filter(isSystem).map(said).join("\n\n");
+  if (instructions) show("instructions", instructions, "Instructions");
+  const first = FIRST_MESSAGE[r.source] ?? "First message";
+  if (rest.length) {
+    // A conversation's only message carries what rides on its newest one.
+    if (named("message").length) show("message", said(rest[0]), first);
+    else if (rest.length === 1 && named("newest").length) show("newest", said(rest[0]), first, first);
+    else whole(first, "read", said(rest[0]));
   }
-  if (rest.length > 2) add("The conversation so far", null, rest.slice(1, -1).map(said).join("\n\n"));
-  if (rest.length > 1) add("Newest message", null, said(rest[rest.length - 1]));
+  if (rest.length > 2) whole("The conversation so far", null, rest.slice(1, -1).map(said).join("\n\n"));
+  if (rest.length > 1) {
+    const newest = said(rest[rest.length - 1]);
+    if (named("newest").length) show("newest", newest, "Newest message", "Newest message");
+    else whole("Newest message", null, newest);
+  }
   // The tools it was offered: an agent's menu, counted as sent and shown spaced out.
   // A function tool by its name, a provider's own (OpenAI's web search) by its type.
   const tools = (listOf(body?.tools) as Array<{ function?: { name?: string }; name?: string; type?: string }>).map((t) => ({
@@ -155,30 +147,29 @@ export function viewOfRecord(r: RequestRecord): CallView {
 }
 
 /**
- * The engine's parts, one row each, cut from what was sent by their sizes and
- * the separator before each. When the text sent doesn't add up to the parts
- * (a request changed after it was built), this gives null and the request is
- * shown cut at its headings. A part with no text this run is not shown.
+ * The engine's parts, one row each, cut from the front of what was sent by
+ * their sizes and the separator before each; what follows the last part
+ * (the person's words on a chat message) is `after`. Null when there are no
+ * parts or the text doesn't add up to them (a request changed after it was
+ * built). A part with no text this run is not shown.
  */
-export function byParts(parts: SentPartManifest[], instructions: string, message: string): SentCategory[] | null {
-  const out: SentCategory[] = [];
-  for (const [where, text] of [["instructions", instructions], ["message", message]] as const) {
-    const mine = parts.filter((p) => p.where === where);
-    // Parts named for the instructions only (a conversation): the message isn't cut.
-    if (mine.length === 0 && where === "message") continue;
-    let at = 0;
-    const cut: string[] = [];
-    mine.forEach((p, i) => {
-      at += i === 0 ? 0 : (p.sep ?? "\n\n").length;
-      cut.push(text.slice(at, at + p.chars));
-      at += p.chars;
-    });
-    if (mine.map((p, i) => (i === 0 ? "" : (p.sep ?? "\n\n")) + cut[i]).join("") !== text) return null;
-    mine.forEach((p, i) => {
-      if (p.chars > 0) out.push({ name: p.title, part: p.kind === "own" ? "job" : "read", chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source });
-    });
-  }
-  return out;
+export function byParts(parts: SentPartManifest[], text: string): { parts: SentCategory[]; after: string } | null {
+  if (!parts.length) return null;
+  let at = 0;
+  const cut: string[] = [];
+  parts.forEach((p, i) => {
+    at += i === 0 ? 0 : (p.sep ?? "\n\n").length;
+    cut.push(text.slice(at, at + p.chars));
+    at += p.chars;
+  });
+  if (parts.map((p, i) => (i === 0 ? "" : (p.sep ?? "\n\n")) + cut[i]).join("") !== text.slice(0, at)) return null;
+  // After the parts, a blank line and the rest of the message.
+  const tail = text.slice(at);
+  if (tail && !tail.startsWith("\n\n")) return null;
+  return {
+    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, part: p.kind === "own" ? ("job" as const) : ("read" as const), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
+    after: tail.slice(2),
+  };
 }
 
 /** A run's records, oldest first, as its page shows them. */

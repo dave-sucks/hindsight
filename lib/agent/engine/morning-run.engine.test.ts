@@ -8,7 +8,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import GOLDEN from "./__fixtures__/morning-run.golden.json";
 import { MORNING_CASES, asRunInput, type MorningCaseName } from "./__fixtures__/morning-run-cases";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
-import { byParts } from "@/lib/agent/run-requests";
+import { rowsOf } from "./__fixtures__/rows-of";
 
 const build = (name: MorningCaseName) => {
   const c = MORNING_CASES[name] as (typeof MORNING_CASES)[MorningCaseName] & { pieces?: unknown };
@@ -30,7 +30,7 @@ describe("the morning run on the engine", () => {
 
   it("names every part, and the parts add up to what is sent", () => {
     const built = build("full");
-    expect(byParts(built.parts, built.instructions, built.message)?.map((r) => r.name)).toEqual([
+    expect(rowsOf(built)?.map((r) => r.name)).toEqual([
       "The analyst",
       "House rules",
       "How you write",

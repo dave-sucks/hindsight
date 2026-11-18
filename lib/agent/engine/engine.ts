@@ -13,7 +13,7 @@
 import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { BLOCKS, GROUP_HEADINGS } from "./blocks";
-import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltRequest, type RecordPart, type SentPartManifest, type Sep, type Where } from "./types";
+import { isOwn, type AgentInput, type AgentRecord, type BlockId, type BuiltNewest, type BuiltRequest, type RecordPart, type SentPartManifest, type Sep, type Where } from "./types";
 
 /** Where the blocks that read live data get it, handed in by the run. */
 export interface Sources {
@@ -43,7 +43,7 @@ const BUILT_IN: Partial<Record<BlockId, string>> = {
 /** A block printed inside its group (the Market and portfolio block), not on its own. */
 const inGroup = (p: RecordPart): boolean => !isOwn(p) && Boolean(BLOCKS[p.block].group) && !p.alone && p.heading == null;
 
-const allParts = (record: AgentRecord) => [...record.instructions, ...record.message];
+const allParts = (record: AgentRecord) => [...record.instructions, ...record.message, ...(record.newest ?? [])];
 
 /** Read every block the record lists, then build the request. */
 export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
@@ -65,6 +65,44 @@ export async function buildAgentRequest(record: AgentRecord, input: AgentInput, 
 
 /** Build the request from blocks already read. */
 export function composeAgentRequest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltRequest {
+  const instructions = printParts(record, record.instructions, "instructions", input, loaded);
+  const message = printParts(record, record.message, "message", input, loaded);
+  const join = (ps: Printed[]) => ps.map((p) => p.manifest.sep + p.text).join("");
+  return {
+    instructions: join(instructions),
+    message: join(message),
+    parts: [...instructions, ...message].map((p) => p.manifest),
+    tools: record.tools,
+  };
+}
+
+/**
+ * Build what rides on a conversation's newest message, from blocks already
+ * read: each part its own text, the Market and portfolio block's parts one
+ * text. Its parts are named as if the texts were joined by a blank line, the
+ * way the run's Context panel reads a message.
+ */
+export function composeNewest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltNewest {
+  const parts = record.newest ?? [];
+  const set = parts.find((p) => p.sep !== undefined);
+  if (set) throw new Error(`${record.id}: a part on the newest message is its own text and takes no separator (${isOwn(set) ? set.own : set.block})`);
+  const printed = printParts(record, parts, "newest", input, loaded);
+  const texts: string[] = [];
+  for (const p of printed) {
+    if (p.continuesGroup && texts.length) texts[texts.length - 1] += p.manifest.sep + p.text;
+    else texts.push(p.text);
+  }
+  return { texts, parts: printed.map((p) => p.manifest) };
+}
+
+interface Printed {
+  manifest: SentPartManifest;
+  text: string;
+  /** A Market and portfolio part after the first: it prints inside the same block. */
+  continuesGroup: boolean;
+}
+
+function printParts(record: AgentRecord, parts: readonly RecordPart[], where: Where, input: AgentInput, loaded: Loaded): Printed[] {
   const firstOfGroup = allParts(record).flatMap((p) => (!isOwn(p) && inGroup(p) ? [p.block] : []))[0];
 
   /** A Market and portfolio part's text, or null when the read left it out. */
@@ -77,47 +115,36 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
     return all.find((p) => p.id === id)?.text ?? null;
   }
 
-  function print(parts: readonly RecordPart[], where: Where): Array<{ manifest: SentPartManifest; text: string }> {
-    const out: Array<{ manifest: SentPartManifest; text: string }> = [];
-    let groupOpen: string | null = null;
-    const push = (m: Omit<SentPartManifest, "chars" | "sep">, sep: Sep | undefined, text: string) =>
-      out.push({ manifest: { ...m, sep: out.length ? (typeof sep === "function" ? sep(input) : (sep ?? SEP)) : "", chars: text.length }, text });
-    for (const part of parts) {
-      if (isOwn(part)) {
-        groupOpen = null;
-        const text = typeof part.text === "string" ? part.text : part.text(input);
-        if (text == null) continue;
-        push({ id: part.own, title: part.title, kind: "own", where, source: `lib/agent/engine/agents (${record.id})` }, part.sep, text);
-        continue;
-      }
-      const def = BLOCKS[part.block];
-      const manifest = { id: def.id, title: def.title, kind: "block" as const, where, source: def.source };
-      if (!inGroup(part)) {
-        groupOpen = null;
-        const body = BUILT_IN[part.block] ?? loaded.blocks?.[part.block];
-        if (body === undefined) throw new Error(`${record.id} lists the block ${part.block} but it wasn't read`);
-        if (body == null) continue;
-        push(manifest, part.sep, part.heading != null ? `${part.heading}\n${body}` : body);
-        continue;
-      }
-      let text = groupText(part.block);
+  const out: Printed[] = [];
+  let groupOpen: string | null = null;
+  const push = (m: Omit<SentPartManifest, "chars" | "sep">, sep: Sep | undefined, text: string, continuesGroup = false) =>
+    out.push({ manifest: { ...m, sep: out.length ? (typeof sep === "function" ? sep(input) : (sep ?? SEP)) : "", chars: text.length }, text, continuesGroup });
+  for (const part of parts) {
+    if (isOwn(part)) {
+      groupOpen = null;
+      const text = typeof part.text === "string" ? part.text : part.text(input);
       if (text == null) continue;
-      if (def.group && groupOpen !== def.group) {
-        text = `${GROUP_HEADINGS[def.group]}${SEP}${text}`;
-        groupOpen = def.group;
-      }
-      push(manifest, part.sep, text);
+      push({ id: part.own, title: part.title, kind: "own", where, source: `lib/agent/engine/agents (${record.id})` }, part.sep, text);
+      continue;
     }
-    return out;
+    const def = BLOCKS[part.block];
+    const manifest = { id: def.id, title: def.title, kind: "block" as const, where, source: def.source };
+    if (!inGroup(part)) {
+      groupOpen = null;
+      const body = BUILT_IN[part.block] ?? loaded.blocks?.[part.block];
+      if (body === undefined) throw new Error(`${record.id} lists the block ${part.block} but it wasn't read`);
+      if (body == null) continue;
+      push(manifest, part.sep, part.heading != null ? `${part.heading}\n${body}` : body);
+      continue;
+    }
+    let text = groupText(part.block);
+    if (text == null) continue;
+    const continuesGroup = Boolean(def.group) && groupOpen === def.group;
+    if (def.group && !continuesGroup) {
+      text = `${GROUP_HEADINGS[def.group]}${SEP}${text}`;
+      groupOpen = def.group;
+    }
+    push(manifest, part.sep, text, continuesGroup);
   }
-
-  const instructions = print(record.instructions, "instructions");
-  const message = print(record.message, "message");
-  const join = (ps: typeof instructions) => ps.map((p) => p.manifest.sep + p.text).join("");
-  return {
-    instructions: join(instructions),
-    message: join(message),
-    parts: [...instructions, ...message].map((p) => p.manifest),
-    tools: record.tools,
-  };
+  return out;
 }

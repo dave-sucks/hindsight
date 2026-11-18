@@ -9,10 +9,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { BLOCKS } from "@/lib/agent/engine/blocks";
-import { isOwn, type AgentRecord, type BlockId } from "@/lib/agent/engine/types";
+import { isOwn, type AgentRecord, type BlockId, type Where } from "@/lib/agent/engine/types";
 import { DocsNav } from "../docs-nav";
 
 const n = (x: number) => x.toLocaleString("en-US");
+const PLACE: Record<Where, string> = { instructions: "In its instructions", message: "In its first message", newest: "On each new message you send" };
 
 export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: readonly string[] }) {
   return (
@@ -32,8 +33,12 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
 }
 
 function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
-  const parts = [...record.instructions.map((p) => ({ p, where: "instructions" as const })), ...record.message.map((p) => ({ p, where: "message" as const }))];
-  const given = new Map<BlockId, "instructions" | "message">(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
+  const parts = [
+    ...record.instructions.map((p) => ({ p, where: "instructions" as const })),
+    ...record.message.map((p) => ({ p, where: "message" as const })),
+    ...(record.newest ?? []).map((p) => ({ p, where: "newest" as const })),
+  ];
+  const given = new Map<BlockId, Where>(parts.flatMap(({ p, where }) => (isOwn(p) ? [] : [[p.block, where] as const])));
   const own = parts.flatMap(({ p }) => (isOwn(p) ? [p] : []));
   const sample = { now: new Date(), environment: "PAPER" as const, extra: record.example?.extra };
   return (
@@ -84,7 +89,7 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
                       <span className="text-sm font-medium">{b.title}</span>
                       <span className="text-sm text-muted-foreground">{b.about}</span>
                       <span className="text-xs text-muted-foreground">
-                        {where === "instructions" ? "In its instructions" : where === "message" ? "In its first message" : "Not given"} · {b.source}
+                        {where ? PLACE[where] : "Not given"} · {b.source}
                       </span>
                     </div>
                   </li>

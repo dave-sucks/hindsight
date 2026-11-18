@@ -101,11 +101,11 @@ Its record, `CHAT` (`lib/agent/engine/agents/chat.ts`): its own words and where 
 `write_note`, only after a yes on `ask_question` or when you asked for one. It writes on one stock, or once to several stocks, one analyst or the whole account.
 
 #### Old lookups
-`hideOldLookups` and `withTheTime` in `lib/agent/old-lookups.ts`. Every tool result carries `at`, the time it ran (`defineTool`).
+`hideOldLookups` and `withNewestParts` in `lib/agent/old-lookups.ts`; the time line itself is the chat's record (`newest`). Every tool result carries `at`, the time it ran (`defineTool`).
 
 #### Route
 `app/api/agent/[mode]/route.ts`
 
 #### What was sent
-The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`): its instructions one row per part, then your conversation.
+The chat's Context shows the request its newest message started with, exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`): its instructions one row per part, your conversation, then your newest message: the time and each part of the Market and portfolio block, then your words.
 </details>
