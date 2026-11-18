@@ -106,9 +106,10 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
   it("the row carries the lines a fire checks for the plan's setup and horizon; the old block is gone", () => {
     const prompt = triggerRunSent(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ setupId: "PEAD", setup: setupChecklist("PEAD", { templates: PLAYBOOK_TEMPLATES.PEAD }) }) } }));
     for (const line of playbookChecks(getSetup("PEAD")!, "decision")) expect(prompt).toContain(JSON.stringify(line));
-    // A watch's row carries the triggers that come with its buy, as Settings → Playbook says them.
-    for (const text of playbookTriggerText(PLAYBOOK_TEMPLATES.PEAD, "PROPOSAL")) expect(prompt).toContain(JSON.stringify(text));
-    expect(prompt).toContain("- Trim 50% if above {priorHigh}: ");
+    // A watch's row carries the one trigger that comes with its buy the run names, its "Sell if below"; the fill writes the rest.
+    const sale = PLAYBOOK_TEMPLATES.PEAD.filter((t) => t.writtenOn === "PROPOSAL" && t.action === "EXIT");
+    for (const text of playbookTriggerText(sale, "PROPOSAL")) expect(prompt).toContain(JSON.stringify(text));
+    expect(prompt).not.toContain("- Trim 50% if above {priorHigh}: ");
     // The summary and the preconditions are the brief's and the writer's, not the row's.
     expect(prompt).not.toContain(JSON.stringify(playbookChecks(getSetup("PEAD")!)[0]));
     expect(prompt).toContain("Confirm a buy by: Gap held; Surprise and guidance confirmed");

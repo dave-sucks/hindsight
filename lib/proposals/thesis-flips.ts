@@ -33,7 +33,9 @@ import {
 import { conditionsOf, fromPosition, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
-import { fillTemplateOps } from "@/lib/agent/knowledge/playbooks";
+import { fillTemplateOps, withTheBuyTriggers } from "@/lib/agent/knowledge/playbooks";
+import { templatePlaceholders } from "@/lib/agent/knowledge/setups";
+import { loadFillChart } from "@/lib/proposals/fill-chart";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
@@ -57,8 +59,6 @@ export async function promoteThesisOnApproval(opts: {
   stopIsOwners?: boolean;
   /** The analyst's reason for the proposal's sell price, when you approved that price. */
   stopReason?: string | null;
-  /** The triggers that come with the buy besides its sell price (Position.buyTriggers). */
-  buyTriggers?: Trigger[];
   runId?: string | null;
 }): Promise<void> {
   // WATCHING or PROMOTED → HOLDING. One shared implementation with place_trade; see armHeldLadderOnFill below.
@@ -70,7 +70,6 @@ export async function promoteThesisOnApproval(opts: {
     stopLoss: opts.stopLoss,
     stopIsOwners: opts.stopIsOwners,
     stopReason: opts.stopReason,
-    buyTriggers: opts.buyTriggers,
     positionId: opts.positionId,
     runId: opts.runId ?? null,
     via: "approved proposal",
@@ -97,9 +96,11 @@ export async function promoteThesisOnApproval(opts: {
  *   - writes "Sell if below $X" at the approved sell price (the order's
  *     stopLoss): the analyst's, with its reason, from the proposal; yours
  *     from the Trade ticket. A watch trigger never becomes the sale
- *   - writes the triggers that come with the buy (Position.buyTriggers) as
- *     the analyst named them, each with its reason. An old order's or the
- *     Trade ticket's upside price (targetPrice) goes on as a price trigger
+ *   - writes the playbook's triggers that come with the buy, each number
+ *     from the chart then and the buy (withTheBuyTriggers, the chart from
+ *     ./fill-chart); one whose number the chart doesn't have is not written,
+ *     and its Activity line says so. An old order's or the Trade ticket's
+ *     upside price (targetPrice) goes on as a price trigger
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
  *   - writes the stock's playbook's fill templates as Settings → Playbook
@@ -124,8 +125,6 @@ export async function armHeldLadderOnFill(opts: {
   stopIsOwners?: boolean;
   /** Why the sell price is there: the analyst's words, the note on the "Sell if below" trigger. */
   stopReason?: string | null;
-  /** The triggers that come with the buy besides its sell price, written as they are. */
-  buyTriggers?: Trigger[];
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
@@ -152,17 +151,21 @@ export async function armHeldLadderOnFill(opts: {
       const there = collision(kept, t, watchingThesis.direction);
       return there?.source === "PRINCIPAL" ? there : undefined;
     };
-    const buyTriggers = (opts.buyTriggers ?? []).filter((t) => !ownersOf(t));
-    const notWritten = (opts.buyTriggers ?? []).flatMap((t) => {
-      const his = ownersOf(t);
-      return his ? [{ op: "kept" as const, id: his.id, text: `Kept your ${sentenceOf(his)}; the buy's ${sentenceOf(t)} not written` }] : [];
-    });
+    // The playbook's triggers that come with the buy, each number from the chart then and the buy.
+    const templates = watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [];
+    const readsTheChart = (templates ?? []).some((t) => t.writtenOn === "PROPOSAL" && templatePlaceholders(t.predicate).some((m) => m !== "{sellPrice}" && m !== "{riskPct}"));
+    const withBuy = withTheBuyTriggers(templates, { chart: readsTheChart ? await loadFillChart(opts.ticker) : null, buy: opts.fillPrice, sale: opts.stopLoss });
+    const buyTriggers = withBuy.triggers.filter((t) => !ownersOf(t));
+    const notWritten = [
+      ...withBuy.triggers.flatMap((t) => {
+        const his = ownersOf(t);
+        return his ? [{ op: "kept" as const, id: his.id, text: `Kept your ${sentenceOf(his)}; the buy's ${sentenceOf(t)} not written` }] : [];
+      }),
+      ...withBuy.notWritten,
+    ];
     // The playbook's fill triggers, read against the triggers left and the ones the buy brings.
     // A playbook that can't be read writes none, and the Activity line says so.
-    const playbook = fillTemplateOps(
-      watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [],
-      [...kept, ...buyTriggers],
-    );
+    const playbook = fillTemplateOps(templates, [...kept, ...buyTriggers]);
     // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
     // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
     const chooser = opts.stopIsOwners ? "PRINCIPAL" : opts.stopReason?.trim() ? "AGENT" : null;
@@ -179,10 +182,11 @@ export async function armHeldLadderOnFill(opts: {
           ...stored.filter(watchTriggers).map((t) => ({ op: "remove" as const, id: t.id })),
           ...(chooser ? [] : floorOp),
           ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
+          ...buyTriggers.map(add),
           ...playbook.ops,
         ],
       ],
-      ["AGENT", [...(chooser === "AGENT" ? floorOp : []), ...buyTriggers.map(add)]],
+      ["AGENT", chooser === "AGENT" ? floorOp : []],
       ["PRINCIPAL", chooser === "PRINCIPAL" ? floorOp : []],
     ];
     let applied: { triggers: Trigger[]; results: ReturnType<typeof applyTriggerOps>["results"] } = { triggers: stored, results: [] };

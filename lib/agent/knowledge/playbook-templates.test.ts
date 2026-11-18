@@ -11,8 +11,9 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { readFileSync } from "fs";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { PLAYBOOK_TEMPLATES, type Template, type WrittenOn } from "./playbook-templates";
-import { fillTemplateOps, playbookTemplates, templateSchema } from "./playbooks";
-import { SETUPS } from "./setups";
+import { fillTemplateOps, fillValue, playbookTemplates, templateSchema, withTheBuyTriggers } from "./playbooks";
+import { PLACEHOLDERS, SETUPS, templatePlaceholders, type Placeholder } from "./setups";
+import type { PriceStructure } from "@/lib/market-data/price-structure";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const SPEC = readFileSync("docs/plans/PLAYBOOK_TRIGGERS.md", "utf8");
@@ -20,9 +21,9 @@ const SPEC = readFileSync("docs/plans/PLAYBOOK_TRIGGERS.md", "utf8");
 /** The letters each table names its chart levels by. */
 const LETTERS: Record<string, Record<string, string>> = {
   PRE_CATALYST: { "{pivot}": "$P", "{pivotChase}": "$C", "{high20}": "$H", "{swingLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H" },
-  BASE_BREAKOUT: { "{pivot}": "$P", "{pivotChase}": "$C", "{baseLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H", "{riskPct}": "N%" },
+  BASE_BREAKOUT: { "{pivot}": "$P", "{pivotChase}": "$C", "{baseLow}": "$L", "{sellPrice}": "$S", "{priorHighOrTwiceRisk}": "$H", "{riskPct}": "N%" },
   MA_PULLBACK: { "{sellPrice}": "$S", "{priorHigh}": "$H" },
-  PEAD: { "{gapDayMid}": "$M", "{gapDayLow}": "$L", "{sellPrice}": "$S", "{priorHigh}": "$H" },
+  PEAD: { "{gapDayMid}": "$M", "{gapDayLow}": "$L", "{sellPrice}": "$S", "{priorHighOrTwiceRisk}": "$H" },
   EPISODIC_PIVOT: { "{gapDayHigh}": "$H", "{gapDayMid}": "$M", "{gapDayLow}": "$L", "{sellPrice}": "$L" },
   COMPOUNDER_ACCUMULATION: { "{pivot}": "$P", "{sellPrice}": "$S" },
 };
@@ -87,7 +88,7 @@ describe("the seed is the spec's tables, row for row", () => {
       "Review every 7 days",
       "Stop watching if below {baseLow} · only on the close",
       "Sell if below {sellPrice}",
-      "Trim 50% if above {priorHigh}",
+      "Trim 50% if above {priorHighOrTwiceRisk}",
       "Review 28 days after the buy",
       "Review if above {riskPct} from our entry",
     ]);
@@ -131,5 +132,59 @@ describe("an account's playbooks", () => {
     const { ops, notWritten: kept } = fillTemplateOps(PLAYBOOK_TEMPLATES.COMPOUNDER_ACCUMULATION, [has], () => `t${++n}`);
     expect(ops.map((o) => (o.op === "add" ? sentenceOf(o.trigger) : o.op))).toEqual(["Review 60 days after the buy", "Add if above 7% from our entry"]);
     expect(kept).toEqual([{ op: "kept", id: "clock", text: "Kept Review every 14 days; the playbook's Review every 30 days not written" }]);
+  });
+});
+
+/**
+ * What code writes at the fill comes from a template's own fields, never from
+ * its reason's prose: a fallback is a placeholder, a judgment is `judged`.
+ */
+describe("the triggers that come with the buy, written at the fill", () => {
+  /** A chart with every number a placeholder reads. */
+  const FULL: PriceStructure = {
+    price: 100, base: { pivot: 105, low: 90 }, range: { high20: 106, low20: 92, high52w: 120, low52w: 70 },
+    swings: { lastHigh: { price: 112, date: "2026-11-01" }, lastLow: { price: 93, date: "2026-11-06" } },
+    gaps: [{ date: "2026-11-03", direction: "UP", pct: 6, volumeRatio: 2, low: 95, mid: 97, high: 99 }],
+  } as unknown as PriceStructure;
+  const isTheSale = (t: Template) => t.action === "EXIT" && templatePlaceholders(t.predicate).includes("{sellPrice}");
+  const written = SETUPS.flatMap((s) => s.triggers.filter((t) => t.writtenOn === "PROPOSAL" && !isTheSale(t) && !t.judged).map((t) => [s.id, t] as const));
+
+  it("every placeholder a template may name resolves from PLACEHOLDERS alone", () => {
+    for (const name of Object.keys(PLACEHOLDERS) as Placeholder[]) expect([name, typeof fillValue(name, { chart: FULL, buy: 100, sale: 95 })]).toEqual([name, "number"]);
+    for (const [id, t] of written) for (const m of templatePlaceholders(t.predicate)) expect([id, m, Object.hasOwn(PLACEHOLDERS, m)]).toEqual([id, m, true]);
+  });
+
+  it("no fallback or condition lives only in a reason: an 'else' is a placeholder that carries it, an 'only if' is judged", () => {
+    for (const [id, t] of written) {
+      if (/\belse\b/.test(t.rationale)) expect([id, templatePlaceholders(t.predicate)]).toEqual([id, ["{priorHighOrTwiceRisk}"]]);
+      expect([id, /only if/i.test(t.rationale)]).toEqual([id, false]);
+    }
+    expect(PLAYBOOK_TEMPLATES.PRE_CATALYST.find((t) => t.action === "TRIM")).toMatchObject({ judged: true, rationale: "The prior high. Only if the analyst believes it." });
+  });
+
+  // AAPL 2026-11-13: buy $359.36, sale $325.33, the chart's last swing high $351.73 (under the buy).
+  const AAPL = { chart: { ...FULL, swings: { lastHigh: { price: 351.73, date: "2026-10-23" }, lastLow: { price: 325.33, date: "2026-11-03" } } } as PriceStructure, buy: 359.36, sale: 325.33 };
+  const ids = () => "t";
+
+  it("BASE_BREAKOUT with no prior high above the buy: the Trim at twice the risk above it, $427.42 on AAPL", () => {
+    const { triggers, notWritten } = withTheBuyTriggers(PLAYBOOK_TEMPLATES.BASE_BREAKOUT, AAPL, ids);
+    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Trim 50% if above $427.42", "Review if above 9.47% from our entry"]);
+    expect(notWritten).toEqual([]);
+  });
+
+  it("BASE_BREAKOUT with no chart: whether a prior high is above the buy is unknown, so no Trim, and the line says so", () => {
+    const { triggers, notWritten } = withTheBuyTriggers(PLAYBOOK_TEMPLATES.BASE_BREAKOUT, { ...AAPL, chart: null }, ids);
+    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if above 9.47% from our entry"]);
+    expect(notWritten.map((n) => n.text)).toEqual(["Not written: the playbook's Trim 50% if above {priorHighOrTwiceRisk}; the chart had no {priorHighOrTwiceRisk}"]);
+  });
+
+  it("MA_PULLBACK with no prior high above the buy: no Trim, and the line says so", () => {
+    const { triggers, notWritten } = withTheBuyTriggers(PLAYBOOK_TEMPLATES.MA_PULLBACK, AAPL, ids);
+    expect(triggers).toEqual([]);
+    expect(notWritten.map((n) => n.text)).toEqual(["Not written: the playbook's Trim 50% if above {priorHigh}; the chart had no {priorHigh}"]);
+  });
+
+  it("PRE_CATALYST: its Trim is a run's judgment, so the fill never writes it, whatever the chart", () => {
+    expect(withTheBuyTriggers(PLAYBOOK_TEMPLATES.PRE_CATALYST, { chart: FULL, buy: 100, sale: 95 }, ids)).toEqual({ triggers: [], notWritten: [] });
   });
 });

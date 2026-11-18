@@ -5,8 +5,9 @@
  * (`Account.playbooks`, ./playbooks).
  *
  * A template is a stored trigger plus when it is written: on a watch (the
- * Writer), with the buy proposal (the trigger run), or at the fill. A
- * `{placeholder}` is a chart level the run fills when it writes the line
+ * Writer), with the buy (the run names the "Sell if below"; the fill writes
+ * the rest, withTheBuyTriggers in ./playbooks), or at the fill. A
+ * `{placeholder}` is a chart level filled when the line is written
  * (PLACEHOLDERS in ./setups). A fill template is written as listed, so it has
  * none. Session counts are stored as calendar days (5 sessions = 7 days).
  */
@@ -27,6 +28,8 @@ export interface Template {
   writtenOn: WrittenOn;
   fireMode?: FireMode;
   trimPct?: number;
+  /** Written only by a run that judges it fits (its reason says when); the fill never writes it. */
+  judged?: true;
 }
 
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
@@ -41,7 +44,7 @@ const beforeTheEvent = (p: TemplatePredicate): TemplatePredicate => ({
   match: "all",
   conditions: [...("match" in p ? p.conditions : [p]), { watch: "from_date", is: "before", value: 70, variable: "event" }],
 });
-const trimAtHigh = (why: string): Template => ({ action: "TRIM", trimPct: 50, predicate: { watch: "price", is: "above", value: "{priorHigh}" }, rationale: why, writtenOn: "PROPOSAL" });
+const trimAtHigh = (why: string, high: "{priorHigh}" | "{priorHighOrTwiceRisk}" = "{priorHigh}"): Template => ({ action: "TRIM", trimPct: 50, predicate: { watch: "price", is: "above", value: high }, rationale: why, writtenOn: "PROPOSAL" });
 const clock = (days: number, why: string): Template[] => [
   { action: "REVIEW", predicate: every(days), rationale: why, writtenOn: "WATCH" },
   { action: "REVIEW", predicate: every(days), rationale: "The watch's clock, kept on the holding.", writtenOn: "FILL" },
@@ -57,14 +60,14 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "STOP_WATCHING", predicate: { watch: "from_date", is: "before", value: 21, variable: "event" }, rationale: "The window closed with no buy.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The last swing low that day, at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
     { action: "EXIT", predicate: { watch: "from_date", is: "before", value: 7, variable: "event" }, rationale: "The run-up sells before the decision. To hold through the event, the run answering the 10-day review removes this line and says why.", writtenOn: "FILL" },
-    trimAtHigh("The prior high. Only if the analyst believes it."),
+    { ...trimAtHigh("The prior high. Only if the analyst believes it."), judged: true },
   ],
   BASE_BREAKOUT: [
     { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it.", writtenOn: "WATCH" },
     ...clock(7, "The base can extend and its pivot move."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{baseLow}"), rationale: "The base's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "Under the last contraction's low, or the base's low if within 8% of the buy. At least 1 ATR under the buy, never more than 8%.", writtenOn: "PROPOSAL" },
-    trimAtHigh("The prior high above the buy, else twice the risk above the buy."),
+    trimAtHigh("The prior high above the buy, else twice the risk above the buy.", "{priorHighOrTwiceRisk}"),
     { action: "REVIEW", predicate: afterBuy(28), rationale: "20 sessions. No progress in 10–20 sessions is a failed breakout.", writtenOn: "FILL" },
     { action: "REVIEW", predicate: { watch: "move", is: "above", value: "{riskPct}", variable: "entry" }, rationale: "One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.", writtenOn: "PROPOSAL" },
   ],
@@ -82,7 +85,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     ...clock(7, "The first one after day 3 re-writes the stock on the pullback playbook or lets it go."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
-    trimAtHigh("The prior high above the buy, else twice the risk above the buy."),
+    trimAtHigh("The prior high above the buy, else twice the risk above the buy.", "{priorHighOrTwiceRisk}"),
     { action: "REVIEW", predicate: afterBuy(60), rationale: "Hold 30–60 days.", writtenOn: "FILL" },
   ],
   EPISODIC_PIVOT: [

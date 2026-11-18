@@ -10,20 +10,21 @@
  *      the close), its review and its playbook's watch clock (marked WATCH);
  *      what the agent reads back is the triggers' sentences, never a price
  *      key;
- *   2. the buy fires: place_trade with sell_if_below and sell_reason, and
- *      the playbook's Trim (triggers_with_buy) at the prior high; the
+ *   2. the buy fires: place_trade with sell_if_below and sell_reason; the
  *      pending position saves them and the size reads the sell price;
  *   3. approved, then filled: the buy, the Stop watching trigger and the
  *      playbook's watch clock come off, the review written by hand stays,
- *      "Sell if below" and the Trim go on with their reasons, the
- *      playbook's triggers written at the fill go on, the stock is HOLDING;
+ *      "Sell if below" goes on with its reason, the playbook's Trim goes on
+ *      at the chart's prior high, the playbook's triggers written at the
+ *      fill go on, the stock is HOLDING;
  *   4. the "Sell if below" line fires: the sale's label comes from it;
  *   5. a sale that keeps the stock on watch takes its Sell lines off;
  *   6. another watch's Stop watching line fires: it retires, and its waiting
  *      buy is withdrawn;
  *   7. the homepage Activity shows each of those once, with its label.
  *
- * Only the database, the broker, the quote vendors and the clock are doubled.
+ * Only the database, the broker, the quote vendors, the chart at the fill
+ * and the clock are doubled.
  */
 import type { z } from "zod";
 import raw from "@/lib/agent/__fixtures__/lifecycle-htfl-2026-11-13.json";
@@ -54,9 +55,12 @@ const OLD_KEYS = /entry_?price|target_?price|stop_?loss/i;
 /** A trigger run's model call on a fired buy: the sale comes with it. */
 const SALE = 48.61;
 const SALE_REASON = "Below $48.61 the 50-day failed as support and the pullback is a trend break: 1 ATR under the average.";
-/** MA_PULLBACK's Trim, at the prior high the pullback came from: the Writer's own $60.56 (its target_basis). */
+/** MA_PULLBACK's Trim, at the prior high the pullback came from: the chart's last swing high, $60.56 on October 29 (the Writer's own target_basis). */
 const TRIM = 60.56;
-const TRIM_REASON = "The prior swing high of $60.56 from October 29, the high the pullback came from.";
+/** The chart at the fill: only the numbers the playbook's triggers that come with the buy read. */
+jest.mock("@/lib/proposals/fill-chart", () => ({
+  loadFillChart: async () => ({ price: 52.18, swings: { lastHigh: { price: 60.56, date: "2026-10-29" }, lastLow: null }, gaps: [], base: null, range: { high20: 60.56, low20: 47.9, high52w: 60.56, low52w: 30, pctBelow52wHigh: 14, pctAbove52wLow: 74 } }),
+}));
 /** The playbook's watch clock, as the Writer writes it now. */
 const WATCH_CLOCK = { predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "Re-checks that the 50-day is still rising.", playbook: "WATCH" };
 
@@ -163,7 +167,7 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     const r = await tool(
       "place-trade",
       "placeTrade",
-      { ticker: T, direction: "LONG", entry_price: 52.1, thesis_id: thesisOf().id, entry_rationale: "HTFL closed back above its 50-day at $52.10 on volume: the pullback held. Buying at $52.10, sell if below $48.61.", sell_if_below: SALE, sell_reason: SALE_REASON, triggers_with_buy: [{ action: "TRIM", predicate: { watch: "price", is: "above", value: TRIM }, rationale: TRIM_REASON }] },
+      { ticker: T, direction: "LONG", entry_price: 52.1, thesis_id: thesisOf().id, entry_rationale: "HTFL closed back above its 50-day at $52.10 on volume: the pullback held. Buying at $52.10, sell if below $48.61.", sell_if_below: SALE, sell_reason: SALE_REASON },
       { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, firedTrigger: { id: buy.id, action: buy.action, ticker: T } },
       52.1,
     );
@@ -198,9 +202,9 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     expect(said.some((s) => s.startsWith("Stop watching"))).toBe(false);
     expect(said).toContain(`Sell if below $${SALE}`);
     expect(triggersOf().find((t) => sentenceOf(t) === `Sell if below $${SALE}`)!.rationale).toBe(SALE_REASON);
-    // The Trim goes on as the playbook's Trim, never as a review; the review written by hand stays.
+    // The playbook's Trim, written by the fill at the chart's prior high, never as a review; the review written by hand stays.
     expect(said).toContain(`Trim 50% if above $${TRIM}`);
-    expect(triggersOf().find((t) => sentenceOf(t) === `Trim 50% if above $${TRIM}`)).toMatchObject({ action: "TRIM", playbook: "PROPOSAL", rationale: TRIM_REASON });
+    expect(triggersOf().find((t) => sentenceOf(t) === `Trim 50% if above $${TRIM}`)).toMatchObject({ action: "TRIM", trimPct: 50, playbook: "PROPOSAL", rationale: "The prior high the pullback came from." });
     expect(said).toContain("Review if above $60.56");
     // MA_PULLBACK's triggers written at the fill (the seed list); the watch's clock is gone.
     expect(triggersOf().filter((t) => t.playbook === "FILL").map(sentenceOf)).toEqual(["Review every 7 days", "Sell if below the 50-day average and at least 1.5× normal volume", "Review 14 days after the buy"]);
