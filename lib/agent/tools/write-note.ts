@@ -40,7 +40,8 @@ const RUN_NOTE =
 
 const schema = z.object({
   thesis_id: z.string().optional().describe("The stock's thesis id."),
-  note: z.string().min(10).max(Math.max(NOTE_CHARS, SHARED_NOTE_CHARS)).describe(RUN_NOTE),
+  // A run's note has no length cap, as update_thesis's rationale had none; the chat's keeps main's (below).
+  note: z.string().min(10).describe(RUN_NOTE),
   verdict: F.verdict.optional(),
   verdict_line: F.verdict_line.optional(),
   answers_update_id: F.answers_update_id.optional(),

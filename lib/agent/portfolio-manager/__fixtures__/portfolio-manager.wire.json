@@ -81,7 +81,6 @@
         "note": {
          "type": "string",
          "minLength": 10,
-         "maxLength": 2000,
          "description": "Your note, written by How you write: what happened to the company and the stock and why, whether it touches why we own it, and what you did; after a trade you proposed this run, it is the reason on the proposal."
         }
        },
@@ -167,15 +166,6 @@
             "minLength": 1,
             "description": "The note the owner reads: why it's here and what you'll do when it fires. e.g. 'A close under the 50-day average on heavy volume breaks the pullback, so I sell.'"
            },
-           "fireMode": {
-            "description": "NEXT_MORNING (Flag for Review): routine looks; unset on a review. ASK_NOW (Send to Agent): a look today (a sharp drop, a broken level, a milestone); unset otherwise. DO_IT (Auto-sell): the line you sell at regardless. Auto buy/add/trim is the owner's.",
-            "type": "string",
-            "enum": [
-             "DO_IT",
-             "ASK_NOW",
-             "NEXT_MORNING"
-            ]
-           },
            "playbook": {
             "description": "WATCH when this trigger is one of the stock's playbook's watch triggers, its prices from the chart. When the stock is bought those come off with the buy; a trigger you write yourself stays. Leave it out on any other trigger.",
             "type": "string",
@@ -215,14 +205,6 @@
              "ADD",
              "TRIM",
              "STOP_WATCHING"
-            ]
-           },
-           "fire_mode": {
-            "type": "string",
-            "enum": [
-             "DO_IT",
-             "ASK_NOW",
-             "NEXT_MORNING"
             ]
            },
            "rationale": {
@@ -926,7 +908,6 @@
          "note": {
           "type": "string",
           "minLength": 10,
-          "maxLength": 2000,
           "description": "Your note, written by How you write: what happened to the company and the stock and why, whether it touches why we own it, and what you did; after a trade you proposed this run, it is the reason on the proposal."
          }
         },
@@ -1012,15 +993,6 @@
              "minLength": 1,
              "description": "The note the owner reads: why it's here and what you'll do when it fires. e.g. 'A close under the 50-day average on heavy volume breaks the pullback, so I sell.'"
             },
-            "fireMode": {
-             "description": "NEXT_MORNING (Flag for Review): routine looks; unset on a review. ASK_NOW (Send to Agent): a look today (a sharp drop, a broken level, a milestone); unset otherwise. DO_IT (Auto-sell): the line you sell at regardless. Auto buy/add/trim is the owner's.",
-             "type": "string",
-             "enum": [
-              "DO_IT",
-              "ASK_NOW",
-              "NEXT_MORNING"
-             ]
-            },
             "playbook": {
              "description": "WATCH when this trigger is one of the stock's playbook's watch triggers, its prices from the chart. When the stock is bought those come off with the buy; a trigger you write yourself stays. Leave it out on any other trigger.",
              "type": "string",
@@ -1060,14 +1032,6 @@
               "ADD",
               "TRIM",
               "STOP_WATCHING"
-             ]
-            },
-            "fire_mode": {
-             "type": "string",
-             "enum": [
-              "DO_IT",
-              "ASK_NOW",
-              "NEXT_MORNING"
              ]
             },
             "rationale": {

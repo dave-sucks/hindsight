@@ -53,4 +53,24 @@ describe("today's calls, graded in the cases' shape", () => {
     const removed = [{ toolName: "edit_triggers", input: { thesis_id: "x", remove: [{ id: "e9a27456-c604-4ae2-8dd6-5ccb6e96382e", reason: "Off." }] } }];
     expect(score(nvda.expect as never, inOldShape(removed), "").pass).toBe(false);
   });
+
+  it("thesis edits with no note on a stock can't pass a case that asks for its update_thesis, and still trip a never rule", () => {
+    const ex = { call: [{ tool: "update_thesis", where: { thesis_id: "t" } }], never: [{ tool: "update_thesis", where: { "remove_trigger_ids.*": "floor" } }] };
+    const edits = [{ toolName: "edit_triggers", input: { thesis_id: "t", add: [{ action: "REVIEW" }] } }, { toolName: "set_conviction", input: { thesis_id: "t", conviction: "LOW" } }];
+    expect(score(ex as never, inOldShape(edits), "").pass).toBe(false);
+    expect(score(ex as never, inOldShape([...edits, { toolName: "write_note", input: { thesis_id: "t", note: "Orders slowed." } }]), "").pass).toBe(true);
+    expect(score(ex as never, inOldShape([{ toolName: "edit_triggers", input: { thesis_id: "t", remove: [{ id: "floor" }] } }, { toolName: "write_note", input: { thesis_id: "t", note: "x" } }]), "").pass).toBe(false);
+  });
+
+  it("main's update_thesis passes a call rule as before: it always carried a note", () => {
+    const ex = { call: [{ tool: "update_thesis", where: { thesis_id: "t" } }] };
+    expect(score(ex as never, inOldShape([{ toolName: "update_thesis", input: { thesis_id: "t", rationale: "x" } }]), "").pass).toBe(true);
+  });
+
+  it("a sale with no percent on a run a trim woke is that trim, as production sells it", () => {
+    const run = { firedTrim: { ticker: "NVDA", pct: 30 } };
+    expect(inOldShape([{ toolName: "sell", input: { ticker: "NVDA" } }], run)).toEqual([{ toolName: "manage_position", input: { symbol: "NVDA", action: "partial_close", close_pct: 30 } }]);
+    expect(inOldShape([{ toolName: "sell", input: { ticker: "NVDA", percent: 100 } }], run)).toEqual([{ toolName: "close_position", input: { ticker: "NVDA" } }]);
+    expect(inOldShape([{ toolName: "sell", input: { ticker: "MU" } }], run)).toEqual([{ toolName: "close_position", input: { ticker: "MU" } }]);
+  });
 });

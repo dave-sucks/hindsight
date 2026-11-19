@@ -35,7 +35,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
+import { generateText, stepCountIs, zodSchema, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
@@ -108,12 +108,25 @@ const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "r
  * tactical-run.ts hands them. A call is graded as the tool receives it.
  */
 function codeFills(c: HeroCase): Record<string, () => Record<string, unknown> | null> {
-  if (c.mode !== "tactical") return {};
-  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
-  const runStock = { ticker: String(saved.ticker), thesisId: String(saved.id), triggerId: String(p.trigger?.id ?? "") };
+  const runStock = runStockOf(c);
+  if (!runStock) return {};
   const all = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx, runStock } as never) as Record<string, { fromRun?: () => Record<string, unknown> | null }>;
   return Object.fromEntries(Object.entries(all).flatMap(([name, t]) => (t.fromRun ? [[name, t.fromRun]] : [])));
+}
+
+/** A trigger fire's stock and the trigger that fired, as tactical-run.ts hands them to its tools; none for other runs. */
+function runStockOf(c: HeroCase): { ticker: string; thesisId: string; triggerId: string } | null {
+  if (c.mode !== "tactical") return null;
+  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
+  return { ticker: String(saved.ticker), thesisId: String(saved.id), triggerId: String(p.trigger?.id ?? "") };
+}
+
+/** The trim that woke a trigger run, as tactical-run.ts sets ToolContext.firedTrim: its sale with no percent sells this much. */
+function firedTrimOf(c: HeroCase): { ticker: string; pct: number } | undefined {
+  const stock = runStockOf(c);
+  const t = (c.promptArgs as { trigger?: { action?: string; trimPct?: number } }).trigger;
+  return stock && t?.action === "TRIM" ? { ticker: stock.ticker, pct: t.trimPct ?? 50 } : undefined;
 }
 
 /** The mode's tools as the model sees them: description and schema, no execute. */
@@ -129,8 +142,10 @@ function describedTools(c: HeroCase): ToolSet {
         .map((name) => [name, { description: named(name).description, inputSchema: named(name).inputSchema, toModelOutput: named(name).toModelOutput }]),
     ) as ToolSet;
   }
+  // A trigger fire's tools are built with its stock, as production's are: a case sees the schema that ships.
+  const runStock = runStockOf(c);
   const all = createResearchTools({
-    runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
+    runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx, ...(runStock ? { runStock, firedTrim: firedTrimOf(c) } : {}),
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
   // A fire's tools are its agent's: the post-trade write-up (promptArgs.autoTrade) has no trade tools, as the live run.
   const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : (MODES[c.mode].toolAllowlist ?? Object.keys(all));
@@ -427,6 +442,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   if (writtenPath) {
     mkdirSync(`${dirname(writtenPath)}/inputs`, { recursive: true });
     writeFileSync(`${dirname(writtenPath)}/inputs/${name}.txt`, shown);
+    // The tool definitions too, as the SDK sends them, so a request check covers them.
+    const defs = Object.entries(tools).map(([n, t]) => ({ name: n, description: (t as { description?: string }).description ?? "", schema: zodSchema((t as { inputSchema: never }).inputSchema).jsonSchema }));
+    writeFileSync(`${dirname(writtenPath)}/inputs/${name}.tools.json`, JSON.stringify(defs, null, 1));
   }
   if (inputsOnly) return { name, passes: 0, runs: 0, lookFor: c.lookFor };
   // A recorded tool result is what the model read on the day. Where a tool
@@ -556,7 +574,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       });
     }
     // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
-    const { graded, unmapped } = explainOldShape(calls, c.mode === "principal");
+    const { graded, unmapped } = explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
     const verdict = score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);

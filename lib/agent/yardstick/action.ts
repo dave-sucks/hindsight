@@ -70,7 +70,9 @@ export function score(ex: Expect | undefined, calls: Call[], text: string, reads
       why.push(`${ex.read.tool} returned no ${ex.read.has.filter((path) => !holds(last, path, "present")).join(", ")}`);
     }
   }
-  if (ex.call?.length && !ex.call.some((r) => calls.some((c) => matches(c, r)))) why.push(`no ${ex.call.map((r) => r.tool).join(" / ")} as expected`);
+  // A run's thesis edits with no note (old-shape.ts) are never what a call rule asks for: every update_thesis a case names carried one.
+  const asked = calls.filter((c) => !(c.input as { noteless?: unknown } | null)?.noteless);
+  if (ex.call?.length && !ex.call.some((r) => asked.some((c) => matches(c, r)))) why.push(`no ${ex.call.map((r) => r.tool).join(" / ")} as expected`);
   for (const r of ex.never ?? []) if (calls.some((c) => matches(c, r))) why.push(`made the ${r.tool} it must not`);
   if (ex.text && !new RegExp(ex.text.regex, "i").test(text)) why.push(`text lacks /${ex.text.regex}/`);
   if (ex.neverText && new RegExp(ex.neverText.regex, "i").test(text)) why.push(`text has /${ex.neverText.regex}/`);

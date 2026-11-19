@@ -10,15 +10,22 @@ import type { Call } from "./action";
 
 const THESIS_DOORS = new Set(["write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"]);
 
+/** What the run knew that the old shape needs: the chat (its note is the owner's), and the trim that woke a trigger run. */
+export interface OldShapeRun { isChat?: boolean; firedTrim?: { ticker: string; pct: number } }
+
 /** One of today's calls as the old tool's input. */
-function oneInOldShape(c: Call): Call {
+function oneInOldShape(c: Call, run: OldShapeRun = {}): Call {
   const a = (c.input ?? {}) as Record<string, unknown>;
   const keep = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
   switch (c.toolName) {
-    case "sell":
-      return typeof a.percent === "number" && a.percent < 100
-        ? { toolName: "manage_position", input: keep({ symbol: a.ticker, action: "partial_close", close_pct: a.percent, reason: a.note }) }
+    case "sell": {
+      // Left out on a run a trim woke, the percent is that trim's size, as sell does (sell.ts).
+      const trim = run.firedTrim && String(a.ticker ?? "").toUpperCase() === run.firedTrim.ticker.toUpperCase() ? run.firedTrim.pct : undefined;
+      const percent = typeof a.percent === "number" ? a.percent : trim;
+      return typeof percent === "number" && percent < 100
+        ? { toolName: "manage_position", input: keep({ symbol: a.ticker, action: "partial_close", close_pct: percent, reason: a.note }) }
         : { toolName: "close_position", input: keep({ ticker: a.ticker, belief_survived: a.belief_survived, notes: a.note }) };
+    }
     case "add":
       return { toolName: "manage_position", input: keep({ symbol: a.ticker, action: "add_to_position", add_notional: a.notional, reason: a.note }) };
     case "pass_on_stock":
@@ -47,8 +54,8 @@ const KEY_OF: Record<string, string> = {
 };
 
 /** A run's calls in the old shape: today's thesis calls on one stock merged into one update_thesis. The chat's write_note is the owner's note, as it was. */
-export function inOldShape(calls: Call[], isChat = false): Call[] {
-  return explainOldShape(calls, isChat).graded;
+export function inOldShape(calls: Call[], run: OldShapeRun | boolean = {}): Call[] {
+  return explainOldShape(calls, run).graded;
 }
 
 /**
@@ -56,21 +63,29 @@ export function inOldShape(calls: Call[], isChat = false): Call[] {
  * shape faithfully: one missing the stock or thesis its old call keyed on. It
  * is graded as translated, and listed, so nothing is credited or dropped unseen.
  */
-export function explainOldShape(calls: Call[], isChat = false): { graded: Call[]; unmapped: Array<{ toolName: string; input: unknown; why: string }> } {
+export function explainOldShape(calls: Call[], runOrChat: OldShapeRun | boolean = {}): { graded: Call[]; unmapped: Array<{ toolName: string; input: unknown; why: string }> } {
+  const run: OldShapeRun = typeof runOrChat === "boolean" ? { isChat: runOrChat } : runOrChat;
+  const isChat = !!run.isChat;
   const unmapped = calls.flatMap((c) => {
     const key = KEY_OF[c.toolName];
     if (!key || (isChat && c.toolName === "write_note")) return [];
     const v = ((c.input ?? {}) as Record<string, unknown>)[key];
     return typeof v === "string" && v.trim() ? [] : [{ toolName: c.toolName, input: c.input, why: `no ${key}` }];
   });
-  return { graded: translate(calls, isChat), unmapped };
+  return { graded: translate(calls, run), unmapped };
 }
 
-function translate(calls: Call[], isChat: boolean): Call[] {
+/**
+ * Every update_thesis a case was written against carried a note, so its
+ * `call` rules ask for one: a run's thesis edits on a stock with no note are
+ * marked `noteless`, which a `call` rule never matches and a `never` rule still does (action.ts).
+ */
+function translate(calls: Call[], run: OldShapeRun): Call[] {
+  const isChat = !!run.isChat;
   const out: Call[] = [];
   const merged = new Map<string, Record<string, unknown>>();
   for (const c of calls) {
-    const old = isChat && c.toolName === "write_note" ? c : oneInOldShape(c);
+    const old = isChat && c.toolName === "write_note" ? c : oneInOldShape(c, run);
     if (!THESIS_DOORS.has(c.toolName) || old.toolName !== "update_thesis") {
       out.push(old);
       continue;
@@ -87,6 +102,10 @@ function translate(calls: Call[], isChat: boolean): Call[] {
     for (const [k, v] of Object.entries(a)) {
       into[k] = Array.isArray(v) && Array.isArray(into[k]) ? [...(into[k] as unknown[]), ...v] : into[k] ?? v;
     }
+  }
+  for (const input of merged.values()) {
+    if (typeof input.rationale === "string" && input.rationale.trim()) delete input.noteless;
+    else input.noteless = true;
   }
   return out;
 }
