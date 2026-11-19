@@ -26,7 +26,7 @@ function oneInOldShape(c: Call): Call {
     case "write_note":
       return { toolName: "update_thesis", input: keep({ thesis_id: a.thesis_id, rationale: a.note, verdict: a.verdict, verdict_line: a.verdict_line, answers_update_id: a.answers_update_id, trigger_id: a.trigger_id }) };
     case "edit_triggers":
-      return { toolName: "update_thesis", input: keep({ thesis_id: a.thesis_id, trigger_id: a.trigger_id, add_triggers: a.add, edit_triggers: a.edit, remove_trigger_ids: a.remove, setup_id: a.setup_id }) };
+      return { toolName: "update_thesis", input: keep({ thesis_id: a.thesis_id, trigger_id: a.trigger_id, add_triggers: a.add, edit_triggers: a.edit, remove_trigger_ids: Array.isArray(a.remove) ? a.remove.map((r: unknown) => (typeof r === "string" ? r : (r as { id?: unknown })?.id)) : undefined, setup_id: a.setup_id }) };
     case "set_conviction":
       return { toolName: "update_thesis", input: keep({ thesis_id: a.thesis_id, conviction: a.conviction, conviction_rationale: a.conviction_rationale }) };
     case "set_catalyst_date":

@@ -31,7 +31,8 @@ export function asTheNewTools(call: Record<string, unknown>, runMode = "MORNING_
   const out: ToolCall[] = [];
   const status = call.change_status as string | undefined;
   if (status === "WATCHING" && has("watch_again")) out.push({ module: "watch-again", exportName: "watchAgain", args: { thesis_id: call.thesis_id } });
-  const edits = { add: call.add_triggers, edit: call.edit_triggers, remove: call.remove_trigger_ids, ...(runMode === "INTRADAY_TACTICAL" ? {} : { setup_id: call.setup_id }) };
+  const removes = Array.isArray(call.remove_trigger_ids) ? (call.remove_trigger_ids as string[]).map((id) => ({ id })) : undefined;
+  const edits = { add: call.add_triggers, edit: call.edit_triggers, remove: removes, ...(runMode === "INTRADAY_TACTICAL" ? {} : { setup_id: call.setup_id }) };
   if (Object.values(edits).some((v) => v !== undefined) && has("edit_triggers")) out.push({ module: "edit-triggers", exportName: "editTriggers", args: { ...own, ...edits } });
   if (call.conviction !== undefined && has("set_conviction")) out.push({ module: "set-conviction", exportName: "setConviction", args: { ...own, conviction: call.conviction, conviction_rationale: call.conviction_rationale } });
   if (call.catalyst_date !== undefined && has("set_catalyst_date")) out.push({ module: "set-catalyst-date", exportName: "setCatalystDate", args: { ...own, catalyst_date: call.catalyst_date } });

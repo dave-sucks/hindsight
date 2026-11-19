@@ -241,10 +241,24 @@
          }
         },
         "remove": {
-         "description": "Triggers to remove, by id.",
+         "description": "Triggers to remove, each by its id, with why it comes off.",
          "type": "array",
          "items": {
-          "type": "string"
+          "type": "object",
+          "properties": {
+           "id": {
+            "type": "string",
+            "description": "The trigger's id, as shown on the thesis."
+           },
+           "reason": {
+            "description": "Why it comes off, in a sentence.",
+            "type": "string"
+           }
+          },
+          "required": [
+           "id"
+          ],
+          "additionalProperties": false
          }
         }
        },
@@ -1072,10 +1086,24 @@
           }
          },
          "remove": {
-          "description": "Triggers to remove, by id.",
+          "description": "Triggers to remove, each by its id, with why it comes off.",
           "type": "array",
           "items": {
-           "type": "string"
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string",
+             "description": "The trigger's id, as shown on the thesis."
+            },
+            "reason": {
+             "description": "Why it comes off, in a sentence.",
+             "type": "string"
+            }
+           },
+           "required": [
+            "id"
+           ],
+           "additionalProperties": false
           }
          }
         },

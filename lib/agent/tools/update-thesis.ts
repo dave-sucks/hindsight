@@ -426,7 +426,7 @@ export const updateThesis = defineTool({
  * The save every thesis tool goes through (update_thesis, edit_triggers, write_note,
  * stop_watching, watch_again, and the Writer's save): one place for every rule.
  */
-export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
+export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { removeReasons?: Record<string, string> } = {}) {
   // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
   // (it just called get_stock_data on this ticker). When it forgets, we
   // fall back to a fresh live quote so the timeline row never has a
@@ -1471,7 +1471,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
     diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
     BULKY_DIFF_KEYS,
   );
-  const landedOps = [...acceptedOps(opResults), ...playbookNotes];
+  // A removal keeps the reason edit_triggers was given for it.
+  const landedOps = [...acceptedOps(opResults).map((o) => (o.op === "remove" && extra.removeReasons?.[o.id] ? { ...o, reason: extra.removeReasons[o.id] } : o)), ...playbookNotes];
   if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
   const changedFields = Object.keys(fieldChanges);
   Object.assign(fieldChanges, notAppliedChange);

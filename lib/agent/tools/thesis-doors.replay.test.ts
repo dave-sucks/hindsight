@@ -45,6 +45,15 @@ describe("edit_triggers: the Portfolio Manager says \"buy it if X happens\", and
   });
 });
 
+describe("edit_triggers: each op carries its reason", () => {
+  it("a removal's reason is kept on its Activity record, beside the line it writes", async () => {
+    const r = await replayTool("edit-triggers", "editTriggers", { seed: { thesis: [watched()] }, args: { thesis_id: "t_aaa", remove: [{ id: "buy", reason: "The base broke; no buy worth holding." }] }, quotes: { AAA: 104 } });
+    expect((r.db.store.thesis[0].triggers as unknown[]).length).toBe(0);
+    const ops = ((lines(r.db)[0].fieldChanges as { triggerOps?: { to: unknown[] } }).triggerOps?.to ?? []) as Array<Record<string, unknown>>;
+    expect(ops).toEqual([expect.objectContaining({ op: "remove", id: "buy", reason: "The base broke; no buy worth holding." })]);
+  });
+});
+
 describe("stop_watching", () => {
   it("a watched stock is retired as dropped, its reason the last line", async () => {
     const reason = "The trial readout slipped a year; nothing here to watch for now.";

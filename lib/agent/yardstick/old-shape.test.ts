@@ -36,7 +36,7 @@ describe("today's calls, graded in the cases' shape", () => {
   it("NVDA's declined sale: a sale with sell passes the case's close_position rule", () => {
     const calls = [{ toolName: "sell", input: { ticker: "NVDA", belief_survived: true } }, { toolName: "write_note", input: { thesis_id: "x", note: "Selling." } }];
     expect(score(nvda.expect as never, inOldShape(calls), "").pass).toBe(true);
-    const removed = [{ toolName: "edit_triggers", input: { thesis_id: "x", remove: ["e9a27456-c604-4ae2-8dd6-5ccb6e96382e"] } }];
+    const removed = [{ toolName: "edit_triggers", input: { thesis_id: "x", remove: [{ id: "e9a27456-c604-4ae2-8dd6-5ccb6e96382e", reason: "Off." }] } }];
     expect(score(nvda.expect as never, inOldShape(removed), "").pass).toBe(false);
   });
 });

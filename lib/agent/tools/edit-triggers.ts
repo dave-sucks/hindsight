@@ -17,7 +17,17 @@ const schema = z.object({
   thesis_id: z.string().describe("The stock's thesis id."),
   add: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add),
   edit: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
-  remove: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
+  // Each op is an object with its reason, so a later field (a playbook reference, a key's value) is an addition, not a rename.
+  remove: z
+    .array(
+      z.object({
+        id: z.string().describe("The trigger's id, as shown on the thesis."),
+        // Read by saveThesis onto the removal's Activity record (fieldChanges.triggerOps).
+        reason: z.string().optional().describe("Why it comes off, in a sentence."),
+      }),
+    )
+    .optional()
+    .describe("Triggers to remove, each by its id, with why it comes off."),
   setup_id: z
     .enum([...SETUP_IDS, NO_SETUP_FITS])
     .optional()
@@ -38,7 +48,8 @@ export const editTriggers = defineTool({
   // On a trigger run the fire's price stands in when the quote fails (a buy's side is read off it).
   execute: (args, ctx) =>
     saveThesis(
-      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId, add_triggers: args.add, edit_triggers: args.edit, remove_trigger_ids: args.remove, setup_id: args.setup_id },
+      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId, add_triggers: args.add, edit_triggers: args.edit, remove_trigger_ids: args.remove?.map((r) => r.id), setup_id: args.setup_id },
       ctx,
+      { removeReasons: Object.fromEntries((args.remove ?? []).flatMap((r) => (r.reason?.trim() ? [[r.id, r.reason.trim()]] : []))) },
     ),
 });
