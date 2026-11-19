@@ -109,10 +109,12 @@ describe("get_theses — the facts on the saved row", () => {
     expect(modelRow.price).toMatch(/^\$91\.00, \+0\.0% today \(\d\d-\d\d \d\d:\d\d ET\)$/);
     expect(named.chart).toMatch(/^as of the \d{4}-\d\d-\d\d close: 20d \$85\.25 · 50d \$78\.10 · 200d \$70\.40 · RSI \d+ \(14-day, from the closes and the live price\) · 20d range \$80\.00–\$90\.00 · 52w high \$95\.00 · ATR \$2\.15 · vs the S&P 1M \+3\.2% \/ 3M -1\.1% · 20d avg volume 1\.2M · 5d \+4\.0% · 20d \+13\.8%$/);
     const triggers = modelRow.triggers as string[];
-    expect(triggers).toHaveLength(2);
+    expect(triggers).toHaveLength(3);
     expect(triggers[0]).toMatch(/^Sell if below \$95.* \[id floor-aaa\]$/);
+    // AAA holds nothing of its own but the floor, and its row says so.
+    expect(triggers[1]).toBe("No holding trigger besides the floor.");
     // The analyst's clock has not fired on this stock: no id, nothing a run could name to edit or remove.
-    expect(triggers[1]).toBe("Review every 7 days · inherited");
+    expect(triggers[2]).toBe("Review every 7 days · inherited");
   });
 
   it("a quiet row goes through the builder as one line", async () => {

@@ -8,7 +8,7 @@ Each of these is an ordinary trigger, written one at a time by an analyst or by 
 
 - **The buy.** The price the analyst wants to pay: "Buy if above $401". On a stock we hold it is gone; what we paid is the fill.
 - **The floor.** The sale that caps the loss: "Sell if below $384". A buy needs one; it sizes the trade. There is no minimum reward for taking a trade, and no ratio is computed: the house has no target to measure one against.
-- **A Trim, only where the playbook has one.** "Trim 50% if above $X" at the prior high, its price named by the run that proposes the buy and shown on the proposal; it goes on at the fill as a Trim. Most of the twelve [playbooks](../reference/setups.md) carry none, and that is complete.
+- **A Trim, only where the playbook has one.** "Trim 50% if above $X" at the prior high, put on as a Trim by the run after the fill, by its reference, priced by code from the chart and the buy. Most of the twelve [playbooks](../reference/setups.md) carry none, and that is complete.
 
 There is no separate field for any of them, no second way to write them and no template that stamps them. An agent changes one by its id, the way it changes any trigger.
 

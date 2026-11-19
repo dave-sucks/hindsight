@@ -276,7 +276,9 @@ function triggerLines(row: Row): string[] {
       .filter(Boolean)
       .join(" · ") + (fired ? ` [id ${t.id}]` : "");
   });
-  return [...own, ...inherited];
+  // A holding with nothing of its own beyond the floor, said as a fact.
+  const bare = row.status !== "HOLDING" || row.beyondTheFloor !== 0 ? [] : own.length ? ["No holding trigger besides the floor."] : ["No trigger of its own."];
+  return [...own, ...bare, ...inherited];
 }
 
 function positionLine(row: Row, price: number | null): string | null {

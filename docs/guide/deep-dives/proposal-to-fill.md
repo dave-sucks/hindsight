@@ -42,10 +42,22 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 The thesis moves when the broker accepts the order, not when the fill prints. With approval off, it moves when the fill is seen.
 
-- **A buy** turns Watching into Holding. At the fill, the playbook's watch triggers come off and its holding triggers go on. The buy, the "Stop watching if below" and every trigger written from the playbook's watch triggers come off; a trigger written by hand stays. "Sell if below" goes on at the approved price, and the triggers that came with the buy go on as the analyst named them (its Trim stays a Trim, never a review). A Trade ticket's upside price goes on as a price trigger, as before. Nothing is stamped from the fill price. The stock's playbook's fill triggers go on as Settings → Playbook lists them; a holding with no playbook gets none and inherits the account's review clock. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review trigger set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
+- **A buy** turns Watching into Holding. At the fill, the watch triggers come off and the floor goes on. The buy, the "Stop watching if below" and every trigger written from the playbook's watch triggers come off; a trigger written by hand stays. "Sell if below" goes on at the approved price, written as whoever chose it: the analyst's with its reason, or yours. A Trade ticket's upside price goes on as a price trigger, as before. Nothing else is stamped, from the playbook, the fill price or the horizon: the playbook's other holding triggers are put on by [the run after the fill](#the-run-after-the-fill). With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review trigger set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
 - **A sale** retires the thesis as sold. The exceptions are a profit-take, or one where the agent attested the belief survived: those return to Watching. Only the triggers that need a position come off (a sale, a trim, an add, and any trigger measured from the buy); the rest stay as written, your own and the review clock included, and nothing is added.
 
 When a protective trigger woke the run that sold, the sale is labelled stop or target, whatever the agent wrote. A wrong label would hide the sale from the rules that read it.
+
+## The run after the fill
+
+**Right after buying, a trader decides what would make them sell, take some off, add or look again.** Every buy or add that fills gets one run on that stock, **After the buy**, which does that: an approved proposal, a buy with approval off, an Auto buy or add, and a buy from the Trade ticket alike.
+
+It is sent the trade (what filled, at what price, the floor, the trigger that led to it, and the trade's note) with the stock's row, its data and chart, and its playbook's holding triggers by reference (H1, H2…: the ones that come with the buy, then the ones written at the fill). It puts them on with `edit_triggers`, each by its reference, priced by code from the chart and the buy, with its own reason where it fits one to the stock; it adds its own where the thesis needs one, a price from the chart as a key, and says why it left any off. On an add it changes only what the add changes. It leaves the floor as it is. It can't trade.
+
+The trade's note is written once. A proposal you approved already carries the analyst's note, so this run writes none. An Auto buy or add sent at once (approval off) has none yet: this run writes it, and it becomes the trade's reason (the trigger run that made the trade doesn't write it up too).
+
+If the run fails, the floor still stands, and the stock's row says plainly when a holding has no trigger besides its floor, so the next run sees it.
+
+<!-- asset: context after_buy -->
 
 ## Meanwhile
 
@@ -67,7 +79,10 @@ A sale waiting for you is yours to answer, so no agent proposes it again or argu
 `lib/inngest/functions/reconcile-orders.ts` (`applyFillByIntent`, `restampThesisEntryOnFill`) and `lib/inngest/functions/proposal-expiry.ts`. Decline versus lapse: `lib/agent/declined-sale.ts` (`REJECTED` versus `EXPIRED`, seven-day window, protective sales only).
 
 #### Thesis flips
-`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the playbook's triggers that come with the buy are written there, from the chart: `withTheBuyTriggers`, `lib/proposals/fill-chart.ts`), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
+`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the watch triggers off, the floor and stop when buying on), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
+
+#### After the buy
+`lib/proposals/after-buy.ts`: the event `app/buy.filled`, sent once a buy or an add fills (`place_trade` and `add` on an immediate fill, `reconcile-orders.ts` on a later one), and the trade's facts and message (`loadAfterBuyFacts`, `afterBuyMessage`). `lib/inngest/functions/after-buy-run.ts` runs the agent once per order through the agent runner (`runAgentAsRun`, `lib/agent/engine/run.ts`), as a run of mode `AFTER_BUY`, and puts its note on the order when it wrote one. Its record is `AFTER_BUY` (`lib/agent/engine/agents/after-buy.ts`, `after-buy.md`); its holding triggers are the `holding_triggers` fact (`lib/agent/context/playbooks.ts`). `write_note` is given only when the trade has no note. An Auto buy or add that was sent, not proposed, is written up here (`writtenUpAfterFill` on the trigger run, `tactical-run.ts`).
 
 #### Labels
 `enforceCloseReason` in `lib/agent/triggers/enforce-close-reason.ts`.

@@ -22,6 +22,7 @@
  * history_limit if you need more context.
  */
 
+import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { isNotelessEdit } from "@/lib/agent/no-note";
 import { z } from "zod";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
@@ -548,6 +549,8 @@ export const getTheses = defineTool({
         ...analystOf(t),
         // The stock's own triggers, each as its sentence and id.
         triggers: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).map((x) => triggerForAgent(x)),
+        // A holding's own triggers besides its floor: none is said on its row (row-for-model.ts).
+        ...(t.status === "HOLDING" ? { beyondTheFloor: (Array.isArray(t.triggers) ? (t.triggers as unknown as Trigger[]) : []).filter((x) => !(x.action === "EXIT" && levelSlotOf(x, t.direction) === "FLOOR")).length } : {}),
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
