@@ -8,6 +8,24 @@ researches stocks, generates trade theses, places paper trades
 via Alpaca, tracks performance, and learns from results.
 Built for one user now, marketed later.
 
+## Agents: how they're built (read before touching any agent)
+An agent is five things, each with one home. If a change doesn't fit one of them, the design is wrong.
+- **Instructions:** one file, `lib/agent/engine/agents/<agent>.md`, the same on every run. Shared text comes in only by import (`@rules.md`, `@research-rules.md`). No code writes instruction text.
+- **Context:** facts from the catalog in `lib/agent/context/` (one loader per fact), ticked on the agent's record (`lib/agent/engine/agents/<agent>.ts`). Data, never rules. Bulky or optional data is a tool.
+- **Tools:** one job each, with only the fields the action needs; code fills what it knows. A rule a tool enforces is a refusal in its code that says what to do instead.
+- **Message:** written by whoever starts the run (you, another agent's brief, a trigger fire, a fill, the schedule).
+- **When it runs:** `SCHEDULE` (`lib/agent/engine/schedule.ts`) or an event.
+
+**Never:**
+- choose instruction text in code by a stock's state, the day or a setting (situations are the one existing case, and they are becoming short skills; add nothing to them without the owner);
+- patch a failure with a prompt sentence: find the layer (tool refusal, fact, or the job itself), then measure;
+- put fields, variables or calculations in an agent's text;
+- build agent-specific plumbing (a special loader path, a prompt builder, a flag one run reads);
+- copy a shared rule into one agent;
+- merge a change to what an agent is sent before it is scored: `--inputs-only` first, rescore only the cases whose request changed, 4 runs each.
+
+More context for an agent = a loader for the fact, ticked on its record. A new action = a tool. A new agent = a record, an `.md`, its ticks and a `SCHEDULE` line or event. Full version: `docs/PRINCIPLES.md` and the guide's "How an agent is built". The work is tracked on the Hindsight Roadmap, milestone E.
+
 ## The Trigger Game Plan (shipped 2026-07-12 — read before touching anything trigger/position-related)
 Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
 EXIT/REVIEW) the agents author and maintain. The move from our entry
@@ -159,6 +177,7 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 | You want to... | File |
 |---|---|
 | **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
+| **Build or change an agent (its instructions, context, tools, schedule)** | **"Agents: how they're built" above, then `docs/PRINCIPLES.md`** |
 | Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
