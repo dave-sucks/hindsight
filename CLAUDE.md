@@ -44,7 +44,8 @@ is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_I
 trade with no agent deciding, sized and gated by the tool an agent would call;
 then its own agent, the post-trade write-up, writes it up with no trade tools,
 and its note is the trade's reason (`lib/proposals/auto-writeup.ts`; the agent
-is `lib/agent/engine/agents/post-trade-writeup.ts`);
+is `lib/agent/engine/agents/post-trade-writeup.ts`; an Auto buy or add sent at
+once, with approval off, is written up after its fill by After the buy instead);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
 (`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
 run answers it; never a sell or trim, since a sale can't wait for the morning).
@@ -73,16 +74,23 @@ buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). Th
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
-Triggers are edited one at a time (DAV-242): `update_thesis` takes
-`add_triggers` / `edit_triggers` (by id) / `remove_trigger_ids`; that is the
-only way a trigger changes. **A stock has triggers and nothing else
+Triggers are edited one at a time: `edit_triggers` takes `add`, `edit` (by id)
+and `remove` (by id), each with its reason; that is the only way a trigger
+changes, besides the playbook's watch triggers the Writer's save writes. An
+`add` is one of the stock's playbook triggers by its reference (W1, H2…), or
+one of the agent's own; a price in it is a chart key (`{swingLow}`) or a live
+line (the 50-day average), and code writes today's number from the chart
+(`pricedTemplate`, `lib/agent/knowledge/playbooks.ts`). The Writer, the Holding
+refresh and After the buy never type a price. **A stock has triggers and nothing else
 (2026-11-16):** no plan, no price target of our own ("target" is Wall
 Street's number, the StreetConsensus card), no level fields on any save, and
 no code that stamps a buy, floor, target or review clock: a playbook's lines
-are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook):
-the Writer writes its watch triggers, each marked `playbook: "WATCH"`, and
-the run that proposes the buy names the triggers that come with the buy;
-every price is the agent's, from the chart. "The buy" and "the floor" are names
+are its templates (`lib/agent/knowledge/playbooks.ts`, Settings → Playbook).
+The Writer names the playbook and its save writes the watch triggers, each
+marked `playbook: "WATCH"` and priced by code from the chart; the Writer
+tailors them with `edit_triggers`, a reason each. After a buy, After the buy
+puts on the playbook's holding triggers the same way. Every price is a chart
+key or a live line, never a number typed from memory. "The buy" and "the floor" are names
 for kinds of trigger. **A trigger means what it says, whatever the stock's
 state (2026-11-16):** "Stop watching if below $X" is its own action
 (`STOP_WATCHING`), only on a stock we watch; fired on its saved timing it
@@ -90,16 +98,18 @@ retires the thesis as DROPPED with one Activity line, no run and no approval
 (`lib/agent/triggers/stop-watching.ts`). "Sell if" (`EXIT`) is only on a stock
 we hold; the other is refused with the fix, never converted (`actionProblem`,
 `condition/actions.ts`). The holding's sale comes with the buy: `place_trade`
-takes `sell_if_below` + `sell_reason` and the playbook's other triggers that
-come with the buy as `triggers_with_buy` (its Trim, a review), saved as they
-are on the pending position (`stopLoss`, `buyTriggers`,
-`lib/proposals/buy-triggers.ts`; `targetPrice` stays empty) and shown on the
-card as their sentences; Edit & Approve changes only the sell price. At the
-fill, the playbook's watch triggers come off and its holding triggers go on:
-the buy, the Stop watching triggers and every `playbook: "WATCH"` trigger
-come off, a trigger written by hand stays, "Sell if below" and the triggers
-that came with the buy go on, then the playbook's fill triggers
-(`armHeldLadderOnFill`).
+takes `sell_if_below` + `sell_reason`, or neither, for the playbook's floor
+priced by code from the chart (`priceTheFloor`); either is held to the
+playbook's sale rules (`saleRuleProblem`) and stored on the pending position
+(`stopLoss`, `stopReason`; `targetPrice` stays empty). Edit & Approve changes
+only the sell price. At the fill, `armHeldLadderOnFill` writes only the floor:
+the buy, the Stop watching triggers and every `playbook: "WATCH"` trigger come
+off, a trigger written by hand stays, and "Sell if below" goes on at the
+approved price (with stop when buying, when it is on). The playbook's holding
+triggers are then put on by After the buy, one run after every buy and add fill
+(`lib/proposals/after-buy.ts`, `lib/inngest/functions/after-buy-run.ts`, agent
+`AFTER_BUY`), by reference (H1, H2…) through `edit_triggers`, each fitted to the
+thesis with its reason. It can't touch the floor and can't trade.
 Every op is one line in the Activity feed; a refused
 op comes back by id and the rest of the call lands. The shared core is
 `lib/agent/triggers/ops.ts` — the UI popover and the agent go through it.
@@ -360,7 +370,7 @@ plus `get_stock_data`.
   (largest trade — a STRONG/HIGH conviction buy), `maxPositionTotal` (most
   in one stock — where adding to a winner stops; 0 = twice the largest
   trade). The agent does not size trades: inside a run, `place_trade` and
-  `manage_position(add_to_position)` have no size field at all (the schema
+  `add` have no size field at all (the schema
   is built per caller — `schemaFor` on `defineTool`) and the buy or add is
   sized by risk (`sizeByRisk`: risk dollars ÷ distance to the stop, ×
   conviction, clamped to the band; an add at half the entry's risk). Only
@@ -384,10 +394,11 @@ plus `get_stock_data`.
   DROPPED/SOLD/INVALIDATED/REPLACED) | PROMOTED; `direction` = LONG | SHORT | null.
   Legacy mapping: ACTIVE→HOLDING, direction=PASS→PASSED,
   CLOSED/INVALIDATED/ARCHIVED/SUPERSEDED→RETIRED, direction=PENDING→null.
-  Agent INPUT keeps aliases — `record_thesis(direction:'PASS')` and
-  `update_thesis(change_status:'INVALIDATED'/'ARCHIVED')` are still accepted and
-  translated to the clean stored values; the change_status ACTIVE/CLOSED and
-  direction PENDING inputs were removed.
+  An agent reaches these stored values one tool at a time: `pass_on_stock` lands
+  PASSED; `stop_watching` lands RETIRED (DROPPED); `watch_again` lands WATCHING;
+  a sale lands SOLD. `record_thesis` and `update_thesis` are on no agent's list:
+  code runs them as the Writer's save (`lib/agent/run-thesis-writer.ts`), and
+  they still accept the old verbs.
 - Position — paper position via Alpaca (symbol, direction, avgCost,
   qty, status, closePrice, outcome, agentEvaluation)
 - PositionEvent — position lifecycle log (OPENED, PRICE_CHECK,
@@ -444,7 +455,7 @@ plus `get_stock_data`.
 - /api/stocks/search — Finnhub symbol search
 - /api/inngest — Inngest webhook handler
 
-## Agent Tools — 21 trading tools (lib/agent/tools/)
+NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, an agent calls `watch_stock` (a seed is otherwise minted by the app). To remove, call `stop_watching` (lands status=RETIRED, retiredReason=DROPPED).
 Each tool is defined in its own file using `defineTool()` from
 `lib/agent/define-tool.ts`. The factory wraps execute() in timing/
 logging/try-catch and returns a `ToolResult<T>` envelope with a `ui`
@@ -539,8 +550,9 @@ NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To ad
    my_tool: myTool(newCtx),
    ```
 
-4. **Add to mode allowlist if needed** in `lib/agent/modes.ts`
-   (builder/editor have restricted allowlists; research-run allows all)
+4. **Give it to the agents that get it:** its name in the agent's record
+   `tools` list (`lib/agent/engine/agents/<agent>.ts`). The morning run, the
+   trigger run and chat take theirs from the allowlists in `lib/agent/modes.ts`.
 
 5. **Wire a renderer if `ui` is new** in `components/agent/ToolCallRow.tsx`
    or pick an existing renderer from `components/agent/renderers/`
@@ -573,6 +585,9 @@ a list here goes stale.
   trigger's trade and then writes it up with no trade tools
 ### Agent + Trading
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
+- agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10 AM; Discovery, off
+- after-buy-run.ts — consumes `app/buy.filled`: the After the buy agent on every buy and add fill
+- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
@@ -716,17 +731,16 @@ it with a ticker chip as if it were a traded security.
    Phase 0: Portfolio check-in (injected context, no tools)
    Stage 1 — Orient: get_theses(include_history: true),
      get_portfolio_context, get_market_context, web_search
-   Stage 2 — Per-thesis review: for every active + watching thesis,
-     decide: trigger fired / new evidence → research + update_thesis;
-     scheduled review due → research + update_thesis; nothing changed →
-     update_thesis with REVIEWED-only audit row
-   Stage 3 — Theses: update_thesis is default for held names;
-     record_thesis only for net-new coverage or direction flips
-     (source_kind + source_signal_ids required)
-   Stage 4 — Act: close_position / manage_position for held names that
-     warrant action; place_trade for new entries; update_thesis with
-     change_status='ARCHIVED' to remove from watchlist. Daily run can't
-     ADD to watchlist — that's Discovery's job.
+   Stage 2 — Per-thesis review: for every stock on the work list,
+     decide: trigger fired / new evidence → research + write_note;
+     scheduled review due → research + write_note; nothing changed →
+     write_note with a REVIEWED-only verdict
+   Stage 3 — Theses: write_note and edit_triggers are the default for held
+     names; a stock that needs new research goes to the Writer with
+     dispatch_thesis_research (the run never writes a claim)
+   Stage 4 — Act: sell / add for held names that warrant action;
+     place_trade for new entries; stop_watching to remove from watchlist.
+     Daily run can't ADD to watchlist — that's Discovery's job.
    Stage 5 — Recap: record_run_summary (ranked picks + exposure)
    Stage 6 — Complete: complete_run. Old "blocked until every
      researched ticker has a thesis" gate was relaxed in #205 as a
@@ -734,7 +748,7 @@ it with a ticker chip as if it were a traded security.
      theses + no trades + no summary)
 6. Each tool result streams with a ToolResult envelope (ok, ui, data, sources)
 7. ToolCallGroup groups results by groupId; ToolCallRow dispatches on ui
-8. record_thesis persists Thesis to DB + ThesisCardRenderer shows full card
+8. The Writer's save persists Thesis to DB + ThesisCardRenderer shows full card
 9. place_trade calls Alpaca + creates Position + renders TradeCard
 10. complete_run marks run COMPLETE, triggers briefing agent
 
@@ -767,7 +781,7 @@ it with a ticker chip as if it were a traded security.
 
 **A run summary must match what the run did — check the ACTION, never the prose** (`lib/agent/summary-action-check.ts`, `lib/agent/tools/complete-run.ts`)
 - **The real bug, still real:** the agent decides to sell and never calls `close_position`. Seen 2026-05-20 (EV Catalyst, ON) and three times on 2026-05-22 (Catalyst Event Raider on MRVL+OKTA; Secular Theme on SMTC). `complete_run`'s preflight catches it and refuses before the run goes terminal, so the agent can recover in-conversation.
-- **How it is caught now (DAV-309):** every ranked pick in `record_run_summary` carries a one-word action. For a stock we HOLD, EXIT needs a close or a sale proposal this run, REDUCE needs a trim or close, ADD needs an add. Everything else owes nothing, **including a stop move** — stops move through `update_thesis` since triggers became one-at-a-time edits, and they show in Activity.
+- **How it is caught now (DAV-309):** every ranked pick in `record_run_summary` carries a one-word action. For a stock we HOLD, EXIT needs a close or a sale proposal this run, REDUCE needs a trim or close, ADD needs an add. Everything else owes nothing, **including a stop move** — stops move through `edit_triggers`, one trigger at a time, and they show in Activity.
 - **What it used to do, and why that was wrong:** it read the summary's English for "exit" / "sell" / "tightened" near a ticker. That blocked 11 runs; `close_position` had been called in 8 of them. It fired on negations ("held, not sold"), on descriptions of a trigger ("the trailing exit fired"), on the analyst community ("sell-side tone"), and on stocks we only watch. FIVE on 2026-09-23 had genuinely tightened its stop and was refused twice.
 - **The harm was the rewording, not the blocking.** To finish, analysts made true summaries vaguer: MU 09-02 went from EXIT "Below trail; protect gain" to HOLD "no finalized position change"; SRRK 09-14 from EXIT to HOLD. No money moved, but what Dave reads got less true. If you are tempted to add a word list back, that is the cost.
 - **Credit comes from the `Order`, not the run feed.** `position_closed` RunEvents have not been written since 2026-08-01 — 105 close orders in that window, 64 by an agent, zero events — so anything matching against run events alone will refuse runs that really did sell. An order with intent CLOSE / PARTIAL_CLOSE / ADD since the run started counts, AWAITING_APPROVAL as much as FILLED.
@@ -844,7 +858,7 @@ When you spot something new, file it there — not here.)
 - lib/agent/triggers/types.ts — the Trigger type
 - lib/agent/triggers/evaluate.ts — shouldFire: the condition, a stale quote, the wait
 - lib/agent/triggers/defaults.ts — accountStandingRules() (the account's add prompts)
-- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded, read by `loadPlaybooks`, null when unread); `playbookTriggerText` prints the watch triggers for the Writer and the triggers that come with the buy for a watch's row; the fill writes the triggers written at the fill (`fillTemplateOps`)
+- lib/agent/knowledge/playbooks.ts — each playbook's trigger templates (seed: playbook-templates.ts; an account's list: Account.playbooks once seeded, read by `loadPlaybooks`, null when unread); `playbookTriggerText` prints a playbook's triggers by reference (W1…, H1…) for the Writer, After the buy and a watch's row; `playbookWatchTriggers` writes the watch triggers the Writer's save puts on, `pricedTemplate` prices any one from the chart for `edit_triggers`, and `playbookFloor` prices the floor a buy gets when it names none
 - lib/agent/triggers/enforce-close-reason.ts — the sale-label rule: a close from a protective fire stores STOP/TARGET (auto-corrected + audit note), and with no fire a declared STOP/TARGET is stored MANUAL; THESIS_INVALIDATED stays distinct via belief_survived
 - lib/inngest/functions/trigger-evaluator.ts — 5-min cron + close pass; one catch per trigger, so one it can't read never stops the pass
 - lib/inngest/functions/tactical-run.ts — TACTICAL agent / DIRECT close consumer
