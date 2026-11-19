@@ -27,7 +27,7 @@ export function doItCall(opts: {
 }): DoItCall {
   const { trade, trigger, thesis } = opts;
   const why = autoTradeLine(trigger);
-  // An Auto-buy names no sale: no one chose one, so the holding sells by its analyst's and the account's rules.
+  // An Auto-buy names no sale: place_trade prices the playbook's floor, or refuses the buy when it can't.
   if (trade === "BUY") {
     return {
       tool: "place_trade",

@@ -107,12 +107,14 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −5,706 each, place_trade takes no triggers_with_buy: the fill writes the playbook's triggers that come with the buy, from the chart and the buy.
   // 2026-11-18: −869, the action tools one job each: update_thesis, manage_position and close_position become write_note, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again, sell and add; the trigger shape is sent once, on edit_triggers, each removal with its reason; a note has no length cap.
   // 2026-11-19: +585 each, T1: edit_triggers takes one of the stock's playbook triggers by its reference, and a chart key in a price or a move; its own trigger has no playbook mark.
-  "research-run": 30_536,
+  // 2026-11-19: +78 each, T2: place_trade's sell price is optional; left out, code prices the playbook's floor from the chart.
+  "research-run": 30_614,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
   // 2026-11-19: +585, the same edit_triggers.
-  tactical: 25_851,
+  // 2026-11-19: +78, the same place_trade.
+  tactical: 25_929,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -133,7 +135,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +585, the same edit_triggers.
   // 2026-11-19: −401, the chat's add is #1050's own trigger (its playbook mark kept, no playbook references: it doesn't tailor playbooks) with a key allowed for a price.
   // 2026-11-19: −184, the chat's edit_triggers is #1050's as it was (no chart keys): back to a672's size.
-  principal: 57_115,
+  // 2026-11-19: +78, T2: place_trade's sell price is optional.
+  principal: 57_193,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

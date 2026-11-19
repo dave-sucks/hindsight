@@ -19,6 +19,7 @@ import { CHASE_LIMIT_PCT, PLACEHOLDERS, PLACEHOLDER_NAMES, SETUPS, fillTemplate,
 import type { When } from "@/lib/agent/triggers/condition";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
+import { saleRuleProblem } from "@/lib/agent/position-sizing";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
@@ -205,4 +206,21 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
     else triggers.push({ ...priced.trigger, predicate: asWritten(priced.trigger.predicate as When) });
   }
   return { triggers, notWritten };
+}
+
+/**
+ * The floor a buy gets when it names none: the number of the key its
+ * playbook's floor words name (`sale.under`, ./setups.ts) on today's chart,
+ * held to the playbook's sale rules (saleRuleProblem). Otherwise why not, so
+ * the run names the floor itself. Pure.
+ */
+export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null }): { price: number; key: Placeholder } | { refused: string } {
+  const key = p.setup.sale.under;
+  if (!key) return { refused: "The playbook's floor names no chart key." };
+  const at: FillPrices = { chart: p.chart, buy: p.entry, sale: null };
+  const price = fillValue(key, at);
+  if (price == null) return { refused: `The playbook's floor is ${key} (${PLACEHOLDER_NAMES[key] ?? key}), and ${noNumberWhy(key, at)}.` };
+  if (price >= p.entry) return { refused: `The playbook's floor ${key} is $${price.toFixed(2)}, not under the $${p.entry.toFixed(2)} buy.` };
+  const bad = saleRuleProblem({ setup: p.setup, horizon: p.horizon, entry: p.entry, stop: price, atr: p.atr });
+  return bad ? { refused: `The playbook's floor ${key} at $${price.toFixed(2)} fails its rule: ${bad}.` } : { price, key };
 }

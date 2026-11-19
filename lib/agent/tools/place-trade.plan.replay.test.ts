@@ -97,9 +97,11 @@ async function bought(call: Record<string, unknown>, floor: number | null, targe
 const positionOf = (r: Replay) => (r.db.store.position as Array<Record<string, unknown>>)[0];
 
 describe("ANET 08-20: the trigger run's buy", () => {
-  it("the call as sent on 08-20 names no sale, so the schema hands it back and nothing is bought", async () => {
+  it("the call as sent on 08-20 names no sale: no floor can be priced for ANET, so the buy is refused, asking for one, and nothing is bought", async () => {
     const { buy } = await sentVerbatim(entry.call, 175.99);
-    expect(buy).toBeUndefined();
+    expect(buy?.refused).toBe(true);
+    expect(buy?.refusal?.message).toMatch(/Name the floor \(sell_if_below\) under structure on the chart, with its reason\.$/);
+    expect(buy?.db.store.position ?? []).toHaveLength(0);
   });
 
   it("the same call with its sale: the pending position holds $175.99 and its reason, and the size reads it", async () => {

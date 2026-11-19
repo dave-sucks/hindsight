@@ -47,6 +47,7 @@ export function applySetupOverride(setup: Setup, o: SetupOverride | undefined): 
   return {
     ...setup,
     sale: {
+      ...setup.sale,
       maxPct: o.stopMaxPct !== undefined ? o.stopMaxPct : setup.sale.maxPct,
       minAtr: o.minAtr ?? setup.sale.minAtr,
     },

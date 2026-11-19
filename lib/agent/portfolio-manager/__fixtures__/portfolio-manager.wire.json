@@ -680,14 +680,14 @@
          ]
         },
         "sell_if_below": {
+         "description": "The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). Leave it out for the playbook's floor, which code prices from today's chart; name one, under structure on the chart and never a round number, when the playbook has none or you see a better one. The owner sees it on the proposal and can change it.",
          "type": "number",
-         "exclusiveMinimum": 0,
-         "description": "The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in playbook_checks), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."
+         "exclusiveMinimum": 0
         },
         "sell_reason": {
+         "description": "Why the sell price sits there, in one sentence: the structure it is under. Required with sell_if_below; it becomes the note on the holding's \"Sell if below\" trigger.",
          "type": "string",
-         "minLength": 1,
-         "description": "Why the sell price sits there, in one sentence: the structure it is under. It becomes the note on the holding's \"Sell if below\" trigger."
+         "minLength": 1
         },
         "thesis_id": {
          "type": "string",
@@ -697,8 +697,6 @@
        "required": [
         "ticker",
         "direction",
-        "sell_if_below",
-        "sell_reason",
         "thesis_id"
        ],
        "additionalProperties": false
@@ -1533,14 +1531,14 @@
           ]
          },
          "sell_if_below": {
+          "description": "The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). Leave it out for the playbook's floor, which code prices from today's chart; name one, under structure on the chart and never a round number, when the playbook has none or you see a better one. The owner sees it on the proposal and can change it.",
           "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in playbook_checks), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."
+          "exclusiveMinimum": 0
          },
          "sell_reason": {
+          "description": "Why the sell price sits there, in one sentence: the structure it is under. Required with sell_if_below; it becomes the note on the holding's \"Sell if below\" trigger.",
           "type": "string",
-          "minLength": 1,
-          "description": "Why the sell price sits there, in one sentence: the structure it is under. It becomes the note on the holding's \"Sell if below\" trigger."
+          "minLength": 1
          },
          "thesis_id": {
           "type": "string",
@@ -1550,8 +1548,6 @@
         "required": [
          "ticker",
          "direction",
-         "sell_if_below",
-         "sell_reason",
          "thesis_id"
         ],
         "additionalProperties": false

@@ -49,15 +49,7 @@ When a protective trigger woke the run that sold, the sale is labelled stop or t
 
 ## The run after the fill
 
-**Right after buying, a trader decides what would make them sell, take some off, add or look again.** Every buy or add that fills gets one run on that stock, **After the buy**, which does that: an approved proposal, a buy with approval off, an Auto buy or add, and a buy from the Trade ticket alike.
-
-It is sent the trade (what filled, at what price, the floor, the trigger that led to it, and the trade's note) with the stock's row, its data and chart, and its playbook's holding triggers by reference (H1, H2…: the ones that come with the buy, then the ones written at the fill). It puts them on with `edit_triggers`, each by its reference, priced by code from the chart and the buy, with its own reason where it fits one to the stock; it adds its own where the thesis needs one, a price from the chart as a key, and says why it left any off. On an add it changes only what the add changes. It leaves the floor as it is. It can't trade.
-
-The trade's note is written once. A proposal you approved already carries the analyst's note, so this run writes none. An Auto buy or add sent at once (approval off) has none yet: this run writes it, and it becomes the trade's reason (the trigger run that made the trade doesn't write it up too).
-
-If the run fails, the floor still stands, and the stock's row says plainly when a holding has no trigger besides its floor, so the next run sees it.
-
-<!-- asset: context after_buy -->
+Every buy or add that fills gets one run on that stock, [After the buy](../agents/after-the-buy.md): it puts the playbook's holding triggers on by reference, each fitted to the thesis with its reason, and writes the trade's note when nobody has. It can't trade. If it fails, the floor still stands.
 
 ## Meanwhile
 
@@ -82,7 +74,7 @@ A sale waiting for you is yours to answer, so no agent proposes it again or argu
 `lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the watch triggers off, the floor and stop when buying on), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
 
 #### After the buy
-`lib/proposals/after-buy.ts`: the event `app/buy.filled`, sent once a buy or an add fills (`place_trade` and `add` on an immediate fill, `reconcile-orders.ts` on a later one), and the trade's facts and message (`loadAfterBuyFacts`, `afterBuyMessage`). `lib/inngest/functions/after-buy-run.ts` runs the agent once per order through the agent runner (`runAgentAsRun`, `lib/agent/engine/run.ts`), as a run of mode `AFTER_BUY`, and puts its note on the order when it wrote one. Its record is `AFTER_BUY` (`lib/agent/engine/agents/after-buy.ts`, `after-buy.md`); its holding triggers are the `holding_triggers` fact (`lib/agent/context/playbooks.ts`). `write_note` is given only when the trade has no note. An Auto buy or add that was sent, not proposed, is written up here (`writtenUpAfterFill` on the trigger run, `tactical-run.ts`).
+`lib/proposals/after-buy.ts` sends `app/buy.filled` from every buy and add fill; [After the buy](../agents/after-the-buy.md) has the rest.
 
 #### Labels
 `enforceCloseReason` in `lib/agent/triggers/enforce-close-reason.ts`.

@@ -46,8 +46,20 @@ describe("the setup catalog", () => {
     for (const s of SETUPS) {
       expect(Object.keys(s).filter((k) => ["stop", "target", "trail", "time", "manage"].includes(k))).toEqual([]);
       expect("template" in s.entry || "text" in s.entry).toBe(false);
-      expect(Object.keys(s.sale)).toEqual(["maxPct", "minAtr"]);
+      expect(Object.keys(s.sale).filter((k) => k !== "under")).toEqual(["maxPct", "minAtr"]);
     }
+  });
+
+  // The floor a buy gets when it names none (playbookFloor): its key is the one the floor's own words name, or none.
+  const WORDS: Record<string, RegExp> = { "{swingLow}": /swing low/, "{baseLow}": /base's low/, "{gapDayLow}": /gap day's low/ };
+  it("prices the floor only from a key its own words name", () => {
+    const keyed = SETUPS.flatMap((s) => {
+      const floor = s.triggers.find((t) => t.action === "EXIT" && JSON.stringify(t.predicate).includes("{sellPrice}"));
+      if (s.sale.under) expect([s.id, WORDS[s.sale.under]?.test(floor?.rationale ?? "")]).toEqual([s.id, true]);
+      else expect([s.id, Object.values(WORDS).some((w) => w.test(floor?.rationale ?? ""))]).toEqual([s.id, false]);
+      return s.sale.under ? [`${s.id} ${s.sale.under}`] : [];
+    });
+    expect(keyed).toEqual(["BASE_BREAKOUT {baseLow}", "EPISODIC_PIVOT {gapDayLow}", "PEAD {gapDayLow}", "MA_PULLBACK {swingLow}", "PRE_CATALYST {swingLow}", "COMPOUNDER_ACCUMULATION {swingLow}"]);
   });
 
   it("every SCREEN names the ENTRY setups it is entered through", () => {

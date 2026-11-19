@@ -126,8 +126,11 @@ export interface Setup {
      */
     windowDays?: [number, number];
   };
-  /** The sell price's numbers, read on the sell price a buy names (saleRuleProblem): the widest from the buy price, %, on a TRADE (null = no cap), and the closest, in ATR(14). */
-  sale: { maxPct: number | null; minAtr: number };
+  /**
+   * The sell price's numbers, read on the sell price a buy names (saleRuleProblem): the widest from the buy price, %, on a TRADE (null = no cap), and the closest, in ATR(14).
+   * `under`: the chart key the floor's own words name, which prices the floor when a buy names none (playbookFloor); none when the words name no key.
+   */
+  sale: { maxPct: number | null; minAtr: number; under?: Placeholder };
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
   sizing: string;
@@ -316,7 +319,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
-    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR, under: "{baseLow}" },
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: [
@@ -366,7 +369,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
-    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR, under: "{gapDayLow}" },
     riskMultiplier: 1,
     sizing: "Sized by risk; a wide gap-day low means fewer shares.",
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
@@ -392,7 +395,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       chaseLimitPct: PEAD_MAX_RUN_PAST_GAP_PCT,
       windowDays: PEAD_ENTRY_WINDOW,
     },
-    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR, under: "{gapDayLow}" },
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: [
@@ -421,7 +424,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
-    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR, under: "{swingLow}" },
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
@@ -491,7 +494,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
-    sale: { maxPct: null, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR, under: "{swingLow}" },
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk. If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
@@ -557,7 +560,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       confirmation: ["Thesis intact; volume matters less than for a trade", "A stock at new highs on a working thesis is working, not extended"],
       chaseLimitPct: null,
     },
-    sale: { maxPct: COMPOUNDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
+    sale: { maxPct: COMPOUNDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR, under: "{swingLow}" },
     riskMultiplier: 1,
     sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],

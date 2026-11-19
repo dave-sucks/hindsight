@@ -6,9 +6,10 @@
  * 2026-10-21; it asked the analyst, who passed. Here it is an Auto-buy.
  * CORT (Catalyst Event PM, watched): a buy at $126.38 and a target, no floor.
  *
- * An Auto-buy names no sale (2026-11-16): no one chose one, and a watch's line ends the watch, never
- * sells. So it is sized from the analyst's band by conviction, and the holding sells by its analyst's
- * and the account's rules.
+ * An Auto-buy names no sale: no one chose one, and a watch's line ends the watch, never sells. Since
+ * 2026-11-19 it gets its playbook's floor, priced from the chart then and held to the playbook's sale
+ * rules (playbookFloor): TRV's base low, CORT's swing low, each chart as a run read it that week
+ * (TRV's 10-21 trigger run, CORT's 10-22 morning run). With none it is refused, and says so.
  * IOT (PEAD Specialist, held 300 @ $42.695, LIVE): an Auto-trim.
  */
 import { replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type Replay } from "@/lib/replay";
@@ -46,16 +47,28 @@ const IOT = {
 };
 const IOT_POSITION = positionRow({ id: "cmv9m90g0000a06l3zv45o24s", symbol: "IOT", analystId: PEAD.id, environment: "LIVE", quantity: 300, initialQty: 300, avgCost: 42.695, peakPrice: 43.62, stopLoss: 41.42, targetPrice: 47 });
 
+/** TRV's chart as its 10-21 trigger run read it, CORT's as the 10-22 morning run read it (get_stock_data), with each one's ATR. */
+const CHARTS: Record<string, { chart: Record<string, unknown>; atr: number }> = {
+  TRV: { atr: 7.78, chart: { price: 398.95, swings: { lastHigh: { price: 383.99, date: "2026-09-14" }, lastLow: { price: 353.79, date: "2026-10-01" } }, base: { pivot: 398.7, low: 341.52 }, range: { high20: 399.71, low20: 353.79, high52w: 399.71, low52w: 264.25 }, gaps: [{ date: "2026-10-16", direction: "DOWN", pct: -3.62, volumeRatio: 2.56, low: 368.63, mid: 379.77, high: 390.91 }] } },
+  CORT: { atr: 4.83, chart: { price: 116.28, swings: { lastHigh: { price: 122.81, date: "2026-10-13" }, lastLow: { price: 108.41, date: "2026-09-18" } }, base: { pivot: 126.38, low: 107.79 }, range: { high20: 122.81, low20: 107.79, high52w: 126.38, low52w: 28.66 }, gaps: [] } },
+};
+
 const analystCtx = (a: typeof SECULAR) => ({ analystId: a.id, runMode: "INTRADAY_TACTICAL", runEnvironment: "LIVE", minPositionSize: a.minPositionSize, maxPositionSize: a.maxPositionSize, maxPositionTotal: a.maxPositionTotal, maxOpenPositions: a.maxOpenPositions });
 
-async function buy(stock: typeof TRV, analyst: typeof SECULAR, price: number, extra: Record<string, unknown> = {}): Promise<Replay> {
+async function buy(stock: typeof TRV, analyst: typeof SECULAR, price: number, extra: Record<string, unknown> = {}, chart: boolean = true): Promise<Replay> {
   const call = doItCall({ trade: "BUY", trigger: stock.triggers[0] as Trigger, thesis: stock, price });
   expect(call.tool).toBe("place_trade");
+  const c = CHARTS[stock.ticker];
   return replayTool("place-trade", "placeTrade", {
     seed: { thesis: [thesisRow(stock)], agentConfig: [agentConfigRow({ ...analyst, tradingEnvironment: "LIVE" })], account: [APPROVALS] },
     args: call.args,
     ctx: { ...analystCtx(analyst), ...extra },
     quotes: { [stock.ticker]: price },
+    // The chart and ATR the floor is priced from; `chart: false` is a chart that can't be read.
+    mocks: {
+      "@/lib/proposals/fill-chart": () => ({ loadFillChart: async () => (chart ? c?.chart ?? null : null) }),
+      "@/lib/market-data/load-indicators": () => ({ loadIndicatorSnapshots: async () => new Map(c ? [[stock.ticker, { atr14: c.atr }]] : []) }),
+    },
   });
 }
 
@@ -76,10 +89,10 @@ describe("TRV: an Auto-buy", () => {
     expect(cost).toBeLessThanOrEqual(SECULAR.maxPositionSize);
     // The reason is the trigger's line alone (the write-up replaces it); the sizing is in the reply.
     expect(orderOf(doIt)?.rationale).toBe('Your "Buy if above $398.70 · only on the close" came true. It\'s set to Auto-buy.');
-    // No sale came with it, so the band by conviction sizes it (HIGH: the $10,000 largest trade), and the watch's $382.40 line is not the sale.
-    expect(orderOf(doIt)?.quantity).toBe(25);
-    expect((doIt.result.data?.sizing as string[]).join(" ")).toContain("Sized from the analyst's band by conviction ($10,000) — no sell price came with the buy");
-    expect(doIt.db.store.position?.[0]).toMatchObject({ stopLoss: null, stopReason: null });
+    // Its floor is the base breakout's {baseLow}, $341.52 (14.4% under; the 8% cap is a TRADE's), sized by risk to it.
+    // The watch's $382.40 line is not the sale, and the floor is the playbook's, so it has no analyst's reason.
+    expect(doIt.db.store.position?.[0]).toMatchObject({ stopLoss: 341.52, stopReason: null });
+    expect((doIt.result.data?.sizing as string[]).join(" ")).toContain("$57.43 to the stop");
   });
 
   it("is refused cleanly when the cash doesn't cover it, and nothing is written", async () => {
@@ -99,10 +112,28 @@ describe("TRV: an Auto-buy", () => {
 });
 
 describe("CORT: an Auto-buy on a watch with no floor", () => {
-  it("is proposed like any Auto-buy: the stock's lines were never its sale", async () => {
+  it("is proposed with its playbook's floor, the run-up's {swingLow} $108.41: the stock's lines were never its sale", async () => {
     const r = await buy(CORT as unknown as typeof TRV, CATALYST, 126.5, { payFromCash: 50_000 });
     expect(r.refused).toBe(false);
     expect(orderOf(r)).toMatchObject({ status: "AWAITING_APPROVAL", intent: "OPEN", thesisId: CORT.id });
+    expect(r.db.store.position?.[0]).toMatchObject({ stopLoss: 108.41, stopReason: null });
+  });
+});
+
+describe("an Auto-buy whose floor can't be priced is refused, and the refusal is its Activity line", () => {
+  it("TRV with a chart that can't be read", async () => {
+    const r = await buy(TRV, SECULAR, 398.95, { payFromCash: 50_000 }, false);
+    expect(r.refused).toBe(true);
+    expect(r.refusal?.message).toBe("Trade blocked: The playbook's floor is {baseLow} (the base's low), and the chart couldn't be read. Name the floor (sell_if_below) under structure on the chart, with its reason.");
+    expect(r.db.store.position ?? []).toHaveLength(0);
+    expect(r.db.store.order ?? []).toHaveLength(0);
+    expect(r.db.store.gateRejection?.[0]).toMatchObject({ tool: "place_trade", ticker: "TRV" });
+  });
+
+  it("TRV on a playbook whose floor words name no key (a flag's buy-day low)", async () => {
+    const r = await buy({ ...TRV, setupId: "MOMENTUM_FLAG" }, SECULAR, 398.95, { payFromCash: 50_000 });
+    expect(r.refusal?.message).toMatch(/^Trade blocked: The playbook's floor names no chart key\. Name the floor \(sell_if_below\)/);
+    expect(r.db.store.order ?? []).toHaveLength(0);
   });
 });
 

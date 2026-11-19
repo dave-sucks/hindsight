@@ -16,7 +16,7 @@ The shares are that risk divided by the distance from the entry to the floor. Wi
 
 With [stop when buying](../concepts/triggers.md) on, the distance is the wider of the stock's floor and the setting's line, because the sale floor will sit on that line. A 4% plan floor with an 8% setting is sized like an 8% stop, and the agent is told so (`sizingStop` in `lib/agent/position-sizing.ts`, for buys and adds).
 
-Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest, and never over its most in one stock, so a first buy always leaves the room the rule-sized adds need. The agent is told which limit moved it and what the risk alone had asked for. If there is no usable floor or no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the agent is told why. An add risks half the shares a new buy would get.
+Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest, and never over its most in one stock, so a first buy always leaves the room the rule-sized adds need. The agent is told which limit moved it and what the risk alone had asked for. Every buy has a floor (named by the analyst, or the playbook's priced from the chart, or the buy is refused); with no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the agent is told why. An add risks half the shares a new buy would get.
 
 ## Who picks the size
 

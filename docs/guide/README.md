@@ -24,7 +24,7 @@ The folders match the sidebar:
 1. **[Discovery](agents/discovery.md)** finds a stock that fits an [analyst](concepts/analysts.md): CRWD beat, raised its year and held the gap. Or you ask for research in [chat](agents/chat.md), or add the stock to the watchlist yourself.
 2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and its [triggers](concepts/triggers.md): a buy and a floor. The stock goes on the watchlist as Watching.
 3. **The trigger check** watches its triggers every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
-4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, its floor guards it, and one run puts on its holding triggers ([After the buy](deep-dives/proposal-to-fill.md#the-run-after-the-fill)).
+4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, its floor guards it, and one run puts on its holding triggers ([After the buy](agents/after-the-buy.md)).
 5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, your notes.
 6. **A sale fires**, or a run decides to sell: another proposal. Declined or left to expire, it asks the analyst again each day the price stays past the line: the analyst proposes the sale again or says why it holds. Only you can lower the floor.
 7. **The sale goes through** and the thesis is retired as sold, or goes back to Watching after a profit-take. A retired stock gets one look back within two weeks: watch it again, or let it go.
@@ -44,6 +44,7 @@ Every agent doc has the same five sections, in the same order: **What it does** 
 - **[The Writer](agents/writer.md):** researches one stock in depth and writes its thesis and its first triggers.
 - **[Morning runs](agents/morning-runs.md):** every weekday morning, each analyst reviews its whole book.
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
+- **[After the buy](agents/after-the-buy.md):** minutes after a buy or an add fills, puts the playbook's holding triggers on the stock, fitted to the thesis.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
 - **[The Portfolio Digest](agents/portfolio-digest.md):** at 8 PM, your account's day, written from one snapshot of your portfolio.
 - **[Portfolio Manager](agents/portfolio-manager.md):** twice a week, reads the whole account and decides where the money belongs.

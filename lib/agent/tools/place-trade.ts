@@ -10,6 +10,8 @@ import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { getSetup, isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { loadFillChart } from "@/lib/proposals/fill-chart";
+import { playbookFloor } from "@/lib/agent/knowledge/playbooks";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -106,16 +108,29 @@ const placeTradeSchema = z.object({
 
 /**
  * The holding's sale comes with the buy: "Sell if below $X" is written at the fill from this price (or the
- * one the owner approves), never from a line the stock carried as a watch. It also sizes the buy.
+ * one the owner approves), never from a line the stock carried as a watch. It also sizes the buy. Left
+ * out, the playbook's floor is priced from the chart (playbookFloor), or the buy is refused.
  */
 const withSale = <T extends z.ZodObject>(schema: T) =>
   schema.extend({
     sell_if_below: z
       .number()
       .positive()
-      .describe("The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). The playbook's \"Sell if below\" trigger (in playbook_checks), under structure on the chart, never a round number. The owner sees it on the proposal and can change it."),
-    sell_reason: z.string().min(1).describe("Why the sell price sits there, in one sentence: the structure it is under. It becomes the note on the holding's \"Sell if below\" trigger."),
+      .optional()
+      .describe("The holding's sell price: once bought, it sells below this price (a SHORT covers above it). It sizes the buy (the risk ÷ the distance to it). Leave it out for the playbook's floor, which code prices from today's chart; name one, under structure on the chart and never a round number, when the playbook has none or you see a better one. The owner sees it on the proposal and can change it."),
+    sell_reason: z.string().min(1).optional().describe("Why the sell price sits there, in one sentence: the structure it is under. Required with sell_if_below; it becomes the note on the holding's \"Sell if below\" trigger."),
   });
+
+/** A buy's default floor: its thesis's playbook key on today's chart (playbookFloor). A short's cover has no key. */
+async function priceTheFloor(a: { thesisId: string; ticker: string; entry: number; direction: string; accountId: string }): Promise<{ price: number } | { refused: string }> {
+  if (a.direction !== "LONG") return { refused: "A short's cover price has no playbook key." };
+  const thesis = await prisma.thesis.findUnique({ where: { id: a.thesisId }, select: { setupId: true, horizon: true } });
+  const setup = thesis?.setupId ? getSetup(thesis.setupId, await loadSetupOverrides(a.accountId)) : undefined;
+  if (!setup) return { refused: `$${a.ticker} has no playbook, so there is no floor to price.` };
+  const [chart, snapshots] = await Promise.all([loadFillChart(a.ticker), loadIndicatorSnapshots([a.ticker]).catch(() => null)]);
+  const atr = snapshots?.get(a.ticker)?.atr14 ?? null;
+  return playbookFloor({ setup, horizon: thesis?.horizon ?? null, entry: a.entry, chart, atr: atr != null ? Math.round(atr * 100) / 100 : null });
+}
 
 export const placeTrade = defineTool({
   description:
@@ -355,14 +370,22 @@ export const placeTrade = defineTool({
       }
 
       // ── Guardrail 3: the sale against entry_price and the live price ──
-      // The holding's sale is the price this call names (sell_if_below), not a
-      // line on the thesis: a watch's lines end the watch and never sell. For
-      // a LONG it sits BELOW the price and for a SHORT above it; one already
-      // crossed would sell on the first trigger check after the fill. Only an
-      // Auto-buy, which no model writes, comes without one: it sells by the
-      // analyst's and the account's rules alone. Quote failure skips the live
-      // check (the entry check is the static fallback).
-      const stop: number | null = args.sell_if_below != null && args.sell_if_below > 0 ? args.sell_if_below : null;
+      // The holding's sale is the price this call names (sell_if_below), or the
+      // playbook's floor priced from the chart, never a line on the thesis: a
+      // watch's lines end the watch and never sell. For a LONG it sits BELOW the
+      // price and for a SHORT above it; one already crossed would sell on the
+      // first trigger check after the fill. Quote failure skips the live check
+      // (the entry check is the static fallback).
+      let stop: number | null = args.sell_if_below != null && args.sell_if_below > 0 ? args.sell_if_below : null;
+      if (stop != null && !args.sell_reason?.trim()) {
+        return blocked(ticker, args.direction, "the sell price has no reason", `Trade blocked: sell_if_below $${stop.toFixed(2)} needs its sell_reason, the structure it sits under, in one sentence. Send both, or leave sell_if_below out for the playbook's floor.`);
+      }
+      // None named: the playbook's floor, priced from today's chart and held to its sale rules; else the run names it.
+      if (stop == null) {
+        const floor = await priceTheFloor({ thesisId: args.thesis_id, ticker, entry: args.entry_price, direction: args.direction, accountId: ctx.accountId });
+        if ("refused" in floor) return blocked(ticker, args.direction, "no floor", `Trade blocked: ${floor.refused} Name the floor (sell_if_below) under structure on the chart, with its reason.`);
+        stop = floor.price;
+      }
       if (stop != null) {
         let livePrice: number | null = null;
         try {

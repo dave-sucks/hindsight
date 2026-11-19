@@ -26,6 +26,7 @@ export type DocSlug =
   | "writer"
   | "morning-runs"
   | "trigger-runs"
+  | "after-the-buy"
   | "market-reviewer"
   | "chat"
   | "portfolio-digest"
@@ -60,6 +61,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, blurb: "Researches one stock in depth and writes its thesis, plan and all." },
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "On its run days, each analyst reads its whole book and answers every stock in a situation." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
+  { slug: "after-the-buy", title: "After the buy", group: "Agents", icon: CheckCircle2, blurb: "Minutes after a buy or an add fills, puts the playbook's holding triggers on the stock, fitted to the thesis." },
   { slug: "market-reviewer", title: "Market Reviewer", group: "Agents", icon: Newspaper, blurb: "Every weekday at 7:30, researches the market itself and writes the market digest and notes on the stocks it touches." },
   { slug: "chat", title: "Chat", group: "Agents", icon: MessageCircle, blurb: "Talk to one analyst, or to the whole account." },
   { slug: "portfolio-digest", title: "The Portfolio Digest", group: "Agents", icon: FileText, blurb: "At 8 PM, your account's day, written from one snapshot of your portfolio." },
