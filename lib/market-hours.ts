@@ -286,6 +286,19 @@ function etWallClock(ymd: string, hour: number, minute: number): Date {
   return new Date(`${ymd}T${String(hour + 5).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
 }
 
+/**
+ * How far into today's session `now` is: the minutes since the 9:30 bell (0 before it, the whole
+ * session after the close) and the session's length (390, or 210 on a half day). Null on a day with
+ * no session. A count of today's volume is that many minutes of trading, not a day's.
+ */
+export function sessionProgress(now: Date = new Date()): { minutes: number; total: number } | null {
+  if (!isTradingDay(now)) return null;
+  const ymd = now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const open = sessionOpenAt(ymd).getTime();
+  const total = Math.round((sessionCloseAt(ymd).getTime() - open) / 60_000);
+  return { minutes: Math.min(total, Math.max(0, Math.floor((now.getTime() - open) / 60_000))), total };
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {

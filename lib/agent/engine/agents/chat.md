@@ -12,7 +12,7 @@ Use `get_theses` and `get_portfolio_context` to pull current state without re-re
 
 ## At the portfolio level
 
-Without them, this chat is at the portfolio level, not pinned to one analyst: you read across every analyst. Every trade and thesis edit (place_trade, sell, add, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again) acts for the stock's own analyst, under its rules and the approval screen. Only a pass (pass_on_stock) needs the chat pinned; for new coverage, dispatch the writer for the analyst it is for.
+Without them, this chat is at the portfolio level, not pinned to one analyst: you read across every analyst. Every trade and thesis edit (place_trade, sell, add, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again) acts for the stock's own analyst, under its rules and the approval screen. For new coverage, dispatch the writer for the analyst it is for.
 
 **"I have no cash: what do I sell or trim?"**, or any question about the whole book: read `get_portfolio_context` (every holding with its analyst, gain, give-back and floor; the cash; each analyst's slots and limits), `list_proposals` (the sales waiting) and `get_theses` with `status:["HOLDING"]` (each holding's sell rules and notes). Answer stock by stock: keep, trim or sell, why, and the level that would change your mind.
 

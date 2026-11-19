@@ -36,6 +36,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import type { EarningsResponse } from "@/lib/types/thesis-sheet";
+import { thesisToShow } from "@/lib/thesis-status";
 import { ExternalLink } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -172,9 +173,9 @@ export default async function StockDetailPage({ params }: Props) {
   // The open position, for the chart's entry line.
   const open = positions.find((p) => p.status === "OPEN") ?? null;
 
-  // The live thesis on the stock, newest first: the page shows its view. A
-  // stock with none shows the company, the street and Hindsight's history.
-  const live = theses.find((t) => t.status === "HOLDING" || t.status === "WATCHING" || t.status === "PROMOTED") ?? null;
+  // The live thesis, else the newest as history (thesisToShow). A stock never
+  // researched shows the company, the street and Hindsight's history.
+  const thesis = thesisToShow(theses);
 
   const news = (
     <Suspense fallback={<Skeleton className="h-40 w-full rounded-lg" />}>
@@ -206,7 +207,7 @@ export default async function StockDetailPage({ params }: Props) {
     />
   );
 
-  // No live thesis: the trades we made in it, Wall Street and the earnings
+  // No thesis: the trades we made in it, Wall Street and the earnings
   // record.
   const sidebar = (
     <>
@@ -237,17 +238,18 @@ export default async function StockDetailPage({ params }: Props) {
     <div data-surface="paper">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         <LiveRefresh />
-        {/* The same header the trade page and the sheet render: with a live
+        {/* The same header the trade page and the sheet render: with a
             thesis, its status and conviction beside the name. href={null}:
             we're already on the stock page. */}
         <div className="mb-3">
-          {live ? (
+          {thesis ? (
             <ThesisHeader
               ticker={upperSymbol}
-              status={live.status}
-              agentWatchDays={agentWatchDays(live.triggers)}
-              analystId={live.researchRun?.agentConfigId ?? null}
-              thesisId={live.id}
+              status={thesis.status}
+              agentWatchDays={agentWatchDays(thesis.triggers)}
+              retiredReason={thesis.retiredReason}
+              analystId={thesis.researchRun?.agentConfigId ?? null}
+              thesisId={thesis.id}
               extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}
             />
           ) : (
@@ -267,12 +269,12 @@ export default async function StockDetailPage({ params }: Props) {
           )}
         </div>
 
-        {live ? (
+        {thesis ? (
           // The stock, not the trade: the thesis's view with no plan on the
           // Overview, no Activity tab, every trade on the stock under
           // Transactions, and the stock's Financials and News after.
           <ThesisPageBody
-            thesisId={live.id}
+            thesisId={thesis.id}
             ticker={upperSymbol}
             displayName={identity.companyName}
             stockHref={null}

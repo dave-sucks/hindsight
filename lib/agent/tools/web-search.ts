@@ -72,7 +72,20 @@ export const webSearch = defineTool({
 
     // Room for the whole reply: at Sonar's default 1,024 tokens the JSON was cut off,
     // failed to parse and came back as no results (IOT, NVDA, SMCI on 2026-10-20).
-    const sonarResult = await searchSignals(query, { recency, model: "sonar", maxTokens: SEARCH_REPLY_TOKENS });
+    let sonarResult: Awaited<ReturnType<typeof searchSignals>>;
+    try {
+      sonarResult = await searchSignals(query, { recency, model: "sonar", maxTokens: SEARCH_REPLY_TOKENS });
+    } catch (err) {
+      // A failed search is not "nothing found" (the V write-up, 2026-11-19), and it spends nothing.
+      if (stockSearch) searched.delete(stock);
+      else liveSearchCounts.set(ctx.runId, count);
+      const reason = err instanceof Error && err.message ? err.message : "the search service didn't answer";
+      return {
+        summary: `The search failed (${reason}), so nothing was checked. Try again (a shorter query helps), or say you couldn't check.`,
+        data: { query, failed: true, reason, budgetUsed: count, budgetMax: budget, results: [] },
+        sources: [],
+      };
+    }
 
     const results: SignalItem[] = sonarResult.signals.map((s) => ({
       headline: s.headline,
