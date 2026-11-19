@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
-import { isFile, isShared, providerToolNames, readsOf, sharedOf, SHARED_FILES, type AgentRecord, type ContextId, type SharedFile } from "@/lib/agent/engine/types";
-import { instructionText } from "@/lib/agent/engine/instructions";
+import { CONTEXT, IMPORTED } from "@/lib/agent/engine/parts";
+import { ownFile, providerToolNames, readsOf, isFile, type AgentRecord, type ContextId } from "@/lib/agent/engine/types";
+import { importsOf, instructionSections } from "@/lib/agent/engine/instructions";
 import { whenItRuns } from "@/lib/agent/engine/schedule";
 import { DocsNav } from "../docs-nav";
 
@@ -23,7 +23,7 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Agents</h1>
         <p className="text-sm text-muted-foreground">
-          An agent is its instructions, its context and its tools. Its instructions are its own text and the shared texts it uses. Its context is what it is handed when it starts: the facts in its first message, after a line with the date and the account. Then comes its message, the run&rsquo;s task, written by whoever starts it. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
+          An agent is its instructions, its context and its tools. Its instructions are one file of its own, the same on every run; every agent that writes for you imports the rules (the house rules and how you write) into it, and the Writer the research rules too. Its context is the facts about what its run is about (the account, an analyst, a thesis or the chat), read for each run: most in its first message, after a line with the date and the account, and a few sent with its instructions where they were measured. Then comes its message, the run&rsquo;s task, written by whoever starts it. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
         </p>
       </div>
       {agents.map((a) => (
@@ -34,10 +34,13 @@ export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; 
 }
 
 function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
-  const shared = new Set<SharedFile>(sharedOf(record));
-  // Its instructions as one document: each file's text, and where a fact is placed among them, its name.
-  const doc = record.instructions.map((e) => (isFile(e) ? instructionText(e) : `[${CONTEXT[e].title}: read for each run]`)).join("\n\n");
-  const files = record.instructions.map((e) => (isFile(e) ? (isShared(e) ? e : `${e} (its own)`) : CONTEXT[e].title)).join(", ");
+  // Its instructions: one file, the same on every run, with what it imports inside it, each import marked where it starts.
+  const own = ownFile(record);
+  const sections = own ? instructionSections(own) : [];
+  const chars = sections.reduce((n, s) => n + s.text.length, 0);
+  const imports = own ? importsOf(own) : [];
+  // The facts its record sends with its instructions, where they were measured: context, listed with the rest.
+  const withInstructions = record.instructions.filter((e): e is ContextId => !isFile(e)).map((id) => CONTEXT[id].title);
   const reads = new Set<ContextId>(readsOf(record));
   // Its first message in order: the date line, then each read and its message where the record lists it.
   const order = ["the date line", ...record.context.map((id) => (id === "message" ? "its message" : CONTEXT[id].title))].join(", ");
@@ -57,19 +60,30 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Instructions</h2>
-            <p className="text-sm text-muted-foreground">Markdown files in lib/agent/engine/agents, the same on every run, and the facts its record places among them, in the order they are sent: {files}.</p>
+            <p className="text-sm text-muted-foreground">
+              One markdown file in lib/agent/engine/agents, the same on every run: {own ?? "none"}
+              {imports.length ? `, which imports ${imports.join(" and ")} (a line of its own, "@${imports[0]}", inlined where it stands)` : ", which imports nothing"}.
+            </p>
             <Collapsible>
-              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its instructions · {n(doc.length)} characters</CollapsibleTrigger>
+              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its instructions ({own}) · {n(chars)} characters</CollapsibleTrigger>
               <CollapsibleContent>
-                <p className="whitespace-pre-wrap break-words px-3 py-2 text-sm">{doc}</p>
+                <div className="flex flex-col gap-2 px-3 py-2">
+                  {sections.map((s, i) => (
+                    <div key={i} className="flex flex-col gap-1">
+                      {sections.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label.startsWith("@") ? `Imported: ${s.label.slice(1)}` : s.label}</p>}
+                      <p className="whitespace-pre-wrap break-words text-sm">{s.text}</p>
+                    </div>
+                  ))}
+                </div>
               </CollapsibleContent>
             </Collapsible>
-            <Checklist items={SHARED_FILES.map((id) => ({ id, ...SHARED[id], on: shared.has(id) }))} />
+            <Checklist items={Object.entries(IMPORTED).map(([id, def]) => ({ id, ...def, on: imports.includes(id) }))} />
           </section>
 
           <section className="flex flex-col gap-2">
             <h2 className="text-lg font-medium">Context</h2>
             <p className="text-sm text-muted-foreground">
+              {withInstructions.length ? `Sent with its instructions, where they were measured: ${withInstructions.join(", ")}. ` : ""}
               {record.conversation ? "On each message you send" : "In its first message"}, in order: {order}. The date line is the date and time in New York, and whether the account is paper or live.
             </p>
             <Checklist items={(Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, ...CONTEXT[id], on: reads.has(id) }))} />

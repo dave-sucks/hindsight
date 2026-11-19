@@ -11,7 +11,8 @@ import type { ToolSet } from "ai";
 import { composeAgentRequest, dateLine } from "@/lib/agent/engine/engine";
 import { DISCOVERY, SENDS_A_RUN } from "@/lib/agent/engine/agents/discovery";
 import { SCHEDULE } from "@/lib/agent/engine/schedule";
-import { earningsCalendar, withSendLimit } from "./run";
+import { withSendLimit } from "./run";
+import { earningsCalendar } from "@/lib/agent/context/earnings-calendar";
 
 const NOW = new Date("2026-11-18T14:00:00Z");
 const KICKOFF = SCHEDULE.find((s) => s.agent === "discovery")!.message!;

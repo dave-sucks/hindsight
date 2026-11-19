@@ -17,7 +17,7 @@
  *   written, if it is from the last 4 days.
  *
  * A part that can't be read says so in one line; it is never silently left
- * out. The house rules say how to weigh the block (lib/agent/engine/agents/house-rules.md).
+ * out. The house rules say how to weigh the block (lib/agent/engine/agents/rules.md).
  */
 import { prisma } from "@/lib/prisma";
 import { loadPortfolioSnapshot } from "@/lib/portfolio/load-snapshot";

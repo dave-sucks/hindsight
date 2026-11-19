@@ -8,8 +8,8 @@ The design (2026-11-18) is the top section of the audit page, https://claude.ai/
 
 | Part | What it is | Where |
 |---|---|---|
-| **Instructions** | Markdown files, the same on every run: the agent's own (`lib/agent/engine/agents/<agent>.md`) and the shared ones it uses, in the order the record lists them. No instruction text is in TypeScript | the record (`instructions`), `lib/agent/engine/agents/*.md`, `parts.ts` (`SHARED`) |
-| **Context** | The facts it is given, each one named text. The record says where each goes: among its instructions (the analyst, the playbooks, the stock's situations, where they were measured) or in its first message. In a conversation (the chat) the first message's facts ride on each message you send | the record (`instructions`, `context`), `parts.ts` (`CONTEXT`) |
+| **Instructions** | One document per agent (`lib/agent/engine/agents/<agent>.md`), the same on every run. A file imports another with a line of its own, `@rules.md`, as CLAUDE.md imports with `@path`; the engine inlines it where it stands (`instructions.ts`). Every agent that writes for you imports `rules.md`; the Writer and the Holding refresh also import `research-rules.md`. The Context panel and the Agents page show it as one row, "Its instructions (<agent>.md)", each import marked where it starts. No instruction text is in TypeScript | the record (`instructions`), `lib/agent/engine/agents/*.md`, `parts.ts` (`IMPORTED`) |
+| **Context** | The facts about what the run is about. Every run has a subject (the account, an analyst, a thesis, or the chat) and the subject brings its bundle (`lib/agent/context/bundles.ts`); the record lists which of them it reads, and may read nothing outside it. One loader per fact, keyed to the subject (`lib/agent/context/`), and the engine calls them: no agent's run code builds context. Most go in the first message; a few the record sends with the instructions, where they were measured (the analyst first, the stock's situations last), and they are context all the same: the Context panel lists them under Context, "sent with the instructions". In a conversation (the chat) the first message's facts ride on each message you send | the record (`subject`, `instructions`, `context`), `lib/agent/context/`, `parts.ts` (`CONTEXT`) |
 | **Tools** | The tools it may call | the record (`tools`) |
 
 Two more things are in every request, and neither is a part an agent chooses:
@@ -17,35 +17,36 @@ Two more things are in every request, and neither is a part an agent chooses:
 - **The message**: the run's task, written by whoever starts the run (you in the chat, another agent's brief, the trigger check, the schedule's kickoff), `AgentInput.message`. The record's context list says where it goes ("message"): last for every agent but the Writer and the Holding refresh, which list it right after the date line. Measured on sndk-writer-watch, 10 runs each: with the brief last the Writer kept the view 3 times, with it before the stock's data 9, as before the three parts.
 - **The date line**: the first line of every first message, "Wed, Nov 18, 2026, 10:00 AM ET, the PAPER account." (`dateLine`, `engine.ts`). Not configurable.
 
-**The shared instruction files (3), in `lib/agent/engine/agents/`:**
-- `house-rules.md`: the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it.
-- `how-you-write.md`: how a note, a trade's reason, a trigger's note and the narration are written (`voice.ts` keeps only the measures the tests use).
-- `research-rules.md`: the Writer's research rules, for the Writer and the Holding refresh.
+**The files agents import, in `lib/agent/engine/agents/`:**
+- `rules.md`: the house rules (the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it), then how a note, a trade's reason, a trigger's note and the narration are written (`voice.ts` keeps only the measures the tests use). Imported by every agent that writes for you, where the rules printed before: after its own words, or for the Writer and the Holding refresh first. The Market Reviewer, the portfolio digest and Discovery import nothing.
+- `research-rules.md`: dates, the research note, the Street and the claim, earnings triggers, what the owner reads first. Imported by `writer.md` and `holding-refresh.md`.
 
 A number written into an instruction file (the Portfolio Manager's three proposals, Discovery's three sends, the Writer's four searches, the digest's length) is checked against the constant code enforces (`moves.engine.test.ts`).
 
-**The facts placed in the instructions (3):**
-- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, and its fence where it narrows: some sectors, a market-cap band, exclusions), its playbooks a line each (`analyst-brief.ts`). It opens the instructions of the agents that work for one analyst, and ends the chat's when it is pinned.
-- `playbooks`: the analyst's playbooks in full, for the Writer and, on a review of a stock we watch, the trigger run (`knowledge/playbooks.ts`).
-- `situations`: the stock's situations and what each asks, ending the trigger run's instructions (`situations.ts`).
+**The subjects and their bundles** (`lib/agent/context/bundles.ts`):
+- **A thesis** (trigger run, post-trade write-up, Writer, Holding refresh): the stock's row (`the_stock`, its `get_theses` read through the run's own tool), its numbers and chart (`stock_data`, the Writer's pull, which its save checks against), the analyst (with its room where a buy is a choice) and its record by playbook, the stock's own playbook (`the_playbook`; each of the analyst's when it has none yet), the analyst's playbooks (`playbooks`, which the Writer picks the stock's from), the stock's situations, and the market numbers. A run about a stock gets no portfolio snapshot and no digest, the write-up included.
+- **An analyst** (morning run, Discovery): the analyst, its playbooks, its book (its `get_theses` read: a quiet stock one line, a stock in a situation its full row, and what each situation asks, once), the Market and portfolio reads, this week's earnings and filings on its book, the calls refused, and the earnings calendar outside its book.
+- **The account** (Portfolio Manager, Market Reviewer, portfolio digest): the Market and portfolio reads, the book (a line a stock), and what the agent wrote on its last run.
+- **The chat**: the Market and portfolio reads on each message; pinned, the analyst (its name and id first) and its book; at the portfolio level, each analyst's room.
 
-**The reads (13):** `market_numbers`, `market_digest`, `portfolio` (today's snapshot), `portfolio_digest` (the four print under one heading, "Market and portfolio", from one loader, `portfolio-block.ts`); `the_book` (every stock held and watched, a line each with its belief, `book.ts`); `the_analysts` (each analyst's room); `the_stock` (the `get_theses` row); `stock_data` (the Writer's data pull, with our history with the stock); `playbook_record`; `earnings_this_week`; `filings_this_week`; `refused_calls`; `last_output` (the agent's own last write-up, or its digest and notes).
+**The facts (17):** `the_analyst` (`analyst-brief.ts`); `the_playbook` and `playbooks` (`knowledge/playbooks.ts`); `situations` (`situations.ts`); `market_numbers`, `market_digest`, `portfolio` (today's snapshot), `portfolio_digest` (the four print under one heading, "Market and portfolio", from one read, `portfolio-block.ts`); `the_book`; `the_analysts` (each analyst's room); `the_stock`; `stock_data`; `playbook_record`; `earnings_this_week`; `filings_this_week`; `refused_calls`; `earnings_calendar`; `last_output` (the agent's own last write-up, or its digest and notes).
 
-**The engine** (`engine.ts`): `buildAgentRequest(record, input, sources)` reads each instruction file (`instructions.ts`) and each fact the record names, `composeAgentRequest(record, input, loaded)` puts them together, and the request names every part (its id, title, kind, where it went, its source, its size). The run saves that manifest with what it sent (`run-requests.ts`), and the Context panel shows a request as the agent is made: Instructions (its own text and each shared text, named), Context (the date line and each read, named), Message, Tools.
+**The engine**: `buildAgentRequest(record, input, run)` (`build.ts`) reads each fact the record lists through its loader for the run's subject (`loadContext`, `lib/agent/context/index.ts`), and `composeAgentRequest(record, input, loaded)` (`engine.ts`) puts them together with the instruction files; the request names every part (its id, title, kind, where it went, its source, its size). The run saves that manifest with what it sent (`run-requests.ts`), and the Context panel shows a request as the agent is made: Instructions (its one document, each import marked where it starts), Context (the date line and every fact, each with where it was sent: with the instructions, in the first message, or on your newest message), Message, Tools.
 
 ## The agents
 
-| Agent | Instructions | Context | Its message comes from |
-|---|---|---|---|
-| Morning run | the analyst, its own text (with the regime's rules), house rules, how you write | the four Market and portfolio reads, earnings this week, filings this week, refused calls | the schedule's kickoff (or the Run button), with the watched stocks at their buy price |
-| Trigger run | the analyst, its own text, house rules, how you write, the playbooks (a review of a watch only); the stock's situations | market numbers, the stock | the trigger check: the trigger that fired, its price and the fire's facts, said once, then the ask |
-| Post-trade write-up | the analyst, its own text, house rules, how you write | the four Market and portfolio reads, the stock | the trigger check: the trade the Auto trigger made, then the ask |
-| Writer | the analyst, house rules, how you write, the playbooks, the research rules, its own text | market numbers, the stock (on a refresh), record by playbook, the stock's data | the sender's brief: why it was sent, what the sender found, whose idea it was, what the chat found; right after the date line, before its context |
-| Holding refresh | the analyst, house rules, how you write, the research rules, its own text | the Writer's | the sender's brief |
-| Portfolio Manager | its own text, house rules, how you write | market numbers, market digest, the portfolio, the book, its last write-up | none: the date line is its start |
-| Market Reviewer | its own text | market numbers, the portfolio, the book, its last digest and notes | none |
-| Portfolio digest | its own text | the portfolio | none |
-| Chat | its own text, house rules, how you write, pinned the analyst | on each message you send: the four Market and portfolio reads, pinned the analyst's book, at the portfolio level each analyst's room | you |
+| Agent | Subject | Instructions | Context | Its message comes from |
+|---|---|---|---|---|
+| Morning run | an analyst | `morning-run.md` (the regime's rules in it), importing the rules | sent with the instructions: the analyst; first message: the four Market and portfolio reads, its book, earnings this week, filings this week, refused calls | the schedule's kickoff (or the Run button), with the watched stocks at their buy price |
+| Trigger run | a thesis | `trigger-run.md`, importing the rules | sent with the instructions: the analyst, the stock's playbook, the stock's situations; first message: market numbers, the stock | the trigger check: the trigger that fired, its price and the fire's facts, said once, then the ask |
+| Post-trade write-up | a thesis | `post-trade-writeup.md`, importing the rules | sent with the instructions: the analyst; first message: market numbers, the stock | the trigger check: the trade the Auto trigger made, then the ask |
+| Writer | a thesis | `writer.md`, importing the rules and the research rules | sent with the instructions: the analyst before, the analyst's playbooks after (moved there when the rules became its import; scored); first message: market numbers, the stock (on a refresh), record by playbook, the stock's data | the sender's brief: why it was sent, what the sender found, whose idea it was, what the chat found; right after the date line, before its context |
+| Holding refresh | a thesis | `holding-refresh.md`, importing the rules and the research rules | sent with the instructions: the analyst; first message: the Writer's | the sender's brief |
+| Portfolio Manager | the account | `portfolio-manager.md`, importing the rules | market numbers, market digest, the portfolio, the book, its last write-up | none: the date line is its start |
+| Market Reviewer | the account | `market-reviewer.md` | market numbers, the portfolio, the book, its last digest and notes | none |
+| Portfolio digest | the account | `portfolio-digest.md` | the portfolio (the snapshot its job saves) | none |
+| Chat | the chat | `chat.md`, importing the rules | sent with the instructions, pinned: the analyst; on each message you send: the four Market and portfolio reads, pinned the analyst's book, at the portfolio level each analyst's room | you |
+| Discovery | an analyst | `discovery.md` | sent with the instructions: the analyst; first message: its book, the earnings calendar | the schedule's kickoff |
 
 ## The rules for a change to an agent
 

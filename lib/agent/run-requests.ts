@@ -71,6 +71,8 @@ export interface SentCategory {
   sections: SentPart[];
   /** The file its text comes from, for a part the agent engine named. */
   source?: string;
+  /** Where a fact was sent: with the instructions (where its record places it: the analyst, the playbook, the stock's situations), in the first message, or on the newest message of a conversation. Listed under Context wherever it went. */
+  sentIn?: "instructions" | "first message" | "newest message";
 }
 
 export interface CallView {
@@ -117,7 +119,8 @@ export function viewOfRecord(r: RequestRecord): CallView {
   const show = (where: Where, text: string, name: string, after?: string) => {
     const cut = byParts(named(where), text);
     if (!cut || (cut.after && !after)) return void whole(name, where === "instructions" ? "Instructions" : "Message", "read", text);
-    categories.push(...cut.parts);
+    // The instructions are its files; the facts sent with them are listed after them, under Context.
+    categories.push(...cut.parts.filter((c) => c.sentIn !== "instructions"), ...cut.parts.filter((c) => c.sentIn === "instructions"));
     if (cut.after) whole(after!, "Message", "message", cut.after);
   };
   const instructions = items.filter(isSystem).map(said).join("\n\n");
@@ -175,21 +178,40 @@ export function byParts(parts: SentPartManifest[], text: string): { parts: SentC
   const tail = text.slice(at);
   if (tail && !tail.startsWith("\n\n")) return null;
   return {
-    parts: parts.flatMap((p, i) => (p.chars > 0 ? [{ name: p.title, group: groupOf(p), part: swatchOf(p), chars: p.chars, sections: [{ label: p.title, chars: p.chars, text: cut[i] }], source: p.source }] : [])),
+    parts: parts.flatMap((p, i) =>
+      p.chars > 0
+        ? [{ name: p.title, group: groupOf(p), part: swatchOf(p), chars: p.chars, sections: sectionsOf(p, cut[i]), source: p.source, ...(p.kind === "context" || p.kind === "line" ? { sentIn: SENT_IN[p.where] } : {}) }]
+        : [],
+    ),
     after: tail.slice(2),
   };
 }
 
+const SENT_IN = { instructions: "instructions", message: "first message", newest: "newest message" } as const;
+
+/** A part's text in its sections: an instruction file's own words and each import, where each starts; one section when it names none or they don't add up. */
+function sectionsOf(p: SentPartManifest, text: string): SentPart[] {
+  const whole = [{ label: p.title, chars: text.length, text }];
+  if (!p.sections?.length || p.sections.reduce((n, s) => n + s.chars, 0) !== text.length) return whole;
+  let at = 0;
+  return p.sections.map((s) => {
+    const part = { label: s.label, chars: s.chars, text: text.slice(at, at + s.chars) };
+    at += s.chars;
+    return part;
+  });
+}
+
 /**
- * A named part's group: everything in the instructions is its instructions
- * (its files and the facts placed among them); the date line and the reads
- * of the first message its context; the message its message. A part kept
- * before the three parts (kind "block") reads by where it went.
+ * A named part's group: its instruction files are its instructions; every
+ * fact is its context, the ones sent with the instructions too (the analyst,
+ * the playbook, the stock's situations); the date line is context; the
+ * message its message. A part kept before the three parts (kind "block")
+ * reads by where it went.
  */
 const groupOf = (p: SentPartManifest): SentGroup =>
-  p.where === "instructions" ? "Instructions"
+  p.kind === "line" || p.kind === "context" ? "Context"
+  : p.where === "instructions" ? "Instructions"
   : p.kind === "message" ? "Message"
-  : p.kind === "line" || p.kind === "context" ? "Context"
   // Kept before the three parts: an agent's own words in its first message were its ask.
   : p.kind === "own" ? "Message"
   : "Context";

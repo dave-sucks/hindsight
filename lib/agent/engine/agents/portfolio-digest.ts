@@ -13,6 +13,7 @@ export const PORTFOLIO_DIGEST: RunnableRecord = {
   does: "Writes your evening summary of the account, with its view on each proposal waiting for you.",
   runsWhen: "8:00 PM ET on market days, one run per traded book.",
   messageFrom: "The schedule (lib/inngest/functions/portfolio-digest.ts), which writes it no message.",
+  subject: "account",
   // GPT-4o ignored "never suggest what to do with the cash" and skipped a waiting proposal on the Nov 11 book.
   model: "gpt-5.4",
   maxSteps: 1,

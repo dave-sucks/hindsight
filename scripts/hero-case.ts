@@ -49,7 +49,8 @@ import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool, writerRecordFor, writerRequest } from "@/lib/agent/run-thesis-writer";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
-import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
+import { playbooksBlock, playbookTemplates } from "@/lib/agent/knowledge/playbooks";
+import { bookReadText } from "@/lib/agent/context/the-book";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
@@ -221,7 +222,8 @@ function requestFor(c: HeroCase, now: Date): { system: string; first?: string } 
     return { system: r.instructions, first: r.message };
   }
   if (c.mode === "research-run") {
-    const r = morningRequest(c, now);
+    // Its book is in its first message (lib/agent/context/the-book.ts): the get_theses read the recorded run made first, taken out of its turn.
+    const r = morningRequest(c, now, bookReadOf(c));
     return { system: r.instructions, first: r.message };
   }
   if (c.mode !== "tactical") return { system: systemFor(c, now) };
@@ -286,7 +288,16 @@ function tacticalArgs(c: HeroCase): any {
     // The post-trade write-up writes up the trade; a situation asks for a decision it doesn't make (tactical-run.ts).
     situations: p.autoTrade ? null : p.situations?.guidance ? p.situations : stock?.situations ?? null,
     autoTrade: p.autoTrade ?? null,
+    // The stock's own playbook in full, or each of its analyst's when it has none (lib/agent/context/playbooks.ts); the write-up reads none.
+    playbooks: p.autoTrade ? null : stockPlaybook(saved, a.setupIds as string[] | undefined),
   };
+}
+
+/** The saved row's playbook in full, as the account's seed has it; each of the analyst's when the row names none. */
+function stockPlaybook(row: Record<string, unknown>, analystSetups: string[] | undefined): string | null {
+  const id = (row.setup as { id?: string } | undefined)?.id ?? (typeof row.setup === "string" ? row.setup : null) ?? (row.setupId as string | undefined) ?? null;
+  const own = id ? setupsForAnalyst([id]) : [];
+  return playbooksBlock(own.length ? own : setupsForAnalyst(analystSetups ?? []), (sid) => playbookTemplates(null, sid)) || null;
 }
 
 function systemFor(c: HeroCase, now: Date): string {
@@ -298,14 +309,31 @@ function systemFor(c: HeroCase, now: Date): string {
   }
 }
 
+/**
+ * The morning run's book: the get_theses read the recorded run made first,
+ * as the model was handed it. It is taken out of the recorded turn (the
+ * call and its result), since the run now starts with it in its first
+ * message. Null when the recording has none.
+ */
+function bookReadOf(c: HeroCase): string | null {
+  type Part = { type: string; toolName?: string; toolCallId?: string; output?: { value?: unknown } };
+  const parts = (m: ModelMessage) => (Array.isArray(m.content) ? (m.content as Part[]) : []);
+  const at = c.messages.findIndex((m) => m.role === "assistant" && parts(m).some((p) => p.type === "tool-call" && p.toolName === "get_theses"));
+  if (at < 0) return null;
+  const call = parts(c.messages[at]).find((p) => p.type === "tool-call" && p.toolName === "get_theses")!;
+  const result = c.messages.slice(at + 1).flatMap(parts).find((p) => p.type === "tool-result" && p.toolCallId === call.toolCallId);
+  c.messages = c.messages.map((m) => (Array.isArray(m.content) ? ({ ...m, content: parts(m).filter((p) => p.toolCallId !== call.toolCallId) } as ModelMessage) : m));
+  return bookReadText((result?.output?.value as { summary?: string; data?: unknown } | undefined) ?? null);
+}
+
 /** A morning case's request, built by today's code from its inputs. */
-function morningRequest(c: HeroCase, now: Date) {
+function morningRequest(c: HeroCase, now: Date, book: string | null = null) {
   // JSON turned the refusals' dates into strings; the builder wants dates.
   const runInput = c.promptArgs.runInput as { openRefusals?: Array<{ createdAt: string | Date }>; pendingApprovalCount?: number; analyst?: { pendingApprovalCount?: number } };
   for (const r of runInput.openRefusals ?? []) r.createdAt = new Date(r.createdAt);
   // Cases saved before step 10 carry the count on the run input's analyst copy.
   runInput.pendingApprovalCount ??= runInput.analyst?.pendingApprovalCount;
-  return dailyRunRequest(c.promptArgs.config as never, runInput as never, now);
+  return dailyRunRequest(c.promptArgs.config as never, runInput as never, now, book);
 }
 
 /**

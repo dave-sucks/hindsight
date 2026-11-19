@@ -37,3 +37,5 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
 
 - 15 step max. Be ruthlessly concise.
 - You are NOT reviewing your other theses. Only this stock matters on this run.
+
+@rules.md

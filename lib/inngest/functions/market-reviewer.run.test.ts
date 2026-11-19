@@ -222,7 +222,7 @@ describe("the 7:30 Market Reviewer", () => {
     // Context shows each part the agent engine built, by name and in the Framework page's color, then its one tool; the parts add up to what was sent.
     const view = viewOfRecord(record!);
     expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
-      ["Instructions", "Its own text", "job"],
+      ["Instructions", "Its instructions (market-reviewer.md)", "job"],
       ["Context", "The date and account", "read"],
       ["Context", "Market numbers", "portfolio"],
       ["Context", "The portfolio", "portfolio"],

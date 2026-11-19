@@ -6,6 +6,10 @@
  * character for character, as main before the move
  * (./__fixtures__/requests.golden.json, hashed from ./__fixtures__/sent-requests.ts
  * at d510d495).
+ *
+ * Reading context by subject (lib/agent/context/) changed the requests
+ * CHANGED names, each for its reason; ./three-parts.engine.test.ts pins
+ * each change part by part. Every other request is main's.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { createHash } from "crypto";
@@ -14,14 +18,36 @@ import path from "path";
 import GOLDEN from "./__fixtures__/requests.golden.json";
 import { sentRequests } from "./__fixtures__/sent-requests";
 import { AGENTS } from "./agents";
-import { INSTRUCTIONS_DIR, instructionText } from "./instructions";
-import { isFile, ownFile, SHARED_FILES } from "./types";
+import { importsOf, INSTRUCTIONS_DIR, instructionText } from "./instructions";
+import { isFile, ownFile } from "./types";
 import { DIGEST_CHARS } from "./agents/market-reviewer";
 import { SENDS_A_RUN } from "./agents/discovery";
 import { WEB_SEARCH_MAX_USES } from "./agents/writer";
 import { PROPOSALS_A_RUN } from "@/lib/agent/portfolio-manager/limits";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
+
+const BOOK = "the morning run's book is in its first message, so its first step reads it there";
+const MARKET_NUMBERS = "the post-trade write-up reads the market numbers alone of the Market and portfolio reads, as every run about a thesis does";
+const NO_EMPTY_PART = "an analyst with no playbooks gets no playbooks part (it was an empty one: a stray blank line)";
+const PLAYBOOKS_AFTER = "the Writer's playbooks follow its document, since the rules are its import (they printed between the rules and the research rules)";
+const CHANGED: Record<string, string> = {
+  "morning.quiet": BOOK,
+  "morning.full": BOOK,
+  "morning.snapshot_unread": BOOK,
+  "morning.filings_unread": BOOK,
+  "sample.morning_run": BOOK,
+  "trigger.auto_sale": MARKET_NUMBERS,
+  "sample.post_trade_writeup": MARKET_NUMBERS,
+  "writer.mint_plain": NO_EMPTY_PART,
+  "writer.mint_notes_idea": NO_EMPTY_PART,
+  "writer.refresh_seed": NO_EMPTY_PART,
+  "writer.refresh_promoted": NO_EMPTY_PART,
+  "writer.mint_playbooks": PLAYBOOKS_AFTER,
+  "writer.refresh_watch": PLAYBOOKS_AFTER,
+  "writer.mint_unread_playbooks": PLAYBOOKS_AFTER,
+  "sample.writer": PLAYBOOKS_AFTER,
+};
 
 describe("instructions are markdown files: a move, not an edit", () => {
   const sent = sentRequests();
@@ -30,21 +56,43 @@ describe("instructions are markdown files: a move, not an edit", () => {
     expect(Object.keys(sent).sort()).toEqual(Object.keys(GOLDEN.hashes).sort());
   });
 
-  it.each(Object.keys(GOLDEN.hashes))("%s is sent what main sent, character for character", (name) => {
+  it.each(Object.keys(GOLDEN.hashes).filter((n) => !CHANGED[n]))("%s is sent what main sent, character for character", (name) => {
     expect(hash(sent[name])).toBe((GOLDEN.hashes as Record<string, string>)[name]);
+  });
+
+  it.each(Object.entries(CHANGED))("%s changed: %s", (name) => {
+    expect(hash(sent[name])).not.toBe((GOLDEN.hashes as Record<string, string>)[name]);
   });
 });
 
 describe("the instruction files", () => {
-  it("each agent has one of its own, and every file it names exists; no file goes unused", () => {
+  it("each agent has one of its own, and every file it names or imports exists; no file goes unused", () => {
     const named = new Set<string>();
     for (const r of AGENTS) {
-      const own = r.instructions.filter((e) => isFile(e) && !(SHARED_FILES as readonly string[]).includes(e));
+      const own = r.instructions.filter(isFile);
       expect([r.id, own.length]).toEqual([r.id, 1]);
       expect([r.id, ownFile(r)]).toEqual([r.id, `${r.id.replace(/_/g, "-")}.md`]);
-      for (const e of r.instructions) if (isFile(e)) named.add(e);
+      for (const e of r.instructions) if (isFile(e)) for (const f of [e, ...importsOf(e)]) named.add(f);
     }
     expect(readdirSync(INSTRUCTIONS_DIR).filter((f) => f.endsWith(".md")).sort()).toEqual([...named].sort());
+  });
+
+  it("an agent's instructions are one file: every agent that writes for you imports the rules, the Writer and the Holding refresh the research rules too", () => {
+    const imports = Object.fromEntries(AGENTS.map((r) => [r.id, importsOf(ownFile(r)!)]));
+    expect(imports).toEqual({
+      portfolio_manager: ["rules.md"],
+      writer: ["rules.md", "research-rules.md"],
+      holding_refresh: ["rules.md", "research-rules.md"],
+      trigger_run: ["rules.md"],
+      post_trade_writeup: ["rules.md"],
+      morning_run: ["rules.md"],
+      chat: ["rules.md"],
+      market_reviewer: [],
+      portfolio_digest: [],
+      discovery: [],
+    });
+    expect(instructionText("writer.md").startsWith(`${instructionText("rules.md")}\n\n${instructionText("research-rules.md")}\n\n## Your job`)).toBe(true);
+    expect(instructionText("trigger-run.md").endsWith(`\n\n${instructionText("rules.md")}`)).toBe(true);
   });
 
   it("is plain text: no ${…} left from a template, and each ends in one newline", () => {

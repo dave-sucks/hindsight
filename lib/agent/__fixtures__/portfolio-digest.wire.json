@@ -46,7 +46,7 @@
    "parts": [
     {
      "id": "portfolio-digest.md",
-     "title": "Its own text",
+     "title": "Its instructions (portfolio-digest.md)",
      "kind": "own",
      "source": "lib/agent/engine/agents/portfolio-digest.md",
      "where": "instructions",

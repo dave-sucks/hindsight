@@ -43,8 +43,8 @@ const steps = (a: FrameworkAgent) => (a.maxSteps === 1 ? "one call" : `up to ${a
 
 /** Where a part's text comes from, by what it is. */
 const FROM: Record<FrameworkPart["kind"], string> = {
-  own: "Its own instruction file",
-  shared: "A shared instruction file",
+  own: "Its instructions, one file",
+  shared: "A rules file every agent that writes for you gets",
   line: "Written by the engine",
   context: "A fact, read for the run",
   message: "Written by whoever starts the run",
@@ -52,7 +52,8 @@ const FROM: Record<FrameworkPart["kind"], string> = {
 
 function rowOf(p: FrameworkPart, unsized: string, onEachMessage: boolean): Row {
   const body = p.kind === "own" ? `“${p.about}”` : p.about;
-  const foot = p.kind === "message" ? FROM.message : `${FROM[p.kind]}${p.section === "context" && onEachMessage ? ", on each message you send" : ""} · ${p.source}`;
+  const where = p.where === "instructions" ? ", sent with the instructions" : p.section === "context" && onEachMessage ? ", on each message you send" : "";
+  const foot = p.kind === "message" ? FROM.message : `${FROM[p.kind]}${where} · ${p.source}`;
   return { key: `${p.where}:${p.id}`, swatch: p.swatch, title: p.title, chars: p.chars, body, foot, unsized };
 }
 

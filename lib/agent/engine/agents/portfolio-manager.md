@@ -33,3 +33,5 @@ When you are done, reply with the write-up and call no tool. It is saved as you 
 - **What the account needs**: a few lines for the next search for new stocks, such as what is missing and what there is too much of.
 
 You are running unattended; no one will answer.
+
+@rules.md

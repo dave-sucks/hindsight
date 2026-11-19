@@ -26,7 +26,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **What an agent is told in a situation:** `SITUATIONS` in `lib/agent/situations.ts`. Never a prompt.
 - **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
 - **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
-- **The rules every agent shares:** `lib/agent/engine/agents/house-rules.md` and the writing rules in `how-you-write.md` beside it; each agent's own instructions are a markdown file there too.
+- **The rules every agent shares:** `lib/agent/engine/agents/rules.md`, the house rules then how it writes, which each agent's own markdown file there imports (`@rules.md`).
 - **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
 - **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
@@ -83,7 +83,7 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 
 ## What an agent is told
 
-An agent is three things: its instructions, its context and its tools. Its instructions are its own text, the same on every run, and the shared texts it uses (the house rules, how it writes, the analyst it works for, the playbooks, the research rules). Its context is what it is handed when it starts, each a named read in its first message: the market and the portfolio, the book, the stock it is working on, the stock's data. Its message is the run's task, written by whoever starts the run: you, another agent's brief, the trigger check, the schedule; the record says where it goes in the first message (last, but for the Writer's brief, which comes before the stock's data). Every first message opens with one line, the date and time in New York and whether the account is paper or live. The agent engine builds each request from the agent's record, in the record's order. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in an agent's own words. Pick an agent to see its parts in order, sized on its latest run: the numbers that run's Context panel shows, colored the same way. An agent with no saved run that names its parts yet is sized on a sample day, and says so.
+An agent is three things: its instructions, its context and its tools. Its instructions are one document of its own, the same on every run, which imports the rules every agent that writes for you shares, the house rules and how it writes (the Writer's imports the research rules too), as CLAUDE.md imports with `@path`. Its context is the facts about what its run is about (the account, an analyst, a stock, or the chat), each a named read: the market and the portfolio, the book, the analyst it works for, the stock it is working on and its playbook, the stock's data. Most are in its first message; the analyst, the playbook and the stock's situations are sent with its instructions, where they were measured, and are listed as context all the same. Its message is the run's task, written by whoever starts the run: you, another agent's brief, the trigger check, the schedule; the record says where it goes in the first message (last, but for the Writer's brief, which comes before the stock's data). Every first message opens with one line, the date and time in New York and whether the account is paper or live. The agent engine builds each request from the agent's record, in the record's order. What a stock needs arrives with the stock, through its [situations](concepts/situations.md), never in an agent's own words. Pick an agent to see its parts in order, sized on its latest run: the numbers that run's Context panel shows, colored the same way. An agent with no saved run that names its parts yet is sized on a sample day, and says so.
 
 <!-- asset: request-grid -->
 
@@ -105,7 +105,7 @@ Inngest functions in `lib/inngest/functions/`, served from `app/api/inngest/rout
 `lib/market-data/street-consensus.ts` (Nasdaq's feed and its parser) → `StreetConsensus`, written by `indicator-snapshot.ts` and on demand by `get_analyst_coverage`.
 
 #### Prompts
-`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `lib/agent/system-prompts/chat.ts` (chat), each agent's record in `lib/agent/engine/agents/`, `lib/agent/house-rules.ts`, `lib/agent/voice.ts`.
+`lib/agent/system-prompt.ts` (morning), `lib/agent/system-prompts/intraday-tactical.ts` (trigger), `lib/agent/system-prompts/chat.ts` (chat), each agent's record and instruction file in `lib/agent/engine/agents/` (the shared `rules.md` and `research-rules.md` they import), the context loaders in `lib/agent/context/`, `lib/agent/voice.ts`.
 
 #### Plans
 `docs/plans/AGENT_ARCHITECTURE.md` · `docs/PRINCIPLES.md`

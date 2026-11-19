@@ -1,8 +1,8 @@
 /**
  * voice.ts — the measures of how every agent writes what the account owner
- * reads. The rules themselves are one markdown file,
- * lib/agent/engine/agents/how-you-write.md, in every agent's instructions
- * that decides on stocks, so no tool field carries its own version.
+ * reads. The rules themselves are in one markdown file,
+ * lib/agent/engine/agents/rules.md ("## How you write"), which every agent
+ * that writes for you imports, so no tool field carries its own version.
  *
  * What the owner reads: the paragraph at the top of a stock and every
  * Activity line (update_thesis's rationale), the reason on a buy, add, trim

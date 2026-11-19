@@ -13,8 +13,6 @@
 import type { ToolSet } from "ai";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
-import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
-import { loadBook } from "@/lib/agent/book";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import type { TokenUsage } from "@/lib/agent/token-usage";
 import type { RunStep } from "@/lib/agent/run-thread";
@@ -60,9 +58,9 @@ export interface ManagerResult {
 }
 
 /**
- * What its run is given, for the agent runner (lib/agent/engine/run.ts): the
- * blocks' reads (the Market and portfolio block, its last write-up) and the
- * tools made for the run, under its limits. `tools` lets a dry run swap the
+ * What its run is given, for the agent runner (lib/agent/engine/run.ts): its
+ * subject, the account, whose facts the engine reads (lib/agent/context/),
+ * and the tools made for the run, under its limits. `tools` lets a dry run swap the
  * writes for ones that save nothing.
  */
 export async function managerArgs(
@@ -83,10 +81,7 @@ export async function managerArgs(
   const tickerOf = (id: string) => prisma.thesis.findFirst({ where: { id, userId: book.userId }, select: { ticker: true } }).then((t) => t?.ticker ?? null, () => null);
   return {
     input: { now, environment: book.environment },
-    sources: {
-      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-      context: { the_book: () => loadBook(book), last_output: async () => `## Your last write-up\n${await lastWriteup(book)}` },
-    },
+    subject: { kind: "account", userId: book.userId, accountId: book.accountId, environment: book.environment },
     toolset,
     // A dry run's stand-in writes go under the limits, so its proposals and notes are counted as a real run's.
     wrapTools: (mine) => withRunLimits(opts.tools ? opts.tools(mine) : mine, tickerOf),

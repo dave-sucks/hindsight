@@ -9,25 +9,27 @@
  * Completions API, one call, the snapshot as its first message. The job
  * (lib/inngest/functions/portfolio-digest.ts) saves the digest.
  */
-import { portfolioPieceText, snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
+import { snapshotText, type PortfolioSnapshot } from "@/lib/portfolio/snapshot";
 import { PORTFOLIO_DIGEST } from "@/lib/agent/engine/agents/portfolio-digest";
 import { runAgent, type AgentRun, type AgentToRun, type RunAgentArgs } from "@/lib/agent/engine/run";
 
 export const DIGEST_MODEL = PORTFOLIO_DIGEST.model;
 export const DIGEST_RUN_MODE = "PORTFOLIO_DIGEST";
 
-/** What its run is given: the portfolio, the snapshot as code wrote it. No tools. */
-export function digestArgs(snapshot: PortfolioSnapshot): Omit<RunAgentArgs, "runId"> {
+/** What its run is given: its subject, the account, and the snapshot its job saves with the digest. No tools. */
+export function digestArgs(snapshot: PortfolioSnapshot, book: { userId?: string; accountId?: string } = {}): Omit<RunAgentArgs, "runId"> {
+  const environment = snapshot.live ? "LIVE" : "PAPER";
   return {
-    input: { now: new Date(snapshot.at), environment: snapshot.live ? "LIVE" : "PAPER" },
-    sources: { portfolioPieces: async () => [{ id: "portfolio_snapshot", text: portfolioPieceText(snapshot) }] },
+    input: { now: new Date(snapshot.at), environment },
+    subject: { kind: "account", userId: book.userId ?? "", accountId: book.accountId ?? "", environment },
+    given: { snapshot },
     toolset: {},
     source: "portfolio-digest",
   };
 }
 
 /** The digest as the runner runs it for one snapshot: one saved run, read only. */
-export const digestRun = (snapshot: PortfolioSnapshot): AgentToRun => ({ record: PORTFOLIO_DIGEST, mode: DIGEST_RUN_MODE, args: () => digestArgs(snapshot) });
+export const digestRun = (snapshot: PortfolioSnapshot): AgentToRun => ({ record: PORTFOLIO_DIGEST, mode: DIGEST_RUN_MODE, args: (target) => digestArgs(snapshot, target) });
 
 /** The digest the job saves: its reply, or, when the run wrote none, the snapshot's own lines. */
 export function narrativeOf(run: Pick<AgentRun, "text" | "error">, snapshot: PortfolioSnapshot): { narrative: string; model: string } {

@@ -62,11 +62,17 @@ describe("modelFor", () => {
 
 describe("the morning run", () => {
   it("the 8 AM job's call keeps its first request, as sent over Chat Completions", async () => {
-    const db = prismaDouble({ agentConfig: [agentConfigRow({ id: ANALYST, name: "Secular Compounder", enabled: true, tradingEnvironment: "PAPER", runDaysOfWeek: [1, 2, 3, 4, 5] })], researchRun: [], runMessage: [], runEvent: [] });
+    const db = prismaDouble({
+      agentConfig: [agentConfigRow({ id: ANALYST, name: "Secular Compounder", enabled: true, tradingEnvironment: "PAPER", runDaysOfWeek: [1, 2, 3, 4, 5] })],
+      thesis: [thesisRow({ id: "mu", ticker: "MU", status: "HOLDING", analystId: ANALYST })],
+      researchRun: [],
+      runMessage: [],
+      runEvent: [],
+    });
     const done = () => json({ id: "c1", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "Done." } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const net = network(done);
-    const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [], earnings: { reportingSoon: [{ ticker: "MU", date: "2026-11-19", hour: "amc" }], justReported: [] }, filings: { recent: [] }, openRefusals: [] };
-    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/triggers/seed-account", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools"];
+    const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [] };
+    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/triggers/seed-account", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools", "@/lib/agent/portfolio-block", "@/lib/agent/triggers/earnings", "@/lib/market-data/sec-filings"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
       let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
@@ -77,6 +83,13 @@ describe("the morning run", () => {
       jest.doMock("@/lib/agent/triggers/seed-account", () => ({ ensureAccountStandingRules: async () => 0 }));
       jest.doMock("@/lib/agent/run-input", () => ({ buildRunInput: async () => runInput }));
       jest.doMock("@/lib/agent/knowledge/load-setup-overrides", () => ({ loadSetupOverrides: async () => ({}) }));
+      // The analyst's facts, read for it (lib/agent/context/): no Market and portfolio reads here, MU reporting tomorrow, no filings.
+      jest.doMock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: async () => [] }));
+      jest.doMock("@/lib/agent/triggers/earnings", () => ({
+        fetchEarningsWindow: async () => ({ reported: new Map(), upcoming: new Map([["MU", { symbol: "MU", reportDate: "2026-11-19", hour: "amc" }]]) }),
+        describeEarningsReport: () => "",
+      }));
+      jest.doMock("@/lib/market-data/sec-filings", () => ({ fetchBookFilings: async () => ({ byTicker: new Map() }) }));
       jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: tool({ description: "Read the book.", inputSchema: z.object({ tickers: z.array(z.string()).optional() }), execute: async () => ({ ok: true }) }) }) }));
       await import("@/lib/inngest/functions/morning-research");
       await handler!({ event: { name: "app/research.run", data: { agentConfigId: ANALYST } }, step }).catch(() => undefined);
@@ -94,12 +107,13 @@ describe("the morning run", () => {
     for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
     // The agent engine built it: Context shows each part by name.
     const names = view!(main.record).categories.map((c) => c.name);
-    expect(names.slice(0, 3)).toEqual(["The analyst", "Its own text", "House rules"]);
+    // Its instructions, one document, then the analyst under Context, sent with them.
+    expect(names.slice(0, 2)).toEqual(["Its instructions (morning-run.md)", "The analyst"]);
     expect(names.slice(-2)).toEqual(["The message", "Tool menu"]);
     // Every request it sent, its retry's too, opens with the first message and the book's week in it.
     const firstUser = (body: string) => (JSON.parse(body).messages as Array<{ role: string; content: string }>).find((m) => m.role === "user")!.content;
     expect(net.sent.length).toBeGreaterThan(1);
-    for (const body of net.sent) expect(firstUser(body)).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the PAPER account\.\n\n## Earnings on your book this week\nReporting: MU 2026-11-19 after close[\s\S]*\n\nIt's the start of the trading day\./);
+    for (const body of net.sent) expect(firstUser(body)).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the PAPER account\.\n\n## Your book \(get_theses\)\n[\s\S]*\n\n## Earnings on your book this week\nReporting: MU 2026-11-19 after close[\s\S]*\n\nIt's the start of the trading day\./);
     // The run page opens with its message alone (the snapshot couldn't be read here, so the kickoff says the cash): the reads are on the Context panel.
     const thread = (db.store.runMessage as Kept[]).find((m) => m.role === "thread")!;
     expect((JSON.parse(thread.content)[0] as { content: Array<{ text: string }> }).content.map((p) => p.text).join("")).toBe(
@@ -153,7 +167,7 @@ describe("a trigger run", () => {
     expect(main.record.parts?.length).toBeGreaterThan(0);
     const categories = view!(main.record).categories;
     const names = categories.map((c) => c.name);
-    expect(names.slice(0, 4)).toEqual(["The analyst", "Its own text", "House rules", "How you write"]);
+    expect(names.slice(0, 2)).toEqual(["Its instructions (trigger-run.md)", "The analyst"]);
     expect(names.slice(-3)).toEqual(["The stock", "The message", "Tool menu"]);
     expect(categories.find((c) => c.name === "The message")!.sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
   });
@@ -209,9 +223,7 @@ describe("the chat", () => {
     const categories = view!(only.record).categories;
     // Its instructions one row per part of its record, the conversation as it was, then the newest message: what rides on it, each part named, then your words.
     expect(categories.map((c) => c.name)).toEqual([
-      "Its own text",
-      "House rules",
-      "How you write",
+      "Its instructions (chat.md)",
       "First message",
       "The conversation so far",
       "The date and account",
@@ -222,7 +234,7 @@ describe("the chat", () => {
       "Newest message",
       "Tool menu",
     ]);
-    expect(categories.map((c) => c.group)).toEqual(["Instructions", "Instructions", "Instructions", "Message", "Conversation", "Context", "Context", "Context", "Context", "Context", "Message", "Tools"]);
+    expect(categories.map((c) => c.group)).toEqual(["Instructions", "Message", "Conversation", "Context", "Context", "Context", "Context", "Context", "Message", "Tools"]);
     const row = (name: string) => categories.find((c) => c.name === name)!.sections[0].text;
     expect(row("The date and account")).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the LIVE account\.$/);
     expect(row("Market numbers")).toMatch(/^## Market and portfolio\n\n### Market numbers \(as of .+\)/);
@@ -271,7 +283,8 @@ describe("the Writer", () => {
     expect(records[0].record.parts?.length).toBeGreaterThan(0);
     const categories = view!(records[0].record).categories;
     const names = categories.map((c) => c.name);
-    expect(names.slice(0, 6)).toEqual(["The analyst", "House rules", "How you write", "The playbooks", "Research rules", "Its own text"]);
+    // Its instructions are one row (its document imports the rules and the research rules); the analyst and the playbooks are Context, sent with them.
+    expect(names.slice(0, 3)).toEqual(["Its instructions (writer.md)", "The analyst", "The playbooks"]);
     // Its first message: the date line, the sender's brief, then the reads.
     expect(names.indexOf("The message")).toBe(names.indexOf("The date and account") + 1);
     expect(names.slice(-2)).toEqual(["The stock's data", "Tool menu"]);

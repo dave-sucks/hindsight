@@ -9,7 +9,8 @@
 import { noteCheck, numbersOf, sentencesOf, wordsOf } from "@/lib/agent/voice";
 import { instructionText } from "@/lib/agent/engine/instructions";
 
-const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
+/** The writing rules: rules.md from its "## How you write" heading, after the heading. */
+const VOICE_RULES = instructionText("rules.md").split("\n\n## How you write\n\n")[1];
 
 /** The proposal's reason, word for word, from the stock's Activity. */
 const SAVED =

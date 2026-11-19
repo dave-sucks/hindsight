@@ -24,7 +24,7 @@ export const SWATCH: Record<PartId, { className: string; style?: CSSProperties }
 };
 
 /** The facts about the analyst it works for: its text, its playbooks, its record. */
-const ANALYST_FACTS = new Set(["the_analyst", "playbooks", "playbook_record"]);
+const ANALYST_FACTS = new Set(["the_analyst", "playbooks", "the_playbook", "playbook_record"]);
 
 /** A part's color, by what it is: the agent's own file, a shared file, a fact (the analyst's, the market and portfolio, the stock's situations, a read), the date line, the message. */
 export function swatchOf(p: { kind: PartKind; id: string }): PartId {

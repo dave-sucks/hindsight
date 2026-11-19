@@ -21,9 +21,9 @@ import { providerToolNames } from "@/lib/agent/engine/types";
 import { zodSchema } from "ai";
 import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
-import { CONTEXT, DATE_LINE, SHARED } from "@/lib/agent/engine/parts";
-import { instructionText } from "@/lib/agent/engine/instructions";
-import { isFile, isShared, type AgentRecord, type BuiltNewest, type BuiltRequest, type PartKind, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
+import { CONTEXT, DATE_LINE } from "@/lib/agent/engine/parts";
+import { importsOf, instructionSections } from "@/lib/agent/engine/instructions";
+import { isFile, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type PartKind, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
 import { getAccountId } from "@/lib/auth/account";
 import { REQUEST_ROLE, byParts, viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { prisma } from "@/lib/prisma";
@@ -140,18 +140,25 @@ interface Listed {
   someRuns?: boolean;
 }
 
-/** The parts a record lists, in the order they are sent: its instructions, then its first message (or what rides on each message you send). */
+/**
+ * The parts a record lists, as the run's Context panel lists them: its
+ * instruction file (what it imports inside it); then its context, the facts
+ * sent with its instructions first; then its first message in order (or
+ * what rides on each message you send).
+ */
 export function recordParts(r: AgentRecord): Listed[] {
   const first: Where = r.conversation ? "newest" : "message";
   return [
-    // Its instruction files, and the facts its record places among them.
-    ...r.instructions.map((e): Listed =>
-      !isFile(e)
-        ? { id: e, title: CONTEXT[e].title, kind: "context", where: "instructions", section: "instructions", about: CONTEXT[e].about, source: CONTEXT[e].source, ...(e === "situations" || e === "playbooks" ? { someRuns: true } : {}) }
-        : isShared(e)
-          ? { id: e, title: SHARED[e].title, kind: "shared", where: "instructions", section: "instructions", about: SHARED[e].about, source: SHARED[e].source }
-          : { id: e, title: "Its own text", kind: "own", where: "instructions", section: "instructions", about: openingOf(instructionText(e)), source: `lib/agent/engine/agents/${e}` },
-    ),
+    // Its instructions: one file, its imports inside it; its line is how its own words open.
+    ...r.instructions.filter(isFile).map((e): Listed => {
+      const own = instructionSections(e).filter((s) => s.label === e).map((s) => s.text).join("");
+      const imports = importsOf(e);
+      return { id: e, title: `Its instructions (${e})`, kind: "own", where: "instructions", section: "instructions", about: openingOf(own), source: `lib/agent/engine/agents/${e}${imports.length ? `, importing ${imports.join(", ")}` : ""}` };
+    }),
+    // The facts its record sends with the instructions, where they were measured: context all the same.
+    ...r.instructions
+      .filter((e): e is ContextId => !isFile(e))
+      .map((e): Listed => ({ id: e, title: CONTEXT[e].title, kind: "context", where: "instructions", section: "context", about: CONTEXT[e].about, source: CONTEXT[e].source, ...(e === "situations" ? { someRuns: true } : {}) })),
     { id: "line", ...DATE_LINE, kind: "line", where: first, section: "context" },
     // Each read and the message, where the record lists it.
     ...r.context.map((id): Listed =>

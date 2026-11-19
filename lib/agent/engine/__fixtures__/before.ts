@@ -6,12 +6,29 @@
  */
 import BEFORE from "./before-three-parts.golden.json";
 import { byParts } from "@/lib/agent/run-requests";
-import type { BuiltNewest, BuiltRequest } from "../types";
+import type { BuiltNewest, BuiltRequest, SentPartManifest } from "../types";
 
 type Golden = { cases: Record<string, Record<string, number>>; texts: string[] };
 
-/** The shared instruction files, by the ids the old builders gave them. */
-const OLD_IDS: Record<string, string> = { "house-rules.md": "house_rules", "how-you-write.md": "how_you_write", "research-rules.md": "research_rules" };
+/**
+ * An agent's one document, cut back into the parts the old builders sent:
+ * its own words ("own"), and each file it imports where it starts; the
+ * rules are the house rules and how you write, the research rules theirs.
+ */
+function documentParts(p: SentPartManifest, text: string): Array<[string, string]> {
+  if (!p.sections?.length) return [["own", text]];
+  let at = 0;
+  const cut = p.sections.map((s) => [s.label, text.slice(at, (at += s.chars))] as const);
+  const own = cut.filter(([label]) => label === p.id).map(([, t]) => t).join("").replace(/^\n+|\n+$/g, "");
+  const out: Array<[string, string]> = [["own", own]];
+  for (const [label, t] of cut) {
+    if (label === "@rules.md") {
+      const at = t.indexOf("\n\n## How you write");
+      out.push(["house_rules", t.slice(0, at)], ["how_you_write", t.slice(at + 2)]);
+    } else if (label === "@research-rules.md") out.push(["research_rules", t]);
+  }
+  return out;
+}
 
 /** A case's old parts: "instructions:analyst_brief" → its text. */
 export function before(caseKey: string): Record<string, string> {
@@ -29,9 +46,12 @@ export function partsOf(b: BuiltRequest, newest?: BuiltNewest): Record<string, s
     const cut = byParts(parts, text);
     if (!cut || cut.after) throw new Error("its parts don't add up to what it sent");
     const sent = parts.filter((p) => p.chars > 0);
-    // Keyed as the old builders named the parts: the agent's own file is "own", a shared file its old id.
-    const key = (p: (typeof sent)[number]) => (p.kind === "own" ? "own" : (OLD_IDS[p.id] ?? p.id));
-    cut.parts.forEach((c, i) => (out[`${sent[i].where}:${key(sent[i])}`] = c.sections[0].text));
+    // Keyed as the old builders named the parts: the agent's document cut back at its imports.
+    cut.parts.forEach((c, i) => {
+      const text = c.sections.map((s) => s.text).join("");
+      if (sent[i].kind === "own") for (const [key, t] of documentParts(sent[i], text)) out[`${sent[i].where}:${key}`] = t;
+      else out[`${sent[i].where}:${sent[i].id}`] = text;
+    });
   };
   add(b.parts.filter((p) => p.where === "instructions"), b.instructions);
   add(b.parts.filter((p) => p.where === "message"), b.message);

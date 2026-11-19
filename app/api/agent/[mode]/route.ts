@@ -9,7 +9,6 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { streamText, stepCountIs, hasToolCall, type ModelMessage, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { hideOldLookups, withFirstMessage, withNewestParts } from "@/lib/agent/old-lookups";
@@ -20,20 +19,21 @@ import { prisma } from "@/lib/prisma";
 import { getAccountId, getUserRole } from "@/lib/auth/account";
 import { createResearchTools } from "@/lib/agent/tools";
 import { analystToolSettings, type AnalystToolSettings } from "@/lib/agent/tool-context";
-import { dailyRunRequest } from "@/lib/agent/system-prompt";
+import { dailyRunRequest, morningRunRequest } from "@/lib/agent/system-prompt";
+import { buildConversation } from "@/lib/agent/engine/build";
+import { CHAT } from "@/lib/agent/engine/agents/chat";
+import type { SubjectOf } from "@/lib/agent/context/bundles";
 import type { AgentId, SentPartManifest } from "@/lib/agent/engine/types";
 import type { BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { buildRunInput } from "@/lib/agent/run-input";
+import { buildRunInput, type RunInput } from "@/lib/agent/run-input";
 import { READ_ONLY_RUN_MODES } from "@/lib/runs/modes";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
-import { analystRoom, analystRoomLines, analystScope } from "@/lib/agent/analyst-scope";
+import { analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
-import { analystsText, chatNewest, chatRequest, type ChatPromptOpts } from "@/lib/agent/system-prompts/chat";
-import { loadBook } from "@/lib/agent/book";
 import type { AgentMode } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
 import { getResearchedTickersForRun } from "@/lib/agent/researched-tickers";
@@ -157,10 +157,10 @@ export async function POST(
     let runEnvironment: "PAPER" | "LIVE" = "PAPER";
     // The saved run's mode: a morning run's page (the cron's or the Run button's) sends the morning run's first message.
     let savedMode: string | null = null;
-    // The chat's Market and portfolio block, started once its book is known and read with the newest message.
-    let portfolioPiecesLoad: Promise<PortfolioPiece[]> | null = null;
-    // The chat's other reads on each message: pinned, the analyst's book; at the portfolio level, each analyst's room.
-    let chatReads: { book: Promise<string | null> | null; analysts: string | null } = { book: null, analysts: null };
+    // What the chat is about, once its scope is known: its context is read for it when the newest message is built (lib/agent/context/).
+    let chatSubject: SubjectOf<"chat"> | null = null;
+    // A morning run's analyst and run input: its request is built once the run's tools are made, since its book is their get_theses read.
+    let morning: { subject: SubjectOf<"analyst">; runInput: RunInput } | null = null;
     if (runId) {
       const runRow = await prisma.researchRun.findFirst({
         where: { id: runId },
@@ -209,7 +209,7 @@ export async function POST(
 
       // What the model reads about the analyst (lib/agent/analyst-brief.ts):
       // the row itself when there is one, else whatever the body sent.
-      let briefAnalyst: BriefAnalyst = (config as BriefAnalyst) || {};
+      let briefAnalyst: BriefAnalyst & { tradingEnvironment?: string | null } = (config as BriefAnalyst) || {};
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -231,27 +231,25 @@ export async function POST(
         );
       }
 
-      // V2 is the only path as of 2026-05-16. P0-11 (manual UI runs got
-      // V1) is closed by this swap. The legacy V1 builder is marked
-      // @deprecated in lib/agent/system-prompt.ts; no caller remains.
-      const daily = dailyRunRequest(
-        briefAnalyst,
-        runInput ?? {
+      // An analyst's run: its request is built once its tools are made (below). With no analyst, the body's.
+      if (resolvedAnalystId && runInput) {
+        morning = {
+          subject: { kind: "analyst", userId: user.id, accountId, environment: briefAnalyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", analystId: resolvedAnalystId },
+          runInput,
+        };
+        systemPrompt = "";
+      } else {
+        const daily = dailyRunRequest(briefAnalyst, {
           portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } },
           watchlist: [],
           activeTheses: [],
           triggersFiredSinceLastRun: [],
           triggersMatchingNow: [],
-          earnings: { reportingSoon: [], justReported: [] },
-          filings: { recent: [] },
-          openRefusals: [],
-        },
-      );
-      systemPrompt = daily.instructions;
-      // Another run's page (a trigger run, the Writer) keeps that run's own first message.
-      if (savedMode === "MORNING_PLAN") firstMessage = daily.message;
-      systemParts = firstMessage != null ? daily.parts : daily.parts.filter((p) => p.where === "instructions");
-      systemAgent = daily.agent;
+        });
+        systemPrompt = daily.instructions;
+        systemParts = daily.parts.filter((p) => p.where === "instructions");
+        systemAgent = daily.agent;
+      }
 
     } else if (agentMode === "builder") {
       systemPrompt = BUILDER_SYSTEM_PROMPT;
@@ -271,13 +269,9 @@ export async function POST(
       //     + position tickers flow through ctx.
       resolvedAnalystId = analystId;
 
-      let scopedAnalyst: ChatPromptOpts["scopedAnalyst"] = null;
       // Context follows the SCOPE, not the mode name (DAV-207 standing law):
-      // pinned, the analyst's book rides on each message; at the portfolio level, each analyst's room.
-      let bookLoad: Promise<string | null> | null = null;
-      // How full the analysts are, before the chat offers a buy (counted as place_trade counts).
-      let room: Awaited<ReturnType<typeof analystRoom>> | null = null;
-      let roomLines: string[] = [];
+      // pinned, the analyst and its book; at the portfolio level, each
+      // analyst's room (the chat's facts, lib/agent/context/).
       if (resolvedAnalystId) {
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
@@ -308,7 +302,6 @@ export async function POST(
         const scope = await analystScope(ac, user.id);
         ({ runEnvironment, alpacaCreds } = scope);
         agentConfig = scope;
-        scopedAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
 
         // ── The seat's book (DAV-207 Move 1) ─────────────────────────────
         // A chat pinned to an analyst is that analyst's desk: its book rides
@@ -320,12 +313,6 @@ export async function POST(
         // get_portfolio_context, scored them on the scout's approval record
         // instead of our P&L, and wrote 20 PASS rows. A tool the agent MAY
         // call is not context — hand it over.
-        bookLoad = loadBook({ accountId: ac.accountId, environment: ac.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", analystId: ac.id });
-        try {
-          room = { ...(await analystRoom(ac)), held: [] }; // the book lists the holdings
-        } catch {
-          /* fail-open — context can never be why a chat dies */
-        }
         // Create or reuse a PRINCIPAL_CHAT ResearchRun for this scoped
         // session. Account-scoped: only reuse runs owned by THIS account.
         // Scope-flip mid-chat invalidates the runId (different agentConfig).
@@ -435,7 +422,6 @@ export async function POST(
         // shows (environment.actions.ts). It used to stay PAPER whatever the
         // screen showed, so on a LIVE account its portfolio read was empty.
         runEnvironment = await getCurrentEnvironment();
-        roomLines = await analystRoomLines(accountId, []).catch(() => []);
         alpacaCreds = (await resolveAlpacaCredentials(user.id, runEnvironment)) ?? undefined;
         if (!runId && chatSessionId) {
           const bySession = await prisma.researchRun.findFirst({
@@ -466,13 +452,9 @@ export async function POST(
         }
       }
 
-      // The Market and portfolio block's parts for this message: started now, read when the message is built. A chat waits 5 s at most.
-      portfolioPiecesLoad = loadPortfolioPieces({ accountId, environment: runEnvironment, waitMs: 5_000 });
-      const chat = chatRequest({ scopedAnalyst, room }, runEnvironment);
-      chatReads = { book: bookLoad, analysts: analystsText(roomLines) };
-      systemPrompt = chat.instructions;
-      systemParts = chat.parts;
-      systemAgent = chat.agent;
+      // Its instructions and its newest message are built together, when the message is (below).
+      chatSubject = { kind: "chat", userId: user.id, accountId, environment: runEnvironment, analystId: resolvedAnalystId ?? null };
+      systemPrompt = "";
 
     } else if (agentMode === "podcast-builder") {
       systemPrompt = PODCAST_BUILDER_SYSTEM_PROMPT;
@@ -724,6 +706,16 @@ export async function POST(
     // createResearchTools registry (they're plain `tool()` calls, not
     // defineTool factories — they don't need ToolContext).
     const tools: Record<string, unknown> = { ...filteredTools };
+
+    // A morning run's request: its facts read for the analyst, its book through this run's own get_theses.
+    if (morning) {
+      const daily = await morningRunRequest({ subject: morning.subject, now: new Date(), agent: "morning_run", toolset: allTools as ToolSet }, morning.runInput);
+      systemPrompt = daily.instructions;
+      // Another run's page (a trigger run, the Writer) keeps that run's own first message.
+      if (savedMode === "MORNING_PLAN") firstMessage = daily.message;
+      systemParts = firstMessage != null ? daily.parts : daily.parts.filter((p) => p.where === "instructions");
+      systemAgent = daily.agent;
+    }
     if (modeConfig.hasSuggestConfig) {
       // The builder makes an analyst; the editor and the chat change one.
       tools.suggest_config = suggestConfigFor(agentMode === "builder" ? "builder" : "editor");
@@ -755,13 +747,12 @@ export async function POST(
     // The chat is one long thread: it reads the time on each message and never an old lookup.
     const askedAt = new Date();
     let modelMessages: ModelMessage[];
-    if (agentMode === "principal") {
-      // The date line and the chat's context ride on the newest message, each part named with the instructions'.
-      const newest = chatNewest(askedAt, portfolioPiecesLoad ? await portfolioPiecesLoad : null, runEnvironment, {
-        book: chatReads.book ? ((await chatReads.book) ?? "## The book\nThe book couldn't be read for this message.") : null,
-        analysts: chatReads.analysts,
-      });
-      systemParts = [...(systemParts ?? []), ...newest.parts];
+    if (agentMode === "principal" && chatSubject) {
+      // The chat's facts, read for its scope: the analyst in its instructions when pinned; the date line and the rest ride on the newest message, each part named with the instructions'.
+      const { request: chat, newest } = await buildConversation(CHAT, { now: askedAt, environment: runEnvironment }, { subject: chatSubject, now: askedAt, agent: CHAT.id });
+      systemPrompt = chat.instructions;
+      systemAgent = chat.agent;
+      systemParts = [...chat.parts, ...newest.parts];
       modelMessages = withNewestParts(await historyForModel(hideOldLookups(messages, askedAt), tools as ToolSet), newest.texts);
     } else {
       modelMessages = await historyForModel(messages, tools as ToolSet);

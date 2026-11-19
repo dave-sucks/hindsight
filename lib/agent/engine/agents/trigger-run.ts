@@ -5,9 +5,9 @@
  * trigger set to Auto makes its trade itself, and the post-trade write-up
  * (./post-trade-writeup.ts) writes the note on it.
  *
- * Its instructions: the analyst it works for, its own text (the same on every
- * run), the house rules, how you write, and on a review of a stock we watch
- * the playbooks; the stock's situations end them, because among the facts
+ * Its instructions: trigger-run.md, the same on every run (it imports the
+ * rules). Sent with them: the analyst it works for before, the stock's
+ * playbook after, and the stock's situations last, because among the facts
  * they were followed less (the NVDA declined sale went from 6 of 6 to 3 of 6,
  * docs/plans/AGENT_ENGINE.md). Its context: the market numbers and the stock.
  * Its message is the fire, from the trigger check.
@@ -24,10 +24,11 @@ export const TRIGGER_RUN: AgentRecord = {
   does: "Decides on one stock when one of its triggers fires: a trade (it waits for you), a trigger moved, or a note on why nothing.",
   runsWhen: "Every 5 minutes in market hours and at the 4:20 PM close check, when a trigger set to Send to Agent fires.",
   messageFrom: "The trigger check (lib/inngest/functions/tactical-run.ts): the trigger that fired, the price it fired at and the fire's facts, then the ask.",
+  subject: "thesis",
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   // The playbooks only on a review of a stock we watch (the run passes none otherwise); the stock's situations end the instructions.
-  instructions: ["the_analyst", "trigger-run.md", "house-rules.md", "how-you-write.md", "playbooks", "situations"],
+  instructions: ["the_analyst", "trigger-run.md", "the_playbook", "situations"],
   // The market numbers alone: the snapshot and the digests are the rest of the account (2026-11-18). The stock's
   // position is on its row, the analyst's room in its text, and code sizes a buy.
   context: ["market_numbers", "the_stock", "message"],

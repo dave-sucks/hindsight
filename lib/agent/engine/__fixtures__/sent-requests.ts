@@ -11,7 +11,8 @@ import { CHAT_CASES } from "./chat-cases";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { writerRequest } from "@/lib/agent/run-thesis-writer";
-import { analystsText, chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
+import { chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
+import { analystsText } from "@/lib/agent/context/the-analysts";
 import { AGENTS } from "../agents";
 import { AGENT_SAMPLES } from "@/lib/docs/agent-samples";
 

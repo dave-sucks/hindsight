@@ -3,10 +3,11 @@
  * or a stock we watch and writes its thesis and its watch triggers
  * (lib/agent/run-thesis-writer.ts runs it). A stock we own is refreshed by
  * its own agent, the Holding refresh (./holding-refresh.ts); the research
- * rules both follow are one shared file (./research-rules.md).
+ * rules both follow are one file each imports (./research-rules.md).
  *
- * Its instructions: the analyst, the house rules, how you write, the
- * playbooks, the research rules and its own text. Its message, the sender's
+ * Its instructions: writer.md, which imports the rules and the research
+ * rules; the analyst (before it) and the analyst's playbooks (after it) are
+ * context sent with them. Its message, the sender's
  * brief (why it was sent, what the sender found, whose idea it was), comes
  * right after the date line; then its context: the market numbers, the stock
  * (on a refresh), the analyst's record by playbook and the stock's data.
@@ -35,9 +36,11 @@ export const WRITER: AgentRecord = {
   does: "Researches a new stock or one we watch and writes its thesis: the view, the playbook, the watch triggers at prices from the chart, and the claim every other agent reads.",
   runsWhen: "When a stock is sent to it: from the chat, a run or the Portfolio Manager.",
   messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
+  subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
-  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "playbooks", "research-rules.md", "writer.md"],
+  // The analyst's playbooks follow its document, as the trigger run's playbook does (moved there when the rules became its import; scored in PR 2).
+  instructions: ["the_analyst", "writer.md", "playbooks"],
   context: WRITER_CONTEXT,
   // submit_thesis is the Writer's own tool (makeSubmitThesisTool, lib/agent/run-thesis-writer.ts).
   tools: ["submit_thesis"],

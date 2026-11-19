@@ -18,8 +18,8 @@ import { SETUP_STANDING_RULES } from "@/lib/agent/knowledge/seat-rules";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
 import { instructionText } from "@/lib/agent/engine/instructions";
 
-/** The voice rules: lib/agent/engine/agents/how-you-write.md, after its heading. */
-const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
+/** The writing rules: rules.md from its "## How you write" heading, after the heading. */
+const VOICE_RULES = instructionText("rules.md").split("\n\n## How you write\n\n")[1];
 import { sizeByRisk } from "@/lib/agent/position-sizing";
 import { heatLine, type OpenRisk } from "@/lib/agent/portfolio-risk";
 import { computeRegime } from "@/lib/agent/regime";

@@ -25,9 +25,10 @@ import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { buildWriterResearchPrompt } from "@/lib/agent/run-thesis-writer";
 import { instructionText } from "@/lib/agent/engine/instructions";
 
-const HOUSE_LINES = instructionText("house-rules.md");
-const HOW_YOU_WRITE = instructionText("how-you-write.md");
-const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
+// The rules file: the house lines, then how you write under its heading.
+const [HOUSE_LINES, WRITING] = instructionText("rules.md").split("\n\n## How you write\n\n");
+const HOW_YOU_WRITE = `## How you write\n\n${WRITING}`;
+const VOICE_RULES = WRITING;
 import type { RunInput } from "@/lib/agent/run-input";
 
 const STRATEGY = "(The analyst's strategy, as written on its page.)";

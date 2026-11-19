@@ -60,6 +60,13 @@ export function RunContext({ calls, open, onOpenChange }: { calls: CallView[]; o
   );
 }
 
+/** Where a fact was sent, in the words its row says. */
+const SENT_IN: Record<NonNullable<SentCategory["sentIn"]>, string> = {
+  instructions: "sent with the instructions",
+  "first message": "in the first message",
+  "newest message": "on your newest message",
+};
+
 function ContextBody({ call }: { call: CallView | null }) {
   if (!call) return <p className="p-4 text-sm text-muted-foreground">This run kept no record of what it sent the model.</p>;
 
@@ -101,7 +108,10 @@ function ContextBody({ call }: { call: CallView | null }) {
               <Collapsible>
                 <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
                   <span className={cn("size-2 shrink-0 rounded-full", color(c))} />
-                  <span className="flex-1 font-medium">{c.name}</span>
+                  <span className="flex-1 font-medium">
+                    {c.name}
+                    {c.sentIn && <span className="font-normal text-muted-foreground"> · {SENT_IN[c.sentIn]}</span>}
+                  </span>
                   <span className="text-muted-foreground tabular-nums">
                     {n(c.chars)} · {share(c.chars, call.chars).toFixed(0)}%
                   </span>
@@ -143,8 +153,10 @@ function Sections({ id, category }: { id: string; category: SentCategory }) {
       )}
       <div className="rounded-md border p-3 text-sm text-foreground">
         {category.sections.map((s, j) => (
-          <div key={j} id={`${id}-${j}`} className="scroll-mt-2 whitespace-pre-wrap break-words">
-            {s.text}
+          <div key={j} id={`${id}-${j}`} className="scroll-mt-2">
+            {/* Where each part starts: an instruction file's own words, and each file it imports. */}
+            {category.sections.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label.startsWith("@") ? `Imported: ${s.label.slice(1)}` : s.label}</p>}
+            <div className="whitespace-pre-wrap break-words">{s.text}</div>
           </div>
         ))}
       </div>
