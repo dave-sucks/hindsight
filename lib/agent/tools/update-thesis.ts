@@ -79,6 +79,7 @@ import { ruleOnTheLine } from "@/lib/agent/thesis-updates";
 import { openFires } from "@/lib/agent/stock-context";
 import { ACTIVITY_LINES } from "@/lib/agent/stock-context-for";
 import { reviewDue } from "@/lib/agent/needs-action";
+import { NO_NOTE } from "@/lib/agent/no-note";
 
 // The fields update_thesis shares with record_thesis and submit_thesis are defined once (thesis-fields.ts).
 const F = thesisFields();
@@ -942,7 +943,9 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     args.direction === "PASS";
 
   // The rule this line answers, kept on the line (named, or on the morning run the one open fire or the due clock).
-  const answered = await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition);
+  // Only a note answers a stock: a save without one (a trigger edit, a conviction, a watch change) links no fire or review (2026-11-18).
+  const isNote = !!args.rationale?.trim();
+  const answered = isNote ? await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition) : {};
 
   // ── Trigger ops (DAV-242) ────────────────────────────────────────────
   // Every trigger change is an op: add, edit by id, remove by id. Zero
@@ -1296,7 +1299,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // if it concluded nothing changed. If a run skips the thesis or crashes,
   // nothing is stamped and it stays due.
   // The Portfolio Manager's note is not the analyst's review: the stock's clock keeps counting.
-  if (patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
+  if (isNote && patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
     patch.lastReviewedAt = new Date();
   }
 
@@ -1374,19 +1377,16 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   const notAppliedChange: ThesisFieldChanges = notAppliedList.length ? { notApplied: { from: null, to: notAppliedList } } : {};
   if (changedKeys.length === 0) {
     if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
-    // A door with no note that changed nothing and was refused nothing writes no line and leaves the review clock.
-    if (!args.rationale?.trim() && notAppliedList.length === 0) {
+    // A door with no note that changed nothing writes no line and leaves the review clock, its refusals in the reply.
+    if (!isNote) {
       return {
         summary: `Nothing changed on $${existing.ticker}.${notChanged ? ` ${notChanged}` : ""}`,
         data: { ok: true, thesis_id: existing.id, type: "UNCHANGED" as const, trigger_ops: opResults, ...refusedData },
         sources: [],
       };
     }
-    const reviewedAt = new Date();
-    await prisma.thesis.update({
-      where: { id: existing.id },
-      data: { lastReviewedAt: reviewedAt },
-    });
+    const reviewedAt = isManagerRun(ctx) ? existing.lastReviewedAt : new Date();
+    if (!isManagerRun(ctx)) await prisma.thesis.update({ where: { id: existing.id }, data: { lastReviewedAt: reviewedAt } });
 
     // Awaited (was void). Both the morning-research coverage gate and
     // the tactical-run close-out gate query ThesisUpdate immediately
@@ -1475,7 +1475,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   const landedOps = [...acceptedOps(opResults).map((o) => (o.op === "remove" && extra.removeReasons?.[o.id] ? { ...o, reason: extra.removeReasons[o.id] } : o)), ...playbookNotes];
   if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
   const changedFields = Object.keys(fieldChanges);
-  Object.assign(fieldChanges, notAppliedChange);
+  Object.assign(fieldChanges, notAppliedChange, isNote ? {} : NO_NOTE);
 
   // The structural-belief gate that lived here (P0-1) is gone. It refused
   // any change to the target or the floor unless a belief field changed or

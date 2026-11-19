@@ -17,6 +17,7 @@
 // theses; if the belief breaks on a holding the agent sells with
 // belief_survived false, which retires the thesis.
 
+import { isNotelessEdit } from "@/lib/agent/no-note";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -736,15 +737,11 @@ export const tacticalRun = inngest.createFunction(
         // the model one focused chance to write the closeout row before
         // marking the run FAILED. 2026-05-07 captured 1 of 18 tactical
         // runs (Earnings Drift Trader) hitting this exact contract miss.
-        const initialUpdate = await prisma.thesisUpdate.findFirst({
-          where: {
-            runId: run.id,
-            thesisId: thesis.id,
-            type: { not: "TRIGGER_FIRED" },
-          },
-          select: { id: true },
-        });
-        let closedOut = initialUpdate !== null;
+        // A change saved with no note does not close the run out: only a note answers (isNotelessEdit).
+        const answeredRows = async () =>
+          (await prisma.thesisUpdate.findMany({ where: { runId: run.id, thesisId: thesis.id, type: { not: "TRIGGER_FIRED" } }, select: { fieldChanges: true } }))
+            .filter((u) => !isNotelessEdit(u.fieldChanges)).length;
+        let closedOut = (await answeredRows()) > 0;
         if (
           !closedOut &&
           !stopped &&
@@ -821,15 +818,7 @@ export const tacticalRun = inngest.createFunction(
               ] as any[];
             }
 
-            const retryUpdate = await prisma.thesisUpdate.findFirst({
-              where: {
-                runId: run.id,
-                thesisId: thesis.id,
-                type: { not: "TRIGGER_FIRED" },
-              },
-              select: { id: true },
-            });
-            closedOut = retryUpdate !== null;
+            closedOut = (await answeredRows()) > 0;
           } catch (retryErr) {
             console.error(
               `[tactical-run] retry failed for thesis=${thesis.id}:`,

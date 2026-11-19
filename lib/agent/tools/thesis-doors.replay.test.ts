@@ -5,7 +5,9 @@
  * a promoted stock is deferred with watch_again, a sold stock comes back on
  * watch without its sale triggers. Constructed rows, the shapes the book holds.
  */
-import { replayTool, thesisRow, positionRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
+import { replayTool, thesisRow, positionRow, thesisUpdateRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
+import { isNotelessEdit } from "@/lib/agent/no-note";
+import { openFires } from "@/lib/agent/stock-context";
 
 const FLOOR = { id: "floor", action: "EXIT", source: "AGENT", predicate: { watch: "price", is: "below", value: 90 }, rationale: "Under the $90 base." };
 const BUY = { id: "buy", action: "ENTER", source: "AGENT", predicate: { watch: "price", is: "below", value: 100 }, rationale: "The pullback to $100." };
@@ -42,6 +44,81 @@ describe("edit_triggers: the Portfolio Manager says \"buy it if X happens\", and
     expect(r.db.store.thesis[0].lastReviewedAt).toEqual(new Date("2026-11-01T12:00:00Z"));
     // An edit's line is a title: the paragraph is the note's.
     expect(lines(r.db).map((u) => u.rationale ?? null)).toEqual([null]);
+  });
+});
+
+describe("edit_triggers: the Portfolio Manager can't make a sale Auto (its trades wait for the owner)", () => {
+  const pm = { runMode: "PORTFOLIO_MANAGER", analystId: REPLAY_ANALYST_ID };
+
+  it("its schema has no fire mode on an added or an edited trigger", async () => {
+    let js = { properties: {} } as { properties: Record<string, { items?: { properties?: Record<string, unknown> } }> };
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
+      const { zodSchema } = await import("ai");
+      const { editTriggers } = await import("./edit-triggers");
+      js = zodSchema((editTriggers({ runId: "r", userId: "u", accountId: "a", ...pm } as never) as unknown as { inputSchema: never }).inputSchema).jsonSchema as typeof js;
+    });
+    jest.dontMock("@/lib/prisma");
+    expect(Object.keys(js.properties.add.items?.properties ?? {})).not.toContain("fireMode");
+    expect(Object.keys(js.properties.edit.items?.properties ?? {})).not.toContain("fire_mode");
+  });
+
+  it("an Auto sale it sends anyway is saved with the sale's default, which asks an agent", async () => {
+    const r = await replayTool("edit-triggers", "editTriggers", {
+      seed: { thesis: [held({ triggers: [] })], position: [position()] },
+      ctx: pm,
+      args: { thesis_id: "t_aaa", add: [{ action: "EXIT", fireMode: "DO_IT", predicate: { watch: "price", is: "below", value: 99 }, rationale: "Sell under $99." }], edit: [] },
+      quotes: { AAA: 98 },
+    });
+    const sale = (r.db.store.thesis[0].triggers as Array<{ action: string; fireMode?: string }>).find((t) => t.action === "EXIT");
+    expect(sale).toBeDefined();
+    expect(sale!.fireMode).not.toBe("DO_IT");
+  });
+
+  it("an edit that sets the floor to Auto is dropped the same way", async () => {
+    const r = await replayTool("edit-triggers", "editTriggers", { seed: { thesis: [held()], position: [position()] }, ctx: pm, args: { thesis_id: "t_aaa", edit: [{ id: "floor", fire_mode: "DO_IT" }] }, quotes: { AAA: 98 } });
+    expect((r.db.store.thesis[0].triggers as Array<{ id: string; fireMode?: string }>).find((t) => t.id === "floor")?.fireMode).not.toBe("DO_IT");
+  });
+});
+
+describe("only a note answers a stock (a morning run)", () => {
+  const LOOKED = new Date("2026-11-10T13:00:00Z");
+  const fire = thesisUpdateRow({ id: "fire", thesisId: "t_aaa", type: "TRIGGER_FIRED", triggerId: "floor", runId: null, timestamp: new Date(Date.now() - 60_000), priceAtTime: 98 });
+  const seedWithFire = () => ({ thesis: [held({ lastReviewedAt: LOOKED, conviction: "MEDIUM" })], position: [position()], thesisUpdate: [fire] });
+  const morning = { runMode: "MORNING_PLAN", analystId: REPLAY_ANALYST_ID };
+
+  it("a conviction saved with no note links no fire, leaves the review clock and answers nothing", async () => {
+    const r = await replayTool("set-conviction", "setConviction", { seed: seedWithFire(), ctx: morning, args: { thesis_id: "t_aaa", conviction: "LOW", conviction_rationale: "Orders slowed." }, quotes: { AAA: 98 } });
+    const line = lines(r.db).find((u) => u.id !== "fire")!;
+    expect(line).toMatchObject({ triggerId: null, rationale: null });
+    expect(isNotelessEdit(line.fieldChanges)).toBe(true);
+    expect(r.db.store.thesis[0].lastReviewedAt).toEqual(LOOKED);
+    expect(openFires(lines(r.db) as never).map((f) => f.triggerId)).toEqual(["floor"]);
+  });
+
+  it("the note after it answers the fire and moves the clock", async () => {
+    const first = await replayTool("set-conviction", "setConviction", { seed: seedWithFire(), ctx: morning, args: { thesis_id: "t_aaa", conviction: "LOW", conviction_rationale: "Orders slowed." }, quotes: { AAA: 98 } });
+    const r = await replayTool("write-note", "writeNoteTool", { seed: first.db.store as never, ctx: morning, args: { thesis_id: "t_aaa", note: "Orders slowed two quarters running; the floor stands and I'd sell under it." }, quotes: { AAA: 98 } });
+    const note = lines(r.db).find((u) => u.rationale)!;
+    expect(note.triggerId).toBe("floor");
+    expect((r.db.store.thesis[0].lastReviewedAt as Date).getTime()).toBeGreaterThan(LOOKED.getTime());
+    expect(openFires(lines(r.db) as never)).toEqual([]);
+  });
+
+  it("a fully refused trigger edit writes no line and leaves the clock", async () => {
+    const r = await replayTool("edit-triggers", "editTriggers", { seed: seedWithFire(), ctx: morning, args: { thesis_id: "t_aaa", edit: [{ id: "floor", value: 85, rationale: "Room." }] }, quotes: { AAA: 98 } });
+    expect(r.result.data?.trigger_ops).toEqual([expect.objectContaining({ id: "floor", ok: false })]);
+    expect(lines(r.db).map((u) => u.id)).toEqual(["fire"]);
+    expect(r.db.store.thesis[0].lastReviewedAt).toEqual(LOOKED);
+  });
+
+  it("a trigger edit with nothing in it is refused, saying what to send, and answers no refusal of last time", async () => {
+    const open = { id: "gr_1", tool: "edit_triggers", gateCode: "protective_level_locked", summary: "Refused", detail: null, ticker: "AAA", thesisId: "t_aaa", runId: "run_old", analystId: REPLAY_ANALYST_ID, runMode: "MORNING_PLAN", resolvedAt: null, resolvedBy: null, createdAt: new Date() };
+    const r = await replayTool("edit-triggers", "editTriggers", { seed: { ...seedWithFire(), gateRejection: [open] }, ctx: morning, args: { thesis_id: "t_aaa" }, quotes: { AAA: 98 } });
+    expect(r.refused).toBe(true);
+    expect(String(r.result.summary)).toMatch(/add, edit \(by id\) or remove/);
+    expect((r.db.store.gateRejection as Row[]).find((g) => g.id === "gr_1")?.resolvedAt ?? null).toBeNull();
+    expect(lines(r.db).map((u) => u.id)).toEqual(["fire"]);
   });
 });
 

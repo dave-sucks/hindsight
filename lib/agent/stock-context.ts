@@ -17,6 +17,7 @@
  *
  * Pure: needs-action.ts imports it.
  */
+import { isNotelessEdit } from "@/lib/agent/no-note";
 import {
   eventKind,
   isPlainReview,
@@ -97,7 +98,7 @@ export function isPrincipalRow(r: ActivityRow): boolean {
  * carry no run).
  */
 export function isAgentAnswer(r: ActivityRow): boolean {
-  return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r);
+  return !!r.runId && r.type !== "TRIGGER_FIRED" && r.type !== "NOTE" && !isPrincipalRow(r) && !isNotelessEdit(r.fieldChanges);
 }
 
 /**
