@@ -304,7 +304,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // The approval queue. Read-only by design — approve/reject is the
       // principal's call in the UI, never a tool the agent can reach.
       "list_proposals",
-      "read_database",
       // ── Analyst-scoped reads ────────────────────────────────────────
       "get_theses",
       "get_portfolio_context",
@@ -323,8 +322,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       "web_search",
       // ── Writes. Unscoped, each acts for the stock's own analyst
-      // (analyst-scope.ts); record_thesis alone needs the chat pinned.
+      // (analyst-scope.ts); record_thesis and pass_on_stock need the chat pinned.
       "record_thesis",
+      // "We looked, and we pass": the stock and the reason, saved as Passed.
+      "pass_on_stock",
       "update_thesis",
       "place_trade",
       "manage_position",

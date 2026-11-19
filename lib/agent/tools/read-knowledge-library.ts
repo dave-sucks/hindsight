@@ -50,6 +50,13 @@ export const readKnowledgeLibrary = defineTool({
   }),
   ui: "tool-ui" as const,
   groupId: "Knowledge",
+  // A playbook reaches the model as its words alone (`content`); the entry's stored fields are the page's.
+  forModel: (result) => {
+    if (!result.ok) return result;
+    const d = result.data as { topic?: string; mode?: string; found?: boolean; entry?: { id: string; name: string }; content?: string };
+    if (d.topic !== "setup" || d.mode !== "entry" || !d.found || !d.entry) return result;
+    return { ...result, data: { topic: d.topic, mode: d.mode, found: true, id: d.entry.id, name: d.entry.name, content: d.content } };
+  },
 
   progressLabel: (args) => {
     const humanize = (id: string) =>
@@ -376,27 +383,27 @@ function formatArchetypeMarkdown(entry: NonNullable<ArchetypeEntry>): string {
   return lines.join("\n").trim();
 }
 
+/** A playbook in its words: what it is for, what must be true, what confirms a buy, what failure looks like, then its triggers. */
 function formatSetupText(entry: NonNullable<SetupEntry>, templates: Template[] | null): string {
   const lines: string[] = [];
-  lines.push(`${entry.name} (${entry.code})`);
+  lines.push(`${entry.name} (${entry.id})`);
   lines.push(entry.summary);
+  lines.push(entry.role === "ENTRY" ? "A buy pattern with its own buy." : "A screen: the buy comes from another playbook.");
+  lines.push(`Fits a ${entry.horizons.map(humanizeToken).join(", ")} thesis. Size: ${entry.sizing}${entry.riskMultiplier !== 1 ? ` (risk × ${entry.riskMultiplier})` : ""}`);
   lines.push("");
-  lines.push(`Role: ${entry.role === "ENTRY" ? "a buy pattern with its own entry" : "a screen — the entry comes from another setup"}`);
-  lines.push(`Horizons: ${entry.horizons.map(humanizeToken).join(", ")}`);
-  lines.push("");
-  lines.push("Must be true first:");
+  lines.push("What must be true:");
   entry.preconditions.forEach((p) => lines.push(`  • ${p}`));
   lines.push("");
-  if (entry.entry.entryVia?.length) lines.push(`Entered via: ${entry.entry.entryVia.join(", ")}`);
-  entry.entry.confirmation.forEach((c) => lines.push(`Confirm: ${c}`));
-  if (entry.entry.chaseLimitPct != null) lines.push(`Chase limit: ${entry.entry.chaseLimitPct}% past the buy trigger's price`);
-  lines.push(`Size: ${entry.sizing}${entry.riskMultiplier !== 1 ? ` (risk × ${entry.riskMultiplier})` : ""}`);
+  lines.push("What confirms a buy:");
+  if (entry.entry.entryVia?.length) lines.push(`  • Bought through: ${entry.entry.entryVia.map((id) => `${getSetup(id)?.name ?? id} (${id})`).join(", ")}`);
+  entry.entry.confirmation.forEach((c) => lines.push(`  • ${c}`));
+  if (entry.entry.chaseLimitPct != null) lines.push(`  • Not more than ${entry.entry.chaseLimitPct}% past the buy trigger's price`);
+  lines.push("");
+  lines.push("What failure looks like:");
+  entry.failureSigns.forEach((f) => lines.push(`  • ${f}`));
   lines.push("");
   lines.push("Its triggers (Settings → Playbook):");
   for (const on of templates == null ? (["WATCH"] as const) : WRITTEN_ON) lines.push(...playbookTriggerText(templates, on));
-  lines.push("");
-  lines.push("Failure looks like:");
-  entry.failureSigns.forEach((f) => lines.push(`  • ${f}`));
   return lines.join("\n").trim();
 }
 

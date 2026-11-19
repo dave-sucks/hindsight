@@ -65,6 +65,7 @@ When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says
 - **Change the belief or direction:** only the Writer and chat can, and chat only when you ask.
 - **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its triggers stay as proposed.
 - **Research:** "research CRWD" or `/research` starts the Writer with `dispatch_thesis_research`; `wait_for_thesis_refresh` brings the thesis back into the conversation.
+- **Pass:** "we looked, and we pass" is `pass_on_stock`, with the stock and the reason. It saves the stock as Passed, never woken, so the idea isn't pitched again. Like a new thesis, it needs chat pinned to an analyst.
 
 It never approves or declines a proposal. That's always your click.
 

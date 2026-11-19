@@ -68,7 +68,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
   // 2026-11-18: −61, the same.
   // 2026-11-18: +68, the pinned analyst's name and id open its analyst text, as the scope block's first line did.
-  chat: 35_538,
+  // 2026-11-19: −330, "we looked, and we pass" is pass_on_stock, and read_database leaves the text with the menu (its three mentions, the order-history one among them).
+  chat: 35_208,
 };
 
 /**
@@ -119,7 +120,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −377, the same get_theses description and fields.
   // 2026-11-18: −432, the same place_trade fields.
   // 2026-11-18: −5,706, the same place_trade field.
-  principal: 62_061,
+  // 2026-11-19: −1,284, read_database off the chat's menu, pass_on_stock (the stock and the reason) on it.
+  principal: 60_777,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

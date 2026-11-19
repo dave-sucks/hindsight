@@ -140,24 +140,44 @@ export interface Setup {
 
 // ── Placeholders the writer fills ─────────────────────────────────────────
 
-/** Where each `{placeholder}` comes from. `chart.` paths are PriceStructure fields. */
+/** Where each `{placeholder}` comes from, in the words of the stock's chart block (fillValue in ./playbooks reads the same numbers). */
 export const PLACEHOLDERS: Record<Placeholder, string> = {
-  "{pivot}": "chart.base.pivot — the base's high; add 0.1–0.3% buffer",
-  "{pivotChase}": `chart.base.pivot × ${1 + CHASE_LIMIT_PCT / 100} — the chase ceiling`,
-  "{flagHigh}": "chart.range.high20 — the flag's high (or the last swing high inside the flag)",
-  "{gapDayHigh}": "chart.gaps[0].high — day-1 high of the gap",
-  "{gapDayMid}": "chart.gaps[0].mid — the gap-day midpoint (a hold above it on day 2 is the entry)",
-  "{gapDayLow}": "chart.gaps[0].low — the gap-day low, the market's own line",
-  "{swingLow}": "chart.swings.lastLow.price",
-  "{high20}": "chart.range.high20 — the 20-day high",
-  "{baseLow}": "chart.base.low — the base's low",
-  "{priorHigh}": "chart.swings.lastHigh.price — the prior high above the buy",
-  "{priorHighOrTwiceRisk}": "chart.swings.lastHigh.price when it is above the buy, else the buy price + 2 × (the buy price − the sell price)",
-  "{low52}": "chart.range.low52w — the 52-week low",
-  "{flagLow}": "chart.range.low20 — the flag's low",
-  "{price}": "chart.price — today's price",
+  "{pivot}": "the pivot on the chart's Base line, plus 0.1–0.3%",
+  "{pivotChase}": `the pivot × ${1 + CHASE_LIMIT_PCT / 100}, the most a buy chases`,
+  "{flagHigh}": "the 20-day high on the chart's Range line (or the last swing high inside the flag)",
+  "{gapDayHigh}": "the high of the newest gap on the chart's Gaps line",
+  "{gapDayMid}": "the middle of that gap day (a hold above it on day 2 is the entry)",
+  "{gapDayLow}": "the low of that gap day, the market's own line",
+  "{swingLow}": "the last swing low on the chart's Swings line",
+  "{high20}": "the 20-day high on the chart's Range line",
+  "{baseLow}": "the low on the chart's Base line",
+  "{priorHigh}": "the last swing high on the chart's Swings line, when it is above the buy",
+  "{priorHighOrTwiceRisk}": "the last swing high when it is above the buy, else the buy price + 2 × (the buy price − the sell price)",
+  "{low52}": "the 52-week low on the chart's Range line",
+  "{flagLow}": "the 20-day low on the chart's Range line",
+  "{price}": "today's price",
   "{sellPrice}": "the sell price the run names with the buy (place_trade's sell_if_below), by its trigger's own reason",
-  "{riskPct}": "(the buy price − the sell price) ÷ the buy price, as a % — one risk",
+  "{riskPct}": "(the buy price − the sell price) ÷ the buy price, as a %",
+};
+
+/** Each `{placeholder}` by name, as a trigger's sentence says it. */
+export const PLACEHOLDER_NAMES: Record<Placeholder, string> = {
+  "{pivot}": "the base's high",
+  "{pivotChase}": `the chase limit (${CHASE_LIMIT_PCT}% above the base's high)`,
+  "{flagHigh}": "the flag's high",
+  "{gapDayHigh}": "the gap day's high",
+  "{gapDayMid}": "the gap day's middle",
+  "{gapDayLow}": "the gap day's low",
+  "{swingLow}": "the last swing low",
+  "{high20}": "the 20-day high",
+  "{baseLow}": "the base's low",
+  "{priorHigh}": "the prior high",
+  "{priorHighOrTwiceRisk}": "the prior high, else twice the risk above the buy",
+  "{low52}": "the 52-week low",
+  "{flagLow}": "the flag's low",
+  "{price}": "today's price",
+  "{sellPrice}": "the sell price",
+  "{riskPct}": "one risk",
 };
 
 // ── The catalog ───────────────────────────────────────────────────────────
@@ -272,7 +292,7 @@ export function preCatalystWindowLine(row: BinaryRow, asOf: Date = new Date()): 
 }
 
 const trendTemplate =
-  "Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)";
+  "Trend Template passes (price above a rising 150- and 200-day, the 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)";
 
 const CATALOG: Omit<Setup, "triggers">[] = [
   {
@@ -283,10 +303,10 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     horizons: ["TRADE", "TARGET", "COMPOUNDER"],
     preconditions: [
       trendTemplate,
-      "A base of 20+ sessions (chart.base), 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)",
+      "A base of 20+ sessions, 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)",
       "Volume drying up into the pivot",
       "Earnings at least 10 days away",
-      "A risk-on market: breakouts fail most in a cautious one (playbook Part C)",
+      "A risk-on market: breakouts fail most in a cautious one",
     ],
     entry: {
       confirmation: [
@@ -298,7 +318,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4).",
+    sizing: "Sized by risk.",
     failureSigns: [
       "Closes back below the pivot within days, on volume",
       "Breakout-day volume below average",
@@ -315,7 +335,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     horizons: ["TRADE"],
     preconditions: [
       "Already moved 30–100%+ in 1–3 months (top 1–2% by 1/3/6-month return)",
-      "Average daily range (chart.adr20Pct) ≥ 3–5%",
+      "An average daily range of 3–5% or more",
       "Orderly pullback: higher lows, tightening range, riding the rising 10/20-day",
       "Dollar volume enough to fill the seat's size",
     ],
@@ -325,10 +345,10 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4); 0.25–1% of account at risk.",
+    sizing: "Sized by risk; 0.25–1% of account at risk.",
     failureSigns: ["No follow-through in 3–5 days", "Closes back inside the flag"],
     summary:
-      "A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No seat runs this today (DAV-245 ruling 3).",
+      "A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No analyst runs this today.",
   },
   {
     id: "EPISODIC_PIVOT",
@@ -348,7 +368,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4); a wide gap-day low means fewer shares.",
+    sizing: "Sized by risk; a wide gap-day low means fewer shares.",
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
     summary:
       "A neglected stock reprices on unexpected news with volume many times average; institutions need weeks to build positions, so real gaps start multi-month moves. Breakaway earnings gaps fill within a month under 30% of the time.",
@@ -374,7 +394,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: TRADE_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4).",
+    sizing: "Sized by risk.",
     failureSigns: [
       "The gap-day low breaks",
       "A beat with flat or vague guidance",
@@ -391,7 +411,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     horizons: ["TARGET", "COMPOUNDER", "CATALYST"],
     preconditions: [
       trendTemplate,
-      "Relative strength vs SPY positive over 3 months (chart.relativeStrength.vsSpy.m3 > 0)",
+      "Beating SPY over the last 3 months",
       "The pullback comes on below-average volume (healthy), not above (distribution)",
     ],
     entry: {
@@ -403,7 +423,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4).",
+    sizing: "Sized by risk.",
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
     summary:
       "Buying a confirmed uptrend at a discount with a natural stop — the moving average is where institutions re-buy. MSFT touched its 50-day repeatedly on the way from $418 to $497.",
@@ -421,7 +441,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4). Best used as a scale-in rule on a held compounder.",
+    sizing: "Sized by risk. Best used as a scale-in rule on a held compounder.",
     failureSigns: ["Closes below the 200-day"],
     summary:
       "A stock above its 200-day that flushes hard for a few days tends to snap back within a week. Not a primary seat — a scale-in rule for a held compounder.",
@@ -433,7 +453,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     role: "SCREEN",
     horizons: ["TRADE", "TARGET", "COMPOUNDER"],
     preconditions: [
-      "Within 5% of the 52-week high (chart.range.pctBelow52wHigh ≤ 5)",
+      "Within 5% of the 52-week high",
       "Beating SPY over 3–12 months; momentum is negative under 1 month — the window matters",
     ],
     entry: {
@@ -455,7 +475,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     role: "ENTRY",
     horizons: ["CATALYST"],
     preconditions: [
-      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (Thesis.catalystDate)`,
+      `A dated event ${CATALYST_WINDOW_DAYS[0]}–${CATALYST_WINDOW_DAYS[1]} days out (the stock's event date)`,
       "A positive advisory-committee vote if one happened",
       "Cash runway past the decision",
       "Sub-$1B single-asset names: supplemental approvals and label expansions only",
@@ -473,7 +493,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: null, minAtr: MIN_STOP_ATR },
     riskMultiplier: BINARY_RISK_MULTIPLIER,
-    sizing: `Half the normal risk (DAV-245 ruling 2). If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
+    sizing: `Half the normal risk. If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
     summary:
       "A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, never holding the coin flip) or hold through at a size that survives a −60% gap.",
@@ -495,7 +515,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     },
     sale: { maxPct: INSIDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR },
     riskMultiplier: 1,
-    sizing: "Risk-based (Part E4).",
+    sizing: "Sized by risk.",
     failureSigns: ["Insiders sell into the rally"],
     summary:
       "Three or more insiders buying within a month predicts positive returns over 6–12 months — roughly double a single buy.",

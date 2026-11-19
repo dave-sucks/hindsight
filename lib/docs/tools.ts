@@ -264,12 +264,6 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["hindsight"],
     summary: "The Sunday scorecards: win rate, how well conviction matched outcomes, and the week in a paragraph.",
   },
-  read_database: {
-    name: "Database lookup",
-    kind: "book",
-    sources: ["hindsight"],
-    summary: "A read-only lookup for questions no other tool covers, limited to your account.",
-  },
   read_knowledge_library: {
     name: "Strategy library",
     kind: "book",
@@ -283,6 +277,12 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     kind: "thesis",
     sources: ["hindsight"],
     summary: "Starts a thesis on a new stock, or records a researched pass so the idea isn't pitched again.",
+  },
+  pass_on_stock: {
+    name: "Pass on a stock",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "Records that we researched a stock and pass on it, with the reason: saved as Passed, never woken, so the idea isn't pitched again.",
   },
   update_thesis: {
     name: "Edit a thesis",

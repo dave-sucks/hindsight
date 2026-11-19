@@ -107,15 +107,23 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.summary).toMatch(/^12 playbooks:/);
   });
 
-  it("returns a full entry with readable content: the playbook's words, then its triggers", async () => {
+  it("returns a full entry in its words: what it is for, what must be true, what confirms a buy, what failure looks like, then its triggers", async () => {
     const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
     expect(r.data.found).toBe(true);
     const content = String(r.data.content);
-    expect(content).toContain("Post-earnings drift (D4)");
-    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {gapDayMid} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{gapDayMid}","settings":{"close":true}}} — The gap held: a close above the gap day\'s middle.');
-    expect(content).toContain("The triggers that come with the buy:\n- Sell if below {sellPrice}: ");
-    expect(content).toContain('- Review 60 days after the buy: {"action":"REVIEW","predicate":{"watch":"from_date","is":"after","value":60,"variable":"buy"}} — Hold 30–60 days.');
+    expect(content).toContain("Post-earnings drift (PEAD)");
+    const order = ["What must be true:", "What confirms a buy:", "What failure looks like:", "Its triggers (Settings → Playbook):"].map((h) => content.indexOf(h));
+    expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1]))).toBe(true);
+    expect(content).toContain("The playbook's watch triggers:\n- Buy if above the gap day's middle · only on the close — The gap held: a close above the gap day's middle.\n  As written: ");
+    expect(content).toContain("The triggers that come with the buy:\n- Sell if below the sell price — ");
+    expect(content).toContain("- Review 60 days after the buy — Hold 30–60 days.");
     expect(content).not.toMatch(/^(Stop|Target|Trail|Time|  Condition):/m);
+  });
+
+  it("hands the model the playbook's words alone, never its stored fields", async () => {
+    const r = await tool.execute({ topic: "setup", id: "PEAD" }, opts);
+    const sent = (tool as unknown as { toModelOutput: (o: { output: unknown }) => { value: { data: Record<string, unknown> } } }).toModelOutput({ output: r }).value.data;
+    expect(Object.keys(sent).sort()).toEqual(["content", "found", "id", "mode", "name", "topic"]);
   });
 
   it("names the available setups on an unknown id", async () => {

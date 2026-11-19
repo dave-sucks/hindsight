@@ -197,9 +197,10 @@ describe("the writer names a setup by id from the same lines", () => {
       expect(prompt).toContain(lines.join("\n  "));
       expect(lines[0].startsWith(`${id} — `)).toBe(true);
     }
-    // The watch triggers read as Settings → Playbook says them, a chart number by its name.
-    expect(prompt).toContain('\n  - Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}: {"action":"ENTER","predicate":{"match":"all","conditions":[{"watch":"price","is":"above","value":"{pivot}","settings":{"close":true}}');
-    expect(prompt).toContain("{baseLow} chart.base.low — the base's low");
+    // The watch triggers read as sentences, each chart number by its name; the form as written follows each, for the Writer to type.
+    expect(prompt).toContain("\n  - Buy if above the base's high · only on the close and at least 1.5× normal volume and below the chase limit (5% above the base's high) — The base's pivot plus 0.1–0.3%, and at most 5% past it.");
+    expect(prompt).toContain('\n    As written: {"action":"ENTER","predicate":{"match":"all","conditions":[{"watch":"price","is":"above","value":"{pivot}","settings":{"close":true}}');
+    expect(prompt).toContain("{baseLow} is the base's low, the low on the chart's Base line");
     // No sell, Trim, trail or time rule in words: those are the playbook's triggers.
     for (const word of ["Stop: ", "Take profit: ", "Manage", "Time: "]) expect([word, prompt.includes(word)]).toEqual([word, false]);
   });

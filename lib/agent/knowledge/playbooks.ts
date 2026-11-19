@@ -15,7 +15,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { TriggerOp } from "@/lib/agent/triggers/ops";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { TRIGGER_LIST_NAME, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
-import { CHASE_LIMIT_PCT, PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import { CHASE_LIMIT_PCT, PLACEHOLDERS, PLACEHOLDER_NAMES, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 
@@ -60,26 +60,39 @@ function asWritten(p: TemplatePredicate): unknown {
   return variable && MEASURES[p.watch]?.variables?.mode === "replace" ? { ...rest, value: variable } : p;
 }
 
+/** A template's trigger as one sentence, each chart number by name ("Buy if above the base's high · only on the close"). */
+export function templateSentence(t: Template): string {
+  return sentenceOf(t as unknown as Trigger).replace(/\{[A-Za-z0-9]+\}/g, (m) => PLACEHOLDER_NAMES[m as Placeholder] ?? m);
+}
+
 /**
- * One of a playbook's lists of triggers, for an agent's prompt: each as the
- * trigger sentence Settings → Playbook shows, the trigger as the agent writes
- * it, and its reason; then where each {chart number} it names comes from.
- * The agent fills every price.
+ * One of a playbook's lists of triggers, for an agent's prompt: each as its
+ * sentence and its reason, then where each number it names comes from. An
+ * agent still types a playbook's watch triggers itself (the Writer, and a run
+ * answering a screen's review), so each watch trigger also carries its form
+ * as written, with each chart number marked for the agent to fill.
  */
 export function playbookTriggerText(templates: Template[] | null, on: WrittenOn): string[] {
   if (templates == null) return ["The playbook couldn't be read: write no trigger from it."];
   const mine = templates.filter((t) => t.writtenOn === on);
   if (!mine.length) return [`${TRIGGER_LIST_NAME[on]}: none.`];
   const marks = [...new Set(mine.flatMap((t) => templatePlaceholders(t.predicate)))] as Placeholder[];
+  const typed = on === "WATCH";
   return [
     `${TRIGGER_LIST_NAME[on]}:`,
-    ...mine.map((t) => {
-      // A trim's size is the template's own.
-      const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
-      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
-      return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
+    ...mine.flatMap((t) => {
+      const said = `- ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`;
+      if (!typed) return [said];
+      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}) };
+      return [said, `  As written: ${JSON.stringify(written)}`];
     }),
-    ...(marks.length ? [`Where each chart number comes from: ${marks.map((m) => `${m} ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
+    ...(marks.length
+      ? [
+          typed
+            ? `Each chart number, by its mark in the form as written: ${marks.map((m) => `${m} is ${PLACEHOLDER_NAMES[m]}, ${PLACEHOLDERS[m]}`).join("; ")}.`
+            : `Where each number comes from: ${marks.map((m) => `${PLACEHOLDER_NAMES[m]} is ${PLACEHOLDERS[m]}`).join("; ")}.`,
+        ]
+      : []),
   ];
 }
 

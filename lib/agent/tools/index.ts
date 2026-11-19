@@ -33,6 +33,7 @@ import { dispatchThesisResearch } from "./dispatch-thesis-research";
 import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
+import { passOnStock } from "./pass-on-stock";
 import { updateThesis } from "./update-thesis";
 import { writeNoteTool } from "./write-note";
 import { getTheses } from "./get-theses";
@@ -169,6 +170,7 @@ export function createResearchTools(
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
     web_search: webSearch(newCtx),
     record_thesis: recordThesis(newCtx),
+    pass_on_stock: passOnStock(newCtx),
     update_thesis: updateThesis(newCtx),
     write_note: writeNoteTool(newCtx),
     get_theses: getTheses(newCtx),
@@ -228,6 +230,7 @@ export { dispatchThesisResearch } from "./dispatch-thesis-research";
 export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
+export { passOnStock } from "./pass-on-stock";
 export { updateThesis } from "./update-thesis";
 export { writeNoteTool } from "./write-note";
 export { getTheses } from "./get-theses";

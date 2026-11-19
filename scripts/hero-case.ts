@@ -98,7 +98,7 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
 const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings", "read_knowledge_library"]);
 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
-const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
+const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "pass_on_stock", "update_thesis"];
 
 /**
  * What code fills in each call before the tool runs (defineTool's fromRun): a
