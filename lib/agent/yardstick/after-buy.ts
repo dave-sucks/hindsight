@@ -9,12 +9,16 @@
  * floor attempts. Pure.
  */
 import type { Call } from "./action";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 export interface AfterBuyExpect {
   /** The playbook's holding triggers to put on by reference (the floor's template is on already). */
   refs: string[];
-  /** Those already on the stock (the same slot, the playbook's mark): present, so not owed. */
+  /** Those already on the stock (the same slot, mark or no mark): present, so not owed. */
   present?: string[];
+  /** Each holding trigger's slot: one the run writes by hand in that slot is that trigger, so it is present. */
+  refSlots?: Record<string, string>;
   /** The floor on the stock, by id: it is the buy's and stays as it is. */
   floorId: string | null;
   /** The playbook's own floor trigger, by reference (H1): adding it would replace the floor. */
@@ -72,7 +76,11 @@ export function scoreAfterBuy(ex: AfterBuyExpect, sent: Call[], text: string, in
   const adds = edits.flatMap((e) => (Array.isArray(e.add) ? e.add : [])) as Array<Record<string, unknown>>;
   const byRef = new Set(adds.flatMap((a) => (typeof a.playbook_trigger === "string" ? [a.playbook_trigger.trim().toUpperCase()] : [])));
   // A holding trigger not put on is left off only with its reference named in the closing line.
-  const missing = ex.refs.filter((r) => !byRef.has(r) && !ex.present?.includes(r) && !new RegExp(`\\b${r}\\b`).test(text));
+  // A trigger of its own in a reference's slot is that trigger, written by hand.
+  const slotOf = (a: Record<string, unknown>) => { try { return triggerSlot(a as unknown as Trigger); } catch { return null; } };
+  const ownSlots = new Set(adds.filter((a) => typeof a.playbook_trigger !== "string").map(slotOf));
+  const handWritten = (r: string) => !!ex.refSlots?.[r] && ownSlots.has(ex.refSlots[r]);
+  const missing = ex.refs.filter((r) => !byRef.has(r) && !ex.present?.includes(r) && !handWritten(r) && !new RegExp(`\\b${r}\\b`).test(text));
   if (missing.length) why.push(`${missing.join(", ")} neither put on by reference nor named as left off`);
 
   const own = adds.filter((a) => typeof a.playbook_trigger !== "string");

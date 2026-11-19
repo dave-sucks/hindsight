@@ -31,6 +31,15 @@ describe("the run after a buy, graded", () => {
     expect(scoreAfterBuy({ ...GEV, present: ["H4"] }, [two, note], "").pass).toBe(true);
   });
 
+  it("a trigger of its own in a holding trigger's slot is that trigger, written by hand (SMMT: sell 7 days before the event)", () => {
+    const ex = { ...GEV, refSlots: { H4: "from_date:before:event::EXIT" } };
+    const byHand = { toolName: "edit_triggers", input: { add: [{ playbook_trigger: "H2" }, { playbook_trigger: "H3" }, { action: "EXIT", predicate: { watch: "from_date", is: "before", value: 7, variable: "event" }, rationale: "Out before the FDA date." }] } };
+    expect(scoreAfterBuy(ex, [byHand, note], "").pass).toBe(true);
+    // Watching the report instead of the event is another slot: not that trigger.
+    const report = { toolName: "edit_triggers", input: { add: [{ playbook_trigger: "H2" }, { playbook_trigger: "H3" }, { action: "EXIT", predicate: { watch: "report", is: "before", value: 7 }, rationale: "Out before the report." }] } };
+    expect(scoreAfterBuy(ex, [report, note], "").why).toBe("H4 neither put on by reference nor named as left off");
+  });
+
   it("its own trigger needs a reason, and any typed price fails, a key's number or not", () => {
     const own = { toolName: "edit_triggers", input: { add: [{ action: "REVIEW", predicate: { watch: "price", is: "above", value: 1003 } }] } };
     expect(scoreAfterBuy(GEV, [allOn, own, note], "").why).toBe("a trigger of its own with no reason; a typed price: $1003 ({pivot})");
