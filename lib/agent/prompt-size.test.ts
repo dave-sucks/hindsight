@@ -64,7 +64,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-19: +21, T1: the save writes the playbook's watch triggers and the Writer tailors them after it with edit_triggers; each playbook trigger is one line with its reference, and no JSON.
   // 2026-11-19: +44, the same: a price in the Writer's own trigger is a chart key or a line, and the held refresh moves its sale to a key.
   // 2026-11-19: +40, the same: a view with no buy yet carries its look-again on the save (a report or a day), a price one through edit_triggers.
-  writer: 17_483,
+  // 2026-11-19: +48, the look-again's day is the day after the stock's event date in catalyst_date.
+  writer: 17_531,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -76,7 +77,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −283, the same, and pass_on_stock and read_database off the chat (#1047's chat lines).
   // 2026-11-19: −850, the send's own fields: a brief (why this stock, what was found, whose idea, its own view) and a source link; the mode, thesis id, reason, notes, setup and screen row examples go.
   // 2026-11-19: −181, a soft watch is watch_stock with its look-again, and record_thesis leaves the text with the menu.
-  chat: 34_173,
+  // 2026-11-19: −51, #1060: a pass no longer needs the chat pinned (not recorded then; main measured 34,173).
+  // 2026-11-19: +26, watch_stock's look-again is the price, the next report or the event's date.
+  chat: 34_199,
 };
 
 /**
@@ -145,7 +148,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −2,159, the same send, and run_screen puts a row's numbers in its brief.
   // 2026-11-19: −11,010, record_thesis (and its copy of the trigger shape) off the chat, watch_stock (the stock, the reason, a look-again price or day) on it.
   // 2026-11-19: +1,230, the same `is` words.
-  principal: 45_254,
+  // 2026-11-19: +283, watch_stock's look-again is a price, the next report or the event's date.
+  principal: 45_537,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

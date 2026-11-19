@@ -29,8 +29,8 @@ export interface WriterReplayCase {
 type Decision = { direction?: string; setup_id?: string };
 const playbooks = (id: string) => playbookTemplates(null, id);
 
-/** The stock as the save leaves it: its status and view, its triggers with replay ids, and what wasn't written. `todayEt` is the case's day, for a look-again's date. */
-export function savedByWriter(decision: Decision, c: WriterReplayCase, todayEt = "2026-01-01") {
+/** The stock as the save leaves it: its status and view, its triggers with replay ids, and what wasn't written. */
+export function savedByWriter(decision: Decision, c: WriterReplayCase) {
   const d = decision as { direction: "LONG" | "SHORT" | "PASS"; setup_id?: never };
   const writes = writerPlaybookWrites(d, { priceStructure: c.chart }, c.mode === "mint" ? null : c.existing, playbooks);
   let n = 0;
@@ -39,7 +39,7 @@ export function savedByWriter(decision: Decision, c: WriterReplayCase, todayEt =
   const pass = d.direction === "PASS";
   const status = c.mode === "mint" ? (pass ? "PASSED" : "WATCHING") : c.existing?.direction == null && pass ? "PASSED" : c.existing?.status ?? "WATCHING";
   const direction = c.mode === "mint" || c.existing?.direction == null ? (pass ? null : d.direction) : c.existing.direction;
-  const look = pass ? null : lookAgainTrigger((decision as { look_again?: never }).look_again, todayEt);
+  const look = pass ? null : lookAgainTrigger((decision as { look_again?: never }).look_again);
   return { status, direction, triggers: pass && c.mode === "mint" ? [] : [...kept, ...writes.add.map(stored), ...(look ? [stored(look)] : [])], writes, notWritten: writes.notWritten as DroppedItem[] };
 }
 

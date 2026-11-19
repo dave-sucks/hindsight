@@ -27,6 +27,8 @@ jest.mock("@/lib/prisma", () => ({
     researchRun: { update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn().mockResolvedValue({ parameters: {} }) },
     runMessage: { deleteMany: jest.fn(), create: jest.fn() },
     gateRejection: { create: jest.fn() },
+    // The account's playbooks, as shipped: the save writes PRE_CATALYST's watch triggers, so the view has something that can fire.
+    account: { findUnique: jest.fn().mockResolvedValue(null) },
   },
 }));
 jest.mock("@/lib/actions/finnhub.actions", () => ({ getStockQuote: jest.fn().mockResolvedValue(null) }));

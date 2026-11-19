@@ -17,6 +17,8 @@ export interface MintWatchArgs {
   sourceKind: "USER_ADDED" | "BUILDER_SEED" | "WATCHLIST_REVIEW";
   /** The watch's first triggers; none, and nothing wakes it until one is added. */
   triggers?: object[];
+  /** The stock's event date, when its look-again counts from it (watch_stock). */
+  catalystDate?: Date;
   /** The CREATED line's title. */
   summary: string;
 }
@@ -39,6 +41,7 @@ export async function mintWatch(a: MintWatchArgs) {
       sourceKind: a.sourceKind,
       sourceRationale: a.reason || "Manual watchlist add",
       triggers: (a.triggers ?? []) as object[],
+      ...(a.catalystDate ? { catalystDate: a.catalystDate } : {}),
     },
   });
   await writeThesisUpdate({

@@ -614,7 +614,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         const w = writerArgs(c);
         for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; input?: unknown }>) {
           if (t.invalid || t.toolName !== "submit_thesis") continue;
-          const v = validateThesisDecision(t.input as never, { mode: w.mode, existingStatus: w.existingThesis?.status ?? null, currentPrice: null, todayEt: (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) });
+          const v = validateThesisDecision(t.input as never, { mode: w.mode, existingStatus: w.existingThesis?.status ?? null, currentPrice: null });
           if (v.ok) continue;
           handBacks.set(t.toolCallId, { accepted: false, errors: v.errors, instruction: "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note." });
           handedBack.push({ errors: v.errors });
@@ -693,7 +693,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     if (submitCall) {
       const wc = writerCaseOf(c);
       const decision = (submitCall.input ?? {}) as Record<string, unknown>;
-      const saved = savedByWriter(decision, wc, (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
+      const saved = savedByWriter(decision, wc);
       const t = ["WATCHING", "HOLDING", "PROMOTED"].includes(saved.status)
         ? await tailorTurns({ c, model, system, provider: mode.provider, providerOptions, decision, note: text, saved, wc })
         : { calls: [], text: "", invalid: [], usage: { in: 0, cached: 0, out: 0 } };

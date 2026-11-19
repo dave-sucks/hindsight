@@ -49,12 +49,14 @@ export const thesisDecisionSchema = z.object({
   prior_exit_acknowledgment: W.prior_exit.optional(),
   look_again: z
     .object({
-      after_next_report: z.boolean().optional().describe("Look again the day after the next report."),
-      on_date: z.string().optional().describe("Look again on this day (YYYY-MM-DD), and every as many days after."),
+      after_next_report: z.boolean().optional().describe("Look again the day after the stock's next report."),
+      after_event: z.boolean().optional().describe("Look again the day after the stock's event date: give that date in catalyst_date."),
       why: z.string().describe("What you'd look for then, in a sentence."),
     })
     .optional()
-    .describe("Keep a view with no buy yet and say when to look again, instead of a pass."),
+    .describe(
+      "Keep a view with no buy yet and say when to look again, instead of a pass. A look-again is tied to the next report or to the stock's event date; for a plain date with no event, add a review clock with edit_triggers after the save.",
+    ),
 });
 
 /** The Holding refresh's: a held stock's playbook was set when it was bought, so its save names none. */
@@ -68,14 +70,23 @@ export function submitThesisInput(held = false): Schema<ThesisDecisionInput> {
   return zodSchema(held ? heldDecisionSchema : thesisDecisionSchema) as unknown as Schema<ThesisDecisionInput>;
 }
 
-/** The review a look-again writes: the day after the next report, or a day, as a review every that many days (as watch_stock writes one). Null with no look-again. */
-export function lookAgainTrigger(look: ThesisDecisionInput["look_again"], todayEt: string): Record<string, unknown> | null {
+/**
+ * The review a look-again writes, as watch_stock writes one: the day after the
+ * next report, or the day after the stock's event date (its catalystDate, so it
+ * follows a re-dated event). Each fires once and has a slot of its own: a
+ * review clock counts from the last review and slides with every note.
+ * Null with no look-again.
+ */
+export function lookAgainTrigger(look: ThesisDecisionInput["look_again"]): Record<string, unknown> | null {
   if (!look) return null;
-  const predicate = look.after_next_report
-    ? { watch: "report", is: "after", value: 1 }
-    : { watch: "repeat", value: Math.round((Date.parse(String(look.on_date)) - Date.parse(todayEt)) / 86_400_000) };
+  const predicate = look.after_next_report ? LOOK_AFTER_REPORT : LOOK_AFTER_EVENT;
   return { action: "REVIEW", predicate, rationale: look.why.trim() };
 }
+
+/** "Review if within 1 day after earnings". */
+export const LOOK_AFTER_REPORT = { watch: "report", is: "after", value: 1 } as const;
+/** "Review 1 day after the event date". */
+export const LOOK_AFTER_EVENT = { watch: "from_date", is: "after", value: 1, variable: "event" } as const;
 
 /** A decision that passed validation. */
 export interface ValidatedThesisDecision extends ThesisDecisionInput {
@@ -96,8 +107,6 @@ export interface DecisionValidationOpts {
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
-  /** Today, ET (YYYY-MM-DD), for a look-again's day; the date of the call when not given. */
-  todayEt?: string;
 }
 
 export interface DecisionValidationResult {
@@ -150,10 +159,8 @@ export function validateThesisDecision(
   // A look-again keeps a view: one of its two, with why, on a LONG or SHORT.
   const look = d.look_again;
   if (look) {
-    const today = opts.todayEt ?? new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    const days = look.on_date ? Math.round((Date.parse(look.on_date) - Date.parse(today)) / 86_400_000) : null;
-    if (!look.after_next_report === !look.on_date) errors.push("look_again: give one of after_next_report or on_date, with why.");
-    else if (days != null && !(days >= 1 && days <= 365)) errors.push(`look_again.on_date: "${look.on_date}" is not a day 1 to 365 days from today (YYYY-MM-DD).`);
+    if (!look.after_next_report === !look.after_event) errors.push("look_again: give one of after_next_report or after_event, with why.");
+    else if (look.after_event && !d.catalyst_date) errors.push("look_again.after_event: give the event's date in catalyst_date; for a plain date with no event, add a review clock with edit_triggers after the save.");
     if (!look.why?.trim()) errors.push("look_again.why: say what you'd look for then, in a sentence.");
     if (d.direction === "PASS") errors.push("look_again: a PASS takes none. A view you would look again at is LONG or SHORT with no buy and this look-again; or pass with none.");
   }

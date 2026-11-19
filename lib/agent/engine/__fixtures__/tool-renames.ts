@@ -78,14 +78,20 @@ export const CHAT_PASS_TEXT: ReadonlyArray<readonly [string, string]> = [
   ["Only a pass (pass_on_stock) needs the chat pinned; for new coverage,", "For new coverage,"],
 ];
 
+/** A look-again is the next report or the stock's event date (2026-11-19): a day was a review clock that every note restarted. */
+export const LOOK_AGAIN_TEXT: ReadonlyArray<readonly [string, string]> = [
+  ["look_again on the save (the day after the next report, or a day), or a review", "look_again on the save (the day after the next report, or the day after the stock's event date in catalyst_date), or a review"],
+  ["`watch_stock` with its look-again, the price or the day.", "`watch_stock` with its look-again: the price, the next report or the event's date."],
+];
+
 /** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
 /** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }
