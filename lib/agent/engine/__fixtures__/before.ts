@@ -11,7 +11,7 @@ import type { BuiltNewest, BuiltRequest } from "../types";
 type Golden = { cases: Record<string, Record<string, number>>; texts: string[] };
 
 /** The shared instruction files, by the ids the old builders gave them. */
-const OLD_IDS: Record<string, string> = { "house-rules.md": "house_rules", "how-you-write.md": "how_you_write", "research-rules.md": "research_rules" };
+const OLD_IDS: Record<string, string> = { "house-rules.md": "house_rules", "how-you-write.md": "how_you_write" };
 
 /** A case's old parts: "instructions:analyst_brief" → its text. */
 export function before(caseKey: string): Record<string, string> {

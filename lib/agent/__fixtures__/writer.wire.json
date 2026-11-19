@@ -1404,22 +1404,13 @@
       "chars": 5534
      },
      {
-      "id": "research-rules.md",
-      "title": "Research rules",
-      "kind": "shared",
-      "source": "lib/agent/engine/agents/research-rules.md",
-      "where": "instructions",
-      "sep": "\n\n",
-      "chars": 5120
-     },
-     {
       "id": "writer.md",
-      "title": "Its own text",
+      "title": "Its instructions (writer.md)",
       "kind": "own",
       "source": "lib/agent/engine/agents/writer.md",
       "where": "instructions",
       "sep": "\n\n",
-      "chars": 6156
+      "chars": 11278
      },
      {
       "id": "line",
@@ -2858,22 +2849,13 @@
       "chars": 5401
      },
      {
-      "id": "research-rules.md",
-      "title": "Research rules",
-      "kind": "shared",
-      "source": "lib/agent/engine/agents/research-rules.md",
-      "where": "instructions",
-      "sep": "\n\n",
-      "chars": 5120
-     },
-     {
       "id": "holding-refresh.md",
-      "title": "Its own text",
+      "title": "Its instructions (holding-refresh.md)",
       "kind": "own",
       "source": "lib/agent/engine/agents/holding-refresh.md",
       "where": "instructions",
       "sep": "\n\n",
-      "chars": 1601
+      "chars": 6723
      },
      {
       "id": "line",

@@ -626,7 +626,7 @@
    "parts": [
     {
      "id": "portfolio-manager.md",
-     "title": "Its own text",
+     "title": "Its instructions (portfolio-manager.md)",
      "kind": "own",
      "source": "lib/agent/engine/agents/portfolio-manager.md",
      "where": "instructions",

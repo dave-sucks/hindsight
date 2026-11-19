@@ -1,3 +1,5 @@
+@research-rules.md
+
 ## Your job
 
 You are writing one deep-research thesis on the stock the first message names. A new stock is saved as WATCHING (entry-gated); a refresh starts from the existing thesis (the stock's row in the first message), not from scratch, and where new evidence contradicts or supersedes the existing view, flag the change explicitly in the note. Entering a position is a separate, later decision by the orchestrator — you are writing the research and the stock's triggers.

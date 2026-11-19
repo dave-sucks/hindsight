@@ -204,7 +204,7 @@
    "parts": [
     {
      "id": "market-reviewer.md",
-     "title": "Its own text",
+     "title": "Its instructions (market-reviewer.md)",
      "kind": "own",
      "source": "lib/agent/engine/agents/market-reviewer.md",
      "where": "instructions",

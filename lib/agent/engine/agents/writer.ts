@@ -3,10 +3,11 @@
  * or a stock we watch and writes its thesis and its watch triggers
  * (lib/agent/run-thesis-writer.ts runs it). A stock we own is refreshed by
  * its own agent, the Holding refresh (./holding-refresh.ts); the research
- * rules both follow are one shared file (./research-rules.md).
+ * rules both follow are one file each imports (./research-rules.md).
  *
- * Its instructions: the analyst, the house rules, how you write, the
- * playbooks, the research rules and its own text. Its message, the sender's
+ * Its instructions: the house rules, how you write and its own file (which
+ * imports the research rules); the analyst and the stock's playbook are
+ * context sent with them, where they were measured. Its message, the sender's
  * brief (why it was sent, what the sender found, whose idea it was), comes
  * right after the date line; then its context: the market numbers, the stock
  * (on a refresh), the analyst's record by playbook and the stock's data.
@@ -38,7 +39,7 @@ export const WRITER: AgentRecord = {
   subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
-  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "playbooks", "research-rules.md", "writer.md"],
+  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "playbooks", "writer.md"],
   context: WRITER_CONTEXT,
   // submit_thesis is the Writer's own tool (makeSubmitThesisTool, lib/agent/run-thesis-writer.ts).
   tools: ["submit_thesis"],

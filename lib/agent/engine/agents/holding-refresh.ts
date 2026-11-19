@@ -3,11 +3,12 @@
  * a stock we own and rewrites its thesis, keeping the holding's sale, trim
  * and add triggers current (lib/agent/run-thesis-writer.ts runs it on a
  * HOLDING thesis). A new stock or a watch goes to the Writer (./writer.ts);
- * the research rules both follow are one shared text
+ * the research rules both follow are one file each imports
  * (./research-rules.md).
  *
- * Its instructions: the analyst, the house rules, how you write, the research
- * rules and its own text. Its context and its message are the Writer's.
+ * Its instructions: its own file (which imports the research rules), the
+ * house rules and how you write; the analyst is sent with them. Its context
+ * and its message are the Writer's.
  */
 import { MODES } from "@/lib/agent/modes";
 import { WEB_SEARCH_MAX_USES } from "./writer";
@@ -23,7 +24,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
-  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "research-rules.md", "holding-refresh.md"],
+  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "holding-refresh.md"],
   context: WRITER_CONTEXT,
   tools: ["submit_thesis"],
   providerTools: ["web_search"],

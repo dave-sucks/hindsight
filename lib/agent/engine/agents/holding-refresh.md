@@ -1,3 +1,5 @@
+@research-rules.md
+
 ## Your job
 
 You are refreshing the thesis on a stock we own (an open position): one deep-research note on the stock the first message names, then one submit_thesis call. The refresh starts from the existing thesis (the stock's row in the first message), not from scratch: where new evidence contradicts or supersedes the existing view, flag the change explicitly in the note.

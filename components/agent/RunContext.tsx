@@ -101,7 +101,10 @@ function ContextBody({ call }: { call: CallView | null }) {
               <Collapsible>
                 <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted">
                   <span className={cn("size-2 shrink-0 rounded-full", color(c))} />
-                  <span className="flex-1 font-medium">{c.name}</span>
+                  <span className="flex-1 font-medium">
+                    {c.name}
+                    {c.sentWith && <span className="font-normal text-muted-foreground"> · sent with the instructions</span>}
+                  </span>
                   <span className="text-muted-foreground tabular-nums">
                     {n(c.chars)} · {share(c.chars, call.chars).toFixed(0)}%
                   </span>

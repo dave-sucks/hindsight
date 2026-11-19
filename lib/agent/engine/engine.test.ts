@@ -124,7 +124,7 @@ describe("the Portfolio Manager", () => {
   it("names every part, in order, and the parts add up to what is sent", async () => {
     const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"));
     expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual([
-      "instructions:Its own text",
+      "instructions:Its instructions (portfolio-manager.md)",
       "instructions:House rules",
       "instructions:How you write",
       "message:The date and account",
@@ -173,7 +173,7 @@ describe("the Market Reviewer", () => {
       context: { the_book: "## The book\nb", last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
     });
     expect(built.instructions).toBe(REVIEWER_GOLDEN.system);
-    expect(built.parts.map((p) => p.title)).toEqual(["Its own text", "The date and account", "Market numbers", "The portfolio", "The book", "Its last output"]);
+    expect(built.parts.map((p) => p.title)).toEqual(["Its instructions (market-reviewer.md)", "The date and account", "Market numbers", "The portfolio", "The book", "Its last output"]);
     expect(built.message.startsWith(`${dateLine(NOW, "LIVE")}\n\n## Market and portfolio\n\n### Market numbers (as of`)).toBe(true);
     expect(built.message.endsWith("\n\n## The book\nb\n\n## Your notes in the last 5 days\n- none\n\n## Your last digest\nd")).toBe(true);
     expect(MARKET_REVIEWER.providerTools).toEqual(["web_search"]);

@@ -75,7 +75,10 @@ describe("the framework page's agents", () => {
 
   it.each(AGENTS.map((r) => [r.id, r] as const))("%s: each part its sample sent is sized from the manifest, and nothing else is", (_, record) => {
     const built = AGENT_SAMPLES[record.id]!.build(record);
-    const sent = [...built.request.parts, ...(built.newest?.parts ?? [])].filter((p) => p.chars > 0);
+    const all = [...built.request.parts, ...(built.newest?.parts ?? [])].filter((p) => p.chars > 0);
+    // Listed as the Context panel lists them: the instruction files, then the facts sent with them, then the rest as sent.
+    const withInstructions = (p: (typeof all)[number]) => p.where === "instructions" && p.kind === "context";
+    const sent = [...all.filter((p) => p.where === "instructions" && !withInstructions(p)), ...all.filter(withInstructions), ...all.filter((p) => p.where !== "instructions")];
     const sized = byId.get(record.id)!.parts.filter((p) => p.chars != null);
     expect(sized.map((p) => [p.where, p.id, p.chars])).toEqual(sent.map((p) => [p.where, p.id, p.chars]));
     // Every request sends some of its own words.

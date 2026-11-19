@@ -18,7 +18,7 @@ import path from "path";
 import GOLDEN from "./__fixtures__/requests.golden.json";
 import { sentRequests } from "./__fixtures__/sent-requests";
 import { AGENTS } from "./agents";
-import { INSTRUCTIONS_DIR, instructionText } from "./instructions";
+import { importsOf, INSTRUCTIONS_DIR, instructionText } from "./instructions";
 import { isFile, ownFile, SHARED_FILES } from "./types";
 import { DIGEST_CHARS } from "./agents/market-reviewer";
 import { SENDS_A_RUN } from "./agents/discovery";
@@ -61,15 +61,22 @@ describe("instructions are markdown files: a move, not an edit", () => {
 });
 
 describe("the instruction files", () => {
-  it("each agent has one of its own, and every file it names exists; no file goes unused", () => {
+  it("each agent has one of its own, and every file it names or imports exists; no file goes unused", () => {
     const named = new Set<string>();
     for (const r of AGENTS) {
       const own = r.instructions.filter((e) => isFile(e) && !(SHARED_FILES as readonly string[]).includes(e));
       expect([r.id, own.length]).toEqual([r.id, 1]);
       expect([r.id, ownFile(r)]).toEqual([r.id, `${r.id.replace(/_/g, "-")}.md`]);
-      for (const e of r.instructions) if (isFile(e)) named.add(e);
+      for (const e of r.instructions) if (isFile(e)) for (const f of [e, ...importsOf(e)]) named.add(f);
     }
     expect(readdirSync(INSTRUCTIONS_DIR).filter((f) => f.endsWith(".md")).sort()).toEqual([...named].sort());
+  });
+
+  it("an agent's instructions are its own file and the rules files: the research rules are imported, one line in the Writer's and the Holding refresh's own", () => {
+    for (const r of AGENTS) expect([r.id, r.instructions.filter(isFile).filter((f) => f !== ownFile(r))]).toEqual([r.id, r.instructions.filter((e) => (SHARED_FILES as readonly string[]).includes(e))]);
+    expect(importsOf("writer.md")).toEqual(["research-rules.md"]);
+    expect(importsOf("holding-refresh.md")).toEqual(["research-rules.md"]);
+    expect(instructionText("writer.md").startsWith(`${instructionText("research-rules.md")}\n\n## Your job`)).toBe(true);
   });
 
   it("is plain text: no ${…} left from a template, and each ends in one newline", () => {

@@ -22,8 +22,8 @@ import type { SubjectKind } from "@/lib/agent/context/bundles";
 /** An instruction file: one markdown file in ./agents/. */
 export type InstructionFile = `${string}.md`;
 
-/** The instruction files more than one agent uses (./parts.ts). */
-export const SHARED_FILES = ["house-rules.md", "how-you-write.md", "research-rules.md"] as const;
+/** The rules files every agent that writes for you gets beside its own instructions (./parts.ts), as Claude Code always loads CLAUDE.md. */
+export const SHARED_FILES = ["house-rules.md", "how-you-write.md"] as const;
 export type SharedFile = (typeof SHARED_FILES)[number];
 
 /** A fact an agent is given (./parts.ts): placed in its instructions or its first message, where its record lists it. */

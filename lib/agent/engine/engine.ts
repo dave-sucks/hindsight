@@ -58,7 +58,7 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
   for (const e of record.instructions) {
     if (isFile(e)) {
       const shared = isShared(e);
-      instructions.push({ id: e, title: shared ? SHARED[e].title : "Its own text", kind: shared ? "shared" : "own", source: `lib/agent/engine/agents/${e}` }, instructionText(e));
+      instructions.push({ id: e, title: shared ? SHARED[e].title : `Its instructions (${e})`, kind: shared ? "shared" : "own", source: `lib/agent/engine/agents/${e}` }, instructionText(e));
       continue;
     }
     const text = loaded.context?.[e];

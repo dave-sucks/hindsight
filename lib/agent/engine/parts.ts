@@ -14,7 +14,7 @@ export interface PartDef {
   source: string;
 }
 
-/** The instruction files more than one agent uses. */
+/** The rules files every agent that writes for you gets beside its own instructions. */
 export const SHARED: Record<SharedFile, PartDef> = {
   "house-rules.md": {
     title: "House rules",
@@ -26,9 +26,13 @@ export const SHARED: Record<SharedFile, PartDef> = {
     about: "How a note, a trade's reason, a trigger's note and the narration are written.",
     source: "lib/agent/engine/agents/how-you-write.md",
   },
+};
+
+/** The files an agent's own instructions import ("@research-rules.md" on its own line): part of that one document. */
+export const IMPORTED: Record<string, PartDef> = {
   "research-rules.md": {
     title: "Research rules",
-    about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first.",
+    about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first. The Writer's and the Holding refresh's instructions import it.",
     source: "lib/agent/engine/agents/research-rules.md",
   },
 };
