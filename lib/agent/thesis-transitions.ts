@@ -157,7 +157,7 @@ const EARLY_RULES: TransitionRule[] = [
       ) {
         return null;
       }
-      const errorMsg = `Cannot ${i.changeStatus} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is change_status: "WATCHING" (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
+      const errorMsg = `Cannot ${i.changeStatus} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is watch_again (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
       return {
         summary: `Cannot ${i.changeStatus} a PROMOTED thesis: ${i.ticker}`,
         data: {
@@ -187,7 +187,7 @@ const EARLY_RULES: TransitionRule[] = [
       ) {
         return null;
       }
-      const errorMsg = `PROMOTED thesis ${i.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR update_thesis(change_status: "WATCHING") to defer. Reasoning-only patches don't count — the thesis stays PROMOTED until you act.`;
+      const errorMsg = `PROMOTED thesis ${i.ticker} requires an explicit resolution this run: call place_trade to re-enter live (the trade flips PROMOTED → HOLDING on fill), OR watch_again to defer. A note doesn't count — the thesis stays PROMOTED until you act.`;
       return {
         summary: `PROMOTED thesis needs explicit resolution: ${i.ticker}`,
         data: {
@@ -253,7 +253,7 @@ export function checkTerminateWithoutClose(
   const action = input.changeStatus; // "INVALIDATED" | "ARCHIVED"
   const pos = facts.openPosition;
   return {
-    summary: `Cannot ${action} $${input.ticker} — open position requires close_position first.`,
+    summary: `Cannot ${action} $${input.ticker} — open position requires sell first.`,
     data: {
       error: "terminate_active_without_close",
       ticker: input.ticker,
@@ -266,7 +266,7 @@ export function checkTerminateWithoutClose(
       message:
         `$${input.ticker} has an open ${pos.direction} position (${pos.quantity} sh) backed by this thesis — a stock we own. ` +
         `Terminating the thesis (${action}) without closing the position creates a zombie — open position with no live thesis to manage it. ` +
-        `Call \`close_position\` first to exit Alpaca; it flips the thesis status itself.`,
+        `Call \`sell\` first to exit Alpaca; it flips the thesis status itself.`,
     },
   };
 }
@@ -306,8 +306,8 @@ export function checkWatchingOptOut(
     data: {
       error: "watching_transition_from_non_promoted",
       message:
-        `change_status: "WATCHING" puts back a thesis this analyst promoted (the first-live-run opt-out) or one it sold. This thesis is ${input.currentStatus}${input.retiredReason ? ` (${input.retiredReason})` : ""}. ` +
-        `Did you mean change_status: "INVALIDATED" (kill the belief)? To exit an open position, call close_position.`,
+        `watch_again puts back a thesis this analyst promoted (the first-live-run opt-out) or one it sold. This thesis is ${input.currentStatus}${input.retiredReason ? ` (${input.retiredReason})` : ""}. ` +
+        `Did you mean stop_watching? To exit an open position, call sell.`,
     },
   };
 }

@@ -292,7 +292,7 @@ export async function POST(
         // PRINCIPAL_CHAT run row isn't minted until a few lines below. Left
         // unset, ctx.runEnvironment threads through as the *string* "PAPER"
         // (never undefined) — so a LIVE analyst's chat-initiated
-        // close_position / manage_position silently no-op against the empty
+        // sell / add silently no-op against the empty
         // paper book, place_trade executes in paper, get_portfolio_context
         // shows an empty book, and dispatch_thesis_research stamps children
         // PAPER (the #380 symptom). Because the value is "PAPER" and not
@@ -695,7 +695,7 @@ export async function POST(
 
     // The Master Chat's writes act for the stock's own analyst (analyst-scope.ts).
     // A new thesis belongs to its run's analyst, and this run has none: it stays pinned-only.
-    const UNSCOPED_BLOCKED_WRITES = ["record_thesis"] as const;
+    const UNSCOPED_BLOCKED_WRITES = ["record_thesis", "pass_on_stock"] as const;
     if (agentMode === "principal" && !resolvedAnalystId) {
       filteredTools = Object.fromEntries(
         Object.entries(filteredTools).filter(

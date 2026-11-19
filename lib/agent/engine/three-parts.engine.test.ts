@@ -18,7 +18,9 @@
  * - context read by subject (lib/agent/context/): the morning run's book is
  *   in its first message, its get_theses read, so its first step no longer
  *   asks for it; the post-trade write-up reads the market numbers alone of
- *   the Market and portfolio reads, as every run about a thesis does.
+ *   the Market and portfolio reads, as every run about a thesis does;
+ * - the action tools, one job each (2026-11-18): every sentence that named
+ *   an old tool names the new one (./__fixtures__/tool-renames.ts).
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { before, partsOf } from "./__fixtures__/before";
@@ -36,6 +38,7 @@ import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { dateLine } from "./engine";
+import { withNewToolNames } from "./__fixtures__/tool-renames";
 
 const NOW = new Date("2026-11-17T15:55:00Z");
 /** The analyst's text with its fence after its slots, where it narrows: the one change to the analyst. */
@@ -69,13 +72,13 @@ describe("the morning run", () => {
       "1. Read your book. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL) and `get_theses`.",
       "1. Read your book: it is in your first message, as `get_theses` hands it to you. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL).",
     );
-    expect(now["instructions:own"]).toBe(`${steps}\n\n${regime}`);
+    expect(now["instructions:own"]).toBe(withNewToolNames(`${steps}\n\n${regime}`));
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["earnings_week", "earnings_this_week"], ["filings_week", "filings_this_week"]]) {
       expect([is, now[`message:${is}`]]).toEqual([is, old[`message:${was}`]]);
     }
-    expect(now["message:refused_calls"]).toBe(old["instructions:blocked_last_time"]);
+    expect(now["message:refused_calls"]).toBe(old["instructions:blocked_last_time"] === undefined ? undefined : withNewToolNames(old["instructions:blocked_last_time"]));
     const atBuy = (c.runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
     // The cash the regime line said when the snapshot couldn't be read is the kickoff's now.
     const cash = old["instructions:regime"].match(/Cash is (\$[\d,]+)\./)?.[1];
@@ -101,12 +104,12 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     const now = partsOf(built);
     const a = args(name);
     expect(now["instructions:the_analyst"]).toBe(withFence(old["instructions:analyst_brief"], a.analyst as UniverseAnalyst));
-    expect(now["instructions:own"]).toBe(old["instructions:instructions"]);
+    expect(now["instructions:own"]).toBe(withNewToolNames(old["instructions:instructions"]));
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     // The stock's playbook is sent with the instructions; the situations still end them.
     expect(now["instructions:the_playbook"]).toBe(old["message:playbooks"]);
-    expect(now["instructions:situations"]).toBe(old["instructions:situations"]);
+    expect(now["instructions:situations"]).toBe(old["instructions:situations"] === undefined ? undefined : withNewToolNames(old["instructions:situations"], "INTRADAY_TACTICAL"));
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["stock_row", "the_stock"]]) {
       // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.
       const notRead = a.autoTrade && ["market_digest", "portfolio", "portfolio_digest"].includes(is);
@@ -115,7 +118,7 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     // The message: the trigger and its price once, what else the check knows, then the old ask.
     const t = a.trigger as Trigger;
     const message = now["message:message"];
-    expect(message.endsWith(`\n\n${old["message:ask"]}`)).toBe(true);
+    expect(message.endsWith(`\n\n${withNewToolNames(old["message:ask"])}`)).toBe(true);
     expect(count(message.replace(more, ""), sentenceOf(t))).toBe(1);
     // Its declared action, as the old "declared action:" line said it: the instructions act on it.
     const declared = old["message:fired_trigger"].match(/declared action: (.+)/)![1];
@@ -175,7 +178,7 @@ describe("the chat", () => {
     const c = CHAT_CASES[name] as { scopedAnalyst: (UniverseAnalyst & { id: string; name: string }) | null; room?: never; roomLines?: string[] };
     const now = partsOf(chatRequest({ scopedAnalyst: c.scopedAnalyst, room: c.room }));
     expect(now["instructions:own"]).toBe(
-      old["instructions:instructions"].replace(
+      withNewToolNames(old["instructions:instructions"]).replace(
         "When these instructions end with an analyst's blocks (its scope, its brief, its money and its book), this chat is pinned to one analyst.",
         "When these instructions end with an analyst (its strategy, its rules and its playbooks), this chat is pinned to one analyst, and its book rides on each of your messages.",
       ),

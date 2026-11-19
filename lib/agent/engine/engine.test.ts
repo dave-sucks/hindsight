@@ -9,6 +9,7 @@
  * The goldens were frozen from the old builders on the stand-in book
  * (lib/agent/__fixtures__): ./__fixtures__/*.golden.json.
  */
+import { withNewToolNames } from "./__fixtures__/tool-renames";
 import GOLDEN from "./__fixtures__/portfolio-manager.golden.json";
 import DIGEST_GOLDEN from "./__fixtures__/portfolio-digest.golden.json";
 import REVIEWER_GOLDEN from "./__fixtures__/market-reviewer.golden.json";
@@ -109,7 +110,7 @@ describe("the Portfolio Manager", () => {
       "The Portfolio snapshot above lists every stock we own and the Watching block every stock we watch.",
       "The Portfolio snapshot and the book in your first message list every stock we own and every stock we watch.",
     );
-    expect(built.instructions).toBe(`${role}\n\n${ownJob}\n\n${houseAndWrite}`);
+    expect(built.instructions).toBe(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`);
     const theBook = "## The book\nHolding (1):\n- AAA · Case Analyst · The company sells a product people keep buying.\nWatching (1):\n- CCC · Case Analyst · A strong quarter, and the base held.";
     const marketWithoutWatching = market.slice(0, market.indexOf("\n\n### Watching"));
     expect(built.message).toBe(`${dateLine(NOW, "LIVE")}\n\n${marketWithoutWatching}\n\n${theBook}\n\n${GOLDEN.message.replace("Thu, Nov 12, the LIVE account.\n\n", "")}`);
@@ -141,7 +142,7 @@ describe("the Portfolio Manager", () => {
   });
 
   it("has the tools its old run listed, in the same order", () => {
-    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "update_thesis", "place_trade", "manage_position", "close_position", "dispatch_thesis_research"]);
+    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "write_note", "edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"]);
   });
 
   it("a Market and portfolio read that can't be read prints its one line under the heading, as before", async () => {

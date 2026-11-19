@@ -111,8 +111,8 @@ describe("IOT: an Auto-trim", () => {
 
   it("sells its 30% (90 of 300 shares), as a proposal", async () => {
     const call = doItCall({ trade: "TRIM", trigger: IOT_TRIM, thesis: IOT, price: 0 });
-    expect(call).toMatchObject({ tool: "manage_position", args: { symbol: "IOT", action: "partial_close", close_pct: 30 } });
-    const r = await replayTool("manage-position", "managePosition", { seed: seed(), args: call.args, ctx: analystCtx(PEAD), quotes: { IOT: 47.6 } });
+    expect(call).toMatchObject({ tool: "sell", args: { ticker: "IOT", percent: 30 } });
+    const r = await replayTool("sell", "sell", { seed: seed(), args: call.args, ctx: analystCtx(PEAD), quotes: { IOT: 47.6 } });
     expect(r.refused).toBe(false);
     expect(orderOf(r)).toMatchObject({ intent: "PARTIAL_CLOSE", quantity: 90, status: "AWAITING_APPROVAL" });
   });
@@ -120,12 +120,12 @@ describe("IOT: an Auto-trim", () => {
   it("a trim that names no size sells half", () => {
     const { trimPct: _drop, ...noSize } = IOT_TRIM;
     void _drop;
-    expect(doItCall({ trade: "TRIM", trigger: noSize, thesis: IOT, price: 0 }).args).toMatchObject({ close_pct: 50 });
+    expect(doItCall({ trade: "TRIM", trigger: noSize, thesis: IOT, price: 0 }).args).toMatchObject({ percent: 50 });
   });
 
   it("an Auto-add is paid from cash too", async () => {
     const call = doItCall({ trade: "ADD", trigger: { ...IOT_TRIM, action: "ADD" }, thesis: IOT, price: 0 });
-    const r = await replayTool("manage-position", "managePosition", { seed: seed(), args: call.args, ctx: { ...analystCtx(PEAD), payFromCash: 500 }, quotes: { IOT: 47.6 } });
+    const r = await replayTool("add", "add", { seed: seed(), args: call.args, ctx: { ...analystCtx(PEAD), payFromCash: 500 }, quotes: { IOT: 47.6 } });
     expect(r.refused).toBe(true);
     expect(r.refusal?.message).toMatch(/^You have \$500\.00 in cash; this buy is \$/);
     expect(r.db.store.order ?? []).toHaveLength(0);

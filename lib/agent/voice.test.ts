@@ -121,7 +121,7 @@ describe("the old wording is gone from every line the app writes for the owner",
     ["lib/actions/promote-analyst.actions.ts", ["Administrative transition, not a thesis decision", "Demote-while-PROMOTED downgrade"]],
     ["lib/actions/analyst.actions.ts", ["Analyst was created with this ticker on the suggested watchlist", "Editor removed this ticker from the analyst's watchlist.", "Updated via editor"]],
     // 2026-10-30: a proposal's reason is the analyst's words alone. The sizing and a corrected sale label go to the agent.
-    ["lib/agent/tools/close-position.ts", ["closed by agent — reason:"]],
+    ["lib/agent/tools/sell.ts", ["closed by agent — reason:"]],
     ["lib/actions/closeTrade.actions.ts", ["Automated ${reason} exit"]],
     ["lib/agent/tools/place-trade.ts", ["[proposalRationale, sizingNotes"]],
     ["lib/agent/tools/manage-position.ts", ["${args.reason}\\n\\n${addSizingLine}"]],
@@ -146,9 +146,9 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   const SHORTHAND = [/\bPEAD\b/, /drift/i, /time-hold/i, /trend template/i, /\bR\/R\b/, /\bATR\b/, /ladder/i, /\brungs?\b/i, /fire.mode/i, /\bslot\b/i, /\b[A-Z]+_[A-Z_]+\b/];
   const shorthand = (text: string) => SHORTHAND.filter((re) => re.test(text)).map(String);
 
-  // update_thesis is read through the writer's door (it carries every field); the rest through the chat's.
+  // update_thesis is read through the writer's door (it carries every field), write_note through a run's (the analyst's note); the rest through the chat's.
   const props = (tool: string): Record<string, Prop> => {
-    const runMode = tool === "update_thesis" ? "THESIS_WRITER" : "PRINCIPAL_CHAT";
+    const runMode = tool === "update_thesis" ? "THESIS_WRITER" : tool === "write_note" ? "MORNING_PLAN" : "PRINCIPAL_CHAT";
     const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
     return (zodSchema(all[tool].inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
   };
@@ -158,8 +158,9 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   const shown = (): Array<[string, string]> => [
     ["update_thesis.rationale", wordsOf(props("update_thesis").rationale)],
     ["place_trade.entry_rationale", wordsOf(props("place_trade").entry_rationale)],
-    ["close_position.notes", wordsOf(props("close_position").notes)],
-    ["manage_position.reason", wordsOf(props("manage_position").reason)],
+    ["sell.note", wordsOf(props("sell").note)],
+    ["add.note", wordsOf(props("add").note)],
+    ["write_note.note", wordsOf(props("write_note").note)],
     ["record_thesis.reasoning_summary", wordsOf(props("record_thesis").reasoning_summary)],
     ["submit_thesis.rationale", wordsOf(submit().rationale)],
     ["record_run_summary.decision_rationale", wordsOf(props("record_run_summary").decision_rationale)],
@@ -203,8 +204,8 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   });
 
   it("each note and trade reason leads with the company and points at the rules, and restates no length or tone", () => {
-    const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|reason|reasoning_summary|decision_rationale)$/.test(name));
-    expect(notes).toHaveLength(7);
+    const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|note|reason|reasoning_summary|decision_rationale)$/.test(name));
+    expect(notes).toHaveLength(8);
     for (const [name, words] of notes) {
       const company = name.endsWith("decision_rationale") ? /what moved the stocks/ : /company/;
       expect([name, company.test(words), /How you write/.test(words)]).toEqual([name, true, true]);

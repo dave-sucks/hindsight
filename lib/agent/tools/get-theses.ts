@@ -22,6 +22,7 @@
  * history_limit if you need more context.
  */
 
+import { isNotelessEdit } from "@/lib/agent/no-note";
 import { z } from "zod";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -690,7 +691,7 @@ export const getTheses = defineTool({
               orderBy: { timestamp: "desc" },
               // A few, so an Auto trade's write-up can be skipped below.
               take: 5,
-              select: { timestamp: true, run: { select: { parameters: true } } },
+              select: { timestamp: true, fieldChanges: true, run: { select: { parameters: true } } },
             },
           },
         });
@@ -742,7 +743,8 @@ export const getTheses = defineTool({
             // write-up (tactical-run.ts) can land after the sale fills; it
             // describes the sale, so it is not the look back.
             answered: (() => {
-              const last = r.updates.find((u) => (u.run?.parameters as { autoTrade?: unknown } | null)?.autoTrade !== true);
+              // An Auto trade's write-up, and a change saved with no note, are no answer to the sale.
+              const last = r.updates.find((u) => (u.run?.parameters as { autoTrade?: unknown } | null)?.autoTrade !== true && !isNotelessEdit(u.fieldChanges));
               return !!(last && r.closedAt && last.timestamp.getTime() > r.closedAt.getTime() + 5_000);
             })(),
             now: resolverNow,

@@ -164,6 +164,16 @@ export async function recordGateRejection(opts: {
   }
 }
 
+/** The thesis tools were one tool (update_thesis) until 2026-11-18: a landed call on a thesis answers any of their refusals there. */
+const THESIS_TOOLS = ["update_thesis", "edit_triggers", "write_note", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
+/** The tools whose open refusals a landed call answers: its own, and those of the tools it replaced. */
+export function answeredBy(tool: string): string[] {
+  if (THESIS_TOOLS.includes(tool)) return THESIS_TOOLS;
+  if (tool === "sell") return ["sell", "close_position", "manage_position"];
+  if (tool === "add") return ["add", "manage_position"];
+  return [tool];
+}
+
 /**
  * A non-refused result answers every open refusal of the same tool on the
  * same stock or thesis for this analyst — this run's or an earlier one's.
@@ -186,7 +196,7 @@ export async function resolveGateRejections(opts: {
       opts.tool === "complete_run"
         ? { tool: opts.tool, runId: opts.ctx.runId ?? "", resolvedAt: null }
         : subject.length > 0 && opts.ctx.analystId
-          ? { tool: opts.tool, analystId: opts.ctx.analystId, resolvedAt: null, OR: subject }
+          ? { tool: { in: answeredBy(opts.tool) }, analystId: opts.ctx.analystId, resolvedAt: null, OR: subject }
           : null;
     if (!where) return;
     await prisma.gateRejection.updateMany({

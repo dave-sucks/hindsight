@@ -87,7 +87,7 @@ describe("GEV 10-28 09:40 ET: the hold note after two lapsed sales", () => {
     // Production named the lapsed sale in its own words; the refusal now names the situation.
     expect(fx.refusedWith).toMatch(/left to lapse/);
     expect(text).toMatch(/GEV \([a-z0-9]+\): sale signal/);
-    expect(text).toContain("a note-only review counts");
+    expect(text).toContain("Answer each with write_note");
     expect(text).not.toContain("does not answer it");
   });
 });

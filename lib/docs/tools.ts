@@ -264,12 +264,6 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["hindsight"],
     summary: "The Sunday scorecards: win rate, how well conviction matched outcomes, and the week in a paragraph.",
   },
-  read_database: {
-    name: "Database lookup",
-    kind: "book",
-    sources: ["hindsight"],
-    summary: "A read-only lookup for questions no other tool covers, limited to your account.",
-  },
   read_knowledge_library: {
     name: "Strategy library",
     kind: "book",
@@ -284,17 +278,47 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["hindsight"],
     summary: "Starts a thesis on a new stock, or records a researched pass so the idea isn't pitched again.",
   },
-  update_thesis: {
-    name: "Edit a thesis",
+  pass_on_stock: {
+    name: "Pass on a stock",
     kind: "thesis",
     sources: ["hindsight"],
-    summary: "Changes a thesis in place: a trigger added, edited or removed by id, the belief, the score, the status. Each change is one line in Activity.",
+    summary: "For a stock we don't cover: records that we researched it and pass, with the reason. Saved as Passed, never woken, so the idea isn't pitched again.",
   },
   write_note: {
-    name: "Your note",
+    name: "Note",
     kind: "thesis",
     sources: ["hindsight"],
-    summary: "Saves your reasoning on a stock, in your words. The analyst reads your newest notes first.",
+    summary: "A note on a stock, one line in its Activity. In a run it is the analyst's review and its verdict, and the reason on any trade the run proposed; in chat it is your reasoning, in your words.",
+  },
+  edit_triggers: {
+    name: "Edit triggers",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "Adds, edits or removes a stock's triggers one at a time, by id, and names the playbook they come from. Only you move a sale's price down.",
+  },
+  set_conviction: {
+    name: "Set conviction",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "Changes the analyst's conviction on a stock, with the reason.",
+  },
+  set_catalyst_date: {
+    name: "Set the catalyst date",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "Sets the day a stock's dated event lands, as the company announced it; the pre-catalyst triggers count the days to it.",
+  },
+  stop_watching: {
+    name: "Stop watching",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "For a stock we watch: drops it, with the reason. It leaves the watchlist for good.",
+  },
+  watch_again: {
+    name: "Watch again",
+    kind: "thesis",
+    sources: ["hindsight"],
+    summary: "For a stock we sold, or one promoted and not bought again: puts it back on watch, its sale triggers off.",
   },
   dispatch_thesis_research: {
     name: "Send to the Writer",
@@ -330,19 +354,19 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
       { source: "hindsight", title: "Record position", description: "Saves the position and moves the thesis from Watching to Holding.", endpoint: "prisma.position.create()" },
     ],
   },
-  manage_position: {
-    name: "Add or trim",
+  add: {
+    name: "Add",
     kind: "trade",
     sources: ["alpaca", "hindsight"],
     approval: true,
-    summary: "Adds to a winner, sized at half the first buy's risk, or trims part of a position. Every action carries its reason.",
+    summary: "Proposes buying more of a stock we hold, sized at half a new buy's risk and capped by the most the analyst may hold in one stock.",
   },
-  close_position: {
+  sell: {
     name: "Sell",
     kind: "trade",
     sources: ["alpaca", "hindsight"],
     approval: true,
-    summary: "Proposes selling the whole position, with why it's closing: the floor, the target, or a broken belief.",
+    summary: "Proposes selling all or part of a holding. Its label comes from the trigger that fired: a stop, a target, or the analyst's own call.",
     resources: [
       { source: "alpaca", title: "Sell all shares", description: "Closes the full position once you approve.", endpoint: "closeOpenPosition(symbol)", example: "Closed 50 AAPL @ $192.40 · +$710 (+7.9%)" },
       { source: "hindsight", title: "Record outcome", description: "Marks the position closed with the gain and the reason.", endpoint: "tradeDecision.create({ SELL })", example: "EXIT: TARGET · WIN · +$710" },

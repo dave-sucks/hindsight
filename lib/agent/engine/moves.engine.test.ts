@@ -9,7 +9,8 @@
  *
  * Reading context by subject (lib/agent/context/) changed the requests
  * CHANGED names, each for its reason; ./three-parts.engine.test.ts pins
- * each change part by part. Every other request is main's.
+ * each change part by part. Every other request is main's, once the action
+ * tools' renames (2026-11-18, ./__fixtures__/tool-renames.ts) are undone.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { createHash } from "crypto";
@@ -17,6 +18,7 @@ import { readdirSync, readFileSync } from "fs";
 import path from "path";
 import GOLDEN from "./__fixtures__/requests.golden.json";
 import { sentRequests } from "./__fixtures__/sent-requests";
+import { withOldToolNames } from "./__fixtures__/tool-renames";
 import { AGENTS } from "./agents";
 import { importsOf, INSTRUCTIONS_DIR, instructionText } from "./instructions";
 import { isFile, ownFile } from "./types";
@@ -57,7 +59,7 @@ describe("instructions are markdown files: a move, not an edit", () => {
   });
 
   it.each(Object.keys(GOLDEN.hashes).filter((n) => !CHANGED[n]))("%s is sent what main sent, character for character", (name) => {
-    expect(hash(sent[name])).toBe((GOLDEN.hashes as Record<string, string>)[name]);
+    expect(hash(withOldToolNames(sent[name]))).toBe((GOLDEN.hashes as Record<string, string>)[name]);
   });
 
   it.each(Object.entries(CHANGED))("%s changed: %s", (name) => {

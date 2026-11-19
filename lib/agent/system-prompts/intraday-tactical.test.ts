@@ -281,12 +281,12 @@ describe("the trigger run's situation words (step 12, part 2)", () => {
       const read = stockFromRead({ ok: true, data: { theses: [savedRow({ status, situations: ALL })] } }, "thesis_1")!;
       const text = Object.values(read.situations.guidance).join("\n");
       expect(text.length).toBeGreaterThan(0);
-      for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([status, word, text.includes(word)]).toEqual([status, word, false]);
+      for (const word of ["change_status", "INVALIDATED", "ARCHIVED", "stop_watching", "watch_again"]) expect([status, word, text.includes(word)]).toEqual([status, word, false]);
     }
   });
   it("the morning run's and the chat's keep the verbs", () => {
     const text = Object.values(guidanceFor(ALL)).join("\n");
-    for (const word of ["change_status", "INVALIDATED", "ARCHIVED"]) expect([word, text.includes(word)]).toEqual([word, true]);
+    for (const word of ["stop_watching", "watch_again"]) expect([word, text.includes(word)]).toEqual([word, true]);
   });
 });
 
@@ -299,7 +299,7 @@ describe("a trigger fire's request — a watch's review gets the Writer's playbo
     expect(prompt).toContain(block);
     expect(prompt).not.toContain("a playbook's way in");
     const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
-    expect(due).toContain('If it is a playbook\'s way in on a stock we watch (its note says the run writes the triggers): write that playbook\'s watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH"');
+    expect(due).toContain('If it is a playbook\'s way in on a stock we watch (its note says the run writes the triggers): write that playbook\'s watch triggers with edit_triggers\' add and name it (setup_id), each with "playbook": "WATCH"');
     expect(due).toContain("one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS");
   });
 

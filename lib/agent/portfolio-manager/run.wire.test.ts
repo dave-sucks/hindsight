@@ -6,6 +6,8 @@
  * byte for byte. Rewritten once since, for the three parts (2026-11-18): only
  * the instructions and the first message changed, as lib/agent/engine/engine.test.ts
  * proves part by part; the tools and every other field are the same bytes.
+ * Rewritten again for the action tools, one job each (2026-11-18): only the
+ * tools and the instructions' tool names changed.
  * `UPDATE_WIRE=1` rewrites it.
  */
 import { readFileSync, writeFileSync } from "fs";

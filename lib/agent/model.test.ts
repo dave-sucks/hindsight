@@ -131,7 +131,7 @@ describe("a trigger run", () => {
       agentConfig: [agentConfigRow({ id: ANALYST, name: "Secular Compounder", tradingEnvironment: "LIVE", maxOpenPositions: 10 })],
       account: [accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true })],
     });
-    const out = (n: number) => (n === 1 ? { type: "function_call", id: "fc_1", call_id: "call_1", name: "update_thesis", arguments: JSON.stringify({ thesis_id: "v", rationale: "Held." }), status: "completed" } : { type: "message", id: "msg_2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Held.", annotations: [] }] });
+    const out = (n: number) => (n === 1 ? { type: "function_call", id: "fc_1", call_id: "call_1", name: "write_note", arguments: JSON.stringify({ note: "Held." }), status: "completed" } : { type: "message", id: "msg_2", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Held.", annotations: [] }] });
     const net = network((n) => json({ id: `resp_${n}`, object: "response", created_at: 1, model: "gpt-5.4", status: "completed", output: [out(n)], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }));
     const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/agent/tools", "@/lib/market-data/load-market-numbers"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
@@ -143,14 +143,14 @@ describe("a trigger run", () => {
       jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn() }));
       jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
       jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
-      // The close-out writes its row, as update_thesis would.
-      const review = async (a: { thesis_id: string; rationale: string }) => {
+      // The close-out writes its row, as write_note would.
+      const review = async (a: { note: string }) => {
         const run = (db.store.researchRun as Array<{ id: string }>)[0];
-        await (db as unknown as { thesisUpdate: { create: (x: unknown) => Promise<unknown> } }).thesisUpdate.create({ data: { thesisId: a.thesis_id, type: "REVIEWED", summary: "Reviewed", rationale: a.rationale, runId: run.id, timestamp: new Date() } });
+        await (db as unknown as { thesisUpdate: { create: (x: unknown) => Promise<unknown> } }).thesisUpdate.create({ data: { thesisId: "v", type: "REVIEWED", summary: "Reviewed", rationale: a.note, runId: run.id, timestamp: new Date() } });
         return { ok: true };
       };
       const read = tool({ description: "Read the stock.", inputSchema: z.object({ tickers: z.array(z.string()) }), execute: async () => ({ ok: false }) });
-      jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: read, update_thesis: tool({ description: "Write the review.", inputSchema: z.object({ thesis_id: z.string(), rationale: z.string() }), execute: review }) }) }));
+      jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: read, write_note: tool({ description: "Write the review.", inputSchema: z.object({ note: z.string() }), execute: review }) }) }));
       await import("@/lib/inngest/functions/tactical-run");
       await handler!({ event: { data: { thesisId: "v", triggerId: FLOOR.id, analystId: ANALYST, ticker: "V", action: "EXIT", firedPrice: 394.5 } }, step });
       view = (await import("@/lib/agent/run-requests")).viewOfRecord;

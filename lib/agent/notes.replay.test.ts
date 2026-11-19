@@ -39,7 +39,7 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
   it("write_note lands one NOTE line on DOCU with the price then, and nothing else", async () => {
     const { refused, db } = await replayTool("write-note", "writeNoteTool", {
       seed: seed(stored) as never,
-      args: { thesis_id: fx.thesis.id, text: fx.note },
+      args: { thesis_id: fx.thesis.id, note: fx.note },
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: undefined },
       quotes: { DOCU: 67.9 },
     });
@@ -53,7 +53,7 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
   it("Friday's morning read gives DOCU's note as one of its newest lines, whole, with the price then, and puts it on the full list", async () => {
     const written = await replayTool("write-note", "writeNoteTool", {
       seed: seed(stored) as never,
-      args: { thesis_id: fx.thesis.id, text: fx.note },
+      args: { thesis_id: fx.thesis.id, note: fx.note },
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: undefined },
       quotes: { DOCU: 67.9 },
     });

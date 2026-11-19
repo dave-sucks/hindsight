@@ -61,8 +61,8 @@ const stored = ({ price, ...t }: Fx["theses"][number]): Row => (void price, t);
 const date = (v: unknown) => (typeof v === "string" ? new Date(v) : v ?? null);
 const dated = (r: Row, keys: string[]): Row => ({ ...r, ...Object.fromEntries(keys.filter((k) => k in r).map((k) => [k, date(r[k])])) });
 
-/** The book as the run read it; with the run's own answers when `answered`. */
-function seed(answered: boolean): Record<string, Row[]> {
+/** The book as the run read it; with the run's own answers when `answered` (saved with no note when `noteless`, 2026-11-18). */
+function seed(answered: boolean, noteless = false): Record<string, Row[]> {
   const run = { id: REPLAY_RUN_ID, status: "RUNNING", mode: "MORNING_PLAN", agentConfigId: REPLAY_ANALYST_ID, parameters: {}, startedAt: new Date("2026-11-13T13:03:26.258Z"), completedAt: null };
   // A line's run mode only titles it in the feed, so the fixture does not keep it.
   const line = (u: Row & { runId?: string; mode?: string }): Row => ({
@@ -72,7 +72,7 @@ function seed(answered: boolean): Record<string, Row[]> {
     run: u.mode ? { mode: u.mode } : null,
   });
   const answers = answered
-    ? fx.runAnswers.map(([thesisId, at], i) => line({ id: `answer_${i}`, thesisId, type: "REVIEWED", timestamp: at, runId: REPLAY_RUN_ID, mode: "MORNING_PLAN" }))
+    ? fx.runAnswers.map(([thesisId, at], i) => line({ id: `answer_${i}`, thesisId, type: noteless ? "UPDATED" : "REVIEWED", timestamp: at, runId: REPLAY_RUN_ID, mode: "MORNING_PLAN", ...(noteless ? { fieldChanges: { noNote: { from: null, to: true } } } : {}) }))
     : [];
   return {
     researchRun: [run],
@@ -123,9 +123,9 @@ async function listedByTheRead(): Promise<string[]> {
 }
 
 /** complete_run at the run's second call (08:05 ET): its refusal, and the tickers it names. */
-async function closeOut(answered: boolean): Promise<{ message: string; owed: string[]; status: unknown }> {
+async function closeOut(answered: boolean, noteless = false): Promise<{ message: string; owed: string[]; status: unknown }> {
   const { result, crashed, db } = await at("2026-11-13T13:05:25.000Z", () =>
-    replayTool("complete-run", "completeRun", { seed: seed(answered), args: {}, ctx, quotes }),
+    replayTool("complete-run", "completeRun", { seed: seed(answered, noteless), args: {}, ctx, quotes }),
   );
   expect(crashed).toBe(false);
   const message = String((result.data as { error?: string } | undefined)?.error ?? "");
@@ -160,4 +160,11 @@ describe("Secular Compounder, 2026-11-13: the close-out owes what the read liste
     expect(statSync(FIXTURE).size).toBeLessThan(20_000);
     expect(fx.theses.map((t) => t.ticker).sort()).toEqual([...LISTED, "FTNT"].sort());
   });
+
+  it("a change saved with no note answers nothing: the same answers saved without a note owe what no answers owe", async () => {
+    const none = await closeOut(false);
+    const noteless = await closeOut(true, true);
+    expect(noteless.owed).toEqual(none.owed);
+    expect(noteless.status).toBe("RUNNING");
+  }, 30_000);
 });

@@ -306,7 +306,7 @@ export const placeTrade = defineTool({
             `Its view comes from the writer: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${args.thesis_id}", then wait_for_thesis_refresh. ` +
             `Once it is LONG or SHORT, place_trade on the same thesis_id.`;
           return {
-            summary: `Trade blocked: $${ticker} — thesis has no committed direction (promote via update_thesis first)`,
+            summary: `Trade blocked: $${ticker} — thesis has no committed direction (send it to the Writer first)`,
             data: {
               success: false,
               ticker,

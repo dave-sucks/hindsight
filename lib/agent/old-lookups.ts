@@ -19,8 +19,17 @@ export const LOOKUP_SHELF_LIFE_MS = 15 * 60_000;
 /** Tools that change something. Their results are the record of what was done. */
 const CHANGES = new Set([
   "record_thesis",
+  "pass_on_stock",
   "update_thesis",
+  "edit_triggers",
+  "set_conviction",
+  "set_catalyst_date",
+  "stop_watching",
+  "watch_again",
   "place_trade",
+  "sell",
+  "add",
+  // Their names until 2026-11-18, on older chats.
   "manage_position",
   "close_position",
   "write_note",

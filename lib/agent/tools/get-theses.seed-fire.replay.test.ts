@@ -73,7 +73,7 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
     // It has no plan and no research either, so other situations ride along; the fire itself is REVIEW_DUE, never FIRST_RESEARCH.
     expect(Object.keys(morning.model.guidance ?? {})).toEqual(expect.arrayContaining(["REVIEW_DUE"]));
     expect(Object.keys(morning.model.guidance ?? {})).not.toContain("FIRST_RESEARCH");
-    expect(morning.model.guidance?.REVIEW_DUE).toContain("change_status INVALIDATED");
+    expect(morning.model.guidance?.REVIEW_DUE).toContain("stop_watching on a stock we watch");
     const trigger = await read("INTRADAY_TACTICAL", withView);
     expect(trigger.model.guidance?.REVIEW_DUE).not.toContain("change_status");
     expect(trigger.model.guidance?.REVIEW_DUE).toContain("the morning run decides whether it stays on the book");

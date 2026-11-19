@@ -8,7 +8,7 @@ It reads the same theses and runs the same research as every other agent, and it
 Model: claude-sonnet-4-6
 Starts: When you type
 Steps: Up to 45
-Tools: 29
+Tools: 33
 Saves: 24 fields: also belief, direction
 ```
 
@@ -61,10 +61,11 @@ Every message you send reaches chat with the date line: the day, the time and wh
 
 When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says what it's doing in one sentence and does it.
 
-- **Edit a trigger:** `update_thesis`, by the trigger's id, landing in Activity like any other edit. A price you name becomes a trigger on the [thesis](../concepts/theses.md). Like every agent, chat can raise a floor on a holding but not lower one; lowering a floor is yours, on the thesis.
-- **Change the belief or direction:** only the Writer and chat can, and chat only when you ask.
+- **Edit a trigger:** `edit_triggers`, by the trigger's id, landing in Activity like any other edit. A price you name becomes a trigger on the [thesis](../concepts/theses.md). Like every agent, chat can raise a floor on a holding but not lower one; lowering a floor is yours, on the thesis.
+- **Change the belief or direction:** only the Writer can. Chat sends the stock to the Writer, or sets its conviction (`set_conviction`) or catalyst date (`set_catalyst_date`).
 - **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its triggers stay as proposed.
 - **Research:** "research CRWD" or `/research` starts the Writer with `dispatch_thesis_research`; `wait_for_thesis_refresh` brings the thesis back into the conversation.
+- **Pass, stop watching, watch again:** "we looked, and we pass" on a stock we don't cover is `pass_on_stock`, with the stock and the reason: saved as Passed, never woken, so the idea isn't pitched again; like a new thesis, it needs chat pinned to an analyst. A stock we watch is dropped with `stop_watching`; a sold one goes back on watch with `watch_again`.
 
 It never approves or declines a proposal. That's always your click.
 
@@ -96,7 +97,7 @@ With an analyst selected, the chat is a `PRINCIPAL_CHAT` run on that analyst, so
 Its record, `CHAT` (`lib/agent/engine/agents/chat.ts`). Its instructions are one fixed text with the house rules, the same on every run, saying what being pinned to an analyst means and what the portfolio level means. Pinned, the analyst's blocks end them: its scope (its id, fence and watchlist), the analyst with its room, its money and its book. At the portfolio level, each analyst's room does. Its first message is your conversation. Its facts are read for the chat's scope by one loader each (`lib/agent/context/`), and the agent engine (`buildConversation`, `lib/agent/engine/build.ts`) builds the instructions and the newest message's context together, naming each part for the chat's Context. The time and the Market and portfolio block ride on your newest message.
 
 #### Edits
-`update_thesis` saves chat's trigger edits as an agent's (`actor: "AGENT"`), so the floor ratchet applies. Your own edits on the thesis sheet are the principal's and skip it.
+`edit_triggers` saves chat's trigger edits as an agent's (`actor: "AGENT"`), so the floor ratchet applies. Your own edits on the thesis sheet are the principal's and skip it.
 
 #### Notes
 `write_note`, only after a yes on `ask_question` or when you asked for one. It writes on one stock, or once to several stocks, one analyst or the whole account.

@@ -31,7 +31,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +59, the cash comes back in the kickoff when the snapshot couldn't be read (the sample has no snapshot).
   // 2026-11-18: −61, the analyst's fence prints only where it narrows (the three lines for an unfenced analyst changed three of six morning decisions).
   // 2026-11-18: +45, context read by subject: the book is in the first message (the analyst's get_theses read), so the first step reads it there and calls get_portfolio_context alone.
-  daily: 9_458,
+  // 2026-11-18: −3, the action tools one job each: the instructions name write_note where they named update_thesis.
+  daily: 9_455,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -43,7 +44,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +23, the fire names its declared action, which the instructions act on.
   // 2026-11-18: −61, the same.
   // 2026-11-18: +99, when the run sells or trims, it makes that call first and its note after (the note becomes the proposal's reason).
-  tactical: 13_847,
+  // 2026-11-18: −145, the same: the trigger run's text and its situations name write_note, edit_triggers, sell and add.
+  tactical: 13_702,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -68,7 +70,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −67, the house rule and the analyst's fence; the scope block, the money block and the book leave the instructions (the book rides on your newest message).
   // 2026-11-18: −61, the same.
   // 2026-11-18: +68, the pinned analyst's name and id open its analyst text, as the scope block's first line did.
-  chat: 35_538,
+  // 2026-11-18: −283, the same, and pass_on_stock and read_database off the chat (#1047's chat lines).
+  chat: 35_255,
 };
 
 /**
@@ -99,10 +102,12 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −377 each, get_theses no longer offers include_research (the read stopped sending the research sections).
   // 2026-11-18: −432 each, place_trade takes no company, exchange or price: the tool reads the live quote, and the other two it never read.
   // 2026-11-18: −5,706 each, place_trade takes no triggers_with_buy: the fill writes the playbook's triggers that come with the buy, from the chart and the buy.
-  "research-run": 30_820,
+  // 2026-11-18: −869, the action tools one job each: update_thesis, manage_position and close_position become write_note, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again, sell and add; the trigger shape is sent once, on edit_triggers, each removal with its reason; a note has no length cap.
+  "research-run": 29_951,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
-  tactical: 25_716,
+  // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
+  tactical: 25_266,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -119,7 +124,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −377, the same get_theses description and fields.
   // 2026-11-18: −432, the same place_trade fields.
   // 2026-11-18: −5,706, the same place_trade field.
-  principal: 62_061,
+  // 2026-11-18: −4,946, the same tools, pass_on_stock on and read_database off; the belief, direction and horizon leave the chat's thesis edit.
+  principal: 57_115,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

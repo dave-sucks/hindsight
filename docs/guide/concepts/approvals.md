@@ -48,7 +48,7 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 <summary>Technical details</summary>
 
 #### The gate
-`approvalRequired` in `lib/proposals/maybe-await-approval.ts` reads the account's four settings for every trade path. Buys and adds are staged by `maybeAwaitApproval` (`place_trade`, `manage_position`); a sale is staged by `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`) under the position lock. A close you make by hand skips the gate.
+`approvalRequired` in `lib/proposals/maybe-await-approval.ts` reads the account's four settings for every trade path. Buys and adds are staged by `maybeAwaitApproval` (`place_trade`, `add`); a sale is staged by `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`) under the position lock. A close you make by hand skips the gate.
 
 #### Stored as
 `Order` with status `AWAITING_APPROVAL`, the price the run read (`proposedPrice`) and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones. A proposal a trigger's fire made carries the triggers it answers (`triggerIds`) and no `expiresAt`; the trigger check's 4:20 PM pass marks it `WITHDRAWN` (`withdrawnReason`) when none of them holds on the close (`lib/proposals/trigger-proposals.ts`).

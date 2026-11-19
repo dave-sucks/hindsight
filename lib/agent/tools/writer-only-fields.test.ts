@@ -1,7 +1,8 @@
 /**
  * writer-only-fields.test.ts — step 5 of docs/plans/AGENT_ARCHITECTURE.md,
- * part 1: the research sections only the writer's save fills leave every
- * agent's copy of update_thesis and record_thesis, and the writer keeps them.
+ * part 1: the research sections only the writer's save fills are on no
+ * agent's thesis tool (record_thesis and, since 2026-11-18, the one-job tools
+ * that replaced update_thesis for agents), and the writer keeps them.
  *
  * The writer saves by running its arguments through the tool's own schema
  * (run-thesis-writer.ts, executeThroughSchema), and a schema without a field
@@ -18,7 +19,10 @@ import { updateThesis } from "@/lib/agent/tools/update-thesis";
 
 const SECTIONS = ["bull_case", "bear_case", "recent_catalysts", "fundamentals", "latest_earnings", "catalysts_and_events", "analyst_consensus", "insider_technical", "research_data"];
 
-function fields(runMode: string, tool: "update_thesis" | "record_thesis"): string[] {
+/** The thesis tools an agent is given, one job each (2026-11-18). */
+const AGENT_THESIS_TOOLS = ["write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
+
+function fields(runMode: string, tool: string): string[] {
   const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
   const js = zodSchema(all[tool].inputSchema as never).jsonSchema as { properties?: Record<string, unknown> };
   return Object.keys(js.properties ?? {});
@@ -26,20 +30,19 @@ function fields(runMode: string, tool: "update_thesis" | "record_thesis"): strin
 
 describe("writer-only research fields", () => {
   for (const runMode of ["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT", "DISCOVERY"]) {
-    it(`${runMode}: update_thesis and record_thesis carry none of them`, () => {
-      expect(fields(runMode, "update_thesis").filter((f) => SECTIONS.includes(f))).toEqual([]);
+    it(`${runMode}: the agent thesis tools and record_thesis carry none of them`, () => {
+      for (const t of AGENT_THESIS_TOOLS) expect(fields(runMode, t).filter((f) => SECTIONS.includes(f))).toEqual([]);
       expect(fields(runMode, "record_thesis").filter((f) => [...SECTIONS, "snapshot", "thesis_bullets", "risk_flags"].includes(f))).toEqual([]);
     });
   }
 
-  it("an agent keeps the fields it uses: the plan on the morning run's update_thesis, the claim on the chat's", () => {
-    const u = fields("MORNING_PLAN", "update_thesis");
-    for (const f of ["add_triggers", "edit_triggers", "remove_trigger_ids"]) expect(u).toContain(f);
-    // The claim is the writer's and the chat's (step 12, part 1); the rest of the write-up the writer's (part 2).
-    expect(u).not.toContain("core_belief");
-    const c = fields("PRINCIPAL_CHAT", "update_thesis");
-    for (const f of ["core_belief", "direction", "add_triggers"]) expect(c).toContain(f);
-    for (const f of ["snapshot", "scoring", "variant_view", "price_at_time"]) expect(c).not.toContain(f);
+  it("an agent keeps the fields it uses: the triggers on edit_triggers; the claim and the view are the writer's alone", () => {
+    for (const mode of ["MORNING_PLAN", "PRINCIPAL_CHAT"]) {
+      const u = fields(mode, "edit_triggers");
+      for (const f of ["add", "edit", "remove", "setup_id"]) expect(u).toContain(f);
+      // The claim is the writer's (2026-11-18: the chat's last use was one seed commit, 2026-10-02).
+      for (const t of AGENT_THESIS_TOOLS) for (const f of ["core_belief", "direction", "snapshot", "scoring", "variant_view", "price_at_time", "horizon"]) expect(fields(mode, t)).not.toContain(f);
+    }
     const r = fields("PRINCIPAL_CHAT", "record_thesis");
     for (const f of ["ticker", "direction", "reasoning_summary", "triggers", "stock_fundamentals", "core_belief"]) expect(r).toContain(f);
   });
@@ -47,12 +50,13 @@ describe("writer-only research fields", () => {
   it("the writer's save keeps a research section; an agent's schema would drop it", () => {
     const section = { bullets: [{ text: "Two record quarters; guidance raised." }] };
     const writerUpdate = updateThesis({ runId: "w", userId: "u", analystId: "a", runMode: "THESIS_WRITER" } as never) as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean; data?: Record<string, unknown> } } };
-    const agentUpdate = updateThesis({ runId: "m", userId: "u", analystId: "a", runMode: "MORNING_PLAN" } as never) as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean; data?: Record<string, unknown> } } };
+    const all = createResearchTools({ runId: "m", userId: "u", accountId: "a", analystId: "an", runMode: "MORNING_PLAN", runEnvironment: "PAPER" } as never) as Record<string, unknown>;
+    const agentEdit = all.edit_triggers as { inputSchema: { safeParse: (v: unknown) => { success: boolean; data?: Record<string, unknown> } } };
     const args = { thesis_id: "t1", rationale: "Refreshed after the print.", bull_case: section };
     const w = writerUpdate.inputSchema.safeParse(args);
     expect(w.success).toBe(true);
     expect(w.data?.bull_case).toEqual(section);
-    expect(agentUpdate.inputSchema.safeParse(args).data?.bull_case).toBeUndefined();
+    expect(agentEdit.inputSchema.safeParse(args).data?.bull_case).toBeUndefined();
 
     const writerRecord = recordThesis({ runId: "w", userId: "u", analystId: "a", runMode: "THESIS_WRITER" } as never) as unknown as { inputSchema: { safeParse: (v: unknown) => { success: boolean; data?: Record<string, unknown>; error?: unknown } } };
     const mint = { ticker: "CRWD", direction: "PASS", reasoning_summary: "Extended; no entry.", invalidation_conditions: ["A close back under the 50-day."], horizon: "COMPOUNDER", source_kind: "WEB_SEARCH", source_rationale: "Writer mint.", bull_case: { bullets: [{ text: "ARR re-accelerating." }] } };

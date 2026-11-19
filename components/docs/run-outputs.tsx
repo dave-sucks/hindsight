@@ -3,10 +3,10 @@
 /**
  * What a run leaves on the stock it read: four outputs, each with where it
  * lands. The call itself (hold, buy, trim, sell) comes out as one or more of
- * them. From the tools: update_thesis writes the note and the edits, and a
+ * them. From the tools: write_note writes the note, edit_triggers the edits, and a
  * morning or trigger run can't finish without a note on each stock it
- * answers (complete_run's close-out); place_trade, manage_position and
- * close_position write a proposal, or trade at once with approval off
+ * answers (complete_run's close-out); place_trade, add and
+ * sell write a proposal, or trade at once with approval off
  * (lib/proposals/maybe-await-approval.ts), and the run's note becomes its
  * reason (putNotesOnRunProposals); an approved buy or sale flips the thesis
  * (lib/proposals/thesis-flips.ts); dispatch_thesis_research sends the stock

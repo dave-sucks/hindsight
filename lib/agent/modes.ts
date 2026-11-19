@@ -126,7 +126,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     //   Stage 1: 2–3 steps (brief + signals)
     //   Stage 2: 4–7 steps (holdings + watchlist + discovery get_stock_data)
     //   Stage 3: 3–5 steps (theses per researched ticker, batched)
-    //   Stage 4: 3–5 steps (manage_position / place_trade / update_thesis ARCHIVED)
+    //   Stage 4: 3–5 steps (place_trade / sell / add / stop_watching)
     //   Stage 5: 1 step (record_run_summary)
     //   Stage 6: 1 step (complete_run)
     // Plus retry overhead if the text-only death retry fires, plus some
@@ -148,11 +148,16 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // get_earnings_calendar, get_market_movers and get_catalyst_calendar
       // left 2026-10-03: never called in a month of runs. The earnings on
       // the book arrive in the prompt; a buy comes from the stock's plan.
-      // Write — manage existing book ONLY
-      "update_thesis",
+      // Write — manage existing book ONLY, one job a tool (2026-11-18)
+      "write_note",
+      "edit_triggers",
+      "set_conviction",
+      "set_catalyst_date",
+      "stop_watching",
+      "watch_again",
       "place_trade",
-      "manage_position",
-      "close_position",
+      "sell",
+      "add",
       // Refresh stale research before acting. Phase 2 of THESIS_LIFECYCLE_FIX:
       // when the daily agent is about to trade a thesis whose research is
       // missing or > STALE_DAYS, it dispatches a refresh, waits for the
@@ -226,7 +231,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
   // Event-driven, single-thesis, single-decision. Spawned by tactical-run
   // when a trigger fires. record_thesis is intentionally NOT in the
   // allowlist — tactical never mints new theses; it acts on / updates an
-  // existing one. update_thesis IS the close-out call (always written).
+  // existing one. write_note IS the close-out call (always written).
   "tactical": {
     // 2026-05-15 — same gpt-4o → gpt-5.5 swap as research-run. Tactical is
     // single-thesis, single-decision (15 maxSteps), so the latency
@@ -253,10 +258,10 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       "web_search",
       "get_theses",
-      // Action
+      // Action. No status tools: a holding it ends is sold, and a watch it drops is the morning run's call.
       "place_trade",
-      "close_position",
-      "manage_position",
+      "sell",
+      "add",
       // Refresh stale research before acting. Phase 2 of
       // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
       // research > STALE_DAYS old can dispatch + wait for a refresh
@@ -264,8 +269,9 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // old research: the run's own read of the research line decides.
       "dispatch_thesis_research",
       "wait_for_thesis_refresh",
-      // Thesis (REQUIRED close-out)
-      "update_thesis",
+      // Thesis: the note is the REQUIRED close-out
+      "write_note",
+      "edit_triggers",
       // Finalize
       "complete_run",
     ] as const,
@@ -304,7 +310,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // The approval queue. Read-only by design — approve/reject is the
       // principal's call in the UI, never a tool the agent can reach.
       "list_proposals",
-      "read_database",
       // ── Analyst-scoped reads ────────────────────────────────────────
       "get_theses",
       "get_portfolio_context",
@@ -323,13 +328,19 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       "web_search",
       // ── Writes. Unscoped, each acts for the stock's own analyst
-      // (analyst-scope.ts); record_thesis alone needs the chat pinned.
+      // (analyst-scope.ts); record_thesis and pass_on_stock need the chat pinned.
       "record_thesis",
-      "update_thesis",
+      // "We looked, and we pass": the stock and the reason, saved as Passed.
+      "pass_on_stock",
+      "edit_triggers",
+      "set_conviction",
+      "set_catalyst_date",
+      "stop_watching",
+      "watch_again",
       "place_trade",
-      "manage_position",
-      "close_position",
-      // A note on the stock, and the card that asks "add this note?" first
+      "sell",
+      "add",
+      // The principal's note on a stock, and the card that asks "add this note?" first
       // (docs/plans/AGENT_CONTEXT.md §3.1). write_note works unscoped.
       "write_note",
       "ask_question",
@@ -363,7 +374,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
     maxDuration: 180,
   },
   // podcast-segment-run: produces a SegmentTranscript via write_segment_transcript.
-  // Trading action tools (place_trade, close_position, manage_position,
+  // Trading action tools (place_trade, sell, add,
   // record_thesis, etc.) are intentionally excluded — segments are
   // research+write, not trade.
   //

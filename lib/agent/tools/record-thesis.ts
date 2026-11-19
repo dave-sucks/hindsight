@@ -288,9 +288,9 @@ export const recordThesis = defineTool({
                 note:
                   `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
                   `If your conviction on this position has dropped, the correct tools are:\n` +
-                  `  • update_thesis(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>", edit_triggers: [<the floor's id, a tighter value>], rationale: "<why>") — keep the position but reflect lower conviction, OR\n` +
-                  `  • close_position(...) followed by update_thesis(thesis_id, change_status: "INVALIDATED", rationale: "<why>") — exit the position and mark the thesis broken.\n` +
-                  `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]) and call update_thesis. Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
+                  `  • set_conviction(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>") and edit_triggers(thesis_id, edit: [<the floor's id, a tighter value>]) — keep the position but reflect lower conviction, OR\n` +
+                  `  • sell(ticker, belief_survived: false) — exit the position; the thesis retires as broken.\n` +
+                  `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]). Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
               },
               sources: [],
             };
@@ -775,7 +775,7 @@ export const recordThesis = defineTool({
             // keep-in-view row. Redirect rather than chain a duplicate row.
             if (passKeepsWatch) {
               return {
-                summary: `Use update_thesis for ${args.ticker} — already covered (${existingThesis.status}).`,
+                summary: `${args.ticker} is already covered (${existingThesis.status}): edit that thesis.`,
                 data: {
                   thesis_id: null,
                   status: "USE_UPDATE_THESIS" as const,
@@ -783,7 +783,7 @@ export const recordThesis = defineTool({
                   ticker: args.ticker,
                   note:
                     `NOT a failure — a ${existingThesis.status} thesis already exists for ${args.ticker} (id ${existingThesis.id}), which is more coverage than a name kept in view with no view. ` +
-                    `If your intent is to set that coverage down, call update_thesis on it and replace its triggers with the wake conditions you want, dropping its buy and its Stop watching line. ` +
+                    `If your intent is to set that coverage down, call edit_triggers on it and replace its triggers with the wake conditions you want, dropping its buy and its Stop watching line. ` +
                     `Do not retry record_thesis on ${args.ticker}.`,
                 },
                 sources: [],
@@ -803,7 +803,7 @@ export const recordThesis = defineTool({
               // rejection and gives up rather than retrying. Keep this
               // imperative.
               return {
-                summary: `Use update_thesis for ${args.ticker} — an active ${existingThesis.direction} thesis already exists.`,
+                summary: `${args.ticker} already has an active ${existingThesis.direction} thesis: edit that one.`,
                 data: {
                   thesis_id: null,
                   status: "USE_UPDATE_THESIS" as const,
@@ -811,14 +811,8 @@ export const recordThesis = defineTool({
                   ticker: args.ticker,
                   note:
                     `NOT a failure — this is a redirect. An active ${existingThesis.direction} thesis already exists for ${args.ticker} (id ${existingThesis.id}). ` +
-                    `YOUR NEXT TOOL CALL MUST BE update_thesis with this shape:\n` +
-                    `  update_thesis({\n` +
-                    `    thesis_id: "${existingThesis.id}",\n` +
-                    `    rationale: "<one-line: why you're touching this thesis today>",\n` +
-                    `    // Plus anything you actually want to change, a trigger by its id:\n` +
-                    `    edit_triggers: [{ id: "<the trigger's id>", value: <new>, rationale: "<why>" }],\n` +
-                    `  })\n` +
-                    `If you reviewed and nothing actually changed, call update_thesis with ONLY thesis_id + rationale — that writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
+                    `Edit that thesis (thesis_id "${existingThesis.id}"): a trigger by its id with edit_triggers, and your note with write_note. ` +
+                    `If you reviewed and nothing actually changed, write_note alone writes a REVIEWED entry and counts as the required thesis touch for this run. ` +
                     `record_thesis is reserved for new coverage on a NEW ticker or direction flips (LONG ↔ SHORT). Do NOT retry record_thesis on ${args.ticker} — it will reject again.`,
                 },
                 sources: [],
@@ -971,7 +965,7 @@ export const recordThesis = defineTool({
                 note:
                   `A PASS record for ${args.ticker} already exists on this run (${alreadyPassed.id}); no second row was written. ` +
                   `This is not an error — treat ${args.ticker} as recorded and move on. ` +
-                  `If your reasoning has genuinely changed, call update_thesis on ${alreadyPassed.id} instead of recording again.`,
+                  `If your reasoning has genuinely changed, write a note on ${alreadyPassed.id} with write_note instead of recording again.`,
               },
               sources: [],
             };

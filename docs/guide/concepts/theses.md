@@ -91,7 +91,7 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 #### Stored as
 `Thesis`: `status` WATCHING · HOLDING · PASSED · RETIRED (with `retiredReason` DROPPED · SOLD · INVALIDATED · REPLACED) · PROMOTED; `direction` LONG · SHORT, or none on a seed. Sold is RETIRED with SOLD.
 
-A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · UNCHANGED · WEAKER · BROKEN), `verdictLine` and `answersUpdateId`, written by `update_thesis` and read into the agent's copy by `saidLine` in `lib/agent/stock-context.ts`.
+A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · UNCHANGED · WEAKER · BROKEN), `verdictLine` and `answersUpdateId`, written by `write_note` and read into the agent's copy by `saidLine` in `lib/agent/stock-context.ts`.
 
 #### The parts
 `coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`
@@ -103,7 +103,7 @@ The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A
 `isAgentWatched` in `lib/agent/triggers/agent-watch.ts`: a watch with a review schedule of its own.
 
 #### Edited by
-`update_thesis`: `add_triggers`, `edit_triggers` by id, `remove_trigger_ids`. The fields each agent may send are pinned by `update-thesis-doors.test.ts`: the Writer 29, chat 18, a morning run 15, a trigger run 9.
+`edit_triggers`: `add`, `edit` by id, `remove` by id. Each agent's thesis tools and their fields are pinned by `thesis-doors.test.ts`: a run's note, its trigger edits, its conviction and catalyst date and the two watch tools; a trigger run gets the note and the trigger edits only, and the Writer its own save, `update_thesis`.
 
 #### Status changes
 The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` removes the buy and the Stop watching triggers and every trigger marked `playbook: "WATCH"`, writes the order's own sell price ("Sell if below" at its `stopLoss`, with the analyst's `stopReason` as its note, or yours from the ticket) and the playbook's triggers that come with the buy, each number from the chart then and the buy (`withTheBuyTriggers`; one whose number the chart doesn't have is not written, and the Activity line says so), applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, adds the playbook's fill templates (`loadPlaybook` and `fillTemplateOps` in `lib/agent/knowledge/`; the seed is `playbook-templates.ts`, an account's own list is `Account.playbooks` once seeded; a playbook that can't be read writes none, and the Activity line says so), and leaves the sell rules inherited. A trigger that comes with the buy where you wrote one of the same kind is not written, and the Activity line says so; one the save refuses gets its line too. Nothing comes from the horizon. A watch's Stop watching trigger firing retires it as DROPPED (`stopWatching`, `lib/agent/triggers/stop-watching.ts`). A sale retires it as SOLD, unless it was a profit-take or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with the triggers that need a position removed (`closeThesisForPosition`) and nothing written.

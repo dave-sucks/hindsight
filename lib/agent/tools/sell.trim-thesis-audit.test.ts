@@ -1,8 +1,8 @@
 /**
- * manage-position-thesis-audit.test.ts — a trim lands on the thesis
- * timeline (DAV-198).
+ * sell.trim-thesis-audit.test.ts — a trim (a sale of part of a holding) lands
+ * on the thesis timeline (DAV-198).
  *
- * Before this, manage_position wrote PositionManagementAction / PositionEvent
+ * Before this, the trim (manage_position until 2026-11-18) wrote PositionManagementAction / PositionEvent
  * rows but never a ThesisUpdate — so a trim was invisible in the thesis
  * activity log the analyst and the sheet read. These tests prove a trim
  * writes one UPDATED row on the paired
@@ -53,7 +53,7 @@ jest.mock("@/lib/agent/thesis-updates", () => ({
   writeThesisUpdate: mockWriteThesisUpdate,
 }));
 
-import { managePosition } from "./manage-position";
+import { sell } from "./sell";
 import { getOrder, closePositionPartial } from "@/lib/alpaca";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
@@ -91,7 +91,7 @@ function makeOpenPosition(overrides: Record<string, unknown> = {}) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeTool(): { execute: (args: any) => Promise<any> } {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return managePosition(makeCtx()) as unknown as {
+  return sell(makeCtx()) as unknown as {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     execute: (args: any) => Promise<any>;
   };
@@ -134,11 +134,9 @@ describe("manage_position — a trim writes the thesis history row (DAV-198)", (
     });
 
     const result = await makeTool().execute({
-      symbol: "NVDA",
-      action: "partial_close",
-      reason: REASON,
-      close_pct: 30,
-      close_reason: "RISK_MANAGEMENT",
+      ticker: "NVDA",
+      note: REASON,
+      percent: 30,
     });
 
     expect(result.data.status).toBe("PARTIAL_CLOSE");
@@ -166,11 +164,9 @@ describe("manage_position — a trim writes the thesis history row (DAV-198)", (
     (getOrder as jest.Mock).mockResolvedValueOnce({ status: "filled", filled_avg_price: "110", filled_qty: "3" });
 
     const result = await makeTool().execute({
-      symbol: "NVDA",
-      action: "partial_close",
-      reason: REASON,
-      close_pct: 30,
-      close_reason: "RISK_MANAGEMENT",
+      ticker: "NVDA",
+      note: REASON,
+      percent: 30,
     });
 
     expect(result.data.status).toBe("PARTIAL_CLOSE");

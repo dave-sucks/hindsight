@@ -197,7 +197,7 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
 
     expect(result.data.ok).toBe(true);
     expect(result.data.refused_fields).toBeUndefined();
-    expect(result.summary).toContain("Still promoted until place_trade or change_status WATCHING.");
+    expect(result.summary).toContain("Still promoted until place_trade or watch_again.");
     expect(mockThesisUpdate.mock.calls.at(-1)?.[0].data.coreBelief).toBe("Patched belief");
   });
 

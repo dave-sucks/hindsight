@@ -10,7 +10,7 @@
 // client's import.meta). The pure functions under test never touch it.
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { detectGateRejection, thesisIdFromArgs, tickerFromArgs } from "./gate-rejections";
+import { answeredBy, detectGateRejection, thesisIdFromArgs, tickerFromArgs } from "./gate-rejections";
 
 describe("detectGateRejection — the three rejection protocols", () => {
   it("protocol 1 (update_thesis): { ok: false, error: code }", () => {
@@ -95,5 +95,16 @@ describe("tickerFromArgs / thesisIdFromArgs — what a refusal is filed under (2
   it("carries the thesis id when the call named one", () => {
     expect(thesisIdFromArgs({ thesis_id: "abc" })).toBe("abc");
     expect(thesisIdFromArgs({ ticker: "GD" })).toBeNull();
+  });
+});
+
+describe("answeredBy — what a landed call answers since the one-job tools (2026-11-18)", () => {
+  it("any thesis tool answers the thesis tools' refusals, old update_thesis ones included", () => {
+    for (const t of ["write_note", "edit_triggers", "stop_watching"]) expect(answeredBy(t)).toEqual(expect.arrayContaining(["update_thesis", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"]));
+  });
+  it("a sale answers the old sale's and the old trim's; an add the old add's; anything else its own", () => {
+    expect(answeredBy("sell")).toEqual(["sell", "close_position", "manage_position"]);
+    expect(answeredBy("add")).toEqual(["add", "manage_position"]);
+    expect(answeredBy("place_trade")).toEqual(["place_trade"]);
   });
 });

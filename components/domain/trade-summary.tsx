@@ -97,7 +97,7 @@ export function fmtTradeDate(iso: string): string {
 }
 
 /**
- * Close reason from close_position is an enum (TARGET / STOP / MANUAL) or
+ * Close reason from a sale is an enum (TARGET / STOP / MANUAL) or
  * PROMOTED from the promote action — sometimes with " — {notes}" appended.
  * Rendering "STOP" raw read as a broken label; humanize the known codes and
  * pass through anything that's already a sentence.

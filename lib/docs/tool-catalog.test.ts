@@ -18,7 +18,7 @@ describe("the /docs tool catalog matches the agents' tool lists", () => {
 
   it("marks every trade as needing approval", () => {
     const trades = buildToolCatalog().filter((t) => t.kind === "trade");
-    expect(trades.map((t) => t.code).sort()).toEqual(["close_position", "manage_position", "place_trade"]);
+    expect(trades.map((t) => t.code).sort()).toEqual(["add", "place_trade", "sell"]);
     for (const t of trades) expect(t.approval).toBe(true);
   });
 });

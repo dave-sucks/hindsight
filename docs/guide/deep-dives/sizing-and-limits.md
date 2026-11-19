@@ -20,7 +20,7 @@ Then the analyst's dollar limits clamp it: never under its smallest trade, never
 
 ## Who picks the size
 
-No agent. Inside a run, `place_trade` and `manage_position` have no size field at all, so there is nothing to fill in wrongly. Only your own chat may name a dollar amount. It is honored as given, with a line when it sits outside the analyst's band: "Sized by you: $12,000 — above the analyst's largest trade ($10,000)."
+No agent. Inside a run, `place_trade` and `add` have no size field at all, so there is nothing to fill in wrongly. Only your own chat may name a dollar amount. It is honored as given, with a line when it sits outside the analyst's band: "Sized by you: $12,000 — above the analyst's largest trade ($10,000)."
 
 The one limit that still binds you is the most in one stock. An add that would take a position past it is refused, whoever asks. A rule-sized add is trimmed to the room left.
 

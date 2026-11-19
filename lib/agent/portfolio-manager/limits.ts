@@ -5,8 +5,8 @@
  *
  *   - get_theses: any holding, and WATCHES_A_RUN watched stocks a run.
  *   - PROPOSALS_A_RUN trade proposals a run.
- *   - A note goes with a trade or a research request this run made on that
- *     stock; the rest of its view is its write-up.
+ *   - A note goes with a trade, a research request or a trigger edit this run
+ *     made on that stock; the rest of its view is its write-up.
  *   - Its trades always wait for the owner (`isManagerRun` at each trade
  *     tool's approval check), whatever the account's switches say.
  */
@@ -37,7 +37,7 @@ export function managerPick(ctx: object, input: { tickers?: string[] }, held: Re
 }
 
 const refusal = (error: string) => ({ ok: false as const, error, retryable: false, sources: [] });
-const TRADES: Record<string, string> = { place_trade: "ticker", manage_position: "symbol", close_position: "ticker" };
+const TRADES: Record<string, string> = { place_trade: "ticker", add: "ticker", sell: "ticker" };
 
 /**
  * The run's tools with its proposal limit and its note rule. `tickerOf` reads
@@ -45,9 +45,9 @@ const TRADES: Record<string, string> = { place_trade: "ticker", manage_position:
  */
 export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Promise<string | null>): ToolSet {
   const proposed: string[] = [];
-  const researched = new Set<string>();
+  const noteAllowed = new Set<string>();
   type Exec = (input: Record<string, unknown>, options: unknown) => Promise<unknown>;
-  const wrap = (name: string, before: (input: Record<string, unknown>) => Promise<string | null> | string | null, after?: (input: Record<string, unknown>) => void) => {
+  const wrap = (name: string, before: (input: Record<string, unknown>) => Promise<string | null> | string | null, after?: (input: Record<string, unknown>, out: unknown) => void) => {
     const t = real[name] as unknown as { execute?: Exec } | undefined;
     if (!t?.execute) return t;
     const run = t.execute;
@@ -57,7 +57,7 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
         const no = await before(input);
         if (no) return refusal(no);
         const out = await run(input, options);
-        if ((out as { ok?: boolean } | null)?.ok === true) after?.(input);
+        if ((out as { ok?: boolean } | null)?.ok === true) after?.(input, out);
         return out;
       },
     };
@@ -71,13 +71,18 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
     );
   }
   out.dispatch_thesis_research = wrap("dispatch_thesis_research", () => null, (input) => {
-    if (typeof input.existing_thesis_id === "string") researched.add(input.existing_thesis_id);
+    if (typeof input.existing_thesis_id === "string") noteAllowed.add(input.existing_thesis_id);
   });
-  out.update_thesis = wrap("update_thesis", async (input) => {
+  // A trigger edit allows a note on that stock, as a trade or a research request does, once one of its ops landed.
+  out.edit_triggers = wrap("edit_triggers", () => null, (input, result) => {
+    const ops = (result as { data?: { trigger_ops?: Array<{ ok?: boolean }> } } | null)?.data?.trigger_ops ?? [];
+    if (typeof input.thesis_id === "string" && ops.some((o) => o.ok)) noteAllowed.add(input.thesis_id);
+  });
+  out.write_note = wrap("write_note", async (input) => {
     const id = String(input.thesis_id ?? "");
-    if (researched.has(id)) return null;
+    if (noteAllowed.has(id)) return null;
     const ticker = (await tickerOf(id))?.toUpperCase();
-    return ticker && proposed.includes(ticker) ? null : "A note goes with a trade or a research request you made on that stock this run. Put this view in your write-up.";
+    return ticker && proposed.includes(ticker) ? null : "A note goes with a trade, a research request or a trigger edit you made on that stock this run. Put this view in your write-up.";
   });
   return out as ToolSet;
 }

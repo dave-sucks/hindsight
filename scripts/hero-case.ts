@@ -35,7 +35,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
+import { generateText, stepCountIs, zodSchema, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
@@ -56,6 +56,7 @@ import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
 import { grade } from "@/lib/agent/yardstick/grade";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
+import { explainOldShape } from "@/lib/agent/yardstick/old-shape";
 
 interface HeroCase {
   what: string;
@@ -86,7 +87,8 @@ interface HeroCase {
   messages: ModelMessage[];
 }
 
-const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
+// The one-job tools since 2026-11-18 decide too (lib/agent/yardstick/old-shape.ts grades them in the old shape).
+const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research", "sell", "add", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again", "pass_on_stock"]);
 
 function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
   const a = (call.input ?? {}) as Record<string, unknown>;
@@ -98,7 +100,7 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
 const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings", "read_knowledge_library"]);
 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
-const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
+const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis", "sell", "add", "pass_on_stock", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
 
 /**
  * What code fills in each call before the tool runs (defineTool's fromRun): a
@@ -106,12 +108,25 @@ const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "r
  * tactical-run.ts hands them. A call is graded as the tool receives it.
  */
 function codeFills(c: HeroCase): Record<string, () => Record<string, unknown> | null> {
-  if (c.mode !== "tactical") return {};
-  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
-  const runStock = { ticker: String(saved.ticker), thesisId: String(saved.id), triggerId: String(p.trigger?.id ?? "") };
+  const runStock = runStockOf(c);
+  if (!runStock) return {};
   const all = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx, runStock } as never) as Record<string, { fromRun?: () => Record<string, unknown> | null }>;
   return Object.fromEntries(Object.entries(all).flatMap(([name, t]) => (t.fromRun ? [[name, t.fromRun]] : [])));
+}
+
+/** A trigger fire's stock and the trigger that fired, as tactical-run.ts hands them to its tools; none for other runs. */
+function runStockOf(c: HeroCase): { ticker: string; thesisId: string; triggerId: string } | null {
+  if (c.mode !== "tactical") return null;
+  const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
+  return { ticker: String(saved.ticker), thesisId: String(saved.id), triggerId: String(p.trigger?.id ?? "") };
+}
+
+/** The trim that woke a trigger run, as tactical-run.ts sets ToolContext.firedTrim: its sale with no percent sells this much. */
+function firedTrimOf(c: HeroCase): { ticker: string; pct: number } | undefined {
+  const stock = runStockOf(c);
+  const t = (c.promptArgs as { trigger?: { action?: string; trimPct?: number } }).trigger;
+  return stock && t?.action === "TRIM" ? { ticker: stock.ticker, pct: t.trimPct ?? 50 } : undefined;
 }
 
 /** The mode's tools as the model sees them: description and schema, no execute. */
@@ -127,8 +142,10 @@ function describedTools(c: HeroCase): ToolSet {
         .map((name) => [name, { description: named(name).description, inputSchema: named(name).inputSchema, toModelOutput: named(name).toModelOutput }]),
     ) as ToolSet;
   }
+  // A trigger fire's tools are built with its stock, as production's are: a case sees the schema that ships.
+  const runStock = runStockOf(c);
   const all = createResearchTools({
-    runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
+    runId: "hero-case", userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx, ...(runStock ? { runStock, firedTrim: firedTrimOf(c) } : {}),
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
   // A fire's tools are its agent's: the post-trade write-up (promptArgs.autoTrade) has no trade tools, as the live run.
   const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : (MODES[c.mode].toolAllowlist ?? Object.keys(all));
@@ -425,6 +442,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
   if (writtenPath) {
     mkdirSync(`${dirname(writtenPath)}/inputs`, { recursive: true });
     writeFileSync(`${dirname(writtenPath)}/inputs/${name}.txt`, shown);
+    // The tool definitions too, as the SDK sends them, so a request check covers them.
+    const defs = Object.entries(tools).map(([n, t]) => ({ name: n, description: (t as { description?: string }).description ?? "", schema: zodSchema((t as { inputSchema: never }).inputSchema).jsonSchema }));
+    writeFileSync(`${dirname(writtenPath)}/inputs/${name}.tools.json`, JSON.stringify(defs, null, 1));
   }
   if (inputsOnly) return { name, passes: 0, runs: 0, lookFor: c.lookFor };
   // A recorded tool result is what the model read on the day. Where a tool
@@ -553,21 +573,24 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         })),
       });
     }
-    const verdict = score(c.expect, calls, text, reads);
+    // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
+    const { graded, unmapped } = explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
+    const verdict = score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
+    for (const u of unmapped) console.log(`UNMAPPED ${u.toolName} (${u.why}): ${JSON.stringify(u.input).slice(0, 300)}`);
     for (const r of reads) console.log(`READ ${r.toolName}: ${String((r.output as { summary?: string; error?: string })?.summary ?? (r.output as { error?: string })?.error ?? "").slice(0, 240)}`);
-    const triggerFields = calls.map((c) => {
+    const triggerFields = graded.map((c) => {
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
     // A read the case runs for real is part of what the run was shown.
-    const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
+    const grades = grade({ calls: graded, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, unmapped, graded, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

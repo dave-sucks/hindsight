@@ -1,35 +1,22 @@
 /**
- * manage_position — position management actions short of a full exit. Every
- * action writes a PositionManagementAction audit record with a human-readable
- * reason string.
+ * The add and the trim (`changePosition`): the add tool's whole job and the
+ * sell tool's part sale (add.ts, sell.ts). Until 2026-11-18 this was the
+ * manage_position tool, which the model called with an action; each is now
+ * its own tool, and the model names neither an action nor a reason code.
+ * Every change writes a PositionManagementAction audit record.
  *
- * Selling the WHOLE position is `close_position`, not an action here. This tool
- * used to carry a `full_close` action that did the same job with strictly less
- * care: no `belief_survived` attestation (so a green protective exit retired the
- * thesis permanently instead of recycling it to WATCHING — the P1-35 bug), and
- * no PROMOTED guard. It was unused after 2026-06-05 and removed 2026-08-27
- * (DAV-220). Don't reintroduce it: two tools that sell an entire position means
- * one of them silently loses whichever feature the other gains next.
+ * Selling the WHOLE holding is sell's other path (close_position until
+ * 2026-11-18), never an action here: two paths that sell a whole position
+ * means one silently loses whichever feature the other gains next (DAV-220).
  *
- * Actions:
- *   partial_close       — sell close_pct% of current shares
- *   add_to_position     — add add_notional dollars to the position
- *
- * A level is not moved here. update_targets and move_stop_to_breakeven were
- * deleted in step 12, part 3: they were a second path to the same edit as
- * a trigger edit in update_thesis, and they read the position's
- * mirror column (MU 2026-10-08: its audit row moved the stop "from $969", the
- * mirror, while the floor in force was $1,048). A level moves through
- * update_thesis only, one trigger op at a time.
+ * A level is not moved here: a level is a trigger (edit_triggers).
  *
  * A trim ALSO writes a ThesisUpdate row on the paired thesis (DAV-198) — the
  * thesis timeline is the activity log the analyst and the sheet read.
  */
 
-import { z } from "zod";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { randomUUID } from "node:crypto";
-import { defineTool } from "@/lib/agent/define-tool";
 import { forHeldStock } from "@/lib/agent/analyst-scope";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
@@ -115,905 +102,851 @@ interface ManagePositionData {
 type ManagePositionReturn = { summary: string; data: ManagePositionData; sources: never[] };
 
 
-const schema = z.object({
-  symbol: z.string().describe("Ticker symbol of the position to manage"),
-  action: z.enum([
-    "partial_close",
-    "add_to_position",
-  ]).describe("What to do with this position. The floor and every other line are triggers: move one with update_thesis's edit_triggers, by its id."),
-  // Your chat's own words on the add or trim. Inside a run this field is not
-  // in the schema: the run's note on the stock (update_thesis) is the
-  // proposal's reason and the Activity line (lib/proposals/auto-writeup.ts).
-  reason: z
-    .string()
-    .min(20)
-    .optional()
-    .describe(
-      "Why, in your words: the reason the owner reads on the Activity line and, for an add or a trim, on the proposal and in the approval email. What is happening to the company and the stock and why, then the add or trim: the price and what it does to the position. Write it by How you write.",
-    ),
+/** An add or a trim, as the add and sell tools ask for it (the model never names an action). */
+export type PositionChange = {
+  symbol: string;
+  action: "partial_close" | "add_to_position";
+  /** A trim's size, % of the holding. */
+  close_pct?: number;
+  /** Your chat's own words on it; a run's note on the stock is the reason (lib/proposals/auto-writeup.ts). */
+  reason?: string;
+  /** Your chat's dollar amount for an add; a run's add is sized by the analyst's rules (DAV-317). */
+  add_notional?: number;
+};
 
-  // partial_close
-  close_pct: z
-    .number()
-    .min(1)
-    .max(99)
-    .optional()
-    .describe("For partial_close: percentage of the position to exit (1–99). Omitted: the size of the trim trigger that woke this run, else 50."),
+/** The add and the trim: the add tool's whole job, and the sell tool's part sale. */
+export async function changePosition(args: PositionChange, ctx: ToolContext): Promise<ManagePositionReturn> {
+  const ticker = args.symbol.toUpperCase().trim();
+  // The Master Chat trims or adds for the stock's holder, in its book (analyst-scope.ts).
+  const held = await forHeldStock(ctx, ticker);
+  if (held.question) {
+    return { summary: held.question, data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: held.question, tickers: [{ ticker, tag: "Which?", summary: held.question, actionIcon: "failed" }] }, sources: [] };
+  }
+  ctx = held.ctx;
 
-  // add_to_position — principal chat only. Inside a run this field is not
-  // in the schema: the analyst's rules size the add (DAV-317).
-  add_notional: z
-    .number()
-    .positive()
-    .optional()
-    .describe("For add_to_position: the dollar amount you want to add. Omit it and the add is sized by the analyst's rules."),
+  // Scope by environment so a LIVE run never operates on a PAPER position
+  // (and vice versa) — they live in different Alpaca accounts.
+  const runEnvironment = ctx.runEnvironment ?? "PAPER";
+  const position = await prisma.position.findFirst({
+    where: {
+      userId: ctx.userId,
+      symbol: ticker,
+      status: "OPEN",
+      environment: runEnvironment,
+      ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
+    },
+    include: { analyst: { select: { name: true } } },
+  });
 
-  // partial_close reason code
-  close_reason: z
-    .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
-    .optional()
-    .describe("For partial_close: the reason code for the exit"),
-});
-
-
-export const managePosition = defineTool({
-  description:
-    "Manage an existing open position short of a full exit: a partial exit, or adding to a winning position. " +
-    "A stop or target moves through update_thesis. Every action is audit-logged with your reason.",
-  schema,
-  // A run's model never sees a size field (DAV-317), nor a reason field: its note on the stock is the reason.
-  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : ctx.runMode === "INTRADAY_TACTICAL" ? schema.omit({ add_notional: true, reason: true, symbol: true }) : schema.omit({ add_notional: true, reason: true })),
-  // A trigger run trims or adds to its own stock.
-  fromRun: (ctx) => (ctx.runStock ? { symbol: ctx.runStock.ticker } : null),
-  ui: "tool-ui" as const,
-  gateLog: "manage_position",
-  groupId: "Executing",
-
-  progressLabel: (args) => {
-    const t = args.symbol.toUpperCase();
-    switch (args.action) {
-      case "partial_close":
-        return `Trimming ${t}${args.close_pct ? ` by ${args.close_pct}%` : ""}`;
-      case "add_to_position":
-        return `Adding to the ${t} position`;
-      default:
-        return `Managing the ${t} position`;
-    }
-  },
-
-  execute: async (args: z.infer<typeof schema>, ctx: ToolContext): Promise<ManagePositionReturn> => {
-    const ticker = args.symbol.toUpperCase().trim();
-    // The Master Chat trims or adds for the stock's holder, in its book (analyst-scope.ts).
-    const held = await forHeldStock(ctx, ticker);
-    if (held.question) {
-      return { summary: held.question, data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: held.question, tickers: [{ ticker, tag: "Which?", summary: held.question, actionIcon: "failed" }] }, sources: [] };
-    }
-    ctx = held.ctx;
-
-    // Scope by environment so a LIVE run never operates on a PAPER position
-    // (and vice versa) — they live in different Alpaca accounts.
-    const runEnvironment = ctx.runEnvironment ?? "PAPER";
-    const position = await prisma.position.findFirst({
-      where: {
-        userId: ctx.userId,
-        symbol: ticker,
-        status: "OPEN",
-        environment: runEnvironment,
-        ...(ctx.analystId ? { analystId: ctx.analystId } : {}),
+  if (!position) {
+    return {
+      summary: `No open position in ${ticker}`,
+      data: {
+        success: false,
+        ticker,
+        action: args.action,
+        status: "NO_POSITION" as const,
+        message: `No open position in ${ticker}. No action taken.`,
+        tickers: [{ ticker, tag: "N/A", summary: `No open position in ${ticker}`, actionIcon: "failed" }],
       },
-      include: { analyst: { select: { name: true } } },
-    });
+      sources: [],
+    };
+  }
 
-    if (!position) {
-      return {
-        summary: `No open position in ${ticker}`,
-        data: {
-          success: false,
-          ticker,
-          action: args.action,
-          status: "NO_POSITION" as const,
-          message: `No open position in ${ticker}. No action taken.`,
-          tickers: [{ ticker, tag: "N/A", summary: `No open position in ${ticker}`, actionIcon: "failed" }],
-        },
-        sources: [],
-      };
-    }
+  const analystId = ctx.analystId || position.analystId;
+  const creds =
+    ctx.alpacaCreds ??
+    (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
+    undefined;
 
-    const analystId = ctx.analystId || position.analystId;
-    const creds =
-      ctx.alpacaCreds ??
-      (await resolveAlpacaCredentials(ctx.userId, runEnvironment)) ??
-      undefined;
+  // First-class Order→Thesis link (P1-33 Activity tab) stamped on every
+  // order this tool creates. Best-effort: a position without a resolvable
+  // thesis still trades — readers fall back to (analyst, ticker) on null.
+  const auditThesisId =
+    analystId != null
+      ? await findRelatedThesisId(analystId, ticker).catch(() => null)
+      : null;
 
-    // First-class Order→Thesis link (P1-33 Activity tab) stamped on every
-    // order this tool creates. Best-effort: a position without a resolvable
-    // thesis still trades — readers fall back to (analyst, ticker) on null.
-    const auditThesisId =
-      analystId != null
-        ? await findRelatedThesisId(analystId, ticker).catch(() => null)
-        : null;
+  try {
+    switch (args.action) {
+      // ── PARTIAL CLOSE ───────────────────────────────────────────────────
+      case "partial_close": {
+        // Unnamed, the trim that woke the run sells its own size.
+        const pct = args.close_pct ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : DEFAULT_TRIM_PCT);
+        const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
+        const idempotencyKey = randomUUID();
+        const placedAt = new Date();
+        // A trigger run woken by this stock's sale or trim: the proposal stays open while that trigger holds.
+        const proposal = stagedSale(answers(ctx.firedTrigger, ticker, "SELL"), placedAt);
+        const expiresAt = proposal.expiresAt;
 
-    try {
-      switch (args.action) {
-        // ── PARTIAL CLOSE ───────────────────────────────────────────────────
-        case "partial_close": {
-          // Unnamed, the trim that woke the run sells its own size.
-          const pct = args.close_pct ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : DEFAULT_TRIM_PCT);
-          const closeSide: "buy" | "sell" = position.direction === "LONG" ? "sell" : "buy";
-          const idempotencyKey = randomUUID();
-          const placedAt = new Date();
-          // A trigger run woken by this stock's sale or trim: the proposal stays open while that trigger holds.
-          const proposal = stagedSale(answers(ctx.firedTrigger, ticker, "SELL"), placedAt);
-          const expiresAt = proposal.expiresAt;
+        // Trade-as-Proposal: sells flow through requireApprovalSells{Live,Paper}.
+        // On, the trim is created already AWAITING_APPROVAL and we return
+        // before Alpaca; off, it is sent below.
+        const needsApproval = await approvalRequired({
+          accountId: ctx.accountId,
+          intent: "PARTIAL_CLOSE",
+          always: isManagerRun(ctx),
+          environment: position.environment as "PAPER" | "LIVE",
+        });
 
-          // Trade-as-Proposal: sells flow through requireApprovalSells{Live,Paper}.
-          // On, the trim is created already AWAITING_APPROVAL and we return
-          // before Alpaca; off, it is sent below.
-          const needsApproval = await approvalRequired({
-            accountId: ctx.accountId,
-            intent: "PARTIAL_CLOSE",
-            always: isManagerRun(ctx),
-            environment: position.environment as "PAPER" | "LIVE",
-          });
-
-          // 1. DB tx under the position lock (DAV-282): a trim is a market
-          //    sell, so it never sells past what is held and not already in a
-          //    sent trim, and never alongside a sent full close. The position
-          //    itself is not touched until the fill.
-          const staged = await prisma.$transaction(async (tx) => {
-            const sales = await lockPositionSales(tx, position.id);
-            const nothingLeft = { kind: "nothing_left" as const, sentClose: sales.sentClose };
-            if (sales.sentClose || sales.held <= 0) return nothingLeft;
-            const wanted = Math.max(1, Math.floor(sales.held * (pct / 100)));
-            if (wanted >= sales.held) return { kind: "whole" as const };
-            const quantity = Math.min(wanted, sales.sellable);
-            if (quantity <= 0) return nothingLeft;
-            const created = await tx.order.create({
-              data: {
-                positionId: position.id,
-                userId: ctx.userId,
-                environment: position.environment,
-                symbol: ticker,
-                side: closeSide.toUpperCase(),
-                orderType: "MARKET",
-                quantity,
-                status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
-                ...(needsApproval ? { ...proposal, rationale: args.reason, proposedPrice: await getLatestPrice(ticker, creds).catch(() => null) } : {}),
-                alpacaOrderId: null,
-                idempotencyKey,
-                intent: "PARTIAL_CLOSE",
-                thesisId: auditThesisId,
-                createdAt: placedAt,
-              },
-            });
-            return { kind: "created" as const, order: created, held: sales.held };
-          });
-
-          if (staged.kind === "whole") {
-            return {
-              summary: `Partial close would exit entire position — use close_position instead`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: "Partial close percentage would close the entire position. Use close_position to exit fully.",
-                tickers: [{ ticker, tag: "Failed", summary: "Use close_position to exit entirely", actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-          if (staged.kind === "nothing_left") {
-            const why = staged.sentClose
-              ? `a full close of ${ticker} is already sent (order ${staged.sentClose.id})`
-              : `every ${ticker} share is already in a sent sell`;
-            return {
-              summary: `Nothing left to trim: ${ticker}`,
-              data: {
-                success: true, ticker, action: args.action, status: "NO_POSITION" as const,
-                message: `No trim sent — ${why}.`,
-                tickers: [{ ticker, tag: "Selling", summary: `No trim — ${why}`, actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-          const { order, held } = staged;
-          const closeQty = order.quantity;
-
-          if (needsApproval) {
-            notifyProposalPending(order.id);
-            const awaiting = {
-              state: "awaiting_approval" as const,
-              orderId: order.id,
-              positionId: position.id,
-              expiresAt,
-              rationale: args.reason ?? null,
-            };
-            await recordProposalRunEvent({
-              runId: ctx.runId,
-              type: "position_modify_proposed",
-              ticker,
-              orderId: order.id,
-              title: `Proposed trimming ${ticker} ${pct}%`,
-            });
-            return {
-              summary: `Partial close proposed: ${ticker} (-${pct}%)`,
-              data: {
-                success: true, ticker, action: args.action, status: "PROPOSED" as const,
-                closedQty: closeQty,
-                remainingQty: held - closeQty,
-                fillPrice: position.avgCost,
-                partialPnl: 0,
-                tickers: [],
-                ...awaitingApprovalEnvelope({
-                  awaiting,
-                  ticker,
-                  direction: position.direction as "LONG" | "SHORT",
-                  intent: "PARTIAL_CLOSE",
-                  shares: closeQty,
-                  estimatedPrice: position.avgCost,
-                }),
-              },
-              sources: [],
-            };
-          }
-
-          // 2. Submit to Alpaca with client_order_id = idempotencyKey.
-          let alpacaOrderId: string | null = null;
-          try {
-            const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds, idempotencyKey);
-            alpacaOrderId = alpacaOrder.id;
-            await prisma.order.update({
-              where: { id: order.id },
-              data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
-            });
-          } catch (submitErr) {
-            const outcome = classifyAlpacaError(submitErr);
-            const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
-            if (outcome === "rejected") {
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
-              });
-              return {
-                summary: `Partial close rejected: ${ticker}`,
-                data: {
-                  success: false, ticker, action: args.action, status: "FAILED" as const,
-                  message: `Alpaca rejected partial close: ${msg}`,
-                  tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
-                },
-                sources: [],
-              };
-            }
-            // Uncertain — leave PENDING, reconcile will recover via clientOrderId.
-            console.error(
-              `CRITICAL-SYNC-UNCERTAIN [manage_position:partial_close] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
-            );
-            await prisma.order.update({
-              where: { id: order.id },
-              data: { alpacaSubmittedAt: placedAt },
-            });
-            return {
-              summary: `Partial close pending: ${ticker} (status uncertain)`,
-              data: {
-                success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
-                closedQty: closeQty,
-                remainingQty: held - closeQty,
-                fillPrice: position.avgCost,
-                partialPnl: 0,
-                message: `Partial close submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
-                tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-
-          // 3. Poll up to 5s for fill.
-          let fillPrice: number | null = null;
-          const deadline = Date.now() + 5_000;
-          while (Date.now() < deadline && alpacaOrderId) {
-            const polled = await getOrder(alpacaOrderId, creds);
-            if (polled.status === "filled" && polled.filled_avg_price) {
-              fillPrice = parseFloat(polled.filled_avg_price);
-              break;
-            }
-            if (["cancelled", "expired", "rejected"].includes(polled.status)) {
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
-              });
-              return {
-                summary: `Partial close ${polled.status}: ${ticker}`,
-                data: {
-                  success: false, ticker, action: args.action, status: "FAILED" as const,
-                  message: `Alpaca partial close ${polled.status}`,
-                  tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
-                },
-                sources: [],
-              };
-            }
-            await new Promise((r) => setTimeout(r, 1_000));
-          }
-
-          // 4a. Still pending — leave Order PENDING, Position unchanged.
-          if (fillPrice == null) {
-            const lastPrice = await getLatestPrice(ticker, creds).catch(() => position.avgCost);
-            return {
-              summary: `Partial close pending: ${ticker} (${closeQty} shares awaiting fill)`,
-              data: {
-                success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
-                closedQty: closeQty,
-                remainingQty: held - closeQty,
-                fillPrice: lastPrice,
-                partialPnl: 0,
-                message: `Partial close submitted (${closeQty} shares of ${ticker}) — awaiting Alpaca fill.`,
-                tickers: [{ ticker, tag: "Pending", summary: `${closeQty} shares awaiting fill`, actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-
-          // 4b. Filled — finalize the partial close.
-          const newQty = held - closeQty;
-          const partialPnl = position.direction === "LONG"
-            ? (fillPrice - position.avgCost) * closeQty
-            : (position.avgCost - fillPrice) * closeQty;
-          const pnlSign = partialPnl >= 0 ? "+" : "";
-
-          await prisma.$transaction(async (tx) => {
-            // Decrement, not set: another sale may have landed since `held` was read.
-            await tx.position.update({
-              where: { id: position.id },
-              data: { quantity: { decrement: closeQty } },
-            });
-
-            await tx.order.update({
-              where: { id: order.id },
-              data: {
-                status: "FILLED",
-                filledPrice: fillPrice!,
-                filledQty: closeQty,
-                filledAt: new Date(),
-              },
-            });
-
-            await tx.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "PARTIAL_CLOSE",
-                description: `Partial close: sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. P&L on portion: ${pnlSign}$${partialPnl.toFixed(2)}. Remaining: ${newQty} shares.`,
-                priceAt: fillPrice!,
-                pnlAt: partialPnl,
-              },
-            });
-
-            await tx.positionManagementAction.create({
-              data: {
-                positionId: position.id,
-                runId: ctx.runId ?? null,
-                actionType: "PARTIAL_CLOSE",
-                source: "agent",
-                prevQty: held,
-                newQty,
-                reason: args.reason ?? "",
-                alpacaOrderId,
-                fillPrice: fillPrice!,
-                fillQty: closeQty,
-              },
-            });
-
-            if (ctx.runId) {
-              await tx.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "position_modified",
-                  title: `Partial close: ${ticker}`,
-                  message: `Sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
-                  payload: { ticker, action: "partial_close", closeQty, newQty, fillPrice, partialPnl, pct } as object,
-                },
-              });
-            }
-
-            await tx.tradeDecision.create({
-              data: {
-                runId: ctx.runId,
-                analystId,
-                userId: ctx.userId,
-                accountId: ctx.accountId,
-                symbol: ticker,
-                decision: "PARTIAL_EXIT",
-                reasoning: args.reason,
-                positionId: position.id,
-                orderId: order.id,
-              },
-            });
-          });
-
-          // DAV-198 — a trim is a plan change; put it on the thesis timeline,
-          // not just the position audit tables. Non-fatal like every
-          // writeThesisUpdate call — the fill already landed.
-          if (auditThesisId) {
-            await writeThesisUpdate({
-              thesisId: auditThesisId,
-              type: "UPDATED",
-              summary: `Trimmed ${ticker} ${pct}% — sold ${closeQty} of ${held} shares at $${fillPrice.toFixed(2)} (${pnlSign}$${partialPnl.toFixed(2)})`,
-              rationale: args.reason,
-              fieldChanges: {
-                position: {
-                  from: `${held} shares`,
-                  to: `${newQty} shares`,
-                },
-              },
-              runId: ctx.runId ?? null,
-              tradeId: position.id,
-              priceAtTime: fillPrice,
-            });
-          }
-
-          return {
-            summary: `Partial close ${ticker}: sold ${pct}% (${closeQty} shares) ${pnlSign}$${partialPnl.toFixed(2)}`,
-            data: {
-              success: true,
-              ticker,
-              action: args.action,
-              status: "PARTIAL_CLOSE" as const,
-              closedQty: closeQty,
-              remainingQty: newQty,
-              fillPrice,
-              partialPnl,
-              message: `Sold ${closeQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
-              tickers: [{ ticker, tag: `Partial (-${pct}%)`, summary: `Sold ${closeQty} shares @ $${fillPrice.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized.`, actionIcon: partialPnl >= 0 ? "closed-win" : "closed-loss" }],
-            },
-            sources: [],
-          };
-        }
-
-        // ── ADD TO POSITION ──────────────────────────────────────────────────
-        case "add_to_position": {
-          // Only the principal's chat may name the add. A run's add — and a
-          // chat that names none — is sized by the analyst's rules below.
-          const principalNotional =
-            ctx.runMode === "PRINCIPAL_CHAT" && args.add_notional != null && args.add_notional > 0 ? args.add_notional : null;
-          let analystRiskPct: number | null = null;
-
-          // ── PR #359 gate parity: exclusion + enabled ────────────────────
-          // add_to_position is a buy that increases dollar exposure — must
-          // honor the same hard gates place_trade enforces for new entries.
-          // Historically this branch bypassed them, so a disabled analyst
-          // could still grow its book via adds. See docs/plans/TRADE_AS_PROPOSAL.md §13.
-
-          // Exclusion list — hard reject for any add on an excluded name.
-          if (isExcluded(ticker, { exclusionList: ctx.exclusionList })) {
-            const blockedMsg = `$${ticker} is on this analyst's exclusion list — cannot add to the position.`;
-            return {
-              summary: `Add blocked: $${ticker} — excluded`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: blockedMsg,
-                tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-
-          // Enabled — a paused analyst cannot grow its exposure. Existing
-          // positions stay manageable via partial_close / close_position / stops;
-          // only NEW dollar exposure is blocked.
-          if (ctx.analystId) {
-            const analystEnabledCheck = await prisma.agentConfig.findUnique({
-              where: { id: ctx.analystId },
-              select: { enabled: true, name: true, riskPct: true },
-            });
-            analystRiskPct = analystEnabledCheck?.riskPct ?? null;
-            if (analystEnabledCheck && !analystEnabledCheck.enabled) {
-              const blockedMsg =
-                `Add blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +
-                `new dollar exposure is paused. Existing positions remain ` +
-                `manageable (trims, exits, stops fire). Re-enable the analyst ` +
-                `in settings to resume adds and new entries.`;
-              return {
-                summary: `Add blocked: $${ticker} — analyst paused`,
-                data: {
-                  success: false, ticker, action: args.action, status: "FAILED" as const,
-                  message: blockedMsg,
-                  tickers: [{ ticker, tag: "Paused", summary: blockedMsg, actionIcon: "failed" }],
-                },
-                sources: [],
-              };
-            }
-          }
-
-          // What the shares will actually cost: today's price, not the price
-          // we paid. On the approval path the order's share count is what
-          // Alpaca is sent, so sizing an add off the entry-era average cost
-          // spends more than asked on exactly the positions worth adding to
-          // — a winner up 25% would buy 25% more stock than the dollar
-          // figure on the approval card. Falls back to the average cost when
-          // the quote fails, which is the old behaviour and no worse.
-          const addPrice = await getLatestPrice(ticker, creds).catch(() => null);
-          const sizingPrice = addPrice != null && addPrice > 0 ? addPrice : position.avgCost;
-
-          // ── The add's size: the analyst's rules, one way (DAV-317) ─────
-          // An add is the entry rule at half the risk (O'Neil's pyramid:
-          // the first add is smaller than the entry), at today's price
-          // against the floor in force, capped by the largest trade. The
-          // smallest-trade floor is an entry rule and doesn't apply here.
-          // No usable floor or no equity reading: half the band by
-          // conviction, and the line says why.
-          let notional: number;
-          let addSizingLine: string;
-          if (principalNotional != null) {
-            notional = principalNotional;
-            addSizingLine = `Sized by you: $${Math.round(notional).toLocaleString()}.`;
-          } else {
-            const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
-            const [accountRisk, convictionRow, autoStop] = await Promise.all([
-              loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
-              auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true, horizon: true, setupId: true, catalystDate: true } }).catch(() => null) : Promise.resolve(null),
-              analystId ? loadAutoStop(analystId) : Promise.resolve(null),
-            ]);
-            const direction = position.direction === "SHORT" ? "SHORT" : "LONG";
-            // Stop when buying on: the wider of the floor in force and the setting's line, as a new buy.
-            const riskStop = position.stopLoss != null ? sizingStop({ entry: sizingPrice, stop: Number(position.stopLoss), direction, autoStop }) : null;
-            const sized =
-              accountRisk?.equity != null && riskStop != null
-                ? sizeByRisk({
-                    equity: accountRisk.equity,
-                    riskPct: analystRiskPct,
-                    conviction: convictionRow?.conviction ?? null,
-                    entry: sizingPrice,
-                    stop: riskStop.stop,
-                    direction,
-                    // An add into a binary event is a buy into it: the same
-                    // halving the entry took, from the same function.
-                    binary: convictionRow ? isBinaryBet(convictionRow) : false,
-                    regime: accountRisk.regime?.regime ?? null,
-                    band: { floor: 0, ceiling: band.ceiling, floorClampedByCeiling: false },
-                  })
-                : null;
-            if (sized) {
-              const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
-              notional = shares * sizingPrice;
-              addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}${riskStop?.line ? ` ${riskStop.line}` : ""}`;
-            } else {
-              notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
-              addSizingLine =
-                `Add sized from the analyst's band by conviction, halved ($${Math.round(notional).toLocaleString()}) — ` +
-                (accountRisk?.equity == null ? "account equity unavailable" : "no floor in force on the position") +
-                ", so the risk rule couldn't run.";
-            }
-          }
-
-          // ── Most in one stock (the analyst's third sizing setting) ─────
-          // A held winner may grow, by adding, to the analyst's "most in one
-          // stock" — a number the principal sets, not a hidden multiple.
-          // Valued at today's price, like the add itself.
-          const totalCap = positionTotalCap({
-            maxPositionSize: ctx.maxPositionSize,
-            maxPositionTotal: ctx.maxPositionTotal,
-          });
-          const currentValue = addPositionValue(position.quantity, sizingPrice);
-          if (principalNotional == null && currentValue + notional > totalCap && totalCap - currentValue >= sizingPrice) {
-            // A rule-sized add is trimmed to the room left, and says so.
-            notional = totalCap - currentValue;
-            addSizingLine += ` Trimmed to the room left under the most this analyst may hold in one stock ($${Math.round(totalCap).toLocaleString()}): $${Math.round(notional).toLocaleString()}.`;
-          }
-          if (currentValue + notional > totalCap) {
-            return {
-              summary: `Add would exceed the most this analyst may hold in one stock`,
-              data: {
-                success: false, ticker, action: args.action, status: "FAILED" as const,
-                message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would take it past the most this analyst may hold in one stock ($${totalCap.toFixed(0)}, a setting on the analyst). Trim or wait rather than adding beyond it.`,
-                tickers: [{ ticker, tag: "Failed", summary: "Exceeds most-in-one-stock", actionIcon: "failed" }],
-              },
-              sources: [],
-            };
-          }
-
-          // An add no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
-          const short = ctx.payFromCash !== undefined ? cashShortfall(notional, ctx.payFromCash) : null;
-          if (short) {
-            return {
-              summary: `Add blocked: $${ticker} — not enough cash`,
-              data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: short, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
-              sources: [],
-            };
-          }
-
-          const idempotencyKey = randomUUID();
-          const placedAt = new Date();
-          const addSide: "buy" | "sell" = position.direction === "LONG" ? "buy" : "sell";
-          // The share count the approval path actually submits, so it is
-          // sized at what the shares cost today.
-          const approxQty = addShareCount(notional, addPrice, position.avgCost);
-
-          // 1. DB tx — create PENDING order, do not mutate Position yet.
-          const order = await prisma.order.create({
+        // 1. DB tx under the position lock (DAV-282): a trim is a market
+        //    sell, so it never sells past what is held and not already in a
+        //    sent trim, and never alongside a sent full close. The position
+        //    itself is not touched until the fill.
+        const staged = await prisma.$transaction(async (tx) => {
+          const sales = await lockPositionSales(tx, position.id);
+          const nothingLeft = { kind: "nothing_left" as const, sentClose: sales.sentClose };
+          if (sales.sentClose || sales.held <= 0) return nothingLeft;
+          const wanted = Math.max(1, Math.floor(sales.held * (pct / 100)));
+          if (wanted >= sales.held) return { kind: "whole" as const };
+          const quantity = Math.min(wanted, sales.sellable);
+          if (quantity <= 0) return nothingLeft;
+          const created = await tx.order.create({
             data: {
               positionId: position.id,
               userId: ctx.userId,
               environment: position.environment,
               symbol: ticker,
-              side: addSide.toUpperCase(),
+              side: closeSide.toUpperCase(),
               orderType: "MARKET",
-              quantity: approxQty,
-              status: "PENDING",
+              quantity,
+              status: needsApproval ? "AWAITING_APPROVAL" : "PENDING",
+              ...(needsApproval ? { ...proposal, rationale: args.reason, proposedPrice: await getLatestPrice(ticker, creds).catch(() => null) } : {}),
               alpacaOrderId: null,
               idempotencyKey,
-              intent: "ADD",
+              intent: "PARTIAL_CLOSE",
               thesisId: auditThesisId,
               createdAt: placedAt,
             },
           });
+          return { kind: "created" as const, order: created, held: sales.held };
+        });
 
-          // ── Trade-as-Proposal seam ──
-          // Adds increase exposure, so requireApprovalBuys{Live,Paper} gates them.
-          // When on, the helper flips the just-created Order →
-          // AWAITING_APPROVAL + sends email; we return early before Alpaca.
-          {
-            const awaiting = await maybeAwaitApproval({
-              accountId: ctx.accountId,
-              positionId: position.id,
-              orderId: order.id,
-              intent: "ADD",
-              always: isManagerRun(ctx),
-              environment: position.environment as "PAPER" | "LIVE",
-              rationale: args.reason ?? null,
-              triggerIds: answers(ctx.firedTrigger, ticker, "BUY"),
-              proposedPrice: addPrice,
-            });
-            if (awaiting?.state === "awaiting_approval") {
-              await recordProposalRunEvent({
-                runId: ctx.runId,
-                type: "position_modify_proposed",
-                ticker,
-                orderId: awaiting.orderId,
-                title: `Proposed adding to ${ticker}`,
-                payload: { sizing: [addSizingLine] },
-              });
-              return {
-                summary: `Add proposed: ${ticker} +$${notional}`,
-                data: {
-                  success: true, ticker, action: args.action, status: "PROPOSED" as const,
-                  addedQty: approxQty,
-                  newTotalQty: position.quantity + approxQty,
-                  fillPrice: position.avgCost,
-                  newAvgCost: position.avgCost,
-                  sizing: [addSizingLine],
-                  tickers: [],
-                  ...awaitingApprovalEnvelope({
-                    awaiting,
-                    ticker,
-                    direction: position.direction as "LONG" | "SHORT",
-                    intent: "ADD",
-                    shares: approxQty,
-                    estimatedPrice: position.avgCost,
-                    estimatedCost: notional,
-                  }),
-                },
-                sources: [],
-              };
-            }
-          }
-
-          // 2. Submit to Alpaca with client_order_id = idempotencyKey.
-          let alpacaOrderId: string | null = null;
-          try {
-            const addOrder = await placeMarketOrder({
-              symbol: ticker,
-              side: addSide,
-              notional,
-              clientOrderId: idempotencyKey,
-            }, creds);
-            alpacaOrderId = addOrder.id;
-            await prisma.order.update({
-              where: { id: order.id },
-              data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
-            });
-          } catch (submitErr) {
-            const outcome = classifyAlpacaError(submitErr);
-            const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
-            if (outcome === "rejected") {
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
-              });
-              return {
-                summary: `Add rejected: ${ticker}`,
-                data: {
-                  success: false, ticker, action: args.action, status: "FAILED" as const,
-                  message: `Alpaca rejected add: ${msg}`,
-                  tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
-                },
-                sources: [],
-              };
-            }
-            console.error(
-              `CRITICAL-SYNC-UNCERTAIN [manage_position:add_to_position] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
-            );
-            await prisma.order.update({
-              where: { id: order.id },
-              data: { alpacaSubmittedAt: placedAt },
-            });
-            return {
-              summary: `Add pending: ${ticker} (status uncertain)`,
-              data: {
-                success: true, ticker, action: args.action, status: "ADDED" as const,
-                addedQty: approxQty,
-                newTotalQty: position.quantity + approxQty,
-                fillPrice: position.avgCost,
-                newAvgCost: position.avgCost,
-                message: `Add submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
-                tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-
-          // 3. Poll up to 5s for fill.
-          let fillPrice: number | null = null;
-          let fillQty: number | null = null;
-          const deadline = Date.now() + 5_000;
-          while (Date.now() < deadline && alpacaOrderId) {
-            const polled = await getOrder(alpacaOrderId, creds);
-            if (polled.status === "filled" && polled.filled_avg_price && polled.filled_qty) {
-              fillPrice = parseFloat(polled.filled_avg_price);
-              fillQty = parseFloat(polled.filled_qty);
-              break;
-            }
-            if (["cancelled", "expired", "rejected"].includes(polled.status)) {
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
-              });
-              return {
-                summary: `Add ${polled.status}: ${ticker}`,
-                data: {
-                  success: false, ticker, action: args.action, status: "FAILED" as const,
-                  message: `Alpaca add ${polled.status}`,
-                  tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
-                },
-                sources: [],
-              };
-            }
-            await new Promise((r) => setTimeout(r, 1_000));
-          }
-
-          // 4a. Still pending — Position unchanged; reconcile will pick it up.
-          if (fillPrice == null || fillQty == null) {
-            return {
-              summary: `Add pending: ${ticker} (awaiting fill)`,
-              data: {
-                success: true, ticker, action: args.action, status: "ADDED" as const,
-                addedQty: approxQty,
-                newTotalQty: position.quantity + approxQty,
-                fillPrice: position.avgCost,
-                newAvgCost: position.avgCost,
-                message: `Add submitted ($${notional} of ${ticker}) — awaiting Alpaca fill.`,
-                tickers: [{ ticker, tag: "Pending", summary: `$${notional} awaiting fill`, actionIcon: "hold" }],
-              },
-              sources: [],
-            };
-          }
-
-          // 4b. Filled — update Position with real fill price/qty.
-          const newTotalQty = position.quantity + fillQty;
-          const newAvgCost = ((position.avgCost * position.quantity) + (fillPrice * fillQty)) / newTotalQty;
-
-          await prisma.$transaction(async (tx) => {
-            await tx.position.update({
-              where: { id: position.id },
-              data: { quantity: newTotalQty, avgCost: newAvgCost },
-            });
-
-            await tx.order.update({
-              where: { id: order.id },
-              data: {
-                status: "FILLED",
-                quantity: fillQty!,
-                filledPrice: fillPrice!,
-                filledQty: fillQty!,
-                filledAt: new Date(),
-              },
-            });
-
-            await tx.positionEvent.create({
-              data: {
-                positionId: position.id,
-                eventType: "ADDED",
-                description: `Added ${fillQty} shares at $${fillPrice!.toFixed(2)}. New position: ${newTotalQty} shares @ avg $${newAvgCost.toFixed(2)}.`,
-                priceAt: fillPrice!,
-              },
-            });
-
-            await tx.positionManagementAction.create({
-              data: {
-                positionId: position.id,
-                runId: ctx.runId ?? null,
-                actionType: "ADD_TO_POSITION",
-                source: "agent",
-                prevQty: position.quantity,
-                newQty: newTotalQty,
-                reason: args.reason ?? "",
-                alpacaOrderId,
-                fillPrice: fillPrice!,
-                fillQty: fillQty!,
-              },
-            });
-
-            if (ctx.runId) {
-              await tx.runEvent.create({
-                data: {
-                  runId: ctx.runId,
-                  type: "position_modified",
-                  title: `Added to ${ticker}`,
-                  message: `Added ${fillQty} shares at $${fillPrice!.toFixed(2)}. Now ${newTotalQty} shares @ avg $${newAvgCost.toFixed(2)}.`,
-                  payload: { ticker, action: "add_to_position", addedQty: fillQty, newTotalQty, fillPrice, newAvgCost, sizing: [addSizingLine] } as object,
-                },
-              });
-            }
-
-            await tx.tradeDecision.create({
-              data: {
-                runId: ctx.runId,
-                analystId,
-                userId: ctx.userId,
-                accountId: ctx.accountId,
-                symbol: ticker,
-                decision: "ADD",
-                reasoning: args.reason,
-                positionId: position.id,
-                orderId: order.id,
-              },
-            });
-          });
-
+        if (staged.kind === "whole") {
           return {
-            summary: `Added to ${ticker}: +${fillQty} shares @ $${fillPrice.toFixed(2)}. Now ${newTotalQty} shares.`,
+            summary: `That part is the whole holding: sell with percent 100`,
             data: {
-              success: true, ticker, action: args.action, status: "ADDED" as const,
-              addedQty: fillQty, newTotalQty, fillPrice, newAvgCost,
-              sizing: [addSizingLine],
-              message: `Added ${fillQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. Position is now ${newTotalQty} shares at avg cost $${newAvgCost.toFixed(2)}.`,
-              tickers: [{ ticker, tag: "Added", summary: `+${fillQty} shares @ $${fillPrice.toFixed(2)}. ${newTotalQty} total.`, actionIcon: "buy" }],
+              success: false, ticker, action: args.action, status: "FAILED" as const,
+              message: "That percent would sell the whole holding. To sell it all, call sell with percent 100 and say belief_survived.",
+              tickers: [{ ticker, tag: "Failed", summary: "Sell with percent 100 to sell it all", actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+        if (staged.kind === "nothing_left") {
+          const why = staged.sentClose
+            ? `a full close of ${ticker} is already sent (order ${staged.sentClose.id})`
+            : `every ${ticker} share is already in a sent sell`;
+          return {
+            summary: `Nothing left to trim: ${ticker}`,
+            data: {
+              success: true, ticker, action: args.action, status: "NO_POSITION" as const,
+              message: `No trim sent — ${why}.`,
+              tickers: [{ ticker, tag: "Selling", summary: `No trim — ${why}`, actionIcon: "hold" }],
+            },
+            sources: [],
+          };
+        }
+        const { order, held } = staged;
+        const closeQty = order.quantity;
+
+        if (needsApproval) {
+          notifyProposalPending(order.id);
+          const awaiting = {
+            state: "awaiting_approval" as const,
+            orderId: order.id,
+            positionId: position.id,
+            expiresAt,
+            rationale: args.reason ?? null,
+          };
+          await recordProposalRunEvent({
+            runId: ctx.runId,
+            type: "position_modify_proposed",
+            ticker,
+            orderId: order.id,
+            title: `Proposed trimming ${ticker} ${pct}%`,
+          });
+          return {
+            summary: `Partial close proposed: ${ticker} (-${pct}%)`,
+            data: {
+              success: true, ticker, action: args.action, status: "PROPOSED" as const,
+              closedQty: closeQty,
+              remainingQty: held - closeQty,
+              fillPrice: position.avgCost,
+              partialPnl: 0,
+              tickers: [],
+              ...awaitingApprovalEnvelope({
+                awaiting,
+                ticker,
+                direction: position.direction as "LONG" | "SHORT",
+                intent: "PARTIAL_CLOSE",
+                shares: closeQty,
+                estimatedPrice: position.avgCost,
+              }),
             },
             sources: [],
           };
         }
 
-        default:
+        // 2. Submit to Alpaca with client_order_id = idempotencyKey.
+        let alpacaOrderId: string | null = null;
+        try {
+          const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds, idempotencyKey);
+          alpacaOrderId = alpacaOrder.id;
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+          });
+        } catch (submitErr) {
+          const outcome = classifyAlpacaError(submitErr);
+          const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+          if (outcome === "rejected") {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+            });
+            return {
+              summary: `Partial close rejected: ${ticker}`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: `Alpaca rejected partial close: ${msg}`,
+                tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+          // Uncertain — leave PENDING, reconcile will recover via clientOrderId.
+          console.error(
+            `CRITICAL-SYNC-UNCERTAIN [manage_position:partial_close] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
+          );
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { alpacaSubmittedAt: placedAt },
+          });
           return {
-            summary: `Unknown action`,
+            summary: `Partial close pending: ${ticker} (status uncertain)`,
             data: {
-              success: false, ticker, action: args.action, status: "FAILED" as const,
-              message: `Unknown action: ${args.action}`,
-              tickers: [{ ticker, tag: "Failed", summary: "Unknown action", actionIcon: "failed" }],
+              success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
+              closedQty: closeQty,
+              remainingQty: held - closeQty,
+              fillPrice: position.avgCost,
+              partialPnl: 0,
+              message: `Partial close submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
+              tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
             },
             sources: [],
           };
-      }
-    } catch (err) {
-      // Refresh portfolio context for the error response
-      let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
-      try {
-        const currentOpenCount = await prisma.position.count({ where: { analystId, status: "OPEN" } });
-        const postAccount = await getAccount(creds);
-        portfolioUpdate = {
-          remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
-          remainingBuyingPower: parseFloat(postAccount.buying_power),
-          openPositionCount: currentOpenCount,
-        };
-      } catch { /* non-fatal */ }
+        }
 
-      const msg = err instanceof Error ? err.message : "manage_position failed";
-      console.error(`[tool] manage_position FAILED for ${ticker} (${args.action}): ${msg}`);
-      return {
-        summary: `manage_position failed: ${ticker}`,
-        data: {
-          success: false, ticker, action: args.action, status: "FAILED" as const,
-          message: msg,
-          ...(portfolioUpdate ? { portfolioUpdate } : {}),
-          tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
-        },
-        sources: [],
-      };
+        // 3. Poll up to 5s for fill.
+        let fillPrice: number | null = null;
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline && alpacaOrderId) {
+          const polled = await getOrder(alpacaOrderId, creds);
+          if (polled.status === "filled" && polled.filled_avg_price) {
+            fillPrice = parseFloat(polled.filled_avg_price);
+            break;
+          }
+          if (["cancelled", "expired", "rejected"].includes(polled.status)) {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
+            });
+            return {
+              summary: `Partial close ${polled.status}: ${ticker}`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: `Alpaca partial close ${polled.status}`,
+                tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+          await new Promise((r) => setTimeout(r, 1_000));
+        }
+
+        // 4a. Still pending — leave Order PENDING, Position unchanged.
+        if (fillPrice == null) {
+          const lastPrice = await getLatestPrice(ticker, creds).catch(() => position.avgCost);
+          return {
+            summary: `Partial close pending: ${ticker} (${closeQty} shares awaiting fill)`,
+            data: {
+              success: true, ticker, action: args.action, status: "PARTIAL_CLOSE" as const,
+              closedQty: closeQty,
+              remainingQty: held - closeQty,
+              fillPrice: lastPrice,
+              partialPnl: 0,
+              message: `Partial close submitted (${closeQty} shares of ${ticker}) — awaiting Alpaca fill.`,
+              tickers: [{ ticker, tag: "Pending", summary: `${closeQty} shares awaiting fill`, actionIcon: "hold" }],
+            },
+            sources: [],
+          };
+        }
+
+        // 4b. Filled — finalize the partial close.
+        const newQty = held - closeQty;
+        const partialPnl = position.direction === "LONG"
+          ? (fillPrice - position.avgCost) * closeQty
+          : (position.avgCost - fillPrice) * closeQty;
+        const pnlSign = partialPnl >= 0 ? "+" : "";
+
+        await prisma.$transaction(async (tx) => {
+          // Decrement, not set: another sale may have landed since `held` was read.
+          await tx.position.update({
+            where: { id: position.id },
+            data: { quantity: { decrement: closeQty } },
+          });
+
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: "FILLED",
+              filledPrice: fillPrice!,
+              filledQty: closeQty,
+              filledAt: new Date(),
+            },
+          });
+
+          await tx.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "PARTIAL_CLOSE",
+              description: `Partial close: sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. P&L on portion: ${pnlSign}$${partialPnl.toFixed(2)}. Remaining: ${newQty} shares.`,
+              priceAt: fillPrice!,
+              pnlAt: partialPnl,
+            },
+          });
+
+          await tx.positionManagementAction.create({
+            data: {
+              positionId: position.id,
+              runId: ctx.runId ?? null,
+              actionType: "PARTIAL_CLOSE",
+              source: "agent",
+              prevQty: held,
+              newQty,
+              reason: args.reason ?? "",
+              alpacaOrderId,
+              fillPrice: fillPrice!,
+              fillQty: closeQty,
+            },
+          });
+
+          if (ctx.runId) {
+            await tx.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "position_modified",
+                title: `Partial close: ${ticker}`,
+                message: `Sold ${closeQty} of ${held} shares (${pct}%) at $${fillPrice!.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
+                payload: { ticker, action: "partial_close", closeQty, newQty, fillPrice, partialPnl, pct } as object,
+              },
+            });
+          }
+
+          await tx.tradeDecision.create({
+            data: {
+              runId: ctx.runId,
+              analystId,
+              userId: ctx.userId,
+              accountId: ctx.accountId,
+              symbol: ticker,
+              decision: "PARTIAL_EXIT",
+              reasoning: args.reason,
+              positionId: position.id,
+              orderId: order.id,
+            },
+          });
+        });
+
+        // DAV-198 — a trim is a plan change; put it on the thesis timeline,
+        // not just the position audit tables. Non-fatal like every
+        // writeThesisUpdate call — the fill already landed.
+        if (auditThesisId) {
+          await writeThesisUpdate({
+            thesisId: auditThesisId,
+            type: "UPDATED",
+            summary: `Trimmed ${ticker} ${pct}% — sold ${closeQty} of ${held} shares at $${fillPrice.toFixed(2)} (${pnlSign}$${partialPnl.toFixed(2)})`,
+            rationale: args.reason,
+            fieldChanges: {
+              position: {
+                from: `${held} shares`,
+                to: `${newQty} shares`,
+              },
+            },
+            runId: ctx.runId ?? null,
+            tradeId: position.id,
+            priceAtTime: fillPrice,
+          });
+        }
+
+        return {
+          summary: `Partial close ${ticker}: sold ${pct}% (${closeQty} shares) ${pnlSign}$${partialPnl.toFixed(2)}`,
+          data: {
+            success: true,
+            ticker,
+            action: args.action,
+            status: "PARTIAL_CLOSE" as const,
+            closedQty: closeQty,
+            remainingQty: newQty,
+            fillPrice,
+            partialPnl,
+            message: `Sold ${closeQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized. ${newQty} shares remain.`,
+            tickers: [{ ticker, tag: `Partial (-${pct}%)`, summary: `Sold ${closeQty} shares @ $${fillPrice.toFixed(2)}. ${pnlSign}$${partialPnl.toFixed(2)} realized.`, actionIcon: partialPnl >= 0 ? "closed-win" : "closed-loss" }],
+          },
+          sources: [],
+        };
+      }
+
+      // ── ADD TO POSITION ──────────────────────────────────────────────────
+      case "add_to_position": {
+        // Only the principal's chat may name the add. A run's add — and a
+        // chat that names none — is sized by the analyst's rules below.
+        const principalNotional =
+          ctx.runMode === "PRINCIPAL_CHAT" && args.add_notional != null && args.add_notional > 0 ? args.add_notional : null;
+        let analystRiskPct: number | null = null;
+
+        // ── PR #359 gate parity: exclusion + enabled ────────────────────
+        // add_to_position is a buy that increases dollar exposure — must
+        // honor the same hard gates place_trade enforces for new entries.
+        // Historically this branch bypassed them, so a disabled analyst
+        // could still grow its book via adds. See docs/plans/TRADE_AS_PROPOSAL.md §13.
+
+        // Exclusion list — hard reject for any add on an excluded name.
+        if (isExcluded(ticker, { exclusionList: ctx.exclusionList })) {
+          const blockedMsg = `$${ticker} is on this analyst's exclusion list — cannot add to the position.`;
+          return {
+            summary: `Add blocked: $${ticker} — excluded`,
+            data: {
+              success: false, ticker, action: args.action, status: "FAILED" as const,
+              message: blockedMsg,
+              tickers: [{ ticker, tag: "Failed", summary: blockedMsg, actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+
+        // Enabled — a paused analyst cannot grow its exposure. Existing
+        // positions stay manageable via partial_close / close_position / stops;
+        // only NEW dollar exposure is blocked.
+        if (ctx.analystId) {
+          const analystEnabledCheck = await prisma.agentConfig.findUnique({
+            where: { id: ctx.analystId },
+            select: { enabled: true, name: true, riskPct: true },
+          });
+          analystRiskPct = analystEnabledCheck?.riskPct ?? null;
+          if (analystEnabledCheck && !analystEnabledCheck.enabled) {
+            const blockedMsg =
+              `Add blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +
+              `new dollar exposure is paused. Existing positions remain ` +
+              `manageable (trims, exits, stops fire). Re-enable the analyst ` +
+              `in settings to resume adds and new entries.`;
+            return {
+              summary: `Add blocked: $${ticker} — analyst paused`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: blockedMsg,
+                tickers: [{ ticker, tag: "Paused", summary: blockedMsg, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+        }
+
+        // What the shares will actually cost: today's price, not the price
+        // we paid. On the approval path the order's share count is what
+        // Alpaca is sent, so sizing an add off the entry-era average cost
+        // spends more than asked on exactly the positions worth adding to
+        // — a winner up 25% would buy 25% more stock than the dollar
+        // figure on the approval card. Falls back to the average cost when
+        // the quote fails, which is the old behaviour and no worse.
+        const addPrice = await getLatestPrice(ticker, creds).catch(() => null);
+        const sizingPrice = addPrice != null && addPrice > 0 ? addPrice : position.avgCost;
+
+        // ── The add's size: the analyst's rules, one way (DAV-317) ─────
+        // An add is the entry rule at half the risk (O'Neil's pyramid:
+        // the first add is smaller than the entry), at today's price
+        // against the floor in force, capped by the largest trade. The
+        // smallest-trade floor is an entry rule and doesn't apply here.
+        // No usable floor or no equity reading: half the band by
+        // conviction, and the line says why.
+        let notional: number;
+        let addSizingLine: string;
+        if (principalNotional != null) {
+          notional = principalNotional;
+          addSizingLine = `Sized by you: $${Math.round(notional).toLocaleString()}.`;
+        } else {
+          const band = positionBand({ minPositionSize: ctx.minPositionSize, maxPositionSize: ctx.maxPositionSize });
+          const [accountRisk, convictionRow, autoStop] = await Promise.all([
+            loadAccountRisk({ accountId: ctx.accountId, environment: position.environment as "PAPER" | "LIVE", creds }).catch(() => null),
+            auditThesisId ? prisma.thesis.findUnique({ where: { id: auditThesisId }, select: { conviction: true, horizon: true, setupId: true, catalystDate: true } }).catch(() => null) : Promise.resolve(null),
+            analystId ? loadAutoStop(analystId) : Promise.resolve(null),
+          ]);
+          const direction = position.direction === "SHORT" ? "SHORT" : "LONG";
+          // Stop when buying on: the wider of the floor in force and the setting's line, as a new buy.
+          const riskStop = position.stopLoss != null ? sizingStop({ entry: sizingPrice, stop: Number(position.stopLoss), direction, autoStop }) : null;
+          const sized =
+            accountRisk?.equity != null && riskStop != null
+              ? sizeByRisk({
+                  equity: accountRisk.equity,
+                  riskPct: analystRiskPct,
+                  conviction: convictionRow?.conviction ?? null,
+                  entry: sizingPrice,
+                  stop: riskStop.stop,
+                  direction,
+                  // An add into a binary event is a buy into it: the same
+                  // halving the entry took, from the same function.
+                  binary: convictionRow ? isBinaryBet(convictionRow) : false,
+                  regime: accountRisk.regime?.regime ?? null,
+                  band: { floor: 0, ceiling: band.ceiling, floorClampedByCeiling: false },
+                })
+              : null;
+          if (sized) {
+            const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
+            notional = shares * sizingPrice;
+            addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}${riskStop?.line ? ` ${riskStop.line}` : ""}`;
+          } else {
+            notional = Math.max(1, entrySizeForConviction({ conviction: convictionRow?.conviction ?? null, band }) * ADD_RISK_FRACTION);
+            addSizingLine =
+              `Add sized from the analyst's band by conviction, halved ($${Math.round(notional).toLocaleString()}) — ` +
+              (accountRisk?.equity == null ? "account equity unavailable" : "no floor in force on the position") +
+              ", so the risk rule couldn't run.";
+          }
+        }
+
+        // ── Most in one stock (the analyst's third sizing setting) ─────
+        // A held winner may grow, by adding, to the analyst's "most in one
+        // stock" — a number the principal sets, not a hidden multiple.
+        // Valued at today's price, like the add itself.
+        const totalCap = positionTotalCap({
+          maxPositionSize: ctx.maxPositionSize,
+          maxPositionTotal: ctx.maxPositionTotal,
+        });
+        const currentValue = addPositionValue(position.quantity, sizingPrice);
+        if (principalNotional == null && currentValue + notional > totalCap && totalCap - currentValue >= sizingPrice) {
+          // A rule-sized add is trimmed to the room left, and says so.
+          notional = totalCap - currentValue;
+          addSizingLine += ` Trimmed to the room left under the most this analyst may hold in one stock ($${Math.round(totalCap).toLocaleString()}): $${Math.round(notional).toLocaleString()}.`;
+        }
+        if (currentValue + notional > totalCap) {
+          return {
+            summary: `Add would exceed the most this analyst may hold in one stock`,
+            data: {
+              success: false, ticker, action: args.action, status: "FAILED" as const,
+              message: `Adding $${notional} to the current $${currentValue.toFixed(0)} position would take it past the most this analyst may hold in one stock ($${totalCap.toFixed(0)}, a setting on the analyst). Trim or wait rather than adding beyond it.`,
+              tickers: [{ ticker, tag: "Failed", summary: "Exceeds most-in-one-stock", actionIcon: "failed" }],
+            },
+            sources: [],
+          };
+        }
+
+        // An add no analyst placed (an Auto trigger) is paid from cash, never margin, as the Trade button's is.
+        const short = ctx.payFromCash !== undefined ? cashShortfall(notional, ctx.payFromCash) : null;
+        if (short) {
+          return {
+            summary: `Add blocked: $${ticker} — not enough cash`,
+            data: { success: false, ticker, action: args.action, status: "FAILED" as const, message: short, tickers: [{ ticker, tag: "Failed", summary: short, actionIcon: "failed" }] },
+            sources: [],
+          };
+        }
+
+        const idempotencyKey = randomUUID();
+        const placedAt = new Date();
+        const addSide: "buy" | "sell" = position.direction === "LONG" ? "buy" : "sell";
+        // The share count the approval path actually submits, so it is
+        // sized at what the shares cost today.
+        const approxQty = addShareCount(notional, addPrice, position.avgCost);
+
+        // 1. DB tx — create PENDING order, do not mutate Position yet.
+        const order = await prisma.order.create({
+          data: {
+            positionId: position.id,
+            userId: ctx.userId,
+            environment: position.environment,
+            symbol: ticker,
+            side: addSide.toUpperCase(),
+            orderType: "MARKET",
+            quantity: approxQty,
+            status: "PENDING",
+            alpacaOrderId: null,
+            idempotencyKey,
+            intent: "ADD",
+            thesisId: auditThesisId,
+            createdAt: placedAt,
+          },
+        });
+
+        // ── Trade-as-Proposal seam ──
+        // Adds increase exposure, so requireApprovalBuys{Live,Paper} gates them.
+        // When on, the helper flips the just-created Order →
+        // AWAITING_APPROVAL + sends email; we return early before Alpaca.
+        {
+          const awaiting = await maybeAwaitApproval({
+            accountId: ctx.accountId,
+            positionId: position.id,
+            orderId: order.id,
+            intent: "ADD",
+            always: isManagerRun(ctx),
+            environment: position.environment as "PAPER" | "LIVE",
+            rationale: args.reason ?? null,
+            triggerIds: answers(ctx.firedTrigger, ticker, "BUY"),
+            proposedPrice: addPrice,
+          });
+          if (awaiting?.state === "awaiting_approval") {
+            await recordProposalRunEvent({
+              runId: ctx.runId,
+              type: "position_modify_proposed",
+              ticker,
+              orderId: awaiting.orderId,
+              title: `Proposed adding to ${ticker}`,
+              payload: { sizing: [addSizingLine] },
+            });
+            return {
+              summary: `Add proposed: ${ticker} +$${notional}`,
+              data: {
+                success: true, ticker, action: args.action, status: "PROPOSED" as const,
+                addedQty: approxQty,
+                newTotalQty: position.quantity + approxQty,
+                fillPrice: position.avgCost,
+                newAvgCost: position.avgCost,
+                sizing: [addSizingLine],
+                tickers: [],
+                ...awaitingApprovalEnvelope({
+                  awaiting,
+                  ticker,
+                  direction: position.direction as "LONG" | "SHORT",
+                  intent: "ADD",
+                  shares: approxQty,
+                  estimatedPrice: position.avgCost,
+                  estimatedCost: notional,
+                }),
+              },
+              sources: [],
+            };
+          }
+        }
+
+        // 2. Submit to Alpaca with client_order_id = idempotencyKey.
+        let alpacaOrderId: string | null = null;
+        try {
+          const addOrder = await placeMarketOrder({
+            symbol: ticker,
+            side: addSide,
+            notional,
+            clientOrderId: idempotencyKey,
+          }, creds);
+          alpacaOrderId = addOrder.id;
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { alpacaOrderId, alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+          });
+        } catch (submitErr) {
+          const outcome = classifyAlpacaError(submitErr);
+          const msg = submitErr instanceof Error ? submitErr.message : String(submitErr);
+          if (outcome === "rejected") {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { status: "REJECTED", alpacaSubmittedAt: placedAt, alpacaConfirmedAt: new Date() },
+            });
+            return {
+              summary: `Add rejected: ${ticker}`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: `Alpaca rejected add: ${msg}`,
+                tickers: [{ ticker, tag: "Rejected", summary: msg, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+          console.error(
+            `CRITICAL-SYNC-UNCERTAIN [manage_position:add_to_position] ${ticker} (idem=${idempotencyKey.slice(0, 8)}): ${msg}. Reconcile will recover.`,
+          );
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { alpacaSubmittedAt: placedAt },
+          });
+          return {
+            summary: `Add pending: ${ticker} (status uncertain)`,
+            data: {
+              success: true, ticker, action: args.action, status: "ADDED" as const,
+              addedQty: approxQty,
+              newTotalQty: position.quantity + approxQty,
+              fillPrice: position.avgCost,
+              newAvgCost: position.avgCost,
+              message: `Add submitted but status uncertain (${msg}). Reconcile cron will resolve.`,
+              tickers: [{ ticker, tag: "Pending", summary: "Awaiting reconcile", actionIcon: "hold" }],
+            },
+            sources: [],
+          };
+        }
+
+        // 3. Poll up to 5s for fill.
+        let fillPrice: number | null = null;
+        let fillQty: number | null = null;
+        const deadline = Date.now() + 5_000;
+        while (Date.now() < deadline && alpacaOrderId) {
+          const polled = await getOrder(alpacaOrderId, creds);
+          if (polled.status === "filled" && polled.filled_avg_price && polled.filled_qty) {
+            fillPrice = parseFloat(polled.filled_avg_price);
+            fillQty = parseFloat(polled.filled_qty);
+            break;
+          }
+          if (["cancelled", "expired", "rejected"].includes(polled.status)) {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELLED", alpacaConfirmedAt: new Date() },
+            });
+            return {
+              summary: `Add ${polled.status}: ${ticker}`,
+              data: {
+                success: false, ticker, action: args.action, status: "FAILED" as const,
+                message: `Alpaca add ${polled.status}`,
+                tickers: [{ ticker, tag: polled.status, summary: `Alpaca ${polled.status}`, actionIcon: "failed" }],
+              },
+              sources: [],
+            };
+          }
+          await new Promise((r) => setTimeout(r, 1_000));
+        }
+
+        // 4a. Still pending — Position unchanged; reconcile will pick it up.
+        if (fillPrice == null || fillQty == null) {
+          return {
+            summary: `Add pending: ${ticker} (awaiting fill)`,
+            data: {
+              success: true, ticker, action: args.action, status: "ADDED" as const,
+              addedQty: approxQty,
+              newTotalQty: position.quantity + approxQty,
+              fillPrice: position.avgCost,
+              newAvgCost: position.avgCost,
+              message: `Add submitted ($${notional} of ${ticker}) — awaiting Alpaca fill.`,
+              tickers: [{ ticker, tag: "Pending", summary: `$${notional} awaiting fill`, actionIcon: "hold" }],
+            },
+            sources: [],
+          };
+        }
+
+        // 4b. Filled — update Position with real fill price/qty.
+        const newTotalQty = position.quantity + fillQty;
+        const newAvgCost = ((position.avgCost * position.quantity) + (fillPrice * fillQty)) / newTotalQty;
+
+        await prisma.$transaction(async (tx) => {
+          await tx.position.update({
+            where: { id: position.id },
+            data: { quantity: newTotalQty, avgCost: newAvgCost },
+          });
+
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: "FILLED",
+              quantity: fillQty!,
+              filledPrice: fillPrice!,
+              filledQty: fillQty!,
+              filledAt: new Date(),
+            },
+          });
+
+          await tx.positionEvent.create({
+            data: {
+              positionId: position.id,
+              eventType: "ADDED",
+              description: `Added ${fillQty} shares at $${fillPrice!.toFixed(2)}. New position: ${newTotalQty} shares @ avg $${newAvgCost.toFixed(2)}.`,
+              priceAt: fillPrice!,
+            },
+          });
+
+          await tx.positionManagementAction.create({
+            data: {
+              positionId: position.id,
+              runId: ctx.runId ?? null,
+              actionType: "ADD_TO_POSITION",
+              source: "agent",
+              prevQty: position.quantity,
+              newQty: newTotalQty,
+              reason: args.reason ?? "",
+              alpacaOrderId,
+              fillPrice: fillPrice!,
+              fillQty: fillQty!,
+            },
+          });
+
+          if (ctx.runId) {
+            await tx.runEvent.create({
+              data: {
+                runId: ctx.runId,
+                type: "position_modified",
+                title: `Added to ${ticker}`,
+                message: `Added ${fillQty} shares at $${fillPrice!.toFixed(2)}. Now ${newTotalQty} shares @ avg $${newAvgCost.toFixed(2)}.`,
+                payload: { ticker, action: "add_to_position", addedQty: fillQty, newTotalQty, fillPrice, newAvgCost, sizing: [addSizingLine] } as object,
+              },
+            });
+          }
+
+          await tx.tradeDecision.create({
+            data: {
+              runId: ctx.runId,
+              analystId,
+              userId: ctx.userId,
+              accountId: ctx.accountId,
+              symbol: ticker,
+              decision: "ADD",
+              reasoning: args.reason,
+              positionId: position.id,
+              orderId: order.id,
+            },
+          });
+        });
+
+        return {
+          summary: `Added to ${ticker}: +${fillQty} shares @ $${fillPrice.toFixed(2)}. Now ${newTotalQty} shares.`,
+          data: {
+            success: true, ticker, action: args.action, status: "ADDED" as const,
+            addedQty: fillQty, newTotalQty, fillPrice, newAvgCost,
+            sizing: [addSizingLine],
+            message: `Added ${fillQty} shares of ${ticker} at $${fillPrice.toFixed(2)}. Position is now ${newTotalQty} shares at avg cost $${newAvgCost.toFixed(2)}.`,
+            tickers: [{ ticker, tag: "Added", summary: `+${fillQty} shares @ $${fillPrice.toFixed(2)}. ${newTotalQty} total.`, actionIcon: "buy" }],
+          },
+          sources: [],
+        };
+      }
+
+      default:
+        return {
+          summary: `Unknown action`,
+          data: {
+            success: false, ticker, action: args.action, status: "FAILED" as const,
+            message: `Unknown action: ${args.action}`,
+            tickers: [{ ticker, tag: "Failed", summary: "Unknown action", actionIcon: "failed" }],
+          },
+          sources: [],
+        };
     }
-  },
-});
+  } catch (err) {
+    // Refresh portfolio context for the error response
+    let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;
+    try {
+      const currentOpenCount = await prisma.position.count({ where: { analystId, status: "OPEN" } });
+      const postAccount = await getAccount(creds);
+      portfolioUpdate = {
+        remainingSlots: (ctx.maxOpenPositions ?? 5) - currentOpenCount,
+        remainingBuyingPower: parseFloat(postAccount.buying_power),
+        openPositionCount: currentOpenCount,
+      };
+    } catch { /* non-fatal */ }
+
+    const msg = err instanceof Error ? err.message : "The position change failed";
+    console.error(`[tool] manage_position FAILED for ${ticker} (${args.action}): ${msg}`);
+    return {
+      summary: `Position change failed: ${ticker}`,
+      data: {
+        success: false, ticker, action: args.action, status: "FAILED" as const,
+        message: msg,
+        ...(portfolioUpdate ? { portfolioUpdate } : {}),
+        tickers: [{ ticker, tag: "Failed", summary: msg, actionIcon: "failed" }],
+      },
+      sources: [],
+    };
+  }
+}

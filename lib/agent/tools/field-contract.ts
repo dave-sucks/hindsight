@@ -59,7 +59,7 @@ const RULE_DEFS = {
   RATCHET: {
     says: "A protective level on a held stock only moves toward more protection. Only the principal lowers one.",
     refusal: "protective_level_locked — names the level, the direction, and that the rest of the update lands.",
-    // The morning and trigger runs read it on update_thesis's description and
+    // The morning and trigger runs read it on edit_triggers' description and
     // in the refusal; their prompts no longer say it a third time.
     markers: { chat: "only tighten" },
   },
@@ -126,20 +126,29 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("notional", "COMPUTED", { principalOnly: true, note: "Sized by risk inside the analyst's band (DAV-317). The principal's number is honored with a line." }),
     f("shares", "COMPUTED", { principalOnly: true, note: "As notional." }),
   ],
-  manage_position: [
-    f("symbol", "IDENTITY"),
-    f("action", "CHOSEN"),
-    f("reason", "TEXT"),
-    f("close_pct", "JUDGED", { rule: "SALE_SIDE", note: "A percent of the position; clamped to 1–100." }),
-    f("close_reason", "CHOSEN"),
-    f("add_notional", "COMPUTED", { principalOnly: true, note: "An add is half the entry's risk, capped (DAV-317)." }),
-  ],
-  close_position: [
+  sell: [
     f("ticker", "IDENTITY"),
-    f("reason", "CHOSEN"),
-    f("notes", "TEXT"),
-    f("belief_survived", "CHOSEN", { note: "A boolean the STOP exit must answer — the name returns to WATCHING or retires." }),
+    f("percent", "JUDGED", { note: "1–100 of the holding; left out, all of it, or on a run a trim woke, that trim's size." }),
+    f("belief_survived", "CHOSEN", { note: "A boolean on a whole sale — the name returns to WATCHING or retires. The sale's label is code's (enforce-close-reason.ts)." }),
+    f("note", "COMPUTED", { principalOnly: true, note: "A run's note on the stock is the sale's reason (auto-writeup.ts); the chat's words are honored." }),
   ],
+  add: [
+    f("ticker", "IDENTITY"),
+    f("notional", "COMPUTED", { principalOnly: true, note: "An add is half the entry's risk, capped (DAV-317)." }),
+    f("note", "COMPUTED", { principalOnly: true, note: "A run's note on the stock is the add's reason (auto-writeup.ts)." }),
+  ],
+  edit_triggers: [
+    f("thesis_id", "IDENTITY"),
+    f("add", "JUDGED", { rule: "TRIGGER_SHAPE" }),
+    f("edit", "JUDGED", { rule: "TRIGGER_SHAPE" }),
+    f("remove", "IDENTITY", { note: "A wrong id is refused by id; the rest of the call lands." }),
+    f("setup_id", "CHOSEN"),
+  ],
+  set_conviction: [f("thesis_id", "IDENTITY"), f("conviction", "CHOSEN"), f("conviction_rationale", "TEXT")],
+  set_catalyst_date: [f("thesis_id", "IDENTITY"), f("catalyst_date", "JUDGED", { rule: "EVENT_DATE" })],
+  stop_watching: [f("thesis_id", "IDENTITY"), f("reason", "TEXT")],
+  watch_again: [f("thesis_id", "IDENTITY")],
+  pass_on_stock: [f("ticker", "IDENTITY"), f("reason", "TEXT")],
   record_thesis: [
     f("ticker", "IDENTITY"),
     f("company_name", "CARRIED"),
@@ -213,7 +222,19 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY"),
   ],
-  write_note: [f("thesis_id", "IDENTITY"), f("text", "TEXT")],
+  write_note: [
+    f("thesis_id", "IDENTITY"),
+    f("note", "TEXT"),
+    f("verdict", "JUDGED", { note: "STRONGER / UNCHANGED / WEAKER / BROKEN, a string on the wire: a wrong word comes back by name and the note lands." }),
+    f("verdict_line", "TEXT"),
+    f("answers_update_id", "IDENTITY", { note: "A line on this stock; a wrong id comes back by name and the note lands." }),
+    f("trigger_id", "IDENTITY"),
+    f("tickers", "IDENTITY"),
+    f("analyst_id", "IDENTITY"),
+    f("whole_account", "CHOSEN"),
+    f("pinned_until", "JUDGED", { note: "At most two weeks; a later date is moved in and said (shared-notes.server.ts)." }),
+    f("about_date", "TEXT"),
+  ],
   /** The builder's and the editor's proposal (suggest-config.ts), one schema per mode. */
   suggest_config: [
     f("playbook", "CHOSEN", { note: "The builder's only: its setups, hold, confidence, slots and fence are filled in from the playbook (playbookFields)." }),
@@ -237,11 +258,17 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
 /** The tool factories, by registered name, and the modes' run-mode strings. */
 export const WRITE_TOOL_EXPORTS: Record<string, string> = {
   place_trade: "placeTrade",
-  manage_position: "managePosition",
-  close_position: "closePosition",
+  sell: "sell",
+  add: "add",
   record_thesis: "recordThesis",
   update_thesis: "updateThesis",
   write_note: "writeNoteTool",
+  edit_triggers: "editTriggers",
+  set_conviction: "setConviction",
+  set_catalyst_date: "setCatalystDate",
+  stop_watching: "stopWatching",
+  watch_again: "watchAgain",
+  pass_on_stock: "passOnStock",
   record_run_summary: "recordRunSummary",
   complete_run: "completeRun",
   dispatch_thesis_research: "dispatchThesisResearch",

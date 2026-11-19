@@ -12,7 +12,7 @@
  *
  * Collapsed it reads as one muted line with a red dot:
  *
- *   ● close_position — Invalid input: reason expected TARGET, STOP or MANUAL  ›
+ *   ● sell — Invalid input: percent must be at most 100  ›
  *
  * Expanded it shows the structured detail as JSON. The parse lives in
  * lib/agent/tool-error.ts.

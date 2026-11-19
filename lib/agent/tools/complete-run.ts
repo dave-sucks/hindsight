@@ -7,6 +7,7 @@
  * the account-level PortfolioDigest. briefingStatus stays "skipped".
  */
 
+import { isNotelessEdit } from "@/lib/agent/no-note";
 import { z } from "zod";
 import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
 import { loadStockFacts, type FactsContext } from "@/lib/agent/stock-facts";
@@ -514,16 +515,17 @@ async function runCompleteRunPreflight(
   if (theses.length === 0) return null;
 
   // Any audit row this run except TRIGGER_FIRED answers a stock, a note-only
-  // REVIEW included: the analyst's call stands, a declined sale's too.
+  // REVIEW included: the analyst's call stands, a declined sale's too. A
+  // change saved with no note answers nothing (isNotelessEdit).
   const runUpdates = await prisma.thesisUpdate.findMany({
     where: {
       runId,
       thesisId: { in: theses.map((t) => t.id) },
       NOT: { type: "TRIGGER_FIRED" },
     },
-    select: { thesisId: true },
+    select: { thesisId: true, fieldChanges: true },
   });
-  const answered = new Set<string>(runUpdates.map((u: { thesisId: string }) => u.thesisId));
+  const answered = new Set<string>(runUpdates.filter((u: { fieldChanges: unknown }) => !isNotelessEdit(u.fieldChanges)).map((u: { thesisId: string }) => u.thesisId));
 
   // One stock counts its analyst's slots from positions, as a read by ticker does.
   const facts = await loadStockFacts(theses, {
@@ -550,8 +552,8 @@ async function runCompleteRunPreflight(
     message:
       `complete_run refused: your read listed ${n === 1 ? "this stock" : `these ${n} stocks`} as work and this run has not answered ${n === 1 ? "it" : "them"}. ` +
       owed.map((o) => `${o.ticker} (${o.id}): ${o.names}`).join("; ") +
-      `. Answer each with update_thesis (a note-only review counts)` +
-      (promoted ? `; a promoted stock is re-entered with place_trade or deferred with change_status "WATCHING"` : "") +
+      `. Answer each with write_note` +
+      (promoted ? `; a promoted stock is re-entered with place_trade or deferred with watch_again` : "") +
       `, then call complete_run again.`,
   };
 }

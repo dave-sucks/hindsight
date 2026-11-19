@@ -33,12 +33,18 @@ import { dispatchThesisResearch } from "./dispatch-thesis-research";
 import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
+import { passOnStock } from "./pass-on-stock";
 import { updateThesis } from "./update-thesis";
 import { writeNoteTool } from "./write-note";
+import { editTriggers } from "./edit-triggers";
+import { setConviction } from "./set-conviction";
+import { setCatalystDate } from "./set-catalyst-date";
+import { stopWatching } from "./stop-watching";
+import { watchAgain } from "./watch-again";
 import { getTheses } from "./get-theses";
 import { placeTrade } from "./place-trade";
-import { closePosition } from "./close-position";
-import { managePosition } from "./manage-position";
+import { sell } from "./sell";
+import { add } from "./add";
 import { recordRunSummary } from "./record-run-summary";
 import { completeRun } from "./complete-run";
 import { getPortfolioContext } from "./get-portfolio-context";
@@ -90,7 +96,7 @@ interface ToolCtx {
   /**
    * Deterministic STOP/TARGET close tag for a protective/price EXIT tactical
    * run — see ToolContext.protectiveExitReason. Set by tactical-run.ts when
-   * the fired trigger is a price-level protective exit; close_position uses
+   * the fired trigger is a price-level protective exit; sell uses
    * it in place of the model-chosen reason, so the sale label doesn't depend
    * on the model.
    */
@@ -169,12 +175,20 @@ export function createResearchTools(
     wait_for_thesis_refresh: waitForThesisRefresh(newCtx),
     web_search: webSearch(newCtx),
     record_thesis: recordThesis(newCtx),
+    pass_on_stock: passOnStock(newCtx),
+    // On no agent's list: code runs it as the Writer's save (run-thesis-writer.ts).
     update_thesis: updateThesis(newCtx),
+    // An agent's edits to a stock, one job each (2026-11-18).
     write_note: writeNoteTool(newCtx),
+    edit_triggers: editTriggers(newCtx),
+    set_conviction: setConviction(newCtx),
+    set_catalyst_date: setCatalystDate(newCtx),
+    stop_watching: stopWatching(newCtx),
+    watch_again: watchAgain(newCtx),
     get_theses: getTheses(newCtx),
     place_trade: placeTrade(newCtx),
-    close_position: closePosition(newCtx),
-    manage_position: managePosition(newCtx),
+    sell: sell(newCtx),
+    add: add(newCtx),
     get_portfolio_context: getPortfolioContext(newCtx),
     record_run_summary: recordRunSummary(newCtx),
     complete_run: completeRun(newCtx),
@@ -228,12 +242,18 @@ export { dispatchThesisResearch } from "./dispatch-thesis-research";
 export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
+export { passOnStock } from "./pass-on-stock";
 export { updateThesis } from "./update-thesis";
 export { writeNoteTool } from "./write-note";
+export { editTriggers } from "./edit-triggers";
+export { setConviction } from "./set-conviction";
+export { setCatalystDate } from "./set-catalyst-date";
+export { stopWatching } from "./stop-watching";
+export { watchAgain } from "./watch-again";
 export { getTheses } from "./get-theses";
 export { placeTrade } from "./place-trade";
-export { closePosition } from "./close-position";
-export { managePosition } from "./manage-position";
+export { sell } from "./sell";
+export { add } from "./add";
 export { getPortfolioContext } from "./get-portfolio-context";
 export { recordRunSummary } from "./record-run-summary";
 export { completeRun } from "./complete-run";

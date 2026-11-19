@@ -36,6 +36,8 @@ import type { AgentMode } from "./modes";
 
 interface DefineToolOptions<TSchema extends z.ZodTypeAny, TData = unknown> {
   description: string;
+  /** The description THIS caller reads, when the tool does a different job for it (write_note: the owner's note in the chat). */
+  descriptionFor?: (ctx: ToolContext) => string;
   /** Zod schema for input args */
   schema: TSchema;
   /**
@@ -121,7 +123,7 @@ export function defineTool<TSchema extends z.ZodTypeAny, TData = unknown>(
     // `z.ZodTypeAny` parameter at the factory boundary. Runtime behavior
     // is fine; cast is scoped to the tool() call-site only.
     const built = tool<TSchema, ToolResult<TData>>({
-      description: options.description,
+      description: options.descriptionFor?.(ctx) ?? options.description,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       inputSchema: (options.schemaFor ? options.schemaFor(ctx, options.schema) : options.schema) as any,
       ...(options.forModel
