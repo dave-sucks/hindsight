@@ -39,6 +39,10 @@ import { asSchema, generateText, stepCountIs, type ModelMessage, type ToolSet } 
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
+import { AFTER_BUY, AFTER_BUY_ASK } from "@/lib/agent/engine/agents/after-buy";
+import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { afterBuyMessage, type AfterBuyFacts } from "@/lib/proposals/after-buy";
+import { scoreAfterBuy, type AfterBuyExpect } from "@/lib/agent/yardstick/after-buy";
 import { buildPrincipalSystemPrompt } from "@/lib/agent/system-prompts/chat";
 import { bookText } from "@/lib/agent/book";
 import { recordFor, stockFromRead, triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
@@ -84,12 +88,17 @@ interface HeroCase {
   execute?: string[];
   /** The run the case was cut from: an executed read runs as its owner, on its account. */
   source?: { runId?: string };
-  mode: "principal" | "tactical" | "thesis-writer" | "research-run";
+  mode: "principal" | "tactical" | "thesis-writer" | "research-run" | "after-buy";
   runMode: string;
   promptArgs: Record<string, unknown>;
   toolCtx: Record<string, unknown>;
   messages: ModelMessage[];
+  /** An after-buy case's grade (lib/agent/yardstick/after-buy.ts). */
+  afterBuy?: AfterBuyExpect;
 }
+
+/** An after-buy case's recorded inputs: the trade as the fill sends it, and its context as of the fill. */
+type AfterBuyArgs = { now: string; environment?: "PAPER" | "LIVE"; facts: AfterBuyFacts; context: Record<string, string> };
 
 // The one-job tools since 2026-11-18 decide too (lib/agent/yardstick/old-shape.ts grades them in the old shape).
 const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research", "sell", "add", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again", "pass_on_stock"]);
@@ -120,6 +129,10 @@ function codeFills(c: HeroCase): Record<string, () => Record<string, unknown> | 
 
 /** A trigger fire's stock and the trigger that fired, as tactical-run.ts hands them to its tools; none for other runs. */
 function runStockOf(c: HeroCase): { ticker: string; thesisId: string; triggerId: string } | null {
+  if (c.mode === "after-buy") {
+    const f = (c.promptArgs as unknown as AfterBuyArgs).facts;
+    return { ticker: f.ticker, thesisId: f.thesisId, triggerId: "" };
+  }
   if (c.mode !== "tactical") return null;
   const p = c.promptArgs as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const saved = (p.savedRow as Record<string, unknown> | undefined) ?? savedRowFromOldCase(p);
@@ -135,6 +148,14 @@ function firedTrimOf(c: HeroCase): { ticker: string; pct: number } | undefined {
 
 /** The mode's tools as the model sees them: description and schema, no execute. */
 function describedTools(c: HeroCase): ToolSet {
+  if (c.mode === "after-buy") {
+    // Its record's tools, built with its stock; write_note only when the trade has no note, as after-buy-run.ts gives them.
+    const facts = (c.promptArgs as unknown as AfterBuyArgs).facts;
+    const all = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: "AFTER_BUY", runEnvironment: "PAPER", ...c.toolCtx, runStock: runStockOf(c) } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
+    return Object.fromEntries(
+      AFTER_BUY.tools.filter((n) => all[n] && !(n === "write_note" && facts.note)).map((n) => [n, { description: all[n].description, inputSchema: all[n].inputSchema, toModelOutput: all[n].toModelOutput }]),
+    ) as ToolSet;
+  }
   if (c.mode === "thesis-writer") {
     // The tools its record names, its save among them. Its web search is left off: the note is written from the recorded data block.
     const submit = makeSubmitThesisTool({ ticker: String(c.promptArgs.ticker), held: writerArgs(c).existingThesis?.status === "HOLDING" } as never);
@@ -281,6 +302,7 @@ function moreOf(facts: string, autoLine: string | null): string {
  * inputs, else now.
  */
 async function caseNow(c: HeroCase): Promise<Date> {
+  if (c.mode === "after-buy") return new Date((c.promptArgs as unknown as AfterBuyArgs).now);
   if (c.source?.runId) {
     const run = await prisma.researchRun.findUnique({ where: { id: c.source.runId }, select: { startedAt: true } }).catch(() => null);
     if (run?.startedAt) return run.startedAt;
@@ -306,6 +328,13 @@ function requestFor(c: HeroCase, now: Date): { system: string; first?: string } 
   if (c.mode === "research-run") {
     // Its book is in its first message (lib/agent/context/the-book.ts): the get_theses read the recorded run made first, taken out of its turn.
     const r = morningRequest(c, now, bookReadOf(c));
+    return { system: r.instructions, first: r.message };
+  }
+  if (c.mode === "after-buy") {
+    // Built by today's engine from the record, with the context recorded as of the fill.
+    const p = c.promptArgs as unknown as AfterBuyArgs;
+    const { market_numbers, ...context } = p.context;
+    const r = composeAgentRequest(AFTER_BUY, { now, environment: p.environment ?? "LIVE", message: afterBuyMessage(p.facts, AFTER_BUY_ASK) }, { pieces: market_numbers ? [{ id: "market_numbers", text: market_numbers }] : null, context });
     return { system: r.instructions, first: r.message };
   }
   if (c.mode !== "tactical") return { system: systemFor(c, now) };
@@ -386,6 +415,8 @@ function systemFor(c: HeroCase, now: Date): string {
   switch (c.mode) {
     case "research-run":
       return morningRequest(c, now).instructions;
+    case "after-buy":
+      return requestFor(c, now).system;
     default:
       return buildPrincipalSystemPrompt(c.promptArgs as never);
   }
@@ -487,7 +518,8 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 
 async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
-  const mode = MODES[c.mode];
+  // The run after a buy runs on the trigger run's model and steps (lib/agent/engine/agents/after-buy.ts).
+  const mode = MODES[c.mode === "after-buy" ? "tactical" : c.mode];
   const { system, first } = requestFor(c, await caseNow(c));
   // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];
@@ -556,7 +588,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     ? (createResearchTools({ runId: `hero-${name}`, userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx } as never) as unknown as Record<string, LiveRead>).web_search
     : null;
   // A Writer that reads gets its record's steps, as in its run, to read and then save.
-  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? (c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).maxSteps : 3)) : c.mode === "thesis-writer" ? 3 : 2;
+  // The run after a buy goes on until it answers without a call: it reads, puts the triggers on, writes a note when one is wanted, then its line.
+  const goesOn = !!(c.scoreOn || live || c.mode === "after-buy");
+  const maxTurns = goesOn ? (c.maxTurns ?? (c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).maxSteps : c.mode === "after-buy" ? 8 : 3)) : c.mode === "thesis-writer" ? 3 : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -609,8 +643,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       const decided =
         turnCalls.length === 0 ||
         (c.mode === "thesis-writer" && turnCalls.some((t) => t.toolName === "submit_thesis")) ||
-        (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
-      if (refusals.size === 0 && handBacks.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
+        (c.mode !== "after-buy" && (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live));
+      if (refusals.size === 0 && handBacks.size === 0 && (decided || turn >= (goesOn ? maxTurns : 1))) break;
       // Not there yet: answer every call and let the model go on. A read the
       // case runs for real gets its real reply, as the model would read it;
       // every other call gets a stub and nothing is run. Ending the run is
@@ -676,7 +710,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
     const { graded: oldShape, unmapped } = writer ? { graded: [writer.scored], unmapped: [] } : explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
     const graded = oldShape;
-    const verdict = score(c.expect, graded, text, reads);
+    // An after-buy case is graded on its own calls (lib/agent/yardstick/after-buy.ts); the rest in the cases' shape.
+    const verdict = c.mode === "after-buy" ? scoreAfterBuy(c.afterBuy!, calls, text) : score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
