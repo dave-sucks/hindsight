@@ -95,6 +95,8 @@ interface HeroCase {
   messages: ModelMessage[];
   /** An after-buy case's grade (lib/agent/yardstick/after-buy.ts). */
   afterBuy?: AfterBuyExpect;
+  /** A Writer case: its stock's triggers that held at the case's moment, by id, named in the triggers it reads after its save (true-now.ts). */
+  trueNow?: string[];
 }
 
 /** An after-buy case's recorded inputs: the trade as the fill sends it, and its context as of the fill. */
@@ -236,7 +238,7 @@ async function tailorTurns(o: {
   const messages: ModelMessage[] = [
     { role: "user", content: said },
     { role: "assistant", content: o.note || "(research note)" },
-    { role: "user", content: tailorMessage({ ticker: o.wc.ticker, decision: o.decision, status: o.saved.status, direction: o.saved.direction, triggers: o.saved.triggers, notWritten: o.saved.notWritten }) },
+    { role: "user", content: tailorMessage({ ticker: o.wc.ticker, decision: o.decision, status: o.saved.status, direction: o.saved.direction, triggers: o.saved.triggers, notWritten: o.saved.notWritten, trueNow: new Set(o.c.trueNow ?? []) }) },
   ];
   const calls: Call[] = [];
   const invalid: Array<{ tool: string; error: string }> = [];

@@ -30,9 +30,7 @@ import { applyTriggerOps, collision, type TriggerOpResult } from "@/lib/agent/tr
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { editNumber } from "@/lib/agent/triggers/schema";
 import { conditionHolds, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
-import { readsSource, readsThePosition, shapeOf } from "@/lib/agent/triggers/condition";
-import { getLiveQuote } from "@/lib/market-data/live-quote";
-import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
+import { readNow } from "@/lib/agent/triggers/true-now";
 
 /** One of the stock's playbook triggers, by its reference as the playbook lists it. */
 const playbookTrigger = z.object({
@@ -152,46 +150,6 @@ export function tradeNowRefusals(input: { adds: unknown[]; edits: Edit[]; stored
     return false;
   });
   return { adds, edits, refused };
-}
-
-/**
- * The stock now, for reading a planner's buys and adds as the trigger check would: the live price, the chart
- * snapshot and the open position when a condition reads them, and no session, so a close-only level is read at
- * today's price. Null with no price: nothing is refused on a guess.
- */
-async function readNow(thesisId: string, ctx: ToolContext, adds: Trigger[], editIds: string[]): Promise<{ read: EvaluationContext; stored: Trigger[]; direction: string | null; status: string } | null> {
-  const thesis = await prisma.thesis.findUnique({ where: { id: thesisId }, select: { ticker: true, status: true, direction: true, triggers: true, userId: true, createdAt: true, lastReviewedAt: true, catalystDate: true } });
-  if (!thesis || thesis.userId !== ctx.userId) return null;
-  const quote = (await getLiveQuote(thesis.ticker, { caller: "other", creds: ctx.alpacaCreds }).catch(() => null))?.quote;
-  if (!quote) return null;
-  const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
-  const shape = (t: Trigger) => {
-    try {
-      return shapeOf(t.predicate);
-    } catch {
-      return null;
-    }
-  };
-  const shapes = [...adds, ...stored.filter((t) => editIds.includes(t.id))].map(shape).filter((w) => w != null);
-  const now = new Date();
-  const indicators = shapes.some((w) => readsSource(w, "snapshot"))
-    ? ((await loadIndicatorSnapshots([thesis.ticker], now).catch(() => null))?.get(thesis.ticker) ?? null)
-    : null;
-  const position = thesis.status === "HOLDING" && ctx.analystId && shapes.some((w) => readsThePosition(w))
-    ? await prisma.position.findFirst({ where: { analystId: ctx.analystId, symbol: thesis.ticker, status: "OPEN" }, select: { avgCost: true, peakPrice: true, openedAt: true }, orderBy: { openedAt: "desc" } }).catch(() => null)
-    : null;
-  return {
-    read: {
-      latestQuote: { price: quote.c, changePct: quote.dp ?? 0, prevClose: quote.pc ?? undefined },
-      indicators,
-      position: position ? { avgCost: position.avgCost != null ? Number(position.avgCost) : null, peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null, openedAt: position.openedAt } : null,
-      thesis: { createdAt: thesis.createdAt, lastReviewedAt: thesis.lastReviewedAt, catalystDate: thesis.catalystDate, direction: thesis.direction },
-      now,
-    },
-    stored,
-    direction: thesis.direction,
-    status: thesis.status,
-  };
 }
 
 /** The chat's: its own triggers as #1050 sent them. It writes triggers from the owner's words, so it takes no playbook reference and no chart key. */
