@@ -76,7 +76,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −283, the same, and pass_on_stock and read_database off the chat (#1047's chat lines).
   // 2026-11-19: −850, the send's own fields: a brief (why this stock, what was found, whose idea, its own view) and a source link; the mode, thesis id, reason, notes, setup and screen row examples go.
   // 2026-11-19: −181, a soft watch is watch_stock with its look-again, and record_thesis leaves the text with the menu.
-  chat: 34_224,
+  chat: 34_173,
 };
 
 /**
