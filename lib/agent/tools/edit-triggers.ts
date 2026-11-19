@@ -27,7 +27,7 @@ const schema = z.object({
 export const editTriggers = defineTool({
   description:
     "Adds, edits or removes a stock's triggers, one at a time by id; each edit comes back in `trigger_ops`, accepted or refused with the reason, and a refused one leaves the rest in place. " +
-    "On a stock we hold only the owner moves a sale's price down: if you think one is wrong, keep it and give the price you'd suggest in your note.",
+    "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
   schema,
   // A trigger run edits its own stock (tactical-run.ts). The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
   schemaFor: (ctx) => (ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? schema.omit({ setup_id: true }) : schema),

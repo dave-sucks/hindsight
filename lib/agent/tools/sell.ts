@@ -38,7 +38,7 @@ const schema = z.object({
   note: z
     .string()
     .optional()
-    .describe("Why you're selling, by How you write: the reason the owner reads on the proposal and in the approval email."),
+    .describe("Why you're selling, by How you write: what happened to the company and the stock, then the sale; the owner reads it on the proposal and in the approval email."),
 });
 
 export const sell = defineTool({

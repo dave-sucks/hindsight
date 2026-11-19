@@ -410,7 +410,7 @@ describe("a new thesis (mint) is checked the same way", () => {
       existing: null,
     });
     expect(outcome.wouldSave).toBe(false);
-    expect(outcome.error).toMatch(/update_thesis/);
+    expect(outcome.error).toMatch(/edit_triggers/);
     expect(mockThesisCreate).not.toHaveBeenCalled();
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
   });

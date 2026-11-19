@@ -326,6 +326,7 @@ export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<read
       `- Defer: watch_again. The next run looks at it again.`,
       `- Defer: one write_note saying why. This run has no status tool: the stock stays promoted and the morning run decides.`,
     ],
+    [`Answered: place_trade, or that watch_again.`, `Answered: place_trade, or that write_note.`],
     [
       `- A note in place of the decision: the stock stays promoted and is asked again on the next run.`,
       `- Deferring without a reason: the morning run decides on what your note says.`,

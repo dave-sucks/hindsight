@@ -165,7 +165,7 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
     // 2026-10-28: the run is told to find out what is going on, not to validate the fire.
     // 2026-11-18: the message from the trigger check says the trigger once, as the pill says it, with its price and id;
     // the rest is production's, word for word, then the ask after a blank line.
-    const tailNow = tail.replace("Validate, decide, act if warranted, then close out via update_thesis.", "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis.");
+    const tailNow = tail.replace("Validate, decide, act if warranted, then close out via update_thesis.", "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with write_note.");
     expect(kickoff).toMatch(/\n\nTactical run on \$CORT\. "Buy if within 3% of the 50-day average" fired at \$[\d.]+ \(trigger [^)]+; declared action: ENTER\)\. /);
     expect(kickoff.endsWith(` ${FIRED_CONTEXT} ${LINE}\n\n${tailNow}`)).toBe(true);
   });

@@ -146,9 +146,9 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   const SHORTHAND = [/\bPEAD\b/, /drift/i, /time-hold/i, /trend template/i, /\bR\/R\b/, /\bATR\b/, /ladder/i, /\brungs?\b/i, /fire.mode/i, /\bslot\b/i, /\b[A-Z]+_[A-Z_]+\b/];
   const shorthand = (text: string) => SHORTHAND.filter((re) => re.test(text)).map(String);
 
-  // update_thesis is read through the writer's door (it carries every field); the rest through the chat's.
+  // update_thesis is read through the writer's door (it carries every field), write_note through a run's (the analyst's note); the rest through the chat's.
   const props = (tool: string): Record<string, Prop> => {
-    const runMode = tool === "update_thesis" ? "THESIS_WRITER" : "PRINCIPAL_CHAT";
+    const runMode = tool === "update_thesis" ? "THESIS_WRITER" : tool === "write_note" ? "MORNING_PLAN" : "PRINCIPAL_CHAT";
     const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
     return (zodSchema(all[tool].inputSchema as never).jsonSchema as { properties: Record<string, Prop> }).properties;
   };
@@ -204,8 +204,8 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
   });
 
   it("each note and trade reason leads with the company and points at the rules, and restates no length or tone", () => {
-    const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|reason|reasoning_summary|decision_rationale)$/.test(name));
-    expect(notes).toHaveLength(7);
+    const notes = shown().filter(([name]) => /\.(rationale|entry_rationale|notes|note|reason|reasoning_summary|decision_rationale)$/.test(name));
+    expect(notes).toHaveLength(8);
     for (const [name, words] of notes) {
       const company = name.endsWith("decision_rationale") ? /what moved the stocks/ : /company/;
       expect([name, company.test(words), /How you write/.test(words)]).toEqual([name, true, true]);

@@ -13,7 +13,7 @@ const schema = z.object({
   // Read by changePosition as the add's size; a run's add is sized by the analyst's rules (DAV-317).
   notional: z.number().positive().optional().describe("The dollar amount to add; left out, the analyst's rules size it."),
   // Read by changePosition as the add's reason (Order.rationale).
-  note: z.string().optional().describe("Why you're adding, by How you write: the reason the owner reads on the proposal and in the approval email."),
+  note: z.string().optional().describe("Why you're adding, by How you write: what happened to the company and the stock, then the add; the owner reads it on the proposal and in the approval email."),
 });
 
 export const add = defineTool({

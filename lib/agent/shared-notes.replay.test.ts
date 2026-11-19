@@ -40,7 +40,7 @@ describe("write_note to two stocks at once", () => {
     const { result, db, crashed } = await replayTool("write-note", "writeNoteTool", {
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: undefined },
       args: {
-        text: "The vote is tomorrow and these two ride the data-center story. Size them for it.",
+        note: "The vote is tomorrow and these two ride the data-center story. Size them for it.",
         tickers: ["mu", "GEV"],
         pinned_until: "2026-11-04",
         about_date: "Nov 3",
@@ -57,7 +57,7 @@ describe("write_note to two stocks at once", () => {
   it("a note to the account with no end lasts a week", async () => {
     const { result, db } = await replayTool("write-note", "writeNoteTool", {
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: undefined },
-      args: { text: "Fed on Wednesday; nothing new on margin until after it.", whole_account: true },
+      args: { note: "Fed on Wednesday; nothing new on margin until after it.", whole_account: true },
     });
     const rows = (await notesIn(db)) as Array<{ audience: string; pinnedUntil: Date }>;
     expect(rows[0].audience).toBe("ACCOUNT");

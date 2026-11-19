@@ -46,8 +46,8 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
     expect(g).toContain("Keep watching on a review cadence.");
     expect(g).toContain("Keep watching with nothing set (legal, and it costs nothing).");
     expect(g).toContain("Let it go.");
-    expect(g).toContain('change_status "WATCHING"');
-    expect(g).toContain("write the one-line reason on an update_thesis and it clears");
+    expect(g).toContain("watch_again on its thesis_id");
+    expect(g).toContain("write the one-line reason with write_note and it clears");
     expect(g).toContain("the exit price, the date, why it sold, whether the belief survived");
   });
 

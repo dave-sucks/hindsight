@@ -71,7 +71,7 @@ describe("the run's limits, held by its tools", () => {
     const real = { place_trade: { execute: async () => ({ ok: false, error: "A buy proposal on WST is already awaiting user approval." }) }, write_note: tool("write_note") } as unknown as ToolSet;
     const t = withRunLimits(real, async () => "WST");
     await call(t, "place_trade", { ticker: "WST" });
-    expect((await call(t, "update_thesis", { thesis_id: "th_wst", rationale: "x" })).ok).toBe(false);
+    expect((await call(t, "write_note", { thesis_id: "th_wst", note: "x" })).ok).toBe(false);
   });
 });
 

@@ -420,7 +420,7 @@ describe("the held-name notes name the ops that exist (DAV-262)", () => {
     ]);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.note).toContain('remove_trigger_ids: ["buy-ceg-1"]');
+    expect(r.note).toContain('by these ids: ["buy-ceg-1"]');
     expect(r.note).toMatch(/already own/);
     expect(r.note).not.toMatch(/pass that array|ACTIVE thesis|triggers\[\]|defaultTriggersForHorizon/);
   });
@@ -431,7 +431,7 @@ describe("the held-name notes name the ops that exist (DAV-262)", () => {
     ]);
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.note).toContain("add_triggers");
+    expect(r.note).toContain("Fix: add one");
     expect(r.note).toMatch(/automated stop-loss/);
     expect(r.note).not.toMatch(/pass that array|ACTIVE thesis|triggers\[\]|defaultTriggersForHorizon/);
   });
