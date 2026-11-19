@@ -79,6 +79,7 @@ export function explainOldShape(calls: Call[], runOrChat: OldShapeRun | boolean 
  * Every update_thesis a case was written against carried a note, so its
  * `call` rules ask for one: a run's thesis edits on a stock with no note are
  * marked `noteless`, which a `call` rule never matches and a `never` rule still does (action.ts).
+ * Not the chat's: its note is the owner's, which answers nothing, so its edits stand alone.
  */
 function translate(calls: Call[], run: OldShapeRun): Call[] {
   const isChat = !!run.isChat;
@@ -104,7 +105,7 @@ function translate(calls: Call[], run: OldShapeRun): Call[] {
     }
   }
   for (const input of merged.values()) {
-    if (typeof input.rationale === "string" && input.rationale.trim()) delete input.noteless;
+    if (isChat || (typeof input.rationale === "string" && input.rationale.trim())) delete input.noteless;
     else input.noteless = true;
   }
   return out;

@@ -62,6 +62,13 @@ describe("today's calls, graded in the cases' shape", () => {
     expect(score(ex as never, inOldShape([{ toolName: "edit_triggers", input: { thesis_id: "t", remove: [{ id: "floor" }] } }, { toolName: "write_note", input: { thesis_id: "t", note: "x" } }]), "").pass).toBe(false);
   });
 
+  it("the chat's trigger edit passes a case's update_thesis rule with no note: the owner's note answers nothing", () => {
+    const ex = { call: [{ tool: "update_thesis" }, { tool: "ask_question" }] };
+    const arm = [{ toolName: "edit_triggers", input: { thesis_id: "t", add: [{ action: "ENTER" }] } }];
+    expect(score(ex as never, inOldShape(arm, true), "").pass).toBe(true);
+    expect(score(ex as never, inOldShape(arm), "").pass).toBe(false);
+  });
+
   it("main's update_thesis passes a call rule as before: it always carried a note", () => {
     const ex = { call: [{ tool: "update_thesis", where: { thesis_id: "t" } }] };
     expect(score(ex as never, inOldShape([{ toolName: "update_thesis", input: { thesis_id: "t", rationale: "x" } }]), "").pass).toBe(true);
