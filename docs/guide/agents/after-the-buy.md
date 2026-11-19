@@ -44,7 +44,7 @@ Its context is the stock's row (the same one `get_theses` gives every agent, wit
 ## What it decides
 
 - **Put on the holding's triggers:** one `edit_triggers`, each by its reference (`H2`). Code prices it from the chart and the buy, so no price is typed from memory. Where it fits one to the stock it gives its own reason.
-- **Add its own where the thesis needs one:** an earnings review, a level to look again at, with a chart key (`{swingLow}`, `{priorHigh}`) where the price comes from the chart.
+- **Add its own where the thesis needs one:** an earnings review, a level to look again at. It prices from the chart, as the Writer does: a price is a chart key (`{swingLow}`, `{priorHigh}`) or a line (the 50-day average), never a typed number; its `edit_triggers` takes no other. A number that isn't a price (a %, days) stays a number.
 - **Leave one off, with a reason:** its closing line names any holding trigger it didn't put on, and why.
 - **On an add:** the stock already has its holding's triggers; it changes only what the add changes.
 - **The floor:** it leaves it as it is. Only you lower a floor.

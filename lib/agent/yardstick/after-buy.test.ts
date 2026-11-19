@@ -5,7 +5,7 @@
  */
 import { scoreAfterBuy, type AfterBuyExpect } from "./after-buy";
 
-const GEV: AfterBuyExpect = { refs: ["H2", "H3", "H4"], floorId: "floor", keys: { "{swingLow}": 868.25, "{pivot}": 1003 }, noteWanted: true };
+const GEV: AfterBuyExpect = { refs: ["H2", "H3", "H4"], floorId: "floor", keys: { "{swingLow}": 868.25, "{pivot}": 1003 }, priceTriggerIds: ["floor", "r850"], noteWanted: true };
 const allOn = { toolName: "edit_triggers", input: { add: [{ playbook_trigger: "H2" }, { playbook_trigger: "h3" }, { playbook_trigger: "H4", rationale: "The second half once it works." }] } };
 const note = { toolName: "write_note", input: { note: "Bought GEV on the reclaim." } };
 
@@ -20,16 +20,24 @@ describe("the run after a buy, graded", () => {
     expect(scoreAfterBuy(GEV, [two, note], "Left H4 off: the add waits for the report.").pass).toBe(true);
   });
 
-  it("its own trigger needs a reason, and a price typed where a key gives it fails", () => {
+  it("its own trigger needs a reason, and any typed price fails, a key's number or not", () => {
     const own = { toolName: "edit_triggers", input: { add: [{ action: "REVIEW", predicate: { watch: "price", is: "above", value: 1003 } }] } };
-    expect(scoreAfterBuy(GEV, [allOn, own, note], "").why).toBe("a trigger of its own with no reason; a price typed where a key gives it: $1003 ({pivot})");
+    expect(scoreAfterBuy(GEV, [allOn, own, note], "").why).toBe("a trigger of its own with no reason; a typed price: $1003 ({pivot})");
+    const near = { toolName: "edit_triggers", input: { add: [{ action: "REVIEW", predicate: { watch: "price", is: "above", value: 1100 }, rationale: "A round number." }] } };
+    expect(scoreAfterBuy(GEV, [allOn, near, note], "").why).toBe("a typed price: $1100");
     const keyed = { toolName: "edit_triggers", input: { add: [{ action: "REVIEW", predicate: { watch: "price", is: "above", value: "{pivot}" }, rationale: "The breakout." }] } };
     expect(scoreAfterBuy(GEV, [allOn, keyed, note], "").pass).toBe(true);
   });
 
-  it("an edit or removal needs a reason, and the floor is left alone", () => {
+  it("an edit or removal needs a reason, a number typed on a price trigger is a typed price, and the floor is left alone", () => {
     const edit = { toolName: "edit_triggers", input: { edit: [{ id: "floor", value: 900 }], remove: [{ id: "r1" }] } };
-    expect(scoreAfterBuy(GEV, [allOn, edit, note], "").why).toBe("an edit with no reason; a removal with no reason; changed the floor");
+    expect(scoreAfterBuy(GEV, [allOn, edit, note], "").why).toBe("an edit with no reason; a removal with no reason; a typed price: $900; changed the floor");
+    const days = { toolName: "edit_triggers", input: { edit: [{ id: "clock", value: 45, rationale: "The report is in 45 days." }] } };
+    expect(scoreAfterBuy(GEV, [allOn, days, note], "").pass).toBe(true);
+  });
+
+  it("an edit_triggers its schema refused fails the run", () => {
+    expect(scoreAfterBuy(GEV, [allOn, note], "", [{ tool: "edit_triggers", error: "a price is a key or a line" }]).why).toBe("edit_triggers refused by its schema (1)");
   });
 
   it("no trade, and a note only when the trade had none", () => {

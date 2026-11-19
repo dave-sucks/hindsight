@@ -152,3 +152,18 @@ describe("the Writer and the Holding refresh price from the chart: a price is a 
     expect(triggerSentences(stored(r))).toEqual(["Sell if below $1000"]);
   });
 });
+
+describe("After the buy prices from the chart as the Writer does", () => {
+  it("its edit_triggers takes a key or a line for a price, never a typed number", async () => {
+    let schema!: z.ZodTypeAny;
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
+      const { editTriggers } = await import("./edit-triggers");
+      schema = (editTriggers({ runId: "r", userId: "u", accountId: "a", runMode: "AFTER_BUY", analystId: REPLAY_ANALYST_ID, runStock: { ticker: "SNDK", thesisId: THESIS, triggerId: "" } } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
+    });
+    const price = (value: unknown) => ({ add: [{ action: "REVIEW", predicate: { watch: "price", is: "below", value }, rationale: "r" }] });
+    expect(schema.safeParse(price(1100.53)).success).toBe(false);
+    expect(schema.safeParse(price("{swingLow}")).success).toBe(true);
+    expect(schema.safeParse({ add: [{ playbook_trigger: "H2" }] }).success).toBe(true);
+  });
+});

@@ -711,7 +711,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     const { graded: oldShape, unmapped } = writer ? { graded: [writer.scored], unmapped: [] } : explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
     const graded = oldShape;
     // An after-buy case is graded on its own calls (lib/agent/yardstick/after-buy.ts); the rest in the cases' shape.
-    const verdict = c.mode === "after-buy" ? scoreAfterBuy(c.afterBuy!, calls, text) : score(c.expect, graded, text, reads);
+    const verdict = c.mode === "after-buy" ? scoreAfterBuy(c.afterBuy!, calls, text, invalid) : score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());

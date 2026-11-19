@@ -72,7 +72,7 @@ const managerSchema = schema.omit({ setup_id: true }).extend({
   edit: z.array(editTriggerOpSchema.omit({ fire_mode: true })).optional().describe(TRIGGER_EDITS.edit),
 });
 
-/** The Writer and the Holding refresh price from the chart: a price is a key or a line, never a typed number; any other number stays one. */
+/** The Writer, the Holding refresh and After the buy price from the chart: a price is a key or a line, never a typed number; any other number stays one. */
 const writerOwnTrigger = triggerInputSchema.omit({ playbook: true }).extend({ predicate: predicateInputSchema({ keys: true, noTypedPrices: true }) });
 const writerEdit = z.object(editTriggerOpSchema.shape).extend({
   value: z.number().optional().describe("The new number when the trigger is not a price: a %, a day count, a volume multiple."),
@@ -89,8 +89,8 @@ const writerSchema = schema.omit({ thesis_id: true, setup_id: true }).extend({
     ),
   edit: z.array(writerEdit).optional().describe(`${TRIGGER_EDITS.edit} A price moves to a chart key, in \`price\`.`),
 });
-/** The Writer's and the Holding refresh's call after the save. */
-const isWriterRun = (ctx: ToolContext) => ctx.runMode === "THESIS_WRITER" && !!ctx.runStock;
+/** The Writer's and the Holding refresh's call after the save, and After the buy's (lib/proposals/after-buy.ts). */
+const pricesFromTheChart = (ctx: ToolContext) => (ctx.runMode === "THESIS_WRITER" || ctx.runMode === "AFTER_BUY") && !!ctx.runStock;
 
 /** The chat's: its own triggers as #1050 sent them. It writes triggers from the owner's words, so it takes no playbook reference and no chart key. */
 const chatSchema = schema.extend({ add: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add) });
@@ -210,8 +210,8 @@ export const editTriggers = defineTool({
     "Adds, edits or removes a stock's triggers, one at a time by id; each edit comes back in `trigger_ops`, accepted or refused with the reason, and a refused one leaves the rest in place. " +
     "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
   schema,
-  // A trigger run and the Writer edit their own stock (tactical-run.ts, run-thesis-writer.ts); the Writer prices from the chart. The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
-  schemaFor: (ctx) => (isWriterRun(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? managerSchema : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
+  // A trigger run, the Writer and After the buy edit their own stock (tactical-run.ts, run-thesis-writer.ts, after-buy-run.ts); the Writer and After the buy price from the chart. The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
+  schemaFor: (ctx) => (pricesFromTheChart(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? managerSchema : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
   fromRun: (ctx) => (ctx.runStock ? { thesis_id: ctx.runStock.thesisId } : null),
   ui: "thesis-card" as const,
   gateLog: "edit_triggers",
@@ -221,7 +221,7 @@ export const editTriggers = defineTool({
       const message = "Nothing to change: send at least one trigger in add, edit (by id) or remove (by id), or the playbook in setup_id.";
       return { summary: message, data: { ok: false, error: "no_trigger_ops", message }, sources: [] };
     }
-    const writer = isWriterRun(ctx);
+    const writer = pricesFromTheChart(ctx);
     const edits = (args.edit ?? []) as Edit[];
     const keyedEdit = edits.some((e) => typeof e.price === "string");
     const needChart = needsPricing(args.add ?? []) || keyedEdit;

@@ -209,18 +209,28 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
 }
 
 /**
- * The floor a buy gets when it names none: the number of the key its
- * playbook's floor words name (`sale.under`, ./setups.ts) on today's chart,
- * held to the playbook's sale rules (saleRuleProblem). Otherwise why not, so
- * the run names the floor itself. Pure.
+ * The floor a buy gets when it names none: its playbook's floor words in code
+ * (`sale.floor`, ./setups.ts) on today's chart. The key's number, or the
+ * words' other level when it is higher; never past the % the words allow, and
+ * held to the playbook's sale rules. Otherwise why not, so the run names the
+ * floor itself. Code never writes a floor that breaks the words. Pure.
  */
 export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null }): { price: number; key: Placeholder } | { refused: string } {
-  const key = p.setup.sale.under;
-  if (!key) return { refused: "The playbook's floor names no chart key." };
+  const f = p.setup.sale.floor;
+  if (!f) return { refused: "The playbook's floor names no chart key." };
   const at: FillPrices = { chart: p.chart, buy: p.entry, sale: null };
-  const price = fillValue(key, at);
-  if (price == null) return { refused: `The playbook's floor is ${key} (${PLACEHOLDER_NAMES[key] ?? key}), and ${noNumberWhy(key, at)}.` };
-  if (price >= p.entry) return { refused: `The playbook's floor ${key} is $${price.toFixed(2)}, not under the $${p.entry.toFixed(2)} buy.` };
-  const bad = saleRuleProblem({ setup: p.setup, horizon: p.horizon, entry: p.entry, stop: price, atr: p.atr });
-  return bad ? { refused: `The playbook's floor ${key} at $${price.toFixed(2)} fails its rule: ${bad}.` } : { price, key };
+  const level = fillValue(f.key, at);
+  if (level == null) return { refused: `The playbook's floor is ${f.key} (${PLACEHOLDER_NAMES[f.key] ?? f.key}), and ${noNumberWhy(f.key, at)}.` };
+  // Every floor's words keep it at least an ATR under the buy: with no ATR that can't be checked.
+  const atr = p.atr ?? p.chart?.atr14?.dollars ?? null;
+  if (atr == null) return { refused: "The ATR couldn't be read, so the floor's distance from the buy can't be checked." };
+  const sma50 = p.chart?.sma.d50?.value ?? null;
+  const other = !f.orHigher ? null : "pctUnder" in f.orHigher ? p.entry * (1 - f.orHigher.pctUnder / 100) : sma50 != null ? sma50 - atr : undefined;
+  if (other === undefined) return { refused: "The playbook's floor takes one ATR under the 50-day average when that is higher, and the 50-day couldn't be read." };
+  const price = Math.round(Math.max(level, other ?? level) * 100) / 100;
+  if (price >= p.entry) return { refused: `The playbook's floor ${f.key} is $${price.toFixed(2)}, not under the $${p.entry.toFixed(2)} buy.` };
+  const pct = ((p.entry - price) / p.entry) * 100;
+  if (f.maxPct != null && pct > f.maxPct) return { refused: `The playbook's floor ${f.key} at $${price.toFixed(2)} is ${pct.toFixed(1)}% under the buy, and its words allow at most ${f.maxPct}%.` };
+  const bad = saleRuleProblem({ setup: p.setup, horizon: p.horizon, entry: p.entry, stop: price, atr });
+  return bad ? { refused: `The playbook's floor ${f.key} at $${price.toFixed(2)} fails its rule: ${bad}.` } : { price, key: f.key };
 }

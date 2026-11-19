@@ -1,9 +1,9 @@
 /**
  * How a run after a buy is graded (lib/agent/engine/agents/after-buy.md):
  * the playbook's holding triggers go on by reference, or are named as left
- * off; every change of its own has a reason; no price is typed where a chart
- * key gives it; it makes no trade; it writes the trade's note only when none
- * existed; and it leaves the floor alone. Pure.
+ * off; every change of its own has a reason; it types no price (a price is a
+ * chart key or a line, never a number); it makes no trade; it writes the
+ * trade's note only when none existed; and it leaves the floor alone. Pure.
  */
 import type { Call } from "./action";
 
@@ -12,8 +12,10 @@ export interface AfterBuyExpect {
   refs: string[];
   /** The floor on the stock, by id: it is the buy's and stays as it is. */
   floorId: string | null;
-  /** Each chart key's number at the fill: a price typed within half a percent of one is the key's number typed by hand. */
+  /** Each chart key's number at the fill, to name the key a typed price stood in for. */
   keys: Record<string, number>;
+  /** The stock's price triggers at the fill, by id: an edit that types a number on one types a price. */
+  priceTriggerIds: string[];
   /** The trade had no note, so the run writes one. */
   noteWanted: boolean;
 }
@@ -28,13 +30,17 @@ function pricesIn(p: unknown): number[] {
   return c.watch === "price" && typeof c.value === "number" ? [c.value] : [];
 }
 
-/** The key a typed price is the number of, if any. */
-function keyFor(price: number, keys: Record<string, number>): string | null {
-  return Object.entries(keys).find(([, v]) => v > 0 && Math.abs(price - v) / v <= 0.005)?.[0] ?? null;
+/** A typed price, with the key it stood in for when it is within half a percent of one. */
+function typedPrice(price: number, keys: Record<string, number>): string {
+  const key = Object.entries(keys).find(([, v]) => v > 0 && Math.abs(price - v) / v <= 0.005)?.[0];
+  return key ? `$${price} (${key})` : `$${price}`;
 }
 
-export function scoreAfterBuy(ex: AfterBuyExpect, calls: Call[], text: string): { pass: boolean; why: string } {
+/** `invalid`: the calls its schema refused (a typed price comes back that way); an edit_triggers among them fails the run. */
+export function scoreAfterBuy(ex: AfterBuyExpect, calls: Call[], text: string, invalid: Array<{ tool: string; error: string }> = []): { pass: boolean; why: string } {
   const why: string[] = [];
+  const refusedEdits = invalid.filter((c) => c.tool === "edit_triggers");
+  if (refusedEdits.length) why.push(`edit_triggers refused by its schema (${refusedEdits.length})`);
   const traded = calls.filter((c) => TRADES.has(c.toolName));
   if (traded.length) why.push(`a trade call (${traded.map((c) => c.toolName).join(", ")})`);
 
@@ -52,12 +58,8 @@ export function scoreAfterBuy(ex: AfterBuyExpect, calls: Call[], text: string): 
   const removes = edits.flatMap((e) => (Array.isArray(e.remove) ? e.remove : [])) as Array<{ id?: string; reason?: unknown }>;
   if (removes.some((r) => !said(r.reason))) why.push("a removal with no reason");
 
-  const typed = [...own.flatMap((a) => pricesIn(a.predicate)), ...changes.flatMap((e) => (typeof e.value === "number" ? [e.value] : []))]
-    .flatMap((p) => {
-      const k = keyFor(p, ex.keys);
-      return k ? [`$${p} (${k})`] : [];
-    });
-  if (typed.length) why.push(`a price typed where a key gives it: ${typed.join(", ")}`);
+  const typed = [...own.flatMap((a) => pricesIn(a.predicate)), ...changes.flatMap((e) => (typeof e.value === "number" && ex.priceTriggerIds.includes(String(e.id)) ? [e.value] : []))].map((p) => typedPrice(p, ex.keys));
+  if (typed.length) why.push(`a typed price: ${typed.join(", ")}`);
 
   if (ex.floorId && [...changes, ...removes].some((x) => x.id === ex.floorId)) why.push("changed the floor");
 
