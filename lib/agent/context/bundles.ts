@@ -38,7 +38,7 @@ export const BUNDLES: Record<SubjectKind, readonly ContextId[]> = {
    * market numbers; and the analyst's playbooks, which the Writer picks the
    * stock's from as it writes.
    */
-  thesis: ["the_stock", "stock_data", "the_analyst", "playbook_record", "the_playbook", "playbooks", "situations", "market_numbers"],
+  thesis: ["the_stock", "stock_data", "the_analyst", "playbook_record", "the_playbook", "holding_triggers", "playbooks", "situations", "market_numbers"],
   /** An analyst: the analyst, its playbooks, its book, the market and the portfolio, this week's earnings and filings, the calls refused, and the earnings calendar outside its book. */
   analyst: ["the_analyst", "playbooks", "the_book", "market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls", "earnings_calendar"],
   /** The account: the market, the portfolio and the book, and what the agent wrote on its last run. */

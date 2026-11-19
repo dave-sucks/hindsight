@@ -40,6 +40,7 @@ import type { ToolContext } from "@/lib/agent/tool-context";
 import { heatLine, industryLine } from "@/lib/agent/portfolio-risk";
 import { getThesisSnapshotText } from "@/lib/agent/thesis-narrative";
 import { cashShortfall } from "@/lib/trading/manual-order-rules";
+import { sendBuyFilled } from "@/lib/proposals/after-buy";
 
 type TransactionClient = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
@@ -894,6 +895,8 @@ export const placeTrade = defineTool({
         runId: ctx.runId,
         via: "place_trade",
       });
+      // Filled now: the run after the fill puts on the holding's triggers. A fill that lands later is the reconciler's.
+      if (didFill) await sendBuyFilled(order.id);
 
       // Fetch post-trade portfolio context (non-fatal)
       let portfolioUpdate: { remainingSlots: number; remainingBuyingPower: number; openPositionCount: number } | null = null;

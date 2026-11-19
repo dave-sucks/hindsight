@@ -182,6 +182,8 @@ export interface AgentToRun {
   record: RunnableRecord;
   /** The run's mode (ResearchRun.mode). */
   mode: string;
+  /** What its run row carries beside the day and the model (the stock and order it is about). */
+  parameters?: Record<string, unknown>;
   /** Its context reads and its tools, made for one run. */
   args: (target: RunFor, runId: string) => Omit<RunAgentArgs, "runId"> | Promise<Omit<RunAgentArgs, "runId">>;
   /** What it keeps of its own once the run is done (the Portfolio Manager's write-up). A reason back means its reply couldn't be used: the run fails with it. */
@@ -219,7 +221,7 @@ export async function runAgentAsRun(agent: AgentToRun, target: RunFor, message?:
       status: "RUNNING",
       mode: agent.mode,
       environment: target.environment,
-      parameters: { date: etDateOf(started), model: record.model },
+      parameters: { ...agent.parameters, date: etDateOf(started), model: record.model } as object,
     },
     select: { id: true },
   });

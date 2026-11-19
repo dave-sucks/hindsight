@@ -6,9 +6,11 @@
  *   bwxt refresh, 8 runs a side, PR 2's scores).
  * - the_playbook: the stock's own, the one a run deciding on it checks; a
  *   stock with none yet gets each of its analyst's.
+ * - holding_triggers: the stock's playbook's triggers for a holding, by
+ *   reference (H1, H2…), as edit_triggers takes them.
  */
-import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
-import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
+import { playbookTriggerText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import type { ContextRun, Fact } from "./fact";
 import { analystOf, thesisOf } from "./rows";
 
@@ -26,6 +28,18 @@ async function analystPlaybooks(run: ContextRun, analystId: string): Promise<str
 export const playbooks: Fact = {
   thesis: (run) => analystPlaybooks(run, run.subject.analystId),
   analyst: (run) => analystPlaybooks(run, run.subject.analystId),
+};
+
+/** The stock's playbook's holding triggers by reference: those that come with the buy, then those written at the fill. */
+export const holdingTriggers: Fact = {
+  thesis: async (run) => {
+    const [a, t] = await Promise.all([analystOf(run, run.subject.analystId), thesisOf(run, run.subject.thesisId)]);
+    if (!a || !t) return null;
+    if (!t.setupId) return `$${t.ticker} has no playbook.`;
+    const { loadPlaybook } = await import("@/lib/agent/knowledge/load-playbook");
+    const templates = await loadPlaybook(a.accountId, t.setupId);
+    return [`$${t.ticker}'s playbook: ${getSetup(t.setupId, a.setupOverrides)?.name ?? t.setupId}.`, ...playbookTriggerText(templates, "PROPOSAL"), ...playbookTriggerText(templates, "FILL")].join("\n");
+  },
 };
 
 export const thePlaybook: Fact = {

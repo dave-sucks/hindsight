@@ -35,5 +35,5 @@ export const OUTCOME_LABEL: Record<Outcome | "pending", string> = {
 
 export const MODE_LABEL: Record<string, string> = {
   MORNING_PLAN: "Morning", INTRADAY_TACTICAL: "Trigger", THESIS_WRITER: "Writer", PRINCIPAL_CHAT: "Chat",
-  PORTFOLIO_DIGEST: "Portfolio Digest", MARKET_REVIEWER: "Market Reviewer",
+  PORTFOLIO_DIGEST: "Portfolio Digest", MARKET_REVIEWER: "Market Reviewer", AFTER_BUY: "After the buy",
 };
