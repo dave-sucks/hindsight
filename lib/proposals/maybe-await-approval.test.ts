@@ -44,6 +44,7 @@ const told = (orderId: string) =>
   expect(mockInngestSend).toHaveBeenCalledWith(expect.objectContaining({ name: "app/proposal.pending", data: { orderId } }));
 
 import {
+  approvalRequired,
   maybeAwaitApproval,
   ApprovalGateAccountUnresolvedError,
   type AwaitingApprovalResult,
@@ -257,5 +258,29 @@ describe("maybeAwaitApproval — unresolved account fails CLOSED on LIVE", () =>
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockSendProposalPendingEmail).not.toHaveBeenCalled();
     expect(mockInngestSend).not.toHaveBeenCalled();
+  });
+});
+
+describe("each book answers to its own switches and never the other's", () => {
+  const INTENTS = ["OPEN", "ADD", "CLOSE", "PARTIAL_CLOSE"] as const;
+  const needs = (environment: "PAPER" | "LIVE") =>
+    Promise.all(INTENTS.map((intent) => approvalRequired({ accountId: "acct-1", intent, environment })));
+
+  it("Paper off, Live on: every Live trade waits for approval and every Paper trade goes", async () => {
+    mockAccountFindUnique.mockResolvedValue({ requireApprovalBuysLive: true, requireApprovalSellsLive: true, requireApprovalBuysPaper: false, requireApprovalSellsPaper: false });
+    expect(await needs("LIVE")).toEqual([true, true, true, true]);
+    expect(await needs("PAPER")).toEqual([false, false, false, false]);
+  });
+
+  it("the mirror, Paper on and Live off, flips both", async () => {
+    mockAccountFindUnique.mockResolvedValue({ requireApprovalBuysLive: false, requireApprovalSellsLive: false, requireApprovalBuysPaper: true, requireApprovalSellsPaper: true });
+    expect(await needs("LIVE")).toEqual([false, false, false, false]);
+    expect(await needs("PAPER")).toEqual([true, true, true, true]);
+  });
+
+  it("buys and sells are separate switches inside a book", async () => {
+    mockAccountFindUnique.mockResolvedValue({ requireApprovalBuysLive: true, requireApprovalSellsLive: false, requireApprovalBuysPaper: false, requireApprovalSellsPaper: true });
+    expect(await needs("LIVE")).toEqual([true, true, false, false]);
+    expect(await needs("PAPER")).toEqual([false, false, true, true]);
   });
 });

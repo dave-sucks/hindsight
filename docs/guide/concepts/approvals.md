@@ -38,7 +38,9 @@ Approval is a setting on each account, for buys and sales separately:
 - **Live account:** on by default. Every trade waits for you.
 - **Paper account:** off by default, so paper trades go straight to the broker and analysts can practise freely. Turn it on to review paper trades too.
 
-The switches cover every trade the app makes for you, a trigger's automatic sale included. Only your own buy and sell buttons skip them: the click is the approval.
+The switches cover every trade the app makes for you, a trigger's automatic sale included. Only your own buy and sell buttons skip them: the click is the approval, and it takes an owner or an editor, signed in. A view-only member can't trade.
+
+Each account has its own switches and its own broker keys, and neither stands in for the other. A paper order goes out only on your paper keys, to the paper broker; a live order only on your live keys. If an account's keys can't be read the order is refused: it is never sent on other keys. Turning a live switch off asks you to confirm first.
 
 Until it's approved, a proposal isn't a holding, and it isn't counted in your positions or your P&L.
 
@@ -63,7 +65,13 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 An email (`lib/emails/proposal-pending.ts`) and a phone push through ntfy (`lib/notify/proposal-push.ts`).
 
 #### Settings
-`requireApprovalBuysLive` and `requireApprovalSellsLive` default on; the paper pair defaults off.
+`requireApprovalBuysLive` and `requireApprovalSellsLive` default on; the paper pair defaults off. The save takes only those four names (`setAccountApprovalToggle`).
+
+#### Paper and Live
+A trade's book (the position's `environment`, or the run's for a new buy) picks both its switch and its keys. Every function that sends, closes or cancels an order takes that book, and `orderKeys` in `lib/alpaca.ts` refuses it unless the keys are that book's own, on that book's address; an order never falls back to the env keys. A saved key's address is always its slot's (`lib/actions/api-keys.actions.ts`).
+
+#### Your own clicks
+Close and Cancel (`lib/actions/trade.actions.ts`), the Trade button, promote, demote, delete and the reconcile actions need a signed-in owner or editor on their own account (`lib/auth/editor.ts`). An analyst holding live positions can't be deleted until they are closed.
 
 #### Agents
 Approve and reject are never an agent's tools. A run can read the queue (`list_proposals`) but only you can answer it.

@@ -1,5 +1,4 @@
-"use server";
-
+// Server-only. The two actions a browser may call are in trade.actions.ts, behind sign-in.
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import {
@@ -340,6 +339,7 @@ export async function closeOpenPosition(
         clientOrderId: idempotencyKey,
       },
       creds,
+      positionEnvironment,
     );
     alpacaOrderId = alpacaOrder.id;
     await prisma.order.update({
@@ -701,7 +701,10 @@ export async function cancelPosition(positionId: string): Promise<void> {
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
-  const creds = (await resolveAlpacaCredentials(position.userId)) ?? undefined;
+  // The position's own book: Paper keys once looked a Live order up in the Paper account (2026-11-19).
+  const book = position.environment === "LIVE" ? "LIVE" : "PAPER";
+  const creds = await resolveAlpacaCredentials(position.userId, book);
+  if (!creds) throw new Error(`This account's ${book === "LIVE" ? "Live" : "Paper"} Alpaca keys could not be read. Position not cancelled.`);
 
   const pendingOrders = await prisma.order.findMany({
     where: { positionId, status: "PENDING" },
@@ -729,7 +732,7 @@ export async function cancelPosition(positionId: string): Promise<void> {
     }
 
     try {
-      await cancelOrder(alpacaId, creds);
+      await cancelOrder(alpacaId, creds, book);
     } catch {
       // 4xx "not cancellable" usually means already filled or cancelled —
       // fall through to the getOrder below to learn the truth.
@@ -838,30 +841,4 @@ export async function cancelPosition(positionId: string): Promise<void> {
       },
     });
   });
-}
-
-// ─── Legacy aliases (for old code paths during migration) ────────────────────
-
-export type ClosedTradeResult = ClosedPositionResult;
-
-/**
- * Legacy alias used by the manual close UI (TradeActions, TradesPage,
- * AnalystDetailClient). All callers are manual button clicks, so we pass
- * source="user" — bypasses the Trade-as-Proposal gate by design.
- *
- * Note the return type widened to CloseOpenPositionOutcome to match the
- * underlying helper, but in practice the source="user" path always returns
- * { kind: "closed", ... }. Callers that need the closed shape can narrow
- * via `if (outcome.kind !== "closed") throw ...`. All current UI callers
- * discard the return value so the change is invisible to them.
- */
-export async function closeTrade(
-  tradeId: string,
-  reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
-): Promise<CloseOpenPositionOutcome> {
-  return closeOpenPosition(tradeId, reason, undefined, "user");
-}
-
-export async function cancelTrade(tradeId: string): Promise<void> {
-  return cancelPosition(tradeId);
 }

@@ -42,7 +42,7 @@ import {
   EXECUTING_LABEL,
   EXECUTING_TOOLTIP,
 } from '@/lib/trade-status';
-import { closeTrade, cancelTrade } from '@/lib/actions/closeTrade.actions';
+import { closeTrade, cancelTrade } from '@/lib/actions/trade.actions';
 import {
   mockOpenTrades,
   mockClosedTrades,

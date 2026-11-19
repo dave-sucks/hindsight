@@ -293,7 +293,7 @@ export async function changePosition(args: PositionChange, ctx: ToolContext): Pr
         // 2. Submit to Alpaca with client_order_id = idempotencyKey.
         let alpacaOrderId: string | null = null;
         try {
-          const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds, idempotencyKey);
+          const alpacaOrder = await closePositionPartial(ticker, closeQty, closeSide, creds, position.environment as "PAPER" | "LIVE", idempotencyKey);
           alpacaOrderId = alpacaOrder.id;
           await prisma.order.update({
             where: { id: order.id },
@@ -736,7 +736,7 @@ export async function changePosition(args: PositionChange, ctx: ToolContext): Pr
             side: addSide,
             notional,
             clientOrderId: idempotencyKey,
-          }, creds);
+          }, creds, position.environment as "PAPER" | "LIVE");
           alpacaOrderId = addOrder.id;
           await prisma.order.update({
             where: { id: order.id },

@@ -218,8 +218,9 @@ describe("place_trade — staleness gate removed (P1-1)", () => {
     expect(result.data.status).toBe("PENDING");
     expect(result.data.fillStatus).toBe("PENDING");
     expect(String(result.summary)).not.toMatch(/research is/i);
-    // Confirm we actually reached Alpaca's submission path.
+    // Confirm we actually reached Alpaca's submission path, on the run's own book.
     expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    expect(mockPlaceMarketOrder.mock.calls[0][2]).toBe("PAPER");
   });
 });
 

@@ -11,6 +11,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { getAccountId } from "@/lib/auth/account";
+import { requireEditor } from "@/lib/auth/editor";
 import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import { NEW_ANALYST_DEFAULTS, normalizeAnalystPatch, watchlistAdds, watchlistReasons } from "@/lib/analyst-settings";
 import {
@@ -776,11 +777,8 @@ export async function updateAnalystField(
 
 // ── deleteAnalyst (cascade delete all related data) ─────────────────────────
 
-export async function deleteAnalyst(analystId: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
+export async function deleteAnalyst(analystId: string): Promise<{ refused: string } | void> {
+  const { accountId } = await requireEditor();
 
   // Verify ownership
   const config = await prisma.agentConfig.findFirst({
@@ -798,21 +796,21 @@ export async function deleteAnalyst(analystId: string): Promise<void> {
   // 2. Find all positions for this analyst
   const positions = await prisma.position.findMany({
     where: { analystId },
-    select: { id: true, symbol: true, status: true },
+    select: { id: true, symbol: true, status: true, environment: true },
   });
   const positionIds = positions.map((p) => p.id);
 
-  // 3. Close any open Alpaca positions
+  // A Live holding is sold from its trade, never by a delete: the rows went while the real shares stayed, sold with Paper keys (2026-11-19).
+  const live = positions.filter((p) => p.status === "OPEN" && p.environment !== "PAPER");
+  if (live.length > 0) {
+    return { refused: `${config.name} holds ${live.length} Live position${live.length === 1 ? "" : "s"} (${live.map((p) => p.symbol).join(", ")}). Close ${live.length === 1 ? "it" : "them"} before deleting this analyst.` };
+  }
+
+  // 3. Close its open Paper positions, best effort (one may not exist at the broker)
   const { closePosition: closeAlpacaPos } = await import("@/lib/alpaca");
-  const creds = await resolveAlpacaCredentials(config.userId) ?? undefined;
+  const creds = await resolveAlpacaCredentials(config.userId, "PAPER");
   for (const pos of positions) {
-    if (pos.status === "OPEN") {
-      try {
-        await closeAlpacaPos(pos.symbol, creds).catch(() => {});
-      } catch {
-        // Best effort — position may not exist
-      }
-    }
+    if (pos.status === "OPEN") await closeAlpacaPos(pos.symbol, creds, "PAPER").catch(() => {});
   }
 
   // 4. Find theses from those runs

@@ -380,6 +380,7 @@ export async function approveProposal(
         submitQty,
         side,
         creds,
+        positionEnvironment,
         order.idempotencyKey,
       );
       alpacaOrderId = ap.id;
@@ -393,6 +394,7 @@ export async function approveProposal(
           clientOrderId: order.idempotencyKey,
         },
         creds,
+        positionEnvironment,
       );
       alpacaOrderId = ap.id;
     }

@@ -219,7 +219,7 @@ The --execute pass:
   let orphansFailed = 0;
   for (const p of alpacaOnly) {
     try {
-      await closeAlpacaPosition(p.symbol, creds);
+      await closeAlpacaPosition(p.symbol, creds, "PAPER");
       console.log(`  ✓ Closed ${p.symbol} (${p.side}) on Alpaca`);
       orphansClosed++;
     } catch (err) {

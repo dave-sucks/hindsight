@@ -225,7 +225,7 @@ export async function replayTool(
         // The write side, by its real export names. A replay that reaches a
         // broker throws — silence here would be the worst possible failure
         // for a harness whose whole job is to stop silent wrongness.
-        ["placeMarketOrder", "placeLimitOrder", "closePosition", "closePositionPartial", "cancelOrder"].map(
+        ["placeMarketOrder", "closePosition", "closePositionPartial", "cancelOrder"].map(
           (name) => [
             name,
             jest.fn(async () => {

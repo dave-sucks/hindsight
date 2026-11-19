@@ -298,7 +298,8 @@ export default function AnalystsPageClient({
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      await deleteAnalyst(deleteTarget);
+      const res = await deleteAnalyst(deleteTarget);
+      if (res?.refused) throw new Error(res.refused);
       toast.success("Analyst deleted");
       setDeleteTarget(null);
       router.refresh();

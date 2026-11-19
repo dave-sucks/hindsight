@@ -701,7 +701,7 @@ export const placeTrade = defineTool({
           ...(resolvedNotional != null ? { notional: resolvedNotional } : { qty: resolvedShares }),
           side: args.direction === "LONG" ? "buy" : "sell",
           clientOrderId: idempotencyKey,
-        }, ctx.alpacaCreds);
+        }, ctx.alpacaCreds, positionEnvironment);
         alpacaOrderId = alpacaOrder.id;
         await prisma.order.update({
           where: { id: order.id },

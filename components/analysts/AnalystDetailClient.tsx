@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RunResearchButton } from "@/components/RunResearchButton";
 import { TradeRow, WatchlistRow, AddStockRow } from "@/components/ui/trade-row";
-import { closeTrade } from "@/lib/actions/closeTrade.actions";
+import { closeTrade } from "@/lib/actions/trade.actions";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import {
   DropdownMenu,
@@ -373,7 +373,8 @@ export default function AnalystDetailClient({
   async function handleDelete() {
     setDeleteLoading(true);
     try {
-      await deleteAnalyst(config.id);
+      const res = await deleteAnalyst(config.id);
+      if (res?.refused) throw new Error(res.refused);
       toast.success("Analyst deleted");
       router.push("/analysts");
     } catch (err) {

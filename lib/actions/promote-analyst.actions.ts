@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount } from "@/lib/alpaca";
 import { getAccountId } from "@/lib/auth/account";
+import { editorOrWhy } from "@/lib/auth/editor";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -166,9 +167,9 @@ export async function promoteAnalystToLive(
   analystId: string,
   options?: { maxPositionSize?: number },
 ): Promise<PromotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", closedBeforeFailure: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, closedBeforeFailure: 0 };
+  const { userId, accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },
@@ -600,9 +601,9 @@ export type DemotionResult =
 export async function demoteAnalystToPaper(
   analystId: string,
 ): Promise<DemotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", openLiveCount: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, openLiveCount: 0 };
+  const { accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },
@@ -643,9 +644,9 @@ export async function demoteAnalystToPaper(
 export async function closeAllLivePositionsAndDemote(
   analystId: string,
 ): Promise<PromotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", closedBeforeFailure: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, closedBeforeFailure: 0 };
+  const { accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },
