@@ -24,8 +24,8 @@ export const fromDate: MeasureDef = {
   type: "schedule",
   label: "From a date",
   buttons: [
-    { is: "after", label: "After" },
-    { is: "before", label: "Before" },
+    { is: "after", label: "After", means: "that many days have passed since the date in variable" },
+    { is: "before", label: "Before", means: "the event date is that many days away or fewer (a window before it)" },
   ],
   value: { suffix: "days", placeholder: "60", range: { what: "A date count", unit: " days", integer: true, min: 1, max: 365 } },
   variables: { mode: "from", options: DATE_VARIABLES, title: "Counted from", word: () => "from", required: "Choose what to count from." },

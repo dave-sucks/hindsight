@@ -9,8 +9,8 @@ export const report: MeasureDef = {
   type: "earnings",
   label: "Report date",
   buttons: [
-    { is: "before", label: "Before earnings" },
-    { is: "after", label: "After earnings" },
+    { is: "before", label: "Before earnings", means: "the next report is that many days away or fewer (a heads-up)" },
+    { is: "after", label: "After earnings", means: "the last report came out that many days ago or fewer (0: the report day)" },
   ],
   // The calendar looks 14 days ahead and 5 back; the report day is 0.
   value: {
@@ -39,8 +39,8 @@ export const surprise: MeasureDef = {
   type: "earnings",
   label: "Result",
   buttons: [
-    { is: "miss", label: "Earnings miss" },
-    { is: "beat", label: "Earnings beat" },
+    { is: "miss", label: "Earnings miss", means: "the last report missed the estimate by that % or more (0: any miss)" },
+    { is: "beat", label: "Earnings beat", means: "the last report beat the estimate by that % or more (0: any beat)" },
   ],
   value: { suffix: "% or more", placeholder: "0", range: { what: "A surprise", unit: "%", min: 0 }, zero: "any amount" },
   actions: ["REVIEW"],
