@@ -27,6 +27,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
+import type { ToolContext } from "@/lib/agent/tool-context";
 import { TRIGGER_EDITS, VERDICTS, thesisFields } from "@/lib/agent/tools/thesis-fields";
 import { prisma } from "@/lib/prisma";
 import { analystOf, forTheStock } from "@/lib/agent/analyst-scope";
@@ -239,69 +240,13 @@ const WRITER_ONLY_UPDATE_FIELDS = {
   research_data: true,
 } as const;
 
-/**
- * The trigger run's closing save (Roadmap step 10): the same update_thesis,
- * with only what a run answering one fired trigger changes. In the 30 days to
- * 2026-10-08 its 63 close-outs sent the form whole (NVDA all 22 fields); what
- * changed was the note, a trigger, a stop, a target, a buy price. Direction,
- * belief, scores, horizon and the research snapshot are the morning run's and
- * the writer's; the price is the server's. A level is a trigger edit, by id
- * (the entry / target / stop fields went 2026-11-16). No change_status: the run
- * fills every field it is given, and filled it on every call (WATCHING in
- * the four runs that failed, ASML 10-07 and NVDA, CEG, MU 10-08; INVALIDATED
- * on NVDA 10-09 once WATCHING was gone), which on a stock we watch retires
- * it. In the 30 days to 2026-10-09 no trigger run meant a status change; a
- * holding it ends is sold with close_position, which retires the thesis.
- */
-const triggerRunSchema = updateSchema.pick({
-  rationale: true,
-  add_triggers: true, edit_triggers: true, remove_trigger_ids: true,
-  ...THE_REVIEW,
-});
-
 /** The trigger run's door: its save has no price field and no status change. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
 
-/**
- * The morning run's save: the same update_thesis, with what a morning review
- * changes. In the 30 days to 2026-10-08 its 45 runs made 285 saves: the note
- * on every one, the trigger edits, a status
- * change, a setup named, a conviction tier with its reason. Horizon and the
- * catalyst date stay. Four left first: price_at_time (224 calls, each a copy
- * of the price the row showed; the save reads the quote itself), snapshot (25
- * saves rewrote the writer's cited paragraph uncited) and variant_view (the writer's claim, which the conviction gate
- * reads off the row). Then the claim (step 12, part 1): core_belief,
- * key_assumptions and invalidation_conditions are the writer's and the
- * owner's chat's, never a run's; a seed's first research and a woken watch
- * go through the writer (dispatch_thesis_research, then
- * wait_for_thesis_refresh), which commits the view. With the claim gone
- * `direction` had nowhere to land from this door (a seed needs the claim, a
- * thesis with a view is refused a flip or a pass), and a field that is
- * offered gets filled, so it left too: a view is set or flipped by research
- * or by the owner. change_status keeps its three values: this door puts a
- * sold stock back on watch. Eighteen fields, and the review's three (THE_REVIEW).
- */
-const THE_CLAIM = { core_belief: true, key_assumptions: true, invalidation_conditions: true } as const;
-/**
- * The rest of the write-up, the writer's alone (step 12, part 2): the cited
- * snapshot, the score and the variant view, and the price the caller read
- * (the save reads the quote itself). The chat's saves carried one of them in
- * 14 of its 25 update_thesis calls in the 60 days to 2026-10-09; HPE
- * 2026-10-02 rewrote the snapshot and took the score 9 → 7 uncited.
- */
-const THE_WRITE_UPS_REST = { price_at_time: true, variant_view: true } as const;
-const morningRunSchema = updateSchema.omit({
-  ...WRITER_ONLY_UPDATE_FIELDS,
-  ...THE_WRITE_UPS_REST,
-  ...THE_CLAIM,
-  direction: true,
-});
-
 /** The morning run's door: its save has no price field; it reads the quote. */
 const isMorningRun = (ctx: { runMode?: string }) => ctx.runMode === "MORNING_PLAN";
-/** The Portfolio Manager's door: a note on the stock and nothing else. Its triggers, status and conviction are the stock's analyst's. */
+/** The Portfolio Manager's door: its note is not the analyst's review (the clock keeps counting). */
 const isManagerRun = (ctx: { runMode?: string }) => ctx.runMode === "PORTFOLIO_MANAGER";
-const managerRunSchema = updateSchema.pick({ thesis_id: true, rationale: true });
 
 /**
  * The rule this save's line answers, kept on the line as it stands now
@@ -357,15 +302,6 @@ async function ruleAnswered(
   }
 }
 
-/** The chat never answers a fired trigger, so it has no trigger to name (0 of its 58 calls in the same 30 days). */
-const NOT_THE_CHATS = { trigger_id: true } as const;
-
-/**
- * The owner's chat's save: the claim, the view, the triggers, the verdict and the
- * note. The write-up is the writer's (step 12, part 2): twenty-one fields, and the review's three.
- */
-const chatSchema = updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_WRITE_UPS_REST, ...NOT_THE_CHATS });
-
 /** The doors whose save has no variant_view: a top tier sent there is stored MEDIUM until the writer gives it one. */
 const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT"]);
 
@@ -376,7 +312,8 @@ const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN",
  */
 export const DOORS_WITH_RECORD_THESIS: ReadonlySet<string> = new Set(["PRINCIPAL_CHAT"]);
 
-type UpdateArgs = z.infer<typeof updateSchema>;
+/** What the save takes: the Writer's fields, the note optional (edit_triggers and the status doors write none). */
+type UpdateArgs = Omit<z.infer<typeof updateSchema>, "rationale"> & { rationale?: string };
 /**
  * A field the save could not apply: named, with the one thing to change. The
  * rest of the call lands. `why` is the short form the Activity chip shows and
@@ -474,28 +411,22 @@ export function dropUnchanged(
   return out as UpdateArgs;
 }
 
+/**
+ * What a deciding agent changes about the thesis itself, apart from its
+ * triggers, its note and whether we watch it (each its own tool): its
+ * conviction, horizon and catalyst date. In the 30 days to 2026-11-18 the
+ * morning runs changed the conviction tier 14 times; the rest of the form is
+ * the Writer's.
+ */
+const viewSchema = updateSchema.pick({ thesis_id: true, conviction: true, conviction_rationale: true, horizon: true, catalyst_date: true });
+
 export const updateThesis = defineTool({
   description:
-    "Change a thesis you already have. Pass thesis_id, the fields that change and a rationale; every call writes one line to the stock's Activity. " +
-    "A stock's buy, floor and every other rule are its triggers: change one with edit_triggers by its id, add one with add_triggers, take one off with remove_trigger_ids. " +
-    "Each trigger edit comes back in `trigger_ops`, accepted or refused with the reason; a refused one leaves the rest of the call in place. " +
-    "On a stock we hold, only the principal moves a safety line down. " +
-    "If you think one is wrong, keep it and give the number you'd suggest in the rationale.",
+    "Changes your view of a stock: its conviction (with the reason), its horizon or its catalyst date; each change is one line in its Activity. " +
+    "Its triggers are edit_triggers, a note is write_note.",
   schema: updateSchema,
-  schemaFor: (ctx) =>
-    ctx.runMode === "THESIS_WRITER"
-      ? updateSchema.omit(THE_REVIEW)
-      : isTriggerRun(ctx)
-        ? triggerRunSchema
-        : isMorningRun(ctx)
-          ? morningRunSchema
-          : isManagerRun(ctx)
-            ? managerRunSchema
-            : ctx.runMode === "PRINCIPAL_CHAT"
-            ? chatSchema
-            : updateSchema.omit({ ...WRITER_ONLY_UPDATE_FIELDS, ...THE_REVIEW }),
-  // A trigger run's stock and the trigger that fired: code knows both (tactical-run.ts).
-  fromRun: (ctx) => (isTriggerRun(ctx) && ctx.runStock ? { thesis_id: ctx.runStock.thesisId, trigger_id: ctx.runStock.triggerId } : null),
+  // The Writer's save keeps the whole form (run-thesis-writer.ts).
+  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? updateSchema.omit(THE_REVIEW) : viewSchema),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -505,1203 +436,1217 @@ export const updateThesis = defineTool({
     return `Updating thesis ${args.thesis_id.slice(-8)}`;
   },
 
-  execute: async (args, ctx) => {
-    // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
-    // (it just called get_stock_data on this ticker). When it forgets, we
-    // fall back to a fresh live quote so the timeline row never has a
-    // null price for an active update. Cheap (one HTTP call, 30s cache);
-    // worth it for the timeline integrity.
-    let resolvedPriceAtTime: number | null = args.price_at_time ?? null;
+  execute: (args, ctx) => saveThesis(args, ctx),
+});
 
-    // Load + scope check. A thesis must belong to an analyst's user;
-    // updating someone else's thesis would be a security hole.
-    const existing = await prisma.thesis.findUnique({
-      where: { id: args.thesis_id },
-      select: {
-        id: true,
-        userId: true,
-        ticker: true,
-        status: true,
-        // Diffed by the fieldChanges builder — a terminal transition writes
-        // retiredReason, and the audit row should carry the from/to.
-        retiredReason: true,
-        // Diffed (compacted) so a degraded research_data-only refresh still
-        // records that the research payload changed.
-        researchData: true,
-        // direction is read by the shape gate below.
-        direction: true,
-        researchRun: { select: { agentConfigId: true } },
-        snapshot: true,
-        bullCase: true,
-        bearCase: true,
-        company: true,
-        coreBelief: true,
-        keyAssumptions: true,
-        invalidationConds: true,
-        // Conviction Expression v4 — read existing values so gates can
-        // enforce coherence when only a subset of (conviction, rationale,
-        // variantView) is being patched.
-        conviction: true,
-        convictionRationale: true,
-        variantView: true,
-        horizon: true,
-        setupId: true,
-        catalystDate: true,
-        triggers: true,
-        // Per-thesis fire state for inherited rungs — read so a rung
-        // dropped as redundant can hand its fire stamp over.
-        triggerState: true,
-        // The review clock's due date, for the line's link to the clock (ruleAnswered).
-        lastReviewedAt: true,
-        createdAt: true,
-      },
-    });
+/**
+ * The save every thesis tool goes through (update_thesis, edit_triggers, write_note,
+ * stop_watching, watch_again, and the Writer's save): one place for every rule.
+ */
+export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
+  // Resolve priceAtTime defensively. The agent SHOULD pass price_at_time
+  // (it just called get_stock_data on this ticker). When it forgets, we
+  // fall back to a fresh live quote so the timeline row never has a
+  // null price for an active update. Cheap (one HTTP call, 30s cache);
+  // worth it for the timeline integrity.
+  let resolvedPriceAtTime: number | null = args.price_at_time ?? null;
 
-    if (!existing) {
-      return {
-        summary: `Thesis ${args.thesis_id} not found.`,
-        data: { ok: false, error: "not_found" },
-        sources: [],
+  // Load + scope check. A thesis must belong to an analyst's user;
+  // updating someone else's thesis would be a security hole.
+  const existing = await prisma.thesis.findUnique({
+    where: { id: args.thesis_id },
+    select: {
+      id: true,
+      userId: true,
+      ticker: true,
+      status: true,
+      // Diffed by the fieldChanges builder — a terminal transition writes
+      // retiredReason, and the audit row should carry the from/to.
+      retiredReason: true,
+      // Diffed (compacted) so a degraded research_data-only refresh still
+      // records that the research payload changed.
+      researchData: true,
+      // direction is read by the shape gate below.
+      direction: true,
+      researchRun: { select: { agentConfigId: true } },
+      snapshot: true,
+      bullCase: true,
+      bearCase: true,
+      company: true,
+      coreBelief: true,
+      keyAssumptions: true,
+      invalidationConds: true,
+      // Conviction Expression v4 — read existing values so gates can
+      // enforce coherence when only a subset of (conviction, rationale,
+      // variantView) is being patched.
+      conviction: true,
+      convictionRationale: true,
+      variantView: true,
+      horizon: true,
+      setupId: true,
+      catalystDate: true,
+      triggers: true,
+      // Per-thesis fire state for inherited rungs — read so a rung
+      // dropped as redundant can hand its fire stamp over.
+      triggerState: true,
+      // The review clock's due date, for the line's link to the clock (ruleAnswered).
+      lastReviewedAt: true,
+      createdAt: true,
+    },
+  });
+
+  if (!existing) {
+    return {
+      summary: `Thesis ${args.thesis_id} not found.`,
+      data: { ok: false, error: "not_found" },
+      sources: [],
+    };
+  }
+  if (existing.userId !== ctx.userId) {
+    return {
+      summary: `Thesis ${args.thesis_id} does not belong to this user.`,
+      data: { ok: false, error: "scope_mismatch" },
+      sources: [],
+    };
+  }
+  // The Master Chat edits for the thesis's own analyst, under its rules (analyst-scope.ts).
+  ctx = await forTheStock(ctx, analystOf(existing, ctx.analystId));
+  // A save is a patch: what equals the stored row is dropped before any
+  // rule reads it (dropUnchanged). A field that can't be applied is
+  // refused by itself, named in `refused_fields` with the one thing to
+  // change, and the rest of the call lands, as a refused trigger edit
+  // always has. Only a call where nothing can land is refused whole. On
+  // 2026-10-07 and 10-08 two trigger runs restated fields of a LONG
+  // holding in every close-out call; each was refused until the run ran out.
+  const sent = args;
+  args = dropUnchanged(args, existing);
+  const refusedFields: RefusedField[] = [];
+  const refuseField = (field: keyof UpdateArgs, reason: string, why: string) => {
+    const to = args[field];
+    refusedFields.push({ field, reason, why, ...(typeof to === "string" || typeof to === "number" ? { to } : {}) });
+    args = { ...args, [field]: undefined };
+  };
+  const opResults: TriggerOpResult[] = [];
+  // A playbook template the setup path left out, and why (lib/agent/knowledge/playbooks.ts).
+  const playbookNotes: Array<{ op: string; id: string; text: string }> = [];
+  // A level this call moves while the claim still names the old number:
+  // one sentence each in the reply (claim-names-level.ts).
+  const claimNotes: string[] = [];
+  let stillPromoted = false;
+
+  // The verdict and the line it answers go on this call's audit row; a wrong word or id comes back by name.
+  const verdict = args.verdict?.trim().toUpperCase() || undefined;
+  if (verdict && !(VERDICTS as readonly string[]).includes(verdict)) {
+    refuseField("verdict", `"${args.verdict}" is not a verdict: send STRONGER, UNCHANGED, WEAKER or BROKEN.`, "not one of the four verdicts");
+  }
+  const answers = args.answers_update_id?.trim() || undefined;
+  if (answers && !(await prisma.thesisUpdate.findFirst({ where: { id: answers, thesisId: existing.id }, select: { id: true } }))) {
+    refuseField("answers_update_id", `No Activity line ${answers} on ${existing.ticker}: send the [id …] at the end of the line this note answers.`, "no such line on this stock");
+  }
+  const review = {
+    verdict: args.verdict !== undefined ? verdict : undefined,
+    verdictLine: args.verdict_line?.trim() || undefined,
+    answersUpdateId: args.answers_update_id !== undefined ? answers : undefined,
+  };
+
+  // The principal's edit wins (handEditsSince). Looked up only when the
+  // call still changes something.
+  const asksAChange =
+    HAND_FIELDS.some(([k]) => args[k] !== undefined) ||
+    !!(args.edit_triggers?.length || args.remove_trigger_ids?.length || args.add_triggers?.length);
+  const hand = asksAChange ? await handEditsSince(existing.id, ctx) : null;
+  if (hand) {
+    const at = hand.at.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+    const reason = `You set this by hand at ${at} ET; not changed.`;
+    const why = `you set it by hand at ${at}`;
+    const stored = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+    const touched = (id?: string) => !!id && hand.triggerIds.has(id);
+    for (const [k, col] of HAND_FIELDS) {
+      if (args[k] !== undefined && hand.keys.has(col)) refuseField(k, reason, why);
+    }
+    const hit = (t: unknown) => touched(collision(stored, t as Trigger, existing.direction)?.id);
+    const refusedOps = [
+      ...(args.edit_triggers ?? []).filter((e) => touched(e.id)).map((e) => ({ op: "edit" as const, id: e.id })),
+      ...(args.remove_trigger_ids ?? []).filter(touched).map((id) => ({ op: "remove" as const, id })),
+      ...(args.add_triggers ?? []).filter(hit).map((t) => ({ op: "edit" as const, id: collision(stored, t as Trigger, existing.direction)!.id })),
+    ];
+    if (refusedOps.length > 0) {
+      opResults.push(...refusedOps.map((o) => ({ ...o, ok: false, text: `${o.op === "remove" ? "Remove" : "Edit"} trigger ${o.id}`, reason })));
+      refusedFields.push({ field: "triggers", reason, why });
+      args = {
+        ...args,
+        edit_triggers: args.edit_triggers?.filter((e) => !touched(e.id)),
+        remove_trigger_ids: args.remove_trigger_ids?.filter((id) => !touched(id)),
+        add_triggers: args.add_triggers?.filter((t) => !hit(t)),
       };
     }
-    if (existing.userId !== ctx.userId) {
-      return {
-        summary: `Thesis ${args.thesis_id} does not belong to this user.`,
-        data: { ok: false, error: "scope_mismatch" },
-        sources: [],
-      };
-    }
-    // The Master Chat edits for the thesis's own analyst, under its rules (analyst-scope.ts).
-    ctx = await forTheStock(ctx, analystOf(existing, ctx.analystId));
-    // A save is a patch: what equals the stored row is dropped before any
-    // rule reads it (dropUnchanged). A field that can't be applied is
-    // refused by itself, named in `refused_fields` with the one thing to
-    // change, and the rest of the call lands, as a refused trigger edit
-    // always has. Only a call where nothing can land is refused whole. On
-    // 2026-10-07 and 10-08 two trigger runs restated fields of a LONG
-    // holding in every close-out call; each was refused until the run ran out.
-    const sent = args;
-    args = dropUnchanged(args, existing);
-    const refusedFields: RefusedField[] = [];
-    const refuseField = (field: keyof UpdateArgs, reason: string, why: string) => {
-      const to = args[field];
-      refusedFields.push({ field, reason, why, ...(typeof to === "string" || typeof to === "number" ? { to } : {}) });
-      args = { ...args, [field]: undefined };
-    };
-    const opResults: TriggerOpResult[] = [];
-    // A playbook template the setup path left out, and why (lib/agent/knowledge/playbooks.ts).
-    const playbookNotes: Array<{ op: string; id: string; text: string }> = [];
-    // A level this call moves while the claim still names the old number:
-    // one sentence each in the reply (claim-names-level.ts).
-    const claimNotes: string[] = [];
-    let stillPromoted = false;
+  }
 
-    // The verdict and the line it answers go on this call's audit row; a wrong word or id comes back by name.
-    const verdict = args.verdict?.trim().toUpperCase() || undefined;
-    if (verdict && !(VERDICTS as readonly string[]).includes(verdict)) {
-      refuseField("verdict", `"${args.verdict}" is not a verdict: send STRONGER, UNCHANGED, WEAKER or BROKEN.`, "not one of the four verdicts");
-    }
-    const answers = args.answers_update_id?.trim() || undefined;
-    if (answers && !(await prisma.thesisUpdate.findFirst({ where: { id: answers, thesisId: existing.id }, select: { id: true } }))) {
-      refuseField("answers_update_id", `No Activity line ${answers} on ${existing.ticker}: send the [id …] at the end of the line this note answers.`, "no such line on this stock");
-    }
-    const review = {
-      verdict: args.verdict !== undefined ? verdict : undefined,
-      verdictLine: args.verdict_line?.trim() || undefined,
-      answersUpdateId: args.answers_update_id !== undefined ? answers : undefined,
-    };
-
-    // The principal's edit wins (handEditsSince). Looked up only when the
-    // call still changes something.
-    const asksAChange =
-      HAND_FIELDS.some(([k]) => args[k] !== undefined) ||
-      !!(args.edit_triggers?.length || args.remove_trigger_ids?.length || args.add_triggers?.length);
-    const hand = asksAChange ? await handEditsSince(existing.id, ctx) : null;
-    if (hand) {
-      const at = hand.at.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
-      const reason = `You set this by hand at ${at} ET; not changed.`;
-      const why = `you set it by hand at ${at}`;
-      const stored = parseTriggersResilient(existing.triggers).triggers as Trigger[];
-      const touched = (id?: string) => !!id && hand.triggerIds.has(id);
-      for (const [k, col] of HAND_FIELDS) {
-        if (args[k] !== undefined && hand.keys.has(col)) refuseField(k, reason, why);
+  // priceAtTime fallback: agent didn't pass one → fetch a fresh quote
+  // for this ticker. Failure is non-fatal; just leaves it null.
+  if (resolvedPriceAtTime == null) {
+    try {
+      const quote = await getStockQuote(existing.ticker);
+      if (quote && Number.isFinite(quote.c) && quote.c > 0) {
+        resolvedPriceAtTime = quote.c;
       }
-      const hit = (t: unknown) => touched(collision(stored, t as Trigger, existing.direction)?.id);
-      const refusedOps = [
-        ...(args.edit_triggers ?? []).filter((e) => touched(e.id)).map((e) => ({ op: "edit" as const, id: e.id })),
-        ...(args.remove_trigger_ids ?? []).filter(touched).map((id) => ({ op: "remove" as const, id })),
-        ...(args.add_triggers ?? []).filter(hit).map((t) => ({ op: "edit" as const, id: collision(stored, t as Trigger, existing.direction)!.id })),
-      ];
-      if (refusedOps.length > 0) {
-        opResults.push(...refusedOps.map((o) => ({ ...o, ok: false, text: `${o.op === "remove" ? "Remove" : "Edit"} trigger ${o.id}`, reason })));
-        refusedFields.push({ field: "triggers", reason, why });
-        args = {
-          ...args,
-          edit_triggers: args.edit_triggers?.filter((e) => !touched(e.id)),
-          remove_trigger_ids: args.remove_trigger_ids?.filter((id) => !touched(id)),
-          add_triggers: args.add_triggers?.filter((t) => !hit(t)),
-        };
-      }
+    } catch {
+      /* handled below when the call needs a price */
     }
-
-    // priceAtTime fallback: agent didn't pass one → fetch a fresh quote
-    // for this ticker. Failure is non-fatal; just leaves it null.
-    if (resolvedPriceAtTime == null) {
-      try {
-        const quote = await getStockQuote(existing.ticker);
-        if (quote && Number.isFinite(quote.c) && quote.c > 0) {
-          resolvedPriceAtTime = quote.c;
-        }
-      } catch {
-        /* handled below when the call needs a price */
-      }
-    }
-    // Then the price that fired the trigger this call answers: the
-    // evaluator stamps it on the fire's row. The trigger run's save has no
-    // price field, so this is its fallback when the quote fails.
-    if (resolvedPriceAtTime == null && args.trigger_id) {
-      const fire = await prisma.thesisUpdate
-        .findFirst({
-          where: { thesisId: existing.id, type: "TRIGGER_FIRED", triggerId: args.trigger_id },
-          orderBy: { timestamp: "desc" },
-          select: { priceAtTime: true },
-        })
-        .catch(() => null);
-      if (fire?.priceAtTime != null && Number(fire.priceAtTime) > 0) resolvedPriceAtTime = Number(fire.priceAtTime);
-    }
-    // A buy level's SIDE (pullback below the price, breakout above it) is
-    // read off the price. When this call places or moves one and there is
-    // no price at all — no price_at_time, quote failed — refuse rather than
-    // guess. The guess was always "breakout" (the CRM shape: "buy the
-    // pullback to $203" stored as "buy above $203" against a $258 price).
-    if (resolvedPriceAtTime == null) {
-      const enterIds = new Set(
-        (parseTriggersResilient(existing.triggers).triggers as Trigger[])
-          .filter((t) => t.action === "ENTER")
-          .map((t) => t.id),
-      );
-      const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
-        editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
-      // A refusal names only fields this door has: the trigger run's, the
-      // morning run's and the chat's saves have no price field.
-      const noPrice = isTriggerRun(ctx)
-        ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
+  }
+  // Then the price that fired the trigger this call answers: the
+  // evaluator stamps it on the fire's row. The trigger run's save has no
+  // price field, so this is its fallback when the quote fails.
+  if (resolvedPriceAtTime == null && args.trigger_id) {
+    const fire = await prisma.thesisUpdate
+      .findFirst({
+        where: { thesisId: existing.id, type: "TRIGGER_FIRED", triggerId: args.trigger_id },
+        orderBy: { timestamp: "desc" },
+        select: { priceAtTime: true },
+      })
+      .catch(() => null);
+    if (fire?.priceAtTime != null && Number(fire.priceAtTime) > 0) resolvedPriceAtTime = Number(fire.priceAtTime);
+  }
+  // A buy level's SIDE (pullback below the price, breakout above it) is
+  // read off the price. When this call places or moves one and there is
+  // no price at all — no price_at_time, quote failed — refuse rather than
+  // guess. The guess was always "breakout" (the CRM shape: "buy the
+  // pullback to $203" stored as "buy above $203" against a $258 price).
+  if (resolvedPriceAtTime == null) {
+    const enterIds = new Set(
+      (parseTriggersResilient(existing.triggers).triggers as Trigger[])
+        .filter((t) => t.action === "ENTER")
+        .map((t) => t.id),
+    );
+    const buyEdit = (e: NonNullable<UpdateArgs["edit_triggers"]>[number]) =>
+      editNumber(e).value != null && (e.action === "ENTER" || enterIds.has(e.id));
+    // A refusal names only fields this door has: the trigger run's, the
+    // morning run's and the chat's saves have no price field.
+    const noPrice = isTriggerRun(ctx)
+      ? `The quote for ${existing.ticker} failed and the fire carries no price, so whether the buy level is a pullback (below the price) ` +
+        `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
+      : isMorningRun(ctx)
+        ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
           `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
-        : isMorningRun(ctx)
+        : ctx.runMode === "PRINCIPAL_CHAT"
           ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
-            `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is; the next run can move it.`
-          : ctx.runMode === "PRINCIPAL_CHAT"
-            ? `The quote for ${existing.ticker} failed, so whether the buy level is a pullback (below the price) ` +
-              `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is and send it again once get_stock_data has a live price.`
-            : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
-              `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
-      for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
-        opResults.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: noPrice });
-      }
-      if (args.edit_triggers?.some(buyEdit)) args = { ...args, edit_triggers: args.edit_triggers.filter((e) => !buyEdit(e)) };
+            `or a breakout (above it) can't be read; the side is never guessed. Leave the buy as it is and send it again once get_stock_data has a live price.`
+          : `The quote for ${existing.ticker} failed and no price_at_time was passed, so whether the buy level is a pullback (below the price) ` +
+            `or a breakout (above it) can't be read; the side is never guessed. Send it again with price_at_time from get_stock_data.`;
+    for (const e of (args.edit_triggers ?? []).filter(buyEdit)) {
+      opResults.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: noPrice });
     }
-    if (
-      ctx.analystId &&
-      existing.researchRun?.agentConfigId &&
-      existing.researchRun.agentConfigId !== ctx.analystId
-    ) {
+    if (args.edit_triggers?.some(buyEdit)) args = { ...args, edit_triggers: args.edit_triggers.filter((e) => !buyEdit(e)) };
+  }
+  if (
+    ctx.analystId &&
+    existing.researchRun?.agentConfigId &&
+    existing.researchRun.agentConfigId !== ctx.analystId
+  ) {
+    return {
+      summary: `Thesis ${args.thesis_id} belongs to a different analyst.`,
+      data: { ok: false, error: "analyst_mismatch" },
+      sources: [],
+    };
+  }
+
+  // ── Status-transition law (DAV-210) ──────────────────────────────────
+  // Terminal rows, the PROMOTED state machine, and the writer role gate —
+  // one readable table in lib/agent/thesis-transitions.ts. Codes and
+  // messages are byte-identical to the inline blocks this replaced; the
+  // incident history (AVGO/MRVL/TSM writer flips, the CRWD/CEG burn)
+  // moved with the rules.
+  let transitionInput = {
+    thesisId: args.thesis_id,
+    ticker: existing.ticker,
+    currentStatus: existing.status,
+    // A sold thesis may come back to watch (DAV-240); a dropped or
+    // invalidated one may not.
+    retiredReason: existing.retiredReason ?? null,
+    changeStatus: args.change_status,
+    runMode: ctx.runMode,
+  };
+  {
+    let violation = checkStatusTransition(transitionInput);
+    // A status verb that can't apply (the writer's on a promoted stock, a
+    // kill on one) is refused by itself.
+    if (violation && violation.data.error !== "terminal_status" && violation.data.error !== "promoted_thesis_requires_resolution") {
+      refuseField(
+        "change_status",
+        String(violation.data.message ?? violation.summary),
+        violation.data.error === "thesis_writer_cannot_change_promoted_status" ? "the writer doesn't change status" : "a promoted stock goes back to watching first",
+      );
+      transitionInput = { ...transitionInput, changeStatus: undefined };
+      violation = checkStatusTransition(transitionInput);
+    }
+    // History takes no edit: nothing in the call can land.
+    if (violation?.data.error === "terminal_status") {
       return {
-        summary: `Thesis ${args.thesis_id} belongs to a different analyst.`,
-        data: { ok: false, error: "analyst_mismatch" },
+        summary: violation.summary,
+        data: { ok: false, ...violation.data },
         sources: [],
       };
     }
+    // A note on a promoted stock lands and leaves it promoted: the flag
+    // lists it again every day, so refusing the note only made runs retry.
+    stillPromoted = violation?.data.error === "promoted_thesis_requires_resolution";
+  }
 
-    // ── Status-transition law (DAV-210) ──────────────────────────────────
-    // Terminal rows, the PROMOTED state machine, and the writer role gate —
-    // one readable table in lib/agent/thesis-transitions.ts. Codes and
-    // messages are byte-identical to the inline blocks this replaced; the
-    // incident history (AVGO/MRVL/TSM writer flips, the CRWD/CEG burn)
-    // moved with the rules.
-    let transitionInput = {
-      thesisId: args.thesis_id,
-      ticker: existing.ticker,
-      currentStatus: existing.status,
-      // A sold thesis may come back to watch (DAV-240); a dropped or
-      // invalidated one may not.
-      retiredReason: existing.retiredReason ?? null,
-      changeStatus: args.change_status,
-      runMode: ctx.runMode,
+  // ── HOLDING / retired-sold are tool-owned (P1-25 / P1-24) ─────────────
+  // The legacy ACTIVE/CLOSED change_status verbs were removed from this
+  // tool's input enum: WATCHING→HOLDING and HOLDING→retired-sold are facts
+  // about the Alpaca account, set ONLY by the execution/approval layer when
+  // a real fill lands (place_trade inline + promoteThesisOnApproval;
+  // close_position / closeThesisOnApproval). The agent that tried to set
+  // them here is what stranded SNOW: on a proposal path it flipped
+  // WATCHING→ACTIVE before approval, and reject/expire never reverted it →
+  // orphan thesis with no position. Now Zod rejects those verbs outright at
+  // parse time; the agent expresses INTENT (place_trade / close_position)
+  // and the tool projects the status.
+
+  // ── Position-thesis pairing guard ─────────────────────────────────────
+  // Terminating an ACTIVE thesis without closing its position creates a
+  // zombie position: the position stays OPEN but the live thesis backing
+  // it is terminal. Three observed cases:
+  //   - 2026-05-13 Secular Theme / GOOGL → INVALIDATED without close
+  //   - 2026-05-14 Earnings Drift / TSM → INVALIDATED without close
+  //   - 2026-05-14 Catalyst Event Raider / AMZN → ARCHIVED without close (F2 gap)
+  //
+  // Both INVALIDATED and ARCHIVED on a HOLDING-with-position are the same
+  // zombie pattern. Refuse either unless a close_position fired on the
+  // same ticker in this run.
+  //
+  // Carve-outs:
+  //   - WATCHING thesis being terminated (no position by definition) — pass.
+  //   - The thesis is already terminal (handled by the terminal guard above).
+  // (P1-24: the legacy `change_status='CLOSED'` verb is gone — exiting a held
+  // name is close_position, which flips the thesis to RETIRED-sold itself.
+  // The agent can no longer retire a held name without that paired close.)
+  if (needsPairedCloseCheck(transitionInput) && ctx.analystId) {
+    const openPosition = await prisma.position.findFirst({
+      where: {
+        analystId: ctx.analystId,
+        symbol: existing.ticker,
+        status: "OPEN",
+      },
+      select: { id: true, direction: true, quantity: true },
+    });
+    // Did close_position fire on this ticker in THIS run? If so, the
+    // pair is intact — let the terminal transition through.
+    const closeInRun =
+      openPosition && ctx.runId
+        ? await prisma.thesisUpdate.findFirst({
+            where: {
+              runId: ctx.runId,
+              type: "CLOSED",
+              thesis: { ticker: existing.ticker },
+            },
+            select: { id: true },
+          })
+        : null;
+    const violation = checkTerminateWithoutClose(transitionInput, {
+      openPosition,
+      closedThisRun: closeInRun != null,
+    });
+    if (violation) {
+      refuseField("change_status", String(violation.data.message ?? violation.summary), "the position is still open");
+      transitionInput = { ...transitionInput, changeStatus: undefined };
+    }
+  }
+
+  // ── Unresearched-seed-must-commit guard ──────────────────────────────
+  // 2026-05-14: observed the agent calling update_thesis on seed theses
+  // with reasoning/bullets set but NO `direction` arg. The call succeeded
+  // (patch was non-empty so the empty-patch auto-bump didn't fire), the
+  // agent pushed the review clock forward 30 days, and the seed got
+  // buried for a month with no commitment. F1 in the V2 prompt tells the
+  // agent to commit; this gate ENFORCES it tool-side.
+  //
+  // Rule: any update_thesis call on an unresearched seed MUST include
+  // `direction`. The seed is "awaiting first research" — there's nothing
+  // to refine until the agent commits to a view. Refining the seed's
+  // reasoning/bullets without committing is the wrong shape regardless
+  // of how good the rationale is.
+  //
+  // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
+  // isUnresearchedSeed helper catches both during the dual-read window.
+  //
+  // DAV-209: direction-null also covers "looked, no view yet, keeping the
+  // name in view." That is a finished decision, not an unresearched seed,
+  // and its wake triggers must stay editable without forcing a direction
+  // commitment. The derived discriminator: such a row carries ≥1
+  // AGENT-authored trigger; a seed carries none (zero triggers, or only a
+  // DEFAULT-source clock).
+  const existingRowTriggers: Trigger[] = Array.isArray(existing.triggers)
+    ? (existing.triggers as unknown as Trigger[])
+    : [];
+  const isSoftWatchRow =
+    isUnresearchedSeed(existing.direction) &&
+    existingRowTriggers.some((t) => t.source === "AGENT");
+  if (
+    isUnresearchedSeed(existing.direction) &&
+    !isSoftWatchRow &&
+    !args.direction
+  ) {
+    // The same gate for every door; the words name only what the door has.
+    // The morning run's save carries no belief fields and no direction
+    // (step 12, part 1): a seed's claim is the writer's, so its answer is a
+    // dispatch, and the refusal says so instead of listing fields it lacks.
+    const message = isMorningRun(ctx)
+      ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+        `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
+        `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
+      : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
+        `Three legal commitments:\n` +
+        `  • \`direction: "LONG"\` + horizon + a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one) on the stock or in add_triggers, and a Stop watching line (action STOP_WATCHING, "Stop watching if below $X") if its playbook has one, + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
+        `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
+        `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
+        `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
+    return {
+      summary: isMorningRun(ctx)
+        ? `$${existing.ticker} has no view yet — its claim is the writer's: dispatch_thesis_research, then wait_for_thesis_refresh.`
+        : `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
+      data: {
+        ok: false,
+        error: "pending_update_without_direction",
+        current_direction: existing.direction,
+        ticker: existing.ticker,
+        message,
+      },
+      sources: [],
     };
-    {
-      let violation = checkStatusTransition(transitionInput);
-      // A status verb that can't apply (the writer's on a promoted stock, a
-      // kill on one) is refused by itself.
-      if (violation && violation.data.error !== "terminal_status" && violation.data.error !== "promoted_thesis_requires_resolution") {
-        refuseField(
-          "change_status",
-          String(violation.data.message ?? violation.summary),
-          violation.data.error === "thesis_writer_cannot_change_promoted_status" ? "the writer doesn't change status" : "a promoted stock goes back to watching first",
-        );
-        transitionInput = { ...transitionInput, changeStatus: undefined };
-        violation = checkStatusTransition(transitionInput);
+  }
+
+  // ── Unresearched-seed-promotion direction guard ──────────────────────
+  // The only legal direction change is OUT of an unresearched seed
+  // (user/builder/editor seed → agent committed to a view). Direction
+  // flips on committed (LONG ↔ SHORT) theses go through record_thesis
+  // with parent_thesis_id so the audit trail captures the chain.
+  //
+  // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy).
+  // Set when a top-tier call arrives without its variant view: the tier
+  // is stored one down, with the reason next to the rationale.
+  let convictionDowngradeNote: string | null = null;
+  if (args.direction && !isUnresearchedSeed(existing.direction)) {
+    // A refusal names only tools this door has: the morning run and the
+    // trigger run have no record_thesis.
+    const recordThesis = DOORS_WITH_RECORD_THESIS.has(ctx.runMode ?? "");
+    const pass = args.direction === "PASS";
+    refuseField(
+      "direction",
+      pass
+        ? existing.status === "HOLDING"
+          ? "A stock we hold isn't passed: selling it is close_position."
+          : `A thesis with a view isn't passed in place: change_status ARCHIVED drops it, or INVALIDATED if the belief broke.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
+        : recordThesis
+          ? `A flip is a new thesis: record_thesis with parent_thesis_id "${existing.id}" writes it and retires this one.`
+          : "A flip is a new thesis; say so in your note.",
+      pass ? (existing.status === "HOLDING" ? "we hold it" : "a thesis with a view isn't passed") : "a flip is a new thesis",
+    );
+  }
+  if (args.direction) {
+    // PENDING → LONG/SHORT: need full structural commitment.
+    if (args.direction === "LONG" || args.direction === "SHORT") {
+      const missing: string[] = [];
+      if (!args.horizon) missing.push("horizon");
+      // A watch needs a next action, not a buy price: a buy (ENTER) or a
+      // review (REVIEW) that can lead to one, already on the stock or in this
+      // call. A Stop watching line is optional (a playbook may start with
+      // only a review: PEAD waits for the report). The buy may be a chart
+      // condition. SMMT 2026-10-02: the buy was "closes above $17.10 and
+      // above the 20-day" (an AND trigger); the old rule demanded a buy price
+      // anyway, the chat sent $17.10 to satisfy it, and the stock got an
+      // accidental copy of the buy it already had.
+      const has = (action: string) =>
+        existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
+      if (!has("ENTER") && !has("REVIEW")) {
+        missing.push("a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one, in add_triggers; a Stop watching line is optional)");
       }
-      // History takes no edit: nothing in the call can land.
-      if (violation?.data.error === "terminal_status") {
+      if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
+      if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
+      if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
+      // Conviction Expression v4 — PENDING promotion requires the
+      // same writer-side fields record_thesis would have required.
+      if (!args.conviction) missing.push("conviction (STRONG/HIGH/MEDIUM/LOW)");
+      if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) missing.push("conviction_rationale");
+      // A top-tier call without its variant view is stored as MEDIUM
+      // with the reason — never refused (DAV-316).
+      if (
+        (args.conviction === "STRONG" || args.conviction === "HIGH") &&
+        (!args.variant_view || args.variant_view.trim().length === 0)
+      ) {
+        // The morning run's and the chat's saves have no variant_view; the writer gives one.
+        convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
+          ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
+          : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
+      }
+      if (missing.length > 0) {
         return {
-          summary: violation.summary,
-          data: { ok: false, ...violation.data },
+          summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
+          data: {
+            ok: false,
+            error: "pending_promotion_missing_fields",
+            missing,
+            message:
+              `Promoting a PENDING thesis to ${args.direction} is a full commitment — you need every structural field that record_thesis would have required. Missing: ${missing.join(", ")}. Supply all of them in this call and the thesis flips PENDING → ${args.direction} WATCHING in place.`,
+          },
           sources: [],
         };
       }
-      // A note on a promoted stock lands and leaves it promoted: the flag
-      // lists it again every day, so refusing the note only made runs retry.
-      stillPromoted = violation?.data.error === "promoted_thesis_requires_resolution";
     }
-
-    // ── HOLDING / retired-sold are tool-owned (P1-25 / P1-24) ─────────────
-    // The legacy ACTIVE/CLOSED change_status verbs were removed from this
-    // tool's input enum: WATCHING→HOLDING and HOLDING→retired-sold are facts
-    // about the Alpaca account, set ONLY by the execution/approval layer when
-    // a real fill lands (place_trade inline + promoteThesisOnApproval;
-    // close_position / closeThesisOnApproval). The agent that tried to set
-    // them here is what stranded SNOW: on a proposal path it flipped
-    // WATCHING→ACTIVE before approval, and reject/expire never reverted it →
-    // orphan thesis with no position. Now Zod rejects those verbs outright at
-    // parse time; the agent expresses INTENT (place_trade / close_position)
-    // and the tool projects the status.
-
-    // ── Position-thesis pairing guard ─────────────────────────────────────
-    // Terminating an ACTIVE thesis without closing its position creates a
-    // zombie position: the position stays OPEN but the live thesis backing
-    // it is terminal. Three observed cases:
-    //   - 2026-05-13 Secular Theme / GOOGL → INVALIDATED without close
-    //   - 2026-05-14 Earnings Drift / TSM → INVALIDATED without close
-    //   - 2026-05-14 Catalyst Event Raider / AMZN → ARCHIVED without close (F2 gap)
-    //
-    // Both INVALIDATED and ARCHIVED on a HOLDING-with-position are the same
-    // zombie pattern. Refuse either unless a close_position fired on the
-    // same ticker in this run.
-    //
-    // Carve-outs:
-    //   - WATCHING thesis being terminated (no position by definition) — pass.
-    //   - The thesis is already terminal (handled by the terminal guard above).
-    // (P1-24: the legacy `change_status='CLOSED'` verb is gone — exiting a held
-    // name is close_position, which flips the thesis to RETIRED-sold itself.
-    // The agent can no longer retire a held name without that paired close.)
-    if (needsPairedCloseCheck(transitionInput) && ctx.analystId) {
-      const openPosition = await prisma.position.findFirst({
-        where: {
-          analystId: ctx.analystId,
-          symbol: existing.ticker,
-          status: "OPEN",
-        },
-        select: { id: true, direction: true, quantity: true },
-      });
-      // Did close_position fire on this ticker in THIS run? If so, the
-      // pair is intact — let the terminal transition through.
-      const closeInRun =
-        openPosition && ctx.runId
-          ? await prisma.thesisUpdate.findFirst({
-              where: {
-                runId: ctx.runId,
-                type: "CLOSED",
-                thesis: { ticker: existing.ticker },
-              },
-              select: { id: true },
-            })
-          : null;
-      const violation = checkTerminateWithoutClose(transitionInput, {
-        openPosition,
-        closedThisRun: closeInRun != null,
-      });
-      if (violation) {
-        refuseField("change_status", String(violation.data.message ?? violation.summary), "the position is still open");
-        transitionInput = { ...transitionInput, changeStatus: undefined };
+    // PENDING → PASS: need flip-criteria.
+    if (args.direction === "PASS") {
+      const inv = args.invalidation_conditions ?? [];
+      if (inv.filter((s) => s.trim().length > 0).length < 1) {
+        return {
+          summary: `Refused PENDING→PASS on $${existing.ticker} — invalidation_conditions required.`,
+          data: {
+            ok: false,
+            error: "pending_pass_missing_invalidation",
+            message:
+              `Flipping PENDING to PASS still needs invalidation_conditions (≥1). PASS is institutional memory; the value of that memory is what would change the verdict. Without flip-criteria a future encounter has nothing to compare against.`,
+          },
+          sources: [],
+        };
       }
     }
+  }
 
-    // ── Unresearched-seed-must-commit guard ──────────────────────────────
-    // 2026-05-14: observed the agent calling update_thesis on seed theses
-    // with reasoning/bullets set but NO `direction` arg. The call succeeded
-    // (patch was non-empty so the empty-patch auto-bump didn't fire), the
-    // agent pushed the review clock forward 30 days, and the seed got
-    // buried for a month with no commitment. F1 in the V2 prompt tells the
-    // agent to commit; this gate ENFORCES it tool-side.
-    //
-    // Rule: any update_thesis call on an unresearched seed MUST include
-    // `direction`. The seed is "awaiting first research" — there's nothing
-    // to refine until the agent commits to a view. Refining the seed's
-    // reasoning/bullets without committing is the wrong shape regardless
-    // of how good the rationale is.
-    //
-    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy) — the
-    // isUnresearchedSeed helper catches both during the dual-read window.
-    //
-    // DAV-209: direction-null also covers "looked, no view yet, keeping the
-    // name in view." That is a finished decision, not an unresearched seed,
-    // and its wake triggers must stay editable without forcing a direction
-    // commitment. The derived discriminator: such a row carries ≥1
-    // AGENT-authored trigger; a seed carries none (zero triggers, or only a
-    // DEFAULT-source clock).
-    const existingRowTriggers: Trigger[] = Array.isArray(existing.triggers)
-      ? (existing.triggers as unknown as Trigger[])
-      : [];
-    const isSoftWatchRow =
-      isUnresearchedSeed(existing.direction) &&
-      existingRowTriggers.some((t) => t.source === "AGENT");
+  // ── Conviction Expression v4 — coherence + consistency gates ────────
+  // See docs/plans/CONVICTION_EXPRESSION.md §3, §3.5. Three checks fire
+  // on non-PENDING-promotion paths:
+  //   1. Coherence: if patching `conviction`, must also patch rationale.
+  //   2. Coherence: if patching to STRONG/HIGH, variantView must exist
+  //      (either patched in this call, or already on the row).
+  // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
+  const isPendingPromotionForConvictionGates = isUnresearchedSeed(
+    existing.direction,
+  );
+  if (!isPendingPromotionForConvictionGates) {
+    // Coherence check 1: a new tier comes with its reason; without one the
+    // tier is refused and the rest lands. Read as sent, so a reason equal
+    // to the stored one still counts as given.
+    if (args.conviction !== undefined && !sent.conviction_rationale?.trim()) {
+      refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why the tier changed, or the old reason stops matching the tier.", "no reason given for the new tier");
+    }
+    const effectiveConviction = args.conviction ?? existing.conviction;
+    const effectiveVariantView =
+      args.variant_view !== undefined
+        ? args.variant_view
+        : existing.variantView;
+
+    // Coherence check 2: STRONG/HIGH needs a variantView, even if just
+    // carried over from the existing row. Without one the tier is stored
+    // as MEDIUM with the reason next to it — a detail the app can fix is
+    // fixed by the app, never a refusal (DAV-316).
     if (
-      isUnresearchedSeed(existing.direction) &&
-      !isSoftWatchRow &&
-      !args.direction
+      (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
+      (!effectiveVariantView || effectiveVariantView.trim().length === 0)
     ) {
-      // The same gate for every door; the words name only what the door has.
-      // The morning run's save carries no belief fields and no direction
-      // (step 12, part 1): a seed's claim is the writer's, so its answer is a
-      // dispatch, and the refusal says so instead of listing fields it lacks.
-      const message = isMorningRun(ctx)
-        ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
-          `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
-          `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
-        : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
-          `Three legal commitments:\n` +
-          `  • \`direction: "LONG"\` + horizon + a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one) on the stock or in add_triggers, and a Stop watching line (action STOP_WATCHING, "Stop watching if below $X") if its playbook has one, + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
-          `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
-          `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
-          `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
-      return {
-        summary: isMorningRun(ctx)
-          ? `$${existing.ticker} has no view yet — its claim is the writer's: dispatch_thesis_research, then wait_for_thesis_refresh.`
-          : `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
-        data: {
-          ok: false,
-          error: "pending_update_without_direction",
-          current_direction: existing.direction,
-          ticker: existing.ticker,
-          message,
-        },
-        sources: [],
-      };
+      convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
+        ? `Stored as MEDIUM: ${effectiveConviction} needs a variant view and none is on the row; the writer gives it.`
+        : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
     }
 
-    // ── Unresearched-seed-promotion direction guard ──────────────────────
-    // The only legal direction change is OUT of an unresearched seed
-    // (user/builder/editor seed → agent committed to a view). Direction
-    // flips on committed (LONG ↔ SHORT) theses go through record_thesis
-    // with parent_thesis_id so the audit trail captures the chain.
-    //
-    // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy).
-    // Set when a top-tier call arrives without its variant view: the tier
-    // is stored one down, with the reason next to the rationale.
-    let convictionDowngradeNote: string | null = null;
-    if (args.direction && !isUnresearchedSeed(existing.direction)) {
-      // A refusal names only tools this door has: the morning run and the
-      // trigger run have no record_thesis.
-      const recordThesis = DOORS_WITH_RECORD_THESIS.has(ctx.runMode ?? "");
-      const pass = args.direction === "PASS";
-      refuseField(
-        "direction",
-        pass
-          ? existing.status === "HOLDING"
-            ? "A stock we hold isn't passed: selling it is close_position."
-            : `A thesis with a view isn't passed in place: change_status ARCHIVED drops it, or INVALIDATED if the belief broke.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
-          : recordThesis
-            ? `A flip is a new thesis: record_thesis with parent_thesis_id "${existing.id}" writes it and retires this one.`
-            : "A flip is a new thesis; say so in your note.",
-        pass ? (existing.status === "HOLDING" ? "we hold it" : "a thesis with a view isn't passed") : "a flip is a new thesis",
-      );
-    }
-    if (args.direction) {
-      // PENDING → LONG/SHORT: need full structural commitment.
-      if (args.direction === "LONG" || args.direction === "SHORT") {
-        const missing: string[] = [];
-        if (!args.horizon) missing.push("horizon");
-        // A watch needs a next action, not a buy price: a buy (ENTER) or a
-        // review (REVIEW) that can lead to one, already on the stock or in this
-        // call. A Stop watching line is optional (a playbook may start with
-        // only a review: PEAD waits for the report). The buy may be a chart
-        // condition. SMMT 2026-10-02: the buy was "closes above $17.10 and
-        // above the 20-day" (an AND trigger); the old rule demanded a buy price
-        // anyway, the chat sent $17.10 to satisfy it, and the stock got an
-        // accidental copy of the buy it already had.
-        const has = (action: string) =>
-          existingRowTriggers.some((t) => t.action === action) || (args.add_triggers ?? []).some((t) => t.action === action);
-        if (!has("ENTER") && !has("REVIEW")) {
-          missing.push("a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one, in add_triggers; a Stop watching line is optional)");
-        }
-        if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
-        if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
-        if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
-        // Conviction Expression v4 — PENDING promotion requires the
-        // same writer-side fields record_thesis would have required.
-        if (!args.conviction) missing.push("conviction (STRONG/HIGH/MEDIUM/LOW)");
-        if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) missing.push("conviction_rationale");
-        // A top-tier call without its variant view is stored as MEDIUM
-        // with the reason — never refused (DAV-316).
-        if (
-          (args.conviction === "STRONG" || args.conviction === "HIGH") &&
-          (!args.variant_view || args.variant_view.trim().length === 0)
-        ) {
-          // The morning run's and the chat's saves have no variant_view; the writer gives one.
-          convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
-            ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
-            : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
-        }
-        if (missing.length > 0) {
-          return {
-            summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
-            data: {
-              ok: false,
-              error: "pending_promotion_missing_fields",
-              missing,
-              message:
-                `Promoting a PENDING thesis to ${args.direction} is a full commitment — you need every structural field that record_thesis would have required. Missing: ${missing.join(", ")}. Supply all of them in this call and the thesis flips PENDING → ${args.direction} WATCHING in place.`,
-            },
-            sources: [],
-          };
-        }
-      }
-      // PENDING → PASS: need flip-criteria.
-      if (args.direction === "PASS") {
-        const inv = args.invalidation_conditions ?? [];
-        if (inv.filter((s) => s.trim().length > 0).length < 1) {
-          return {
-            summary: `Refused PENDING→PASS on $${existing.ticker} — invalidation_conditions required.`,
-            data: {
-              ok: false,
-              error: "pending_pass_missing_invalidation",
-              message:
-                `Flipping PENDING to PASS still needs invalidation_conditions (≥1). PASS is institutional memory; the value of that memory is what would change the verdict. Without flip-criteria a future encounter has nothing to compare against.`,
-            },
-            sources: [],
-          };
-        }
-      }
-    }
+    // Conviction is the writer's view; it is not derived from any score.
+  }
 
-    // ── Conviction Expression v4 — coherence + consistency gates ────────
-    // See docs/plans/CONVICTION_EXPRESSION.md §3, §3.5. Three checks fire
-    // on non-PENDING-promotion paths:
-    //   1. Coherence: if patching `conviction`, must also patch rationale.
-    //   2. Coherence: if patching to STRONG/HIGH, variantView must exist
-    //      (either patched in this call, or already on the row).
-    // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
-    const isPendingPromotionForConvictionGates = isUnresearchedSeed(
-      existing.direction,
+  // A terminal flip clears the triggers, so the price-shape rules below don't
+  // apply to it. (PASS on a seed is terminal too — it lands PASSED.)
+  const isTerminalTransition =
+    args.change_status === "INVALIDATED" ||
+    args.change_status === "ARCHIVED" ||
+    args.direction === "PASS";
+
+  // The rule this line answers, kept on the line (named, or on the morning run the one open fire or the due clock).
+  const answered = await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition);
+
+  // ── Trigger ops (DAV-242) ────────────────────────────────────────────
+  // Every trigger change is an op: add, edit by id, remove by id. Zero
+  // triggers is a legal state (DAV-209): a review-only update on a bare
+  // thesis goes through untouched.
+  const triggerOps: TriggerOp[] = [
+    ...(args.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: t as Trigger })),
+    ...(args.edit_triggers ?? []).map((e) => ({
+      op: "edit" as const,
+      id: e.id,
+      ...editNumber(e),
+      action: e.action,
+      fireMode: e.fire_mode,
+      rationale: e.rationale,
+      close: e.close,
+    })),
+    ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
+  ];
+
+  // The levels above this thesis, resolved against an EMPTY thesis array
+  // so we see them unmasked by the thesis's own triggers. Lazy: this is
+  // the most-called tool in the app and most calls don't touch triggers.
+  let inheritedLadder: ResolvedTrigger[] = [];
+  if (triggerOps.length > 0 && !isTerminalTransition) {
+    const analystId = existing.researchRun?.agentConfigId ?? null;
+    const levelSources = analystId
+      ? (await loadLevelSources([analystId])).get(analystId)
+      : undefined;
+    inheritedLadder = resolveThesisLadder(
+      {
+        triggers: [],
+        triggerState: {},
+        status: existing.status,
+        horizon: args.horizon ?? existing.horizon,
+      },
+      levelSources,
+      `thesis=${args.thesis_id}`,
     );
-    if (!isPendingPromotionForConvictionGates) {
-      // Coherence check 1: a new tier comes with its reason; without one the
-      // tier is refused and the rest lands. Read as sent, so a reason equal
-      // to the stored one still counts as given.
-      if (args.conviction !== undefined && !sent.conviction_rationale?.trim()) {
-        refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why the tier changed, or the old reason stops matching the tier.", "no reason given for the new tier");
-      }
-      const effectiveConviction = args.conviction ?? existing.conviction;
-      const effectiveVariantView =
-        args.variant_view !== undefined
-          ? args.variant_view
-          : existing.variantView;
+  }
 
-      // Coherence check 2: STRONG/HIGH needs a variantView, even if just
-      // carried over from the existing row. Without one the tier is stored
-      // as MEDIUM with the reason next to it — a detail the app can fix is
-      // fixed by the app, never a refusal (DAV-316).
-      if (
-        (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
-        (!effectiveVariantView || effectiveVariantView.trim().length === 0)
-      ) {
-        convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
-          ? `Stored as MEDIUM: ${effectiveConviction} needs a variant view and none is on the row; the writer gives it.`
-          : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
-      }
+  // Build the patch. Only set keys the agent supplied — undefined ≠ null.
+  const patch: UpdatePatch = {};
 
-      // Conviction is the writer's view; it is not derived from any score.
+  // ── Narrative section reconciliation (PR-9 flat schema) ──────────────
+  // The section args (bull_case / bear_case) take precedence over the
+  // legacy plain-string args (thesis_bullets / risk_flags). Legacy values
+  // are wrapped in the new JSONB shape.
+  if (args.bull_case !== undefined) {
+    patch.bullCase = args.bull_case;
+  }
+  if (args.bear_case !== undefined) {
+    patch.bearCase = args.bear_case;
+  }
+  if (args.company !== undefined) patch.company = args.company;
+  // Stamp researchUpdatedAt if any V2 section was touched (drives the
+  // daily-run staleness gate).
+  if (
+    args.company !== undefined ||
+    args.bull_case !== undefined ||
+    args.bear_case !== undefined
+  ) {
+    patch.researchUpdatedAt = new Date();
+  }
+
+  if (args.core_belief !== undefined) patch.coreBelief = args.core_belief;
+  if (args.key_assumptions !== undefined)
+    patch.keyAssumptions = args.key_assumptions;
+  if (args.invalidation_conditions !== undefined)
+    patch.invalidationConds = args.invalidation_conditions;
+  // The entry / target / stop columns are NOT written here. A level change
+  // is a trigger op; the columns are recomputed from the resulting trigger
+  // list in the ops block below. Writing the column directly is
+  // how SNOW ended up showing a $256 stop that nothing would ever have
+  // sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
+  // PENDING-promotion direction flip (guarded above so this only runs on
+  // legal transitions). A PASS (incl. PENDING → PASS) flips status to
+  // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
+  // the structural fields the agent supplied.
+  if (args.direction !== undefined) {
+    if (args.direction === "PASS") {
+      // PASS = researched-and-declined → PASSED (was ARCHIVED before the
+      // status-taxonomy migration; the walk-away change_status:"ARCHIVED"
+      // path below is unchanged).
+      //
+      // P1-24 PASS-off-direction: the pass fact now lives ENTIRELY on
+      // status=PASSED. `direction` is nulled — `LONG|SHORT|null` is the
+      // only legal column domain. The agent still SENDS direction:"PASS"
+      // (kept call signal), we just don't store it. Readers identify a
+      // pass via status=PASSED (see isPassedThesis).
+      patch.direction = null;
+      patch.status = "PASSED";
+      patch.closedAt = new Date();
+      patch.closeReason = args.rationale?.slice(0, 500) ?? null;
+      patch.triggers = [] as unknown as object;
+    } else {
+      // LONG / SHORT — the only other legal direction promotion (out of
+      // an unresearched seed; guarded above).
+      patch.direction = args.direction;
     }
-
-    // A terminal flip clears the triggers, so the price-shape rules below don't
-    // apply to it. (PASS on a seed is terminal too — it lands PASSED.)
-    const isTerminalTransition =
-      args.change_status === "INVALIDATED" ||
-      args.change_status === "ARCHIVED" ||
-      args.direction === "PASS";
-
-    // The rule this line answers, kept on the line (named, or on the morning run the one open fire or the due clock).
-    const answered = await ruleAnswered(existing, ctx, args.trigger_id, isTerminalTransition);
-
-    // ── Trigger ops (DAV-242) ────────────────────────────────────────────
-    // Every trigger change is an op: add, edit by id, remove by id. Zero
-    // triggers is a legal state (DAV-209): a review-only update on a bare
-    // thesis goes through untouched.
-    const triggerOps: TriggerOp[] = [
-      ...(args.add_triggers ?? []).map((t) => ({ op: "add" as const, trigger: t as Trigger })),
-      ...(args.edit_triggers ?? []).map((e) => ({
-        op: "edit" as const,
-        id: e.id,
-        ...editNumber(e),
-        action: e.action,
-        fireMode: e.fire_mode,
-        rationale: e.rationale,
-        close: e.close,
-      })),
-      ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
-    ];
-
-    // The levels above this thesis, resolved against an EMPTY thesis array
-    // so we see them unmasked by the thesis's own triggers. Lazy: this is
-    // the most-called tool in the app and most calls don't touch triggers.
-    let inheritedLadder: ResolvedTrigger[] = [];
-    if (triggerOps.length > 0 && !isTerminalTransition) {
-      const analystId = existing.researchRun?.agentConfigId ?? null;
-      const levelSources = analystId
-        ? (await loadLevelSources([analystId])).get(analystId)
-        : undefined;
-      inheritedLadder = resolveThesisLadder(
-        {
-          triggers: [],
-          triggerState: {},
-          status: existing.status,
-          horizon: args.horizon ?? existing.horizon,
-        },
-        levelSources,
-        `thesis=${args.thesis_id}`,
-      );
-    }
-
-    // Build the patch. Only set keys the agent supplied — undefined ≠ null.
-    const patch: UpdatePatch = {};
-
-    // ── Narrative section reconciliation (PR-9 flat schema) ──────────────
-    // The section args (bull_case / bear_case) take precedence over the
-    // legacy plain-string args (thesis_bullets / risk_flags). Legacy values
-    // are wrapped in the new JSONB shape.
-    if (args.bull_case !== undefined) {
-      patch.bullCase = args.bull_case;
-    }
-    if (args.bear_case !== undefined) {
-      patch.bearCase = args.bear_case;
-    }
-    if (args.company !== undefined) patch.company = args.company;
-    // Stamp researchUpdatedAt if any V2 section was touched (drives the
-    // daily-run staleness gate).
-    if (
-      args.company !== undefined ||
-      args.bull_case !== undefined ||
-      args.bear_case !== undefined
-    ) {
+  }
+  // Conviction Expression v4 — persist patched conviction fields.
+  // Coherence + consistency gates above already ran; values here are
+  // safe to write. Empty-string for variantView is normalized to null
+  // (writer way to clear an obsolete edge).
+  if (args.conviction !== undefined) patch.conviction = args.conviction;
+  if (args.conviction_rationale !== undefined)
+    patch.convictionRationale = args.conviction_rationale;
+  if (convictionDowngradeNote) {
+    patch.conviction = "MEDIUM";
+    patch.convictionRationale = `${args.conviction_rationale ?? existing.convictionRationale ?? ""}\n\n[${convictionDowngradeNote}]`.trim();
+  }
+  if (args.variant_view !== undefined)
+    patch.variantView =
+      args.variant_view.trim().length === 0 ? null : args.variant_view;
+  if (args.horizon !== undefined) patch.horizon = args.horizon;
+  if (args.setup_id !== undefined) patch.setupId = args.setup_id;
+  if (args.catalyst_date !== undefined)
+    patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
+  // next_review_at is gone (DAV-195 L7). Review cadence is a trigger:
+  // "review every N days", counted from the last actual review, cascading
+  // account -> analyst -> thesis like every other level. An agent that
+  // wants this name looked at more often edits that trigger; it does not
+  // type a date. Every surface derives the due date at read time (DAV-221).
+  // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
+  // `research_sections` blob is gone — parsed sections land on the 9
+  // first-class JSONB columns above (which also stamp researchUpdatedAt
+  // via the V2-section-supplied check). `research_data` (the raw markdown
+  // structured-data block) is still passthrough-persisted here for the
+  // card's data tab + audit.
+  if (
+    typeof args.research_data === "string" &&
+    args.research_data.length > 0
+  ) {
+    patch.researchData = args.research_data;
+    // researchUpdatedAt was already stamped above when any V2 section
+    // arrived; stamp here too as a fallback when only research_data lands
+    // without sections (degraded synthesis path).
+    if (patch.researchUpdatedAt === undefined) {
       patch.researchUpdatedAt = new Date();
     }
+  }
+  // ── Apply the trigger ops ────────────────────────────────────────────
+  // Rules run per op on the resulting list (one trigger per bucket, the
+  // ratchet on a held stock, a rationale on an agent's level change); a
+  // refused op is reported by id and the rest lands. Then ONE check on the
+  // resulting levels — ordering — replaces the argument gate and the
+  // derived-tuple gate that used to run here.
+  if (triggerOps.length > 0) {
+    if (isTerminalTransition) {
+      opResults.push(
+        ...triggerOps.map((o) => ({
+          op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
+          id: "id" in o ? o.id : "",
+          ok: false,
+          text: "Trigger change",
+          reason: "The thesis is being retired in this call — its triggers are cleared with it.",
+        })),
+      );
+    } else if (parseTriggersResilient(existing.triggers).dropped > 0) {
+      // A write must not "repair" a list by dropping what it can't parse —
+      // that would silently delete a stop. Say so; nothing changes.
+      opResults.push(
+        ...triggerOps.map((o) => ({
+          op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
+          id: "id" in o ? o.id : "",
+          ok: false,
+          text: "Trigger change",
+          reason: `$${existing.ticker} carries a trigger that cannot be parsed — fix the stored triggers before editing them.`,
+        })),
+      );
+    } else {
+      const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
+      const levelStatus = (patch.status ?? existing.status) as string | null;
+      const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+      const apply = (ops: TriggerOp[]) => applyTriggerOps({
+        stored: existingTriggers,
+        inherited: inheritedLadder,
+        ops,
+        direction: levelDirection,
+        status: levelStatus,
+        actor: "AGENT",
+        // Only the owner's chat may make a buy, add or trim Auto.
+        ownersWord: ctx.runMode === "PRINCIPAL_CHAT",
+        // The tape decides which side a re-levelled buy trigger compares on.
+        // Without it every re-level was a breakout: the CRM shape, where the
+        // analyst wrote "buy the pullback to $203" and the row stored
+        // "buy above $203" against a $258 tape.
+        currentPrice: resolvedPriceAtTime,
+        mintId: () => randomUUID(),
+      });
+      const applied = apply(triggerOps);
+      const check = applied.results.some((r) => r.ok)
+        ? checkLadder({ triggers: applied.triggers, inherited: inheritedLadder, direction: levelDirection, status: levelStatus, actor: "AGENT" })
+        : null;
+      // An op that changes nothing is a no-op here, not a refusal.
+      opResults.push(...applied.results.filter((r) => !r.unchanged));
 
-    if (args.core_belief !== undefined) patch.coreBelief = args.core_belief;
-    if (args.key_assumptions !== undefined)
-      patch.keyAssumptions = args.key_assumptions;
-    if (args.invalidation_conditions !== undefined)
-      patch.invalidationConds = args.invalidation_conditions;
-    // The entry / target / stop columns are NOT written here. A level change
-    // is a trigger op; the columns are recomputed from the resulting trigger
-    // list in the ops block below. Writing the column directly is
-    // how SNOW ended up showing a $256 stop that nothing would ever have
-    // sold at. See docs/plans/LEVELS_AS_TRIGGERS.md.
-    // PENDING-promotion direction flip (guarded above so this only runs on
-    // legal transitions). A PASS (incl. PENDING → PASS) flips status to
-    // PASSED and clears triggers; PENDING → LONG/SHORT stays WATCHING with
-    // the structural fields the agent supplied.
-    if (args.direction !== undefined) {
-      if (args.direction === "PASS") {
-        // PASS = researched-and-declined → PASSED (was ARCHIVED before the
-        // status-taxonomy migration; the walk-away change_status:"ARCHIVED"
-        // path below is unchanged).
-        //
-        // P1-24 PASS-off-direction: the pass fact now lives ENTIRELY on
-        // status=PASSED. `direction` is nulled — `LONG|SHORT|null` is the
-        // only legal column domain. The agent still SENDS direction:"PASS"
-        // (kept call signal), we just don't store it. Readers identify a
-        // pass via status=PASSED (see isPassedThesis).
-        patch.direction = null;
-        patch.status = "PASSED";
-        patch.closedAt = new Date();
-        patch.closeReason = args.rationale.slice(0, 500);
-        patch.triggers = [] as unknown as object;
-      } else {
-        // LONG / SHORT — the only other legal direction promotion (out of
-        // an unresearched seed; guarded above).
-        patch.direction = args.direction;
+      if (check && !check.ok) {
+        // The refusal offers taking the price lines off as an exit; name the
+        // exact ids so the agent doesn't guess (MSFT 2026-09-14 was told
+        // to send the whole list again, an argument that no longer exists).
+        const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
+        // A seed's commitment is its triggers: without a valid set nothing lands.
+        if (isUnresearchedSeed(existing.direction)) {
+          return {
+            summary: `Refused update on $${existing.ticker} — the triggers it leaves are invalid (${check.error}).`,
+            data: { ok: false, error: check.error, message, trigger_ops: notApplied(opResults, check.error) },
+            sources: [],
+          };
+        }
+        // On a thesis with a view the trigger changes are refused together
+        // and the rest of the call lands.
+        refusedFields.push({ field: "triggers", reason: message, why: "the triggers they leave are invalid" });
+        const error = check.error;
+        opResults.splice(
+          0,
+          opResults.length,
+          ...opResults.map((r) =>
+            r.ok ? { ...r, ok: false, reason: `Not applied — refused with this call's other trigger changes: the triggers they leave are invalid (${error}).` } : r,
+          ),
+        );
+      } else if (check?.ok) {
+        patch.triggers = applied.triggers as unknown as object;
+        // The claim may still name a trigger's price this call moved, each trigger against itself.
+        claimNotes.push(
+          ...claimNamesOldLevel({
+            before: existingTriggers,
+            after: applied.triggers,
+            coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
+            invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
+          }),
+        );
       }
     }
-    // Conviction Expression v4 — persist patched conviction fields.
-    // Coherence + consistency gates above already ran; values here are
-    // safe to write. Empty-string for variantView is normalized to null
-    // (writer way to clear an obsolete edge).
-    if (args.conviction !== undefined) patch.conviction = args.conviction;
-    if (args.conviction_rationale !== undefined)
-      patch.convictionRationale = args.conviction_rationale;
-    if (convictionDowngradeNote) {
-      patch.conviction = "MEDIUM";
-      patch.convictionRationale = `${args.conviction_rationale ?? existing.convictionRationale ?? ""}\n\n[${convictionDowngradeNote}]`.trim();
-    }
-    if (args.variant_view !== undefined)
-      patch.variantView =
-        args.variant_view.trim().length === 0 ? null : args.variant_view;
-    if (args.horizon !== undefined) patch.horizon = args.horizon;
-    if (args.setup_id !== undefined) patch.setupId = args.setup_id;
-    if (args.catalyst_date !== undefined)
-      patch.catalystDate = args.catalyst_date ? new Date(args.catalyst_date) : null;
-    // next_review_at is gone (DAV-195 L7). Review cadence is a trigger:
-    // "review every N days", counted from the last actual review, cascading
-    // account -> analyst -> thesis like every other level. An agent that
-    // wants this name looked at more often edits that trigger; it does not
-    // type a date. Every surface derives the due date at read time (DAV-221).
-    // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
-    // `research_sections` blob is gone — parsed sections land on the 9
-    // first-class JSONB columns above (which also stamp researchUpdatedAt
-    // via the V2-section-supplied check). `research_data` (the raw markdown
-    // structured-data block) is still passthrough-persisted here for the
-    // card's data tab + audit.
-    if (
-      typeof args.research_data === "string" &&
-      args.research_data.length > 0
-    ) {
-      patch.researchData = args.research_data;
-      // researchUpdatedAt was already stamped above when any V2 section
-      // arrived; stamp here too as a fallback when only research_data lands
-      // without sections (degraded synthesis path).
-      if (patch.researchUpdatedAt === undefined) {
-        patch.researchUpdatedAt = new Date();
-      }
-    }
-    // ── Apply the trigger ops ────────────────────────────────────────────
-    // Rules run per op on the resulting list (one trigger per bucket, the
-    // ratchet on a held stock, a rationale on an agent's level change); a
-    // refused op is reported by id and the rest lands. Then ONE check on the
-    // resulting levels — ordering — replaces the argument gate and the
-    // derived-tuple gate that used to run here.
-    if (triggerOps.length > 0) {
-      if (isTerminalTransition) {
-        opResults.push(
-          ...triggerOps.map((o) => ({
-            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
-            id: "id" in o ? o.id : "",
-            ok: false,
-            text: "Trigger change",
-            reason: "The thesis is being retired in this call — its triggers are cleared with it.",
-          })),
-        );
-      } else if (parseTriggersResilient(existing.triggers).dropped > 0) {
-        // A write must not "repair" a list by dropping what it can't parse —
-        // that would silently delete a stop. Say so; nothing changes.
-        opResults.push(
-          ...triggerOps.map((o) => ({
-            op: o.op === "level" || o.op === "replace" ? ("edit" as const) : o.op,
-            id: "id" in o ? o.id : "",
-            ok: false,
-            text: "Trigger change",
-            reason: `$${existing.ticker} carries a trigger that cannot be parsed — fix the stored triggers before editing them.`,
-          })),
-        );
-      } else {
-        const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
-        const levelStatus = (patch.status ?? existing.status) as string | null;
-        const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
-        const apply = (ops: TriggerOp[]) => applyTriggerOps({
-          stored: existingTriggers,
-          inherited: inheritedLadder,
-          ops,
-          direction: levelDirection,
-          status: levelStatus,
-          actor: "AGENT",
-          // Only the owner's chat may make a buy, add or trim Auto.
-          ownersWord: ctx.runMode === "PRINCIPAL_CHAT",
-          // The tape decides which side a re-levelled buy trigger compares on.
-          // Without it every re-level was a breakout: the CRM shape, where the
-          // analyst wrote "buy the pullback to $203" and the row stored
-          // "buy above $203" against a $258 tape.
-          currentPrice: resolvedPriceAtTime,
-          mintId: () => randomUUID(),
-        });
-        const applied = apply(triggerOps);
-        const check = applied.results.some((r) => r.ok)
-          ? checkLadder({ triggers: applied.triggers, inherited: inheritedLadder, direction: levelDirection, status: levelStatus, actor: "AGENT" })
-          : null;
-        // An op that changes nothing is a no-op here, not a refusal.
-        opResults.push(...applied.results.filter((r) => !r.unchanged));
+  }
 
-        if (check && !check.ok) {
-          // The refusal offers taking the price lines off as an exit; name the
-          // exact ids so the agent doesn't guess (MSFT 2026-09-14 was told
-          // to send the whole list again, an argument that no longer exists).
-          const message = `${check.message} ${setDownInstruction(existingTriggers, levelDirection)}`.trim();
-          // A seed's commitment is its triggers: without a valid set nothing lands.
-          if (isUnresearchedSeed(existing.direction)) {
-            return {
-              summary: `Refused update on $${existing.ticker} — the triggers it leaves are invalid (${check.error}).`,
-              data: { ok: false, error: check.error, message, trigger_ops: notApplied(opResults, check.error) },
-              sources: [],
-            };
-          }
-          // On a thesis with a view the trigger changes are refused together
-          // and the rest of the call lands.
-          refusedFields.push({ field: "triggers", reason: message, why: "the triggers they leave are invalid" });
-          const error = check.error;
-          opResults.splice(
-            0,
-            opResults.length,
-            ...opResults.map((r) =>
-              r.ok ? { ...r, ok: false, reason: `Not applied — refused with this call's other trigger changes: the triggers they leave are invalid (${error}).` } : r,
-            ),
-          );
-        } else if (check?.ok) {
-          patch.triggers = applied.triggers as unknown as object;
-          // The claim may still name a trigger's price this call moved, each trigger against itself.
-          claimNotes.push(
-            ...claimNamesOldLevel({
-              before: existingTriggers,
-              after: applied.triggers,
-              coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
-              invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
-            }),
-          );
+  // ── A held stock that just got its setup gets that playbook's fill lines ─
+  // (DAV-285): the templates the fill writes (lib/agent/knowledge/playbooks),
+  // through the same ops core, after the agent's own ops so a bucket it
+  // just filled is left alone.
+  if (
+    args.setup_id !== undefined &&
+    args.setup_id !== existing.setupId &&
+    isNamedSetup(args.setup_id) &&
+    (patch.status ?? existing.status) === "HOLDING" &&
+    !isTerminalTransition &&
+    parseTriggersResilient(existing.triggers).dropped === 0
+  ) {
+    const base = (patch.triggers ?? parseTriggersResilient(existing.triggers).triggers) as Trigger[];
+    const { ops: exitOps, notWritten } = fillTemplateOps(await loadPlaybook(ctx.accountId, args.setup_id), base);
+    playbookNotes.push(...notWritten);
+    if (exitOps.length > 0) {
+      const written = applyTriggerOps({
+        stored: base,
+        inherited: inheritedLadder,
+        ops: exitOps,
+        direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
+        status: "HOLDING",
+        actor: "SYSTEM",
+        mintId: () => randomUUID(),
+      });
+      opResults.push(...written.results);
+      if (written.results.some((r) => r.ok)) patch.triggers = written.triggers as unknown as object;
+    }
+  }
+
+  // Status transitions get extra paperwork.
+  let updateType: ThesisUpdateType = "UPDATED";
+  if (args.change_status === "INVALIDATED") {
+    // P1-24 B3: terminal collapse → RETIRED + retiredReason. The agent
+    // verb (change_status:"INVALIDATED") is unchanged; the stored status
+    // is RETIRED and the reason records why. invalidatedAt/invalidReason
+    // still carry the narrative; updateType stays the audit event kind.
+    patch.status = "RETIRED";
+    patch.retiredReason = "INVALIDATED";
+    patch.invalidatedAt = new Date();
+    patch.invalidReason = args.rationale?.slice(0, 500) ?? "";
+    updateType = "INVALIDATED";
+  } else if (args.change_status === "ARCHIVED") {
+    // Terminal-without-trade-or-invalidation. Used for agent/user walking
+    // away from coverage (user UI remove; editor remove). NOT for a
+    // researched-and-declined PASS — that's direction:"PASS" → status=PASSED
+    // above. Distinct from INVALIDATED (view disproven by evidence). Exiting
+    // a held position is close_position, which retires the thesis (sold)
+    // itself — there's no agent CLOSED verb here anymore.
+    // P1-24: walk-away ARCHIVED → RETIRED + retiredReason=DROPPED.
+    patch.status = "RETIRED";
+    patch.retiredReason = "DROPPED";
+    patch.closedAt = new Date();
+    patch.closeReason = args.rationale?.slice(0, 500) ?? null;
+    // Existing ThesisUpdateType taxonomy doesn't have ARCHIVED. Use
+    // STATUS_CHANGED so the audit log captures the from/to in fieldChanges.
+    updateType = "STATUS_CHANGED";
+  } else if (args.change_status === "WATCHING" && existing.status === "WATCHING") {
+    // Already watching. The verb is a no-op and the rest of the call lands
+    // as an ordinary review — VST 2026-09-23 and PLTR 2026-09-23 were
+    // refused whole for this (watching_transition_from_non_promoted).
+  } else if (args.change_status === "WATCHING") {
+    // ── Back to WATCHING ────────────────────────────────────────────────
+    // Two legal sources:
+    //   • PROMOTED — the opt-out on the first live run. The analyst decides
+    //     not to re-enter this name live; the next run re-evaluates.
+    //     Conviction context (paperTenureDays / P&L / review count) stays
+    //     on the row for reference; promotedAt clears.
+    //   • RETIRED(SOLD) — a stock we sold, put back on watch after the one
+    //     review every sale now gets (DAV-240). The terminal stamps come
+    //     off so the row is an ordinary watch again: the five-minute check
+    //     already scores WATCHING rows, so a re-entry level fires with
+    //     nothing new built.
+    const violation = checkWatchingOptOut(transitionInput);
+    if (violation) {
+      refuseField(
+        "change_status",
+        String(violation.data.message ?? violation.summary),
+        existing.status === "HOLDING" ? "the position is still open" : `not from ${existing.status.toLowerCase()}`,
+      );
+    } else {
+      patch.status = "WATCHING";
+      patch.promotedAt = null;
+      if (existing.status === "RETIRED") {
+        patch.retiredReason = null;
+        patch.closedAt = null;
+        patch.closeReason = null;
+        // Watched again, it has nothing to sell: its Sell lines come off with the status, each a line in
+        // Activity (a sale exists only on a holding, 2026-11-16).
+        const list = parseTriggersResilient(patch.triggers ?? existing.triggers).triggers as unknown as Trigger[];
+        const sales = list.filter((t) => t.action === "EXIT");
+        if (sales.length) {
+          patch.triggers = list.filter((t) => t.action !== "EXIT") as unknown as object;
+          opResults.push(...sales.map((t) => ({ op: "remove" as const, id: t.id, ok: true, text: `Removed: ${describeTrigger(t)}` })));
         }
       }
-    }
-
-    // ── A held stock that just got its setup gets that playbook's fill lines ─
-    // (DAV-285): the templates the fill writes (lib/agent/knowledge/playbooks),
-    // through the same ops core, after the agent's own ops so a bucket it
-    // just filled is left alone.
-    if (
-      args.setup_id !== undefined &&
-      args.setup_id !== existing.setupId &&
-      isNamedSetup(args.setup_id) &&
-      (patch.status ?? existing.status) === "HOLDING" &&
-      !isTerminalTransition &&
-      parseTriggersResilient(existing.triggers).dropped === 0
-    ) {
-      const base = (patch.triggers ?? parseTriggersResilient(existing.triggers).triggers) as Trigger[];
-      const { ops: exitOps, notWritten } = fillTemplateOps(await loadPlaybook(ctx.accountId, args.setup_id), base);
-      playbookNotes.push(...notWritten);
-      if (exitOps.length > 0) {
-        const written = applyTriggerOps({
-          stored: base,
-          inherited: inheritedLadder,
-          ops: exitOps,
-          direction: ("direction" in patch ? patch.direction : existing.direction) as string | null,
-          status: "HOLDING",
-          actor: "SYSTEM",
-          mintId: () => randomUUID(),
-        });
-        opResults.push(...written.results);
-        if (written.results.some((r) => r.ok)) patch.triggers = written.triggers as unknown as object;
-      }
-    }
-
-    // Status transitions get extra paperwork.
-    let updateType: ThesisUpdateType = "UPDATED";
-    if (args.change_status === "INVALIDATED") {
-      // P1-24 B3: terminal collapse → RETIRED + retiredReason. The agent
-      // verb (change_status:"INVALIDATED") is unchanged; the stored status
-      // is RETIRED and the reason records why. invalidatedAt/invalidReason
-      // still carry the narrative; updateType stays the audit event kind.
-      patch.status = "RETIRED";
-      patch.retiredReason = "INVALIDATED";
-      patch.invalidatedAt = new Date();
-      patch.invalidReason = args.rationale.slice(0, 500);
-      updateType = "INVALIDATED";
-    } else if (args.change_status === "ARCHIVED") {
-      // Terminal-without-trade-or-invalidation. Used for agent/user walking
-      // away from coverage (user UI remove; editor remove). NOT for a
-      // researched-and-declined PASS — that's direction:"PASS" → status=PASSED
-      // above. Distinct from INVALIDATED (view disproven by evidence). Exiting
-      // a held position is close_position, which retires the thesis (sold)
-      // itself — there's no agent CLOSED verb here anymore.
-      // P1-24: walk-away ARCHIVED → RETIRED + retiredReason=DROPPED.
-      patch.status = "RETIRED";
-      patch.retiredReason = "DROPPED";
-      patch.closedAt = new Date();
-      patch.closeReason = args.rationale.slice(0, 500);
-      // Existing ThesisUpdateType taxonomy doesn't have ARCHIVED. Use
-      // STATUS_CHANGED so the audit log captures the from/to in fieldChanges.
       updateType = "STATUS_CHANGED";
-    } else if (args.change_status === "WATCHING" && existing.status === "WATCHING") {
-      // Already watching. The verb is a no-op and the rest of the call lands
-      // as an ordinary review — VST 2026-09-23 and PLTR 2026-09-23 were
-      // refused whole for this (watching_transition_from_non_promoted).
-    } else if (args.change_status === "WATCHING") {
-      // ── Back to WATCHING ────────────────────────────────────────────────
-      // Two legal sources:
-      //   • PROMOTED — the opt-out on the first live run. The analyst decides
-      //     not to re-enter this name live; the next run re-evaluates.
-      //     Conviction context (paperTenureDays / P&L / review count) stays
-      //     on the row for reference; promotedAt clears.
-      //   • RETIRED(SOLD) — a stock we sold, put back on watch after the one
-      //     review every sale now gets (DAV-240). The terminal stamps come
-      //     off so the row is an ordinary watch again: the five-minute check
-      //     already scores WATCHING rows, so a re-entry level fires with
-      //     nothing new built.
-      const violation = checkWatchingOptOut(transitionInput);
-      if (violation) {
-        refuseField(
-          "change_status",
-          String(violation.data.message ?? violation.summary),
-          existing.status === "HOLDING" ? "the position is still open" : `not from ${existing.status.toLowerCase()}`,
-        );
-      } else {
-        patch.status = "WATCHING";
-        patch.promotedAt = null;
-        if (existing.status === "RETIRED") {
-          patch.retiredReason = null;
-          patch.closedAt = null;
-          patch.closeReason = null;
-          // Watched again, it has nothing to sell: its Sell lines come off with the status, each a line in
-          // Activity (a sale exists only on a holding, 2026-11-16).
-          const list = parseTriggersResilient(patch.triggers ?? existing.triggers).triggers as unknown as Trigger[];
-          const sales = list.filter((t) => t.action === "EXIT");
-          if (sales.length) {
-            patch.triggers = list.filter((t) => t.action !== "EXIT") as unknown as object;
-            opResults.push(...sales.map((t) => ({ op: "remove" as const, id: t.id, ok: true, text: `Removed: ${describeTrigger(t)}` })));
-          }
-        }
-        updateType = "STATUS_CHANGED";
-      }
     }
-    // P1-24: the legacy WATCHING/PROMOTED → ACTIVE promotion path was removed
-    // from this tool. Entering a position is place_trade (it flips the thesis
-    // WATCHING/PROMOTED → HOLDING atomically with the Alpaca fill and computes
-    // the levels from the actual entry); the agent no longer sets a holding
-    // status via update_thesis.
+  }
+  // P1-24: the legacy WATCHING/PROMOTED → ACTIVE promotion path was removed
+  // from this tool. Entering a position is place_trade (it flips the thesis
+  // WATCHING/PROMOTED → HOLDING atomically with the Alpaca fill and computes
+  // the levels from the actual entry); the agent no longer sets a holding
+  // status via update_thesis.
 
-    // ── Stamp when we looked (DAV-193, relocated by DAV-195 L7) ─────────
-    // The clock counts from when we last LOOKED, so there is nothing to
-    // compute: record the fact and let the cadence trigger do the
-    // arithmetic. Every surface that shows a review date derives it at
-    // read time from this stamp (DAV-221 — the cached column is gone).
-    //
-    // A decline is not a review and never reaches here — declining a sell
-    // proposal leaves the market condition true, so that trigger fires again
-    // tomorrow, unchanged. This is the other thing: the analyst looked, even
-    // if it concluded nothing changed. If a run skips the thesis or crashes,
-    // nothing is stamped and it stays due.
-    // The Portfolio Manager's note is not the analyst's review: the stock's clock keeps counting.
-    if (patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
-      patch.lastReviewedAt = new Date();
-    }
+  // ── Stamp when we looked (DAV-193, relocated by DAV-195 L7) ─────────
+  // The clock counts from when we last LOOKED, so there is nothing to
+  // compute: record the fact and let the cadence trigger do the
+  // arithmetic. Every surface that shows a review date derives it at
+  // read time from this stamp (DAV-221 — the cached column is gone).
+  //
+  // A decline is not a review and never reaches here — declining a sell
+  // proposal leaves the market condition true, so that trigger fires again
+  // tomorrow, unchanged. This is the other thing: the analyst looked, even
+  // if it concluded nothing changed. If a run skips the thesis or crashes,
+  // nothing is stamped and it stays due.
+  // The Portfolio Manager's note is not the analyst's review: the stock's clock keeps counting.
+  if (patch.status !== "RETIRED" && patch.status !== "PASSED" && !isManagerRun(ctx)) {
+    patch.lastReviewedAt = new Date();
+  }
 
-    // ── Narrative-only patches collapse to REVIEWED ──────────────────────
-    // A "narrative-only" patch touches only fields the agent can fill on
-    // every housekeeping pass without anything structural having changed:
-    // a rewritten reasoningSummary, a re-keyed riskFlags list, refreshed
-    // thesisBullets. Under gpt-4o the agent would
-    // call update_thesis(rationale) with no other fields and the
-    // empty-patch path below classified the row as REVIEWED. Under gpt-5.5
-    // (swap day 2026-05-12) the agent is verbosely chattier and fills
-    // narrative fields on every closeout, so the audit log collapsed: 0
-    // REVIEWED rows from morning-runs since the swap, all 18-37 daily
-    // UPDATED. That destroys the audit-log signal — run-reviews can no
-    // longer separate "agent reviewed it" from "agent actually changed
-    // something."
-    //
-    // Solution: classify a non-empty patch that touches only narrative
-    // keys as REVIEWED, same as the empty-patch path below. Status
-    // transitions (already set above as INVALIDATED/CLOSED/STATUS_CHANGED)
-    // stay as-is — narrative reclassification only applies to the default
-    // UPDATED bucket.
-    //
-    // A7 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
-    // PR-9 flat schema: the patch writes `snapshot` / `bullCase` / `bearCase`
-    // (the legacy reasoning_summary / thesis_bullets / risk_flags args are
-    // wrapped into those keys above), so the narrative set must name the keys
-    // that actually land in the patch. `researchUpdatedAt` rides along — it is
-    // auto-stamped whenever any narrative section arrives, and must not make a
-    // narrative-only patch look structural. The stale legacy names here were
-    // half of the empty-diff audit hole (GAPS P2, prerequisite for P1-33):
-    // narrative refreshes stopped collapsing to REVIEWED and instead landed as
-    // UPDATED rows whose diff dropped every key.
-    const NARRATIVE_KEYS = new Set([
-      "snapshot",
-      "bullCase",
-      "bearCase",
-      "researchUpdatedAt",
-    ]);
-    // The review stamp above is when we looked, not a change. Since it went
-    // into the patch (2026-08-25) every call counted as a change: runs wrote
-    // no REVIEWED row for six weeks, and the declined-sale bar in
-    // complete_run, which a review must not clear, cleared on any call.
-    const changedKeys = Object.keys(patch).filter((k) => k !== "lastReviewedAt");
-    const isNarrativeOnly =
-      changedKeys.length > 0 &&
-      updateType === "UPDATED" &&
-      changedKeys.every((k) => NARRATIVE_KEYS.has(k));
-    if (isNarrativeOnly) {
-      updateType = "REVIEWED";
-    }
+  // ── Narrative-only patches collapse to REVIEWED ──────────────────────
+  // A "narrative-only" patch touches only fields the agent can fill on
+  // every housekeeping pass without anything structural having changed:
+  // a rewritten reasoningSummary, a re-keyed riskFlags list, refreshed
+  // thesisBullets. Under gpt-4o the agent would
+  // call update_thesis(rationale) with no other fields and the
+  // empty-patch path below classified the row as REVIEWED. Under gpt-5.5
+  // (swap day 2026-05-12) the agent is verbosely chattier and fills
+  // narrative fields on every closeout, so the audit log collapsed: 0
+  // REVIEWED rows from morning-runs since the swap, all 18-37 daily
+  // UPDATED. That destroys the audit-log signal — run-reviews can no
+  // longer separate "agent reviewed it" from "agent actually changed
+  // something."
+  //
+  // Solution: classify a non-empty patch that touches only narrative
+  // keys as REVIEWED, same as the empty-patch path below. Status
+  // transitions (already set above as INVALIDATED/CLOSED/STATUS_CHANGED)
+  // stay as-is — narrative reclassification only applies to the default
+  // UPDATED bucket.
+  //
+  // A7 from docs/plans/SYSTEM_AUDIT_2026_05_19.md.
+  // PR-9 flat schema: the patch writes `snapshot` / `bullCase` / `bearCase`
+  // (the legacy reasoning_summary / thesis_bullets / risk_flags args are
+  // wrapped into those keys above), so the narrative set must name the keys
+  // that actually land in the patch. `researchUpdatedAt` rides along — it is
+  // auto-stamped whenever any narrative section arrives, and must not make a
+  // narrative-only patch look structural. The stale legacy names here were
+  // half of the empty-diff audit hole (GAPS P2, prerequisite for P1-33):
+  // narrative refreshes stopped collapsing to REVIEWED and instead landed as
+  // UPDATED rows whose diff dropped every key.
+  const NARRATIVE_KEYS = new Set([
+    "snapshot",
+    "bullCase",
+    "bearCase",
+    "researchUpdatedAt",
+  ]);
+  // The review stamp above is when we looked, not a change. Since it went
+  // into the patch (2026-08-25) every call counted as a change: runs wrote
+  // no REVIEWED row for six weeks, and the declined-sale bar in
+  // complete_run, which a review must not clear, cleared on any call.
+  const changedKeys = Object.keys(patch).filter((k) => k !== "lastReviewedAt");
+  const isNarrativeOnly =
+    changedKeys.length > 0 &&
+    updateType === "UPDATED" &&
+    changedKeys.every((k) => NARRATIVE_KEYS.has(k));
+  if (isNarrativeOnly) {
+    updateType = "REVIEWED";
+  }
 
-    // Empty patch (only rationale supplied)? That's a REVIEWED row, not
-    // an UPDATED row. Useful when housekeeping looks at a thesis and
-    // decides it's still right — we want a paper trail of "agent looked
-    // here on this date" without polluting the diff log.
-    //
-    // A REVIEWED-only touch stamps the same clock as any other review —
-    // looking IS the event, whether or not anything changed. The horizon
-    // cadence lookup that used to live here is gone with the second copy of
-    // the review clock; the cadence is a trigger now and it reads this stamp.
-    // What the call could not change, said once at the end of the reply.
-    const notChanged = [
-      ...refusedFields.map((r) => `Not changed: ${r.field}. ${r.reason}`),
-      ...(stillPromoted ? ["Still promoted until place_trade or change_status WATCHING."] : []),
-    ].join(" ");
-    const refusedData = refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {};
-    // The record tells the truth: what the call asked for and did not get
-    // goes on its own audit row, and the Activity feed shows it as a chip.
-    // A trigger number that did not land is named by the trigger's id (PLTR 10-15: the $191 floor).
-    const notAppliedList = [
-      ...refusedFields.map(({ field, to, why, reason }) => ({ field, ...(to !== undefined ? { to } : {}), why, reason })),
-      ...opResults.filter((r) => !r.ok && r.to !== undefined).map((r) => ({ field: "triggers", id: r.id, to: r.to, why: r.text, reason: r.reason })),
-    ];
-    const notAppliedChange: ThesisFieldChanges = notAppliedList.length ? { notApplied: { from: null, to: notAppliedList } } : {};
-    if (changedKeys.length === 0) {
-      if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
-      const reviewedAt = new Date();
-      await prisma.thesis.update({
-        where: { id: existing.id },
-        data: { lastReviewedAt: reviewedAt },
-      });
-
-      // Awaited (was void). Both the morning-research coverage gate and
-      // the tactical-run close-out gate query ThesisUpdate immediately
-      // after the agent finishes — fire-and-forget races caused false
-      // FAILED on legitimate REVIEWED-only runs.
-      await writeThesisUpdate({
-        thesisId: existing.id,
-        type: "REVIEWED",
-        summary: `Reviewed ${existing.ticker} thesis — no changes`,
-        rationale: args.rationale,
-        ...(notAppliedList.length ? { fieldChanges: notAppliedChange } : {}),
-        runId: ctx.runId,
-        ...answered,
-        priceAtTime: resolvedPriceAtTime,
-        ...review,
-      });
-      const reviewedMeans = catalystDateMissing(existing);
+  // Empty patch (only rationale supplied)? That's a REVIEWED row, not
+  // an UPDATED row. Useful when housekeeping looks at a thesis and
+  // decides it's still right — we want a paper trail of "agent looked
+  // here on this date" without polluting the diff log.
+  //
+  // A REVIEWED-only touch stamps the same clock as any other review —
+  // looking IS the event, whether or not anything changed. The horizon
+  // cadence lookup that used to live here is gone with the second copy of
+  // the review clock; the cadence is a trigger now and it reads this stamp.
+  // What the call could not change, said once at the end of the reply.
+  const notChanged = [
+    ...refusedFields.map((r) => `Not changed: ${r.field}. ${r.reason}`),
+    ...(stillPromoted ? ["Still promoted until place_trade or change_status WATCHING."] : []),
+  ].join(" ");
+  const refusedData = refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {};
+  // The record tells the truth: what the call asked for and did not get
+  // goes on its own audit row, and the Activity feed shows it as a chip.
+  // A trigger number that did not land is named by the trigger's id (PLTR 10-15: the $191 floor).
+  const notAppliedList = [
+    ...refusedFields.map(({ field, to, why, reason }) => ({ field, ...(to !== undefined ? { to } : {}), why, reason })),
+    ...opResults.filter((r) => !r.ok && r.to !== undefined).map((r) => ({ field: "triggers", id: r.id, to: r.to, why: r.text, reason: r.reason })),
+  ];
+  const notAppliedChange: ThesisFieldChanges = notAppliedList.length ? { notApplied: { from: null, to: notAppliedList } } : {};
+  if (changedKeys.length === 0) {
+    if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
+    // A door with no note that changed nothing and was refused nothing writes no line and leaves the review clock.
+    if (!args.rationale?.trim() && notAppliedList.length === 0) {
       return {
-        summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
-        data: {
-          ok: true,
-          thesis_id: existing.id,
-          type: "REVIEWED" as const,
-          trigger_ops: opResults,
-          ...refusedData,
-          ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
-          card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }, await paidFor(existing, ctx.analystId)),
-        },
+        summary: `Nothing changed on $${existing.ticker}.${notChanged ? ` ${notChanged}` : ""}`,
+        data: { ok: true, thesis_id: existing.id, type: "UNCHANGED" as const, trigger_ops: opResults, ...refusedData },
         sources: [],
       };
     }
+    const reviewedAt = new Date();
+    await prisma.thesis.update({
+      where: { id: existing.id },
+      data: { lastReviewedAt: reviewedAt },
+    });
 
-    // Compute the diff BEFORE applying so the field-changes payload reflects
-    // only what actually moved.
-    //
-    // These are the keys the patch above can actually write (PR-9 flat
-    // schema). The pre-PR-9 legacy names (reasoningSummary / thesisBullets /
-    // riskFlags / confidenceScore) sat here long after the patch stopped
-    // writing them, so every narrative/section change fell through
-    // the diff — 47% of UPDATED rows carried an empty fieldChanges (GAPS P2
-    // audit hole, prerequisite for P1-33). Keep this list in lockstep with
-    // the patch assembly above.
-    const diffFields = [
-      // Narrative (flat schema)
-      "company",
-      "snapshot",
-      "bullCase",
-      "bearCase",
-      "researchData",
-      // Belief
-      "coreBelief",
-      "keyAssumptions",
-      "invalidationConds",
-      "conviction",
-      "convictionRationale",
-      "variantView",
-      "direction",
-      "horizon",
-      "catalystDate",
-      // Lifecycle
-      "status",
-      "retiredReason",
-    ] as const;
-    // Bulky JSONB sections store a short preview instead of two full copies
-    // per row. Scalars keep exact from/to. The trigger list is NOT diffed:
-    // the ops the caller sent are the change, stored verbatim below, and the
-    // Activity feed renders those lines ("Entry $183 → $190").
-    const BULKY_DIFF_KEYS = [
-      "snapshot",
-      "bullCase",
-      "bearCase",
-      "researchData",
-    ] as const;
-    const prevSnapshot = Object.fromEntries(
-      diffFields.map((f) => [f, (existing as Record<string, unknown>)[f]]),
-    );
-    const nextSnapshot: Record<string, unknown> = { ...prevSnapshot };
-    for (const [k, v] of Object.entries(patch)) {
-      if (k in nextSnapshot) nextSnapshot[k] = v;
-    }
-    const fieldChanges = compactFieldChanges(
-      diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
-      BULKY_DIFF_KEYS,
-    );
-    const landedOps = [...acceptedOps(opResults), ...playbookNotes];
-    if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
-    const changedFields = Object.keys(fieldChanges);
-    Object.assign(fieldChanges, notAppliedChange);
-
-    // The structural-belief gate that lived here (P0-1) is gone. It refused
-    // any change to the target or the floor unless a belief field changed or
-    // `structural_unchanged_reason` was sent — and because levels are
-    // triggers, taking the price lines off tripped it too: GD 2026-09-25 and
-    // ISRG 2026-09-23 were refused for removing their floor and target
-    // triggers, and each run got past it by copying its rationale into
-    // `structural_unchanged_reason`. A gate satisfied by repeating the
-    // sentence next to it is not a gate. A level change already carries
-    // its rationale; that is the record. The optional reason field that
-    // outlived the gate printed "[Belief unchanged: …]" under 94 of 274
-    // Activity notes in the ten days to 2026-10-05, often the note again
-    // word for word; it went with the voice rules (lib/agent/voice.ts).
-
-    // Check-only call: every refusal above has had its chance.
-    if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
-
-    // Apply.
-    try {
-      await prisma.thesis.update({
-        where: { id: existing.id },
-        data: patch as object,
-      });
-    } catch (updErr: unknown) {
-      // THESIS_RESEARCH_V2 fallback — mirrors record_thesis.ts. If the
-      // Prisma client is out of sync with the schema (e.g. the V2 columns
-      // haven't been regenerated locally), retry the update without those
-      // fields so the rest of the patch lands. Loud log so we notice if
-      // this fires in production — the schema migration shipped in
-      // PR #278 + PR-9 so it should never trigger, but the strip mirrors
-      // record_thesis's defense-in-depth.
-      const errMsg = updErr instanceof Error ? updErr.message : String(updErr);
-      const isUnknownArgError =
-        errMsg.includes("Unknown arg") ||
-        errMsg.includes("Unknown argument") ||
-        (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
-        (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
-      const hasV2Field =
-        "researchData" in patch ||
-        "researchUpdatedAt" in patch ||
-        "snapshot" in patch ||
-        "bullCase" in patch ||
-        "bearCase" in patch;
-      if (isUnknownArgError && hasV2Field) {
-        console.error(
-          `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping V2 research columns. Prisma client appears out of sync. Full error: ${errMsg}`,
-        );
-        const {
-          researchData: _rdata,
-          researchUpdatedAt: _rupdated,
-          snapshot: _snap,
-          bullCase: _bcase,
-          bearCase: _xcase,
-          ...fallbackPatch
-        } = patch;
-        void _rdata;
-        void _rupdated;
-        void _snap;
-        void _bcase;
-        void _xcase;
-        await prisma.thesis.update({
-          where: { id: existing.id },
-          data: fallbackPatch as object,
-        });
-      } else {
-        throw updErr;
-      }
-    }
-
-    // Watchlist-collapse: Thesis is now the single store. WATCHING →
-    // terminal transitions automatically remove the thesis from the
-    // watchlist view (which is just `WHERE status='WATCHING'`). No
-    // mirror table to sync.
-
-    // Build a punchy summary line for the timeline list view. The trigger
-    // ops lead, one line each — a moved entry IS the entry change, not
-    // "triggers updated" plus a separate column line.
-    const summaryParts: string[] = landedOps.map((o) => o.text);
-    if (fieldChanges.status) {
-      summaryParts.push(
-        `${fieldChanges.status.from} → ${fieldChanges.status.to}`,
-      );
-    }
-    if (
-      fieldChanges.coreBelief ||
-      fieldChanges.snapshot ||
-      fieldChanges.bullCase ||
-      fieldChanges.bearCase ||
-      fieldChanges.invalidationConds ||
-      fieldChanges.keyAssumptions
-    ) {
-      summaryParts.push("rationale updated");
-    }
-    if (
-      fieldChanges.researchData
-    ) {
-      summaryParts.push("research refreshed");
-    }
-    const verb = updateType === "REVIEWED" ? "Reviewed" : "Updated";
-    const summary =
-      summaryParts.length > 0
-        ? `${verb} ${existing.ticker}: ${summaryParts.join(", ")}`
-        : `${verb} ${existing.ticker} thesis`;
-
-    // Awaited (was void). The tactical-run close-out gate and the
-    // morning-research coverage gate both query ThesisUpdate the moment
-    // the agent finishes; fire-and-forget races dropped the row past
-    // the gate's read horizon and false-failed legitimate runs.
+    // Awaited (was void). Both the morning-research coverage gate and
+    // the tactical-run close-out gate query ThesisUpdate immediately
+    // after the agent finishes — fire-and-forget races caused false
+    // FAILED on legitimate REVIEWED-only runs.
     await writeThesisUpdate({
       thesisId: existing.id,
-      type: updateType,
-      summary,
+      type: "REVIEWED",
+      summary: `Reviewed ${existing.ticker} thesis — no changes`,
       rationale: args.rationale,
-      fieldChanges,
+      ...(notAppliedList.length ? { fieldChanges: notAppliedChange } : {}),
       runId: ctx.runId,
       ...answered,
       priceAtTime: resolvedPriceAtTime,
       ...review,
     });
-    const catalystNotes = catalystDateMissing({ ...existing, ...patch });
-    const means = [...claimNotes, ...catalystNotes];
-    // Back on watch with no buy (step 12, part 3): the status landed and
-    // every price trigger the call sent was refused, so the stock is watched
-    // with nothing to buy on. Said first, with the refusal's reason. DOCU
-    // 2026-10-07: put back on watch, its 1.71:1 levels refused, and the reply
-    // led with "Updated DOCU: WATCHING" as if the buy had come with it.
-    const after = { ...existing, ...patch } as Record<string, unknown>;
-    const sentLevels = triggerOps.some((o) => o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null);
-    const noBuyLeft = !parseTriggersResilient(after.triggers).triggers.some((t) => (t as Trigger).action === "ENTER");
-    const backOnWatchNoBuy =
-      fieldChanges.status?.to === "WATCHING" && sentLevels && noBuyLeft
-        ? `Back on watch with no buy: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the price triggers were not applied."}`
-        : null;
-
+    const reviewedMeans = catalystDateMissing(existing);
     return {
-      summary: [backOnWatchNoBuy, summary, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
+      summary: `Reviewed ${existing.ticker} thesis: no changes.${reviewedMeans.length ? ` ⚠ ${reviewedMeans[0]}` : ""}${notChanged ? ` ${notChanged}` : ""}`,
       data: {
         ok: true,
         thesis_id: existing.id,
-        type: updateType,
-        changed_fields: changedFields,
+        type: "REVIEWED" as const,
         trigger_ops: opResults,
         ...refusedData,
-        ...(means.length ? { what_this_means: means } : {}),
-        // Post-update thesis snapshot for the chat renderer. Merges the
-        // pre-update record with the patch we just applied — no extra DB
-        // read. Drives the "Wrote / edited theses" carousel.
-        card: thesisToCardData({ ...existing, ...patch }, await paidFor({ ...existing, ...patch }, ctx.analystId)),
+        ...(reviewedMeans.length ? { what_this_means: reviewedMeans } : {}),
+        card: thesisToCardData({ ...existing, lastReviewedAt: reviewedAt }, await paidFor(existing, ctx.analystId)),
       },
       sources: [],
     };
-  },
-});
+  }
+
+  // Compute the diff BEFORE applying so the field-changes payload reflects
+  // only what actually moved.
+  //
+  // These are the keys the patch above can actually write (PR-9 flat
+  // schema). The pre-PR-9 legacy names (reasoningSummary / thesisBullets /
+  // riskFlags / confidenceScore) sat here long after the patch stopped
+  // writing them, so every narrative/section change fell through
+  // the diff — 47% of UPDATED rows carried an empty fieldChanges (GAPS P2
+  // audit hole, prerequisite for P1-33). Keep this list in lockstep with
+  // the patch assembly above.
+  const diffFields = [
+    // Narrative (flat schema)
+    "company",
+    "snapshot",
+    "bullCase",
+    "bearCase",
+    "researchData",
+    // Belief
+    "coreBelief",
+    "keyAssumptions",
+    "invalidationConds",
+    "conviction",
+    "convictionRationale",
+    "variantView",
+    "direction",
+    "horizon",
+    "catalystDate",
+    // Lifecycle
+    "status",
+    "retiredReason",
+  ] as const;
+  // Bulky JSONB sections store a short preview instead of two full copies
+  // per row. Scalars keep exact from/to. The trigger list is NOT diffed:
+  // the ops the caller sent are the change, stored verbatim below, and the
+  // Activity feed renders those lines ("Entry $183 → $190").
+  const BULKY_DIFF_KEYS = [
+    "snapshot",
+    "bullCase",
+    "bearCase",
+    "researchData",
+  ] as const;
+  const prevSnapshot = Object.fromEntries(
+    diffFields.map((f) => [f, (existing as Record<string, unknown>)[f]]),
+  );
+  const nextSnapshot: Record<string, unknown> = { ...prevSnapshot };
+  for (const [k, v] of Object.entries(patch)) {
+    if (k in nextSnapshot) nextSnapshot[k] = v;
+  }
+  const fieldChanges = compactFieldChanges(
+    diffThesisFields(prevSnapshot, nextSnapshot, [...diffFields]),
+    BULKY_DIFF_KEYS,
+  );
+  const landedOps = [...acceptedOps(opResults), ...playbookNotes];
+  if (landedOps.length > 0) fieldChanges.triggerOps = { from: null, to: landedOps };
+  const changedFields = Object.keys(fieldChanges);
+  Object.assign(fieldChanges, notAppliedChange);
+
+  // The structural-belief gate that lived here (P0-1) is gone. It refused
+  // any change to the target or the floor unless a belief field changed or
+  // `structural_unchanged_reason` was sent — and because levels are
+  // triggers, taking the price lines off tripped it too: GD 2026-09-25 and
+  // ISRG 2026-09-23 were refused for removing their floor and target
+  // triggers, and each run got past it by copying its rationale into
+  // `structural_unchanged_reason`. A gate satisfied by repeating the
+  // sentence next to it is not a gate. A level change already carries
+  // its rationale; that is the record. The optional reason field that
+  // outlived the gate printed "[Belief unchanged: …]" under 94 of 274
+  // Activity notes in the ten days to 2026-10-05, often the note again
+  // word for word; it went with the voice rules (lib/agent/voice.ts).
+
+  // Check-only call: every refusal above has had its chance.
+  if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
+
+  // Apply.
+  try {
+    await prisma.thesis.update({
+      where: { id: existing.id },
+      data: patch as object,
+    });
+  } catch (updErr: unknown) {
+    // THESIS_RESEARCH_V2 fallback — mirrors record_thesis.ts. If the
+    // Prisma client is out of sync with the schema (e.g. the V2 columns
+    // haven't been regenerated locally), retry the update without those
+    // fields so the rest of the patch lands. Loud log so we notice if
+    // this fires in production — the schema migration shipped in
+    // PR #278 + PR-9 so it should never trigger, but the strip mirrors
+    // record_thesis's defense-in-depth.
+    const errMsg = updErr instanceof Error ? updErr.message : String(updErr);
+    const isUnknownArgError =
+      errMsg.includes("Unknown arg") ||
+      errMsg.includes("Unknown argument") ||
+      (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
+      (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
+      (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
+      (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
+      (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
+    const hasV2Field =
+      "researchData" in patch ||
+      "researchUpdatedAt" in patch ||
+      "snapshot" in patch ||
+      "bullCase" in patch ||
+      "bearCase" in patch;
+    if (isUnknownArgError && hasV2Field) {
+      console.error(
+        `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping V2 research columns. Prisma client appears out of sync. Full error: ${errMsg}`,
+      );
+      const {
+        researchData: _rdata,
+        researchUpdatedAt: _rupdated,
+        snapshot: _snap,
+        bullCase: _bcase,
+        bearCase: _xcase,
+        ...fallbackPatch
+      } = patch;
+      void _rdata;
+      void _rupdated;
+      void _snap;
+      void _bcase;
+      void _xcase;
+      await prisma.thesis.update({
+        where: { id: existing.id },
+        data: fallbackPatch as object,
+      });
+    } else {
+      throw updErr;
+    }
+  }
+
+  // Watchlist-collapse: Thesis is now the single store. WATCHING →
+  // terminal transitions automatically remove the thesis from the
+  // watchlist view (which is just `WHERE status='WATCHING'`). No
+  // mirror table to sync.
+
+  // Build a punchy summary line for the timeline list view. The trigger
+  // ops lead, one line each — a moved entry IS the entry change, not
+  // "triggers updated" plus a separate column line.
+  const summaryParts: string[] = landedOps.map((o) => o.text);
+  if (fieldChanges.status) {
+    summaryParts.push(
+      `${fieldChanges.status.from} → ${fieldChanges.status.to}`,
+    );
+  }
+  if (
+    fieldChanges.coreBelief ||
+    fieldChanges.snapshot ||
+    fieldChanges.bullCase ||
+    fieldChanges.bearCase ||
+    fieldChanges.invalidationConds ||
+    fieldChanges.keyAssumptions
+  ) {
+    summaryParts.push("rationale updated");
+  }
+  if (
+    fieldChanges.researchData
+  ) {
+    summaryParts.push("research refreshed");
+  }
+  const verb = updateType === "REVIEWED" ? "Reviewed" : "Updated";
+  const summary =
+    summaryParts.length > 0
+      ? `${verb} ${existing.ticker}: ${summaryParts.join(", ")}`
+      : `${verb} ${existing.ticker} thesis`;
+
+  // Awaited (was void). The tactical-run close-out gate and the
+  // morning-research coverage gate both query ThesisUpdate the moment
+  // the agent finishes; fire-and-forget races dropped the row past
+  // the gate's read horizon and false-failed legitimate runs.
+  await writeThesisUpdate({
+    thesisId: existing.id,
+    type: updateType,
+    summary,
+    rationale: args.rationale,
+    fieldChanges,
+    runId: ctx.runId,
+    ...answered,
+    priceAtTime: resolvedPriceAtTime,
+    ...review,
+  });
+  const catalystNotes = catalystDateMissing({ ...existing, ...patch });
+  const means = [...claimNotes, ...catalystNotes];
+  // Back on watch with no buy (step 12, part 3): the status landed and
+  // every price trigger the call sent was refused, so the stock is watched
+  // with nothing to buy on. Said first, with the refusal's reason. DOCU
+  // 2026-10-07: put back on watch, its 1.71:1 levels refused, and the reply
+  // led with "Updated DOCU: WATCHING" as if the buy had come with it.
+  const after = { ...existing, ...patch } as Record<string, unknown>;
+  const sentLevels = triggerOps.some((o) => o.op === "add" && levelSlotOf(o.trigger, (after.direction as string | null) ?? null) != null);
+  const noBuyLeft = !parseTriggersResilient(after.triggers).triggers.some((t) => (t as Trigger).action === "ENTER");
+  const backOnWatchNoBuy =
+    fieldChanges.status?.to === "WATCHING" && sentLevels && noBuyLeft
+      ? `Back on watch with no buy: ${refusedFields.find((r) => r.field === "triggers")?.reason ?? opResults.find((r) => !r.ok)?.reason ?? "the price triggers were not applied."}`
+      : null;
+
+  return {
+    summary: [backOnWatchNoBuy, summary, ...claimNotes, ...catalystNotes, notChanged || null].filter(Boolean).join(" "),
+    data: {
+      ok: true,
+      thesis_id: existing.id,
+      type: updateType,
+      changed_fields: changedFields,
+      trigger_ops: opResults,
+      ...refusedData,
+      ...(means.length ? { what_this_means: means } : {}),
+      // Post-update thesis snapshot for the chat renderer. Merges the
+      // pre-update record with the patch we just applied — no extra DB
+      // read. Drives the "Wrote / edited theses" carousel.
+      card: thesisToCardData({ ...existing, ...patch }, await paidFor({ ...existing, ...patch }, ctx.analystId)),
+    },
+    sources: [],
+  };
+}
 
 
 /**
