@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
+import { Section } from "@/components/analysts/config-section";
 import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
 import { SECTORS } from "@/lib/universe/canonical";
 import { positionBand, positionTotalCap } from "@/lib/agent/position-sizing";
@@ -803,34 +804,10 @@ function PositionBandNote({
 // ─── Shared building blocks ──────────────────────────────────────────────────
 // Exported so podcast / segment config forms can reuse the EXACT same visual
 // language. Don't fork these. If you need a new variant, add a prop here and
-// share it across analyst + podcast surfaces.
+// share it across analyst + podcast surfaces. Section lives in its own file
+// (./config-section.tsx) so a page can use it without this whole form.
 
-export function Section({
-  label,
-  tooltip,
-  children,
-}: {
-  label: string;
-  tooltip?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="p-3 border-b last:border-b-0 flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
-        <p className="text-sm font-medium">{label}</p>
-        {tooltip && (
-          <Tooltip>
-            <TooltipTrigger render={<span className="cursor-help" />}>
-              <Info className="h-3 w-3 text-muted-foreground" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs text-xs">{tooltip}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      <div className="flex flex-col gap-1.5">{children}</div>
-    </div>
-  );
-}
+export { Section };
 
 export function FieldGroup({
   label,

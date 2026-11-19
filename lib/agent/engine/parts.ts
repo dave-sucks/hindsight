@@ -1,7 +1,7 @@
 /**
  * What an agent can be given (docs/plans/AGENT_ENGINE.md), client-safe: the
- * instruction files an agent's own file imports, the facts that make up its
- * context, and the one line every first message opens with. Each says what it holds and the file
+ * facts that make up its context, and the one line every first message opens
+ * with. Each says what it holds and the file
  * its text comes from. The engine (./engine.ts) puts them together.
  */
 import type { ContextId } from "./types";
@@ -13,20 +13,6 @@ export interface PartDef {
   /** The file its text comes from. */
   source: string;
 }
-
-/** The files an agent's own instructions import ("@research-rules.md" on its own line): part of that one document. */
-export const IMPORTED: Record<string, PartDef> = {
-  "rules.md": {
-    title: "Rules",
-    about: "The house rules (your word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it), then how a note, a trade's reason, a trigger's note and the narration are written. Every agent that writes for you imports it.",
-    source: "lib/agent/engine/agents/rules.md",
-  },
-  "research-rules.md": {
-    title: "Research rules",
-    about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first. The Writer's and the Holding refresh's instructions import it.",
-    source: "lib/agent/engine/agents/research-rules.md",
-  },
-};
 
 /** The facts a record may send with an agent's instructions, where they were measured: the analyst, the playbooks, the stock's situations. */
 const PLACED_IN_INSTRUCTIONS: Record<"the_analyst" | "playbooks" | "the_playbook" | "situations", PartDef> = {
