@@ -47,6 +47,7 @@ Its context is the stock's row (the same one `get_theses` gives every agent, wit
 - **Add its own where the thesis needs one:** an earnings review, a level to look again at. It prices from the chart, as the Writer does: a price is a chart key (`{swingLow}`, `{priorHigh}`) or a line (the 50-day average), never a typed number; its `edit_triggers` takes no other. A number that isn't a price (a %, days) stays a number.
 - **Leave one off, with a reason:** its closing line names any holding trigger it didn't put on, and why.
 - **On an add:** the stock already has its holding's triggers; it changes only what the add changes.
+- **No trade now:** a buy or add it writes that is already true at today's price is refused, since it would fire at the next check. It writes the condition it means (an add on a break above uses "above").
 - **The floor:** it leaves it as it is. Only you lower a floor.
 - **The note:** a proposal you approved already carries the analyst's note, so it writes none. An Auto buy or add sent at once has none yet: it writes it, and that note is the trade's reason.
 
