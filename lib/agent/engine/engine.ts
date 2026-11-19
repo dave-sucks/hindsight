@@ -3,9 +3,10 @@
  * record (docs/plans/AGENT_ENGINE.md). An agent is its instructions, its
  * context and its tools.
  *
- * - The instructions: its own text and the shared texts it uses, in the
- *   record's order; when its context has the stock, the stock's situations
- *   end them.
+ * - The instructions: its instruction files (lib/agent/engine/agents/*.md:
+ *   its own and the shared ones it uses) and the facts its record places
+ *   among them (the analyst, the playbooks, the stock's situations), in the
+ *   record's order.
  * - The first message: the date line, then each read and the message (the
  *   run's task as whoever started it wrote it) in the order the record
  *   lists them. In a conversation the date line and the reads ride on each
@@ -16,45 +17,28 @@
  * the Context panel can name each part. The engine writes one text of its
  * own, the date line; every other text comes from the code that writes it.
  */
-import { HOUSE_LINES, HOW_YOU_WRITE } from "@/lib/agent/house-rules";
-import { RESEARCH_RULES } from "@/lib/agent/thesis-research/writer-rules";
 import type { PortfolioPiece, PortfolioPieceId } from "@/lib/agent/portfolio-block";
-import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED, SITUATIONS_PART } from "./parts";
-import { isOwnPart, readsOf, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type SharedId, type Where } from "./types";
-
-/** The shared texts a run reads (the rest are the same on every run, written once in code). */
-export type RunShared = "the_analyst" | "playbooks";
+import { instructionText } from "./instructions";
+import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED } from "./parts";
+import { isFile, isShared, readsOf, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type Where } from "./types";
 
 /** Every text for one request, already read. */
 export interface Loaded {
-  /** The analyst and its playbooks for this run (null: none this run). */
-  shared?: Partial<Record<RunShared, string | null>>;
-  /** The stock's situations and what each asks (null or absent: none). Given only to an agent whose context has the stock. */
-  situations?: string | null;
   /** The Market and portfolio reads, from their one loader (lib/agent/portfolio-block.ts); null when the run has none. */
   pieces?: PortfolioPiece[] | null;
-  /** Every other read: its text for this run (null: none this run). */
+  /** Every other fact: its text for this run (null: none this run). */
   context?: Partial<Record<ContextId, string | null>>;
 }
 
-/** Where the texts that change by run come from, handed in by the run. */
+/** Where the facts come from, handed in by the run. */
 export interface Sources {
   /** The Market and portfolio reads; `portfolioDigest` is false when the agent doesn't get the 8 PM digest. */
   portfolioPieces?: (want: { portfolioDigest: boolean }) => Promise<PortfolioPiece[]>;
-  shared?: Partial<Record<RunShared, () => Promise<string | null>>>;
-  situations?: () => Promise<string | null>;
   context?: Partial<Record<ContextId, () => Promise<string | null>>>;
 }
 
 /** Between two parts: a blank line. */
 export const SEP = "\n\n";
-
-/** The shared texts that are the same on every run. */
-const FIXED: Partial<Record<SharedId, string>> = {
-  house_rules: HOUSE_LINES,
-  how_you_write: HOW_YOU_WRITE,
-  research_rules: RESEARCH_RULES,
-};
 
 /** The Market and portfolio reads, and the part of their loader each one is. */
 const PIECE_OF: Partial<Record<ContextId, PortfolioPieceId>> = {
@@ -72,18 +56,12 @@ export function dateLine(now: Date, environment: "PAPER" | "LIVE"): string {
   return `${day}, ${time} ET, the ${environment} account.`;
 }
 
-/** Read every text the record needs, then build the request. */
+/** Read every fact the record lists, then build the request. */
 export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
-  const loaded: Loaded = { shared: {}, context: {} };
+  const loaded: Loaded = { context: {} };
   if (readsOf(record).some(isPiece)) {
     if (!sources.portfolioPieces) throw new Error(`${record.id} reads the Market and portfolio context but its run gave no way to read it`);
     loaded.pieces = await sources.portfolioPieces({ portfolioDigest: record.context.includes("portfolio_digest") });
-  }
-  for (const p of record.instructions) {
-    if (isOwnPart(p) || FIXED[p] != null) continue;
-    const load = sources.shared?.[p as RunShared];
-    if (!load) throw new Error(`${record.id} uses the shared text ${p} but its run gave no way to read it`);
-    loaded.shared![p as RunShared] = await load();
   }
   for (const id of readsOf(record)) {
     if (isPiece(id)) continue;
@@ -91,25 +69,21 @@ export async function buildAgentRequest(record: AgentRecord, input: AgentInput, 
     if (!load) throw new Error(`${record.id} reads ${id} but its run gave no way to read it`);
     loaded.context![id] = await load();
   }
-  if (sources.situations) loaded.situations = await sources.situations();
   return composeAgentRequest(record, input, loaded);
 }
 
-/** Build the request from texts already read. */
+/** Build the request from texts already read: the instruction files and the facts placed among them, then the first message. */
 export function composeAgentRequest(record: AgentRecord, input: AgentInput, loaded: Loaded): BuiltRequest {
   const instructions = new Printer("instructions");
-  for (const p of record.instructions) {
-    if (isOwnPart(p)) {
-      instructions.push({ id: "own", title: "Its own text", kind: "own", source: `lib/agent/engine/agents (${record.id})` }, p.own);
+  for (const e of record.instructions) {
+    if (isFile(e)) {
+      const shared = isShared(e);
+      instructions.push({ id: e, title: shared ? SHARED[e].title : "Its own text", kind: shared ? "shared" : "own", source: `lib/agent/engine/agents/${e}` }, instructionText(e));
       continue;
     }
-    const text = FIXED[p] ?? loaded.shared?.[p as RunShared];
-    if (text === undefined) throw new Error(`${record.id} uses the shared text ${p} but it wasn't read`);
-    if (text != null) instructions.push({ id: p, title: SHARED[p].title, kind: "shared", source: SHARED[p].source }, text);
-  }
-  if (loaded.situations) {
-    if (!record.context.includes("the_stock")) throw new Error(`${record.id} was given a stock's situations but its context has no stock`);
-    instructions.push({ id: "situations", ...SITUATIONS_PART, kind: "situations" }, loaded.situations);
+    const text = loaded.context?.[e];
+    if (text === undefined) throw new Error(`${record.id} reads ${e} but it wasn't read`);
+    if (text != null) instructions.push({ id: e, title: CONTEXT[e].title, kind: "context", source: CONTEXT[e].source }, text);
   }
   if (record.conversation) return { agent: record.id, instructions: instructions.text, message: "", parts: instructions.parts, tools: record.tools };
 
@@ -161,7 +135,7 @@ function printFirst(record: AgentRecord, input: AgentInput, loaded: Loaded, put:
   put({ id: "line", ...DATE_LINE, kind: "line" }, dateLine(input.now, input.environment), false);
   const pieces = loaded.pieces ?? null;
   const unreadable = pieces?.find((p) => p.id === "unreadable") ?? null;
-  const firstPiece = readsOf(record).find(isPiece);
+  const firstPiece = record.context.find((c): c is ContextId => c !== "message" && isPiece(c));
   let groupOpen: string | null = null;
   for (const id of record.context) {
     if (id === "message") {

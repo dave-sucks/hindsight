@@ -181,16 +181,15 @@ export function byParts(parts: SentPartManifest[], text: string): { parts: SentC
 }
 
 /**
- * A named part's group: the agent's own text, a shared text and the
- * situations are its instructions; the date line and the reads its context;
- * the message its message. A part kept before the three parts (kind "block")
- * reads by where it went.
+ * A named part's group: everything in the instructions is its instructions
+ * (its files and the facts placed among them); the date line and the reads
+ * of the first message its context; the message its message. A part kept
+ * before the three parts (kind "block") reads by where it went.
  */
 const groupOf = (p: SentPartManifest): SentGroup =>
-  p.kind === "shared" || p.kind === "situations" ? "Instructions"
+  p.where === "instructions" ? "Instructions"
   : p.kind === "message" ? "Message"
   : p.kind === "line" || p.kind === "context" ? "Context"
-  : p.where === "instructions" ? "Instructions"
   // Kept before the three parts: an agent's own words in its first message were its ask.
   : p.kind === "own" ? "Message"
   : "Context";

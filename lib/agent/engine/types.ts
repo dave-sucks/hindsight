@@ -3,8 +3,12 @@
  * Agents page and the Context panel read them.
  *
  * An agent is three things: its instructions, its context and its tools.
- * - Instructions: its own text, and the shared texts it uses (./parts.ts).
- * - Context: the reads put in its first message, each one text.
+ * - Instructions: markdown files (./agents/*.md): its own, and the shared
+ *   ones it uses (the house rules, how you write, the research rules).
+ * - Context: the facts it is given, each one named read (./parts.ts); the
+ *   record says where each goes: in the instructions (the analyst, the
+ *   playbooks, the stock's situations, where they were measured) or the
+ *   first message.
  * - Tools: the tools it may call.
  * The run's task is the message, written by whoever starts the run; the
  * record's context list says where it goes in the first message. Every first
@@ -12,11 +16,18 @@
  * the account.
  */
 
-/** A text more than one agent's instructions use (./parts.ts). */
-export type SharedId = "house_rules" | "how_you_write" | "the_analyst" | "playbooks" | "research_rules";
+/** An instruction file: one markdown file in ./agents/. */
+export type InstructionFile = `${string}.md`;
 
-/** A read put in an agent's first message (./parts.ts). */
+/** The instruction files more than one agent uses (./parts.ts). */
+export const SHARED_FILES = ["house-rules.md", "how-you-write.md", "research-rules.md"] as const;
+export type SharedFile = (typeof SHARED_FILES)[number];
+
+/** A fact an agent is given (./parts.ts): placed in its instructions or its first message, where its record lists it. */
 export type ContextId =
+  | "the_analyst"
+  | "playbooks"
+  | "situations"
   | "market_numbers"
   | "market_digest"
   | "portfolio"
@@ -37,8 +48,8 @@ export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trig
 /** One entry of an agent's first message, after the date line: a read, or "message", where the run's task goes. */
 export type FirstMessagePart = ContextId | "message";
 
-/** One entry of an agent's instructions: its own text, or a shared text by name. */
-export type InstructionPart = SharedId | { own: string };
+/** One entry of an agent's instructions: an instruction file, or a fact placed there. */
+export type InstructionEntry = InstructionFile | ContextId;
 
 /** What a run hands the engine about itself. */
 export interface AgentInput {
@@ -67,10 +78,11 @@ export interface AgentRecord {
   /** How long its model call may run before it is stopped, in milliseconds. The agent runner (./run.ts) runs only a record that names one. */
   timeoutMs?: number;
   /**
-   * Its instructions, in order: its own text, once, and the shared texts it
-   * uses. When its context has the stock, the stock's situations end them.
+   * Its instructions, in order: its own instruction file, once, the shared
+   * files it uses, and any fact placed in them (the analyst at the top, the
+   * stock's situations at the end, where they were measured).
    */
-  instructions: readonly InstructionPart[];
+  instructions: readonly InstructionEntry[];
   /**
    * Its first message after the date line, in order: each read, and
    * "message", where the run's task goes (last, for every agent but the two
@@ -105,15 +117,15 @@ export type RunnableRecord = AgentRecord & { timeoutMs: number };
 export type Where = "instructions" | "message" | "newest";
 
 /**
- * What a part of a request is: the agent's own text, a shared text, the
- * stock's situations (instructions), the date line, a read (context), or the
- * run's task (the message).
+ * What a part of a request is: the agent's own instruction file, a shared
+ * one, the date line, a fact (context, in the instructions or the first
+ * message), or the run's task (the message).
  */
-export type PartKind = "own" | "shared" | "situations" | "line" | "context" | "message";
+export type PartKind = "own" | "shared" | "line" | "context" | "message";
 
 /** One part of a built request, as the run keeps it (lib/agent/run-requests.ts). */
 export interface SentPartManifest {
-  /** "own", "line", "message", "situations", or the shared text's or read's id. */
+  /** An instruction file's name, "line", "message", or the fact's id. */
   id: string;
   title: string;
   kind: PartKind;
@@ -143,16 +155,20 @@ export interface BuiltNewest {
   parts: SentPartManifest[];
 }
 
-export const isOwnPart = (p: InstructionPart): p is { own: string } => typeof p !== "string";
+export const isFile = (e: InstructionEntry): e is InstructionFile => e.endsWith(".md");
+export const isShared = (f: InstructionFile): f is SharedFile => (SHARED_FILES as readonly string[]).includes(f);
 
-/** An agent's own text. */
-export const ownText = (r: Pick<AgentRecord, "instructions">): string => r.instructions.find(isOwnPart)?.own ?? "";
+/** An agent's own instruction file. */
+export const ownFile = (r: Pick<AgentRecord, "instructions">): InstructionFile | null => r.instructions.find((e): e is InstructionFile => isFile(e) && !isShared(e)) ?? null;
 
-/** The reads an agent's first message carries, in order. */
-export const readsOf = (r: Pick<AgentRecord, "context">): ContextId[] => r.context.filter((c): c is ContextId => c !== "message");
+/** The shared instruction files an agent uses, in order. */
+export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedFile[] => r.instructions.filter((e): e is SharedFile => isFile(e) && isShared(e));
 
-/** The shared texts an agent's instructions use, in order. */
-export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedId[] => r.instructions.filter((p): p is SharedId => !isOwnPart(p));
+/** Every fact an agent is given, in its instructions and its first message, in order. */
+export const readsOf = (r: Pick<AgentRecord, "instructions" | "context">): ContextId[] => [
+  ...r.instructions.filter((e): e is ContextId => !isFile(e)),
+  ...r.context.filter((c): c is ContextId => c !== "message"),
+];
 
 /** The provider's own tools a record is given, named for the page: whose web search, and its cap. */
 export const providerToolNames = (r: Pick<AgentRecord, "model" | "providerTools" | "searchesPerCall">): string[] =>

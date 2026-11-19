@@ -45,10 +45,10 @@
    ],
    "parts": [
     {
-     "id": "own",
+     "id": "portfolio-digest.md",
      "title": "Its own text",
      "kind": "own",
-     "source": "lib/agent/engine/agents (portfolio_digest)",
+     "source": "lib/agent/engine/agents/portfolio-digest.md",
      "where": "instructions",
      "sep": "",
      "chars": 1585

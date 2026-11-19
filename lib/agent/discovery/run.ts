@@ -71,8 +71,8 @@ export async function discoveryArgs(
   return {
     input: { now: opts.now ?? new Date(), environment: target.environment },
     sources: {
-      shared: { the_analyst: async () => analystBrief({ ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) }, await analystRoom(ac)) },
       context: {
+        the_analyst: async () => analystBrief({ ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) }, await analystRoom(ac)),
         // The analyst's stocks, read in the book it trades in, whichever book this run is in.
         the_book: () => loadBook({ accountId: ac.accountId, environment, analystId: ac.id }),
         earnings_calendar: () => earningsCalendar(toolset),

@@ -203,10 +203,10 @@
    ],
    "parts": [
     {
-     "id": "own",
+     "id": "market-reviewer.md",
      "title": "Its own text",
      "kind": "own",
-     "source": "lib/agent/engine/agents (market_reviewer)",
+     "source": "lib/agent/engine/agents/market-reviewer.md",
      "where": "instructions",
      "sep": "",
      "chars": 3382

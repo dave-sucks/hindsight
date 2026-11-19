@@ -43,11 +43,10 @@ const steps = (a: FrameworkAgent) => (a.maxSteps === 1 ? "one call" : `up to ${a
 
 /** Where a part's text comes from, by what it is. */
 const FROM: Record<FrameworkPart["kind"], string> = {
-  own: "Its own text",
-  shared: "A shared text",
-  situations: "The stock's situations, on some runs",
+  own: "Its own instruction file",
+  shared: "A shared instruction file",
   line: "Written by the engine",
-  context: "A read",
+  context: "A fact, read for the run",
   message: "Written by whoever starts the run",
 };
 

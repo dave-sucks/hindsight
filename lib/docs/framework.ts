@@ -21,8 +21,9 @@ import { providerToolNames } from "@/lib/agent/engine/types";
 import { zodSchema } from "ai";
 import { swatchOf } from "@/components/docs/framework/swatch";
 import { AGENTS } from "@/lib/agent/engine/agents";
-import { CONTEXT, DATE_LINE, SHARED, SITUATIONS_PART } from "@/lib/agent/engine/parts";
-import { isOwnPart, type AgentRecord, type BuiltNewest, type BuiltRequest, type PartKind, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
+import { CONTEXT, DATE_LINE, SHARED } from "@/lib/agent/engine/parts";
+import { instructionText } from "@/lib/agent/engine/instructions";
+import { isFile, isShared, type AgentRecord, type BuiltNewest, type BuiltRequest, type PartKind, type SentPartManifest, type Where } from "@/lib/agent/engine/types";
 import { getAccountId } from "@/lib/auth/account";
 import { REQUEST_ROLE, byParts, viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { prisma } from "@/lib/prisma";
@@ -143,12 +144,14 @@ interface Listed {
 export function recordParts(r: AgentRecord): Listed[] {
   const first: Where = r.conversation ? "newest" : "message";
   return [
-    ...r.instructions.map((p): Listed =>
-      isOwnPart(p)
-        ? { id: "own", title: "Its own text", kind: "own", where: "instructions", section: "instructions", about: openingOf(p.own), source: `lib/agent/engine/agents (${r.id})` }
-        : { id: p, title: SHARED[p].title, kind: "shared", where: "instructions", section: "instructions", about: SHARED[p].about, source: SHARED[p].source },
+    // Its instruction files, and the facts its record places among them.
+    ...r.instructions.map((e): Listed =>
+      !isFile(e)
+        ? { id: e, title: CONTEXT[e].title, kind: "context", where: "instructions", section: "instructions", about: CONTEXT[e].about, source: CONTEXT[e].source, ...(e === "situations" || e === "playbooks" ? { someRuns: true } : {}) }
+        : isShared(e)
+          ? { id: e, title: SHARED[e].title, kind: "shared", where: "instructions", section: "instructions", about: SHARED[e].about, source: SHARED[e].source }
+          : { id: e, title: "Its own text", kind: "own", where: "instructions", section: "instructions", about: openingOf(instructionText(e)), source: `lib/agent/engine/agents/${e}` },
     ),
-    ...(r.context.includes("the_stock") ? [{ id: "situations", ...SITUATIONS_PART, kind: "situations" as const, where: "instructions" as const, section: "instructions" as const, someRuns: true }] : []),
     { id: "line", ...DATE_LINE, kind: "line", where: first, section: "context" },
     // Each read and the message, where the record lists it.
     ...r.context.map((id): Listed =>

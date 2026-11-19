@@ -6,7 +6,10 @@
  * words, said the way a markets podcaster would (lib/agent/voice.ts). The
  * note as saved fails that measure; the same facts in that voice fit it.
  */
-import { noteCheck, numbersOf, sentencesOf, VOICE_RULES, wordsOf } from "@/lib/agent/voice";
+import { noteCheck, numbersOf, sentencesOf, wordsOf } from "@/lib/agent/voice";
+import { instructionText } from "@/lib/agent/engine/instructions";
+
+const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
 
 /** The proposal's reason, word for word, from the stock's Activity. */
 const SAVED =

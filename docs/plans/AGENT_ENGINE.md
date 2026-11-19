@@ -8,8 +8,8 @@ The design (2026-11-18) is the top section of the audit page, https://claude.ai/
 
 | Part | What it is | Where |
 |---|---|---|
-| **Instructions** | The agent's own text (one string, the same on every run) and the shared texts it uses, in the order the record lists them. When its context has the stock, the stock's situations end them | the record (`instructions`), `lib/agent/engine/parts.ts` (`SHARED`) |
-| **Context** | The reads put in its first message, each one named text from one function. In a conversation (the chat) they ride on each message you send | the record (`context`), `parts.ts` (`CONTEXT`) |
+| **Instructions** | Markdown files, the same on every run: the agent's own (`lib/agent/engine/agents/<agent>.md`) and the shared ones it uses, in the order the record lists them. No instruction text is in TypeScript | the record (`instructions`), `lib/agent/engine/agents/*.md`, `parts.ts` (`SHARED`) |
+| **Context** | The facts it is given, each one named text. The record says where each goes: among its instructions (the analyst, the playbooks, the stock's situations, where they were measured) or in its first message. In a conversation (the chat) the first message's facts ride on each message you send | the record (`instructions`, `context`), `parts.ts` (`CONTEXT`) |
 | **Tools** | The tools it may call | the record (`tools`) |
 
 Two more things are in every request, and neither is a part an agent chooses:
@@ -17,16 +17,21 @@ Two more things are in every request, and neither is a part an agent chooses:
 - **The message**: the run's task, written by whoever starts the run (you in the chat, another agent's brief, the trigger check, the schedule's kickoff), `AgentInput.message`. The record's context list says where it goes ("message"): last for every agent but the Writer and the Holding refresh, which list it right after the date line. Measured on sndk-writer-watch, 10 runs each: with the brief last the Writer kept the view 3 times, with it before the stock's data 9, as before the three parts.
 - **The date line**: the first line of every first message, "Wed, Nov 18, 2026, 10:00 AM ET, the PAPER account." (`dateLine`, `engine.ts`). Not configurable.
 
-**The shared texts (5):**
-- `house_rules`: the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it (`house-rules.ts`).
-- `how_you_write` (`voice.ts`).
-- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, and its fence where it narrows: some sectors, a market-cap band, exclusions), its playbooks a line each (`analyst-brief.ts`).
+**The shared instruction files (3), in `lib/agent/engine/agents/`:**
+- `house-rules.md`: the principal's word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it.
+- `how-you-write.md`: how a note, a trade's reason, a trigger's note and the narration are written (`voice.ts` keeps only the measures the tests use).
+- `research-rules.md`: the Writer's research rules, for the Writer and the Holding refresh.
+
+A number written into an instruction file (the Portfolio Manager's three proposals, Discovery's three sends, the Writer's four searches, the digest's length) is checked against the constant code enforces (`moves.engine.test.ts`).
+
+**The facts placed in the instructions (3):**
+- `the_analyst`: its strategy, its rules (direction, hold style, size, slots, and its fence where it narrows: some sectors, a market-cap band, exclusions), its playbooks a line each (`analyst-brief.ts`). It opens the instructions of the agents that work for one analyst, and ends the chat's when it is pinned.
 - `playbooks`: the analyst's playbooks in full, for the Writer and, on a review of a stock we watch, the trigger run (`knowledge/playbooks.ts`).
-- `research_rules`: the Writer's five rule texts as one, for the Writer and the Holding refresh (`thesis-research/writer-rules.ts`).
+- `situations`: the stock's situations and what each asks, ending the trigger run's instructions (`situations.ts`).
 
 **The reads (13):** `market_numbers`, `market_digest`, `portfolio` (today's snapshot), `portfolio_digest` (the four print under one heading, "Market and portfolio", from one loader, `portfolio-block.ts`); `the_book` (every stock held and watched, a line each with its belief, `book.ts`); `the_analysts` (each analyst's room); `the_stock` (the `get_theses` row); `stock_data` (the Writer's data pull, with our history with the stock); `playbook_record`; `earnings_this_week`; `filings_this_week`; `refused_calls`; `last_output` (the agent's own last write-up, or its digest and notes).
 
-**The engine** (`engine.ts`): `buildAgentRequest(record, input, sources)` reads each text the record names, `composeAgentRequest(record, input, loaded)` puts them together, and the request names every part (its id, title, kind, where it went, its source, its size). The run saves that manifest with what it sent (`run-requests.ts`), and the Context panel shows a request as the agent is made: Instructions (its own text and each shared text, named), Context (the date line and each read, named), Message, Tools.
+**The engine** (`engine.ts`): `buildAgentRequest(record, input, sources)` reads each instruction file (`instructions.ts`) and each fact the record names, `composeAgentRequest(record, input, loaded)` puts them together, and the request names every part (its id, title, kind, where it went, its source, its size). The run saves that manifest with what it sent (`run-requests.ts`), and the Context panel shows a request as the agent is made: Instructions (its own text and each shared text, named), Context (the date line and each read, named), Message, Tools.
 
 ## The agents
 

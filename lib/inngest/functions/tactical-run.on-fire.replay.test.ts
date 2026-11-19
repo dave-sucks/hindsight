@@ -9,7 +9,8 @@
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
 import { POST_TRADE_WRITEUP, WRITEUP_ASK } from "@/lib/agent/engine/agents/post-trade-writeup";
 import { TRIGGER_RUN_ASK } from "@/lib/agent/engine/agents/trigger-run";
-import { ownText } from "@/lib/agent/engine/types";
+import { ownFile } from "@/lib/agent/engine/types";
+import { instructionText } from "@/lib/agent/engine/instructions";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
@@ -148,7 +149,7 @@ describe("the trigger run, by fire mode", () => {
     // The post-trade write-up's own instructions, the same on every run.
     // The analyst it works for, then its own fixed text.
     expect(r.asked[0].system.startsWith("## Analyst:")).toBe(true);
-    expect(r.asked[0].system).toContain(ownText(POST_TRADE_WRITEUP));
+    expect(r.asked[0].system).toContain(instructionText(ownFile(POST_TRADE_WRITEUP)!));
     expect(r.asked[0].system).not.toContain("## Decision framework");
     expect(r.asked[0].prompt).not.toContain("AUTO_TRADE");
     expect(r.asked[0].prompt).toContain("The sale of all 300 shares is proposed and waits for the principal's approval.");

@@ -20,13 +20,12 @@ const CALENDAR = "## The earnings calendar\n\nReported, last 7 days:\n- $ZS 2026
 
 describe("its request", () => {
   const built = composeAgentRequest(DISCOVERY, { now: NOW, environment: "PAPER", message: KICKOFF }, {
-    shared: { the_analyst: "## Analyst: PEAD Specialist\n\nI buy the drift." },
-    context: { the_book: BOOK, earnings_calendar: CALENDAR },
+    context: { the_analyst: "## Analyst: PEAD Specialist\n\nI buy the drift.", the_book: BOOK, earnings_calendar: CALENDAR },
   });
 
   it("opens its instructions with the analyst, then its own text", () => {
     expect(built.instructions.startsWith("## Analyst: PEAD Specialist")).toBe(true);
-    expect(built.parts.filter((p) => p.where === "instructions").map((p) => p.id)).toEqual(["the_analyst", "own"]);
+    expect(built.parts.filter((p) => p.where === "instructions").map((p) => p.id)).toEqual(["the_analyst", "discovery.md"]);
   });
 
   it("starts with the date line, its book and the earnings calendar, then the schedule's kickoff", () => {

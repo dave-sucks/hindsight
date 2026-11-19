@@ -35,13 +35,14 @@ jest.mock("@/lib/prisma", () => ({
 import { buildAgentRequest, composeAgentRequest, dateLine, openingOf, type Sources } from "./engine";
 import { AGENTS } from "./agents";
 import { PORTFOLIO_MANAGER } from "./agents/portfolio-manager";
+import { MORNING_RUN } from "./agents/morning-run";
 import { loadPortfolioPieces, portfolioPieceText } from "@/lib/agent/portfolio-block";
 import { lastWriteup } from "@/lib/agent/portfolio-manager/run";
 import { loadBook } from "@/lib/agent/book";
 import { byParts } from "@/lib/agent/run-requests";
 import { PORTFOLIO_DIGEST } from "./agents/portfolio-digest";
 import { MARKET_REVIEWER } from "./agents/market-reviewer";
-import { isOwnPart, providerToolNames } from "./types";
+import { isFile, ownFile, providerToolNames } from "./types";
 
 const NOW = new Date(GOLDEN.now);
 const book = { accountId: "acct", environment: "LIVE" as const };
@@ -61,10 +62,9 @@ afterEach(() => jest.restoreAllMocks());
 const between = (text: string, from: string, to?: string) => text.slice(text.indexOf(from), to ? text.indexOf(to) : undefined);
 
 describe("every agent is instructions, context and tools", () => {
-  it("each record's own text is one fixed string, given once", () => {
+  it("each record names its own instruction file once", () => {
     for (const r of AGENTS) {
-      const own = r.instructions.filter(isOwnPart);
-      expect([r.id, own.length, typeof own[0]?.own]).toEqual([r.id, 1, "string"]);
+      expect([r.id, r.instructions.filter((e) => isFile(e) && e === ownFile(r)).length]).toEqual([r.id, 1]);
     }
   });
 
@@ -85,13 +85,13 @@ describe("every agent is instructions, context and tools", () => {
   it("prints the message last, and the run page's opening is the message alone", () => {
     const built = composeAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER", message: "Write today's." }, { pieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nS" }] });
     expect(built.message).toBe(`${dateLine(NOW, "PAPER")}\n\n## Market and portfolio\n\n### Portfolio snapshot\nS\n\nWrite today's.`);
-    expect(built.parts.map((p) => `${p.kind}:${p.id}`)).toEqual(["own:own", "line:line", "context:portfolio", "message:message"]);
+    expect(built.parts.map((p) => `${p.kind}:${p.id}`)).toEqual(["own:portfolio-digest.md", "line:line", "context:portfolio", "message:message"]);
     expect(openingOf(built)).toBe("Write today's.");
   });
 
-  it("refuses a read the record lists and the run didn't give, and situations for an agent with no stock", async () => {
+  it("refuses a fact the record lists and the run didn't give, in its first message or among its instructions", async () => {
     await expect(buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { portfolioPieces: sources.portfolioPieces })).rejects.toThrow("reads the_book");
-    expect(() => composeAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER" }, { pieces: [], situations: "## Its situations" })).toThrow("its context has no stock");
+    expect(() => composeAgentRequest(MORNING_RUN, { now: NOW, environment: "PAPER" }, { pieces: [], context: {} })).toThrow("reads the_analyst but it wasn't read");
   });
 });
 

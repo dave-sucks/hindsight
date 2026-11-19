@@ -55,10 +55,10 @@ describe("the framework page's agents", () => {
 
   it("a part the run didn't send has no size, and one it sent that the record no longer lists is named", () => {
     const pm = byId.get("portfolio_manager")!;
-    const run = { at: "2026-11-17T20:55:00.000Z", runId: "run_1", toolChars: 100, parts: [{ id: "own", title: "Its own text", kind: "own" as const, where: "instructions" as const, source: "x", chars: 181 }, { id: "old_part", title: "An old part", kind: "own" as const, where: "instructions" as const, source: "x", chars: 50 }] };
+    const run = { at: "2026-11-17T20:55:00.000Z", runId: "run_1", toolChars: 100, parts: [{ id: "portfolio-manager.md", title: "Its own text", kind: "own" as const, where: "instructions" as const, source: "x", chars: 181 }, { id: "old_part", title: "An old part", kind: "own" as const, where: "instructions" as const, source: "x", chars: 50 }] };
     const sized = sizedOnRun(pm, run);
-    expect(sized.parts.find((p) => p.id === "own")!.chars).toBe(181);
-    expect(sized.parts.filter((p) => p.id !== "own").every((p) => p.chars == null)).toBe(true);
+    expect(sized.parts.find((p) => p.id === "portfolio-manager.md")!.chars).toBe(181);
+    expect(sized.parts.filter((p) => p.id !== "portfolio-manager.md").every((p) => p.chars == null)).toBe(true);
     expect(sized.sizedOn).toMatchObject({ kind: "run", gone: ["An old part"] });
   });
 

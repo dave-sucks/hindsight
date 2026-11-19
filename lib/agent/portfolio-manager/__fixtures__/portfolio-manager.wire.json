@@ -625,28 +625,28 @@
    ],
    "parts": [
     {
-     "id": "own",
+     "id": "portfolio-manager.md",
      "title": "Its own text",
      "kind": "own",
-     "source": "lib/agent/engine/agents (portfolio_manager)",
+     "source": "lib/agent/engine/agents/portfolio-manager.md",
      "where": "instructions",
      "sep": "",
      "chars": 4440
     },
     {
-     "id": "house_rules",
+     "id": "house-rules.md",
      "title": "House rules",
      "kind": "shared",
-     "source": "lib/agent/house-rules.ts",
+     "source": "lib/agent/engine/agents/house-rules.md",
      "where": "instructions",
      "sep": "\n\n",
      "chars": 389
     },
     {
-     "id": "how_you_write",
+     "id": "how-you-write.md",
      "title": "How you write",
      "kind": "shared",
-     "source": "lib/agent/voice.ts",
+     "source": "lib/agent/engine/agents/how-you-write.md",
      "where": "instructions",
      "sep": "\n\n",
      "chars": 5401

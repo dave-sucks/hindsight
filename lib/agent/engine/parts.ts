@@ -1,10 +1,10 @@
 /**
  * What an agent can be given (docs/plans/AGENT_ENGINE.md), client-safe: the
- * shared instruction texts, the reads that make up its context, and the one
+ * shared instruction files, the facts that make up its context, and the one
  * line every first message opens with. Each says what it holds and the file
  * its text comes from. The engine (./engine.ts) puts them together.
  */
-import type { ContextId, SharedId } from "./types";
+import type { ContextId, SharedFile } from "./types";
 
 export interface PartDef {
   title: string;
@@ -14,18 +14,27 @@ export interface PartDef {
   source: string;
 }
 
-/** The instruction texts more than one agent uses. */
-export const SHARED: Record<SharedId, PartDef> = {
-  house_rules: {
+/** The instruction files more than one agent uses. */
+export const SHARED: Record<SharedFile, PartDef> = {
+  "house-rules.md": {
     title: "House rules",
     about: "Your word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it.",
-    source: "lib/agent/house-rules.ts",
+    source: "lib/agent/engine/agents/house-rules.md",
   },
-  how_you_write: {
+  "how-you-write.md": {
     title: "How you write",
     about: "How a note, a trade's reason, a trigger's note and the narration are written.",
-    source: "lib/agent/voice.ts",
+    source: "lib/agent/engine/agents/how-you-write.md",
   },
+  "research-rules.md": {
+    title: "Research rules",
+    about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first.",
+    source: "lib/agent/engine/agents/research-rules.md",
+  },
+};
+
+/** The facts placed in an agent's instructions where its record lists them: the analyst, the playbooks, the stock's situations. */
+const PLACED_IN_INSTRUCTIONS: Record<"the_analyst" | "playbooks" | "situations", PartDef> = {
   the_analyst: {
     title: "The analyst",
     about: "The analyst it works for: its strategy in its own words, its rules (direction, hold style, size, slots, and the stocks it may cover where its fence narrows them) and its playbooks, a line each.",
@@ -36,18 +45,11 @@ export const SHARED: Record<SharedId, PartDef> = {
     about: "Each of the analyst's playbooks in full: when it applies, what confirms a buy, and its watch triggers.",
     source: "lib/agent/knowledge/playbooks.ts (Settings → Playbooks)",
   },
-  research_rules: {
-    title: "Research rules",
-    about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first.",
-    source: "lib/agent/thesis-research/writer-rules.ts",
+  situations: {
+    title: "The stock's situations",
+    about: "The situations the stock is in now, and what each asks, from the one table.",
+    source: "lib/agent/situations.ts",
   },
-};
-
-/** The stock's situations: they end the instructions of an agent whose context has the stock. */
-export const SITUATIONS_PART: PartDef = {
-  title: "The stock's situations",
-  about: "The situations the stock is in now, and what each asks, from the one table.",
-  source: "lib/agent/situations.ts",
 };
 
 /** The line every first message opens with. */
@@ -64,8 +66,9 @@ export interface ContextDef extends PartDef {
 
 export const GROUP_HEADINGS = { market_and_portfolio: "## Market and portfolio" } as const;
 
-/** The reads an agent's first message can carry. */
+/** Every fact an agent can be given, in its instructions or its first message. */
 export const CONTEXT: Record<ContextId, ContextDef> = {
+  ...PLACED_IN_INSTRUCTIONS,
   market_numbers: {
     title: "Market numbers",
     about: "The S&P 500 and Nasdaq 100, the regime, the 11 sectors, VIXY and our stocks reporting soon, written by code for the request.",

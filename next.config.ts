@@ -7,8 +7,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // The guide's markdown is read from disk by the /docs pages (lib/docs/guide.ts).
+  // The guide's markdown is read from disk by the /docs pages (lib/docs/guide.ts), and every
+  // agent's instructions from lib/agent/engine/agents/*.md (lib/agent/engine/instructions.ts).
   outputFileTracingIncludes: {
+    "/**/*": ["./lib/agent/engine/agents/*.md"],
+    "/": ["./lib/agent/engine/agents/*.md"],
     "/docs": ["./docs/guide/**/*.md"],
     "/docs/[slug]": ["./docs/guide/**/*.md"],
     "/how-it-works": ["./docs/guide/**/*.md"],

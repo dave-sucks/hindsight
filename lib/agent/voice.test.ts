@@ -16,7 +16,10 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool } from "@/lib/agent/run-thesis-writer";
 import { SETUP_STANDING_RULES } from "@/lib/agent/knowledge/seat-rules";
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
-import { VOICE_RULES } from "@/lib/agent/voice";
+import { instructionText } from "@/lib/agent/engine/instructions";
+
+/** The voice rules: lib/agent/engine/agents/how-you-write.md, after its heading. */
+const VOICE_RULES = instructionText("how-you-write.md").replace(/^## How you write\n\n/, "");
 import { sizeByRisk } from "@/lib/agent/position-sizing";
 import { heatLine, type OpenRisk } from "@/lib/agent/portfolio-risk";
 import { computeRegime } from "@/lib/agent/regime";

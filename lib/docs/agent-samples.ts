@@ -112,8 +112,8 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     from: "the morning case's analyst and the stand-in book, on its schedule's kickoff",
     build: (record) => ({
       request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER", message: SCHEDULE.find((l) => l.agent === "discovery")?.message }, {
-        shared: { the_analyst: analystBrief(MORNING_CASES.full.analyst as never) },
         context: {
+          the_analyst: analystBrief(MORNING_CASES.full.analyst as never),
           the_book: BOOK,
           earnings_calendar: "## The earnings calendar\n\nReported, last 7 days:\n- $DDD 2026-11-10: EPS $1.20 vs $1.00 est — beat by 20.0%\n\nReporting, next 14 days:\n- $EEE 2026-11-19: EPS est $0.85 after close",
         },

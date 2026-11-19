@@ -1370,26 +1370,26 @@
      {
       "id": "the_analyst",
       "title": "The analyst",
-      "kind": "shared",
+      "kind": "context",
       "source": "lib/agent/analyst-brief.ts",
       "where": "instructions",
       "sep": "",
       "chars": 972
      },
      {
-      "id": "house_rules",
+      "id": "house-rules.md",
       "title": "House rules",
       "kind": "shared",
-      "source": "lib/agent/house-rules.ts",
+      "source": "lib/agent/engine/agents/house-rules.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 389
      },
      {
-      "id": "how_you_write",
+      "id": "how-you-write.md",
       "title": "How you write",
       "kind": "shared",
-      "source": "lib/agent/voice.ts",
+      "source": "lib/agent/engine/agents/how-you-write.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 5401
@@ -1397,26 +1397,26 @@
      {
       "id": "playbooks",
       "title": "The playbooks",
-      "kind": "shared",
+      "kind": "context",
       "source": "lib/agent/knowledge/playbooks.ts (Settings → Playbooks)",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 5534
      },
      {
-      "id": "research_rules",
+      "id": "research-rules.md",
       "title": "Research rules",
       "kind": "shared",
-      "source": "lib/agent/thesis-research/writer-rules.ts",
+      "source": "lib/agent/engine/agents/research-rules.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 5120
      },
      {
-      "id": "own",
+      "id": "writer.md",
       "title": "Its own text",
       "kind": "own",
-      "source": "lib/agent/engine/agents (writer)",
+      "source": "lib/agent/engine/agents/writer.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 6156
@@ -2833,44 +2833,44 @@
      {
       "id": "the_analyst",
       "title": "The analyst",
-      "kind": "shared",
+      "kind": "context",
       "source": "lib/agent/analyst-brief.ts",
       "where": "instructions",
       "sep": "",
       "chars": 972
      },
      {
-      "id": "house_rules",
+      "id": "house-rules.md",
       "title": "House rules",
       "kind": "shared",
-      "source": "lib/agent/house-rules.ts",
+      "source": "lib/agent/engine/agents/house-rules.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 389
      },
      {
-      "id": "how_you_write",
+      "id": "how-you-write.md",
       "title": "How you write",
       "kind": "shared",
-      "source": "lib/agent/voice.ts",
+      "source": "lib/agent/engine/agents/how-you-write.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 5401
      },
      {
-      "id": "research_rules",
+      "id": "research-rules.md",
       "title": "Research rules",
       "kind": "shared",
-      "source": "lib/agent/thesis-research/writer-rules.ts",
+      "source": "lib/agent/engine/agents/research-rules.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 5120
      },
      {
-      "id": "own",
+      "id": "holding-refresh.md",
       "title": "Its own text",
       "kind": "own",
-      "source": "lib/agent/engine/agents (holding_refresh)",
+      "source": "lib/agent/engine/agents/holding-refresh.md",
       "where": "instructions",
       "sep": "\n\n",
       "chars": 1601
