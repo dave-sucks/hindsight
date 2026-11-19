@@ -29,7 +29,7 @@ import { stockRowText, triggerRunRequest } from "@/lib/agent/system-prompts/intr
 import { AFTER_BUY_ASK } from "@/lib/agent/engine/agents/after-buy";
 import { afterBuyMessage } from "@/lib/proposals/after-buy";
 import { stockDataText } from "@/lib/agent/context/stock-data";
-import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
+import { holdingTriggersText } from "@/lib/agent/knowledge/playbooks";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
 import { analystBrief } from "@/lib/agent/analyst-brief";
@@ -114,7 +114,7 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
             the_analyst: analystBrief(MORNING_CASES.full.analyst as never),
             the_stock: stockRowText(held),
             stock_data: stockDataText(WRITER_MESSAGE.dataBlock),
-            holding_triggers: [`$${held.ticker}'s playbook: Base breakout.`, ...playbookTriggerText(PLAYBOOK_TEMPLATES.BASE_BREAKOUT, "PROPOSAL"), ...playbookTriggerText(PLAYBOOK_TEMPLATES.BASE_BREAKOUT, "FILL")].join("\n"),
+            holding_triggers: holdingTriggersText({ ticker: held.ticker, playbook: "Base breakout", templates: PLAYBOOK_TEMPLATES.BASE_BREAKOUT, floor: fill.floor.sentence }),
           },
         }),
       };

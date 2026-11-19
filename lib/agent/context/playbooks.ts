@@ -9,7 +9,11 @@
  * - holding_triggers: the stock's playbook's triggers for a holding, by
  *   reference (H1, H2…), as edit_triggers takes them.
  */
-import { playbookTriggerText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { holdingTriggersText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
+import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import type { Trigger } from "@/lib/agent/triggers/types";
 import { getSetup, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import type { ContextRun, Fact } from "./fact";
 import { analystOf, thesisOf } from "./rows";
@@ -38,7 +42,9 @@ export const holdingTriggers: Fact = {
     if (!t.setupId) return `$${t.ticker} has no playbook.`;
     const { loadPlaybook } = await import("@/lib/agent/knowledge/load-playbook");
     const templates = await loadPlaybook(a.accountId, t.setupId);
-    return [`$${t.ticker}'s playbook: ${getSetup(t.setupId, a.setupOverrides)?.name ?? t.setupId}.`, ...playbookTriggerText(templates, "PROPOSAL"), ...playbookTriggerText(templates, "FILL")].join("\n");
+    // The floor the fill wrote is shown as on, never as a trigger to add.
+    const floor = (parseTriggersResilient(t.triggers).triggers as Trigger[]).find((x) => x.action === "EXIT" && levelSlotOf(x, t.direction) === "FLOOR");
+    return holdingTriggersText({ ticker: t.ticker, playbook: getSetup(t.setupId, a.setupOverrides)?.name ?? t.setupId, templates, floor: floor ? sentenceOf(floor) : null });
   },
 };
 

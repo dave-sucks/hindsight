@@ -6,7 +6,8 @@
  * whose low was $368.63.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
-import { playbookFloor } from "./playbooks";
+import { holdingTriggersText, playbookFloor } from "./playbooks";
+import { PLAYBOOK_TEMPLATES } from "./playbook-templates";
 import { getSetup } from "./setups";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 
@@ -58,5 +59,21 @@ describe("the playbook's floor, when a buy names none: its words in code", () =>
     expect(at("MOMENTUM_FLAG", { horizon: "TRADE" })).toEqual({ refused: "The playbook's floor names no chart key." });
     expect(at("EPISODIC_PIVOT", { chart: { ...TRV, gaps: [] } as unknown as PriceStructure })).toEqual({ refused: "The playbook's floor is {gapDayLow} (the gap day's low), and the chart has no gap of 3% or more in the last 10 sessions." });
     expect(at("BASE_BREAKOUT", { chart: null })).toEqual({ refused: "The playbook's floor is {baseLow} (the base's low), and the chart couldn't be read." });
+  });
+});
+
+describe("the holding's playbook triggers, as the run after the buy reads them", () => {
+  it("shows the floor as on, with its price and that it came with the buy, and lists the rest by the playbook's own numbers", () => {
+    const text = holdingTriggersText({ ticker: "GEV", playbook: "Compounder accumulation", templates: PLAYBOOK_TEMPLATES.COMPOUNDER_ACCUMULATION, floor: "Sell if below $868" });
+    expect(text.split("\n")).toEqual([
+      "$GEV's playbook: Compounder accumulation.",
+      "The floor is on already: Sell if below $868. It came with the buy.",
+      "The triggers written at the fill:",
+      "- H2 · Review every 30 days — The watch's clock, kept on the holding.",
+      "- H3 · Review 60 days after the buy — The business checkpoint.",
+      "- H4 · Add if above 7% from our entry — The second half.",
+    ]);
+    expect(text).not.toContain("H1");
+    expect(text).not.toContain("{sellPrice}");
   });
 });

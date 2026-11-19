@@ -83,12 +83,36 @@ export function playbookTriggerText(templates: Template[] | null, on: WrittenOn)
   if (templates == null) return ["The playbook couldn't be read: write no trigger from it."];
   const mine = playbookRefs(templates).filter((r) => r.template.writtenOn === on);
   if (!mine.length) return [`${TRIGGER_LIST_NAME[on]}: none.`];
-  const marks = [...new Set(mine.flatMap((r) => templatePlaceholders(r.template.predicate)))] as Placeholder[];
-  return [
-    `${TRIGGER_LIST_NAME[on]}:`,
-    ...mine.map(({ ref, template: t }) => `- ${ref} · ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`),
-    ...(marks.length ? [`Where each key comes from: ${marks.map((m) => `${m} is ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
-  ];
+  return [`${TRIGGER_LIST_NAME[on]}:`, ...mine.map(refLine), ...keysLine(mine)];
+}
+
+/** One playbook trigger as an agent's prompt lists it: its reference, its sentence with each key, and its reason. */
+const refLine = ({ ref, template: t }: { ref: string; template: Template }) => `- ${ref} · ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`;
+
+/** Where each key the listed triggers name comes from. */
+function keysLine(refs: Array<{ template: Template }>): string[] {
+  const marks = [...new Set(refs.flatMap((r) => templatePlaceholders(r.template.predicate)))] as Placeholder[];
+  return marks.length ? [`Where each key comes from: ${marks.map((m) => `${m} is ${PLACEHOLDERS[m]}`).join("; ")}.`] : [];
+}
+
+/** The playbook's own floor: "Sell if below {sellPrice}", the sale the buy names. */
+export const isTheFloorTemplate = (t: Template) => t.action === "EXIT" && templatePlaceholders(t.predicate).includes("{sellPrice}");
+
+/**
+ * A holding's playbook triggers, for the run after the buy (holding_triggers):
+ * the floor first, as on already with its price (it came with the buy), then
+ * the triggers to put on by reference, the floor's own template left out and
+ * each reference numbered as the playbook numbers it.
+ */
+export function holdingTriggersText(p: { ticker: string; playbook: string; templates: Template[] | null; floor: string | null }): string {
+  const head = [`$${p.ticker}'s playbook: ${p.playbook}.`, p.floor ? `The floor is on already: ${p.floor}. It came with the buy.` : "The stock has no floor."];
+  if (p.templates == null) return [...head, "The playbook couldn't be read: write no trigger from it."].join("\n");
+  const held = playbookRefs(p.templates).filter((r) => r.template.writtenOn !== "WATCH" && !isTheFloorTemplate(r.template));
+  const lists = (["PROPOSAL", "FILL"] as const).flatMap((on) => {
+    const mine = held.filter((r) => r.template.writtenOn === on);
+    return mine.length ? [`${TRIGGER_LIST_NAME[on]}:`, ...mine.map(refLine)] : [];
+  });
+  return [...head, ...(lists.length ? lists : ["The playbook has no other holding triggers."]), ...keysLine(held)].join("\n");
 }
 
 /**
