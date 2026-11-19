@@ -35,7 +35,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { dirname } from "path";
-import { generateText, stepCountIs, zodSchema, type ModelMessage, type ToolSet } from "ai";
+import { asSchema, generateText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { MODES } from "@/lib/agent/modes";
@@ -48,15 +48,19 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { createResearchTools } from "@/lib/agent/tools";
 import { makeSubmitThesisTool, writerRecordFor, writerRequest } from "@/lib/agent/run-thesis-writer";
+import { validateThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { playbooksBlock, playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { bookReadText } from "@/lib/agent/context/the-book";
 import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
-import { grade } from "@/lib/agent/yardstick/grade";
+import { grade, saleLoosened, salePricesShown } from "@/lib/agent/yardstick/grade";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
 import { explainOldShape } from "@/lib/agent/yardstick/old-shape";
+import { chartFromText } from "@/lib/agent/yardstick/chart-text";
+import { afterTailoring, savedByWriter, withKeysPriced, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "@/lib/agent/yardstick/writer-replay";
+import { nothingCanFire, tailorMessage } from "@/lib/agent/run-thesis-writer";
 
 interface HeroCase {
   what: string;
@@ -133,7 +137,7 @@ function firedTrimOf(c: HeroCase): { ticker: string; pct: number } | undefined {
 function describedTools(c: HeroCase): ToolSet {
   if (c.mode === "thesis-writer") {
     // The tools its record names, its save among them. Its web search is left off: the note is written from the recorded data block.
-    const submit = makeSubmitThesisTool({ ticker: String(c.promptArgs.ticker) } as never);
+    const submit = makeSubmitThesisTool({ ticker: String(c.promptArgs.ticker), held: writerArgs(c).existingThesis?.status === "HOLDING" } as never);
     const reads = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: "THESIS_WRITER", runEnvironment: "PAPER", ...c.toolCtx } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
     const named = (name: string) => (name === "submit_thesis" ? { description: submit.description, inputSchema: submit.inputSchema, toModelOutput: undefined } : reads[name]);
     return Object.fromEntries(
@@ -183,6 +187,67 @@ async function liveReads(c: HeroCase, inSession: boolean): Promise<Record<string
     runId: "hero-case", userId: run.userId, accountId: run.accountId, runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx,
   } as never) as unknown as Record<string, LiveRead>;
   return Object.fromEntries(execute.map((name) => [name, all[name]]));
+}
+
+/** A Writer case's stock as its save reads it: the existing thesis, and the chart its data block shows. */
+function writerCaseOf(c: HeroCase): WriterReplayCase {
+  const p = c.promptArgs as { ticker: string; mode: "mint" | "refresh"; existingThesis?: { status: string; direction: string | null; setupId?: string | null; triggers: Trigger[] } | null };
+  const e = p.existingThesis ?? null;
+  return { ticker: String(p.ticker).toUpperCase(), mode: p.mode, existing: e ? { status: e.status, direction: e.direction, setupId: e.setupId ?? null, triggers: e.triggers } : null, chart: chartFromText(dataBlockOf(c.messages[0])) };
+}
+
+/** edit_triggers as the Writer is given it after its save: its own stock, so no thesis id and no playbook field. */
+function tailorTools(c: HeroCase): ToolSet {
+  const all = createResearchTools({ runId: "hero-case", userId: "hero", accountId: "hero", runMode: "THESIS_WRITER", runEnvironment: "PAPER", ...c.toolCtx, runStock: { ticker: String(c.promptArgs.ticker), thesisId: "case-thesis", triggerId: "" } } as never) as Record<string, { description?: string; inputSchema: unknown }>;
+  return { edit_triggers: { description: all.edit_triggers.description, inputSchema: all.edit_triggers.inputSchema } } as ToolSet;
+}
+
+/**
+ * After its save the Writer tailors the stock's triggers (writerTailorPhase in
+ * run-thesis-writer.ts): its first message, its note, then the triggers as
+ * saved; up to 4 steps of edit_triggers, each answered by the stub reply, and
+ * once more if a directional watch is left with nothing that can fire.
+ */
+async function tailorTurns(o: {
+  c: HeroCase; model: Parameters<typeof generateText>[0]["model"]; system: string; provider: "anthropic" | "openai"; providerOptions: Parameters<typeof generateText>[0]["providerOptions"];
+  decision: Record<string, unknown>; note: string; saved: ReturnType<typeof savedByWriter>; wc: WriterReplayCase;
+}): Promise<{ calls: Call[]; text: string; invalid: Array<{ tool: string; error: string }>; usage: { in: number; cached: number; out: number } }> {
+  const tools = tailorTools(o.c);
+  const first = o.c.messages[0];
+  const said = typeof first.content === "string" ? first.content : (first.content as Array<{ text?: string }>).map((p) => p.text ?? "").join("\n\n");
+  const messages: ModelMessage[] = [
+    { role: "user", content: said },
+    { role: "assistant", content: o.note || "(research note)" },
+    { role: "user", content: tailorMessage({ ticker: o.wc.ticker, decision: o.decision, status: o.saved.status, direction: o.saved.direction, triggers: o.saved.triggers, notWritten: o.saved.notWritten }) },
+  ];
+  const calls: Call[] = [];
+  const invalid: Array<{ tool: string; error: string }> = [];
+  const usage = { in: 0, cached: 0, out: 0 };
+  let text = "";
+  for (let round = 0; round < 2; round++) {
+    for (let step = 0; step < 4; step++) {
+      const r = await generateText({ model: o.model, system: cachedSystem(o.provider, o.system), messages, tools: cachedTools(o.provider, tools), stopWhen: stepCountIs(1), providerOptions: o.providerOptions });
+      usage.in += r.usage.inputTokens ?? 0;
+      usage.cached += r.usage.inputTokenDetails?.cacheReadTokens ?? r.usage.cachedInputTokens ?? 0;
+      usage.out += r.usage.outputTokens ?? 0;
+      if (r.text.trim()) text += `\n${r.text}`;
+      const all = r.toolCalls as Array<{ toolCallId: string; toolName: string; input: unknown; invalid?: boolean; error?: unknown }>;
+      for (const t of all) {
+        if (t.invalid) invalid.push({ tool: t.toolName, error: String((t.error as Error)?.message ?? t.error).slice(-600) });
+        else calls.push({ toolName: t.toolName, input: t.input });
+      }
+      messages.push(...(r.response.messages as ModelMessage[]));
+      if (!all.length) break;
+      const answered = new Set((r.response.messages as ModelMessage[]).flatMap((m) => (m.role === "tool" ? (m.content as Array<{ toolCallId?: string }>).map((p) => p.toolCallId) : [])));
+      const open = all.filter((t) => !answered.has(t.toolCallId));
+      if (open.length) messages.push({ role: "tool", content: open.map((t) => ({ type: "tool-result" as const, toolCallId: t.toolCallId, toolName: t.toolName, output: { type: "json" as const, value: { ok: true, summary: "Replay: this call was recorded, not executed." } } })) });
+    }
+    const left = afterTailoring(o.saved, o.decision, o.wc, calls);
+    const directional = o.saved.direction === "LONG" || o.saved.direction === "SHORT";
+    if (round > 0 || left.length || o.saved.status === "HOLDING" || !directional) break;
+    messages.push({ role: "user", content: nothingCanFire(o.wc.ticker, o.saved.direction!) });
+  }
+  return { calls, text, invalid, usage };
 }
 
 /** The words a recorded trigger-run kickoff opens with, before what it asked: the facts of the fire. */
@@ -443,7 +508,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     mkdirSync(`${dirname(writtenPath)}/inputs`, { recursive: true });
     writeFileSync(`${dirname(writtenPath)}/inputs/${name}.txt`, shown);
     // The tool definitions too, as the SDK sends them, so a request check covers them.
-    const defs = Object.entries(tools).map(([n, t]) => ({ name: n, description: (t as { description?: string }).description ?? "", schema: zodSchema((t as { inputSchema: never }).inputSchema).jsonSchema }));
+    const defs = await Promise.all(Object.entries(tools).map(async ([n, t]) => ({ name: n, description: (t as { description?: string }).description ?? "", schema: await asSchema((t as { inputSchema: never }).inputSchema).jsonSchema })));
     writeFileSync(`${dirname(writtenPath)}/inputs/${name}.tools.json`, JSON.stringify(defs, null, 1));
   }
   if (inputsOnly) return { name, passes: 0, runs: 0, lookFor: c.lookFor };
@@ -491,7 +556,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     ? (createResearchTools({ runId: `hero-${name}`, userId: "hero", accountId: "hero", runMode: c.runMode, runEnvironment: "PAPER", ...c.toolCtx } as never) as unknown as Record<string, LiveRead>).web_search
     : null;
   // A Writer that reads gets its record's steps, as in its run, to read and then save.
-  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? (c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).maxSteps : 3)) : 2;
+  const maxTurns = c.scoreOn || live ? (c.maxTurns ?? (c.mode === "thesis-writer" ? writerRecordFor(writerArgs(c)).maxSteps : 3)) : c.mode === "thesis-writer" ? 3 : 2;
   for (let i = 1; i <= runs; i++) {
     const messages: ModelMessage[] = [...c.messages];
     const calls: Call[] = [];
@@ -502,15 +567,29 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     let turns = 0;
     /** Calls the SDK could not match to the schema (a missing field, an enum written as a word). */
     const invalid: Array<{ tool: string; error: string }> = [];
+    /** A Writer's saves its decision check refused, each handed back as production's submit_thesis hands it back. */
+    const handedBack: Array<{ errors: string[] }> = [];
     for (let turn = 1; turn <= maxTurns; turn++) {
       turns = turn;
       const result = await generateText({ model, system: cachedSystem(mode.provider, system), messages, tools: cachedTools(mode.provider, tools), stopWhen: stepCountIs(1), providerOptions });
       tokensIn += result.usage.inputTokens ?? 0;
       tokensCached += result.usage.inputTokenDetails?.cacheReadTokens ?? result.usage.cachedInputTokens ?? 0;
       tokensOut += result.usage.outputTokens ?? 0;
+      // A Writer's save runs its own decision check first (validateThesisDecision, as production's submit_thesis); a refused one goes back with the reasons and is not graded.
+      const handBacks = new Map<string, unknown>();
+      if (c.mode === "thesis-writer") {
+        const w = writerArgs(c);
+        for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; input?: unknown }>) {
+          if (t.invalid || t.toolName !== "submit_thesis") continue;
+          const v = validateThesisDecision(t.input as never, { mode: w.mode, existingStatus: w.existingThesis?.status ?? null, currentPrice: null, todayEt: (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) });
+          if (v.ok) continue;
+          handBacks.set(t.toolCallId, { accepted: false, errors: v.errors, instruction: "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note." });
+          handedBack.push({ errors: v.errors });
+        }
+      }
       // A call the schema refuses is refused in production too: it never counts toward a pass.
       const turnCalls: Call[] = result.toolCalls
-        .filter((t) => !(t as { invalid?: boolean }).invalid)
+        .filter((t) => !(t as { invalid?: boolean }).invalid && !handBacks.has((t as { toolCallId: string }).toolCallId))
         .map((t) => ({ toolName: t.toolName, input: { ...(t.input as object), ...(fills[t.toolName]?.() ?? {}) } }));
       const refusals = new Map<string, string>();
       for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; error?: unknown; input?: unknown }>) {
@@ -531,7 +610,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         turnCalls.length === 0 ||
         (c.mode === "thesis-writer" && turnCalls.some((t) => t.toolName === "submit_thesis")) ||
         (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live);
-      if (refusals.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
+      if (refusals.size === 0 && handBacks.size === 0 && (decided || turn >= (c.scoreOn || live ? maxTurns : 1))) break;
       // Not there yet: answer every call and let the model go on. A read the
       // case runs for real gets its real reply, as the model would read it;
       // every other call gets a stub and nothing is run. Ending the run is
@@ -563,7 +642,9 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
             toolName: t.toolName,
             output: {
               type: "json" as const,
-              value: refusals.has(t.toolCallId)
+              value: handBacks.has(t.toolCallId)
+                ? (handBacks.get(t.toolCallId) as never)
+                : refusals.has(t.toolCallId)
                 ? { ok: false, error: refusals.get(t.toolCallId)! }
                 : t.toolName === "complete_run"
                   ? { ok: false, error: `complete_run refused: $${left} is on today's list and has not been answered. Answer it, then call complete_run.` }
@@ -573,24 +654,50 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         })),
       });
     }
+    // A Writer saves, then tailors the stock's triggers with edit_triggers (T1); it is graded as one submit_thesis in the cases' shape.
+    const submitCall = c.mode === "thesis-writer" ? calls.find((x) => x.toolName === "submit_thesis") : undefined;
+    let writer: { tailor: Call[]; final: Trigger[]; scored: Call; own: Call[]; priced: Call[] } | null = null;
+    if (submitCall) {
+      const wc = writerCaseOf(c);
+      const decision = (submitCall.input ?? {}) as Record<string, unknown>;
+      const saved = savedByWriter(decision, wc, (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
+      const t = ["WATCHING", "HOLDING", "PROMOTED"].includes(saved.status)
+        ? await tailorTurns({ c, model, system, provider: mode.provider, providerOptions, decision, note: text, saved, wc })
+        : { calls: [], text: "", invalid: [], usage: { in: 0, cached: 0, out: 0 } };
+      tokensIn += t.usage.in;
+      tokensCached += t.usage.cached;
+      tokensOut += t.usage.out;
+      invalid.push(...t.invalid);
+      if (t.text.trim()) text += t.text;
+      const final = afterTailoring(saved, decision, wc, t.calls);
+      writer = { tailor: t.calls, final, scored: writerInOldShape(submitCall, saved, final, wc, t.calls), own: writerOwnCalls(submitCall, t.calls), priced: writerOwnCalls(submitCall, withKeysPriced(saved, wc, t.calls)) };
+      calls.push(...t.calls);
+    }
     // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
-    const { graded, unmapped } = explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
+    const { graded: oldShape, unmapped } = writer ? { graded: [writer.scored], unmapped: [] } : explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
+    const graded = oldShape;
     const verdict = score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
+    for (const h of handedBack) console.log(`HANDED BACK submit_thesis: ${h.errors.join(" | ").slice(0, 300)}`);
     for (const u of unmapped) console.log(`UNMAPPED ${u.toolName} (${u.why}): ${JSON.stringify(u.input).slice(0, 300)}`);
     for (const r of reads) console.log(`READ ${r.toolName}: ${String((r.output as { summary?: string; error?: string })?.summary ?? (r.output as { error?: string })?.error ?? "").slice(0, 240)}`);
+    if (writer) console.log(`TRIGGERS AFTER ${writer.final.map((t) => sentenceOf(t)).join(" | ") || "(none)"}`);
     const triggerFields = graded.map((c) => {
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
     // A read the case runs for real is part of what the run was shown.
-    const grades = grade({ calls: graded, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
+    // A Writer's prices and numbers are graded on what it wrote itself: its decision and its trigger edits, keys and references unpriced.
+    const gradedOn = readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown;
+    const grades = grade({ calls: writer ? writer.own : graded, narration: text }, gradedOn, c.grade ?? {});
+    // A sale moved by a key is read at the number code writes for it.
+    if (writer) grades.saleLoosened = saleLoosened(writer.priced, salePricesShown(gradedOn));
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, unmapped, graded, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, handedBack, unmapped, graded, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

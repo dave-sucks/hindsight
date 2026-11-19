@@ -101,6 +101,8 @@ export interface ThesisPullResult {
   pullErrors: string[];
   /** Live quote price, when the stock pull succeeded — used by decision validation. */
   currentPrice: number | null;
+  /** The chart the data block shows: the save prices the playbook's watch triggers from it. */
+  priceStructure: PriceStructure | null;
   /** The 20- and 50-day averages, for the reply to a view with nothing on it. */
   chart: {
     sma20: { value: number; rising: boolean } | null;
@@ -285,6 +287,7 @@ export async function pullThesisData(
     rawDataBlock,
     pullErrors,
     currentPrice: sd?.quote?.price ?? sd?.technicals?.price ?? null,
+    priceStructure: sd?.technicals ?? null,
     chart: {
       sma20: sd?.technicals?.sma.d20
         ? { value: sd.technicals.sma.d20.value, rising: sd.technicals.sma.d20.slope === "RISING" }

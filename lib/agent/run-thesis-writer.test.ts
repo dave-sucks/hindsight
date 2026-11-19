@@ -510,14 +510,14 @@ describe("buildWriterResearchPrompt — #1003 fixed forward (2026-11-17)", () =>
   it("a pre-catalyst mint is shown its buys to write now, and no parked review", () => {
     const block = catalyst.slice(catalyst.indexOf("PRE_CATALYST — "), catalyst.indexOf("BASE_BREAKOUT — "));
     expect(block).toContain("Buy if within 2% of the 50-day average");
-    expect(block).toContain("Buy if above {high20} · only on the close");
+    expect(block).toContain("W3 · Buy if above {high20} (the 20-day high) · only on the close");
     expect(block).not.toMatch(/Review 70 days before the event/);
     expect(block).not.toMatch(/While parked/);
   });
 
-  it("each price comes from this stock's chart today; one the chart doesn't have yet is left out, and the review that wakes a run is written", () => {
-    expect(catalyst).toContain("replaced by its price from this stock's chart today");
-    expect(catalyst).toContain("A trigger whose price the chart doesn't have yet (an episodic pivot's buy before its gap) is left out, and the playbook's review that wakes a run is written instead.");
+  it("the save prices each from this stock's chart today; one the chart doesn't have yet is not written, and the review that wakes a run is", () => {
+    expect(catalyst).toContain("the save writes every one of its watch triggers (YOUR PLAYBOOKS), each priced from this stock's chart today");
+    expect(catalyst).toContain("A trigger whose price the chart doesn't have yet (an episodic pivot's buy before its gap) is not written; the playbook's review that wakes a run is.");
   });
 
   it("no longer says a view with no buy names no playbook", () => {

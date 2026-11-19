@@ -14,11 +14,11 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 **Before it applies:**
 
-- Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)
-- A base of 20+ sessions (chart.base), 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)
+- Trend Template passes (price above a rising 150- and 200-day, the 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)
+- A base of 20+ sessions, 15–25% deep at most, the last contraction tighter than the base (≤ 5–8%)
 - Volume drying up into the pivot
 - Earnings at least 10 days away
-- A risk-on market: breakouts fail most in a cautious one (playbook Part C)
+- A risk-on market: breakouts fail most in a cautious one
 
 **A buy is confirmed by:**
 
@@ -53,12 +53,12 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 `MOMENTUM_FLAG` · playbook D2 · a buy pattern · horizons: trade
 
-A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No seat runs this today (DAV-245 ruling 3).
+A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No analyst runs this today.
 
 **Before it applies:**
 
 - Already moved 30–100%+ in 1–3 months (top 1–2% by 1/3/6-month return)
-- Average daily range (chart.adr20Pct) ≥ 3–5%
+- An average daily range of 3–5% or more
 - Orderly pullback: higher lows, tightening range, riding the rising 10/20-day
 - Dollar volume enough to fill the seat's size
 
@@ -180,8 +180,8 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **Before it applies:**
 
-- Trend Template passes (chart.trendTemplate — price above a rising 150/200-day, 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)
-- Relative strength vs SPY positive over 3 months (chart.relativeStrength.vsSpy.m3 > 0)
+- Trend Template passes (price above a rising 150- and 200-day, the 50-day above both, within 25% of the 52-week high, 30%+ off the low, beating SPY)
+- Beating SPY over the last 3 months
 - The pullback comes on below-average volume (healthy), not above (distribution)
 
 **A buy is confirmed by:**
@@ -255,7 +255,7 @@ Stocks near their 52-week high and ahead of the market keep outperforming for up
 
 **Before it applies:**
 
-- Within 5% of the 52-week high (chart.range.pctBelow52wHigh ≤ 5)
+- Within 5% of the 52-week high
 - Beating SPY over 3–12 months; momentum is negative under 1 month — the window matters
 
 Entered through `BASE_BREAKOUT`, `MOMENTUM_FLAG`, `MA_PULLBACK`.
@@ -276,7 +276,7 @@ A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, n
 
 **Before it applies:**
 
-- A dated event 21–70 days out (Thesis.catalystDate)
+- A dated event 21–70 days out (the stock's event date)
 - A positive advisory-committee vote if one happened
 - Cash runway past the decision
 - Sub-$1B single-asset names: supplemental approvals and label expansions only

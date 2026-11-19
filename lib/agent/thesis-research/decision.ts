@@ -4,10 +4,11 @@
  *
  * The research model writes the 9-section note as plain text (parsed
  * server-side by parse-sections.ts) and finishes by calling submit_thesis
- * with THIS object — decision fields only, ~1-2k chars. Everything beyond
- * direction/horizon is optional; a trigger the schema can't read is handed
- * back by the SDK with the schema's sentence. validateThesisDecision() does
- * the rest and returns itemized errors the model repairs in its next step.
+ * with THIS object — the thesis fields and the playbook it names, no
+ * trigger: the save writes the playbook's watch triggers, priced from the
+ * chart, and the writer tailors them with edit_triggers after it.
+ * validateThesisDecision() returns itemized errors the model repairs in its
+ * next step.
  * That repair loop replaces the V1 failure mode where a 25k-char
  * record_thesis payload bounced off Zod and cost ~3 minutes of full
  * regeneration per bounce.
@@ -17,10 +18,8 @@
  */
 
 import { z } from "zod";
-import { jsonSchema, zodSchema, type Schema } from "ai";
-import { editNumber, editTriggerOpSchema, triggerInputSchema } from "@/lib/agent/triggers/schema";
-import { shapeOf } from "@/lib/agent/triggers/condition";
-import { TRIGGER_EDITS, thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { zodSchema, type Schema } from "ai";
+import { thesisFields } from "@/lib/agent/tools/thesis-fields";
 
 /** The fields the writer shares with record_thesis and update_thesis, defined once, in the writer's form: no number ranges on the score parts, as before (validateThesisDecision refuses a score out of range). */
 const W = thesisFields({ writer: true });
@@ -33,13 +32,6 @@ const W = thesisFields({ writer: true });
  * validateThesisDecision below, which hands a refused field back with the
  * reason.
  */
-/**
- * The trigger a writer sends, defined once: \`triggers\` (a mint) and
- * \`add_triggers\` (a refresh) both point at it, so the tool definition carries
- * the condition and its measures guide one time.
- */
-const writerTrigger = triggerInputSchema.meta({ id: "Trigger" });
-
 export const thesisDecisionSchema = z.object({
   direction: W.direction,
   rationale: z
@@ -55,46 +47,38 @@ export const thesisDecisionSchema = z.object({
   conviction_rationale: W.conviction_rationale.optional(),
   variant_view: W.variant_view.optional(),
   prior_exit_acknowledgment: W.prior_exit.optional(),
-  // A mint sends `triggers`; a refresh edits one at a time (DAV-242). Sending
-  // the wrong one is refused with the right one named (validateThesisDecision).
-  triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.ladder),
-  add_triggers: z.array(writerTrigger).optional().describe(TRIGGER_EDITS.add),
-  edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
-  remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
+  look_again: z
+    .object({
+      after_next_report: z.boolean().optional().describe("Look again the day after the next report."),
+      on_date: z.string().optional().describe("Look again on this day (YYYY-MM-DD), and every as many days after."),
+      why: z.string().describe("What you'd look for then, in a sentence."),
+    })
+    .optional()
+    .describe("Keep a view with no buy yet and say when to look again, instead of a pass."),
 });
 
-/** The decision as the model wrote it: each trigger in the condition shape the save reads, not yet the stored one. */
+/** The Holding refresh's: a held stock's playbook was set when it was bought, so its save names none. */
+export const heldDecisionSchema = thesisDecisionSchema.omit({ setup_id: true });
+
+/** The decision as the model wrote it. */
 export type ThesisDecisionInput = z.input<typeof thesisDecisionSchema>;
 
-/**
- * submit_thesis's input as the SDK reads it. The model is sent
- * thesisDecisionSchema's own JSON schema and its call is checked against it,
- * but the tool gets the call as the model wrote it, not zod's output, whose
- * triggers are already converted to their stored shape (`toStored`, a
- * filing or a line moved from `value` to `variable`). The save converts each
- * trigger once, on its own schema, and refuses the stored shape: from #770
- * (2026-10-06) to 2026-11-13 the Writer handed the save its converted copy,
- * so every filing trigger and every price against an average it wrote was
- * refused (PRAX and AAOI lost whole theses), and its retries quoted the model
- * a converted call it never wrote.
- */
-export const submitThesisInput: Schema<ThesisDecisionInput> = asWritten(thesisDecisionSchema);
-
-function asWritten<S extends z.ZodType>(schema: S): Schema<z.input<S>> {
-  const checked = zodSchema(schema);
-  return jsonSchema<z.input<S>>(() => checked.jsonSchema, {
-    validate: async (value) => {
-      const result = await checked.validate!(value);
-      return result.success ? { success: true, value: value as z.input<S> } : result;
-    },
-  });
+/** submit_thesis's input: the decision schema, the held stock's for the Holding refresh. The SDK parses the call with it, dropping a field it doesn't have. */
+export function submitThesisInput(held = false): Schema<ThesisDecisionInput> {
+  return zodSchema(held ? heldDecisionSchema : thesisDecisionSchema) as unknown as Schema<ThesisDecisionInput>;
 }
 
-/** A decision that passed validation; triggers are the parsed, typed array. */
-export interface ValidatedThesisDecision
-  extends Omit<ThesisDecisionInput, "triggers" | "add_triggers"> {
-  triggers?: WriterTrigger[];
-  add_triggers?: WriterTrigger[];
+/** The review a look-again writes: the day after the next report, or a day, as a review every that many days (as watch_stock writes one). Null with no look-again. */
+export function lookAgainTrigger(look: ThesisDecisionInput["look_again"], todayEt: string): Record<string, unknown> | null {
+  if (!look) return null;
+  const predicate = look.after_next_report
+    ? { watch: "report", is: "after", value: 1 }
+    : { watch: "repeat", value: Math.round((Date.parse(String(look.on_date)) - Date.parse(todayEt)) / 86_400_000) };
+  return { action: "REVIEW", predicate, rationale: look.why.trim() };
+}
+
+/** A decision that passed validation. */
+export interface ValidatedThesisDecision extends ThesisDecisionInput {
   /** What the save will go without, and why: each goes on the stock as a "Not applied" line. */
   dropped?: DroppedItem[];
   /**
@@ -108,14 +92,12 @@ export interface ValidatedThesisDecision
 export interface DecisionValidationOpts {
   /** mint = record_thesis; refresh = update_thesis. */
   mode: "mint" | "refresh";
-  /**
-   * Status of the existing thesis on refresh (null on mint). Drives the
-   * trigger action-set rule: held theses must not carry ENTER; unheld
-   * theses must not carry position-management actions.
-   */
+  /** Status of the existing thesis on refresh (null on mint). */
   existingStatus?: string | null;
   /** Live price from the pull phase, when available. */
   currentPrice?: number | null;
+  /** Today, ET (YYYY-MM-DD), for a look-again's day; the date of the call when not given. */
+  todayEt?: string;
 }
 
 export interface DecisionValidationResult {
@@ -126,7 +108,7 @@ export interface DecisionValidationResult {
 
 /**
  * The writer's own rules for a submit_thesis call: what a decision must say
- * (belief, conviction, the chart checks on its buy).
+ * (belief, conviction).
  * The save's rules are NOT copied here — the submit step runs record_thesis /
  * update_thesis itself in check-only mode right after this
  * (checkDecisionAgainstSave in run-thesis-writer.ts). A copy drifted twice:
@@ -142,7 +124,6 @@ export function validateThesisDecision(
   // land on the decision that is saved, not on the model's argument object.
   const d: ThesisDecisionInput = { ...input };
   const directional = d.direction === "LONG" || d.direction === "SHORT";
-  const held = opts.mode === "refresh" && opts.existingStatus === "HOLDING";
 
   if (!d.rationale || d.rationale.trim().length < 20) {
     errors.push("rationale: required, ≥20 chars — state the decision in your own voice.");
@@ -165,6 +146,17 @@ export function validateThesisDecision(
   // A buy's chase cap is in the trigger itself ("… and below $C"), and the
   // setup's sale rules are read on the sale the buy names (place_trade's
   // saleRuleProblem), never on a watch's Stop watching line.
+
+  // A look-again keeps a view: one of its two, with why, on a LONG or SHORT.
+  const look = d.look_again;
+  if (look) {
+    const today = opts.todayEt ?? new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const days = look.on_date ? Math.round((Date.parse(look.on_date) - Date.parse(today)) / 86_400_000) : null;
+    if (!look.after_next_report === !look.on_date) errors.push("look_again: give one of after_next_report or on_date, with why.");
+    else if (days != null && !(days >= 1 && days <= 365)) errors.push(`look_again.on_date: "${look.on_date}" is not a day 1 to 365 days from today (YYYY-MM-DD).`);
+    if (!look.why?.trim()) errors.push("look_again.why: say what you'd look for then, in a sentence.");
+    if (d.direction === "PASS") errors.push("look_again: a PASS takes none. A view you would look again at is LONG or SHORT with no buy and this look-again; or pass with none.");
+  }
 
   if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
@@ -195,129 +187,14 @@ export function validateThesisDecision(
     }
   }
 
-  if (d.direction === "PASS" && d.triggers !== undefined && (d.triggers as unknown[]).length > 0) {
-    errors.push(
-      "triggers: a PASS stores no triggers. If you would look again at these, the view is not a PASS: send your direction (LONG or SHORT) with no buy, and keep these triggers. If the research doesn't support a view at all, omit the triggers.",
-    );
-  }
-  if (opts.mode === "refresh" && d.triggers !== undefined) {
-    errors.push(
-      "triggers: a refresh edits triggers one at a time — use add_triggers / edit_triggers (by the ids in EXISTING THESIS) / remove_trigger_ids. Omit `triggers`.",
-    );
-  }
-  if (opts.mode === "mint" && (d.add_triggers || d.edit_triggers || d.remove_trigger_ids)) {
-    errors.push("add_triggers / edit_triggers / remove_trigger_ids: a mint has no existing triggers to edit — send `triggers`.");
-  }
-  for (const e of d.edit_triggers ?? []) {
-    if (editNumber(e).value !== undefined && !e.rationale?.trim()) {
-      errors.push(`edit_triggers[${e.id}]: a value change requires a rationale — the sentence moves with the number.`);
-    }
-  }
-
-  // A directional view with nothing on it can never come back (DAV-291).
-  // LUXE 2026-09-18: "I want to price a drift or pullback entry rather than
-  // buying now" — then saved LONG with no buy, no trigger and no review. A
-  // watch gets no triggers it is not given, so omitting `triggers` on a mint
-  // leaves zero wakes. Said here, in the writer's loop, with the level it
-  // said it was waiting for — never a refusal at the save.
-  if (directional && !held && opts.mode === "mint" && !((d.triggers as unknown[] | undefined)?.length)) {
-    errors.push(
-      `triggers: a ${d.direction} with no buy, no trigger and no review can never come back — nothing on the stock can fire. Write what you are waiting for as triggers: the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart. If no price is honest yet, send \`triggers\` with a review that brings it back: a review at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}). Or PASS with the reason.`,
-    );
-  }
-
-  // ── Triggers ─────────────────────────────────────────────────────────
-  // On a refresh the same checks run on `add_triggers`: an added trigger is
-  // a new trigger, so the action-set rules apply to it alone.
-  let parsedTriggers: WriterTrigger[] | undefined;
-  let parsedAdds: WriterTrigger[] | undefined;
-  const dropped: DroppedItem[] = [];
-  const supplied = opts.mode === "refresh" ? d.add_triggers : d.triggers;
-  if (supplied !== undefined) {
-    // One trigger at a time. A rung the server schema can't read is fixed
-    // where the fix is obvious (an invented review kind with a day count is
-    // a review cadence) and otherwise dropped with a note; the rest of the
-    // ladder and the decision save. Under strict mode the model can't send
-    // an unknown kind at all — this is the OpenAI / non-strict path and the
-    // out-of-range values (a 500-day review) the grammar can't express.
-    const kept: WriterTrigger[] = [];
-    for (const item of supplied as unknown[]) {
-      const read = readOneTrigger(item);
-      if (read.trigger) kept.push(read.trigger);
-      if (read.note) notes.push(read.note);
-      if (read.dropped) dropped.push(read.dropped);
-    }
-    const parsed = { success: true as const, data: kept };
-    {
-      if (opts.mode === "refresh") parsedAdds = parsed.data;
-      else parsedTriggers = parsed.data;
-      // Action-set sanity by position state — mirrors the Layer-1 guards
-      // record/update enforce, surfaced here so the repair is one step.
-      const actions = new Set(parsed.data.map((t) => t.action));
-      if (held) {
-        if (actions.has("ENTER") || actions.has("STOP_WATCHING")) {
-          errors.push("triggers: this thesis is HOLDING (position open) — ENTER and STOP_WATCHING triggers are forbidden. Use EXIT/REVIEW/TRIM/ADD.");
-        }
-      } else {
-        // Mint, WATCHING refresh, PROMOTED refresh: no position exists, so nothing to sell.
-        const forbidden = ["TRIM", "ADD", "EXIT"].filter((a) => actions.has(a as never));
-        if (forbidden.length > 0) {
-          errors.push(
-            `triggers: no position exists (${opts.mode === "mint" ? "mint" : `refresh on ${opts.existingStatus}`}) — ${forbidden.join("/")} triggers are forbidden. Use ENTER, STOP_WATCHING ("Stop watching if below $X": it ends the watch, never sells) and REVIEW.`,
-          );
-        }
-      }
-
-    }
-  }
-
   if (errors.length > 0) return { ok: false, errors };
 
   return {
     ok: true,
     errors: [],
-    decision: {
-      ...d,
-      triggers: parsedTriggers,
-      add_triggers: parsedAdds,
-      notes: notes.length ? notes : undefined,
-      ...(dropped.length ? { dropped } : {}),
-    },
+    decision: { ...d, notes: notes.length ? notes : undefined },
   };
 }
-
-/**
- * Read one model-authored trigger through the save's own schema
- * (`triggerInputSchema`, the one record_thesis and update_thesis parse), so
- * what the decision keeps is what the save takes, in the model's own shape:
- * the save converts it to the stored shape, once (`submitThesisInput` says
- * why). Returns the trigger as the save will read it, or nothing and what was
- * dropped and why (it goes on the stock as a "Not applied" line).
- */
-export function readOneTrigger(item: unknown): { trigger: WriterTrigger | null; note: string | null; dropped?: DroppedItem } {
-  const reads = (t: unknown) => triggerInputSchema.safeParse(t).success;
-  if (reads(item)) return { trigger: item as WriterTrigger, note: null };
-
-  const obj = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
-  const pred = obj?.predicate && typeof obj.predicate === "object" ? (obj.predicate as Record<string, unknown>) : null;
-  const kind = typeof pred?.kind === "string" ? pred.kind : typeof pred?.watch === "string" ? pred.watch : "(none)";
-
-  // An invented review kind with a day count ("REVIEW_AFTER_DAYS", IBRX
-  // 2026-09-25) means "look again in N days" — the review cadence.
-  if (pred && typeof pred.days === "number" && obj?.action === "REVIEW" && shapeOf(pred) == null) {
-    const days = Math.min(Math.max(Math.round(pred.days), 1), 365);
-    const asCadence = { ...obj, predicate: { watch: "repeat", value: days } };
-    if (reads(asCadence)) {
-      return { trigger: asCadence as WriterTrigger, note: `Trigger kind "${kind}" isn't one the app evaluates; saved as a review in ${days} days.` };
-    }
-  }
-
-  const issue = triggerInputSchema.safeParse(item).error?.issues[0];
-  return { trigger: null, note: null, dropped: droppedTrigger(obj, issue?.message ?? "the app couldn't read it") };
-}
-
-/** A trigger as the save reads it: the model's own shape, checked against the save's schema. */
-export type WriterTrigger = Record<string, unknown> & { action: string; predicate: unknown; rationale: string };
 
 /** What a save went without, and why: written on the stock as a "Not applied" line (`fieldChanges.notApplied`, as update_thesis writes). */
 export interface DroppedItem {
@@ -326,9 +203,8 @@ export interface DroppedItem {
   reason: string;
 }
 
-export function droppedTrigger(t: Record<string, unknown> | null, reason: string): DroppedItem {
-  const note = typeof t?.rationale === "string" ? t.rationale.trim() : "";
-  const action = typeof t?.action === "string" ? t.action.toLowerCase() : "a";
-  return { field: "triggers", why: `the ${action} trigger${note ? ` "${note.length > 90 ? `${note.slice(0, 89)}…` : note}"` : ""}`, reason };
+/** A playbook watch trigger the save didn't write, and why (its key had no number on the chart). */
+export function notWrittenTrigger(ref: string, sentence: string, why: string): DroppedItem {
+  return { field: "triggers", why: `the playbook's ${ref}, ${sentence}`, reason: why };
 }
 

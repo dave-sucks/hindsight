@@ -2,34 +2,25 @@
  * decision.test.ts — validateThesisDecision(), the V2 writer's in-loop
  * Layer-1 pre-validation. These rules are what turns a would-be persist
  * rejection into a one-step repair inside the research loop, so the
- * accept/reject boundary is pinned hard.
+ * accept/reject boundary is pinned hard. The decision carries no trigger:
+ * the save writes the playbook's watch triggers and the writer tailors them
+ * with edit_triggers after it (run-thesis-writer.ts).
  */
 
 import { zodSchema } from "ai";
 import {
+  heldDecisionSchema,
+  lookAgainTrigger,
   thesisDecisionSchema,
   validateThesisDecision,
   type ThesisDecisionInput,
 } from "./decision";
-import { editTriggerOpSchema, editNumber } from "@/lib/agent/triggers/schema";
-import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
-
-/** A buy, a floor (the watch's Stop watching line) and (when given) a take-profit, as the writer writes them: triggers. */
-function levels(entry: number, stop: number, target?: number, short = false) {
-  const up = short ? "below" : "above";
-  const down = short ? "above" : "below";
-  return [
-    { predicate: { watch: "price", is: up, value: entry }, action: "ENTER", rationale: "the buy" },
-    { predicate: { watch: "price", is: down, value: stop, settings: { close: true } }, action: "STOP_WATCHING", rationale: "the floor" },
-    ...(target != null ? [{ predicate: { watch: "price", is: up, value: target }, action: "REVIEW", rationale: "take profit" }] : []),
-  ] as NonNullable<ThesisDecisionInput["triggers"]>;
-}
 
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
-  rationale: "Blackwell ramp is underpriced; entry at the breakout with a clean 2.5:1.",
+  rationale: "Blackwell ramp is underpriced; the breakout is the buy.",
   horizon: "TARGET",
-  triggers: levels(100, 90, 125),
+  setup_id: "BASE_BREAKOUT",
   core_belief:
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
   key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
@@ -52,138 +43,21 @@ describe("validateThesisDecision — accept paths", () => {
 
   it("accepts a PASS with only rationale + horizon (no prices, no conviction)", () => {
     const v = validateThesisDecision(
-      {
-        direction: "PASS",
-        rationale: "No 2:1 setup at current prices; revisit below the 50d around $85.",
-        horizon: "TARGET",
-      },
+      { direction: "PASS", rationale: "No setup at current prices; revisit below the 50d around $85.", horizon: "TARGET" },
       mintOpts,
     );
     expect(v.ok).toBe(true);
   });
 
-  it("accepts a valid SHORT with mirrored price ordering", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        direction: "SHORT",
-        triggers: levels(100, 108, 80, true),
-      },
-      mintOpts,
-    );
+  it("accepts a LONG with no playbook named: the view stays, and its review comes after the save", () => {
+    const v = validateThesisDecision({ ...validLong, setup_id: undefined }, mintOpts);
     expect(v.ok).toBe(true);
-    expect("riskReward" in v).toBe(false);
-  });
-
-  it("a mint with no triggers is sent back: nothing is added for it (a stock has triggers and nothing else)", () => {
-    const v = validateThesisDecision({ ...validLong, triggers: undefined }, mintOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/can never come back/);
-  });
-
-  it("accepts a well-formed WATCHING trigger ladder (ENTER + REVIEW)", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        triggers: [
-          {
-            predicate: { watch: "price", is: "above", value: 100 },
-            action: "ENTER",
-            rationale: "breakout entry",
-          },
-          {
-            predicate: { watch: "surprise", is: "miss", value: 3 },
-            action: "REVIEW",
-            rationale: "guidance miss kills the thesis",
-          },
-        ],
-      },
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
-    expect(v.decision?.triggers).toHaveLength(2);
-    // Kept as the save takes them; the save mints each id.
-    expect(v.decision?.triggers?.[0]).toEqual({ predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "breakout entry" });
-  });
-});
-
-describe("validateThesisDecision — price ordering; no reward/risk is reported", () => {
-  it("accepts a LONG under 2:1; there is no ratio to report", () => {
-    const v = validateThesisDecision(
-      { ...validLong, triggers: levels(100, 90, 115) }, // 15/10 = 1.5
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
-    expect("riskReward" in v).toBe(false);
-  });
-
-  it("checks no order of the levels: each trigger means what it says (2026-11-16)", () => {
-    const v = validateThesisDecision({ ...validLong, triggers: levels(100, 105, 125) }, mintOpts);
-    expect(v.errors.join(" ")).not.toContain("ordering");
-  });
-
-  it("accepts a buy and a floor and no take-profit (ETN as read 2026-11-04: buy $410, floor $358.50)", () => {
-    const v = validateThesisDecision({ ...validLong, triggers: levels(410, 358.5) }, mintOpts);
-    expect(v.ok).toBe(true);
-    expect(v.errors).toEqual([]);
-    expect("riskReward" in v).toBe(false);
-  });
-
-});
-
-describe("validateThesisDecision — a view with no entry yet (unpriced LONG/SHORT)", () => {
-  const unpriced: ThesisDecisionInput = {
-    ...validLong,
-    triggers: undefined,
-    rationale: "Bullish into the January readout; entry to be priced after the data. Not a PASS.",
-  };
-
-  it("mint: no levels AND no triggers is sent back — a watch's defaults carry no wake (LUXE 2026-09-18 saved with an empty trigger list)", () => {
-    const v = validateThesisDecision(unpriced, mintOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/can never come back/);
-  });
-
-  it("mint: accepted with no levels and the wake that brings it back", () => {
-    const v = validateThesisDecision(
-      {
-        ...unpriced,
-        triggers: [{ predicate: { watch: "repeat", value: 14 }, action: "REVIEW", rationale: "Price this after the January readout." }],
-      } as ThesisDecisionInput,
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
-    expect("riskReward" in v).toBe(false);
-  });
-
-  it("refresh: taking the buy, floor and upside line off by id (and keeping a REVIEW wake) is accepted", () => {
-    // FLIPPED 2026-09-09 (DAV-242): the set-down is ops by id, not a resent list.
-    const v = validateThesisDecision(
-      {
-        ...unpriced,
-        remove_trigger_ids: ["buy", "floor", "target"],
-        add_triggers: [
-          { predicate: { watch: "repeat", value: 120 }, action: "REVIEW", rationale: "Price it after the January readout." },
-        ],
-      },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 101 },
-    );
-    expect(v.ok).toBe(true);
-    expect(v.decision?.add_triggers).toHaveLength(1);
   });
 });
 
 describe("validateThesisDecision — belief + conviction requirements (LONG/SHORT)", () => {
   it("rejects missing core_belief / thin assumptions / thin invalidations", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        core_belief: undefined,
-        key_assumptions: ["only one"],
-        invalidation_conditions: [],
-      },
-      mintOpts,
-    );
+    const v = validateThesisDecision({ ...validLong, core_belief: undefined, key_assumptions: ["only one"], invalidation_conditions: [] }, mintOpts);
     expect(v.ok).toBe(false);
     const all = v.errors.join(" ");
     expect(all).toContain("core_belief");
@@ -192,308 +66,73 @@ describe("validateThesisDecision — belief + conviction requirements (LONG/SHOR
   });
 
   it("STRONG/HIGH conviction without a variant view is stored as MEDIUM, with the reason — not refused", () => {
-    const v = validateThesisDecision(
-      { ...validLong, conviction: "STRONG", variant_view: undefined },
-      mintOpts,
-    );
+    const v = validateThesisDecision({ ...validLong, conviction: "STRONG", variant_view: undefined }, mintOpts);
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction).toBe("MEDIUM");
     expect(v.decision?.notes?.join(" ")).toContain("Conviction stored as MEDIUM");
   });
 
   it("allows MEDIUM conviction without a variant view", () => {
-    const v = validateThesisDecision(
-      { ...validLong, conviction: "MEDIUM", variant_view: undefined },
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
+    expect(validateThesisDecision({ ...validLong, conviction: "MEDIUM", variant_view: undefined }, mintOpts).ok).toBe(true);
   });
-
 });
 
 describe("validateThesisDecision — horizon conditionals", () => {
   it("CATALYST requires catalyst_date", () => {
-    const v = validateThesisDecision(
-      { ...validLong, horizon: "CATALYST", catalyst_date: undefined },
-      mintOpts,
-    );
+    const v = validateThesisDecision({ ...validLong, horizon: "CATALYST", catalyst_date: undefined }, mintOpts);
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("catalyst_date");
   });
 
-  it("no longer requires max_hold_days on a TRADE", () => {
-    // The column is gone (DAV-195 L8). "This has been open long enough" is a
-    // review cadence the TRADE template mints — on the ladder,
-    // where it can be seen and edited, instead of a field that fed a
-    // template once at mint and then drifted from it.
-    const v = validateThesisDecision(
-      { ...validLong, horizon: "TRADE" },
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
-  });
-
   it("rejects an unparseable catalyst_date", () => {
-    const v = validateThesisDecision(
-      { ...validLong, horizon: "CATALYST", catalyst_date: "next month sometime" },
-      mintOpts,
-    );
+    const v = validateThesisDecision({ ...validLong, horizon: "CATALYST", catalyst_date: "next month sometime" }, mintOpts);
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("not a parseable date");
   });
 });
 
-describe("validateThesisDecision — trigger action-set by position state", () => {
-  const enterTrigger = {
-    predicate: { watch: "price", is: "above", value: 100 } as const,
-    action: "ENTER" as const,
-    rationale: "breakout",
-  };
-  const exitTrigger = {
-    predicate: { watch: "price", is: "below", value: 90 } as const,
-    action: "EXIT" as const,
-    rationale: "stop",
-  };
-  const stopWatching = { ...exitTrigger, action: "STOP_WATCHING" as const };
-
-  it("mint (no position): TRIM/ADD and a sale are forbidden; a Stop watching line is legal", () => {
-    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, stopWatching] }, mintOpts).ok).toBe(true);
-    const trim = { predicate: { watch: "price", is: "above", value: 120 } as const, action: "TRIM" as const, rationale: "trim" };
-    for (const wrong of [trim, exitTrigger]) {
-      const v = validateThesisDecision({ ...validLong, triggers: [enterTrigger, wrong] }, mintOpts);
-      expect(v.ok).toBe(false);
-      expect(v.errors.join(" ")).toContain("no position exists");
-    }
-    expect(validateThesisDecision({ ...validLong, triggers: [enterTrigger, exitTrigger] }, mintOpts).errors.join(" ")).toContain("Use ENTER, STOP_WATCHING");
-  });
-
-  // On a refresh the same rules run on `add_triggers` (DAV-242: a refresh
-  // edits one trigger at a time; `triggers` is a mint-only argument).
-  it("HOLDING refresh: adding an ENTER is forbidden", () => {
-    const v = validateThesisDecision(
-      { ...validLong, triggers: undefined, add_triggers: [enterTrigger] },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("ENTER and STOP_WATCHING triggers are forbidden");
-  });
-
-  it("HOLDING refresh: adding EXIT + REVIEW is legal", () => {
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        triggers: undefined,
-        add_triggers: [
-          exitTrigger,
-          {
-            predicate: { watch: "repeat", value: 7 },
-            action: "REVIEW" as const,
-            rationale: "scheduled hygiene",
-          },
-        ],
-      },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
-    );
-    expect(v.ok).toBe(true);
-  });
-
-  it("PROMOTED refresh (no live position): ENTER and a Stop watching line are legal", () => {
-    const promotedOpts = { mode: "refresh" as const, existingStatus: "PROMOTED", currentPrice: 101 };
-    expect(
-      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [stopWatching] }, promotedOpts).ok,
-    ).toBe(true);
-    expect(
-      validateThesisDecision({ ...validLong, triggers: undefined, add_triggers: [enterTrigger] }, promotedOpts).ok,
-    ).toBe(true);
-  });
-
-  it("refresh: a whole `triggers` list is refused — edit one at a time", () => {
-    const v = validateThesisDecision(
-      { ...validLong, triggers: [exitTrigger] },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("one at a time");
-  });
-
-  it("refresh: a level edit without a rationale is refused in the loop", () => {
-    const v = validateThesisDecision(
-      { ...validLong, triggers: undefined, edit_triggers: [{ id: "floor", value: 95 }] },
-      { mode: "refresh", existingStatus: "HOLDING", currentPrice: 101 },
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("requires a rationale");
-  });
-
-  it("mint: ops are refused — there is nothing to edit yet", () => {
-    const v = validateThesisDecision({ ...validLong, remove_trigger_ids: ["x"] }, mintOpts);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("a mint has no existing triggers");
-  });
-
-  it("a trigger the app cannot read is dropped and named for the stock's Activity; the decision is not refused", () => {
-    const v = validateThesisDecision(
-      { ...validLong, triggers: [{ nonsense: true } as never] },
-      mintOpts,
-    );
-    expect(v.ok).toBe(true);
-    expect(v.decision?.triggers).toEqual([]);
-    expect(v.decision?.dropped).toEqual([{ field: "triggers", why: "the a trigger", reason: expect.any(String) }]);
-  });
-
-  // PRAX and AAOI 2026-11-13: the save converts a trigger to its stored shape; the Writer keeps it as the model wrote it.
-  it("a filing, a line, and two conditions holding them are kept as written, for the save to convert", () => {
-    const review = (predicate: Record<string, unknown>) => ({ action: "REVIEW", fireMode: "ASK_NOW", predicate, rationale: "Any 8-K other-events filing from Praxis." });
-    const filing = { watch: "filing", value: "item:8.01" };
-    const line = { watch: "price", is: "below", value: "sma50" };
-    for (const predicate of [filing, line, { match: "all", conditions: [filing, line] }]) {
-      const v = validateThesisDecision({ ...validLong, triggers: [review(predicate)] as never }, mintOpts);
-      expect(v.decision?.triggers).toEqual([review(predicate)]);
-      expect(v.decision?.dropped).toBeUndefined();
-    }
-  });
-});
-
-describe("validateThesisDecision — persist-gate mirrors (review finding #4)", () => {
-  it("rejects a PASS carrying triggers", () => {
-    const v = validateThesisDecision(
-      {
-        direction: "PASS",
-        rationale: "No edge at current prices; keep an eye on the reclaim level.",
-        horizon: "TARGET",
-        triggers: [
-          { predicate: { watch: "price", is: "above", value: 100 }, action: "ENTER", rationale: "x" },
-        ],
-      },
-      mintOpts,
-    );
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toContain("a PASS stores no triggers");
-  });
-
-  it("a refresh on a thesis with no triggers may omit triggers — zero is legal (DAV-209)", () => {
-    const v = validateThesisDecision({ ...validLong, triggers: undefined }, {
-      mode: "refresh",
-      existingStatus: "WATCHING",
-      currentPrice: 101,
-    });
-    expect(v.ok).toBe(true);
-  });
-
-  it("refresh: adding a REVIEW wake on a watch is accepted — the buy trigger already on the row is not being replaced", () => {
-    // FLIPPED 2026-09-09 (DAV-242): the "ladder must carry an ENTER / EXIT"
-    // mirrors existed because a resent list replaced the whole ladder. An
-    // op adds one trigger; the buy and sell triggers on the row stay, and
-    // the tool checks the resulting plan once at persist.
-    const v = validateThesisDecision(
-      {
-        ...validLong,
-        triggers: undefined,
-        add_triggers: [
-          { predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "hygiene" },
-        ],
-      },
-      { mode: "refresh", existingStatus: "WATCHING", currentPrice: 90 },
-    );
-    expect(v.ok).toBe(true);
-  });
-});
-
-// ─── DAV-257: one edit form for the writer and the save ─────────────────────
-// PRAX 2026-09-11: the writer put the review cadence's wording into
-// edit_triggers[0].action. submit_thesis accepted it (its copy of the form had
-// action: string), update_thesis refused it at save (the enum), and the whole
-// paid refresh was thrown away — the save has no retry, the submit loop does.
-
-describe("submit_thesis edit_triggers — the same form update_thesis saves (DAV-257)", () => {
-  const PRAX_0911_EDIT = {
-    id: "3998148e-9487-4d0a-9dca-99b71178e1a9",
-    action:
-      "Weekly PDUFA-path check-in — monitor for any new FDA correspondence, BIMO outcomes, or analyst updates ahead of the December 27 relutrigine PDUFA.",
-  };
-
-  it("rejects PRAX's 09-11 edit at submit, where the writer can fix it", () => {
-    const parsed = thesisDecisionSchema.safeParse({ ...validLong, edit_triggers: [PRAX_0911_EDIT] });
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.path).toEqual(["edit_triggers", 0, "action"]);
-  });
-
-  it("accepts a real action name", () => {
-    const parsed = thesisDecisionSchema.safeParse({
-      ...validLong,
-      edit_triggers: [{ id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA." }],
-    });
-    expect(parsed.success).toBe(true);
-  });
-
-  it("the writer and update_thesis edit a trigger with the one schema, and an old `days` reads as the value", () => {
-    // Two hand-written copies drifted once (PRAX 09-11); there is one now.
-    expect(thesisDecisionSchema.shape.edit_triggers.unwrap().element).toBe(editTriggerOpSchema);
-    const op = { id: PRAX_0911_EDIT.id, action: "REVIEW", days: 7, rationale: "Weekly into the PDUFA." };
-    const parsed = editTriggerOpSchema.parse(op);
-    expect(parsed).toMatchObject({ id: PRAX_0911_EDIT.id, action: "REVIEW", rationale: "Weekly into the PDUFA." });
-    expect(editNumber(parsed)).toEqual({ value: 7, unit: "days" });
-  });
-});
-
-describe("submit_thesis carries the trigger once", () => {
-  it("triggers and add_triggers point at one definition, so each measure appears one time", () => {
+describe("submit_thesis carries no trigger language", () => {
+  it("its schema has the thesis fields and the playbook, and no trigger or condition", () => {
     const json = JSON.stringify(zodSchema(thesisDecisionSchema).jsonSchema);
-    expect(json.split('"$ref":"#/definitions/Trigger"').length - 1).toBe(2);
-    // The condition, with its lists and settings, is defined once too.
-    expect(json.split('"Condition":{').length - 1).toBe(1);
-    expect(json.split('"const":"price"').length - 1).toBe(1);
-    expect(json.split('"sma150"').length - 1).toBe(2); // once as a price's line, once as what a move is measured from
+    for (const word of ['"triggers"', '"add_triggers"', '"edit_triggers"', '"remove_trigger_ids"', '"Condition"', '"predicate"', '"watch"']) expect([word, json.includes(word)]).toEqual([word, false]);
+    expect(json).toContain('"setup_id"');
   });
 });
 
-// SNDK 2026-11-04, the writer's second submit for the PEAD Specialist (run cmw1f80da000007i6ct1fll02),
-// cut to the fields the check reads. Its rationale: "I am passing rather than forcing a setup that does
-// not exist. I would look again if the stock re-establishes a base above the 200-day average…". The
-// save refused its two reviews on a PASS, so it saved a pass with nothing to bring it back.
-describe("validateThesisDecision — a view with no setup yet is a watch, not a pass (SNDK 2026-11-04)", () => {
-  const sndk: ThesisDecisionInput = {
-    direction: "PASS",
-    horizon: "TARGET",
-    rationale:
-      "A clean beat-and-raise the market sold 13.5%; the chart is broken. I am passing rather than forcing a setup that does not exist. I would look again above the 200-day or after the January report.",
-    core_belief:
-      "SanDisk is the leading independent NAND flash producer, embedded in AI data centres through multi-year supply agreements covering half its fiscal 2027 bits. If NAND pricing holds through fiscal 2027, the earnings make it cheap; what has to stay true is that data-centre pricing does not roll over.",
-    key_assumptions: [
-      "Data centre NAND pricing holds through fiscal Q2 2027, confirmed by the gross margin result (84.5–85.5% guided) at the January earnings release.",
-      "Supply agreements covering 50% of fiscal 2027 bits hold revenue in the $12.2–$12.6B guide, checked at the January earnings release.",
-    ],
-    invalidation_conditions: [
-      "Q2 FY2027 EPS below the raised guidance midpoint of $56 (pre-split), checked at the January 2027 earnings release.",
-      "A second major peer confirms NAND price declines in its next quarterly commentary.",
-    ],
-    conviction: "LOW",
-    conviction_rationale: "Cheap on current numbers, but the market just said it does not trust them to hold.",
-    triggers: [
-      { action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "price", is: "above", value: 1266.06 }, rationale: "A reclaim of the 200-day is the first sign the chart is trying to repair." },
-      { action: "REVIEW", fireMode: "NEXT_MORNING", predicate: { watch: "report", is: "before", value: 14 }, rationale: "Fourteen days before the January print, decide whether to price an entry." },
-    ],
-  } as ThesisDecisionInput;
-  const pead = { ...mintOpts, currentPrice: 1126.52, setups: setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]) };
+describe("look_again: a view with no buy yet says when to look again, instead of a pass (SNDK 2026-11-04)", () => {
+  const opts = { ...mintOpts, todayEt: "2026-11-04" };
+  const view = { ...validLong, setup_id: undefined };
 
-  it("the PASS it sent with its reviews is sent back as the watch it described", () => {
-    const v = validateThesisDecision(sndk, pead);
-    expect(v.ok).toBe(false);
-    expect(v.errors.join(" ")).toMatch(/send your direction \(LONG or SHORT\) with no buy, and keep these triggers/);
+  it("after the next report, or on a day 1 to 365 days out, with why: accepted", () => {
+    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: "Whether the January report confirms NAND pricing." } }, opts).ok).toBe(true);
+    expect(validateThesisDecision({ ...view, look_again: { on_date: "2027-01-28", why: "After the January report." } }, opts).ok).toBe(true);
   });
 
-  it("the same view as a LONG with no levels and no setup is accepted: the setup prices a view, it never decides one", () => {
-    const v = validateThesisDecision({ ...sndk, direction: "LONG" } as ThesisDecisionInput, pead);
-    expect(v.errors).toEqual([]);
-    expect(v.ok).toBe(true);
+  it("neither or both, a day out of reach, or no why: sent back with the fix", () => {
+    expect(validateThesisDecision({ ...view, look_again: { why: "w" } }, opts).errors).toEqual(["look_again: give one of after_next_report or on_date, with why."]);
+    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, on_date: "2027-01-28", why: "w" } }, opts).ok).toBe(false);
+    expect(validateThesisDecision({ ...view, look_again: { on_date: "2026-11-01", why: "w" } }, opts).errors[0]).toMatch(/not a day 1 to 365 days from today/);
+    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: " " } }, opts).errors[0]).toMatch(/look_again\.why/);
   });
 
-  it("a priced plan with no setup named is accepted: a buy may be saved with no playbook", () => {
-    const v = validateThesisDecision(
-      { ...sndk, direction: "LONG", triggers: [...(sndk.triggers ?? []), ...levels(1270, 1170)] } as ThesisDecisionInput,
-      pead,
-    );
-    expect(v.errors).toEqual([]);
-    expect(v.ok).toBe(true);
+  it("a PASS takes none: the view it describes is a LONG or SHORT with this look-again", () => {
+    const v = validateThesisDecision({ direction: "PASS", rationale: "No setup today; I would look again after the January report.", horizon: "TARGET", look_again: { after_next_report: true, why: "w" } }, opts);
+    expect(v.errors).toEqual(["look_again: a PASS takes none. A view you would look again at is LONG or SHORT with no buy and this look-again; or pass with none."]);
+  });
+
+  it("code writes the one review: the day after the next report, or every that many days from the day", () => {
+    expect(lookAgainTrigger({ after_next_report: true, why: " After the report. " }, "2026-11-04")).toEqual({ action: "REVIEW", predicate: { watch: "report", is: "after", value: 1 }, rationale: "After the report." });
+    expect(lookAgainTrigger({ on_date: "2026-11-18", why: "Two weeks on." }, "2026-11-04")).toEqual({ action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Two weeks on." });
+    expect(lookAgainTrigger(undefined, "2026-11-04")).toBeNull();
+  });
+});
+
+describe("the Holding refresh's save names no playbook", () => {
+  it("its schema has no setup_id, and a call that sends one, or a trigger list, is parsed without it", () => {
+    const json = JSON.stringify(zodSchema(heldDecisionSchema).jsonSchema);
+    expect(json).not.toContain('"setup_id"');
+    const parsed = heldDecisionSchema.parse({ ...validLong, setup_id: "COMPOUNDER_ACCUMULATION", triggers: [{ action: "EXIT" }] });
+    expect("setup_id" in parsed).toBe(false);
+    expect("triggers" in parsed).toBe(false);
   });
 });

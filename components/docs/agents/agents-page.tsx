@@ -101,8 +101,9 @@ function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly str
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {tools.map((t) => (
                 <li key={t} className="flex items-center gap-2">
-                  <Checkbox checked={record.tools.includes(t)} disabled aria-label={`${t}${record.tools.includes(t) ? " is on" : " is off"}`} />
+                  <Checkbox checked={record.tools.includes(t) || !!record.afterSave?.includes(t)} disabled aria-label={`${t}${record.tools.includes(t) || record.afterSave?.includes(t) ? " is on" : " is off"}`} />
                   <span className="font-mono text-sm">{t}</span>
+                  {record.afterSave?.includes(t) ? <span className="text-xs text-muted-foreground">after its save</span> : null}
                 </li>
               ))}
             </ul>

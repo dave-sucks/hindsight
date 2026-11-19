@@ -3,8 +3,10 @@
  * 2026-10-15). MU, 10:56:57 ET (child run cmv9nsmws000106lbf2u5njet of chat
  * cmv9nlx12000n06l3d9cmobei): the chat had set buy $906, stop $850, target
  * $1,500. The writer's save added a second buy at $982, which took the buy's
- * slot ("Entry $906 → $982"), and its own edit put $906 back. Its fields
- * below are the save's own, rationales replaced; the row is as it stood.
+ * slot ("Entry $906 → $982"), and its own edit put $906 back. The row is as
+ * it stood. Since T1 the writer's save carries no trigger: the playbook's are
+ * code's, written only where the chat's levels don't stand, and a refresh
+ * for the chat has no tailoring after it.
  */
 import { replayTool, thesisRow } from "@/lib/replay";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
@@ -22,16 +24,9 @@ const row = [
   t("ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "EXIT", { watch: "price", is: "below", value: 850 }),
   t("bb928325-0cde-4168-a03c-aca52371fc8f", "REVIEW", { watch: "price", is: "above", value: 1500 }),
 ];
+// The decision as the writer sends it now: no trigger; the save writes MA_PULLBACK's watch triggers, a playbook change on this watch.
 const decision = {
   direction: "LONG", setup_id: "MA_PULLBACK", horizon: "COMPOUNDER", conviction: "HIGH", rationale: "(the writer's rationale)",
-  add_triggers: [
-    { action: "ENTER", predicate: { watch: "price", is: "above", value: 982 }, rationale: "(the writer's)" },
-    { action: "REVIEW", predicate: { watch: "report", is: "before", value: 14 }, rationale: "(the writer's)" },
-  ],
-  edit_triggers: [
-    { action: "ENTER", id: BUY, value: 906, rationale: "(the writer's)" },
-    { action: "ENTER", id: "d7fcd231-5a48-42a0-919b-8efc0ac521b0", value: 2, rationale: "(the writer's)" },
-  ],
 } as unknown as ValidatedThesisDecision;
 
 const writerArgs = { childRunId: "cmv9nsmws000106lbf2u5njet", analystId: SECULAR, ticker: "MU", mode: "refresh" as const, existingThesisId: THESIS, reason: "(the chat's reason)" };
@@ -42,7 +37,8 @@ async function save(keep?: Trigger[]): Promise<Record<string, unknown>> {
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
     const { buildWriterSaveCall } = await import("@/lib/agent/run-thesis-writer");
-    args = buildWriterSaveCall(writerArgs, null, decision, {}, { direction: "LONG", status: "WATCHING", keep }).toolArgs;
+    const { playbookTemplates } = await import("@/lib/agent/knowledge/playbooks");
+    args = buildWriterSaveCall(writerArgs, null, decision, {}, { direction: "LONG", status: "WATCHING", setupId: null, triggers: row as unknown as Trigger[], keep }, (id) => playbookTemplates(null, id)).toolArgs;
   });
   jest.dontMock("@/lib/prisma");
   return args;
@@ -57,14 +53,13 @@ const replay = (args: Record<string, unknown>) =>
 const opsOn = (result: unknown, id: string) => ((result as { data?: { trigger_ops?: Array<{ id?: string; text: string }> } }).data?.trigger_ops ?? []).filter((o) => o.id === id);
 
 describe("MU 10:56:57 — the writer's refresh for the chat", () => {
-  it("keeps the chat's buy, stop and target, and says its own levels as information", async () => {
+  it("keeps the chat's buy, stop and target: the playbook's triggers are written only where nothing stands", async () => {
     const args = await save(row as unknown as Trigger[]);
+    expect(args.remove_trigger_ids).toBeUndefined();
     const { result, db } = await replay(args);
-    expect(opsOn(result, BUY)).toEqual([]);
+    for (const id of [BUY, "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "bb928325-0cde-4168-a03c-aca52371fc8f"]) expect(opsOn(result, id)).toEqual([]);
     const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate?: { value?: number }; condition?: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;
     expect((buy.condition ?? buy.predicate)!.value).toBe(906);
-    expect(JSON.stringify(db.store.thesis[0])).not.toMatch(/"value":982/);
-    expect(String(args.rationale)).toMatch(/This refresh's own: buy \$982\.\]$/);
   }, LOAD_MS);
 
   it("a refresh after a buy placed by hand keeps the levels as the chat's does; a morning run's does not", async () => {
@@ -80,10 +75,4 @@ describe("MU 10:56:57 — the writer's refresh for the chat", () => {
     expect(keeps({}, null)).toBe(false);
   }, LOAD_MS);
 
-  it("a refresh the chat did not ask for (a morning run's) sends its edits as written: the $982 add lands on the buy, and its own edit puts $906 back", async () => {
-    const { result, db } = await replay(await save());
-    expect(opsOn(result, BUY).map((o) => o.text)).toEqual(["Buy $906 → $982", "Buy $982 → $906"]);
-    const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;
-    expect(buy.predicate.value).toBe(906);
-  }, LOAD_MS);
 });

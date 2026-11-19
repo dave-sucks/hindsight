@@ -14,6 +14,8 @@
  * Both decisions passed the writer's own rules (validateThesisDecision) and
  * were thrown away at the save. The submit step now runs the save itself in
  * check-only mode, so the model hears the refusal while it can still fix it.
+ * Since T1 the decision carries no trigger edit: a sale on a watch is refused
+ * by edit_triggers after the save, as for every agent.
  */
 
 /** DOCU's 09-15 decision with its floor ($57.50) kept. */
@@ -21,11 +23,6 @@ const FLOOR_ID = "85cba008";
 const withFloorKept = <T extends { remove_trigger_ids: string[] }>(submit: T): T => ({
   ...submit,
   remove_trigger_ids: submit.remove_trigger_ids.filter((id) => !id.startsWith(FLOOR_ID)),
-});
-/** ...and turned into a sale: the save refuses it, since there is nothing to sell on a watch. */
-const withFloorAsSale = <T extends { remove_trigger_ids: string[]; edit_triggers?: unknown[] }>(submit: T): T => ({
-  ...withFloorKept(submit),
-  edit_triggers: [...(submit.edit_triggers ?? []), { id: "85cba008-4f4a-46a9-92eb-b152195d51ed", action: "EXIT", rationale: "Sell below $57.50." }],
 });
 
 const mockThesisFindUnique = jest.fn();
@@ -77,8 +74,7 @@ jest.mock("@/lib/agent/gate-rejections", () => ({
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
-import { buildWriterSaveCall, checkDecisionAgainstSave, makeSubmitThesisTool, type RunThesisWriterArgs } from "./run-thesis-writer";
-import { updateThesis } from "@/lib/agent/tools/update-thesis";
+import { checkDecisionAgainstSave, type RunThesisWriterArgs } from "./run-thesis-writer";
 import { prisma } from "@/lib/prisma";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
@@ -229,23 +225,6 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
   });
 
-  it("with its floor turned into a sale it is refused by the save check, with the fix, before anything is written", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
-    const outcome = await checkDecisionAgainstSave({
-      args: writerArgs(fx, "DOCU"),
-      pull: null,
-      decision: v.decision as ValidatedThesisDecision,
-      ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
-    });
-    expect(outcome.wouldSave).toBe(false);
-    expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/nothing to sell on a stock we only watch.*STOP_WATCHING/);
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-    expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
-  });
-
   it("DOCU's real call (the floor taken off) passes the check and writes nothing", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
     const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
@@ -260,45 +239,6 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
     expect(mockWriteThesisUpdate).not.toHaveBeenCalled();
-  });
-});
-
-describe("submit_thesis runs the save check", () => {
-  const fx = fixtures.DOCU;
-
-  function submitTool(onAccept = jest.fn()) {
-    let attempts = 0;
-    const t = makeSubmitThesisTool({
-      ticker: "DOCU",
-      validate: validateOpts(fx, "DOCU"),
-      check: (d) =>
-        checkDecisionAgainstSave({ args: writerArgs(fx, "DOCU"), pull: null, decision: d, ctx, existing: { direction: "LONG", status: fx.thesis.status } }),
-      onAttempt: () => ++attempts,
-      onAccept,
-    }) as unknown as { execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[] }> };
-    return { t, onAccept };
-  }
-
-  it("hands the sale's refusal back instead of accepting, then accepts the fix", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const { t, onAccept } = submitTool();
-    const first = await t.execute(withFloorAsSale(fx.submit));
-    expect(first.accepted).toBe(false);
-    expect(first.errors?.[0]).toMatch(/The save refused this decision/);
-    expect(onAccept).not.toHaveBeenCalled();
-
-    const second = await t.execute(fx.submit);
-    expect(second.accepted).toBe(true);
-    expect(onAccept).toHaveBeenCalledTimes(1);
-  });
-
-  it("after two hand-backs it saves what it can: the call lands and the refused plan is written on the stock", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const { t, onAccept } = submitTool();
-    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(false);
-    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(false);
-    expect((await t.execute(withFloorAsSale(fx.submit))).accepted).toBe(true);
-    expect(onAccept).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -331,37 +271,6 @@ describe("FIVE 2026-09-15 — the same decision with the explanations cut to fit
   });
 });
 
-
-describe("a check writes nothing anyone reads later", () => {
-  const fx = fixtures.DOCU;
-
-  it("a refused check leaves the refusal ledger empty — the ledger is the run-day record of real refusals", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
-    const outcome = await checkDecisionAgainstSave({
-      args: writerArgs(fx, "DOCU"),
-      pull: null,
-      decision: v.decision as ValidatedThesisDecision,
-      ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
-    });
-    expect(outcome.wouldSave).toBe(false);
-    expect(mockRecordGateRejection).not.toHaveBeenCalled();
-  });
-
-  it("a real save lands the rest and refuses the sale by id (no refusal receipt: the call landed)", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorAsSale(fx.submit), validateOpts(fx, "DOCU"));
-    const call = buildWriterSaveCall(writerArgs(fx, "DOCU"), null, v.decision as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
-    const saveTool = updateThesis(ctx) as unknown as { execute: (a: unknown, o: unknown) => Promise<unknown> };
-    const res = (await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] })) as { data: { trigger_ops?: Array<{ id: string; ok: boolean; reason?: string }> } };
-    expect(res.data.trigger_ops?.filter((o) => !o.ok)).toEqual([expect.objectContaining({ id: "85cba008-4f4a-46a9-92eb-b152195d51ed", reason: expect.stringContaining("STOP_WATCHING") })]);
-    expect(mockRecordGateRejection).not.toHaveBeenCalled();
-    // The rest landed; the floor is still the watch's Stop watching line.
-    const saved = mockThesisUpdate.mock.calls.map(([a]: [{ data: { triggers?: Array<{ id: string; action: string }> } }]) => a.data.triggers).find(Boolean);
-    expect(saved?.find((t) => t.id.startsWith(FLOOR_ID))?.action).toBe("STOP_WATCHING");
-  });
-});
 
 describe("a new thesis (mint) is checked the same way", () => {
   const fx = fixtures.DOCU;
@@ -413,62 +322,5 @@ describe("a new thesis (mint) is checked the same way", () => {
     expect(outcome.error).toMatch(/edit_triggers/);
     expect(mockThesisCreate).not.toHaveBeenCalled();
     expect(mockRecordGateRejection).not.toHaveBeenCalled();
-  });
-});
-
-describe("a save that lands but refuses one trigger edit", () => {
-  const fx = fixtures.FIVE;
-  // FIVE is held, so its protective levels only move toward more protection.
-  // Widening the 8% trailing sell to 12% is refused on its own; the rest of
-  // the call still lands, and the run ends before anyone reads the refusal.
-  const widenTheTrail = {
-    ...fx.submit,
-    stop_basis: "Under the 38.2% retracement $229.20 — 1.0 ATR below price.",
-    target_basis: "1.272 extension of the $173.10 → $263.88 leg = $288.57.",
-    edit_triggers: [
-      {
-        id: "f2f1b7b1-bb6e-4141-b997-5ef2c5f1bdd4",
-        pct: 12,
-        rationale: "More room off the high while the drift works.",
-      },
-    ],
-  };
-
-  it("is handed back to the writer, in the save's words, instead of reading as a clean save", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    mockPositionFindFirst.mockResolvedValue({ avgCost: 248.05 });
-    const v = validateThesisDecision(widenTheTrail, validateOpts(fx, "FIVE"));
-    expect(v.ok).toBe(true);
-    const outcome = await checkDecisionAgainstSave({
-      args: writerArgs(fx, "FIVE"),
-      pull: { currentPrice: livePrice.FIVE } as never,
-      decision: v.decision as ValidatedThesisDecision,
-      ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
-    });
-    expect(outcome.wouldSave).toBe(false);
-    expect(outcome.fixable).toBe(true);
-    expect(outcome.error).toMatch(/would be refused/);
-    expect(outcome.error).toMatch(/protect/i);
-    expect(mockThesisUpdate).not.toHaveBeenCalled();
-  });
-
-  it("the same call through the real save still lands the rest — behaviour outside the check is unchanged", async () => {
-    mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    mockPositionFindFirst.mockResolvedValue({ avgCost: 248.05 });
-    const v = validateThesisDecision(widenTheTrail, validateOpts(fx, "FIVE"));
-    const call = buildWriterSaveCall(
-      writerArgs(fx, "FIVE"),
-      { currentPrice: livePrice.FIVE } as never,
-      v.decision as ValidatedThesisDecision,
-      {},
-      { direction: "LONG", status: fx.thesis.status },
-    );
-    const saveTool = updateThesis(ctx) as unknown as {
-      execute: (a: unknown, o: unknown) => Promise<{ data?: { trigger_ops?: Array<{ ok: boolean }> } }>;
-    };
-    const res = await saveTool.execute(call.toolArgs, { toolCallId: "real-save", messages: [] });
-    expect(mockThesisUpdate).toHaveBeenCalledTimes(1);
-    expect(res.data?.trigger_ops?.some((op) => op.ok === false)).toBe(true);
   });
 });

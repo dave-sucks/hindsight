@@ -43,13 +43,31 @@ export const triggerPredicateSchema = z.unknown().transform((p, ctx): When => {
  * is defined once per tool (`Condition`); `toStored` maps it onto the stored
  * shape. An old kind is refused with the list of measures.
  */
-export function predicateInputSchema() {
-  return (agentPredicate ??= buildPredicateInputSchema());
+export function predicateInputSchema(opts: { keys?: boolean; noTypedPrices?: boolean } = {}) {
+  if (opts.noTypedPrices) return (keyedPricePredicate ??= buildPredicateInputSchema(true, true));
+  return opts.keys ? (keyedPredicate ??= buildPredicateInputSchema(true)) : (agentPredicate ??= buildPredicateInputSchema(false));
 }
 let agentPredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
+let keyedPredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
+/** The Writer's: a price is a chart key or a line, never a typed number. */
+let keyedPricePredicate: ReturnType<typeof buildPredicateInputSchema> | undefined;
 
-function buildPredicateInputSchema() {
-  const byWatch = Object.fromEntries(Object.values(MEASURES).map((m) => [m.id, measureBranch(m)])) as Record<Watch, z.ZodObject>;
+/** A chart key in place of a number ({pivot}, {gapDayHigh}): edit_triggers writes today's number before the save. */
+export const CHART_KEY = /^\{[A-Za-z0-9]+\}$/;
+export const isChartKey = (v: unknown): v is string => typeof v === "string" && CHART_KEY.test(v);
+/** The measures whose number a key can stand for: a price, and a move measured from a line. */
+const KEYED: ReadonlySet<string> = new Set(["price", "move"]);
+
+/** The condition with each key read as 1, so its shape is checked before code prices it. */
+function keysAsOne(w: unknown): unknown {
+  if (!w || typeof w !== "object") return w;
+  const c = w as { match?: string; conditions?: unknown[]; value?: unknown };
+  if (c.match === "all" && Array.isArray(c.conditions)) return { ...c, conditions: c.conditions.map(keysAsOne) };
+  return isChartKey(c.value) ? { ...c, value: 1 } : c;
+}
+
+function buildPredicateInputSchema(keys: boolean, noTypedPrices = false) {
+  const byWatch = Object.fromEntries(Object.values(MEASURES).map((m) => [m.id, measureBranch(m, keys, noTypedPrices)])) as Record<Watch, z.ZodObject>;
   // A refusal says what's wrong: the field a measure is missing, or, for no measure at all, the list of them.
   const explain = (input: unknown): string => {
     const w = input && typeof input === "object" ? (input as { watch?: unknown }).watch : undefined;
@@ -92,7 +110,7 @@ function buildPredicateInputSchema() {
     .union([stored, group], { error: (iss) => explain(iss.input) })
     .describe("One condition, or { match: \"all\", conditions } for two or more that must all hold.")
     .superRefine((w, ctx) => {
-      const refused = refusalOf(w);
+      const refused = refusalOf(keys ? keysAsOne(w) : w);
       if (refused) ctx.addIssue({ code: "custom", message: refused });
     })
     // A setting the measure doesn't take is dropped, never stored.
@@ -111,18 +129,22 @@ function fittingVariables(m: MeasureDef) {
  * said here: the save holds it to the catalog's range and refuses with the
  * sentence naming the number (./condition/range).
  */
-function measureBranch(m: MeasureDef) {
+function measureBranch(m: MeasureDef, keys = false, noTypedPrices = false) {
   // The branch's fields say what the measure takes; its sentence (`m.shape`) is for a refusal, not repeated here.
   const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id) };
   if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
   const fitting = fittingVariables(m);
   const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
+  // A key, where this caller takes one: code writes today's number (edit_triggers).
+  const key = keys && KEYED.has(m.id) ? [z.string().regex(CHART_KEY)] : [];
   if (m.value.none) {
     shape.value = z.enum(ids);
   } else if (m.variables?.mode === "replace") {
-    shape.value = z.union([z.number(), z.enum(ids)]);
+    // A price for the Writer is a line or a key; any other number stays a number.
+    shape.value = noTypedPrices && m.id === "price" ? z.union([z.enum(ids), ...key]) : z.union([z.number(), z.enum(ids), ...key]);
   } else {
-    shape.value = m.value.zero != null ? z.number().optional() : z.number();
+    const n = key.length ? z.union([z.number(), ...key]) : z.number();
+    shape.value = m.value.zero != null ? n.optional() : n;
   }
   if (m.variables?.mode === "from") shape.variable = z.enum(ids);
   const settings = m.settings ?? [];
@@ -148,13 +170,13 @@ function choiceInValue(m: MeasureDef | undefined): boolean {
   return !!m && (m.value.none === true || m.variables?.mode === "replace");
 }
 
-type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId; variable?: VariableId; settings?: Record<string, unknown> };
+type AgentCondition = { watch: Watch; is?: Condition["is"]; value?: number | VariableId | string; variable?: VariableId; settings?: Record<string, unknown> };
 
 /** The agents' condition, stored: a line or a filing in `value` is the stored `variable`; no empty settings. */
 function toStored({ value, variable, settings, ...base }: AgentCondition): Condition {
   const rest = settings && Object.keys(settings).length ? { ...base, settings } : base;
   const mode = MEASURES[rest.watch]?.variables?.mode;
-  if (mode === "replace") return { ...rest, ...(typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
+  if (mode === "replace") return { ...rest, ...(isChartKey(value) ? { value } : typeof value === "string" ? { variable: value } : value != null ? { value } : {}) } as Condition;
   return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
 }
 

@@ -52,6 +52,7 @@ import { runAgent } from "@/lib/agent/engine/run";
 import { createResearchTools } from "@/lib/agent/tools";
 import type { Setup } from "@/lib/agent/knowledge/setups";
 import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
+import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { generateText, stepCountIs, tool } from "ai";
@@ -75,7 +76,8 @@ import {
   type ParsedSections,
 } from "@/lib/agent/thesis-research/parse-sections";
 import {
-  droppedTrigger,
+  lookAgainTrigger,
+  notWrittenTrigger,
   submitThesisInput,
   validateThesisDecision,
   type DroppedItem,
@@ -89,6 +91,10 @@ import { stockRowText } from "@/lib/agent/system-prompts/intraday-tactical";
 import { parseTriggersResilient, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import { isNamedSetup } from "@/lib/agent/knowledge/setups";
+import { PLAYBOOK_UNREAD, playbookWatchTriggers } from "@/lib/agent/knowledge/playbooks";
 
 // ── Phase budgets ───────────────────────────────────────────────────────
 // V1's inner synthesis abort was 180s against an observed 187-192s EVERY
@@ -255,6 +261,8 @@ interface WriterExistingThesis {
   horizon: string | null;
   coreBelief: string | null;
   company: string | null;
+  /** The playbook it is written on: a refresh that names another changes its watch triggers. */
+  setupId?: string | null;
   /** The stored triggers, with ids — a refresh edits them one at a time. */
   triggers: Trigger[];
 }
@@ -272,6 +280,7 @@ export async function loadExistingThesis(
       horizon: true,
       coreBelief: true,
       company: true,
+      setupId: true,
       triggers: true,
     },
   });
@@ -283,6 +292,7 @@ export async function loadExistingThesis(
     horizon: row.horizon,
     coreBelief: row.coreBelief,
     company: row.company ?? null,
+    setupId: row.setupId ?? null,
     triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
 }
@@ -660,9 +670,13 @@ export async function writerResearchPhase(
     let accepted: ValidatedThesisDecision | null = null;
     let submitAttempts = 0;
     let lastRejected: { raw: unknown; errors: string[] } | null = null;
+    // The check saves what the save will: the playbook's watch triggers included.
+    const stock = await stockForSave(args, existingThesis);
+    const playbooks = await loadPlaybooks(analyst.accountId);
 
     const submitThesisTool = makeSubmitThesisTool({
       ticker: T,
+      held: existingThesis?.status === "HOLDING",
       onReject: (raw, errors) => {
         lastRejected = { raw, errors };
       },
@@ -677,9 +691,8 @@ export async function writerResearchPhase(
           pull: pullOutput.pull,
           decision: d,
           ctx: saveCtx,
-          existing: existingThesis
-            ? { direction: existingThesis.direction, status: existingThesis.status }
-            : null,
+          existing: stock,
+          playbooks,
         }),
       onAttempt: () => ++submitAttempts,
       onAccept: (d) => {
@@ -979,19 +992,65 @@ export function saveInThread(save: WriterSave): unknown[] {
 export interface WriterSaveCall {
   toolName: "record_thesis" | "update_thesis";
   toolArgs: Record<string, unknown>;
+  /** The playbook's watch triggers the save doesn't write, and why: each a "Not applied" line on the stock. */
+  notWritten: DroppedItem[];
+}
+
+/** Today, ET (YYYY-MM-DD): the day a look-again's date is counted from. */
+const etToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+/** Every playbook's templates for the account (loadPlaybooks); null when they couldn't be read. */
+export type WriterPlaybooks = ((setupId: string) => Template[]) | null;
+
+/**
+ * The playbook's watch triggers a save writes, priced from the chart the
+ * Writer was shown: all of them on a new watch, and on a watch whose
+ * playbook changes the old playbook's come off for the new one's. A refresh
+ * on the same playbook writes none, and a stock we hold gets none. A trigger
+ * written by hand stays; a playbook trigger whose kind it already holds is
+ * not written beside it. On a refresh the chat asked for, the buy, floor and
+ * upside line stay as they were set (ruling 2026-10-15).
+ */
+export function writerPlaybookWrites(
+  d: Pick<ValidatedThesisDecision, "direction" | "setup_id">,
+  pull: Pick<ThesisPullResult, "priceStructure"> | null,
+  existing: { direction: string | null; status: string | null; setupId?: string | null; triggers?: Trigger[]; keep?: Trigger[] } | null,
+  playbooks: WriterPlaybooks,
+): { add: Array<Record<string, unknown>>; remove: string[]; notWritten: DroppedItem[] } {
+  const none = { add: [], remove: [], notWritten: [] };
+  if (d.direction === "PASS" || !isNamedSetup(d.setup_id)) return none;
+  if (existing && (existing.status === "HOLDING" || existing.setupId === d.setup_id)) return none;
+  if (!playbooks) return { ...none, notWritten: [{ field: "triggers", why: `the ${d.setup_id} playbook's watch triggers`, reason: PLAYBOOK_UNREAD }] };
+  const { triggers, notWritten } = playbookWatchTriggers(playbooks(d.setup_id), pull?.priceStructure ?? null);
+  const kept = new Set((existing?.keep ?? []).flatMap((t) => (levelSlotOf(t, existing?.direction ?? null) ? [t.id] : [])));
+  const remove = (existing?.triggers ?? []).filter((t) => t.playbook === "WATCH" && !kept.has(t.id)).map((t) => t.id);
+  const staying = (existing?.triggers ?? []).filter((t) => !remove.includes(t.id));
+  const taken = new Map(staying.map((t) => [triggerSlot(t), t]));
+  const add: Array<Record<string, unknown>> = [];
+  const skipped: DroppedItem[] = [];
+  for (const t of triggers) {
+    const asStored = triggerInputSchema.safeParse(t);
+    const there = asStored.success ? taken.get(triggerSlot(asStored.data as Trigger)) : undefined;
+    if (there) skipped.push({ field: "triggers", why: `the playbook's ${t.action === "ENTER" ? "buy" : "trigger"} beside ${there.rationale ? `"${there.rationale.slice(0, 80)}"` : "the one there"}`, reason: "the stock already has a trigger of that kind, which stays" });
+    else add.push(t);
+  }
+  return { add, remove, notWritten: [...notWritten.map((n) => notWrittenTrigger(n.ref, n.sentence, n.why)), ...skipped] };
 }
 
 /**
  * Build the record_thesis (mint) / update_thesis (refresh) args for a
  * decision. The submit step's check and the real save both call this, so
- * the args the check approves are the args the save receives.
+ * the args the check approves are the args the save receives. The decision
+ * carries no trigger: the playbook's watch triggers are code's
+ * (writerPlaybookWrites), and the Writer tailors them after the save.
  */
 export function buildWriterSaveCall(
   args: RunThesisWriterArgs,
   pull: WriterPullPhaseOutput["pull"],
   d: ValidatedThesisDecision,
   sectionArgs: SectionArgs,
-  existing: { direction: string | null; status: string | null; keep?: Trigger[] } | null,
+  existing: { direction: string | null; status: string | null; setupId?: string | null; triggers?: Trigger[]; keep?: Trigger[] } | null,
+  playbooks: WriterPlaybooks = null,
 ): WriterSaveCall {
   const T = args.ticker.toUpperCase();
   // The event date: the writer's stands; the company's filing on file
@@ -1004,9 +1063,15 @@ export function buildWriterSaveCall(
   const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
   const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
   const sections = sectionArgs;
+  const writes = writerPlaybookWrites(d, pull, args.mode === "mint" ? null : existing, playbooks);
   if (args.mode === "mint") {
+    const look = lookAgainTrigger(d.look_again, etToday());
+    const review = args.reviewCadenceDays
+      ? [{ predicate: { watch: "repeat", value: args.reviewCadenceDays }, action: "REVIEW", rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.` }]
+      : [];
     return {
       toolName: "record_thesis",
+      notWritten: writes.notWritten,
       toolArgs: {
         ticker: T,
         company_name: pull?.companyName ?? undefined,
@@ -1027,21 +1092,8 @@ export function buildWriterSaveCall(
         core_belief: d.core_belief,
         key_assumptions: d.key_assumptions,
         invalidation_conditions: d.invalidation_conditions,
-        // PASS theses cannot carry triggers (record_thesis gate) — the
-        // validator rejects this too; strip defensively.
-        triggers:
-          d.direction === "PASS"
-            ? undefined
-            : args.reviewCadenceDays
-              ? [
-                  ...(d.triggers ?? []),
-                  {
-                    predicate: { watch: "repeat", value: args.reviewCadenceDays },
-                    action: "REVIEW",
-                    rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.`,
-                  },
-                ]
-              : d.triggers,
+        // A PASS carries no triggers (record_thesis's gate).
+        triggers: d.direction === "PASS" ? undefined : [...writes.add, ...review, ...(look ? [look] : [])],
         // P1-35: pass the model's engagement with a recent sale through
         // to record_thesis's recently-sold gate.
         acknowledge_prior_exit: d.prior_exit_acknowledgment,
@@ -1065,27 +1117,14 @@ export function buildWriterSaveCall(
     !seed && existing?.direction && d.direction !== existing.direction
       ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
       : "";
-  // Held refresh: protective levels only tighten (the 2026-08-16 ruling). A
-  // looser floor is refused as its own op inside update_thesis and the rest
-  // of the refresh lands (DAV-242).
   const pass = d.direction === "PASS";
-  // A refresh the chat asked for keeps the buy, floor and upside line the row has; it may fill an empty one (ruling 2026-10-15).
-  const keptIds = new Map((existing?.keep ?? []).flatMap((t) => { const slot = levelSlotOf(t, existing?.direction ?? null); return slot && t.id ? [[t.id, slot] as const] : []; }));
-  const kept = new Set(keptIds.values());
-  // A decision's trigger is in the model's shape until the save converts it; its slot is read off the stored shape,
-  // where a line ({ value: "sma50" } as written) is a variable and no price level.
-  const slotOf = (t: unknown) => {
-    const asStored = triggerInputSchema.safeParse(t);
-    return levelSlotOf((asStored.success ? asStored.data : t) as Trigger, existing?.direction ?? null);
-  };
-  const keeps = (t: unknown) => { const slot = slotOf(t); return slot != null && kept.has(slot); };
-  const word = { ENTRY: "buy", FLOOR: existing?.status === "HOLDING" ? "floor" : "Stop watching line", TARGET: "upside line" } as const;
-  const own = (d.add_triggers ?? []).filter(keeps).map((t) => `${word[slotOf(t)!]} $${(t.predicate as { value?: number }).value}`);
+  const refreshLook = pass ? null : lookAgainTrigger(d.look_again, etToday());
   return {
     toolName: "update_thesis",
+    notWritten: writes.notWritten,
     toolArgs: {
       thesis_id: args.existingThesisId,
-      rationale: `${rationale}${directionFlag}${own.length ? `\n\n[The stock's price triggers stay as they were set. This refresh's own: ${own.join(", ")}.]` : ""}`,
+      rationale: `${rationale}${directionFlag}`,
       direction: seed ? d.direction : undefined,
       setup_id: pass ? undefined : d.setup_id,
       horizon: d.horizon,
@@ -1096,9 +1135,8 @@ export function buildWriterSaveCall(
       core_belief: d.core_belief,
       key_assumptions: d.key_assumptions,
       invalidation_conditions: d.invalidation_conditions,
-      add_triggers: d.add_triggers?.filter((t) => !keeps(t)),
-      edit_triggers: d.edit_triggers?.filter((e) => !keptIds.has(e.id)),
-      remove_trigger_ids: d.remove_trigger_ids?.filter((id) => !keptIds.has(id)),
+      add_triggers: writes.add.length || refreshLook ? [...writes.add, ...(refreshLook ? [refreshLook] : [])] : undefined,
+      remove_trigger_ids: writes.remove.length ? writes.remove : undefined,
       price_at_time: pull?.currentPrice ?? undefined,
       ...sections,
     },
@@ -1110,6 +1148,17 @@ export { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 /** A refresh keeps the row's levels when the chat started it or the dispatcher asked (a buy placed by hand). */
 export function keepsExistingLevels(args: Pick<RunThesisWriterArgs, "keepLevels">, parentMode: string | null): boolean {
   return args.keepLevels === true || parentMode === "PRINCIPAL_CHAT";
+}
+
+/** The stock as the save reads it: one read for the check, the save and the tailoring after it. */
+export type StockForSave = { direction: string | null; status: string | null; setupId?: string | null; triggers?: Trigger[]; keep?: Trigger[] };
+
+/** The stock a refresh saves onto, with the levels that stay on a refresh the chat asked for. */
+export async function stockForSave(args: RunThesisWriterArgs, existing: WriterExistingThesis | null): Promise<StockForSave | null> {
+  if (!existing) return null;
+  const parentMode = args.keepLevels || !args.parentRunId ? null : ((await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode ?? null);
+  const fromChat = keepsExistingLevels(args, parentMode);
+  return { direction: existing.direction, status: existing.status, setupId: existing.setupId ?? null, triggers: existing.triggers, keep: fromChat ? existing.triggers : undefined };
 }
 
 /** How a save (or a check-only save) came back. */
@@ -1204,9 +1253,10 @@ export async function checkDecisionAgainstSave(input: {
   pull: WriterPullPhaseOutput["pull"];
   decision: ValidatedThesisDecision;
   ctx: ToolContext;
-  existing: { direction: string | null; status: string | null } | null;
+  existing: StockForSave | null;
+  playbooks?: WriterPlaybooks;
 }): Promise<WriterSaveOutcome> {
-  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existing);
+  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existing, input.playbooks ?? null);
   const checkCtx: ToolContext = { ...input.ctx, dryRun: true };
   const toolInstance = call.toolName === "record_thesis" ? recordThesis(checkCtx) : updateThesis(checkCtx);
   try {
@@ -1223,32 +1273,20 @@ const SAVE_CHECK_HAND_BACKS = 2;
 const DROPPABLE_FIELDS = new Set(["setup_id", "conviction_rationale", "variant_view", "catalyst_date"]);
 
 /**
- * The decision without what the save's schema refused: a trigger by its
- * place in the call that was sent, or one optional field. Null when a
- * refusal names anything else (the claim, a trigger code added, the
- * call as a whole): nothing smaller can save. The call's lists hold the
- * decision's own trigger objects (buildWriterSaveCall filters and appends,
- * never copies), so the refused one is found in the decision by identity;
- * without the call, the decision's own order stands (the check's call).
+ * The decision without what the save's schema refused: one optional field.
+ * Null when a refusal names anything else (the claim, a trigger code wrote,
+ * the call as a whole): nothing smaller can save.
  */
-export function withoutRefused(d: ValidatedThesisDecision, issues: SchemaIssue[] | undefined, sent?: Record<string, unknown>): ValidatedThesisDecision | null {
+export function withoutRefused(d: ValidatedThesisDecision, issues: SchemaIssue[] | undefined): ValidatedThesisDecision | null {
   if (!issues?.length) return null;
   const next: ValidatedThesisDecision = { ...d, dropped: [...(d.dropped ?? [])] };
-  const gone = new Set<unknown>();
   for (const issue of issues) {
-    const [head, index] = issue.path;
-    const list = head === "triggers" ? d.triggers : head === "add_triggers" ? d.add_triggers : undefined;
-    const refused = typeof index === "number" ? ((sent?.[head as string] as unknown[] | undefined) ?? list)?.[index] : undefined;
-    if (list && refused !== undefined && list.includes(refused as never)) {
-      if (!gone.has(refused)) next.dropped!.push(droppedTrigger(refused as Record<string, unknown>, issue.message));
-      gone.add(refused);
-    } else if (typeof head === "string" && issue.path.length === 1 && DROPPABLE_FIELDS.has(head) && head in d) {
+    const [head] = issue.path;
+    if (typeof head === "string" && issue.path.length === 1 && DROPPABLE_FIELDS.has(head) && head in d) {
       delete (next as unknown as Record<string, unknown>)[head];
       next.dropped!.push({ field: head, why: head.replace(/_/g, " "), reason: issue.message });
     } else return null;
   }
-  if (d.triggers) next.triggers = d.triggers.filter((t) => !gone.has(t));
-  if (d.add_triggers) next.add_triggers = d.add_triggers.filter((t) => !gone.has(t));
   return next;
 }
 
@@ -1288,12 +1326,15 @@ export function makeSubmitThesisTool(opts: {
   /** The last refused submit, kept so the repair step can hand it back. */
   onReject?: (raw: unknown, errors: string[]) => void;
   ticker: string;
+  /** The Holding refresh: its save names no playbook (heldDecisionSchema). */
+  held?: boolean;
 }) {
   let handBacks = 0;
   return tool({
     description:
       "Submit your final thesis decision. Call ONCE after the research note is fully written. " +
-      "If the result lists validation errors, fix exactly those fields and call again.",
+      "If the result lists validation errors, fix exactly those fields and call again. " +
+      "After the save, the stock's triggers come back to you for edit_triggers: add your own there (a review after the next report, say), and change or remove any, each with a reason.",
     // NOT strict, on purpose. Anthropic's strict mode compiles the schema
     // into a grammar and refuses one with more than 24 optional parameters
     // or 16 union-typed parameters; this schema has 119 and 121 (measured
@@ -1308,7 +1349,7 @@ export function makeSubmitThesisTool(opts: {
     // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
     // would mean moving every range into a description.)
     // The model's call reaches execute as it wrote it: a trigger is converted to its stored shape once, by the save.
-    inputSchema: submitThesisInput,
+    inputSchema: submitThesisInput(opts.held),
     execute: async (raw: ThesisDecisionInput) => {
       const attempt = opts.onAttempt();
       const v = validateThesisDecision(raw, opts.validate);
@@ -1417,18 +1458,20 @@ async function resubmitWithFeedback(input: {
   const messages: ModelMessage[] = [];
   const submit = makeSubmitThesisTool({
     ticker: T,
+    held: existing?.status === "HOLDING",
     validate: {
       mode: args.mode,
       existingStatus: existing?.status ?? null,
       currentPrice: pullOutput.pull?.currentPrice ?? null,
     },
-    check: (d) =>
+    check: async (d) =>
       checkDecisionAgainstSave({
         args,
         pull: pullOutput.pull,
         decision: d,
         ctx: input.ctx,
-        existing: existing ? { direction: existing.direction, status: existing.status } : null,
+        existing: await stockForSave(args, existing),
+        playbooks: await loadPlaybooks(analyst.accountId),
       }),
     onAttempt: () => ++attempts,
     onAccept: (d) => {
@@ -1472,6 +1515,91 @@ async function resubmitWithFeedback(input: {
   return { decision: accepted as ValidatedThesisDecision | null, attempts, messages };
 }
 
+/** How many steps the Writer has after its save to tailor the stock's triggers, and for how long. */
+const TAILOR_MAX_STEPS = 4;
+const TAILOR_TIMEOUT_MS = 120_000;
+
+/** A watch with a view and nothing on it can never come back (DAV-291, LUXE 2026-09-18): what the Writer is told. */
+export function nothingCanFire(ticker: string, direction: string): string {
+  return `$${ticker} is a ${direction} with no buy, no trigger and no review, so it can never come back: nothing on it can fire. Add what you are waiting for with edit_triggers: a review at the price you'd look again ({watch:"price", is:"below", value}) or a short review schedule ({watch:"repeat", value: days}), with your reason.`;
+}
+
+/** What the Writer reads after its save: the decision it sent, the stock's triggers as saved, and what wasn't written. */
+export function tailorMessage(o: { ticker: string; decision: unknown; status: string; direction: string | null; triggers: Trigger[]; notWritten: DroppedItem[] }): string {
+  const directional = o.direction === "LONG" || o.direction === "SHORT";
+  return [
+    `You submitted this decision:\n${JSON.stringify(o.decision)}`,
+    "",
+    `Saved. $${o.ticker}'s triggers now:`,
+    ...(o.triggers.length ? o.triggers.map((t) => `- ${sentenceOf(t)}${t.playbook === "WATCH" ? " (the playbook's)" : ""} — ${t.rationale} [id ${t.id}]`) : ["(none)"]),
+    ...(o.notWritten.length ? ["Not written:", ...o.notWritten.map((n) => `- ${n.why}: ${n.reason}`)] : []),
+    "",
+    !o.triggers.length && o.status !== "HOLDING" && directional
+      ? nothingCanFire(o.ticker, o.direction!)
+      : "Tailor them with edit_triggers where this stock needs it, with your reason for each change; if they fit, say so in one line.",
+  ].join("\n");
+}
+
+/**
+ * After the save, the Writer tailors the stock's triggers with edit_triggers:
+ * the conversation continues from its note, with the saved triggers in front
+ * of it. A directional watch it leaves with nothing that can fire is told so
+ * once. Not on a refresh the chat asked for: its levels stay as set (ruling
+ * 2026-10-15). Returns the replies, for the run's thread.
+ */
+async function writerTailorPhase(input: {
+  args: RunThesisWriterArgs;
+  research: WriterResearchPhaseOutput;
+  ctx: ToolContext;
+  thesisId: string;
+  decision: ValidatedThesisDecision;
+  notWritten: DroppedItem[];
+}): Promise<ModelMessage[]> {
+  const { args, research, thesisId } = input;
+  const read = () => prisma.thesis.findUnique({ where: { id: thesisId }, select: { ticker: true, status: true, direction: true, triggers: true } });
+  const row = await read();
+  if (!row || !research.systemPrompt || !["WATCHING", "HOLDING", "PROMOTED"].includes(row.status)) return [];
+  const { notes: _notes, dropped: _dropped, ...sent } = input.decision;
+  void _notes;
+  void _dropped;
+  const triggers = parseTriggersResilient(row.triggers).triggers as Trigger[];
+  const tools = { edit_triggers: (createResearchTools({ ...input.ctx, runStock: { ticker: row.ticker, thesisId, triggerId: "" } }) as ToolSet).edit_triggers };
+  const modeConfig = MODES["thesis-writer"];
+  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Tailor triggers", source: "thesis-writer", parts: research.requestParts, agent: research.requestAgent });
+  const messages: ModelMessage[] = [
+    { role: "user", content: research.userPrompt },
+    { role: "assistant", content: research.noteText || "(research note)" },
+    { role: "user", content: tailorMessage({ ticker: row.ticker, decision: sent, status: row.status, direction: row.direction, triggers, notWritten: input.notWritten }) },
+  ];
+  const replies: ModelMessage[] = [];
+  const usage = emptyTokenUsage();
+  try {
+    for (let round = 0; round < 2; round++) {
+      const res = await generateText({
+        model,
+        system: cachedSystem(modeConfig.provider, research.systemPrompt),
+        messages,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: cachedTools(modeConfig.provider, tools) as any,
+        stopWhen: stepCountIs(TAILOR_MAX_STEPS),
+        abortSignal: AbortSignal.timeout(TAILOR_TIMEOUT_MS),
+      });
+      addTokenUsage(usage, res.totalUsage, res.steps.length);
+      const reply = (res.response?.messages ?? []) as ModelMessage[];
+      messages.push(...reply);
+      replies.push(...reply);
+      const now = await read();
+      const directional = now?.direction === "LONG" || now?.direction === "SHORT";
+      if (round > 0 || !now || now.status === "HOLDING" || !directional || (parseTriggersResilient(now.triggers).triggers as Trigger[]).length) break;
+      messages.push({ role: "user", content: nothingCanFire(now.ticker, now.direction!) });
+    }
+  } catch (err) {
+    console.warn(`[thesis-writer] tailoring failed ticker=${args.ticker} child=${args.childRunId}:`, err instanceof Error ? err.message : err);
+  }
+  await recordTokenUsage(args.childRunId, usage, modeConfig.model);
+  return replies;
+}
+
 export async function writerPersistPhase(
   args: RunThesisWriterArgs,
   pullOutput: WriterPullPhaseOutput,
@@ -1484,6 +1612,8 @@ export async function writerPersistPhase(
   let notApplied: string | null = null;
   // The last save code made, as it went; the one that saved the thesis goes into the run's thread.
   let lastSave: WriterSave | null = null;
+  // The Writer's tailoring after the save (edit_triggers), for the thread.
+  let tailored: ModelMessage[] = [];
 
   try {
     const analyst = await loadWriterAnalyst(args.analystId);
@@ -1519,12 +1649,12 @@ export async function writerPersistPhase(
         args.mode === "refresh" && args.existingThesisId
           ? await loadExistingThesis(args.existingThesisId)
           : null;
-      const parentMode = args.keepLevels || !args.parentRunId ? null : ((await prisma.researchRun.findUnique({ where: { id: args.parentRunId }, select: { mode: true } }))?.mode ?? null);
-      const fromChat = existing != null && keepsExistingLevels(args, parentMode);
-
-      const saveExisting = existing ? { direction: existing.direction, status: existing.status, keep: fromChat ? existing.triggers : undefined } : null;
+      const saveExisting = await stockForSave(args, existing);
+      const playbooks = await loadPlaybooks(analyst.accountId);
+      let notWritten: DroppedItem[] = [];
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
-        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, saveExisting);
+        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, saveExisting, playbooks);
+        notWritten = call.notWritten;
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
         const result = await executeThroughSchema(toolInstance, call.toolName, call.toolArgs);
         if (!("__schemaError" in result)) lastSave = { toolName: call.toolName, input: call.toolArgs, output: result };
@@ -1550,7 +1680,7 @@ export async function writerPersistPhase(
 
         // ── Go without what the save refused (a trigger, an optional field) ──
         for (let round = 0; round < 3 && !outcome.thesisId && outcome.fixable && outcome.issues?.length; round++) {
-          const smaller = withoutRefused(d, outcome.issues, buildWriterSaveCall(args, pullOutput.pull, d, sectionArgs, saveExisting).toolArgs);
+          const smaller = withoutRefused(d, outcome.issues);
           if (!smaller) break;
           d = smaller;
           outcome = await saveOnce(d);
@@ -1586,7 +1716,8 @@ export async function writerPersistPhase(
         thesisId = outcome.thesisId;
         persistError = outcome.thesisId ? null : outcome.error ?? "unknown";
         notApplied = outcome.notApplied ?? null;
-        if (thesisId && d.dropped?.length) await writeDropped(thesisId, args.childRunId, d.dropped);
+        const without = [...(d.dropped ?? []), ...notWritten];
+        if (thesisId && without.length) await writeDropped(thesisId, args.childRunId, without);
       }
 
       await writePhaseEvent(
@@ -1597,6 +1728,7 @@ export async function writerPersistPhase(
           : persistError ?? "unknown",
         { ticker: T, thesisId, mode: args.mode },
       );
+      if (thesisId && !saveExisting?.keep) tailored = await writerTailorPhase({ args, research, ctx, thesisId, decision: d, notWritten });
     }
   } catch (err) {
     persistError = err instanceof Error ? err.message : String(err);
@@ -1621,7 +1753,7 @@ export async function writerPersistPhase(
       args.childRunId,
       {
         opening: [{ role: "user", content: research.userPrompt || `Write a deep-research thesis on $${T} (${args.mode}).` }],
-        messages: [...research.threadMessages, ...(thesisId && lastSave ? saveInThread(lastSave) : [])],
+        messages: [...research.threadMessages, ...(thesisId && lastSave ? saveInThread(lastSave) : []), ...tailored],
         steps: [],
       },
       "thesis-writer",

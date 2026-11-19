@@ -97,7 +97,7 @@ A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · 
 `coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`
 
 #### Written by
-The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`). A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
+The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`, which write its playbook's watch triggers; then `edit_triggers`). A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
 
 #### Agent Watch
 `isAgentWatched` in `lib/agent/triggers/agent-watch.ts`: a watch with a review schedule of its own.

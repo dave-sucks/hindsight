@@ -186,7 +186,8 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
     swatch: swatchOf(p),
   }));
 
-  const measured = record.tools.filter((n) => tools[n]);
+  const all = [...record.tools, ...(record.afterSave ?? [])];
+  const measured = all.filter((n) => tools[n]);
   return {
     id: record.id,
     name: record.name,
@@ -199,9 +200,9 @@ export function frameworkAgent(record: AgentRecord, tools: Record<string, ToolDe
     sizedOn: sample && !foreign ? { kind: "sample", from: sample.from } : null,
     parts,
     tools: {
-      names: [...record.tools],
+      names: all,
       chars: measured.length ? measured.reduce((n, name) => n + toolChars(tools[name]), 0) : null,
-      unmeasured: record.tools.filter((n) => !tools[n]),
+      unmeasured: all.filter((n) => !tools[n]),
       provider: providerToolNames(record),
     },
   };

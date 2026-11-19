@@ -112,9 +112,11 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.data.found).toBe(true);
     const content = String(r.data.content);
     expect(content).toContain("Post-earnings drift (D4)");
-    expect(content).toContain('The playbook\'s watch triggers:\n- Buy if above {gapDayMid} · only on the close: {"action":"ENTER","predicate":{"watch":"price","is":"above","value":"{gapDayMid}","settings":{"close":true}}} — The gap held: a close above the gap day\'s middle.');
-    expect(content).toContain("The triggers that come with the buy:\n- Sell if below {sellPrice}: ");
-    expect(content).toContain('- Review 60 days after the buy: {"action":"REVIEW","predicate":{"watch":"from_date","is":"after","value":60,"variable":"buy"}} — Hold 30–60 days.');
+    expect(content).toContain("The playbook's watch triggers:\n- W1 · Buy if above {gapDayMid} (the gap day's middle) · only on the close — The gap held: a close above the gap day's middle.");
+    // A holding's triggers are H1, H2…: those that come with the buy, then those written at the fill.
+    expect(content).toContain("The triggers that come with the buy:\n- H1 · Sell if below {sellPrice} (the sell price) — ");
+    expect(content).toContain("- H4 · Review 60 days after the buy — Hold 30–60 days.");
+    expect(content).not.toContain('"predicate"');
     expect(content).not.toMatch(/^(Stop|Target|Trail|Time|  Condition):/m);
   });
 

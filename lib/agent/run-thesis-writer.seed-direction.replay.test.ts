@@ -16,7 +16,8 @@
 import { statSync } from "fs";
 import type { z } from "zod";
 import fixture from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
-import { oldLevelFieldsAsTriggerOps, replayTool, triggerSentences, thesisRow, type Row } from "@/lib/replay";
+import { replayTool, triggerSentences, thesisRow, type Row } from "@/lib/replay";
+import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "./run-thesis-writer";
 
@@ -25,9 +26,14 @@ type Fixture = { run: { mode: "refresh"; existingThesisId: string; ticker: strin
 const fx = fixture as unknown as Fixture;
 
 const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: fx.run.ticker, mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
-const pull = { currentPrice: fx.run.price, catalystOnFile: null } as never;
-// The decision as the writer writes it now: its buy, floor and take-profit are triggers (the level fields went 2026-11-16).
-const decision = oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG") as unknown as ValidatedThesisDecision;
+// The chart the save prices the playbook from: the run's buy ($36.95, the 20-day high) and floor ($34.91, the last swing low); no base.
+const chart = { price: fx.run.price, base: null, gaps: [], range: { high20: 36.95, low20: 33.1, high52w: 44, low52w: 20 }, swings: { lastLow: { price: 34.91 }, lastHigh: null } };
+const pull = { currentPrice: fx.run.price, catalystOnFile: null, priceStructure: chart } as never;
+// The decision as the writer sends it: the thesis fields and its playbook; the save writes PRE_CATALYST's watch triggers.
+const { triggers: _t, add_triggers: _a, edit_triggers: _e, remove_trigger_ids: _r, entry_price: _ep, stop_loss: _sl, target_price: _tp, ...fields } = fx.decision as Record<string, unknown>;
+void [_t, _a, _e, _r, _ep, _sl, _tp];
+const decision = fields as unknown as ValidatedThesisDecision;
+const playbooks = (id: string) => playbookTemplates(null, id);
 const SEED = { direction: null, status: "WATCHING" };
 
 /**
@@ -56,7 +62,7 @@ function throughTheWriterDoor(toolArgs: Record<string, unknown>): Record<string,
 }
 
 async function save(d: ValidatedThesisDecision) {
-  const call = build(args, pull, d, {}, SEED);
+  const call = build(args, pull, d, {}, SEED, playbooks);
   return replayTool("update-thesis", "updateThesis", {
     seed: { thesis: [thesisRow({ ...fx.thesis })] },
     args: throughTheWriterDoor(call.toolArgs),
@@ -78,14 +84,15 @@ describe("COGT 09-28: the writer's refresh on a seed", () => {
     expect(changedView.toolArgs.rationale).toContain("Writer's refreshed view is SHORT vs stored LONG");
   });
 
-  it("the save commits the seed: LONG on watch, the plan priced, the claim on the row", async () => {
+  it("the save commits the seed: LONG on watch, its playbook's watch triggers priced from the chart, the claim on the row", async () => {
     const result = await save(decision);
     expect(result.crashed).toBe(false);
     expect(result.refused).toBe(false);
     const row = result.db.store.thesis[0];
     expect(row).toMatchObject({ direction: "LONG", status: "WATCHING", horizon: "CATALYST", setupId: "PRE_CATALYST" });
     const said = triggerSentences(row).join(" | ");
-    for (const price of ["$36.95", "$43.35", "$34.91"]) expect(said).toContain(price);
+    for (const price of ["Buy if above $36.95", "Stop watching if below $34.91"]) expect(said).toContain(price);
+    expect(said).not.toContain("$43.35");
     expect(row.coreBelief).toBe(fx.decision.core_belief);
     expect(row.invalidationConds).toEqual(fx.decision.invalidation_conditions);
     expect(row.conviction).toBe("MEDIUM");

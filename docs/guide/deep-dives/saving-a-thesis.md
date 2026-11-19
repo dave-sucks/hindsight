@@ -36,7 +36,7 @@ The fields fall in six groups: write-up, claim, triggers (with the setup, horizo
 
 ## Triggers, one at a time
 
-A trigger list is never replaced whole. An agent sends `edit_triggers` with `add`, `edit` (by id) or `remove` (by id); each op is an object carrying its reason (a trigger's or an edit's `rationale`, a removal's `reason`, kept on its Activity record). That is the only way a trigger changes. Each op is one line in Activity. A refused op comes back by id and the rest land. An edit keeps the trigger's id; one that changes its condition or action starts it fresh, so a true one fires at the next check. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
+A trigger list is never replaced whole. An agent sends `edit_triggers` with `add`, `edit` (by id) or `remove` (by id); each op is an object carrying its reason (a trigger's or an edit's `rationale`, a removal's `reason`, kept on its Activity record). An add may name one of the stock's playbook triggers by its reference (W1, H2), and a price in an agent's own trigger may be a chart key (`{swingLow}`): code writes today's number from the chart before the save, and one it can't write comes back with why. That is the only way a trigger changes, besides the playbook's watch triggers the Writer's save writes. Each op is one line in Activity. A refused op comes back by id and the rest land. An edit keeps the trigger's id; one that changes its condition or action starts it fresh, so a true one fires at the next check. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
 
 ## Floors only go up
 

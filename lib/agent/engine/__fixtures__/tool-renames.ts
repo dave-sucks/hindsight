@@ -5,6 +5,7 @@
  * read_database off its menu). The engine tests apply it to the old
  * builder's text as a documented move; nothing else in an instruction changed.
  */
+import { T1_TEXT } from "./t1-text";
 export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["then write your review with update_thesis.", "then write your review with write_note."],
   ["then write your note with update_thesis.", "then write your note with write_note."],
@@ -72,14 +73,14 @@ export const SITUATION_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["It is answered by an update_thesis citing the filing you read, or by the trade;", "It is answered by a write_note citing the filing you read, or by the trade;"],
 ];
 
-/** An old instruction or situation text with the tool renames applied; a trigger run's promoted stock is answered by its note. */
+/** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
-/** The other way: today's text with the renames undone, to hash against what main sent before them. */
+/** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }
