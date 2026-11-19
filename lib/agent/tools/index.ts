@@ -34,6 +34,7 @@ import { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 import { webSearch } from "./web-search";
 import { recordThesis } from "./record-thesis";
 import { passOnStock } from "./pass-on-stock";
+import { watchStock } from "./watch-stock";
 import { updateThesis } from "./update-thesis";
 import { writeNoteTool } from "./write-note";
 import { editTriggers } from "./edit-triggers";
@@ -176,6 +177,7 @@ export function createResearchTools(
     web_search: webSearch(newCtx),
     record_thesis: recordThesis(newCtx),
     pass_on_stock: passOnStock(newCtx),
+    watch_stock: watchStock(newCtx),
     // On no agent's list: code runs it as the Writer's save (run-thesis-writer.ts).
     update_thesis: updateThesis(newCtx),
     // An agent's edits to a stock, one job each (2026-11-18).
@@ -243,6 +245,7 @@ export { waitForThesisRefresh } from "./wait-for-thesis-refresh";
 export { webSearch } from "./web-search";
 export { recordThesis } from "./record-thesis";
 export { passOnStock } from "./pass-on-stock";
+export { watchStock } from "./watch-stock";
 export { updateThesis } from "./update-thesis";
 export { writeNoteTool } from "./write-note";
 export { editTriggers } from "./edit-triggers";

@@ -118,9 +118,9 @@ describe("refuse the field, land the call", () => {
     expect(r.db.store.thesis[0].direction).toBe("LONG");
   });
 
-  it("names record_thesis only where the door has it", async () => {
+  it("names record_thesis to no door: no agent has it", async () => {
     const chat = await replay(closeOut({ direction: "SHORT", trigger_id: undefined }), { ctx: { runMode: "PRINCIPAL_CHAT" } });
-    expect(refusedOf(chat)[0].reason).toContain("record_thesis");
+    expect(refusedOf(chat)[0]).toEqual({ field: "direction", reason: "A flip is a new thesis; say so in your note." });
     for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) {
       const r = await replay(closeOut({ direction: "PASS" }), { ctx: { runMode } });
       expect(refusedOf(r)[0]).toEqual({ field: "direction", reason: "A stock we hold isn't passed: selling it is sell." });

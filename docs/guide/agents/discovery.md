@@ -62,7 +62,7 @@ It works in two passes. The first reads the whole pool and drops what plainly do
 For each stock that survives, the chat says in a sentence or two what is changing in the business and whether the chart gives a place to buy it. There is no score; the sentence is the judgment. Every stock ends one of four ways:
 
 - **Research:** `dispatch_thesis_research` sends it to the Writer. Five per conversation at most, the clearest business reasons first.
-- **Watch:** strong but not ready to price, or past the five. Saved with `record_thesis` as a watch with a wake-up (a price, a move, an earnings beat or miss, or days before the report), so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
+- **Watch:** strong but not ready to price, or past the five. Saved with `watch_stock` as a watch with no view yet and its look-again, a price or a day, so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
 - **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
 - **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
 
@@ -93,7 +93,7 @@ Discovery uses these of chat's tools. [Chat](chat.md) lists all of them.
 
 - **Find candidates:** `run_screen`, `get_earnings_calendar`, `get_market_movers`, `get_catalyst_calendar`, `get_sec_filings`.
 - **Check them:** `get_theses`, `get_stock_data`, `web_search`.
-- **Hand off or record:** `dispatch_thesis_research` sends a stock to the Writer; `record_thesis` saves a pass or a watch; `wait_for_thesis_refresh` brings the Writer's results back into the conversation.
+- **Hand off or record:** `dispatch_thesis_research` sends a stock to the Writer; `pass_on_stock` saves a pass and `watch_stock` a watch; `wait_for_thesis_refresh` brings the Writer's results back into the conversation.
 
 <details>
 <summary>Technical details</summary>
@@ -108,7 +108,7 @@ The Batched discovery part of the chat's record, `CHAT` in `lib/agent/engine/age
 The cap of five dispatches a conversation is a rule in the chat prompt.
 
 #### Outcomes
-`record_thesis` with `direction: PASS` is a pass; with `status: WATCHING` as well, a watch with no buy. A new stock's first triggers are always the Writer's.
+`pass_on_stock` is a pass, saved as Passed; `watch_stock` is a watch with no view and no buy, stamped as your add (`mintWatch` in `lib/thesis/mint-watch.ts`, the watchlist's own path), with its one look-again review written by code as the agent's, so `edit_triggers` can move it later. A new stock's first triggers are always the Writer's.
 
 #### The scheduled agent
 Its record is `DISCOVERY` (`lib/agent/engine/agents/discovery.ts`), whose run is about an analyst: its instructions (its own file, with the analyst, `the_analyst`, sent before it), its context (`the_book`, the analyst's `get_theses` read, and `earnings_calendar`, a read of `get_earnings_calendar` outside the book, each read for the analyst by its loader in `lib/agent/context/`) and its tools. Its run, `DISCOVERY_RUN` (`lib/agent/discovery/run.ts`), names the analyst and makes its tools for it in the run's book, with mode `DISCOVERY`. The runner (`runAgentAsRun`, `lib/agent/engine/run.ts`) opens the run and keeps its books; its thread opens with the book's `get_theses` card, the same read its first message carries (`lib/agent/book-card.ts`). Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`) is per analyst, `0 9 * * 2,4`, off, and writes its kickoff, its message. The send limit is `SENDS_A_RUN`, held by `withSendLimit`. A DISCOVERY run takes no messages (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`). Try it with nothing sent to the Writer: `npx tsx --env-file=.env.local scripts/discovery-dry-run.ts "PEAD Specialist" PAPER`.

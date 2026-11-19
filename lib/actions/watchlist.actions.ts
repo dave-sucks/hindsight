@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { getAccountId } from "@/lib/auth/account";
-import { getOrCreateManualRun } from "@/lib/agent/manual-run-anchor";
+import { mintWatch } from "@/lib/thesis/mint-watch";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
@@ -398,45 +398,21 @@ export async function addWatchlistItem(
         ? "WATCHLIST_REVIEW"
         : "USER_ADDED";
 
-  const runId = await getOrCreateManualRun({ analystId, userId, accountId });
-
-  const thesis = await prisma.thesis.create({
-    data: {
-      researchRunId: runId,
-      userId,
-      accountId,
-      ticker: upper,
-      source: "MANUAL",
-      // P1-24 B4: watchlist-seed sentinel is now direction=null ("on the
-      // watchlist, not yet researched"). status stays WATCHING. The agent
-      // promotes null → LONG/SHORT on first review via update_thesis.
-      direction: null,
-      status: "WATCHING",
-      holdDuration: "SWING",
-      // PR-9 flat schema: legacy plain-string narrative columns replaced
-      snapshot: {
-        text: reason || "Added manually — awaiting first research",
-        citations: [],
-      },
-      modelUsed: "manual",
-      sourceKind,
-      sourceRationale: reason || "Manual watchlist add",
-      // A clock buys AI attention on a schedule; no clock costs nothing and
-      // stays out of every run's work list. An add with neither a clock nor
-      // a wake is a name on a list — legal and deliberate.
-      triggers: buildSeedTriggers(reviewCadenceDays, wake) as object[],
-    },
-  });
-
-  await writeThesisUpdate({
-    thesisId: thesis.id,
-    type: "CREATED",
+  // A clock buys AI attention on a schedule; no clock costs nothing and
+  // stays out of every run's work list. An add with neither a clock nor
+  // a wake is a name on a list — legal and deliberate.
+  const thesis = await mintWatch({
+    analystId,
+    userId,
+    accountId,
+    ticker: upper,
+    reason,
+    sourceKind,
+    triggers: buildSeedTriggers(reviewCadenceDays, wake) as object[],
     summary:
       reviewCadenceDays != null
         ? `Added ${upper} to watchlist (reviewed every ${reviewCadenceDays}d)`
         : `Added ${upper} to watchlist (no review schedule)`,
-    fieldChanges: { status: { from: null, to: thesis.status } },
-    runId,
   });
 
   revalidatePath(`/analysts/${analystId}`);

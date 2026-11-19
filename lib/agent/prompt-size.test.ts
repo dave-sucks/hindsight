@@ -75,7 +75,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +68, the pinned analyst's name and id open its analyst text, as the scope block's first line did.
   // 2026-11-18: −283, the same, and pass_on_stock and read_database off the chat (#1047's chat lines).
   // 2026-11-19: −850, the send's own fields: a brief (why this stock, what was found, whose idea, its own view) and a source link; the mode, thesis id, reason, notes, setup and screen row examples go.
-  chat: 34_405,
+  // 2026-11-19: −181, a soft watch is watch_stock with its look-again, and record_thesis leaves the text with the menu.
+  chat: 34_224,
 };
 
 /**
@@ -140,7 +141,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −184, the chat's edit_triggers is #1050's as it was (no chart keys): back to a672's size.
   // 2026-11-19: +78, T2: place_trade's sell price is optional.
   // 2026-11-19: −2,159, the same send, and run_screen puts a row's numbers in its brief.
-  principal: 55_034,
+  // 2026-11-19: −11,010, record_thesis (and its copy of the trigger shape) off the chat, watch_stock (the stock, the reason, a look-again price or day) on it.
+  principal: 44_024,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

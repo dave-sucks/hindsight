@@ -21,10 +21,10 @@
   "writer.refresh_held": "137fcd8b2698f073",
   "writer.refresh_promoted": "0588249984f58947",
   "writer.mint_unread_playbooks": "5223eb0a2b8a6b88",
-  "chat.unscoped": "b70ced9a5ae7ea62",
-  "chat.unscoped_rooms": "5c240712573dce17",
-  "chat.pinned": "0dbb48ee5e583ca0",
-  "chat.pinned_bare": "695df674ff87af85",
+  "chat.unscoped": "0e8967740a9e1939",
+  "chat.unscoped_rooms": "873eaf8282c5e3ad",
+  "chat.pinned": "ddc48121a922f30d",
+  "chat.pinned_bare": "ba2d6f45e19694ba",
   "sample.portfolio_manager": "0ffd24c993e9fc64",
   "sample.market_reviewer": "4612f2ec90f4bcc1",
   "sample.portfolio_digest": "78d9251ac2d2b5a2",
@@ -33,7 +33,7 @@
   "sample.trigger_run": "8622c7173ee1f429",
   "sample.post_trade_writeup": "8568e13704067f99",
   "sample.morning_run": "940c05c0f6f8bf18",
-  "sample.chat": "2d2527b99df8cc41",
+  "sample.chat": "db688357808d1916",
   "sample.discovery": "55b6b3ec4d30745a"
  }
 }

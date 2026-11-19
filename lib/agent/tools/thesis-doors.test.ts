@@ -18,7 +18,6 @@ import { zodSchema } from "ai";
 import { MODES } from "@/lib/agent/modes";
 import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
 import { createResearchTools } from "@/lib/agent/tools";
-import { DOORS_WITH_RECORD_THESIS } from "./update-thesis";
 
 const THESIS_TOOLS = ["update_thesis", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
 
@@ -100,10 +99,3 @@ describe("what each caller may change on a thesis, by tool", () => {
   });
 });
 
-it("the doors that name record_thesis are the ones whose allowlist has it", () => {
-  const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
-  for (const [mode, runMode] of Object.entries(RUN_MODE)) {
-    const tools = MODES[mode as keyof typeof MODES].toolAllowlist as readonly string[];
-    expect(DOORS_WITH_RECORD_THESIS.has(runMode)).toBe(tools.includes("record_thesis"));
-  }
-});
