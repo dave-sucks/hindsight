@@ -10,7 +10,7 @@
  * input schema, as the SDK parses a model's call, then the real save.
  */
 import type { z } from "zod";
-import { replayTool, thesisRow, agentConfigRow, accountRow, triggerSentences, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
+import { replayTool, thesisRow, positionRow, agentConfigRow, accountRow, triggerSentences, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const SNDK_CHART = {
@@ -146,9 +146,55 @@ describe("the Writer and the Holding refresh price from the chart: a price is a 
     expect(triggerSentences(stored(r))).toEqual(["Sell if below $1100.53"]);
   });
 
-  it("a typed number on the floor comes back with the fix, and the floor stays", async () => {
-    const r = await writerEdit([{ id: "floor", value: 1050, rationale: "A typed price." }]);
-    expect(ops(r)[0].reason).toBe("A price is a chart key: send it in `price` ({swingLow}), or remove the trigger and add one on a line.");
+  it("a typed number has no field: `value` is gone from the edit, and a % sent to the floor is refused for its unit; the floor stays", async () => {
+    expect(writerSchema.safeParse({ edit: [{ id: "floor", value: 1050 }] }).data).toEqual({ edit: [{ id: "floor" }] });
+    const r = await writerEdit([{ id: "floor", pct: 1050, rationale: "A typed price." }]);
+    expect(ops(r)[0].reason).toMatch(/^This trigger has no editable `pct`/);
     expect(triggerSentences(stored(r))).toEqual(["Sell if below $1000"]);
+  });
+});
+
+describe("After the buy prices from the chart as the Writer does", () => {
+  it("its edit_triggers takes a key or a line for a price, never a typed number", async () => {
+    let schema!: z.ZodTypeAny;
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
+      const { editTriggers } = await import("./edit-triggers");
+      schema = (editTriggers({ runId: "r", userId: "u", accountId: "a", runMode: "AFTER_BUY", analystId: REPLAY_ANALYST_ID, runStock: { ticker: "SNDK", thesisId: THESIS, triggerId: "" } } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
+    });
+    const price = (value: unknown) => ({ add: [{ action: "REVIEW", predicate: { watch: "price", is: "below", value }, rationale: "r" }] });
+    expect(schema.safeParse(price(1100.53)).success).toBe(false);
+    expect(schema.safeParse(price("{swingLow}")).success).toBe(true);
+    expect(schema.safeParse({ add: [{ playbook_trigger: "H2" }] }).success).toBe(true);
+  });
+});
+
+describe("After the buy leaves the floor that came with the buy", () => {
+  const afterBuyCtx = { runMode: "AFTER_BUY", analystId: REPLAY_ANALYST_ID, runStock: { ticker: "SNDK", thesisId: THESIS, triggerId: "" } };
+  const holding = { status: "HOLDING", triggers: [
+    { id: "floor", action: "EXIT", predicate: { watch: "price", is: "below", value: 1000 }, rationale: "Under the gap day's low.", source: "AGENT" },
+    { id: "clock", action: "REVIEW", predicate: { watch: "repeat", value: 30 }, rationale: "A monthly look.", source: "AGENT" },
+  ] };
+  async function afterBuyEdit(args: Record<string, unknown>) {
+    return replayTool("edit-triggers", "editTriggers", {
+      seed: { thesis: [thesisRow({ id: THESIS, ticker: "SNDK", direction: "LONG", setupId: "EPISODIC_PIVOT", analystId: REPLAY_ANALYST_ID, ...holding })], agentConfig: [agentConfigRow()], account: [accountRow()], position: [positionRow({ symbol: "SNDK", analystId: REPLAY_ANALYST_ID, status: "OPEN", avgCost: 1126.52, quantity: 5 })] },
+      args,
+      ctx: afterBuyCtx,
+      quotes: { SNDK: 1126.52 },
+      mocks: { "@/lib/proposals/fill-chart": () => ({ loadFillChart: async () => SNDK_CHART }) },
+    });
+  }
+
+  it("an edit or a removal of the floor is refused with why, and the rest of the call lands", async () => {
+    const r = await afterBuyEdit({ edit: [{ id: "floor", price: "{gapDayLow}", rationale: "Under the gap day." }, { id: "clock", days: 21, rationale: "Three weeks to the report." }], remove: [{ id: "floor", reason: "Restating it." }] });
+    const refused = ops(r).filter((o) => !o.ok);
+    expect(refused.map((o) => o.reason)).toEqual(["The floor came with the buy; leave it. Only the owner moves it down, and a later review moves it up.", "The floor came with the buy; leave it. Only the owner moves it down, and a later review moves it up."]);
+    expect(triggerSentences(stored(r)).sort()).toEqual(["Review every 21 days", "Sell if below $1000"]);
+  });
+
+  it("an add that would replace the floor is refused too", async () => {
+    const r = await afterBuyEdit({ add: [{ action: "EXIT", predicate: { watch: "price", is: "below", value: "{gapDayLow}" }, rationale: "Under the gap day's low." }] });
+    expect(ops(r)[0]).toMatchObject({ ok: false, reason: "The floor came with the buy; leave it. Only the owner moves it down, and a later review moves it up." });
+    expect(triggerSentences(stored(r))).toContain("Sell if below $1000");
   });
 });

@@ -25,7 +25,12 @@ import { portfolioPieceText, type PortfolioPiece } from "@/lib/agent/portfolio-b
 import { writerRequest } from "@/lib/agent/run-thesis-writer";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
-import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
+import { stockRowText, triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
+import { AFTER_BUY_ASK } from "@/lib/agent/engine/agents/after-buy";
+import { afterBuyMessage } from "@/lib/proposals/after-buy";
+import { stockDataText } from "@/lib/agent/context/stock-data";
+import { holdingTriggersText } from "@/lib/agent/knowledge/playbooks";
+import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { marketNumbersText } from "@/lib/market-data/market-numbers";
 import { analystBrief } from "@/lib/agent/analyst-brief";
 import { SCHEDULE } from "@/lib/agent/engine/schedule";
@@ -96,6 +101,24 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
   post_trade_writeup: {
     from: "an Auto sale on a holding",
     build: () => ({ request: triggerRunRequest(triggerArgs(TRIGGER_CASES.auto_sale), { more: TRIGGER_KICKOFF.coFiredSuffix }, SAMPLE_NOW) }),
+  },
+  after_buy: {
+    from: "a buy approved and filled on a stock on the base-breakout playbook",
+    build: (record) => {
+      const held = TRIGGER_CASES.auto_sale.stock;
+      const fill = { orderId: "o", ticker: held.ticker, thesisId: "t", analystId: "a", userId: "u", accountId: "a", environment: "PAPER" as const, added: false, fillPrice: 101.2, shares: 40, floor: { sentence: "Sell if below $94.80", reason: "Under the base's low." }, trigger: null, note: "Orders are back above plan and the stock cleared its base on volume; buying 40 shares here.", holding: null };
+      return {
+        request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER", message: afterBuyMessage(fill, AFTER_BUY_ASK) }, {
+          pieces: PIECES,
+          context: {
+            the_analyst: analystBrief(MORNING_CASES.full.analyst as never),
+            the_stock: stockRowText(held),
+            stock_data: stockDataText(WRITER_MESSAGE.dataBlock),
+            holding_triggers: holdingTriggersText({ ticker: held.ticker, playbook: "Base breakout", templates: PLAYBOOK_TEMPLATES.BASE_BREAKOUT, floor: fill.floor.sentence }),
+          },
+        }),
+      };
+    },
   },
   morning_run: {
     from: "a full morning: reports, a filing, a buy price reached, a refused call",

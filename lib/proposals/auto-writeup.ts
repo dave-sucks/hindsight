@@ -28,9 +28,9 @@ const WRITEUP_WINDOW_MS = 20 * 60 * 1000;
  * whatever the trade tool wrote, and the note row is stamped with the order.
  * Returns the orders that got their note. Safe to run twice.
  */
-export async function putNotesOnRunProposals(args: { runId: string; analystId: string | null; since: Date }): Promise<string[]> {
+export async function putNotesOnRunProposals(args: { runId: string; analystId: string | null; since: Date; orderIds?: string[] }): Promise<string[]> {
   const orders = await prisma.order.findMany({
-    where: { createdAt: { gte: args.since }, thesisId: { not: null } },
+    where: { createdAt: { gte: args.since }, thesisId: { not: null }, ...(args.orderIds ? { id: { in: args.orderIds } } : {}) },
     select: { id: true, thesisId: true, createdAt: true, position: { select: { analystId: true } } },
   });
   const noted: string[] = [];

@@ -12,12 +12,12 @@
  *      and its targetPrice stays empty.
  *   3. Approved and filled: the buy, the Stop watching trigger and the
  *      playbook's watch triggers come off, the trigger written by hand
- *      stays, "Sell if below" goes on, and the fill writes the playbook's
- *      triggers that come with the buy from the chart then and the buy: the
- *      Trim at the prior high above the buy, else twice the risk above it
- *      (the chart's last swing high, $351.73, is under the buy: $427.42),
- *      and the one-risk review. Then the playbook's triggers written at the
- *      fill go on.
+ *      stays, and "Sell if below" goes on; nothing else (2026-11-19). Then
+ *      After the buy puts the playbook's holding triggers on by reference,
+ *      each priced from the chart and the fill: the Trim at the prior high
+ *      above the buy, else twice the risk above it (the chart's last swing
+ *      high, $351.73, is under the $359.50 fill: $427.84), the one-risk
+ *      review, and the triggers written at the fill.
  *   4. Edit & Approve changes the sell price only; the Trim and the one-risk
  *      review read the price you approved.
  *
@@ -30,6 +30,7 @@ import { replayTool, prismaDouble, triggerSentences, agentConfigRow, accountRow,
 import type { StoreSeed } from "@/lib/replay/prisma-double";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
+import { playbookRefs } from "@/lib/agent/knowledge/playbooks";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
@@ -47,10 +48,12 @@ const fx = raw as unknown as {
 const T = "AAPL";
 const BUY = fx.aapl.placeTrade.entry_price; // $359.36
 const SALE = fx.aapl.named.stop_loss; // $325.33, the Nov 3 swing low
-const RISK = Math.round((BUY - SALE) * 100) / 100; // $34.03
-const ONE_RISK = Math.round((RISK / BUY) * 10000) / 100; // 9.47%
-// The prior high ($351.73, Oct 23) is under the buy price, so the Trim is twice the risk above it, as the run wrote it that day.
-const TRIM = Math.round((BUY + 2 * RISK) * 100) / 100; // $427.42
+/** What the buy filled at: After the buy prices the holding's triggers from it. */
+const FILL = 359.5;
+const RISK = Math.round((FILL - SALE) * 100) / 100; // $34.17
+const ONE_RISK = Math.round((RISK / FILL) * 10000) / 100; // 9.5%
+// The prior high ($351.73, Oct 23) is under the fill, so the Trim is twice the risk above it.
+const TRIM = Math.round((FILL + 2 * RISK) * 100) / 100; // $427.84
 const TRIM_REASON = "The prior high above the buy, else twice the risk above the buy.";
 /** BASE_BREAKOUT's one-risk review, as the fill writes it. */
 const ONE_RISK_REASON = "One risk: (the buy price − the sell price) ÷ the buy price. Once it is up one risk, the run raises the sell price to the buy price.";
@@ -110,6 +113,22 @@ async function propose() {
   return rows("order").find((o) => o.symbol === T && o.intent === "OPEN")!;
 }
 
+/** The holding's triggers in the stock's playbook, by reference, the floor's aside (it is on): what After the buy puts on. */
+const holdingRefs = (templates = PLAYBOOK_TEMPLATES.BASE_BREAKOUT) =>
+  playbookRefs(templates).filter((r) => r.template.writtenOn !== "WATCH" && !(r.template.action === "EXIT" && JSON.stringify(r.template.predicate).includes("{sellPrice}"))).map((r) => r.ref);
+
+/** After the buy's edit_triggers, each holding trigger by its reference, as its run sends them (lib/proposals/after-buy.ts). */
+async function afterTheBuy(refs = holdingRefs()) {
+  const r = await replayTool("edit-triggers", "editTriggers", {
+    seed: store,
+    args: { add: refs.map((ref) => ({ playbook_trigger: ref })) },
+    ctx: { runMode: "AFTER_BUY", analystId: REPLAY_ANALYST_ID, runStock: { ticker: T, thesisId: fx.aapl.thesis.id, triggerId: "" } },
+    quotes: { [T]: FILL },
+  });
+  store = r.db.store as StoreSeed;
+  return r;
+}
+
 /** Approve (with edits, if any), then fill, as production does. */
 async function approveAndFill(order: Row, edits?: { stopLoss?: number }) {
   const withPosition = () => {
@@ -122,9 +141,9 @@ async function approveAndFill(order: Row, edits?: { stopLoss?: number }) {
   const outcome = await onStore(BUY, async () => (await import("@/lib/proposals/execute")).approveProposal(String(order.id), REPLAY_USER_ID, edits));
   expect(outcome).toMatchObject({ ok: true, intent: "OPEN" });
   const approved = withPosition();
-  await onStore(359.5, async () => {
+  await onStore(FILL, async () => {
     const { __test__ } = await import("@/lib/inngest/functions/reconcile-orders");
-    await __test__.applyFillByIntent(approved as never, 359.5, Number(approved.quantity), new Date());
+    await __test__.applyFillByIntent(approved as never, FILL, Number(approved.quantity), new Date());
   });
 }
 
@@ -184,30 +203,24 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
     expect(thesis().status).toBe("WATCHING");
   });
 
-  it("3. filled: the watch triggers come off, the one written by hand stays, Sell if below, the Trim and the one-risk review go on from the chart and the buy, and the fill triggers go on", async () => {
+  it("3. filled: the watch triggers come off, the one written by hand stays, Sell if below goes on, and nothing else; After the buy then puts the holding's triggers on from the chart and the fill", async () => {
     jest.useFakeTimers({ now: new Date("2026-11-13T15:00:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     await approveAndFill(rows("order").find((o) => o.symbol === T && o.intent === "OPEN")!);
     jest.useRealTimers();
     expect(thesis().status).toBe("HOLDING");
-    expect(triggerSentences(thesis()).sort()).toEqual(
-      [
-        // Written by hand on the watch, by an agent: stays.
-        "Review if above $406.68",
-        // The sell price, and the playbook's triggers that come with the buy, priced from the chart and the buy.
-        `Sell if below $${SALE}`,
-        `Trim 50% if above $${TRIM}`,
-        `Review if above ${ONE_RISK}% from our entry`,
-        // BASE_BREAKOUT's triggers written at the fill (the seed: this account hasn't edited its playbook).
-        "Review every 7 days",
-        "Review 28 days after the buy",
-      ].sort(),
-    );
-    // The buy, the Stop watching trigger and the Writer's watch clock are gone; the clock that is there is the fill's.
-    expect(stockTriggers().map((t) => t.id)).not.toEqual(expect.arrayContaining(["clock-watch"]));
-    expect(triggerFor("Review every 7 days")).toMatchObject({ playbook: "FILL", source: "DEFAULT" });
-    expect(triggerFor(`Review if above ${ONE_RISK}% from our entry`)).toMatchObject({ playbook: "PROPOSAL", rationale: ONE_RISK_REASON });
+    // The fill: written by hand on the watch (an agent's) stays; the sale goes on; the buy, the Stop watching trigger and the watch clock are gone.
+    expect(triggerSentences(thesis()).sort()).toEqual(["Review if above $406.68", `Sell if below $${SALE}`].sort());
     expect(triggerFor(`Sell if below $${SALE}`)!.rationale).toBe(fx.aapl.named.stop_basis);
-    // AAPL's last swing high ($351.73) is under the $359.36 buy, so the Trim is twice the $34.03 risk above the buy: $427.42, the price the run wrote that day.
+    // After the buy: BASE_BREAKOUT's holding triggers by reference, priced from the chart and the $359.50 fill.
+    const r = await afterTheBuy();
+    expect(r.refused).toBe(false);
+    expect(triggerSentences(thesis()).sort()).toEqual(
+      ["Review if above $406.68", `Sell if below $${SALE}`, `Trim 50% if above $${TRIM}`, `Review if above ${ONE_RISK}% from our entry`, "Review every 7 days", "Review 28 days after the buy"].sort(),
+    );
+    expect(stockTriggers().map((t) => t.id)).not.toEqual(expect.arrayContaining(["clock-watch"]));
+    expect(triggerFor("Review every 7 days")).toMatchObject({ playbook: "FILL" });
+    expect(triggerFor(`Review if above ${ONE_RISK}% from our entry`)).toMatchObject({ playbook: "PROPOSAL", rationale: ONE_RISK_REASON });
+    // AAPL's last swing high ($351.73) is under the fill, so the Trim is twice the $34.17 risk above it: $427.84.
     expect(triggerFor(`Trim 50% if above $${TRIM}`)).toMatchObject({ action: "TRIM", trimPct: 50, playbook: "PROPOSAL", rationale: TRIM_REASON });
   });
 
@@ -218,9 +231,10 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
     await approveAndFill(order, { stopLoss: 330 });
     jest.useRealTimers();
     expect(triggerFor("Sell if below $330")).toMatchObject({ action: "EXIT", source: "PRINCIPAL" });
-    // One risk to the price you approved: ($359.36 − $330) ÷ $359.36; the Trim twice that risk above the buy.
-    expect(triggerFor(`Review if above ${Math.round(((BUY - 330) / BUY) * 10000) / 100}% from our entry`)).toMatchObject({ playbook: "PROPOSAL" });
-    expect(triggerFor(`Trim 50% if above $${Math.round((BUY + 2 * (BUY - 330)) * 100) / 100}`)).toMatchObject({ playbook: "PROPOSAL", rationale: TRIM_REASON });
+    await afterTheBuy();
+    // One risk to the price you approved: ($359.50 − $330) ÷ $359.50; the Trim twice that risk above the fill.
+    expect(triggerFor(`Review if above ${Math.round(((FILL - 330) / FILL) * 10000) / 100}% from our entry`)).toMatchObject({ playbook: "PROPOSAL" });
+    expect(triggerFor(`Trim 50% if above $${(FILL + 2 * (FILL - 330)).toFixed(2)}`)).toMatchObject({ playbook: "PROPOSAL", rationale: TRIM_REASON });
     expect(rows("position").find((p) => p.id === order.positionId)).toMatchObject({ stopLoss: 330 });
     expect(rows("position").find((p) => p.id === order.positionId)!.targetPrice ?? null).toBeNull();
   });
@@ -231,9 +245,9 @@ describe("AAPL 2026-11-13: the breakout buy, its proposal and its fill", () => {
 /**
  * #1003 fixed forward (2026-11-17), on the same AAPL rows: a playbook trigger
  * edited on the watch is still the playbook's at the fill; a trim size the
- * owner set reaches the fill; a trigger that comes with the buy never
- * overwrites the owner's; a sale back to watch keeps what doesn't need a
- * position and writes nothing.
+ * owner set reaches the holding (through After the buy since 2026-11-19); a
+ * playbook trigger never overwrites the owner's; a sale back to watch keeps
+ * what doesn't need a position and writes nothing.
  */
 describe("AAPL 2026-11-13, fixed forward", () => {
   afterEach(() => jest.useRealTimers());
@@ -275,7 +289,7 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     }
   });
 
-  it("a trim size the owner set on the playbook reaches the fill: with a prior high above the buy, the fill writes the Trim at it, at the owner's size", async () => {
+  it("a trim size the owner set on the playbook reaches the holding: with a prior high above the buy, After the buy puts the Trim at it, at the owner's size", async () => {
     seed();
     // Settings → Playbook: the owner set BASE_BREAKOUT's Trim to 30%.
     const templates = PLAYBOOK_TEMPLATES.BASE_BREAKOUT.map((t) => (t.action === "TRIM" ? { ...t, trimPct: 30 } : t));
@@ -285,30 +299,67 @@ describe("AAPL 2026-11-13, fixed forward", () => {
       const order = await proposeWith({ ...fx.aapl.placeTrade, ...sale });
       fillNow();
       await approveAndFill(order);
+      jest.useRealTimers();
+      expect(stockTriggers().some((t) => t.action === "TRIM")).toBe(false);
+      await afterTheBuy(holdingRefs(templates));
     } finally {
       mockChart = aaplChart();
     }
     expect(triggerFor("Trim 30% if above $380")).toMatchObject({ action: "TRIM", trimPct: 30, playbook: "PROPOSAL", rationale: TRIM_REASON });
   });
 
-  it("a trigger that comes with the buy never overwrites one the owner wrote: his stays, and the fill's line names the one not written", async () => {
+  it("a playbook trigger never overwrites one the owner wrote: the fill writes none, and After the buy's Trim beside his is refused with why", async () => {
     seed();
     // The owner wrote a Trim himself; the playbook's Trim, at the $380 prior high, would be one of the same kind.
     const his: Trigger = { id: "owners-trim", action: "TRIM", trimPct: 25, predicate: { watch: "price", is: "above", value: 400 }, rationale: "My own trim.", source: "PRINCIPAL" };
     setTriggers([...stockTriggers(), his]);
     mockChart = aaplChart(380);
+    let r!: Awaited<ReturnType<typeof afterTheBuy>>;
     try {
       const order = await proposeWith({ ...fx.aapl.placeTrade, ...sale });
       fillNow();
       await approveAndFill(order);
+      jest.useRealTimers();
+      expect(triggerFor("Trim 50% if above $380")).toBeUndefined();
+      r = await afterTheBuy();
     } finally {
       mockChart = aaplChart();
     }
     expect(triggerFor("Trim 25% if above $400")).toMatchObject({ source: "PRINCIPAL" });
     expect(triggerFor("Trim 50% if above $380")).toBeUndefined();
-    const line = rows("thesisUpdate").find((u) => u.type === "STATUS_CHANGED" && String(u.summary).includes("HOLDING"))!;
-    const said = (line.fieldChanges as { triggerOps: { to: Array<{ text: string }> } }).triggerOps.to.map((o) => o.text);
-    expect(said).toContain("Kept your Trim 25% if above $400; the buy's Trim 50% if above $380 not written");
+    const ops = (r.result.data?.trigger_ops ?? []) as Array<{ ok: boolean; text: string; reason?: string }>;
+    expect(ops.find((o) => !o.ok && o.text.includes("Trim 50% if above $380"))?.reason).toBe(`The principal wrote Trim 25% if above $400 on $AAPL, and ${holdingRefs().find((ref) => ref === "H2")} would replace it: theirs stays. To change theirs, edit it by id with your reason.`);
+  });
+
+  it("after an add, the Trim's reference re-prices the playbook's Trim already on the stock, around the new average: the same trigger, a new number", async () => {
+    seed();
+    const order = await propose();
+    fillNow();
+    await approveAndFill(order);
+    jest.useRealTimers();
+    await afterTheBuy();
+    const before = triggerFor(`Trim 50% if above $${TRIM}`)!;
+    // An add moves the average to $370: twice the $44.67 risk to the $325.33 floor above it is $459.34.
+    store = { ...store, position: rows("position").map((p) => (p.symbol === T ? { ...p, avgCost: 370 } : p)) };
+    const r = await afterTheBuy([playbookRefs(PLAYBOOK_TEMPLATES.BASE_BREAKOUT).find((x) => x.template.action === "TRIM")!.ref]);
+    expect(r.refused).toBe(false);
+    expect(triggerFor("Trim 50% if above $459.34")).toMatchObject({ id: before.id, action: "TRIM", playbook: "PROPOSAL" });
+    expect(stockTriggers().filter((t) => t.action === "TRIM")).toHaveLength(1);
+  });
+
+  it("a holding from before playbook marks: a reference whose slot holds an unmarked agent trigger re-prices it in place", async () => {
+    seed();
+    const order = await propose();
+    fillNow();
+    await approveAndFill(order);
+    jest.useRealTimers();
+    // An agent's clock written before the playbook marks: no mark, the same slot as the playbook's clock.
+    setTriggers([...stockTriggers(), { id: "old-clock", action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Every two weeks.", source: "AGENT" }]);
+    const clock = playbookRefs(PLAYBOOK_TEMPLATES.BASE_BREAKOUT).find((x) => x.template.writtenOn === "FILL" && (x.template.predicate as { watch?: string }).watch === "repeat")!.ref;
+    const r = await afterTheBuy([clock]);
+    expect(r.refused).toBe(false);
+    expect(triggerFor("Review every 7 days")).toMatchObject({ id: "old-clock" });
+    expect(stockTriggers().filter((t) => (t.predicate as { watch?: string }).watch === "repeat")).toHaveLength(1);
   });
 
   it("sold back to watch: the owner's review and the holding's clock stay, what needs a position comes off, and nothing is written", async () => {
@@ -317,6 +368,7 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     fillNow();
     await approveAndFill(order);
     jest.useRealTimers();
+    await afterTheBuy();
     const owners: Trigger = { id: "owners-review", action: "REVIEW", predicate: { watch: "price", is: "below", value: 300 }, rationale: "Under $300 I look again.", source: "PRINCIPAL" };
     setTriggers([...stockTriggers(), owners]);
     const before = stockTriggers();

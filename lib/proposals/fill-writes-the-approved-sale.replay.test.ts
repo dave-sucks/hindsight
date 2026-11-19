@@ -116,49 +116,36 @@ describe("WST's buy approved: the watch's lines come off, the approved sale goes
 });
 
 /**
- * The fill writes the stock's playbook's fill templates as Settings → Playbook
- * lists them (unseeded: the catalog), and nothing else: no time limit, partial
- * or beat-and-fade review from code, and no review clock from the horizon.
- * WST is a Compounder (COMPOUNDER_ACCUMULATION), whose fill templates are
- * "Review 60 days after the buy", "Add if above 7% from our entry" and
- * "Review every 30 days".
+ * The fill writes the approved sale and nothing else (2026-11-19): the
+ * playbook's other holding triggers are put on by the run after the fill,
+ * tailored to the stock (lib/proposals/after-buy.ts). WST is a Compounder,
+ * whose playbook lists "Review 60 days after the buy", "Add if above 7% from
+ * our entry" and "Review every 30 days" for a holding; none is stamped here.
  */
-describe("WST's fill writes its playbook's fill templates and the approved sale, nothing else", () => {
+describe("WST's fill writes the approved sale, and no playbook trigger", () => {
   const added = (db: PrismaDouble, before: Array<{ id: string }>) =>
     triggersOf(db).filter((t) => !before.some((b) => b.id === t.id)).map((t) => sentenceOf(t)).sort();
+  const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
 
-  it("as stored: WST already has its 30-day clock and 60-day review, so they stay and the Activity names the templates not written", async () => {
+  it("as stored: the sale goes on, the stock's own clock and review stay, and nothing is added from the playbook", async () => {
     const db = await approve();
-    expect(added(db, migrated)).toEqual(["Add if above 7% from our entry", "Sell if below $401.20"]);
-    expect(activity(db)).toEqual(expect.arrayContaining([
-      "Kept Review every 30 days; the playbook's Review every 30 days not written",
-      "Kept Review 60 days after the buy; the playbook's Review 60 days after the buy not written",
-    ]));
+    expect(added(db, migrated)).toEqual(["Sell if below $401.20"]);
+    expect(activity(db).filter((l) => /^Kept|^Added|playbook/.test(l))).toEqual([]);
   });
 
-  it("a watch with only its buy and Stop watching line: exactly the three fill templates plus the sale", async () => {
-    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
+  it("a watch with only its buy and Stop watching line: the sale and nothing else", async () => {
     const db = await approve({ triggers: watchOnly });
-    expect(added(db, watchOnly)).toEqual(["Add if above 7% from our entry", "Review 60 days after the buy", "Review every 30 days", "Sell if below $401.20"]);
-    expect(triggersOf(db).filter((t) => t.source === "DEFAULT").every((t) => /entry|after the buy|every 30 days/.test(sentenceOf(t)))).toBe(true);
+    expect(added(db, watchOnly)).toEqual(["Sell if below $401.20"]);
+    expect(triggersOf(db).filter((t) => t.source === "DEFAULT")).toEqual([]);
   });
 
-  it("a playbook the fill can't read writes none of its templates, never the catalog's over the owner's, and the Activity line says so", async () => {
-    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
+  it("the fill reads no playbook: one it can't read changes nothing, and a holding with no playbook is the same", async () => {
     const owners = { COMPOUNDER_ACCUMULATION: [{ action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Every two weeks.", writtenOn: "FILL" }] };
-    const db = await approve({ triggers: watchOnly, account: { playbooks: owners, playbooksSeededAt: new Date("2026-11-17T00:00:00Z") }, playbookReadFails: true });
-    expect(added(db, watchOnly)).toEqual(["Sell if below $401.20"]);
-    expect(activity(db)).toContain("The playbook couldn't be read, so none of its triggers were written");
-    // Read as it should be, the owner's list is what the fill writes, not the catalog's.
-    const read = await approve({ triggers: watchOnly, account: { playbooks: owners, playbooksSeededAt: new Date("2026-11-17T00:00:00Z") } });
-    expect(added(read, watchOnly)).toEqual(["Review every 14 days", "Sell if below $401.20"]);
-  });
-
-  it("a holding with no playbook gets the sale and no clock from code", async () => {
-    const watchOnly = migrated.filter((t) => t.id === BUY || t.id === LINE);
-    const db = await approve({ triggers: watchOnly, setupId: null });
-    expect(added(db, watchOnly)).toEqual(["Sell if below $401.20"]);
-    expect(triggersOf(db).some((t) => (t.predicate as { watch?: string }).watch === "repeat")).toBe(false);
+    const unread = await approve({ triggers: watchOnly, account: { playbooks: owners, playbooksSeededAt: new Date("2026-11-17T00:00:00Z") }, playbookReadFails: true });
+    expect(added(unread, watchOnly)).toEqual(["Sell if below $401.20"]);
+    expect(activity(unread)).not.toContain("The playbook couldn't be read, so none of its triggers were written");
+    const none = await approve({ triggers: watchOnly, setupId: null });
+    expect(added(none, watchOnly)).toEqual(["Sell if below $401.20"]);
   });
 });
 

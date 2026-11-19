@@ -6,6 +6,7 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
+import { buyAverageOf } from "./playbooks";
 import {
   PLACEHOLDERS,
   setupsForAnalyst,
@@ -46,8 +47,40 @@ describe("the setup catalog", () => {
     for (const s of SETUPS) {
       expect(Object.keys(s).filter((k) => ["stop", "target", "trail", "time", "manage"].includes(k))).toEqual([]);
       expect("template" in s.entry || "text" in s.entry).toBe(false);
-      expect(Object.keys(s.sale)).toEqual(["maxPct", "minAtr"]);
+      expect(Object.keys(s.sale).filter((k) => k !== "floor")).toEqual(["maxPct", "minAtr"]);
     }
+  });
+
+  // The floor a buy gets when it names none (playbookFloor) is its floor's words in code: the key they name, the
+  // most % they allow, the other level they take when it is higher. Each is pinned to the words, and each condition
+  // in words with a key is in code.
+  const KEY_WORDS: Record<string, RegExp> = { "{swingLow}": /swing low/, "{baseLow}": /base's low/, "{gapDayLow}": /gap day's low/ };
+  it("prices the floor only from its own words, and every condition in them is in code", () => {
+    const said = SETUPS.flatMap((s) => {
+      const words = s.triggers.find((t) => t.action === "EXIT" && JSON.stringify(t.predicate).includes("{sellPrice}"))?.rationale ?? "";
+      const f = s.sale.floor;
+      if (!f) {
+        expect([s.id, Object.values(KEY_WORDS).some((w) => w.test(words))]).toEqual([s.id, false]);
+        return [];
+      }
+      expect([s.id, KEY_WORDS[f.key]?.test(words)]).toEqual([s.id, true]);
+      const max = words.match(/(?:never more than|at most) (\d+)%/);
+      expect([s.id, f.maxPct ?? null]).toEqual([s.id, max ? Number(max[1]) : null]);
+      const pctOr = words.match(/or (\d+)% under the buy, whichever is higher/);
+      const atrOr = /or 1 ATR under the average bought if that is higher/.test(words);
+      expect([s.id, f.orHigher ?? null]).toEqual([s.id, pctOr ? { pctUnder: Number(pctOr[1]) } : atrOr ? { atrUnderBuyAverage: true } : null]);
+      // "The average bought" is the one the playbook's own buy trigger names: it names one.
+      if (atrOr) expect([s.id, buyAverageOf(s.triggers)]).toEqual([s.id, "sma50"]);
+      return [`${s.id} ${f.key}${f.maxPct != null ? ` at most ${f.maxPct}%` : ""}${f.orHigher ? ` or ${JSON.stringify(f.orHigher)}` : ""}`];
+    });
+    expect(said).toEqual([
+      "BASE_BREAKOUT {baseLow} at most 8%",
+      "EPISODIC_PIVOT {gapDayLow}",
+      'PEAD {gapDayLow} or {"pctUnder":8}',
+      'MA_PULLBACK {swingLow} or {"atrUnderBuyAverage":true}',
+      "PRE_CATALYST {swingLow}",
+      "COMPOUNDER_ACCUMULATION {swingLow} at most 25%",
+    ]);
   });
 
   it("every SCREEN names the ENTRY setups it is entered through", () => {

@@ -5,8 +5,8 @@
  * (`Account.playbooks`, ./playbooks).
  *
  * A template is a stored trigger plus when it is written: on a watch (the
- * Writer), with the buy (the run names the "Sell if below"; the fill writes
- * the rest, withTheBuyTriggers in ./playbooks), or at the fill. A
+ * Writer), with the buy (the run names the "Sell if below"; the run after the
+ * fill puts on the rest), or at the fill. A
  * `{placeholder}` is a chart level filled when the line is written
  * (PLACEHOLDERS in ./setups). A fill template is written as listed, so it has
  * none. Session counts are stored as calendar days (5 sessions = 7 days).
@@ -28,8 +28,6 @@ export interface Template {
   writtenOn: WrittenOn;
   fireMode?: FireMode;
   trimPct?: number;
-  /** Written only by a run that judges it fits (its reason says when); the fill never writes it. */
-  judged?: true;
 }
 
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
@@ -60,7 +58,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "STOP_WATCHING", predicate: { watch: "from_date", is: "before", value: 21, variable: "event" }, rationale: "The window closed with no buy.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The last swing low that day, at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
     { action: "EXIT", predicate: { watch: "from_date", is: "before", value: 7, variable: "event" }, rationale: "The run-up sells before the decision. To hold through the event, the run answering the 10-day review removes this line and says why.", writtenOn: "FILL" },
-    { ...trimAtHigh("The prior high. Only if the analyst believes it."), judged: true },
+    trimAtHigh("The prior high. Only if the analyst believes it."),
   ],
   BASE_BREAKOUT: [
     { action: "ENTER", predicate: breakout, rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it.", writtenOn: "WATCH" },

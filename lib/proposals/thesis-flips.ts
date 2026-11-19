@@ -27,15 +27,10 @@ import {
   acceptedOps,
   addedTriggerRationale,
   applyTriggerOps,
-  collision,
   type TriggerOp,
 } from "@/lib/agent/triggers/ops";
 import { conditionsOf, fromPosition, sentenceOf, shapeOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
-import { fillTemplateOps, withTheBuyTriggers } from "@/lib/agent/knowledge/playbooks";
-import { templatePlaceholders } from "@/lib/agent/knowledge/setups";
-import { loadFillChart } from "@/lib/proposals/fill-chart";
 import { autoStopOps, loadAutoStop } from "@/lib/trading/auto-stop";
 
 /**
@@ -88,27 +83,22 @@ export async function promoteThesisOnApproval(opts: {
  * what a rewrite cost: ASML's $2,800 target and four reviews, gone on the
  * fill):
  *   - finds the analyst's newest WATCHING thesis on the ticker
- *   - the playbook's watch triggers come off and its holding triggers go on:
- *     the buy trigger(s) — you can't buy what you already hold (GAPS A2
- *     found 35/36 ENTER tactical runs were on already-held tickers) — the
- *     Stop watching triggers, and every trigger written from the playbook's
- *     watch triggers (`playbook: "WATCH"`). A trigger written by hand stays
+ *   - the watch triggers come off: the buy trigger(s) — you can't buy what
+ *     you already hold (GAPS A2 found 35/36 ENTER tactical runs were on
+ *     already-held tickers) — the Stop watching triggers, and every trigger
+ *     written from the playbook's watch triggers (`playbook: "WATCH"`). A
+ *     trigger written by hand stays
  *   - writes "Sell if below $X" at the approved sell price (the order's
  *     stopLoss): the analyst's, with its reason, from the proposal; yours
- *     from the Trade ticket. A watch trigger never becomes the sale
- *   - writes the playbook's triggers that come with the buy, each number
- *     from the chart then and the buy (withTheBuyTriggers, the chart from
- *     ./fill-chart); one whose number the chart doesn't have is not written,
- *     and its Activity line says so. An old order's or the Trade ticket's
- *     upside price (targetPrice) goes on as a price trigger
+ *     from the Trade ticket. A watch trigger never becomes the sale. The
+ *     Trade ticket's upside price (targetPrice) goes on as a price trigger
  *   - with "stop when buying" on, puts the sale floor that % under the buy
  *     price; a tighter analyst floor stays as a review line (lib/trading/auto-stop.ts)
- *   - writes the stock's playbook's fill templates as Settings → Playbook
- *     lists them (lib/agent/knowledge/playbooks.ts); one whose kind the stock
- *     already has is not written, and its Activity line says so. No playbook,
- *     nothing: the analyst's and the account's rules apply by inheritance
  *   - flips WATCHING → HOLDING and writes the STATUS_CHANGED audit row,
  *     one line per op
+ *
+ * The playbook's other holding triggers are not stamped here: the run after
+ * the fill puts them on, tailored to the stock (lib/proposals/after-buy.ts).
  *
  * Fail-soft: a throw is logged, never rethrown — a ladder problem must not
  * roll back a filled trade.
@@ -137,35 +127,14 @@ export async function armHeldLadderOnFill(opts: {
       prisma.thesis.findFirst({
         where: { ticker: opts.ticker, status, researchRun: { agentConfigId: opts.analystId } },
         orderBy: { createdAt: "desc" },
-        select: { id: true, status: true, direction: true, setupId: true, accountId: true, catalystDate: true, triggers: true },
+        select: { id: true, status: true, direction: true, triggers: true },
       });
     const watchingThesis = (await find("PROMOTED")) ?? (await find("WATCHING"));
     if (!watchingThesis) return;
 
     const stored = parseTriggersResilient(watchingThesis.triggers).triggers as Trigger[];
-    // At the fill, the playbook's watch triggers come off and its holding triggers go on. A trigger written by hand stays.
+    // At the fill the watch triggers come off and the floor goes on; the holding's other triggers are the after-buy run's (after-buy.ts).
     const watchTriggers = (t: Trigger) => t.action === "ENTER" || t.action === "STOP_WATCHING" || t.playbook === "WATCH";
-    // A trigger that comes with the buy never overwrites one the owner wrote: his stays, and the line says which wasn't written.
-    const kept = stored.filter((t) => !watchTriggers(t));
-    const ownersOf = (t: Trigger) => {
-      const there = collision(kept, t, watchingThesis.direction);
-      return there?.source === "PRINCIPAL" ? there : undefined;
-    };
-    // The playbook's triggers that come with the buy, each number from the chart then and the buy.
-    const templates = watchingThesis.setupId ? await loadPlaybook(watchingThesis.accountId, watchingThesis.setupId) : [];
-    const readsTheChart = (templates ?? []).some((t) => t.writtenOn === "PROPOSAL" && templatePlaceholders(t.predicate).some((m) => m !== "{sellPrice}" && m !== "{riskPct}"));
-    const withBuy = withTheBuyTriggers(templates, { chart: readsTheChart ? await loadFillChart(opts.ticker) : null, buy: opts.fillPrice, sale: opts.stopLoss });
-    const buyTriggers = withBuy.triggers.filter((t) => !ownersOf(t));
-    const notWritten = [
-      ...withBuy.triggers.flatMap((t) => {
-        const his = ownersOf(t);
-        return his ? [{ op: "kept" as const, id: his.id, text: `Kept your ${sentenceOf(his)}; the buy's ${sentenceOf(t)} not written` }] : [];
-      }),
-      ...withBuy.notWritten,
-    ];
-    // The playbook's fill triggers, read against the triggers left and the ones the buy brings.
-    // A playbook that can't be read writes none, and the Activity line says so.
-    const playbook = fillTemplateOps(templates, [...kept, ...buyTriggers]);
     // The sale is the price the buy came with: yours from the Trade ticket, or the analyst's with its
     // reason. None named (an Auto-buy) writes none — never the entry, which would arm a sale at the buy price.
     const chooser = opts.stopIsOwners ? "PRINCIPAL" : opts.stopReason?.trim() ? "AGENT" : null;
@@ -173,7 +142,6 @@ export async function armHeldLadderOnFill(opts: {
       opts.stopLoss != null
         ? [{ op: "level", slot: "FLOOR", price: opts.stopLoss, rationale: chooser === "PRINCIPAL" ? addedTriggerRationale("EXIT", { watch: "price", is: "below", value: opts.stopLoss }) : opts.stopReason?.trim() }]
         : [];
-    const add = (t: Trigger): TriggerOp => ({ op: "add", trigger: t });
     // Each trigger is written by whoever chose it, so it reads as theirs.
     const byActor: Array<["SYSTEM" | "AGENT" | "PRINCIPAL", TriggerOp[]]> = [
       [
@@ -182,8 +150,6 @@ export async function armHeldLadderOnFill(opts: {
           ...stored.filter(watchTriggers).map((t) => ({ op: "remove" as const, id: t.id })),
           ...(chooser ? [] : floorOp),
           ...(opts.targetPrice != null ? [{ op: "level" as const, slot: "TARGET" as const, price: opts.targetPrice }] : []),
-          ...buyTriggers.map(add),
-          ...playbook.ops,
         ],
       ],
       ["AGENT", chooser === "AGENT" ? floorOp : []],
@@ -207,10 +173,6 @@ export async function armHeldLadderOnFill(opts: {
       : null;
     const nextTriggers = stopped?.triggers ?? applied.triggers;
     const results = [...applied.results, ...(stopped?.results ?? [])];
-    // A trigger that came with the buy and was refused still gets its line: nothing vanishes.
-    const refusedWithBuy = applied.results
-      .filter((r) => !r.ok && r.op === "add" && buyTriggers.some((t) => t.id === r.id))
-      .map((r) => ({ op: "kept" as const, id: r.id, text: `Not written: ${r.text.replace(/^Added: /, "")} (${r.reason})` }));
     for (const r of stopped?.results ?? []) if (!r.ok) console.warn(`[armHeldLadderOnFill] ${opts.ticker}: stop when buying not set — ${r.reason}`);
 
     await prisma.thesis.update({
@@ -235,7 +197,7 @@ export async function armHeldLadderOnFill(opts: {
         summary: `Promoted ${opts.ticker} ${watchingThesis.direction} ${watchingThesis.status} → HOLDING on ${opts.via}`,
         fieldChanges: {
           status: { from: watchingThesis.status, to: "HOLDING" },
-          triggerOps: { from: null, to: [...acceptedOps(results), ...notWritten, ...refusedWithBuy, ...playbook.notWritten] },
+          triggerOps: { from: null, to: acceptedOps(results) },
         },
         runId: opts.runId ?? null,
         tradeId: opts.positionId,

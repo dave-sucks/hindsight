@@ -197,7 +197,7 @@ describe("which setting is in force, and off", () => {
     expect(activity()).toEqual(["Stop set: $39.80", "Upside set: $47"]);
   });
 
-  it("off: TRV's buy comes off, its $382.40 sale line is the holding's sale line, and nothing is stamped from the fill price", async () => {
+  it("off: TRV's buy comes off, its $382.40 sale line is the holding's sale line, and nothing is stamped from the fill price or the playbook", async () => {
     await approve("TRV", { account: OFF });
     const triggers = thesis().triggers as Trigger[];
     // The watch's own line, same id and level: no template floor, target or 8%-below-entry review.
@@ -205,8 +205,9 @@ describe("which setting is in force, and off", () => {
     expect(reviewLines()).toEqual([]);
     expect(triggers.find((t) => t.action === "ENTER")).toBeUndefined();
     expect(triggers.filter((t) => (t.predicate as { watch?: string }).watch === "price").map((t) => t.id)).toEqual([TRV_FLOOR.id, "c5b67206-924c-4260-be2a-82918f32bbbd"]);
-    // What the fill adds: its playbook's fill templates (a base breakout's), never a clock from the horizon.
-    expect(activity()).toEqual(expect.arrayContaining(["Removed: Buy if above $398.70 · only on the close", "Added: Review every 7 days", "Added: Review 28 days after the buy"]));
+    // The fill adds nothing from the playbook: the run after the fill puts the holding's triggers on.
+    expect(activity()).toEqual(expect.arrayContaining(["Removed: Buy if above $398.70 · only on the close"]));
+    expect(activity().filter((l) => l.startsWith("Added:"))).toEqual([]);
     expect(activity().some((l) => /Sell if|Stop set|Upside set/.test(l))).toBe(false);
   });
 

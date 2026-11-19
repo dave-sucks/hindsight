@@ -45,6 +45,7 @@ import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { autoStopFillOps, loadAutoStop } from "@/lib/trading/auto-stop";
+import { sendBuyFilled } from "@/lib/proposals/after-buy";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -185,6 +186,7 @@ export const reconcileOrders = inngest.createFunction(
               if (handled) {
                 filled++;
                 await maybeCancelOrphanedSellProposals(order);
+                await sendIfABuy(order);
               }
               return;
             }
@@ -213,6 +215,7 @@ export const reconcileOrders = inngest.createFunction(
                 if (handled) {
                   filled++;
                   await maybeCancelOrphanedSellProposals(order);
+                  await sendIfABuy(order);
                 }
                 return;
               }
@@ -294,6 +297,12 @@ async function maybeCancelOrphanedSellProposals(order: PendingOrderRow): Promise
   const intent = order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE");
   if (intent !== "CLOSE") return;
   await cancelOrphanedSellProposals(order.positionId, order.id);
+}
+
+/** A buy or an add that filled gets the run after it (lib/proposals/after-buy.ts). */
+async function sendIfABuy(order: PendingOrderRow): Promise<void> {
+  const intent = order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE");
+  if (intent === "OPEN" || intent === "ADD") await sendBuyFilled(order.id);
 }
 
 /**

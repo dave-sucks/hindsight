@@ -42,6 +42,7 @@ import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForCon
 import { loadAutoStop } from "@/lib/trading/auto-stop";
 import { isBinaryBet } from "@/lib/agent/knowledge/setups";
 import { cashShortfall } from "@/lib/trading/manual-order-rules";
+import { sendBuyFilled } from "@/lib/proposals/after-buy";
 
 /**
  * Classify an Alpaca submit error — same shape as place_trade / closeOpenPosition.
@@ -898,6 +899,8 @@ export async function changePosition(args: PositionChange, ctx: ToolContext): Pr
             },
           });
         });
+        // The run after the fill writes the add's triggers (lib/proposals/after-buy.ts).
+        await sendBuyFilled(order.id);
 
         return {
           summary: `Added to ${ticker}: +${fillQty} shares @ $${fillPrice.toFixed(2)}. Now ${newTotalQty} shares.`,

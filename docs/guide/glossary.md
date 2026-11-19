@@ -28,6 +28,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Agent Watch:** a watch with its own review clock, so its analyst looks at it on a schedule. A plain watch waits for its triggers.
 - **Holding:** bought. A watch turns into a holding when the broker takes the buy.
+- **After the buy:** the run on a stock right after a buy or an add fills. It puts on the playbook's holding triggers, each fitted to the thesis with its reason, and writes the trade's note when nobody has. It can't trade.
 - **Passed:** researched and declined, kept so the stock isn't pitched again without a reason.
 - **Retired:** sold, dropped, proven wrong, or replaced by a newer thesis. The history stays.
 - **Promoted:** held in paper and just moved to live money; the next run re-enters or goes back to watching.

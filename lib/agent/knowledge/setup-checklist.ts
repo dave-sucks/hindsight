@@ -2,8 +2,8 @@
  * setup-checklist.ts — the compact playbook block a thesis row carries into
  * every run (DAV-253): what a review checks, from the playbook the stock was
  * written on, and, on a stock we don't hold, the playbook's "Sell if below",
- * the one trigger that comes with the buy the run names (the fill writes the
- * rest, withTheBuyTriggers).
+ * the one trigger that comes with the buy the run names (the run after the
+ * fill puts on the rest).
  */
 
 import { getSetup, templatePlaceholders } from "./setups";

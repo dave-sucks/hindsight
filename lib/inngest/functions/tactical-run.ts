@@ -569,6 +569,18 @@ export const tacticalRun = inngest.createFunction(
         });
         return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
       }
+      // A buy or an add that was sent, not proposed, is written up by the run after its fill (lib/proposals/after-buy.ts).
+      const sentOrder = done.orderId && doIt !== "TRIM" ? await step.run("sent-or-proposed", () => prisma.order.findUnique({ where: { id: done.orderId! }, select: { status: true } })) : null;
+      if (sentOrder && sentOrder.status !== "AWAITING_APPROVAL") {
+        await step.run("finalize-sent", async () => {
+          const fresh = await prisma.researchRun.findUnique({ where: { id: run.id }, select: { parameters: true } });
+          await prisma.researchRun.update({
+            where: { id: run.id },
+            data: { status: "COMPLETE", completedAt: new Date(), parameters: { ...((fresh?.parameters as object) ?? {}), writtenUpAfterFill: true } as object },
+          });
+        });
+        return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done, writtenUpAfterFill: true };
+      }
       auto = done.orderId
         ? { line: `${done.summary ?? "The trade was made"}.`, orderId: done.orderId }
         : { line: `The trade was not made: ${done.summary ?? "it was refused"}.`, orderId: null };

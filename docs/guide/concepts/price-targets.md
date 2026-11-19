@@ -8,7 +8,7 @@ Each of these is an ordinary trigger, written one at a time by an analyst or by 
 
 - **The buy.** The price the analyst wants to pay: "Buy if above $401". On a stock we hold it is gone; what we paid is the fill.
 - **The floor.** The sale that caps the loss: "Sell if below $384". A buy needs one; it sizes the trade. There is no minimum reward for taking a trade, and no ratio is computed: the house has no target to measure one against.
-- **A Trim, only where the playbook has one.** "Trim 50% if above $X" at the prior high, its price named by the run that proposes the buy and shown on the proposal; it goes on at the fill as a Trim. Most of the twelve [playbooks](../reference/setups.md) carry none, and that is complete.
+- **A Trim, only where the playbook has one.** "Trim 50% if above $X" at the prior high, put on as a Trim by the run after the fill, by its reference, priced by code from the chart and the buy. Most of the twelve [playbooks](../reference/setups.md) carry none, and that is complete.
 
 There is no separate field for any of them, no second way to write them and no template that stamps them. An agent changes one by its id, the way it changes any trigger.
 
@@ -16,7 +16,7 @@ There is no separate field for any of them, no second way to write them and no t
 
 A stock we only watch has no floor. It has the place it would stop watching, its own kind of trigger: **"Stop watching if below $384 · only on the close"**. When the stock closes below it (the 4:20 PM pass, never an intraday dip, because that is how it is saved), the watch ends: the thesis retires as dropped, with one line in its Activity naming the trigger. No agent wakes and nothing waits for your approval, because no money moves. It never sells.
 
-The holding's sale comes with the buy. The proposal carries its own "Sell if below" price, which the analyst picks from the setup's sell rule, at least the setup's minimum ATR from the buy and, on a trade, no wider than its cap. You can change it in Edit & Approve, and a price you change is yours. When the buy goes through, the buy and the Stop watching line come off and "Sell if below" goes on at the price you approved. A fire of that line proposes the sale, which waits for you.
+The holding's sale comes with the buy. By default it is the playbook's floor, priced by code from the chart by its floor's own words: the level they name (a pullback's or a run-up's swing low, a breakout's base low, a gap day's low), or the other level they take when it is higher (PEAD's 8% under the buy, a pullback's one ATR under the average its buy trigger names), never past the % they allow (a breakout's 8%, a compounder's 25%, on every horizon), and held to the playbook's sale rules: at least its minimum ATR from the buy. Code never writes a floor that breaks its words. Where the words name no level the chart has (a flag's buy-day low, a flush's low), or the default fails those rules, the analyst names the price itself, with its reason, and so it may whenever it sees a better level. An Auto buy whose floor can't be priced is refused, and says why. You can change it in Edit & Approve, and a price you change is yours. When the buy goes through, the buy and the Stop watching line come off and "Sell if below" goes on at the price you approved. A fire of that line proposes the sale, which waits for you.
 
 ## Wall Street's targets
 

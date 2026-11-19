@@ -11,6 +11,7 @@ import { dailyRunDigest } from "@/lib/inngest/functions/daily-run-digest";
 import { accuracyScorer } from "@/lib/inngest/functions/accuracy-scorer";
 import { triggerEvaluator } from "@/lib/inngest/functions/trigger-evaluator";
 import { tacticalRun } from "@/lib/inngest/functions/tactical-run";
+import { afterBuyRun } from "@/lib/inngest/functions/after-buy-run";
 import { episodeTts } from "@/lib/inngest/functions/episode-tts";
 import { podcastSegmentRun } from "@/lib/inngest/functions/podcast-segment-run";
 // THESIS_RESEARCH_V2 Phase 1 — sub-agent dispatched by Principal Chat
@@ -88,6 +89,7 @@ export const { GET, POST, PUT } = serve({
     // tactical agent runs INSIDE the function (mode='INTRADAY_TACTICAL'
     // on ResearchRun). 240s maxDuration covers the agent + bookkeeping.
     tacticalRun,
+    afterBuyRun,
     // 2026-06-01: intradayEodFlatten removed — no DAY-horizon analysts in
     // production; the auto-flatten cron had no consumers. Deleted as part
     // of the Trade-as-Proposal rollout (the proposal flow would have made

@@ -29,6 +29,7 @@ export type ContextId =
   | "the_analyst"
   | "playbooks"
   | "the_playbook"
+  | "holding_triggers"
   | "situations"
   | "market_numbers"
   | "market_digest"
@@ -45,7 +46,7 @@ export type ContextId =
   | "last_output"
   | "earnings_calendar";
 
-export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest" | "discovery";
+export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "after_buy" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest" | "discovery";
 
 /** One entry of an agent's first message, after the date line: a read, or "message", where the run's task goes. */
 export type FirstMessagePart = ContextId | "message";

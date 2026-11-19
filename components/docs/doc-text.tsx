@@ -89,6 +89,7 @@ const REFS: Record<DocSlug, { title: string; icon: LucideIcon }> = {
   writer: { title: "the Writer", icon: PenLine },
   "morning-runs": { title: "the morning run", icon: Sun },
   "trigger-runs": { title: "the trigger run", icon: Zap },
+  "after-the-buy": { title: "After the buy", icon: CheckCircle2 },
   chat: { title: "chat", icon: MessageCircle },
   "market-reviewer": { title: "the Market Reviewer", icon: Newspaper },
   "portfolio-digest": { title: "the Portfolio Digest", icon: FileText },

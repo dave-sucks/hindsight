@@ -19,11 +19,12 @@ import { CHASE_LIMIT_PCT, PLACEHOLDERS, PLACEHOLDER_NAMES, SETUPS, fillTemplate,
 import type { When } from "@/lib/agent/triggers/condition";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
+import { saleRuleProblem } from "@/lib/agent/position-sizing";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
   .pick({ action: true, rationale: true, fireMode: true, trimPct: true })
-  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON), judged: z.literal(true).optional() })
+  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON) })
   .superRefine((t, ctx) => {
     const refuse = (message: string) => ctx.addIssue({ code: "custom", message });
     if (!shapeOf(t.predicate)) return refuse(refusalOf(t.predicate) ?? "Not a condition.");
@@ -82,12 +83,36 @@ export function playbookTriggerText(templates: Template[] | null, on: WrittenOn)
   if (templates == null) return ["The playbook couldn't be read: write no trigger from it."];
   const mine = playbookRefs(templates).filter((r) => r.template.writtenOn === on);
   if (!mine.length) return [`${TRIGGER_LIST_NAME[on]}: none.`];
-  const marks = [...new Set(mine.flatMap((r) => templatePlaceholders(r.template.predicate)))] as Placeholder[];
-  return [
-    `${TRIGGER_LIST_NAME[on]}:`,
-    ...mine.map(({ ref, template: t }) => `- ${ref} · ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`),
-    ...(marks.length ? [`Where each key comes from: ${marks.map((m) => `${m} is ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
-  ];
+  return [`${TRIGGER_LIST_NAME[on]}:`, ...mine.map(refLine), ...keysLine(mine)];
+}
+
+/** One playbook trigger as an agent's prompt lists it: its reference, its sentence with each key, and its reason. */
+const refLine = ({ ref, template: t }: { ref: string; template: Template }) => `- ${ref} · ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`;
+
+/** Where each key the listed triggers name comes from. */
+function keysLine(refs: Array<{ template: Template }>): string[] {
+  const marks = [...new Set(refs.flatMap((r) => templatePlaceholders(r.template.predicate)))] as Placeholder[];
+  return marks.length ? [`Where each key comes from: ${marks.map((m) => `${m} is ${PLACEHOLDERS[m]}`).join("; ")}.`] : [];
+}
+
+/** The playbook's own floor: "Sell if below {sellPrice}", the sale the buy names. */
+export const isTheFloorTemplate = (t: Template) => t.action === "EXIT" && templatePlaceholders(t.predicate).includes("{sellPrice}");
+
+/**
+ * A holding's playbook triggers, for the run after the buy (holding_triggers):
+ * the floor first, as on already with its price (it came with the buy), then
+ * the triggers to put on by reference, the floor's own template left out and
+ * each reference numbered as the playbook numbers it.
+ */
+export function holdingTriggersText(p: { ticker: string; playbook: string; templates: Template[] | null; floor: string | null }): string {
+  const head = [`$${p.ticker}'s playbook: ${p.playbook}.`, p.floor ? `The floor is on already: ${p.floor}. It came with the buy.` : "The stock has no floor."];
+  if (p.templates == null) return [...head, "The playbook couldn't be read: write no trigger from it."].join("\n");
+  const held = playbookRefs(p.templates).filter((r) => r.template.writtenOn !== "WATCH" && !isTheFloorTemplate(r.template));
+  const lists = (["PROPOSAL", "FILL"] as const).flatMap((on) => {
+    const mine = held.filter((r) => r.template.writtenOn === on);
+    return mine.length ? [`${TRIGGER_LIST_NAME[on]}:`, ...mine.map(refLine)] : [];
+  });
+  return [...head, ...(lists.length ? lists : ["The playbook has no other holding triggers."]), ...keysLine(held)].join("\n");
 }
 
 /**
@@ -178,8 +203,7 @@ export function noNumberWhy(name: Placeholder, at: FillPrices): string {
 
 /** A template priced from `at`, marked with the list it is on; or the keys with no number today. */
 export function pricedTemplate(t: Template, at: FillPrices): { trigger: Omit<Trigger, "id"> } | { missing: Placeholder[] } {
-  const { writtenOn, predicate, judged: _judged, ...rest } = t;
-  void _judged;
+  const { writtenOn, predicate, ...rest } = t;
   const missing = (templatePlaceholders(predicate) as Placeholder[]).filter((m) => fillValue(m, at) == null);
   if (missing.length) return { missing };
   return { trigger: { ...rest, predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], playbook: writtenOn } };
@@ -208,28 +232,49 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
   return { triggers, notWritten };
 }
 
+/** A buy trigger's average, by its variable, on the chart. */
+const AVERAGES: Record<string, "d20" | "d50" | "d150" | "d200"> = { sma20: "d20", sma50: "d50", sma150: "d150", sma200: "d200" };
+
+/** The average a playbook's buy trigger names (its variable, alone or inside an "and"); null when it names none, undefined when the playbook is unread. */
+export function buyAverageOf(templates: Template[] | null): string | null | undefined {
+  if (!templates) return undefined;
+  const named = (p: unknown): string[] => {
+    const c = (p ?? {}) as { match?: string; conditions?: unknown[]; variable?: unknown };
+    if (c.match === "all" && Array.isArray(c.conditions)) return c.conditions.flatMap(named);
+    return typeof c.variable === "string" && AVERAGES[c.variable] ? [c.variable] : [];
+  };
+  return templates.filter((t) => t.action === "ENTER").flatMap((t) => named(t.predicate))[0] ?? null;
+}
+
 /**
- * The playbook's triggers that come with the buy, written at the fill: each
- * template with its {chart numbers} filled (fillValue). The sale ("Sell if
- * below {sellPrice}") is the buy's own price and is written beside them; a
- * template a run writes on its own judgment (`judged`) is left to the run. A
- * template whose number the chart doesn't have is not written, and
- * `notWritten` says so. A playbook that couldn't be read (null) writes none;
- * fillTemplateOps says so.
+ * The floor a buy gets when it names none: its playbook's floor words in code
+ * (`sale.floor`, ./setups.ts) on today's chart. The key's number, or the
+ * words' other level when it is higher; never past the % the words allow, and
+ * held to the playbook's sale rules. Otherwise why not, so the run names the
+ * floor itself. Code never writes a floor that breaks the words. Pure.
  */
-export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices, mintId: () => string = randomUUID): { triggers: Trigger[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
-  const triggers: Trigger[] = [];
-  const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
-  for (const { writtenOn, predicate, judged, ...rest } of templates ?? []) {
-    if (writtenOn !== "PROPOSAL" || judged) continue;
-    const marks = templatePlaceholders(predicate) as Placeholder[];
-    if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
-    const priced = pricedTemplate({ ...rest, writtenOn, predicate }, at);
-    if ("missing" in priced) {
-      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${priced.missing.join(", ")}` });
-      continue;
-    }
-    triggers.push({ ...priced.trigger, id: mintId(), source: "DEFAULT" });
+export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null; buyAverage?: string | null }): { price: number; key: Placeholder } | { refused: string } {
+  const f = p.setup.sale.floor;
+  if (!f) return { refused: "The playbook's floor names no chart key." };
+  const at: FillPrices = { chart: p.chart, buy: p.entry, sale: null };
+  const level = fillValue(f.key, at);
+  if (level == null) return { refused: `The playbook's floor is ${f.key} (${PLACEHOLDER_NAMES[f.key] ?? f.key}), and ${noNumberWhy(f.key, at)}.` };
+  // Every floor's words keep it at least an ATR under the buy: with no ATR that can't be checked.
+  const atr = p.atr ?? p.chart?.atr14?.dollars ?? null;
+  if (atr == null) return { refused: "The ATR couldn't be read, so the floor's distance from the buy can't be checked." };
+  let other: number | null = null;
+  if (f.orHigher && "pctUnder" in f.orHigher) other = p.entry * (1 - f.orHigher.pctUnder / 100);
+  else if (f.orHigher) {
+    // The average bought is the one the playbook's own buy trigger names (buyAverageOf), read off the chart.
+    if (!p.buyAverage) return { refused: "The playbook's floor takes one ATR under the average bought when that is higher, and its buy trigger names no average." };
+    const avg = AVERAGES[p.buyAverage] ? p.chart?.sma[AVERAGES[p.buyAverage]]?.value ?? null : null;
+    if (avg == null) return { refused: `The playbook's floor takes one ATR under the ${p.buyAverage.slice(3)}-day average when that is higher, and it couldn't be read.` };
+    other = avg - atr;
   }
-  return { triggers, notWritten };
+  const price = Math.round(Math.max(level, other ?? level) * 100) / 100;
+  if (price >= p.entry) return { refused: `The playbook's floor ${f.key} is $${price.toFixed(2)}, not under the $${p.entry.toFixed(2)} buy.` };
+  const pct = ((p.entry - price) / p.entry) * 100;
+  if (f.maxPct != null && pct > f.maxPct) return { refused: `The playbook's floor ${f.key} at $${price.toFixed(2)} is ${pct.toFixed(1)}% under the buy, and its words allow at most ${f.maxPct}%.` };
+  const bad = saleRuleProblem({ setup: p.setup, horizon: p.horizon, entry: p.entry, stop: price, atr });
+  return bad ? { refused: `The playbook's floor ${f.key} at $${price.toFixed(2)} fails its rule: ${bad}.` } : { price, key: f.key };
 }

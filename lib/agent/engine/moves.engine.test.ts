@@ -51,11 +51,15 @@ const CHANGED: Record<string, string> = {
   "sample.writer": PLAYBOOKS_AFTER,
 };
 
+/** Agents main never had, so nothing of theirs was hashed. */
+const NEW: Record<string, string> = { "sample.after_buy": "After the buy is a new agent (2026-11-19): main never sent it" };
+
 describe("instructions are markdown files: a move, not an edit", () => {
   const sent = sentRequests();
 
-  it("covers every case main was hashed on", () => {
-    expect(Object.keys(sent).sort()).toEqual(Object.keys(GOLDEN.hashes).sort());
+  it("covers every case main was hashed on, and every other case is a new agent's", () => {
+    expect(Object.keys(sent).filter((n) => !NEW[n]).sort()).toEqual(Object.keys(GOLDEN.hashes).sort());
+    expect(Object.keys(NEW).every((n) => n in sent && !(n in GOLDEN.hashes))).toBe(true);
   });
 
   it.each(Object.keys(GOLDEN.hashes).filter((n) => !CHANGED[n]))("%s is sent what main sent, character for character", (name) => {
@@ -87,6 +91,7 @@ describe("the instruction files", () => {
       holding_refresh: ["rules.md", "research-rules.md"],
       trigger_run: ["rules.md"],
       post_trade_writeup: ["rules.md"],
+      after_buy: ["rules.md"],
       morning_run: ["rules.md"],
       chat: ["rules.md"],
       market_reviewer: [],

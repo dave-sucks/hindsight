@@ -57,7 +57,8 @@ const seed = () => ({
 });
 
 // The call verbatim: the analyst_id the model sent is no field of the tool's and is ignored.
-const args = { ...fx, thesis_id: PLTR_THESIS };
+// Its stop_loss is the sale today's call names (sell_if_below, with its reason): the old field is read by nothing.
+const args = { ...fx, thesis_id: PLTR_THESIS, sell_if_below: fx.stop_loss, sell_reason: "Under the base's last low." };
 
 describe("PLTR 2026-09-25 — the fired buy the size refusal killed", () => {
   it("inside a run, the model's $11,222 is ignored and the buy is sized by the rules", async () => {

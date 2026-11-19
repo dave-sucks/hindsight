@@ -108,6 +108,11 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "The stock as every run reads it (get_theses): the belief, its triggers with ids, the position, the last notes, the chart and the Street, and what its playbook checks before a buy.",
     source: "lib/agent/row-for-model.ts (stockFromRead)",
   },
+  holding_triggers: {
+    title: "The playbook's holding triggers",
+    about: "The stock's playbook's triggers for a holding, by reference (H1, H2…): those that come with the buy, then those written at the fill, each with its reason and where each chart key's number comes from.",
+    source: "lib/agent/knowledge/playbooks.ts (playbookTriggerText)",
+  },
   stock_data: {
     title: "The stock's data",
     about: "Price and chart levels, financials, earnings history, the Street's view, insiders, peers, filings, headlines, and our history with the stock.",

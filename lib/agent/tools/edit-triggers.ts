@@ -26,7 +26,7 @@ import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import type { TriggerOpResult } from "@/lib/agent/triggers/ops";
+import { collision, type TriggerOpResult } from "@/lib/agent/triggers/ops";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 
 /** One of the stock's playbook triggers, by its reference as the playbook lists it. */
@@ -72,11 +72,13 @@ const managerSchema = schema.omit({ setup_id: true }).extend({
   edit: z.array(editTriggerOpSchema.omit({ fire_mode: true })).optional().describe(TRIGGER_EDITS.edit),
 });
 
-/** The Writer and the Holding refresh price from the chart: a price is a key or a line, never a typed number; any other number stays one. */
+/** The Writer, the Holding refresh and After the buy price from the chart: a price is a key or a line, never a typed number; any other number stays one. */
 const writerOwnTrigger = triggerInputSchema.omit({ playbook: true }).extend({ predicate: predicateInputSchema({ keys: true, noTypedPrices: true }) });
-const writerEdit = z.object(editTriggerOpSchema.shape).extend({
-  value: z.number().optional().describe("The new number when the trigger is not a price: a %, a day count, a volume multiple."),
+// No field takes a typed price: a price moves to a key; a % or a multiple, or a day count, names its unit (the save checks it, ops.ts).
+const writerEdit = z.object(editTriggerOpSchema.shape).omit({ value: true }).extend({
   price: z.string().regex(CHART_KEY).optional().describe("A price trigger's new price, as a chart key ({swingLow}): code writes today's number. To put a price on a line (the 50-day average), remove it and add one."),
+  pct: z.number().optional().describe("The new number when the trigger's is a % or a multiple (a move, RSI, 1.5× volume): never a price."),
+  days: z.number().optional().describe("The new number when the trigger counts days."),
 });
 const writerSchema = schema.omit({ thesis_id: true, setup_id: true }).extend({
   add: z
@@ -89,8 +91,11 @@ const writerSchema = schema.omit({ thesis_id: true, setup_id: true }).extend({
     ),
   edit: z.array(writerEdit).optional().describe(`${TRIGGER_EDITS.edit} A price moves to a chart key, in \`price\`.`),
 });
-/** The Writer's and the Holding refresh's call after the save. */
-const isWriterRun = (ctx: ToolContext) => ctx.runMode === "THESIS_WRITER" && !!ctx.runStock;
+/** After the buy leaves the floor the fill wrote: no edit, removal or add that would replace it. */
+export const FLOOR_LEFT = "The floor came with the buy; leave it. Only the owner moves it down, and a later review moves it up.";
+
+/** The Writer's and the Holding refresh's call after the save, and After the buy's (lib/proposals/after-buy.ts). */
+const pricesFromTheChart = (ctx: ToolContext) => (ctx.runMode === "THESIS_WRITER" || ctx.runMode === "AFTER_BUY") && !!ctx.runStock;
 
 /** The chat's: its own triggers as #1050 sent them. It writes triggers from the owner's words, so it takes no playbook reference and no chart key. */
 const chatSchema = schema.extend({ add: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add) });
@@ -114,6 +119,9 @@ export interface AddPricing {
   setupId: string | null;
   templates: Template[] | null;
   at: FillPrices;
+  /** The triggers the principal wrote on the stock, and its direction: a playbook trigger never replaces one of them (#1003). */
+  owners?: Trigger[];
+  direction?: string | null;
 }
 
 /** True when an add names a playbook trigger or a key, so pricing has something to read. */
@@ -133,7 +141,7 @@ async function loadPricing(args: { thesis_id: string; setup_id?: string }, ctx: 
     : null;
   const at: FillPrices = { chart: needChart ? await loadFillChart(thesis.ticker) : null, buy: position?.avgCost != null ? Number(position.avgCost) : null, sale: floor ? typedPriceOf(floor) : null };
   const templates = isNamedSetup(setupId) ? await loadPlaybook(ctx.accountId, setupId) : null;
-  return { p: { ticker: thesis.ticker, held, setupId, templates, at }, stored };
+  return { p: { ticker: thesis.ticker, held, setupId, templates, at, owners: stored.filter((t) => t.source === "PRINCIPAL"), direction: thesis.direction }, stored };
 }
 
 /**
@@ -152,11 +160,11 @@ export function priceEditsWith(edits: Edit[], p: Pick<AddPricing, "at">, stored:
       if (n == null) { refuse(e.id, `Not moved: ${missingKeys([e.price as Placeholder], p.at)}. Use another key, or leave it.`); continue; }
       const { price: _price, ...rest } = e;
       void _price;
-      out.push({ ...rest, value: n });
+      out.push({ ...rest, value: n } as Edit);
       continue;
     }
     const target = stored.find((t) => t.id === e.id);
-    if (writer && typeof e.value === "number" && target && typedPriceOf(target) != null) {
+    if (writer && typeof (e as { value?: unknown }).value === "number" && target && typedPriceOf(target) != null) {
       refuse(e.id, "A price is a chart key: send it in `price` ({swingLow}), or remove the trigger and add one on a line.");
       continue;
     }
@@ -188,6 +196,9 @@ export function priceAddsWith(adds: Add[], p: AddPricing): { adds: unknown[]; re
       if (watchRef === held) { refuse(`Added: ${ref} · ${templateSentence(found.template)}`, held ? `${ref} is a watch's trigger, and we own $${ticker}: a holding takes the H triggers.` : `${ref} is a holding's trigger, and we only watch $${ticker}: a watch takes the W triggers.`); continue; }
       const priced = pricedTemplate(found.template, at);
       if ("missing" in priced) { refuse(`Added: ${ref} · ${templateSentence(found.template)}`, `Not written: ${missingKeys(priced.missing, at)}. Write the trigger yourself with a price from the chart, or leave it.`); continue; }
+      // A playbook trigger never replaces one the principal wrote (it would land in the same slot as an edit of theirs).
+      const his = p.owners?.length ? collision(p.owners, { ...priced.trigger, id: "" } as Trigger, p.direction ?? null) : undefined;
+      if (his) { refuse(`Added: ${ref} · ${sentenceOf({ ...priced.trigger, id: "" } as Trigger)}`, `The principal wrote ${sentenceOf(his)} on $${ticker}, and ${ref} would replace it: theirs stays. To change theirs, edit it by id with your reason.`); continue; }
       out.push({ ...priced.trigger, ...(a.rationale?.trim() ? { rationale: a.rationale.trim() } : {}) });
       continue;
     }
@@ -210,8 +221,8 @@ export const editTriggers = defineTool({
     "Adds, edits or removes a stock's triggers, one at a time by id; each edit comes back in `trigger_ops`, accepted or refused with the reason, and a refused one leaves the rest in place. " +
     "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
   schema,
-  // A trigger run and the Writer edit their own stock (tactical-run.ts, run-thesis-writer.ts); the Writer prices from the chart. The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
-  schemaFor: (ctx) => (isWriterRun(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? managerSchema : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
+  // A trigger run, the Writer and After the buy edit their own stock (tactical-run.ts, run-thesis-writer.ts, after-buy-run.ts); the Writer and After the buy price from the chart. The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
+  schemaFor: (ctx) => (pricesFromTheChart(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? managerSchema : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
   fromRun: (ctx) => (ctx.runStock ? { thesis_id: ctx.runStock.thesisId } : null),
   ui: "thesis-card" as const,
   gateLog: "edit_triggers",
@@ -221,16 +232,27 @@ export const editTriggers = defineTool({
       const message = "Nothing to change: send at least one trigger in add, edit (by id) or remove (by id), or the playbook in setup_id.";
       return { summary: message, data: { ok: false, error: "no_trigger_ops", message }, sources: [] };
     }
-    const writer = isWriterRun(ctx);
+    const writer = pricesFromTheChart(ctx);
+    const afterBuy = ctx.runMode === "AFTER_BUY";
     const edits = (args.edit ?? []) as Edit[];
     const keyedEdit = edits.some((e) => typeof e.price === "string");
     const needChart = needsPricing(args.add ?? []) || keyedEdit;
-    const loaded = needChart || (writer && edits.some((e) => typeof e.value === "number")) ? await loadPricing(args, ctx, needChart) : null;
+    const loaded = needChart || afterBuy || (writer && edits.some((e) => typeof (e as { value?: unknown }).value === "number")) ? await loadPricing(args, ctx, needChart) : null;
     const addsPriced = loaded ? priceAddsWith(args.add ?? [], loaded.p) : { adds: args.add ?? [], refused: [] };
     const editsPriced = loaded ? priceEditsWith(edits, loaded.p, loaded.stored, writer) : { edits, refused: [] };
-    const priced = addsPriced.adds;
-    const refused = [...addsPriced.refused, ...editsPriced.refused];
-    const nothingElse = !priced.length && !editsPriced.edits.length && !args.remove?.length && args.setup_id === undefined;
+    // After the buy: the floor the fill wrote is left as it is (FLOOR_LEFT).
+    const floorIds = new Set(afterBuy && loaded ? loaded.stored.filter((t) => t.action === "EXIT" && levelSlotOf(t, loaded.p.direction ?? null) === "FLOOR").map((t) => t.id) : []);
+    const onFloor = (t: unknown) => floorIds.size > 0 && floorIds.has(collision(loaded!.stored, { ...(t as Trigger), id: "" }, loaded!.p.direction ?? null)?.id ?? "");
+    const floorRefused: TriggerOpResult[] = [
+      ...addsPriced.adds.filter(onFloor).map((t) => ({ op: "add" as const, id: "", ok: false, text: `Added: ${sentenceOf(t as Trigger)}`, reason: FLOOR_LEFT })),
+      ...editsPriced.edits.filter((e) => floorIds.has(e.id)).map((e) => ({ op: "edit" as const, id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: FLOOR_LEFT })),
+      ...(args.remove ?? []).filter((r) => floorIds.has(r.id)).map((r) => ({ op: "remove" as const, id: r.id, ok: false, text: `Remove trigger ${r.id}`, reason: FLOOR_LEFT })),
+    ];
+    const priced = addsPriced.adds.filter((t) => !onFloor(t));
+    editsPriced.edits = editsPriced.edits.filter((e) => !floorIds.has(e.id));
+    const removes = (args.remove ?? []).filter((r) => !floorIds.has(r.id));
+    const refused = [...addsPriced.refused, ...editsPriced.refused, ...floorRefused];
+    const nothingElse = !priced.length && !editsPriced.edits.length && !removes.length && args.setup_id === undefined;
     if (refused.length && nothingElse) {
       return { summary: `No trigger change: ${refused.map((r) => r.reason).join(" ")}`, data: { ok: false, error: "not_written", message: refused.map((r) => `${r.text} — ${r.reason}`).join(" "), trigger_ops: refused } };
     }
@@ -240,9 +262,9 @@ export const editTriggers = defineTool({
     const edit = manager ? editsPriced.edits.map(({ fire_mode: _f, ...e }) => (void _f, e)) : editsPriced.edits;
     // On a trigger run the fire's price stands in when the quote fails (a buy's side is read off it).
     const saved = await saveThesis(
-      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId || undefined, add_triggers: adds as never, edit_triggers: edit, remove_trigger_ids: args.remove?.map((r) => r.id), setup_id: manager ? undefined : args.setup_id },
+      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId || undefined, add_triggers: adds as never, edit_triggers: edit as never, remove_trigger_ids: removes.map((r) => r.id), setup_id: manager ? undefined : args.setup_id },
       ctx,
-      { removeReasons: Object.fromEntries((args.remove ?? []).flatMap((r) => (r.reason?.trim() ? [[r.id, r.reason.trim()]] : []))) },
+      { removeReasons: Object.fromEntries(removes.flatMap((r) => (r.reason?.trim() ? [[r.id, r.reason.trim()]] : []))) },
     );
     if (!refused.length) return saved;
     const data = saved.data as Record<string, unknown>;

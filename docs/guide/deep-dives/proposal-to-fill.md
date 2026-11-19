@@ -42,10 +42,14 @@ Only one click can win. The order goes to the broker with the same key. A defini
 
 The thesis moves when the broker accepts the order, not when the fill prints. With approval off, it moves when the fill is seen.
 
-- **A buy** turns Watching into Holding. At the fill, the playbook's watch triggers come off and its holding triggers go on. The buy, the "Stop watching if below" and every trigger written from the playbook's watch triggers come off; a trigger written by hand stays. "Sell if below" goes on at the approved price, and the triggers that came with the buy go on as the analyst named them (its Trim stays a Trim, never a review). A Trade ticket's upside price goes on as a price trigger, as before. Nothing is stamped from the fill price. The stock's playbook's fill triggers go on as Settings → Playbook lists them; a holding with no playbook gets none and inherits the account's review clock. With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review trigger set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
+- **A buy** turns Watching into Holding. At the fill, the watch triggers come off and the floor goes on. The buy, the "Stop watching if below" and every trigger written from the playbook's watch triggers come off; a trigger written by hand stays. "Sell if below" goes on at the approved price, written as whoever chose it: the analyst's with its reason, or yours. A Trade ticket's upside price goes on as a price trigger, as before. Nothing else is stamped, from the playbook, the fill price or the horizon: the playbook's other holding triggers are put on by [the run after the fill](#the-run-after-the-fill). With [stop when buying](../concepts/triggers.md) on, the sale floor then goes to that percent under the price when you approve, set to Auto-sell; an analyst's tighter floor stays above it as a review trigger set to Send to Agent, and a tighter floor you set, or typed on the Trade ticket, stays as it is. The buy was sized for the wider of the two stops. The reconcile job then stamps the buy price with what was paid, and moves that sale floor to the same percent under it.
 - **A sale** retires the thesis as sold. The exceptions are a profit-take, or one where the agent attested the belief survived: those return to Watching. Only the triggers that need a position come off (a sale, a trim, an add, and any trigger measured from the buy); the rest stay as written, your own and the review clock included, and nothing is added.
 
 When a protective trigger woke the run that sold, the sale is labelled stop or target, whatever the agent wrote. A wrong label would hide the sale from the rules that read it.
+
+## The run after the fill
+
+Every buy or add that fills gets one run on that stock, [After the buy](../agents/after-the-buy.md): it puts the playbook's holding triggers on by reference, each fitted to the thesis with its reason, and writes the trade's note when nobody has. It can't trade. If it fails, the floor still stands.
 
 ## Meanwhile
 
@@ -67,7 +71,10 @@ A sale waiting for you is yours to answer, so no agent proposes it again or argu
 `lib/inngest/functions/reconcile-orders.ts` (`applyFillByIntent`, `restampThesisEntryOnFill`) and `lib/inngest/functions/proposal-expiry.ts`. Decline versus lapse: `lib/agent/declined-sale.ts` (`REJECTED` versus `EXPIRED`, seven-day window, protective sales only).
 
 #### Thesis flips
-`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the playbook's triggers that come with the buy are written there, from the chart: `withTheBuyTriggers`, `lib/proposals/fill-chart.ts`), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
+`lib/proposals/thesis-flips.ts`: `promoteThesisOnApproval` and `armHeldLadderOnFill` for buys (the watch triggers off, the floor and stop when buying on), `closeThesisOnApproval` and `closeThesisForPosition` for sales, `shouldRecycleToWatching` for the way back to Watching. On paper with approval off, `place_trade` calls `armHeldLadderOnFill` after the fill.
+
+#### After the buy
+`lib/proposals/after-buy.ts` sends `app/buy.filled` from every buy and add fill; [After the buy](../agents/after-the-buy.md) has the rest.
 
 #### Labels
 `enforceCloseReason` in `lib/agent/triggers/enforce-close-reason.ts`.

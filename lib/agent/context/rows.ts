@@ -30,7 +30,7 @@ export function thesisOf(run: ContextRun, thesisId: string | null) {
   if (!thesisId) return Promise.resolve(null);
   return once(run, `thesis:${thesisId}`, async () => {
     const { prisma } = await import("@/lib/prisma");
-    return prisma.thesis.findUnique({ where: { id: thesisId }, select: { id: true, ticker: true, status: true, setupId: true } }).catch(() => null);
+    return prisma.thesis.findUnique({ where: { id: thesisId }, select: { id: true, ticker: true, status: true, setupId: true, direction: true, triggers: true } }).catch(() => null);
   });
 }
 
