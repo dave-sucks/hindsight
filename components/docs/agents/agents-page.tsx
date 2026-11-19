@@ -1,133 +1,73 @@
 /**
- * /how-it-works/agents — every agent as the engine runs it: its instructions
- * (its own text and the shared texts it uses), its context (the reads in its
- * first message), its message and its tools. Read from the agent records
- * (lib/agent/engine/agents), so it shows what an agent is sent. Read-only.
+ * /how-it-works/agents — every agent as the engine runs it, read from its
+ * record (lib/agent/engine/agents): a card each, opening a sheet with its
+ * instructions (its one document, imports inlined, as the engine sends it),
+ * the context and tools it is given out of all there are, when it runs and
+ * who writes its message (./agent-grid.tsx). Read-only.
+ *
+ * The instruction files are read here, on the server, so the grid gets
+ * plain data.
  */
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button";
-import { CONTEXT, IMPORTED } from "@/lib/agent/engine/parts";
-import { ownFile, providerToolNames, readsOf, isFile, type AgentRecord, type ContextId } from "@/lib/agent/engine/types";
-import { importsOf, instructionSections } from "@/lib/agent/engine/instructions";
-import { whenItRuns } from "@/lib/agent/engine/schedule";
+import { CONTEXT } from "@/lib/agent/engine/parts";
+import { importsOf, instructionText } from "@/lib/agent/engine/instructions";
+import { cronInWords, SCHEDULE } from "@/lib/agent/engine/schedule";
+import { ownFile, providerToolNames, readsOf, type AgentRecord, type ContextId } from "@/lib/agent/engine/types";
+import { TOOL_DOCS } from "@/lib/docs/tools";
 import { DocsNav } from "../docs-nav";
+import { AgentGrid, type AgentView, type CatalogRow } from "./agent-grid";
 
-const n = (x: number) => x.toLocaleString("en-US");
+/** A tool as the tool set builds it: what the model reads. */
+export type BuiltTool = { description?: string };
 
-export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: readonly string[] }) {
+/** The first sentence of a tool's own description, for a tool the docs don't describe. */
+const firstSentence = (s: string) => s.split(/(?<=\.)\s/)[0];
+
+export function AgentsPage({ agents, tools }: { agents: readonly AgentRecord[]; tools: Readonly<Record<string, BuiltTool>> }) {
+  const context: CatalogRow[] = (Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, title: CONTEXT[id].title, about: CONTEXT[id].about, detail: CONTEXT[id].source }));
+  // Every tool an agent can be given: the tool set, and a record's own (the Writer's submit_thesis). In the tool catalog's order (by kind), the rest after it.
+  const all = new Set([...Object.keys(tools), ...agents.flatMap((a) => [...a.tools, ...(a.afterSave ?? [])])]);
+  const names = [...Object.keys(TOOL_DOCS).filter((name) => all.has(name)), ...[...all].filter((name) => !TOOL_DOCS[name]).sort()];
+  const toolRows: CatalogRow[] = names.map((name) => ({
+    id: name,
+    title: TOOL_DOCS[name]?.name ?? name,
+    about: TOOL_DOCS[name]?.summary ?? firstSentence(tools[name]?.description ?? ""),
+    detail: name,
+  }));
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 pb-24 pt-6 sm:px-6">
       <DocsNav />
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Agents</h1>
-        <p className="text-sm text-muted-foreground">
-          An agent is its instructions, its context and its tools. Its instructions are one file of its own, the same on every run; every agent that writes for you imports the rules (the house rules and how you write) into it, and the Writer the research rules too. Its context is the facts about what its run is about (the account, an analyst, a thesis or the chat), read for each run: most in its first message, after a line with the date and the account, and a few sent with its instructions where they were measured. Then comes its message, the run&rsquo;s task, written by whoever starts it. This page is read from the records the agent engine builds each request from, so it shows what an agent is actually sent. It is read-only for now.
-        </p>
+        <p className="text-sm text-muted-foreground">Every agent, read from its record in lib/agent/engine/agents. Open one to see its instructions, its context and tools, and when it runs.</p>
       </div>
-      {agents.map((a) => (
-        <AgentCard key={a.id} record={a} tools={tools} />
-      ))}
+      <AgentGrid agents={agents.map(viewOf)} context={context} tools={toolRows} />
     </div>
   );
 }
 
-function AgentCard({ record, tools }: { record: AgentRecord; tools: readonly string[] }) {
-  // Its instructions: one file, the same on every run, with what it imports inside it, each import marked where it starts.
-  const own = ownFile(record);
-  const sections = own ? instructionSections(own) : [];
-  const chars = sections.reduce((n, s) => n + s.text.length, 0);
-  const imports = own ? importsOf(own) : [];
-  // The facts its record sends with its instructions, where they were measured: context, listed with the rest.
-  const withInstructions = record.instructions.filter((e): e is ContextId => !isFile(e)).map((id) => CONTEXT[id].title);
-  const reads = new Set<ContextId>(readsOf(record));
-  // Its first message in order: the date line, then each read and its message where the record lists it.
-  const order = ["the date line", ...record.context.map((id) => (id === "message" ? "its message" : CONTEXT[id].title))].join(", ");
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{record.name}</CardTitle>
-        <CardDescription>{record.does}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-6">
-          <p className="text-sm text-muted-foreground">
-            {whenItRuns(record)} Model {record.model}, {record.maxSteps === 1 ? "one call" : `up to ${record.maxSteps} steps`}
-            {record.timeoutMs ? `, stopped after ${Math.floor(record.timeoutMs / 60_000)} min ${Math.round((record.timeoutMs % 60_000) / 1000)} s` : ""}.
-          </p>
-          <p className="text-sm text-muted-foreground">Hands back: {record.output}</p>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Instructions</h2>
-            <p className="text-sm text-muted-foreground">
-              One markdown file in lib/agent/engine/agents, the same on every run: {own ?? "none"}
-              {imports.length ? `, which imports ${imports.join(" and ")} (a line of its own, "@${imports[0]}", inlined where it stands)` : ", which imports nothing"}.
-            </p>
-            <Collapsible>
-              <CollapsibleTrigger render={<Button variant="ghost" size="sm" />}>Its instructions ({own}) · {n(chars)} characters</CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="flex flex-col gap-2 px-3 py-2">
-                  {sections.map((s, i) => (
-                    <div key={i} className="flex flex-col gap-1">
-                      {sections.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label.startsWith("@") ? `Imported: ${s.label.slice(1)}` : s.label}</p>}
-                      <p className="whitespace-pre-wrap break-words text-sm">{s.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-            <Checklist items={Object.entries(IMPORTED).map(([id, def]) => ({ id, ...def, on: imports.includes(id) }))} />
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Context</h2>
-            <p className="text-sm text-muted-foreground">
-              {withInstructions.length ? `Sent with its instructions, where they were measured: ${withInstructions.join(", ")}. ` : ""}
-              {record.conversation ? "On each message you send" : "In its first message"}, in order: {order}. The date line is the date and time in New York, and whether the account is paper or live.
-            </p>
-            <Checklist items={(Object.keys(CONTEXT) as ContextId[]).map((id) => ({ id, ...CONTEXT[id], on: reads.has(id) }))} />
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Message</h2>
-            <p className="text-sm text-muted-foreground">{record.messageFrom}</p>
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-lg font-medium">Tools</h2>
-            <p className="text-sm text-muted-foreground">Every tool an agent can be given. A checked tool is on this agent&rsquo;s menu, every run.</p>
-            {record.providerTools?.length ? <p className="text-sm text-muted-foreground">Also given the model provider&rsquo;s own tool: {providerToolNames(record).join(", ")}.</p> : null}
-            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {tools.map((t) => (
-                <li key={t} className="flex items-center gap-2">
-                  <Checkbox checked={record.tools.includes(t) || !!record.afterSave?.includes(t)} disabled aria-label={`${t}${record.tools.includes(t) || record.afterSave?.includes(t) ? " is on" : " is off"}`} />
-                  <span className="font-mono text-sm">{t}</span>
-                  {record.afterSave?.includes(t) ? <span className="text-xs text-muted-foreground">after its save</span> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Every shared text or read an agent can be given: a checked one is given to this agent. */
-function Checklist({ items }: { items: Array<{ id: string; title: string; about: string; source: string; on: boolean }> }) {
-  return (
-    <ul className="flex flex-col gap-3">
-      {items.map((b) => (
-        <li key={b.id} className="flex items-start gap-3">
-          <Checkbox checked={b.on} disabled aria-label={`${b.title}${b.on ? " is given" : " is not given"}`} />
-          <div className="flex min-w-0 flex-col">
-            <span className="text-sm font-medium">{b.title}</span>
-            <span className="text-sm text-muted-foreground">{b.about}</span>
-            <span className="text-xs text-muted-foreground">{b.source}</span>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
+function viewOf(record: AgentRecord): AgentView {
+  const file = ownFile(record);
+  let instructions: AgentView["instructions"] = null;
+  if (file) {
+    try {
+      instructions = { file: `lib/agent/engine/agents/${file}`, imports: importsOf(file), text: instructionText(file) };
+    } catch (e) {
+      instructions = { file: `lib/agent/engine/agents/${file}`, imports: [], error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const line = SCHEDULE.find((s) => s.agent === record.id);
+  return {
+    id: record.id,
+    name: record.name,
+    does: record.does,
+    model: record.model,
+    instructions,
+    context: readsOf(record),
+    tools: [...record.tools, ...(record.afterSave ?? [])],
+    afterSave: [...(record.afterSave ?? [])],
+    providerTools: providerToolNames(record),
+    schedule: line ? { when: cronInWords(line.cron), per: line.per, marketDaysOnly: line.marketDaysOnly, on: line.on } : null,
+    runsWhen: record.runsWhen ?? null,
+    messageFrom: record.messageFrom,
+  };
 }
