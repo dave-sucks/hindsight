@@ -46,13 +46,14 @@ const THESES = [
 ];
 const noEdgar = { "@/lib/market-data/sec-filings": () => ({ fetchBookFilings: async () => ({ byTicker: new Map() }) }) };
 
-async function sendAt(time: string, ticker: string, writers: Record<string, unknown>[] = WRITERS) {
+const MORNING_CTX = { runId: MORNING_RUN, analystId: ANALYST, runMode: "MORNING_PLAN", runEnvironment: "PAPER" };
+async function sendAt(time: string, ticker: string, writers: Record<string, unknown>[] = WRITERS, ctx: Record<string, unknown> = MORNING_CTX) {
   jest.useFakeTimers({ now: at(time), doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval", "clearTimeout", "clearInterval", "queueMicrotask", "hrtime", "performance"] });
   try {
     return await replayTool("dispatch-thesis-research", "dispatchThesisResearch", {
       seed: { agentConfig: [agentConfigRow({ id: ANALYST, name: "Mergers and Index Events Analyst" })], researchRun: [morningRun, ...writers], thesis: THESES },
       args: { ticker, brief: `Seed watch is review due with no write-up yet; ${ticker} needs a first real underwrite.` },
-      ctx: { runId: MORNING_RUN, analystId: ANALYST, runMode: "MORNING_PLAN", runEnvironment: "PAPER" },
+      ctx,
       mocks: noEdgar,
     });
   } finally {
@@ -78,6 +79,15 @@ describe("a stock just written for this analyst is not written again (BEEM, CPA,
     const r = await sendAt("13:02:18", "BEEM", [morningJobWriter("other_writer", "BEEM", "13:00:20", "13:02:03", { agentConfigId: "other_analyst" })]);
     expect(writersStarted(r)).toBe(1);
     expect(r.result.summary).toMatch(/^Dispatched thesis-writer for \$BEEM/);
+  });
+
+  it("the owner's chat asking for BEEM at 08:02:18 gets its Writer, told when the last one wrote it", async () => {
+    const chatRun = { id: "chat_run", accountId: REPLAY_ACCOUNT_ID, status: "RUNNING", mode: "PRINCIPAL_CHAT", agentConfigId: ANALYST, parameters: {}, startedAt: at("13:01:30"), completedAt: null };
+    const r = await sendAt("13:02:18", "BEEM", [...WRITERS, chatRun], { runId: "chat_run", analystId: ANALYST, runMode: "PRINCIPAL_CHAT", runEnvironment: "PAPER" });
+    expect(r.crashed).toBe(false);
+    expect(r.db.store.researchRun.filter((x) => x.mode === "THESIS_WRITER" && x.parentRunId === "chat_run")).toHaveLength(1);
+    expect(r.result.summary).toMatch(/^Dispatched thesis-writer for \$BEEM .* \$BEEM was last written up for this analyst 2m ago \(run cmwnk5lnx000208jj4suc6jg5\)\.$/);
+    expect(r.result.data).toMatchObject({ writtenLately: "$BEEM was last written up for this analyst 2m ago (run cmwnk5lnx000208jj4suc6jg5)." });
   });
 
   it("a Writer that failed blocks nothing, and neither does one older than the half hour", async () => {

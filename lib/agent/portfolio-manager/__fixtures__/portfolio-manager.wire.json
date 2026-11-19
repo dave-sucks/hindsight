@@ -762,6 +762,10 @@
          "type": "string",
          "description": "The stock, e.g. NVDA."
         },
+        "analyst_id": {
+         "description": "Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.",
+         "type": "string"
+        },
         "brief": {
          "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",
          "type": "string",
@@ -1551,6 +1555,10 @@
          "ticker": {
           "type": "string",
           "description": "The stock, e.g. NVDA."
+         },
+         "analyst_id": {
+          "description": "Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.",
+          "type": "string"
          },
          "brief": {
           "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",
