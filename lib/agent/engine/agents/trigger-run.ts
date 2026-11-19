@@ -16,7 +16,7 @@ import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
 
 /** The ask that ends the trigger run's message. */
-export const TRIGGER_RUN_ASK = "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with update_thesis. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.";
+export const TRIGGER_RUN_ASK = "Find out what is going on with the company and the stock, decide, act if warranted, then write your review with write_note. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.";
 
 export const TRIGGER_RUN: AgentRecord = {
   id: "trigger_run",
@@ -33,5 +33,5 @@ export const TRIGGER_RUN: AgentRecord = {
   // position is on its row, the analyst's room in its text, and code sizes a buy.
   context: ["market_numbers", "the_stock", "message"],
   tools: MODES["tactical"].toolAllowlist ?? [],
-  output: "One update_thesis note on the stock (the reason on any trade it proposed), at most one trade proposal, then complete_run.",
+  output: "One write_note on the stock (the reason on any trade it proposed), at most one trade proposal, then complete_run.",
 };

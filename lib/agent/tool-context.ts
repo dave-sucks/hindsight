@@ -45,7 +45,7 @@ export interface ToolContext {
    * calls across two Alpaca accounts. Drives:
    *  - place_trade: tag new Position/Order rows with this env
    *  - get_portfolio_context: filter positions to this env
-   *  - close_position / manage_position: refuse to operate on a position
+   *  - sell / add: refuse to operate on a position
    *    whose env differs from the run's env (defensive)
    * Defaults to PAPER when unset (older runs / builder / editor modes).
    */
@@ -117,7 +117,7 @@ export interface ToolContext {
    * Deterministic close reason for a protective/price EXIT tactical run. Set
    * by lib/inngest/functions/tactical-run.ts when THIS run was woken by a
    * price-level protective EXIT trigger (trail, move-from-entry, price
-   * levels, move-from-a-close). When present, close_position tags the close
+   * levels, move-from-a-close). When present, sell tags the close
    * with this STOP/TARGET reason INSTEAD of the model-chosen `reason` arg:
    * a declined STOP is a declined sale the next run must answer (lib/agent/declined-sale.ts), and a TARGET sale sends the stock back to watching (lib/proposals/thesis-flips.ts).
    * Undefined for daily runs and for tactical runs woken by judgment EXIT

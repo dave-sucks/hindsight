@@ -284,7 +284,7 @@ export const waitForThesisRefresh = defineTool({
               kind: "generic" as const,
               text: thesisExcerpt
                 ? thesisExcerpt.wrote.instruction
-                : `Child run ${childRunId.slice(0, 8)} status=COMPLETE. Safe to proceed with place_trade / update_thesis.`,
+                : `Child run ${childRunId.slice(0, 8)} status=COMPLETE. Safe to proceed with place_trade / write_note.`,
             },
           ],
         },
@@ -306,7 +306,7 @@ export const waitForThesisRefresh = defineTool({
           thesisExcerpt,
           note:
             `The thesis-writer did not produce a thesis. Reason: ${reason}. ` +
-            `If the reason is fixed, dispatch again; on a refresh you may proceed on the existing research and say so in your update_thesis rationale, or defer with update_thesis(REVIEWED-only). Do not silently retry — the run is at /runs/${childRunId}.`,
+            `If the reason is fixed, dispatch again; on a refresh you may proceed on the existing research and say so in your write_note, or defer with a write_note. Do not silently retry — the run is at /runs/${childRunId}.`,
           items: [
             ...(ticker
               ? [
@@ -342,7 +342,7 @@ export const waitForThesisRefresh = defineTool({
         ticker,
         thesisExcerpt,
         note:
-          `The thesis-writer is still RUNNING after the timeout, so there is no new thesis yet.${doing} It keeps going and saves on its own; check again with timeout_seconds: 0 before saying it landed or failed. Same options as a failure meanwhile: proceed on existing research with explicit acknowledgement, or defer with update_thesis(REVIEWED-only).`,
+          `The thesis-writer is still RUNNING after the timeout, so there is no new thesis yet.${doing} It keeps going and saves on its own; check again with timeout_seconds: 0 before saying it landed or failed. Same options as a failure meanwhile: proceed on existing research with explicit acknowledgement, or defer with a write_note.`,
         items: [
           ...(ticker
             ? [

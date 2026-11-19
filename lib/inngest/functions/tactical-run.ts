@@ -9,13 +9,13 @@
 //     the same run then writes it up with no trade tools, and its note
 //     becomes the trade's reason (lib/proposals/auto-writeup.ts)
 //   • 15 step budget (vs 65 for the daily run)
-//   • update_thesis is the REQUIRED close-out — every tactical run
+//   • write_note is the REQUIRED close-out — every tactical run
 //     writes one ThesisUpdate row whether or not it traded.
 //
 // Tool surface comes from MODES["tactical"] in lib/agent/modes.ts.
 // record_thesis is intentionally absent — tactical never mints new
-// theses; if conviction breaks the agent calls update_thesis with
-// change_status="INVALIDATED" and close_position.
+// theses; if the belief breaks on a holding the agent sells with
+// belief_survived false, which retires the thesis.
 
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
@@ -355,7 +355,7 @@ export const tacticalRun = inngest.createFunction(
 
     // ── Write TRIGGER_FIRED audit row ─────────────────────────────────
     // Marks the moment the predicate matched, regardless of what the
-    // agent decides next. The agent's update_thesis at the end writes
+    // agent decides next. The agent's write_note at the end writes
     // a separate UPDATED/REVIEWED row for the response. Two rows per
     // tactical fire — one for "predicate matched," one for "agent
     // responded." Without this, RunInput.triggersFiredSinceLastRun
@@ -539,7 +539,7 @@ export const tacticalRun = inngest.createFunction(
             if (!out.ok) return { tool: call.tool, error: out.error ?? "the trade tool failed" };
             tried = { tool: call.tool, summary: out.summary ?? null };
           }
-          // The order the tool made on this stock since the run began; none when it was refused. (manage_position
+          // The order the tool made on this stock since the run began; none when it was refused. (add and sell
           // writes its decision row only on a fill, so an approval-held trim or add has none to look up by.)
           const made = await prisma.order.findFirst({
             where: { intent: doIt === "BUY" ? "OPEN" : doIt === "ADD" ? "ADD" : "PARTIAL_CLOSE", createdAt: { gte: new Date(run.createdAt) }, position: { analystId: agentConfig.id, symbol: thesis.ticker } },
@@ -581,9 +581,8 @@ export const tacticalRun = inngest.createFunction(
       // is a protective/price EXIT (trail-from-high, gain-from-entry, stop /
       // target price level, daily-% move), the close is labelled STOP or
       // TARGET from the fired predicate, not by the model: a declined STOP is a declined sale the next run must answer, and a TARGET sale sends the stock back to watching.
-      // close_position uses it in place of the model-chosen reason.
-      // Non-protective EXIT triggers (earnings, filings, etc.) leave this
-      // undefined, so the agent's own label stands.
+      // sell stores it as the sale's label. Non-protective EXIT triggers
+      // (earnings, filings, etc.) leave this undefined: the label is MANUAL.
       const protectiveExitReason =
         (trigger as Trigger).action === "EXIT"
           ? protectiveExitCloseReason(
@@ -731,7 +730,7 @@ export const tacticalRun = inngest.createFunction(
 
         // ── Closeout retry ─────────────────────────────────────────────────
         // Mirrors morning-research's prematureExitViolation gate. Tactical
-        // runs require update_thesis as the closeout contract. If the agent
+        // runs require write_note as the closeout contract. If the agent
         // skipped it (typically because the assistant turn ended with text
         // like "Now I'll decide..." and AI SDK terminated the loop), give
         // the model one focused chance to write the closeout row before
@@ -769,8 +768,8 @@ export const tacticalRun = inngest.createFunction(
                 {
                   role: "user",
                   content:
-                    `You did not close out via update_thesis. The tactical contract requires exactly one update_thesis(thesis_id="${thesis.id}", triggerId="${trigger.id}", rationale="<one line>") call before complete_run. ` +
-                    `Call update_thesis NOW with whatever rationale matches what you decided (or "Trigger fired but no action taken — <reason>" if validation failed). Then complete_run. ` +
+                    `You did not close out with write_note. The tactical contract requires exactly one write_note(note="<your note>") call before complete_run. ` +
+                    `Call write_note NOW with a note on what you decided (or "Trigger fired but no action taken — <reason>" if validation failed). Then complete_run. ` +
                     `TOOL CALLS only — no narration, no markdown, no transition prose.`,
                 },
               ],
@@ -815,7 +814,7 @@ export const tacticalRun = inngest.createFunction(
                 {
                   role: "user",
                   content:
-                    "(retry nudge: you did not close out via update_thesis — call it now)",
+                    "(retry nudge: you did not close out with write_note — call it now)",
                 },
                 ...retryMessages,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -936,7 +935,7 @@ export const tacticalRun = inngest.createFunction(
               title: stopped ? "Tactical run stopped: the same refused call three times" : "Tactical run did not close out",
               message:
                 stopped ??
-                "Tactical contract: update_thesis MUST be called once. Agent finished without writing a ThesisUpdate row for this thesis.",
+                "Tactical contract: write_note MUST be called once. Agent finished without writing a ThesisUpdate row for this thesis.",
               payload: {
                 thesisId: thesis.id,
                 triggerId: trigger.id,

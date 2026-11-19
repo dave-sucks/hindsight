@@ -56,17 +56,18 @@ const SIDE_OF_INTENT: Record<string, "BUY" | "SELL"> = {
   PARTIAL_CLOSE: "SELL",
 };
 
-/** The tools that can end in a transaction. */
-export const TRADE_TOOLS = ["place_trade", "close_position", "manage_position"];
+/** The tools that can end in a transaction; close_position and manage_position until 2026-11-18. */
+export const TRADE_TOOLS = ["place_trade", "sell", "add", "close_position", "manage_position"];
 
 /**
  * Which transaction a refused trade tool refused, from the tool alone: a buy,
- * a sale, or either for manage_position, which adds or trims (stop moves left
- * it for update_thesis) and whose refusal stores no arguments. Null for any
- * other tool.
+ * a sale, or either for the old manage_position, which added or trimmed and
+ * whose refusal stores no arguments. Null for any other tool.
  */
 const SIDE_OF_TOOL: Readonly<Record<string, "BUY" | "SELL" | "EITHER">> = {
   place_trade: "BUY",
+  add: "BUY",
+  sell: "SELL",
   close_position: "SELL",
   manage_position: "EITHER",
 };
@@ -96,6 +97,8 @@ const PASS_LABEL: Record<string, string> = {
 
 const WORD_OF_TOOL: Record<string, string> = {
   place_trade: "Buy",
+  add: "Add",
+  sell: "Sale",
   close_position: "Sale",
   manage_position: "Position change",
 };

@@ -649,18 +649,22 @@ export const morningResearch = inngest.createFunction(
 
           // Detect "data-only" runs: every tool call so far was a Step-1
           // data-loading tool, no get_stock_data / record_thesis /
-          // update_thesis / place_trade landed. Distinct from
+          // write_note / place_trade landed. Distinct from
           // coverageViolation because it can fire on analysts whose
           // Live Theses table is empty (new analysts, post-cleanup
           // states) where expectedCoverage = 0.
           const ACTION_TOOLS = new Set([
             "get_stock_data",
             "record_thesis",
-            "update_thesis",
+            "write_note",
+            "edit_triggers",
+            "set_conviction",
+            "set_catalyst_date",
+            "stop_watching",
+            "watch_again",
             "place_trade",
-            "manage_position",
-            "close_position",
-            "manage_watchlist",
+            "sell",
+            "add",
             "record_run_summary",
             "complete_run",
           ]);
@@ -719,14 +723,14 @@ export const morningResearch = inngest.createFunction(
                 // to summarize the data it just read.
                 "You loaded the Step-1 data tools and stopped before acting. The Live Theses block in the system prompt is the source of truth — DO NOT re-summarize it in markdown. " +
                 "Begin Step 2 NOW. For each thesis listed in the Live Theses table above, emit one tool call: " +
-                "update_thesis(thesis_id=<id>, rationale='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
+                "write_note(thesis_id=<id>, note='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
                 "After every Live Theses row has produced one tool call, run Step 3 (promotion check), Step 4 (discovery if slots open), Step 5/6 (record_run_summary then complete_run). " +
                 "TOOL CALLS only. No markdown narrative. Each assistant turn from this point on MUST contain at least one tool call — text-only turns terminate the run as FAILED."
               : "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
                 "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
-                "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker (or a prior record_thesis call returned status='USE_UPDATE_THESIS' with an existing_thesis_id), call update_thesis(thesis_id=<that id>, ...patch fields..., rationale='<one line>'). " +
+                "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker, call write_note(thesis_id=<that id>, note='<one line>'). " +
                 "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
-                "When in doubt, prefer update_thesis with empty patch + a rationale (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
+                "When in doubt, prefer write_note (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
                 "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
             const nudgeWithRefusals =
               refusalViolation && !onlyRefusals ? `${nudge}\n\nAlso: ${refusalNudge(openRefusalsBefore)}` : nudge;

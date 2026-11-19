@@ -65,7 +65,7 @@
  * Pure — no Prisma here, so every case is testable without a database.
  */
 
-export type ExpectedTool = "close_position" | "manage_position";
+export type ExpectedTool = "sell" | "add";
 
 /** The action verbs `record_run_summary` accepts on a ranked pick. */
 export type PickAction =
@@ -94,32 +94,32 @@ export interface UnbackedAction {
  * morning-research, and FAILED is the agent reporting a refusal honestly.
  */
 const ACTION_REQUIRES: Partial<Record<PickAction, ExpectedTool>> = {
-  EXIT: "close_position",
-  REDUCE: "manage_position",
-  ADD: "manage_position",
+  EXIT: "sell",
+  REDUCE: "sell",
+  ADD: "add",
 };
 
 const RUN_EVENT_TYPE_TO_TOOL: Record<string, ExpectedTool> = {
-  position_closed: "close_position",
-  position_modified: "manage_position",
+  position_closed: "sell",
+  // A trim's and an add's event share a name; either credits the stock (SATISFYING_TOOLS).
+  position_modified: "add",
   // A LIVE sell is a proposal Dave approves — the tool fired, nothing filled
   // yet. Before these counted, the check was blind to every LIVE sell and
   // made agents delete true "proposed the exit" lines (DAV-259).
-  position_close_proposed: "close_position",
-  position_modify_proposed: "manage_position",
+  position_close_proposed: "sell",
+  position_modify_proposed: "add",
 };
 
 /** RunEvent types that count as "the tool fired" — complete_run reads exactly these. */
 export const CREDITED_RUN_EVENT_TYPES = Object.keys(RUN_EVENT_TYPE_TO_TOOL);
 
 /**
- * What satisfies each owed tool. A trim that became a full close still
- * counts as managing the position, and a close satisfies a REDUCE — selling
- * all of it is selling some of it.
+ * What satisfies each owed tool: any trade on the stock this run, as when a
+ * trim, an add and a sale were two tools that each satisfied the other.
  */
 const SATISFYING_TOOLS: Record<ExpectedTool, ExpectedTool[]> = {
-  close_position: ["close_position", "manage_position"],
-  manage_position: ["manage_position", "close_position"],
+  sell: ["sell", "add"],
+  add: ["add", "sell"],
 };
 
 export interface ToolCallEvent {
@@ -137,9 +137,9 @@ export interface RunOrder {
 }
 
 const ORDER_INTENT_TO_TOOL: Record<string, ExpectedTool> = {
-  CLOSE: "close_position",
-  PARTIAL_CLOSE: "manage_position",
-  ADD: "manage_position",
+  CLOSE: "sell",
+  PARTIAL_CLOSE: "sell",
+  ADD: "add",
 };
 
 export interface RankedPick {

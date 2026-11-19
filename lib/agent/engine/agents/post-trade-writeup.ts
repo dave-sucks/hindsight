@@ -13,10 +13,10 @@ import { MODES } from "@/lib/agent/modes";
 import type { AgentRecord } from "../types";
 
 /** The trigger run's tools it doesn't get: the trade is made, and it writes up this one stock. */
-const NOT_ITS_TOOLS: ReadonlySet<string> = new Set(["place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
+const NOT_ITS_TOOLS: ReadonlySet<string> = new Set(["place_trade", "sell", "add", "dispatch_thesis_research", "wait_for_thesis_refresh"]);
 
 /** The ask that ends the post-trade write-up's message. */
-export const WRITEUP_ASK = "Find out what is going on with the company and the stock, then write your note with update_thesis. You can't trade on this run. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.";
+export const WRITEUP_ASK = "Find out what is going on with the company and the stock, then write your note with write_note. You can't trade on this run. You are running unattended — no human will respond. Every turn must call a tool; text-only turns terminate the run as FAILED.";
 
 export const POST_TRADE_WRITEUP: AgentRecord = {
   id: "post_trade_writeup",
@@ -30,5 +30,5 @@ export const POST_TRADE_WRITEUP: AgentRecord = {
   instructions: ["the_analyst", "post-trade-writeup.md"],
   context: ["market_numbers", "the_stock", "message"],
   tools: (MODES["tactical"].toolAllowlist ?? []).filter((name) => !NOT_ITS_TOOLS.has(name)),
-  output: "One update_thesis note on the stock, which becomes the reason on the trade, then complete_run.",
+  output: "One write_note on the stock, which becomes the reason on the trade, then complete_run.",
 };

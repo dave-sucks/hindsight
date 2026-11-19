@@ -15,7 +15,8 @@ export function autoTradeLine(trigger: Pick<Trigger, "action" | "predicate" | "t
 
 export type DoItCall =
   | { tool: "place_trade"; args: { ticker: string; direction: "LONG" | "SHORT"; entry_price: number; thesis_id: string; entry_rationale: string } }
-  | { tool: "manage_position"; args: { symbol: string; action: "add_to_position" | "partial_close"; close_pct?: number; reason: string } };
+  | { tool: "add"; args: { ticker: string; note: string } }
+  | { tool: "sell"; args: { ticker: string; percent: number; note: string } };
 
 export function doItCall(opts: {
   trade: Exclude<DoIt, "SELL">;
@@ -33,6 +34,6 @@ export function doItCall(opts: {
       args: { ticker: thesis.ticker, direction: thesis.direction === "SHORT" ? "SHORT" : "LONG", entry_price: opts.price, thesis_id: thesis.id, entry_rationale: why },
     };
   }
-  if (trade === "ADD") return { tool: "manage_position", args: { symbol: thesis.ticker, action: "add_to_position", reason: why } };
-  return { tool: "manage_position", args: { symbol: thesis.ticker, action: "partial_close", close_pct: trimPctOf(trigger), reason: why } };
+  if (trade === "ADD") return { tool: "add", args: { ticker: thesis.ticker, note: why } };
+  return { tool: "sell", args: { ticker: thesis.ticker, percent: trimPctOf(trigger), note: why } };
 }

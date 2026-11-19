@@ -108,10 +108,10 @@ export function validateEnterTriggerRequired(
           `${enterOffenders.length} buy trigger(s) (action ENTER). A buy can't fire on a ` +
           `position we hold — the 5-minute check would only start runs that end ` +
           `"already in position".` +
-          `\n\nFix: remove the buy trigger(s) by id — remove_trigger_ids: [${enterOffenders
+          `\n\nFix: remove the buy trigger(s), by these ids: [${enterOffenders
             .map((t) => `"${t.id}"`)
             .join(", ")}]. A stock we own carries sells (EXIT), partial sales (TRIM), ` +
-          `adds (ADD) and reviews (REVIEW); add those with add_triggers.`,
+          `adds (ADD) and reviews (REVIEW).`,
       };
     }
     const hasExit = args.triggers.some((t) => t.action === "EXIT");
@@ -123,7 +123,7 @@ export function validateEnterTriggerRequired(
           `A stock we own must carry at least one sell trigger (action EXIT) — that's the ` +
           `automated stop-loss path. Without it nothing sells the position when the ` +
           `price breaks the stop.` +
-          `\n\nFix: add one with add_triggers — action "EXIT" with a price below the stop ` +
+          `\n\nFix: add one — action "EXIT" with a price below the stop ` +
           `for a LONG position ({ watch: "price", is: "below", value: stop }; above it for ` +
           `a SHORT).`,
       };

@@ -70,9 +70,17 @@ export function owedRefusals(rows: OpenRefusal[]): OpenRefusal[] {
 export function describeRefusalTool(tool: string): string {
   switch (tool) {
     case "place_trade": return "Buy";
+    case "sell":
     case "close_position": return "Sale";
+    case "add": return "Add";
     case "manage_position": return "Position change";
     case "update_thesis": return "Thesis edit";
+    case "edit_triggers": return "Trigger edit";
+    case "write_note": return "Note";
+    case "set_conviction": return "Conviction";
+    case "set_catalyst_date": return "Catalyst date";
+    case "stop_watching": return "Stop watching";
+    case "watch_again": return "Watch again";
     case "record_thesis": return "Thesis save";
     case "thesis_writer": return "Thesis research";
     case "complete_run": return "Run close";
@@ -103,7 +111,7 @@ export function refusalNudge(open: OpenRefusal[]): string {
     `${open.length === 1 ? "One of your tool calls was refused and you never redid it" : `${open.length} of your tool calls were refused and you never redid them`}. ` +
     "A refusal is not a decision — the work is still owed. For each one below, read the reason and do one of two things NOW: " +
     "(a) correct the call and make it again, or (b) if the refusal stands, make the call that records that — " +
-    "update_thesis on the stock with a one-line rationale saying what you tried and why it cannot be done. " +
+    "write_note on the stock saying what you tried and why it cannot be done. " +
     "Then call record_run_summary if you have not, and complete_run. TOOL CALLS only — no narration.\n\n" +
     lines.join("\n")
   );
@@ -121,7 +129,7 @@ export function blockedLastTimeSection(open: OpenRefusal[]): string {
   });
   return [
     "## Blocked last time — resolve today",
-    "These calls of yours were refused in a recent run and never redone. Each one is still owed. Today, on that stock's row: correct the call and make it, or record in `update_thesis` why it stands. Do not leave one untouched — it is shown to the principal as open until the same tool lands on that stock.",
+    "These calls of yours were refused in a recent run and never redone. Each one is still owed. Today, on that stock's row: correct the call and make it, or record in `write_note` why it stands. Do not leave one untouched — it is shown to the principal as open until the same tool lands on that stock.",
     ...lines,
   ].join("\n");
 }

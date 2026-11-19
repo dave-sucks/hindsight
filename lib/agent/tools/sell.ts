@@ -1,8 +1,9 @@
 /**
- * close_position — migrated to defineTool().
- *
- * Closes an existing open position via Alpaca and records EXIT decision
- * + RunEvent + thesis lifecycle transition in the DB.
+ * sell — sell all or part of a holding. A part goes through `changePosition`
+ * (manage-position.ts); the whole holding through closeOpenPosition, which
+ * flips the thesis. The model names no reason code: the stored label is the
+ * protective trigger's that woke the run, else MANUAL (enforce-close-reason.ts).
+ * Until 2026-11-18 these were close_position and manage_position(partial_close).
  */
 
 import { z } from "zod";
@@ -12,91 +13,57 @@ import {
   collapseCloseReason,
   enforceCloseReason,
   withCloseAuditNote,
+  type DeclaredCloseReason,
 } from "@/lib/agent/triggers/enforce-close-reason";
 import { prisma } from "@/lib/prisma";
 import { getAccount } from "@/lib/alpaca";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 import { answers } from "@/lib/proposals/staged";
+import { changePosition } from "@/lib/agent/tools/manage-position";
 
-export const closePosition = defineTool({
-  description:
-    "Explicitly close an existing open position by symbol. " +
-    "This tool performs one action only: closing the position.",
-  schema: z.object({
-    ticker: z.string().describe("Ticker symbol of the position to close"),
-    // Vocabulary is deliberately identical to manage_position's `close_reason`
-    // (lib/agent/tools/manage-position.ts). Both tools can fully close a
-    // position and both are in the principal-chat allowlist, so a model reaching for
-    // THESIS_INVALIDATED on the wrong one used to eat a hard Zod rejection
-    // (2026-08-09, XENE). Same enum on both = the mismatch can't happen.
-    // THESIS_INVALIDATED / RISK_MANAGEMENT collapse to MANUAL below —
-    // closeOpenPosition only stores TARGET | STOP | TIME | MANUAL.
-    reason: z
-      .enum(["TARGET", "STOP", "THESIS_INVALIDATED", "RISK_MANAGEMENT", "MANUAL"])
-      .default("MANUAL")
-      .describe(
-        "TARGET if hit price target, STOP if a protective level tripped, " +
-          "THESIS_INVALIDATED if the setup broke structurally, " +
-          "RISK_MANAGEMENT if trimming exposure, MANUAL for portfolio rebalancing",
-      ),
-    notes: z
-      .string()
-      .optional()
-      .describe(
-        "Why you're selling, in your own words: the reason the owner reads on the sale proposal and in the approval email. What happened to the company and the stock and why, whether it breaks the reason we own it, then the sale: the price and the profit or loss. Write it by How you write.",
-      ),
-    belief_survived: z
-      .boolean()
-      .optional()
-      .describe(
-        "Did the thesis's CORE BELIEF survive this exit? Answer this on every protective exit (reason=STOP). " +
-          "true = you are selling on PRICE while the story is still intact (a trailing give-back, a stop tripped in a broad-market flush, risk trimmed on an unchanged thesis) — the thesis returns to WATCHING with its triggers cleared so the next run can arm a reclaim entry, instead of dying. " +
-          "false = the belief itself broke (invalidation condition tripped, catalyst failed, the bear case confirmed) — the thesis retires permanently. " +
-          "Left out, the thesis retires as with false; leave it out only when you genuinely cannot tell. Ignored on reason=TARGET, which always keeps the name on watch.",
-      ),
-  }),
-  // A run writes one note on the stock with update_thesis after the sale, and
-  // that note is the proposal's reason (lib/proposals/auto-writeup.ts); only
-  // your chat gives the sale its own words.
-  schemaFor: (ctx, schema) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : ctx.runMode === "INTRADAY_TACTICAL" ? schema.omit({ notes: true, ticker: true }) : schema.omit({ notes: true })),
-  // A trigger run sells its own stock.
+const schema = z.object({
+  ticker: z.string().describe("The stock to sell."),
+  percent: z
+    .number()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe("How much of the holding to sell, 1–100; left out, all of it, or on a run a trim trigger woke, that trim's size."),
+  belief_survived: z
+    .boolean()
+    .optional()
+    .describe("On a sale of the whole holding: true if why we own it still holds and we sell on price (the stock goes back on watch), false if it broke (the thesis retires)."),
+  // Read by closeOpenPosition / changePosition as the sale's reason (Order.rationale).
+  note: z
+    .string()
+    .optional()
+    .describe("Why you're selling, by How you write: the reason the owner reads on the proposal and in the approval email."),
+});
+
+export const sell = defineTool({
+  description: "Sells all or part of a holding; with the approval switch on, the sale waits for the owner. Code sets the sale's label from the trigger that fired.",
+  schema,
+  // A run's note on the stock is the sale's reason (lib/proposals/auto-writeup.ts); only your chat gives it its own words.
+  schemaFor: (ctx) => (ctx.runMode === "PRINCIPAL_CHAT" ? schema : ctx.runStock ? schema.omit({ note: true, ticker: true }) : schema.omit({ note: true })),
+  // A one-stock run sells its own stock.
   fromRun: (ctx) => (ctx.runStock ? { ticker: ctx.runStock.ticker } : null),
   ui: "tool-ui" as const,
-  gateLog: "close_position",
+  gateLog: "sell",
   groupId: "Executing",
 
-  progressLabel: (args) => `Closing $${args.ticker.toUpperCase()} position`,
+  progressLabel: (args) => `Selling ${args.percent && args.percent < 100 ? `${args.percent}% of ` : ""}$${args.ticker.toUpperCase()}`,
 
   execute: async (args, ctx) => {
     const ticker = args.ticker.toUpperCase().trim();
-    // ── Sale-label enforcement (DAV-192) ──────────────────────────────────
-    // When this tactical run was woken by a price-level protective EXIT
-    // trigger (trail-from-high, gain-from-entry, stop/target level, daily-%
-    // move), tactical-run.ts precomputes the STOP/TARGET tag and threads it in
-    // as ctx.protectiveExitReason. The stored label comes from that tag, NOT
-    // from the model's `reason` arg — a sale that executed because a
-    // protective trigger fired must read as a stop or a target everywhere the
-    // label is consumed (the held-through-floor context in get_theses, the
-    // sold-name recycle rule, the close email, the trade page). We don't trust
-    // the LLM to remember the tag: this is deterministic.
-    //
-    // A mismatch is auto-corrected, never refused — the sale still goes
-    // through, and `enforced.auditNote` records what the agent originally
-    // called it. `enforced.beliefSurvived` keeps THESIS_INVALIDATED honest on
-    // its own axis (see enforce-close-reason.ts). For daily runs and judgment
-    // EXIT triggers (earnings/signals) the field is undefined, so a genuinely
-    // discretionary close keeps its own tag — unless it claims a level the
-    // tape never reached (DAV-263, below, once the position and its plan are
-    // in hand).
-    //
-    // closeOpenPosition (and Position.closeReason) only store
-    // TARGET | STOP | TIME | MANUAL. The two judgment codes collapse to
-    // MANUAL. close_position is the ONLY tool that sells a whole position
-    // (DAV-220 removed manage_position's full_close), so this mapping is the
-    // single place a full exit gets its stored label. The two early returns
-    // below never store anything; they echo the collapsed declaration.
-    const declaredStored = collapseCloseReason(args.reason);
+    // Left out on a run a trim woke, the part is that trim's size (as manage_position's was).
+    const part = args.percent ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : 100);
+    if (part < 100) return changePosition({ symbol: ticker, action: "partial_close", close_pct: part, reason: args.note }, ctx);
+    // The label: the protective trigger's that woke this run, else the model's belief call (DAV-192).
+    const declared: DeclaredCloseReason = ctx.protectiveExitReason ?? (args.belief_survived === false ? "THESIS_INVALIDATED" : "MANUAL");
+    // A protective fire's sale reads as a stop or a target everywhere the label is read (get_theses,
+    // the sold-name recycle rule, the close email); enforceCloseReason keeps that rule in one place.
+    const declaredStored = collapseCloseReason(declared);
     try {
       // The Master Chat sells for the stock's holder, in its book (analyst-scope.ts).
       const held = await forHeldStock(ctx, ticker);
@@ -108,7 +75,7 @@ export const closePosition = defineTool({
       // A PROMOTED thesis was an ACTIVE paper position that the user just
       // graduated PAPER→LIVE. The paper position got force-closed at
       // promotion; the thesis itself sits awaiting first-live-run re-entry.
-      // close_position on a PROMOTED row is always wrong: there's no
+      // A sale on a PROMOTED row is always wrong: there's no
       // position to close. Without this guard, an orphan HELD-template
       // EXIT trigger from before P1-21's template regen could spawn a
       // tactical EXIT run that falls through to the "no position found"
@@ -126,7 +93,7 @@ export const closePosition = defineTool({
         if (promotedThesis) {
           const msg =
             `Cannot close ${ticker}: this thesis is PROMOTED (no open position to close — the paper position was force-closed when the analyst was promoted PAPER→LIVE). ` +
-            `Either call place_trade to re-enter live (place_trade auto-flips PROMOTED→ACTIVE), or call update_thesis(change_status="WATCHING", rationale=...) to defer re-entry until the next ENTER trigger fires.`;
+            `Either call place_trade to re-enter live (place_trade auto-flips PROMOTED→ACTIVE), or call watch_again to defer re-entry until its buy trigger fires.`;
           return {
             summary: `Cannot close $${ticker} — thesis is PROMOTED`,
             data: {
@@ -150,7 +117,7 @@ export const closePosition = defineTool({
       // scope only when ctx.analystId is missing (legacy/manual paths).
       // Also scoped by environment — a LIVE run never operates on a PAPER
       // position (and vice versa). get_portfolio_context already filters
-      // by env, but the model could synthesize close_position from prior
+      // by env, but the model could synthesize a sale from prior
       // memory, so the lookup itself enforces it.
       const runEnvironment = ctx.runEnvironment ?? "PAPER";
       const position = await prisma.position.findFirst({
@@ -185,7 +152,7 @@ export const closePosition = defineTool({
       // other sale is the agent's call.
       const quote = await getStockQuote(ticker).catch(() => null);
       const enforced = enforceCloseReason({
-        declared: args.reason,
+        declared,
         protective: ctx.protectiveExitReason,
         triggerLabel: ctx.protectiveExitTriggerLabel,
         beliefSurvived: args.belief_survived,
@@ -195,13 +162,13 @@ export const closePosition = defineTool({
       const reason: "TARGET" | "STOP" | "MANUAL" = enforced.stored;
       if (enforced.corrected) {
         console.info(
-          `[tool] close_position sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
+          `[tool] sell sale-label auto-corrected for ${ticker}: ${enforced.declared} → ${enforced.stored}`,
         );
       }
 
       const { closeOpenPosition } = await import("@/lib/actions/closeTrade.actions");
       // The sale's reason is the analyst's notes or nothing; a corrected label goes to the reply and the run's event.
-      const agentAuditReason = args.notes?.trim() || undefined;
+      const agentAuditReason = args.note?.trim() || undefined;
       const label = enforced.corrected
         ? { declared_reason: enforced.declared, label_auto_corrected: true, label_note: enforced.auditNote }
         : {};
@@ -260,7 +227,7 @@ export const closePosition = defineTool({
             ...label,
             message: [
               `Proposed close of ${position.direction} ${position.quantity} shares of ${ticker}. Awaiting your approval (${expiresAt ? "expires in 24h" : "open until answered, or until the stock closes back past the line"}).`,
-              ctx.runMode === "PRINCIPAL_CHAT" ? "" : "Your note on this stock, through update_thesis, is what the owner reads on the proposal.",
+              ctx.runMode === "PRINCIPAL_CHAT" ? "" : "Your note on this stock, through write_note, is what the owner reads on the proposal.",
               enforced.auditNote,
             ].filter(Boolean).join(" "),
             items: [
@@ -287,8 +254,8 @@ export const closePosition = defineTool({
       const analystId = ctx.analystId || position.analystId;
       const fillNote = result.fillStatus === "PENDING" ? " (close order pending fill)" : "";
       const reasoningNote = withCloseAuditNote(
-        args.notes
-          ? `Closed ${position.direction} position: ${intent}. ${args.notes}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
+        args.note
+          ? `Closed ${position.direction} position: ${intent}. ${args.note}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`
           : `Closed ${position.direction} position: ${intent}. P&L: $${result.realizedPnl.toFixed(2)} (${result.outcome})${fillNote}`,
         enforced,
       );
@@ -308,7 +275,7 @@ export const closePosition = defineTool({
           },
         });
       } catch (decisionErr) {
-        console.warn("[tool] close_position TradeDecision write failed:", decisionErr);
+        console.warn("[tool] sell TradeDecision write failed:", decisionErr);
       }
 
       if (ctx.runId) {
@@ -333,12 +300,12 @@ export const closePosition = defineTool({
                 declared_reason: enforced.declared,
                 label_auto_corrected: enforced.corrected,
                 label_note: enforced.auditNote,
-                notes: args.notes ?? null,
+                notes: args.note ?? null,
               } as object,
             },
           });
         } catch (evtErr) {
-          console.warn("[tool] close_position RunEvent write failed:", evtErr);
+          console.warn("[tool] sell RunEvent write failed:", evtErr);
         }
       }
 
@@ -368,7 +335,7 @@ export const closePosition = defineTool({
           openPositionCount: currentOpenCount,
         };
       } catch (portfolioErr) {
-        console.warn("[tool] close_position portfolio update fetch failed:", portfolioErr);
+        console.warn("[tool] sell portfolio update fetch failed:", portfolioErr);
       }
 
       const isPending = result.fillStatus === "PENDING";
@@ -413,7 +380,7 @@ export const closePosition = defineTool({
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Position close failed";
-      console.error(`[tool] close_position FAILED for ${ticker}: ${msg}`);
+      console.error(`[tool] sell FAILED for ${ticker}: ${msg}`);
       return {
         summary: `Close failed: $${ticker}`,
         data: {

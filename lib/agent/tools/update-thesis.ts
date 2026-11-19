@@ -88,7 +88,7 @@ const STATUS_RETIRE =
   "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
   "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock and keep watching it, keep it WATCHING and remove its buy and its Stop watching line by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
-const STATUS_OWNED = "Holding and sold are not set here: place_trade and close_position flip them when the order fills.";
+const STATUS_OWNED = "Holding and sold are not set here: place_trade and sell flip them when the order fills.";
 
 const updateSchema = z.object({
   thesis_id: z.string().describe("Thesis id to update."),
@@ -210,7 +210,7 @@ export function setDownInstruction(stored: Trigger[], direction: string | null):
   if (levels.length === 0) return "";
   const ids = levels.map((t) => `"${t.id}"`).join(", ");
   const words = levels.map((t) => describeTrigger(t)).join(", ");
-  return `To take them all off, remove them in one call: remove_trigger_ids: [${ids}] (${words}).`;
+  return `To take them all off, remove them in one call, by these ids: [${ids}] (${words}).`;
 }
 
 /**
@@ -226,19 +226,6 @@ function dryRunPassed(ticker: string, triggerOps: TriggerOpResult[], refusedFiel
     sources: [],
   };
 }
-
-/**
- * The research sections only the writer's refresh fills (step 5 of
- * docs/plans/AGENT_ARCHITECTURE.md): of 370 update_thesis calls by agents in
- * the 30 days to 2026-10-05, none sent one. They leave every agent's copy of
- * the tool (4,725 characters each); the writer's refresh keeps them.
- */
-const WRITER_ONLY_UPDATE_FIELDS = {
-  company: true,
-  bull_case: true,
-  bear_case: true,
-  research_data: true,
-} as const;
 
 /** The trigger run's door: its save has no price field and no status change. */
 const isTriggerRun = (ctx: { runMode?: string }) => ctx.runMode === "INTRADAY_TACTICAL";
@@ -411,22 +398,11 @@ export function dropUnchanged(
   return out as UpdateArgs;
 }
 
-/**
- * What a deciding agent changes about the thesis itself, apart from its
- * triggers, its note and whether we watch it (each its own tool): its
- * conviction, horizon and catalyst date. In the 30 days to 2026-11-18 the
- * morning runs changed the conviction tier 14 times; the rest of the form is
- * the Writer's.
- */
-const viewSchema = updateSchema.pick({ thesis_id: true, conviction: true, conviction_rationale: true, horizon: true, catalyst_date: true });
-
 export const updateThesis = defineTool({
-  description:
-    "Changes your view of a stock: its conviction (with the reason), its horizon or its catalyst date; each change is one line in its Activity. " +
-    "Its triggers are edit_triggers, a note is write_note.",
-  schema: updateSchema,
-  // The Writer's save keeps the whole form (run-thesis-writer.ts).
-  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? updateSchema.omit(THE_REVIEW) : viewSchema),
+  // No agent is given it (2026-11-18): code runs it as the Writer's save (run-thesis-writer.ts).
+  // An agent's edits are each their own tool: edit_triggers, write_note, set_conviction, set_catalyst_date, stop_watching, watch_again.
+  description: "The Writer's save on a thesis it refreshes.",
+  schema: updateSchema.omit(THE_REVIEW),
   ui: "thesis-card" as const,
   gateLog: "update_thesis",
 
@@ -789,10 +765,10 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
     !args.direction
   ) {
     // The same gate for every door; the words name only what the door has.
-    // The morning run's save carries no belief fields and no direction
-    // (step 12, part 1): a seed's claim is the writer's, so its answer is a
-    // dispatch, and the refusal says so instead of listing fields it lacks.
-    const message = isMorningRun(ctx)
+    // No agent's door carries the belief or a direction (2026-11-18): a seed's
+    // claim is the writer's, so an agent's answer is a dispatch.
+    const anAgent = ctx.runMode !== "THESIS_WRITER";
+    const message = anAgent
       ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
         `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
         `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
@@ -803,7 +779,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
         `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
         `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
     return {
-      summary: isMorningRun(ctx)
+      summary: anAgent
         ? `$${existing.ticker} has no view yet — its claim is the writer's: dispatch_thesis_research, then wait_for_thesis_refresh.`
         : `Thesis ${args.thesis_id} is an unresearched seed — update_thesis must include direction.`,
       data: {
@@ -836,8 +812,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
       "direction",
       pass
         ? existing.status === "HOLDING"
-          ? "A stock we hold isn't passed: selling it is close_position."
-          : `A thesis with a view isn't passed in place: change_status ARCHIVED drops it, or INVALIDATED if the belief broke.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
+          ? "A stock we hold isn't passed: selling it is sell."
+          : `A thesis with a view isn't passed in place: stop_watching drops it.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
         : recordThesis
           ? `A flip is a new thesis: record_thesis with parent_thesis_id "${existing.id}" writes it and retires this one.`
           : "A flip is a new thesis; say so in your note.",
@@ -1378,7 +1354,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext) {
   // What the call could not change, said once at the end of the reply.
   const notChanged = [
     ...refusedFields.map((r) => `Not changed: ${r.field}. ${r.reason}`),
-    ...(stillPromoted ? ["Still promoted until place_trade or change_status WATCHING."] : []),
+    ...(stillPromoted ? ["Still promoted until place_trade or watch_again."] : []),
   ].join(" ");
   const refusedData = refusedFields.length ? { refused_fields: forAgent(refusedFields) } : {};
   // The record tells the truth: what the call asked for and did not get

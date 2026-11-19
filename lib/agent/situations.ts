@@ -111,9 +111,9 @@ Answer, in order:
 
 What you can do (one of these):
 - Re-enter live: place_trade.
-- Defer: update_thesis with change_status "WATCHING". The next run looks at it again.
+- Defer: watch_again. The next run looks at it again.
 
-Answered: place_trade, or that update_thesis.
+Answered: place_trade, or that watch_again.
 
 The note: what the company and the stock have done since the paper buy, and whether the case holds at today's price; then, in one sentence, bought with live money or why it waits.
 
@@ -131,9 +131,9 @@ Answer, in order:
 4. Declined, or left to lapse? \`heldThroughFloor\` counts each, with the sale's price, the recent low and their note; their words are in \`said\` too.
 
 What you can do:
-- Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis.
+- Sell: sell, answering belief_survived as its description says, or trim with sell and a percent; then one write_note.
 - After a decline or lapse: if you still would sell, propose it again with today's reasons; if you would hold, say why. Quote their note, and offer the recent low as the sale's new price.
-- Or tighten the sale: update_thesis with edit_triggers on the fired trigger's id (the \`triggers\` lines give each id).
+- Or tighten the sale: edit_triggers on the fired trigger's id (the \`triggers\` lines give each id).
 - Two sales fired together: one decision covers both (all, some or none).
 
 Answered: a sale or trim, the sale tightened, or a note saying why you hold. While the price stays past it the stock is on this list every morning; the trigger itself fires again, with a new card, only after a close back on the other side.
@@ -157,9 +157,9 @@ Answer, in order:
 5. Does the view still hold? At LOW conviction, skip unless another signal confirms it; at STRONG or HIGH, defer if today's evidence breaks the variant view (\`variant_view\`).
 
 What you can do:
-- Buy, only when every check above holds: place_trade (it sizes the buy) with its "Sell if below" as \`sell_if_below\` and \`sell_reason\`. No playbook: the sell price, under structure on the chart. Then one update_thesis. The stock's "Stop watching if below" ends the watch and is not the sell price.
+- Buy, only when every check above holds: place_trade (it sizes the buy) with its "Sell if below" as \`sell_if_below\` and \`sell_reason\`. No playbook: the sell price, under structure on the chart. Then one write_note. The stock's "Stop watching if below" ends the watch and is not the sell price.
 - Re-price: edit_triggers on the buy's id, at a price from the chart's structure. A pullback buy that touched its average without the reversal is re-priced to a close above today's high, which is the reversal.
-- Take the buy off: update_thesis with remove_trigger_ids, keeping a review.
+- Take the buy off: edit_triggers with remove, keeping a review.
 
 Answered: one of those. A note does answer a buy whose price slipped back. A buy you pass on and leave as it is fires again only after a close finds it false: re-price it or take it off when today's no would stay no.
 
@@ -170,7 +170,7 @@ Mistakes:
 - Volume as the reason on a pullback, a compounder or a pre-catalyst buy, or before mid-session.
 - Moving the buy above the price to dodge it.
 
-If the analyst is full: every slot is held or awaiting approval (\`buyBlockedByFull\` names the holdings), so place_trade will refuse the buy; don't call it, and don't treat it as a quiet day. Is this stock a better use of a slot than the weakest one we hold? Weigh the thesis, the playbook, the reward left to the Street's average target, and where we differ from the Street (\`variant_view\`). On this stock's one update_thesis, name which holding it would replace and why it is the better use of the slot, or say it waits for a free slot, and why. Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them. The note: what is going on with the company and why it wants in now, against the holding it would replace; then the swap you'd make, or that it waits for a free slot, in one sentence.`,
+If the analyst is full: every slot is held or awaiting approval (\`buyBlockedByFull\` names the holdings), so place_trade will refuse the buy; don't call it, and don't treat it as a quiet day. Is this stock a better use of a slot than the weakest one we hold? Weigh the thesis, the playbook, the reward left to the Street's average target, and where we differ from the Street (\`variant_view\`). On this stock's one write_note, name which holding it would replace and why it is the better use of the slot, or say it waits for a free slot, and why. Say it once in the run summary too ("$ETN wants in; the analyst is full"). Replacing a holding is the principal's decision; your job is to put the comparison in front of them. The note: what is going on with the company and why it wants in now, against the holding it would replace; then the swap you'd make, or that it waits for a free slot, in one sentence.`,
   },
   ADD_OR_WINNER: {
     name: "add",
@@ -182,12 +182,12 @@ Answer, in order:
 3. Did the principal decline this add (\`said\`), with nothing they named changed since? Then say so and pass.
 
 What you can do (one of these):
-- Press: manage_position add_to_position (it sizes the add), then update_thesis raising the upside trigger and the floor under the bigger position (edit_triggers, by id).
-- Hold: raise the floor to lock a real share of the gain, under structure: update_thesis edit_triggers on the floor's id; a review trigger above the floor moves up too, never down. What the floor locks in is its price in the \`triggers\` lines against what we paid in the \`position\` line. Breakeven only guards against a loss.
-- Take: manage_position partial_close, or close_position.
-Then one update_thesis. A trade may wait for the principal's approval.
+- Press: add (it sizes the add), then edit_triggers raising the upside trigger and the floor under the bigger position, by id.
+- Hold: raise the floor to lock a real share of the gain, under structure: edit_triggers on the floor's id; a review trigger above the floor moves up too, never down. What the floor locks in is its price in the \`triggers\` lines against what we paid in the \`position\` line. Breakeven only guards against a loss.
+- Take: sell, part or all.
+Then one write_note. A trade may wait for the principal's approval.
 
-Answered: one of the three, made with its tool, and that update_thesis.
+Answered: one of the three, made with its tool, and that write_note.
 
 The note: why the stock moved and whether that confirms why we own it; then the add, the floor raised and what it now locks in, or the trim, in one sentence.
 
@@ -207,8 +207,8 @@ Answer, in order:
 3. Where is real structure? The \`floor_risk\` line names it when the floor is too far; otherwise the 20-day low, a swing low, the breakout price, an average (the \`chart\` line, or get_stock_data).
 
 What you can do:
-- Raise the floor under that structure: update_thesis edit_triggers on the floor's id; a review trigger above the floor moves up too, never down. Tightening is always allowed. A compounder breathes wider than a trade.
-- Or protect by taking: manage_position partial_close so the loss at the floor fits, or close_position when the structure is breaking or the reward is gone.
+- Raise the floor under that structure: edit_triggers on the floor's id; a review trigger above the floor moves up too, never down. Tightening is always allowed. A compounder breathes wider than a trade.
+- Or protect by taking: sell part so the loss at the floor fits, or all when the structure is breaking or the reward is gone.
 - Or say in one sentence why this floor stands and why the risk is worth it (a binary event this week that any trail would shake out).
 
 Answered: the floor raised, a trim or a sale, or that sentence. "The business is intact" says whether to own it, not how much it can lose.
@@ -232,12 +232,12 @@ Answer, in order:
 
 What you can do:
 - Patch the triggers: edit_triggers on the ones that moved, by id.
-- They stand: update_thesis with a rationale only (trigger_id only when several fired).
+- They stand: write_note only (trigger_id only when several fired).
 - Retune the clock: edit_triggers on the review clock's id (slower for a quiet name, faster into a catalyst), or remove it, keeping one wake that can still fire, and say what would bring the stock back.
-- A condition that happened is an exit: close_position with belief_survived false.
-- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.
+- A condition that happened is an exit: sell with belief_survived false.
+- No longer applicable: stop_watching on a stock we watch; a stock we hold is sold with sell, which retires the thesis.
 
-Answered: one update_thesis on the stock. "They stand" is honest only when neither the story nor the prices moved.
+Answered: one write_note on the stock. "They stand" is honest only when neither the story nor the prices moved.
 
 The note: what has happened with the company and the stock since your last note, and what it means for why we own or watch it; then what you did, in one sentence. If nothing happened, say so and name what would change it. Never a list of what you checked.
 
@@ -246,15 +246,15 @@ Mistakes:
 - Deleting a trigger you still believe in to look at the name less.
 ${SALE_WAITS}
 
-If it watches a report: read it before anything else. Before the report: what is expected, and what has the stock done into it? Within days of it, it is sizing, not a trade: is a holding sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story; a watch holds its buy until the report. Your note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it: what did they report against what was expected, what did management say about what comes next, and how did the stock take it? The reaction is the information. The figures are in a trigger run's kickoff, or get_earnings_data in the morning read; read the call before trusting a number (web_search). A surprise on an estimate under $0.05 is left blank; judge it in dollars. Beat on both lines, guidance up: raise the upside trigger and the floor; consider adding. EPS beat, revenue missed: the beat came from cost; raise nothing on it. A beat the stock is down on: the market wanted more; tighten the floor. A miss: a broken assumption is a sale (close_position, belief_survived false); an intact story that is early stays, floored under structure; say what would change your mind. Your note then answers the bar (answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar) and gives those three answers. Never buy on a beat alone or sell on a miss alone, and never add into the print.
+If it watches a report: read it before anything else. Before the report: what is expected, and what has the stock done into it? Within days of it, it is sizing, not a trade: is a holding sized for a 10% move either way? Trim, hold through, or set the floor where a bad print breaks the story; a watch holds its buy until the report. Your note sets the bar: the number or the \`assumptions\` line the report has to clear, and what a miss would do to the verdict. After it: what did they report against what was expected, what did management say about what comes next, and how did the stock take it? The reaction is the information. The figures are in a trigger run's kickoff, or get_earnings_data in the morning read; read the call before trusting a number (web_search). A surprise on an estimate under $0.05 is left blank; judge it in dollars. Beat on both lines, guidance up: raise the upside trigger and the floor; consider adding. EPS beat, revenue missed: the beat came from cost; raise nothing on it. A beat the stock is down on: the market wanted more; tighten the floor. A miss: a broken assumption is a sale (sell, belief_survived false); an intact story that is early stays, floored under structure; say what would change your mind. Your note then answers the bar (answers_update_id with its [id …], the verdict, and verdict_line naming the number against the bar) and gives those three answers. Never buy on a beat alone or sell on a miss alone, and never add into the print.
 
-If it watches a filing: read the document first (get_sec_filings with \`read\` on its link; a trigger run's kickoff names the event and the link). The item code names the class; the document says which way it cuts, so never act on the class without reading it. On a holding: a restatement (4.02) means the numbers may be false, so sell unless it is clearly small and off-thesis, and say which; bankruptcy or a delisting notice is a sale; on a late report, find the stated reason, tighten the floor, and add nothing until it is filed; an officer leaving (5.02) is noise in a planned succession and a warning in a sudden CFO exit, so tighten the floor; an acquisition target we hold is capped at the deal price, so move the upside trigger to it and consider selling; dilution (3.02, 424B5, S-3) gets no add, and check the use of proceeds. On a watch: take the buy off on a restatement, stop watching on bankruptcy, buy nothing into a late report or an offering. It is answered by an update_thesis citing the filing you read, or by the trade; the note says what the company filed and what it says, in plain words, not the item code.
+If it watches a filing: read the document first (get_sec_filings with \`read\` on its link; a trigger run's kickoff names the event and the link). The item code names the class; the document says which way it cuts, so never act on the class without reading it. On a holding: a restatement (4.02) means the numbers may be false, so sell unless it is clearly small and off-thesis, and say which; bankruptcy or a delisting notice is a sale; on a late report, find the stated reason, tighten the floor, and add nothing until it is filed; an officer leaving (5.02) is noise in a planned succession and a warning in a sudden CFO exit, so tighten the floor; an acquisition target we hold is capped at the deal price, so move the upside trigger to it and consider selling; dilution (3.02, 424B5, S-3) gets no add, and check the use of proceeds. On a watch: take the buy off on a restatement, stop watching on bankruptcy, buy nothing into a late report or an offering. It is answered by a write_note citing the filing you read, or by the trade; the note says what the company filed and what it says, in plain words, not the item code.
 
-If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): write that playbook's watch triggers with update_thesis add_triggers and name it (setup_id), each with "playbook": "WATCH", exactly as listed, every {chart number} replaced by its price from this stock's chart today; one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS; the morning run reads them with read_knowledge_library (topic "setup" and the playbook's id).
+If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): write that playbook's watch triggers with edit_triggers' add and name it (setup_id), each with "playbook": "WATCH", exactly as listed, every {chart number} replaced by its price from this stock's chart today; one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS; the morning run reads them with read_knowledge_library (topic "setup" and the playbook's id).
 
 If it is a watch with no view yet: there are no triggers to review, and its claim is the writer's: the save carries no belief fields and refuses a call on a stock with no direction, so never write the claim yourself.
-- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your update_thesis after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.
-- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one update_thesis for what you still owe it, if anything. Or re-arm it: update_thesis with edit_triggers moving the wakes to the prices that matter now, adding a review clock (add_triggers watching "repeat") only if the stock has earned one, and saying why. Or let it go: update_thesis with change_status ARCHIVED. One of the three answers it. If you leave the wake as it is, it fires again only after a close finds it false, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
+- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your edit_triggers after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.
+- With no clock, it comes back only when one of its wakes fires: one did, and it asks one question, do you want this stock back? What has happened with the company and the stock since you set the wake? Bring it back through the writer the same way, then one write_note for what you still owe it, if anything. Or re-arm it: edit_triggers moving the wakes to the prices that matter now, adding a review clock (add, watching "repeat") only if the stock has earned one, and saying why. Or let it go: stop_watching. One of the three answers it. If you leave the wake as it is, it fires again only after a close finds it false, so when your answer won't change, move it to the price that matters now or let the stock go. The note: what has happened with the company and the stock since you set the wake; then brought back for research, watched for a new price, or let go, in one sentence.`,
   },
   NOTE_TO_ANSWER: {
     name: "a note to answer",
@@ -265,12 +265,12 @@ Answer, in order:
 2. What has happened with the company and the stock since they said it (get_stock_data, web_search)?
 
 What you can do:
-- An instruction ("add on a close above $74"): carry it out with the tools, usually as a trigger via update_thesis.
-- A question: do the work it asks for and answer in your rationale. Answering the question is the action.
+- An instruction ("add on a close above $74"): carry it out with the tools, usually as a trigger via edit_triggers.
+- A question: do the work it asks for and answer in your note. Answering the question is the action.
 - A decline with no reason: do not propose the same buy or add again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not.
 - An approval with a different size, or a price they set: honor their numbers, never revert them. A cut size is caution, a raised one is conviction.
 
-Answered: your one update_thesis on the stock, quoting them and saying what you decided on each.
+Answered: your one write_note on the stock, quoting them and saying what you decided on each.
 
 The note: their words, quoted, then your answer: what you found about the company and the stock, and what you did about each thing they asked.
 
@@ -278,7 +278,7 @@ Mistakes:
 - Taking an expired proposal for a decision: it may be proposed again if the playbook holds.
 ${SALE_WAITS}
 
-If a note is pinned: an Agent note (the 7:30 Market Reviewer's) or the principal's, on this stock alone or with others. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account, and it names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it. What does it say is coming, and when? Does it reach why we own or watch this stock? Check its claim and the stock's own news against the data (the Market numbers too). Do its triggers still fit what is coming: the floor and the size on a holding, the buy and the research on a watch? Then one of these. Act on it: on a holding, an add on good news (manage_position add_to_position sizes it), a trim or a sale proposal, or a floor moved up with update_thesis; on a watch, a buy at today's price on good news (the buy trigger moved to at or near the current price, edit_triggers by its id), a buy price moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go. Or keep its triggers, saying in one sentence why the note doesn't change them for this stock. It is a read on the market, not an order: the stock's own case still decides, and a floor is never moved down or loosened because of it (only the principal lowers a floor). Your update_thesis names the pinned note and says what it means here; the stock leaves this situation once you have written, and the note stays pinned for the others it covers. The note: what the pinned note says is coming, what it means for this stock and why, then what you did, in one sentence.`,
+If a note is pinned: an Agent note (the 7:30 Market Reviewer's) or the principal's, on this stock alone or with others. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account, and it names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it. What does it say is coming, and when? Does it reach why we own or watch this stock? Check its claim and the stock's own news against the data (the Market numbers too). Do its triggers still fit what is coming: the floor and the size on a holding, the buy and the research on a watch? Then one of these. Act on it: on a holding, an add on good news (add sizes it), a trim or a sale proposal, or a floor moved up with edit_triggers; on a watch, a buy at today's price on good news (the buy trigger moved to at or near the current price, edit_triggers by its id), a buy price moved, the research refreshed through the writer (dispatch_thesis_research, mode "refresh"), or let it go. Or keep its triggers, saying in one sentence why the note doesn't change them for this stock. It is a read on the market, not an order: the stock's own case still decides, and a floor is never moved down or loosened because of it (only the principal lowers a floor). Your write_note names the pinned note and says what it means here; the stock leaves this situation once you have written, and the note stays pinned for the others it covers. The note: what the pinned note says is coming, what it means for this stock and why, then what you did, in one sentence.`,
   },
   SOLD_ONE_REVIEW: {
     name: "just sold",
@@ -293,9 +293,9 @@ What you can do (one of these):
 - Keep watching on a review cadence.
 - Keep watching with nothing set (legal, and it costs nothing).
 - Let it go.
-Put it back on watch with update_thesis on its thesis_id, change_status "WATCHING", plus whatever wakes it; to let it go, write the one-line reason on an update_thesis and it clears.
+Put it back on watch with watch_again on its thesis_id, then whatever wakes it with edit_triggers; to let it go, write the one-line reason with write_note and it clears.
 
-Answered: one update_thesis saying which you chose and why.
+Answered: one write_note saying which you chose and why.
 
 The note: what the stock has done since the sale, and whether the reason we owned it survived; then whether you keep watching it and for what, or let it go, in one sentence.
 
@@ -306,15 +306,15 @@ Mistakes:
 
 /**
  * Situations whose answer needs fields the trigger run's save lacks, so the
- * morning run answers them: putting a sold stock back on watch (change_status,
- * which the trigger run's save has not had since #825; a sold stock is never a
+ * morning run answers them: putting a sold stock back on watch (watch_again,
+ * which the trigger run has not had since #825; a sold stock is never a
  * trigger run's stock anyway). A seed's first research is a line below.
  */
 const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["SOLD_ONE_REVIEW"]);
 
 /**
  * The trigger run's words where a text names a status change (step 12, part
- * 2): its save has no change_status (#825), so where the morning run and the
+ * 2): it has no status tool (#825), so where the morning run and the
  * chat retire, drop or defer a stock, the trigger run takes its triggers off
  * by id and says so in its note, and the morning run decides. Each pair is a
  * line of the text above, word for word, and the line the trigger run reads
@@ -323,8 +323,8 @@ const NOT_FOR_THE_TRIGGER_RUN: ReadonlySet<SituationCode> = new Set(["SOLD_ONE_R
 export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<readonly [string, string]>>> = {
   PROMOTED_AWAITING: [
     [
-      `- Defer: update_thesis with change_status "WATCHING". The next run looks at it again.`,
-      `- Defer: one update_thesis saying why. This run's save has no status change: the stock stays promoted and the morning run decides.`,
+      `- Defer: watch_again. The next run looks at it again.`,
+      `- Defer: one write_note saying why. This run has no status tool: the stock stays promoted and the morning run decides.`,
     ],
     [
       `- A note in place of the decision: the stock stays promoted and is asked again on the next run.`,
@@ -333,19 +333,19 @@ export const TRIGGER_RUN_LINES: Partial<Record<SituationCode, ReadonlyArray<read
   ],
   REVIEW_DUE: [
     // The trigger run's save is handed the trigger that fired (ToolContext.runStock).
-    [`- They stand: update_thesis with a rationale only (trigger_id only when several fired).`, `- They stand: update_thesis with a rationale only.`],
+    [`- They stand: write_note only (trigger_id only when several fired).`, `- They stand: write_note only.`],
     [
-      `Or let it go: update_thesis with change_status ARCHIVED.`,
-      `Or let it go: update_thesis with remove_trigger_ids naming its wakes, and say in the note that it can go. It stays on the watchlist with nothing to wake it; dropping it for good is the morning run's call.`,
+      `Or let it go: stop_watching.`,
+      `Or let it go: edit_triggers with remove naming its wakes, and say in the note that it can go. It stays on the watchlist with nothing to wake it; dropping it for good is the morning run's call.`,
     ],
     // A seed's first research is the morning run's, as when it had its own situation (#811).
     [
-      `- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your update_thesis after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.`,
+      `- With a review clock of its own it is a seed, due its first research on that clock (the \`research\` line says "No write-up yet", and names the date when the last write-up failed). Have it researched: dispatch_thesis_research with mode "refresh" and existing_thesis_id set to this stock's id, then wait_for_thesis_refresh on the child run. The writer reads the stock, writes the claim (the belief, the assumptions, what would prove it wrong), writes its triggers and commits the view, LONG, SHORT or PASS; the wait tool's reply says what landed, or why it failed. That write-up is the stock's first note and answers it; your edit_triggers after it comes only when you change something (a trigger moved or a review clock), saying what and why in a sentence or two. A failed write-up is dispatched again; the seed stays, asked again on its clock.`,
       `- With a review clock of its own it is a seed, due its first research on that clock, and the morning run answers it: this run leaves it as it is.`,
     ],
     [
-      `- No longer applicable: change_status INVALIDATED on a stock we watch; a stock we hold is sold with close_position, which retires the thesis.`,
-      `- No longer applicable: on a stock we watch, take its buy and its Stop watching line off by id (remove_trigger_ids) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with close_position, which retires the thesis.`,
+      `- No longer applicable: stop_watching on a stock we watch; a stock we hold is sold with sell, which retires the thesis.`,
+      `- No longer applicable: on a stock we watch, take its buy and its Stop watching line off by id (edit_triggers with remove) and say so in the note; the morning run decides whether it stays on the book. A stock we hold is sold with sell, which retires the thesis.`,
     ],
   ],
 };

@@ -42,7 +42,9 @@ interface Props {
 const READ_TOOLS = new Set(["get_theses"]);
 /** A dispatched writer is a thesis being written — its own section. */
 const DISPATCH_TOOLS = new Set(["dispatch_thesis_research"]);
-const WRITE_TOOLS = new Set(["record_thesis", "show_thesis", "update_thesis"]);
+/** The thesis edits, one tool each since 2026-11-18 (update_thesis on older runs); each returns its card under data.card. */
+const EDIT_TOOLS = new Set(["update_thesis", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"]);
+const WRITE_TOOLS = new Set(["record_thesis", "show_thesis", "pass_on_stock", ...EDIT_TOOLS]);
 
 export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
   const content = useMessage((m) => m.content);
@@ -333,7 +335,7 @@ function buildWriteHeading(
   const recordCount = parts.filter(
     (p) => p.toolName === "record_thesis" || p.toolName === "show_thesis",
   ).length;
-  const updateCount = parts.filter((p) => p.toolName === "update_thesis").length;
+  const updateCount = parts.filter((p) => EDIT_TOOLS.has(p.toolName as string)).length;
   const noun = count === 1 ? "thesis" : "theses";
   if (recordCount > 0 && updateCount === 0) return `Wrote ${count} ${noun}`;
   if (updateCount > 0 && recordCount === 0) return `Edited ${count} ${noun}`;

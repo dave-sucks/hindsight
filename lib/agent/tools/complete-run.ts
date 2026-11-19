@@ -550,8 +550,8 @@ async function runCompleteRunPreflight(
     message:
       `complete_run refused: your read listed ${n === 1 ? "this stock" : `these ${n} stocks`} as work and this run has not answered ${n === 1 ? "it" : "them"}. ` +
       owed.map((o) => `${o.ticker} (${o.id}): ${o.names}`).join("; ") +
-      `. Answer each with update_thesis (a note-only review counts)` +
-      (promoted ? `; a promoted stock is re-entered with place_trade or deferred with change_status "WATCHING"` : "") +
+      `. Answer each with write_note` +
+      (promoted ? `; a promoted stock is re-entered with place_trade or deferred with watch_again` : "") +
       `, then call complete_run again.`,
   };
 }
