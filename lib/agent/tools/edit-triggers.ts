@@ -26,7 +26,7 @@ import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import type { TriggerOpResult } from "@/lib/agent/triggers/ops";
+import { collision, type TriggerOpResult } from "@/lib/agent/triggers/ops";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 
 /** One of the stock's playbook triggers, by its reference as the playbook lists it. */
@@ -114,6 +114,9 @@ export interface AddPricing {
   setupId: string | null;
   templates: Template[] | null;
   at: FillPrices;
+  /** The triggers the principal wrote on the stock, and its direction: a playbook trigger never replaces one of them (#1003). */
+  owners?: Trigger[];
+  direction?: string | null;
 }
 
 /** True when an add names a playbook trigger or a key, so pricing has something to read. */
@@ -133,7 +136,7 @@ async function loadPricing(args: { thesis_id: string; setup_id?: string }, ctx: 
     : null;
   const at: FillPrices = { chart: needChart ? await loadFillChart(thesis.ticker) : null, buy: position?.avgCost != null ? Number(position.avgCost) : null, sale: floor ? typedPriceOf(floor) : null };
   const templates = isNamedSetup(setupId) ? await loadPlaybook(ctx.accountId, setupId) : null;
-  return { p: { ticker: thesis.ticker, held, setupId, templates, at }, stored };
+  return { p: { ticker: thesis.ticker, held, setupId, templates, at, owners: stored.filter((t) => t.source === "PRINCIPAL"), direction: thesis.direction }, stored };
 }
 
 /**
@@ -188,6 +191,9 @@ export function priceAddsWith(adds: Add[], p: AddPricing): { adds: unknown[]; re
       if (watchRef === held) { refuse(`Added: ${ref} · ${templateSentence(found.template)}`, held ? `${ref} is a watch's trigger, and we own $${ticker}: a holding takes the H triggers.` : `${ref} is a holding's trigger, and we only watch $${ticker}: a watch takes the W triggers.`); continue; }
       const priced = pricedTemplate(found.template, at);
       if ("missing" in priced) { refuse(`Added: ${ref} · ${templateSentence(found.template)}`, `Not written: ${missingKeys(priced.missing, at)}. Write the trigger yourself with a price from the chart, or leave it.`); continue; }
+      // A playbook trigger never replaces one the principal wrote (it would land in the same slot as an edit of theirs).
+      const his = p.owners?.length ? collision(p.owners, { ...priced.trigger, id: "" } as Trigger, p.direction ?? null) : undefined;
+      if (his) { refuse(`Added: ${ref} · ${sentenceOf({ ...priced.trigger, id: "" } as Trigger)}`, `The principal wrote ${sentenceOf(his)} on $${ticker}, and ${ref} would replace it: theirs stays. To change theirs, edit it by id with your reason.`); continue; }
       out.push({ ...priced.trigger, ...(a.rationale?.trim() ? { rationale: a.rationale.trim() } : {}) });
       continue;
     }

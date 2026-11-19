@@ -11,7 +11,8 @@ import { getSetup, isBinaryBet, preCatalystWindowLine } from "@/lib/agent/knowle
 import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 import { loadFillChart } from "@/lib/proposals/fill-chart";
-import { playbookFloor } from "@/lib/agent/knowledge/playbooks";
+import { PLAYBOOK_UNREAD, buyAverageOf, playbookFloor } from "@/lib/agent/knowledge/playbooks";
+import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
 import { recordBuyBlockedByFull } from "@/lib/agent/record-buy-blocked";
 import { randomUUID } from "node:crypto";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -127,9 +128,10 @@ async function priceTheFloor(a: { thesisId: string; ticker: string; entry: numbe
   const thesis = await prisma.thesis.findUnique({ where: { id: a.thesisId }, select: { setupId: true, horizon: true } });
   const setup = thesis?.setupId ? getSetup(thesis.setupId, await loadSetupOverrides(a.accountId)) : undefined;
   if (!setup) return { refused: `$${a.ticker} has no playbook, so there is no floor to price.` };
-  const [chart, snapshots] = await Promise.all([loadFillChart(a.ticker), loadIndicatorSnapshots([a.ticker]).catch(() => null)]);
+  const [chart, snapshots, templates] = await Promise.all([loadFillChart(a.ticker), loadIndicatorSnapshots([a.ticker]).catch(() => null), loadPlaybook(a.accountId, setup.id)]);
   const atr = snapshots?.get(a.ticker)?.atr14 ?? null;
-  return playbookFloor({ setup, horizon: thesis?.horizon ?? null, entry: a.entry, chart, atr: atr != null ? Math.round(atr * 100) / 100 : null });
+  if (setup.sale.floor?.orHigher && "atrUnderBuyAverage" in setup.sale.floor.orHigher && templates == null) return { refused: `${PLAYBOOK_UNREAD}, so its buy trigger's average can't be read.` };
+  return playbookFloor({ setup, horizon: thesis?.horizon ?? null, entry: a.entry, chart, atr: atr != null ? Math.round(atr * 100) / 100 : null, buyAverage: buyAverageOf(templates) });
 }
 
 export const placeTrade = defineTool({

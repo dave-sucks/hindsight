@@ -12,15 +12,15 @@ import type { PriceStructure } from "@/lib/market-data/price-structure";
 
 const TRV = {
   price: 398.95,
-  sma: { d50: { value: 370.18 } },
+  sma: { d20: { value: 371.38 }, d50: { value: 370.18 } },
   atr14: { dollars: 7.78, pct: 1.95 },
   swings: { lastLow: { price: 353.79, date: "2026-10-01" } },
   base: { pivot: 398.7, low: 341.52 },
   range: { high20: 399.71, low20: 353.79 },
   gaps: [{ date: "2026-10-16", direction: "DOWN", pct: -3.62, volumeRatio: 2.56, low: 368.63, mid: 379.77, high: 390.91 }],
 } as unknown as PriceStructure;
-const at = (setupId: string, o: { horizon?: string | null; entry?: number; chart?: PriceStructure | null; atr?: number | null } = {}) =>
-  playbookFloor({ setup: getSetup(setupId)!, horizon: o.horizon ?? null, entry: o.entry ?? 398.95, chart: o.chart === undefined ? TRV : o.chart, atr: o.atr === undefined ? 7.78 : o.atr });
+const at = (setupId: string, o: { horizon?: string | null; entry?: number; chart?: PriceStructure | null; atr?: number | null; buyAverage?: string | null } = {}) =>
+  playbookFloor({ setup: getSetup(setupId)!, horizon: o.horizon ?? null, entry: o.entry ?? 398.95, chart: o.chart === undefined ? TRV : o.chart, atr: o.atr === undefined ? 7.78 : o.atr, buyAverage: o.buyAverage === undefined ? "sma50" : o.buyAverage });
 
 describe("the playbook's floor, when a buy names none: its words in code", () => {
   it("the key its words name: a run-up's swing low, a compounder's swing low inside its 25%", () => {
@@ -34,17 +34,19 @@ describe("the playbook's floor, when a buy names none: its words in code", () =>
     expect(at("BASE_BREAKOUT", { horizon: "TRADE" })).toEqual(refused);
   });
 
-  it("the words' other level when it is higher: a pullback's one ATR under the 50-day, PEAD's 8% under the buy", () => {
-    // $370.18 − $7.78 = $362.40, above the $353.79 swing low.
+  it("the words' other level when it is higher: a pullback's one ATR under the average its buy names, PEAD's 8% under the buy", () => {
+    // The playbook's buy is near the 50-day: $370.18 − $7.78 = $362.40, above the $353.79 swing low. Edited to the 20-day: $371.38 − $7.78.
     expect(at("MA_PULLBACK")).toEqual({ price: 362.4, key: "{swingLow}" });
+    expect(at("MA_PULLBACK", { buyAverage: "sma20" })).toEqual({ price: 363.6, key: "{swingLow}" });
     // The gap day's low $368.63 against 8% under the buy: $367.03 at $398.95, $377.20 at $410.
     expect(at("PEAD")).toEqual({ price: 368.63, key: "{gapDayLow}" });
     expect(at("PEAD", { entry: 410 })).toEqual({ price: 377.2, key: "{gapDayLow}" });
   });
 
-  it("refused when it can't be checked: no ATR, or a pullback's 50-day unread", () => {
+  it("refused when it can't be checked: no ATR, a buy trigger that names no average, or its average unread", () => {
     expect(at("PRE_CATALYST", { atr: null, chart: { ...TRV, atr14: null } as PriceStructure })).toEqual({ refused: "The ATR couldn't be read, so the floor's distance from the buy can't be checked." });
-    expect(at("MA_PULLBACK", { chart: { ...TRV, sma: { d50: null } } as unknown as PriceStructure })).toEqual({ refused: "The playbook's floor takes one ATR under the 50-day average when that is higher, and the 50-day couldn't be read." });
+    expect(at("MA_PULLBACK", { buyAverage: null })).toEqual({ refused: "The playbook's floor takes one ATR under the average bought when that is higher, and its buy trigger names no average." });
+    expect(at("MA_PULLBACK", { chart: { ...TRV, sma: { d50: null } } as unknown as PriceStructure })).toEqual({ refused: "The playbook's floor takes one ATR under the 50-day average when that is higher, and it couldn't be read." });
   });
 
   it("refused when the level is within one ATR of the buy, or not under it", () => {

@@ -56,9 +56,7 @@ const OLD_KEYS = /entry_?price|target_?price|stop_?loss/i;
 /** A trigger run's model call on a fired buy: the sale comes with it. */
 const SALE = 48.61;
 const SALE_REASON = "Below $48.61 the 50-day failed as support and the pullback is a trend break: 1 ATR under the average.";
-/** MA_PULLBACK's Trim, at the prior high the pullback came from: the chart's last swing high, $60.56 on October 29 (the Writer's own target_basis). */
-const TRIM = 60.56;
-/** The chart at the fill: only the numbers the playbook's triggers that come with the buy read. */
+/** The chart a key is priced from (lib/proposals/fill-chart.ts): only the numbers the playbook's triggers read. */
 jest.mock("@/lib/proposals/fill-chart", () => ({
   loadFillChart: async () => ({ price: 52.18, swings: { lastHigh: { price: 60.56, date: "2026-10-29" }, lastLow: null }, gaps: [], base: null, range: { high20: 60.56, low20: 47.9, high52w: 60.56, low52w: 30, pctBelow52wHigh: 14, pctAbove52wLow: 74 } }),
 }));
@@ -195,7 +193,7 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     expect(thesisOf().status).toBe("WATCHING");
   });
 
-  it("3. approved, then filled: the watch's lines come off, Sell if below goes on with its reason, the playbook's fill templates land, HOLDING", async () => {
+  it("3. approved, then filled: the watch's lines come off, Sell if below goes on with its reason, HOLDING; the playbook's other triggers are After the buy's", async () => {
     const order = proposalOf("OPEN");
     jest.useFakeTimers({ now: new Date("2026-11-17T15:00:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     withItsPosition(order);
@@ -213,13 +211,11 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     expect(said.some((s) => s.startsWith("Stop watching"))).toBe(false);
     expect(said).toContain(`Sell if below $${SALE}`);
     expect(triggersOf().find((t) => sentenceOf(t) === `Sell if below $${SALE}`)!.rationale).toBe(SALE_REASON);
-    // The playbook's Trim, written by the fill at the chart's prior high, never as a review; the review written by hand stays.
-    expect(said).toContain(`Trim 50% if above $${TRIM}`);
-    expect(triggersOf().find((t) => sentenceOf(t) === `Trim 50% if above $${TRIM}`)).toMatchObject({ action: "TRIM", trimPct: 50, playbook: "PROPOSAL", rationale: "The prior high the pullback came from." });
+    // Nothing else is stamped: MA_PULLBACK's Trim, its reviews and its 50-day sale are After the buy's to put on
+    // (lib/proposals/after-buy.ts); the review written by hand stays, and the watch's clock is gone.
+    expect(said.some((s) => s.startsWith("Trim"))).toBe(false);
     expect(said).toContain("Review if above $60.56");
-    // MA_PULLBACK's triggers written at the fill (the seed list); the watch's clock is gone.
-    expect(triggersOf().filter((t) => t.playbook === "FILL").map(sentenceOf)).toEqual(["Review every 7 days", "Sell if below the 50-day average and at least 1.5× normal volume", "Review 14 days after the buy"]);
-    expect(triggersOf().filter((t) => t.playbook === "WATCH")).toEqual([]);
+    expect(triggersOf().filter((t) => t.playbook === "PROPOSAL" || t.playbook === "FILL" || t.playbook === "WATCH")).toEqual([]);
     expect(rows("position").find((p) => p.id === order.positionId)).toMatchObject({ status: "OPEN", avgCost: 52.18 });
   });
 

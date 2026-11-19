@@ -91,12 +91,13 @@ export type Placeholder = `{${string}}`;
 
 /**
  * A playbook's floor words in code (playbookFloor): the key they name, the most % under the buy they
- * allow, and the other level they take when it is higher (a % under the buy, or one ATR under the 50-day).
+ * allow, and the other level they take when it is higher (a % under the buy, or one ATR under the
+ * average the playbook's own buy trigger names).
  */
 export interface SaleFloor {
   key: Placeholder;
   maxPct?: number;
-  orHigher?: { pctUnder: number } | { atrUnder: "sma50" };
+  orHigher?: { pctUnder: number } | { atrUnderBuyAverage: true };
 }
 
 /**
@@ -434,7 +435,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
-    sale: { maxPct: null, minAtr: MIN_STOP_ATR, floor: { key: "{swingLow}", orHigher: { atrUnder: "sma50" } } },
+    sale: { maxPct: null, minAtr: MIN_STOP_ATR, floor: { key: "{swingLow}", orHigher: { atrUnderBuyAverage: true } } },
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],

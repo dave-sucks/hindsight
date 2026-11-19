@@ -156,6 +156,9 @@ async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise
   return prompts[0];
 }
 
+/** The run's call, verbatim but for its sale: its stop_loss is today's sell_if_below with its reason (the old field is read by nothing). */
+const SENT = { ...fx.placeTrade, sell_if_below: fx.placeTrade.stop_loss, sell_reason: "Under the pullback's low." };
+
 describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
   it("the trigger run is told the days to the event and where the setup's window is", async () => {
     const kickoff = await at(fx.run.startedAt, triggerRunKickoff);
@@ -183,8 +186,8 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
           maxPositionSize: fx.analyst.maxPositionSize,
           maxOpenPositions: fx.analyst.maxOpenPositions,
         },
-        // The call the run made, verbatim.
-        args: fx.placeTrade,
+        // The call the run made, its sale as today's field.
+        args: SENT,
         quotes: { CORT: 113.71 },
         // The industry line reads Finnhub through research-helpers, which
         // the harness doesn't double; keep the test off the network.
@@ -225,7 +228,7 @@ describe("CORT 2026-09-29 — a pre-event buy 79 days out", () => {
           // What the trigger run hands its tools (tactical-run.ts): the buy that fired, on CORT.
           firedTrigger: { ticker: "CORT", side: "BUY", triggerIds: [fx.run.parameters.triggerId] },
         },
-        args: fx.placeTrade,
+        args: SENT,
         quotes: { CORT: 113.71 },
         mocks: {
           "@/lib/agent/research-helpers": () => ({

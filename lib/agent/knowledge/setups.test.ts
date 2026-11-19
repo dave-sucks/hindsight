@@ -6,6 +6,7 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
+import { buyAverageOf } from "./playbooks";
 import {
   PLACEHOLDERS,
   setupsForAnalyst,
@@ -67,14 +68,16 @@ describe("the setup catalog", () => {
       expect([s.id, f.maxPct ?? null]).toEqual([s.id, max ? Number(max[1]) : null]);
       const pctOr = words.match(/or (\d+)% under the buy, whichever is higher/);
       const atrOr = /or 1 ATR under the average bought if that is higher/.test(words);
-      expect([s.id, f.orHigher ?? null]).toEqual([s.id, pctOr ? { pctUnder: Number(pctOr[1]) } : atrOr ? { atrUnder: "sma50" } : null]);
+      expect([s.id, f.orHigher ?? null]).toEqual([s.id, pctOr ? { pctUnder: Number(pctOr[1]) } : atrOr ? { atrUnderBuyAverage: true } : null]);
+      // "The average bought" is the one the playbook's own buy trigger names: it names one.
+      if (atrOr) expect([s.id, buyAverageOf(s.triggers)]).toEqual([s.id, "sma50"]);
       return [`${s.id} ${f.key}${f.maxPct != null ? ` at most ${f.maxPct}%` : ""}${f.orHigher ? ` or ${JSON.stringify(f.orHigher)}` : ""}`];
     });
     expect(said).toEqual([
       "BASE_BREAKOUT {baseLow} at most 8%",
       "EPISODIC_PIVOT {gapDayLow}",
       'PEAD {gapDayLow} or {"pctUnder":8}',
-      'MA_PULLBACK {swingLow} or {"atrUnder":"sma50"}',
+      'MA_PULLBACK {swingLow} or {"atrUnderBuyAverage":true}',
       "PRE_CATALYST {swingLow}",
       "COMPOUNDER_ACCUMULATION {swingLow} at most 25%",
     ]);

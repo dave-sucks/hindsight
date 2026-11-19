@@ -208,6 +208,20 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
   return { triggers, notWritten };
 }
 
+/** A buy trigger's average, by its variable, on the chart. */
+const AVERAGES: Record<string, "d20" | "d50" | "d150" | "d200"> = { sma20: "d20", sma50: "d50", sma150: "d150", sma200: "d200" };
+
+/** The average a playbook's buy trigger names (its variable, alone or inside an "and"); null when it names none, undefined when the playbook is unread. */
+export function buyAverageOf(templates: Template[] | null): string | null | undefined {
+  if (!templates) return undefined;
+  const named = (p: unknown): string[] => {
+    const c = (p ?? {}) as { match?: string; conditions?: unknown[]; variable?: unknown };
+    if (c.match === "all" && Array.isArray(c.conditions)) return c.conditions.flatMap(named);
+    return typeof c.variable === "string" && AVERAGES[c.variable] ? [c.variable] : [];
+  };
+  return templates.filter((t) => t.action === "ENTER").flatMap((t) => named(t.predicate))[0] ?? null;
+}
+
 /**
  * The floor a buy gets when it names none: its playbook's floor words in code
  * (`sale.floor`, ./setups.ts) on today's chart. The key's number, or the
@@ -215,7 +229,7 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
  * held to the playbook's sale rules. Otherwise why not, so the run names the
  * floor itself. Code never writes a floor that breaks the words. Pure.
  */
-export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null }): { price: number; key: Placeholder } | { refused: string } {
+export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null; buyAverage?: string | null }): { price: number; key: Placeholder } | { refused: string } {
   const f = p.setup.sale.floor;
   if (!f) return { refused: "The playbook's floor names no chart key." };
   const at: FillPrices = { chart: p.chart, buy: p.entry, sale: null };
@@ -224,9 +238,15 @@ export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: 
   // Every floor's words keep it at least an ATR under the buy: with no ATR that can't be checked.
   const atr = p.atr ?? p.chart?.atr14?.dollars ?? null;
   if (atr == null) return { refused: "The ATR couldn't be read, so the floor's distance from the buy can't be checked." };
-  const sma50 = p.chart?.sma.d50?.value ?? null;
-  const other = !f.orHigher ? null : "pctUnder" in f.orHigher ? p.entry * (1 - f.orHigher.pctUnder / 100) : sma50 != null ? sma50 - atr : undefined;
-  if (other === undefined) return { refused: "The playbook's floor takes one ATR under the 50-day average when that is higher, and the 50-day couldn't be read." };
+  let other: number | null = null;
+  if (f.orHigher && "pctUnder" in f.orHigher) other = p.entry * (1 - f.orHigher.pctUnder / 100);
+  else if (f.orHigher) {
+    // The average bought is the one the playbook's own buy trigger names (buyAverageOf), read off the chart.
+    if (!p.buyAverage) return { refused: "The playbook's floor takes one ATR under the average bought when that is higher, and its buy trigger names no average." };
+    const avg = AVERAGES[p.buyAverage] ? p.chart?.sma[AVERAGES[p.buyAverage]]?.value ?? null : null;
+    if (avg == null) return { refused: `The playbook's floor takes one ATR under the ${p.buyAverage.slice(3)}-day average when that is higher, and it couldn't be read.` };
+    other = avg - atr;
+  }
   const price = Math.round(Math.max(level, other ?? level) * 100) / 100;
   if (price >= p.entry) return { refused: `The playbook's floor ${f.key} is $${price.toFixed(2)}, not under the $${p.entry.toFixed(2)} buy.` };
   const pct = ((p.entry - price) / p.entry) * 100;
