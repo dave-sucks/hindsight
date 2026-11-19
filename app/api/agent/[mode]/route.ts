@@ -9,7 +9,7 @@
  * System prompts live there too. The route just assembles and streams.
  */
 
-import { streamText, stepCountIs, hasToolCall, type ModelMessage, type ToolSet } from "ai";
+import { createUIMessageStreamResponse, streamText, stepCountIs, hasToolCall, type ModelMessage, type ToolSet } from "ai";
 import { cachedMessages, cachedSystem, cachedTools, historyForModel } from "@/lib/agent/prompt-cache";
 import { hideOldLookups, withFirstMessage, withNewestParts } from "@/lib/agent/old-lookups";
 import { modelFor } from "@/lib/agent/model";
@@ -32,6 +32,8 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { analystScope } from "@/lib/agent/analyst-scope";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { bookCardInThread, withBookCardFirst } from "@/lib/agent/book-card";
+import { bookOnScreen } from "@/lib/agent/context/the-book";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 import { MODES, BUILDER_SYSTEM_PROMPT, buildEditorSystemPrompt } from "@/lib/agent/modes";
 import type { AgentMode } from "@/lib/agent/modes";
@@ -707,12 +709,16 @@ export async function POST(
     // defineTool factories — they don't need ToolContext).
     const tools: Record<string, unknown> = { ...filteredTools };
 
+    // The book's card at the top of a morning run's first turn: the read its first message carries, shown.
+    let bookShown: unknown = null;
     // A morning run's request: its facts read for the analyst, its book through this run's own get_theses.
     if (morning) {
-      const daily = await morningRunRequest({ subject: morning.subject, now: new Date(), agent: "morning_run", toolset: allTools as ToolSet }, morning.runInput);
+      const contextRun: Parameters<typeof morningRunRequest>[0] = { subject: morning.subject, now: new Date(), agent: "morning_run", toolset: allTools as ToolSet };
+      const daily = await morningRunRequest(contextRun, morning.runInput);
       systemPrompt = daily.instructions;
       // Another run's page (a trigger run, the Writer) keeps that run's own first message.
       if (savedMode === "MORNING_PLAN") firstMessage = daily.message;
+      if (firstMessage != null && !messages?.some((m: { role?: string }) => m.role === "assistant")) bookShown = await bookOnScreen(contextRun);
       systemParts = firstMessage != null ? daily.parts : daily.parts.filter((p) => p.where === "instructions");
       systemAgent = daily.agent;
     }
@@ -993,8 +999,8 @@ export async function POST(
           await recordTokenUsage(runId, tokenUsage, effectiveModel);
 
           // Persist messages (run-thread.ts): the turns the client sent, as
-          // the screen holds them, then this turn's.
-          await saveRunThread(runId!, { opening: messages ?? [], messages: response?.messages, steps }, `agent/${agentMode}`);
+          // the screen holds them, the book's card on a first turn, then this turn's.
+          await saveRunThread(runId!, { opening: [...(messages ?? []), ...bookCardInThread(bookShown)], messages: response?.messages, steps }, `agent/${agentMode}`);
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // continuity now comes from the account-level PortfolioDigest read
@@ -1021,7 +1027,7 @@ export async function POST(
       );
     }
 
-    return result.toUIMessageStreamResponse();
+    return bookShown == null ? result.toUIMessageStreamResponse() : createUIMessageStreamResponse({ stream: withBookCardFirst(result.toUIMessageStream(), bookShown) });
   } catch (err) {
     const elapsed = Date.now() - t0;
     const msg = err instanceof Error ? err.message : String(err);

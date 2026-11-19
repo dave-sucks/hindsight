@@ -123,6 +123,8 @@ export default async function RunPage({
   // (a) wrong route, (b) spawn a competing agent. Replay still works
   // through the existing message-persistence path.
   const isPrincipalChatMode = run.mode === "PRINCIPAL_CHAT";
+  // The 8 AM cron runs its morning run on the server (morning-research.ts); its page starting one would be a second agent.
+  const isCronRun = config.triggeredBy === "morning-cron";
   // The Portfolio Digest's run: written on the server, read only.
   const readOnly = READ_ONLY_RUN_MODES.has(run.mode);
   // What its model call was sent (lib/agent/run-requests.ts); none for other runs yet.
@@ -159,7 +161,7 @@ export default async function RunPage({
             runId={id}
             analystId={isPodcastSegmentRun ? undefined : run.agentConfig?.id}
             analystName={analystName}
-            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !readOnly}
+            autoStart={isLive && !isTacticalMode && !isInngestSegmentRun && !isThesisWriterMode && !isPrincipalChatMode && !isCronRun && !readOnly}
             readOnly={readOnly}
             requests={requests}
             messages={persistedMessages ?? undefined}
