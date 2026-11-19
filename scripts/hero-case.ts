@@ -56,7 +56,7 @@ import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
 import { grade } from "@/lib/agent/yardstick/grade";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
-import { inOldShape } from "@/lib/agent/yardstick/old-shape";
+import { explainOldShape } from "@/lib/agent/yardstick/old-shape";
 
 interface HeroCase {
   what: string;
@@ -555,14 +555,15 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         })),
       });
     }
-    // Graded in the cases' shape: today's one-job calls as the tools they replaced.
-    const graded = inOldShape(calls, c.mode === "principal");
+    // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
+    const { graded, unmapped } = explainOldShape(calls, c.mode === "principal");
     const verdict = score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
+    for (const u of unmapped) console.log(`UNMAPPED ${u.toolName} (${u.why}): ${JSON.stringify(u.input).slice(0, 300)}`);
     for (const r of reads) console.log(`READ ${r.toolName}: ${String((r.output as { summary?: string; error?: string })?.summary ?? (r.output as { error?: string })?.error ?? "").slice(0, 240)}`);
     const triggerFields = graded.map((c) => {
       const a = (c.input ?? {}) as Record<string, unknown>;
@@ -571,7 +572,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     // A read the case runs for real is part of what the run was shown.
     const grades = grade({ calls: graded, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, unmapped, graded, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

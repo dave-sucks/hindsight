@@ -40,8 +40,33 @@ function oneInOldShape(c: Call): Call {
   }
 }
 
+/** The one-job tools, and the field each one's old shape keys on (a stock, or a thesis). */
+const KEY_OF: Record<string, string> = {
+  sell: "ticker", add: "ticker", pass_on_stock: "ticker",
+  write_note: "thesis_id", edit_triggers: "thesis_id", set_conviction: "thesis_id", set_catalyst_date: "thesis_id", stop_watching: "thesis_id", watch_again: "thesis_id",
+};
+
 /** A run's calls in the old shape: today's thesis calls on one stock merged into one update_thesis. The chat's write_note is the owner's note, as it was. */
 export function inOldShape(calls: Call[], isChat = false): Call[] {
+  return explainOldShape(calls, isChat).graded;
+}
+
+/**
+ * The same, with every call of today's tools that could not be put in the old
+ * shape faithfully: one missing the stock or thesis its old call keyed on. It
+ * is graded as translated, and listed, so nothing is credited or dropped unseen.
+ */
+export function explainOldShape(calls: Call[], isChat = false): { graded: Call[]; unmapped: Array<{ toolName: string; input: unknown; why: string }> } {
+  const unmapped = calls.flatMap((c) => {
+    const key = KEY_OF[c.toolName];
+    if (!key || (isChat && c.toolName === "write_note")) return [];
+    const v = ((c.input ?? {}) as Record<string, unknown>)[key];
+    return typeof v === "string" && v.trim() ? [] : [{ toolName: c.toolName, input: c.input, why: `no ${key}` }];
+  });
+  return { graded: translate(calls, isChat), unmapped };
+}
+
+function translate(calls: Call[], isChat: boolean): Call[] {
   const out: Call[] = [];
   const merged = new Map<string, Record<string, unknown>>();
   for (const c of calls) {

@@ -4,7 +4,7 @@
  * and tightens its trail with edit_triggers; the case's rules read
  * close_position and an update_thesis with edit_triggers, and pass on both.
  */
-import { inOldShape } from "./old-shape";
+import { explainOldShape, inOldShape } from "./old-shape";
 import { score } from "./action";
 import nvda from "../../../scripts/hero-cases/nvda-declined-sale.json";
 
@@ -28,9 +28,23 @@ describe("today's calls, graded in the cases' shape", () => {
     expect(inOldShape([{ toolName: "write_note", input: { thesis_id: "t", note: "Theirs." } }], true)).toEqual([{ toolName: "write_note", input: { thesis_id: "t", note: "Theirs." } }]);
   });
 
-  it("an old run's calls pass as they were", () => {
-    const old = [{ toolName: "update_thesis", input: { thesis_id: "t", rationale: "x" } }, { toolName: "close_position", input: { ticker: "X" } }];
-    expect(inOldShape(old)).toEqual(old);
+  // Every tool main (b6476097) offers the morning run, the trigger run and the chat: main's calls grade exactly as before.
+  const MAIN_TOOLS: Record<string, string[]> = {
+    morning: ["get_portfolio_context", "get_theses", "get_stock_data", "web_search", "get_market_context", "get_earnings_data", "get_sec_filings", "update_thesis", "place_trade", "manage_position", "close_position", "dispatch_thesis_research", "wait_for_thesis_refresh", "record_run_summary", "complete_run"],
+    trigger: ["get_stock_data", "get_earnings_data", "get_sec_filings", "get_catalyst_calendar", "web_search", "get_theses", "place_trade", "close_position", "manage_position", "dispatch_thesis_research", "wait_for_thesis_refresh", "update_thesis", "complete_run"],
+    chat: ["list_analysts", "read_analyst_config", "list_runs", "read_run", "read_accuracy_reports", "list_proposals", "read_database", "get_theses", "get_portfolio_context", "read_knowledge_library", "get_market_context", "get_stock_data", "get_earnings_data", "get_earnings_calendar", "get_market_movers", "run_screen", "read_trade_results", "get_sec_filings", "get_catalyst_calendar", "web_search", "record_thesis", "update_thesis", "place_trade", "manage_position", "close_position", "write_note", "ask_question", "dispatch_thesis_research", "wait_for_thesis_refresh"],
+  };
+  it.each(Object.entries(MAIN_TOOLS))("main's %s calls pass through unchanged, in order, with nothing listed as unmapped", (mode, tools) => {
+    const calls = tools.map((toolName, i) => ({ toolName, input: { thesis_id: `t${i % 2}`, ticker: "NVDA", rationale: "x", edit_triggers: [{ id: "a", value: 1 }], i } }));
+    const out = explainOldShape(calls, mode === "chat");
+    expect(out.graded).toEqual(calls);
+    expect(out.unmapped).toEqual([]);
+  });
+
+  it("a call of today's tools missing the stock or thesis its old call keyed on is graded and listed", () => {
+    const out = explainOldShape([{ toolName: "sell", input: { belief_survived: true } }, { toolName: "write_note", input: { note: "x" } }]);
+    expect(out.unmapped.map((u) => [u.toolName, u.why])).toEqual([["sell", "no ticker"], ["write_note", "no thesis_id"]]);
+    expect(out.graded.map((c) => c.toolName)).toEqual(["close_position", "update_thesis"]);
   });
 
   it("NVDA's declined sale: a sale with sell passes the case's close_position rule", () => {
