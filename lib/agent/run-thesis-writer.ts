@@ -987,6 +987,22 @@ async function executeThroughSchema(
 
 type SchemaIssue = { path: Array<string | number>; message: string };
 
+/** A save code made: the tool, the input it was given, and what it returned. */
+interface WriterSave {
+  toolName: "record_thesis" | "update_thesis";
+  input: Record<string, unknown>;
+  output: PersistToolEnvelope;
+}
+
+/** A save as the run's thread keeps it: the call and its result, kept as a model's tool call is, so the run page draws its card. */
+export function saveInThread(save: WriterSave): unknown[] {
+  const toolCallId = "thesis-writer-persist";
+  return [
+    { role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: save.toolName, input: save.input }] },
+    { role: "tool", content: [{ type: "tool-result", toolCallId, toolName: save.toolName, output: { type: "json", value: save.output } }] },
+  ];
+}
+
 /** The save call a decision becomes — one builder for the check and the save. */
 export interface WriterSaveCall {
   toolName: "record_thesis" | "update_thesis";
@@ -1494,6 +1510,8 @@ export async function writerPersistPhase(
   let thesisId: string | null = null;
   let persistError: string | null = research.ok ? null : research.error ?? "research failed";
   let notApplied: string | null = null;
+  // The last save code made, as it went; the one that saved the thesis goes into the run's thread.
+  let lastSave: WriterSave | null = null;
 
   try {
     const analyst = await loadWriterAnalyst(args.analystId);
@@ -1536,7 +1554,9 @@ export async function writerPersistPhase(
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
         const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, saveExisting);
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
-        const outcome = readWriterSaveResult(call.toolName, await executeThroughSchema(toolInstance, call.toolName, call.toolArgs));
+        const result = await executeThroughSchema(toolInstance, call.toolName, call.toolArgs);
+        if (!("__schemaError" in result)) lastSave = { toolName: call.toolName, input: call.toolArgs, output: result };
+        const outcome = readWriterSaveResult(call.toolName, result);
         if (call.toolName === "update_thesis" && !outcome.error && args.existingThesisId) {
           // The audit row is the proof — a missing row means nothing was
           // saved, whatever the envelope said. Never default to the existing
@@ -1621,13 +1641,15 @@ export async function writerPersistPhase(
   //    no RunMessage at all; that observability hole is the reason CEG/CRWD
   //    took a diagnosis agent to reconstruct.
   //    The writer's tools hand the model what the screen gets, so it has
-  //    no tool results to put back (run-thread.ts).
+  //    no tool results to put back (run-thread.ts). Its save is code's, not
+  //    the model's: the call that saved the thesis, and what it returned,
+  //    end the thread, so the run page draws the thesis's card.
   if (research.userPrompt || research.threadMessages.length > 0) {
     await saveRunThread(
       args.childRunId,
       {
         opening: [{ role: "user", content: research.userPrompt || `Write a deep-research thesis on $${T} (${args.mode}).` }],
-        messages: research.threadMessages,
+        messages: [...research.threadMessages, ...(thesisId && lastSave ? saveInThread(lastSave) : [])],
         steps: [],
       },
       "thesis-writer",
