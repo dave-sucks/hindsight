@@ -1,9 +1,8 @@
 /**
- * fill-chart.ts — the stock's chart at the fill, as get_stock_data reads it
- * (lib/market-data/price-structure.ts on a year of daily bars), for the
- * playbook's triggers that come with the buy (withTheBuyTriggers). Null when
- * the bars can't be read: those triggers are then not written, and the
- * fill's Activity line says so.
+ * fill-chart.ts — the stock's chart now, as get_stock_data reads it
+ * (lib/market-data/price-structure.ts on a year of daily bars), for pricing a
+ * playbook trigger or a chart key (edit_triggers). Null when the bars can't
+ * be read: a trigger that needs a number from it is then refused, with why.
  */
 import { getDailyBars } from "@/lib/alpaca";
 import { CHART_SESSIONS } from "@/lib/market-data/benchmark-bars";

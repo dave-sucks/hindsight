@@ -23,7 +23,7 @@ import { playbookChecks } from "@/lib/agent/analyst-brief";
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
   .pick({ action: true, rationale: true, fireMode: true, trimPct: true })
-  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON), judged: z.literal(true).optional() })
+  .extend({ predicate: z.unknown(), writtenOn: z.enum(WRITTEN_ON) })
   .superRefine((t, ctx) => {
     const refuse = (message: string) => ctx.addIssue({ code: "custom", message });
     if (!shapeOf(t.predicate)) return refuse(refusalOf(t.predicate) ?? "Not a condition.");
@@ -178,8 +178,7 @@ export function noNumberWhy(name: Placeholder, at: FillPrices): string {
 
 /** A template priced from `at`, marked with the list it is on; or the keys with no number today. */
 export function pricedTemplate(t: Template, at: FillPrices): { trigger: Omit<Trigger, "id"> } | { missing: Placeholder[] } {
-  const { writtenOn, predicate, judged: _judged, ...rest } = t;
-  void _judged;
+  const { writtenOn, predicate, ...rest } = t;
   const missing = (templatePlaceholders(predicate) as Placeholder[]).filter((m) => fillValue(m, at) == null);
   if (missing.length) return { missing };
   return { trigger: { ...rest, predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], playbook: writtenOn } };
@@ -204,32 +203,6 @@ export function playbookWatchTriggers(templates: Template[], chart: PriceStructu
     const priced = pricedTemplate(template, at);
     if ("missing" in priced) notWritten.push({ ref, sentence: sentenceOf(template as unknown as Trigger), why: missingKeys(priced.missing, at) });
     else triggers.push({ ...priced.trigger, predicate: asWritten(priced.trigger.predicate as When) });
-  }
-  return { triggers, notWritten };
-}
-
-/**
- * The playbook's triggers that come with the buy, written at the fill: each
- * template with its {chart numbers} filled (fillValue). The sale ("Sell if
- * below {sellPrice}") is the buy's own price and is written beside them; a
- * template a run writes on its own judgment (`judged`) is left to the run. A
- * template whose number the chart doesn't have is not written, and
- * `notWritten` says so. A playbook that couldn't be read (null) writes none;
- * fillTemplateOps says so.
- */
-export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices, mintId: () => string = randomUUID): { triggers: Trigger[]; notWritten: Array<{ op: "kept"; id: string; text: string }> } {
-  const triggers: Trigger[] = [];
-  const notWritten: Array<{ op: "kept"; id: string; text: string }> = [];
-  for (const { writtenOn, predicate, judged, ...rest } of templates ?? []) {
-    if (writtenOn !== "PROPOSAL" || judged) continue;
-    const marks = templatePlaceholders(predicate) as Placeholder[];
-    if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
-    const priced = pricedTemplate({ ...rest, writtenOn, predicate }, at);
-    if ("missing" in priced) {
-      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${priced.missing.join(", ")}` });
-      continue;
-    }
-    triggers.push({ ...priced.trigger, id: mintId(), source: "DEFAULT" });
   }
   return { triggers, notWritten };
 }
