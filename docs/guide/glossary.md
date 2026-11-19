@@ -18,7 +18,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Thesis:** one analyst's view of one stock, and its triggers. Every stock on the book has one. See [Theses](concepts/theses.md).
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
 - **Wrong if:** what would prove the belief wrong, written before the buy.
-- **Playbook:** the kind of trade, one of twelve (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has what must be true first and how a buy is confirmed, and its triggers: its watch triggers, the triggers that come with the buy and the triggers written at the fill (Settings → Playbook). The code calls it a setup (`setupId`).
+- **Playbook:** the kind of trade, one of twelve (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has what must be true first and how a buy is confirmed, and its triggers: its watch triggers, written when the Writer names it, and its holding triggers, put on after the buy (Settings → Playbook). The code calls it a setup (`setupId`).
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
 - **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.
@@ -40,7 +40,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 - **Trigger:** a condition and an action, written as one sentence: "Sell if below $384". See [Triggers](concepts/triggers.md).
 - **Action:** what a trigger does when it comes true: **buy**, **add**, **trim**, **sell** or **review**. A review wakes the analyst with no order behind it.
-- **Floor:** the sale trigger under the price. The stop.
+- **Floor:** the sale trigger under the price. The stop. It comes with the buy.
 - **Trail:** a sale measured as a give-back from the highest price since the buy, like "6% off the high".
 - **Target:** only ever Wall Street's number, the analysts' 12-month price target. Hindsight sets none of its own; an upside rule is a take-profit trigger. See [Price targets](concepts/price-targets.md).
 - **Buy level:** the price a watched stock's buy trigger waits for.
@@ -58,16 +58,23 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
 - **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
-- **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it. See [Discovery](agents/discovery.md).
+- **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it; a scheduled Discovery agent per analyst exists and is off. See [Discovery](agents/discovery.md).
 - **The Writer:** the only agent that writes a whole thesis, from in-depth research. See [the Writer](agents/writer.md).
-- **Door:** one way an agent is started: the morning run, the trigger run, chat or the Writer. Each is an agent with its own record; the Framework page shows what each is sent.
+- **After the buy:** the run on a stock right after a buy or an add fills. See [After the buy](agents/after-the-buy.md).
+- **Post-trade write-up:** the agent that writes the note on a trade an Auto trigger made, with no trade tools. See [Trigger runs](agents/trigger-runs.md).
+- **Portfolio Manager:** the agent that looks at the whole account twice a week and may propose up to three trades. See [Portfolio Manager](agents/portfolio-manager.md).
+- **Market Reviewer:** the 7:30 AM agent that researches the market and writes the market digest and notes on stocks. See [Market Reviewer](agents/market-reviewer.md).
+- **Agent:** its instructions, its context, its tools, its message and the moment it runs. See [How an agent is built](concepts/agents.md).
+- **Record:** one agent's definition in code: its model, steps, the facts it reads and the tools it may call (`lib/agent/engine/agents/`).
+- **Door:** the tools and fields one agent is offered on a thesis. No agent is offered a field its job doesn't need.
+- **Yardstick:** real decisions replayed against the real model and scored by code, before a change to an agent merges. See [How an agent is built](concepts/agents.md#how-a-change-is-checked).
 
 ## What an agent reads
 
 - **The read:** an agent's view of its book from `get_theses`. Each stock is sent at the size today needs: a **line** for a quiet stock, a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
 - **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eight: one per trigger action (sale, buy, add, review) and four the code finds with no trigger. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
-- **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and setups, written once and given to every agent.
+- **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and playbooks, written once and given to every agent.
 - **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.
 
 ## Trades

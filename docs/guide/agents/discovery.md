@@ -16,15 +16,15 @@ tools: Pulling reported earnings outside your coverage (+1 more)
 - 41 companies reported in the last 3 days · 9 beat by 5% or more
 - Screening for Post-earnings drift: 6 held their gap, 3 fit the analyst's universe
 text: Three clear the rules. $CRWD (+6.8%) and $ADBE (+4.1%) beat, raised the year and held the gap on heavy volume. $NKE (−2.2%) beat but guided down, which is no drift. Sending the two to the Writer.
-tools: Dispatching $CRWD thesis-writer (+1 more)
-- CRWD [watch]: Writing the thesis · a buy and a floor required
-- ADBE [watch]: Writing the thesis · a buy and a floor required
+tools: Sending $CRWD to the Writer (+1 more)
+- CRWD [watch]: With the Writer · its playbook's watch triggers come back with the thesis
+- ADBE [watch]: With the Writer · its playbook's watch triggers come back with the thesis
 - NKE: Passed: guidance went down. Recorded, so it isn't pitched again.
 ```
 
 ## What it does
 
-Discovery fills an [analyst](../concepts/analysts.md)'s watchlist. It looks where new names show up (this week's earnings, today's movers, the analyst's setup screens, dated catalysts), checks each one against the analyst's rules, and sends the few worth researching to [the Writer](writer.md).
+Discovery fills an [analyst](../concepts/analysts.md)'s watchlist. It looks where new names show up (this week's earnings, today's movers, the analyst's playbook screens, dated catalysts), checks each one against the analyst's rules, and sends the few worth researching to [the Writer](writer.md).
 
 Finding a stock and making the case for it are separate jobs. Discovery is wide and quick; the Writer is narrow and deep. Keeping them apart means every [thesis](../concepts/theses.md) on the book was researched the same way, whoever found the stock.
 
@@ -44,11 +44,11 @@ There is also a Discovery agent that runs on its own, one run per analyst, on a 
 
 <!-- asset: context chat -->
 
-First, the analyst's brief: its strategy, universe, rules and record by setup. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
+First, the analyst's brief: its strategy, universe, rules and record by playbook. A stock the analyst used to own, with a fresh catalyst, counts as a lead.
 
 Then the places new names show up:
 
-- **Setup screens:** `run_screen` returns candidates for one setup, with every reject and its reason.
+- **Playbook screens:** `run_screen` returns candidates for one playbook, with every reject and its reason.
 - **Earnings:** `get_earnings_calendar`, who just reported (biggest beats first) or who reports soon.
 - **Movers:** `get_market_movers`, today's gainers, losers and most active.
 - **Catalysts and the web:** `get_catalyst_calendar` for dated FDA decisions; `web_search` to check a story.
@@ -68,7 +68,7 @@ For each stock that survives, the chat says in a sentence or two what is changin
 
 ## What happens next
 
-The Writer researches each stock it was sent and puts it on the watchlist with its triggers: a buy and a floor. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and a [trigger run](trigger-runs.md) agrees, with your [approval](../concepts/approvals.md) on the live account.
+The Writer researches each stock it was sent and puts it on the watchlist with its playbook's watch triggers: a buy and the line that ends the watch. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and a [trigger run](trigger-runs.md) agrees, with your [approval](../concepts/approvals.md) on the live account.
 
 A watch sleeps until its wake-up comes true. Then the stock is in the "review due" [situation](../concepts/situations.md), whose paragraph on a watch with no view asks the next morning run whether to bring it back.
 
@@ -114,5 +114,5 @@ The cap of five dispatches a conversation is a rule in the chat prompt.
 Its record is `DISCOVERY` (`lib/agent/engine/agents/discovery.ts`), whose run is about an analyst: its instructions (its own file, with the analyst, `the_analyst`, sent before it), its context (`the_book`, the analyst's `get_theses` read, and `earnings_calendar`, a read of `get_earnings_calendar` outside the book, each read for the analyst by its loader in `lib/agent/context/`) and its tools. Its run, `DISCOVERY_RUN` (`lib/agent/discovery/run.ts`), names the analyst and makes its tools for it in the run's book, with mode `DISCOVERY`. The runner (`runAgentAsRun`, `lib/agent/engine/run.ts`) opens the run and keeps its books; its thread opens with the book's `get_theses` card, the same read its first message carries (`lib/agent/book-card.ts`). Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`) is per analyst, `0 9 * * 2,4`, off, and writes its kickoff, its message. The send limit is `SENDS_A_RUN`, held by `withSendLimit`. A DISCOVERY run takes no messages (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`). Try it with nothing sent to the Writer: `npx tsx --env-file=.env.local scripts/discovery-dry-run.ts "PEAD Specialist" PAPER`.
 
 #### Screens
-`lib/discovery/screens.ts`; setups in `lib/agent/knowledge/setups.ts`. Playbook: `docs/DISCOVERY_PLAYBOOK.md`.
+`lib/discovery/screens.ts`; playbooks in `lib/agent/knowledge/setups.ts`. Playbook: `docs/DISCOVERY_PLAYBOOK.md`.
 </details>

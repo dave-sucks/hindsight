@@ -16,7 +16,7 @@ Each analyst is one way of trading, run by the agents. It has its own book of [t
 
 - **Strategy:** its edge in your words: what it buys, what it filters out, what it never does. Every agent reads it word for word.
 - **Universe:** the sectors and market-cap band it looks in. Its exclusion list always wins. The industries and themes it hunts are words in its strategy.
-- **Setups:** the kinds of trade it takes, chosen from the playbook below.
+- **Playbooks:** the kinds of trade it takes, chosen from the playbook below.
 - **Sizing:** its smallest trade, its largest, and the most it will hold in one stock. No agent picks a size: a buy risks 1% of the account by default, scaled by conviction (half at low, 1.25× at strong), halved again for an all-or-nothing event or a cautious market, and sized by the distance to its floor inside this band. An add risks half the first buy. A tight, honest floor is what earns a bigger position.
 - **Slots:** how many stocks it may hold at once, 5 by default. When every slot is held or waiting for approval, a new buy is refused until one frees up. Adding to a stock it already holds needs no slot.
 - **Its rules:** its own [triggers](triggers.md), inherited by every stock it holds, like a review when a stock closes below its 200-day average.
@@ -26,10 +26,10 @@ The sizing math, the market's effect and the account-wide limits: [Sizing and li
 
 ## How it shapes the agents
 
-Every agent that touches one of its stocks reads the same brief first: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per setup it has chosen. It's written once, so no two agents can describe the same analyst differently. Then:
+Every agent that touches one of its stocks reads the same brief first: the analyst's name, its strategy word for word, its rule numbers, how many slots are free, and one line per playbook it has chosen. It's written once, so no two agents can describe the same analyst differently. Then:
 
-- **[Discovery](../agents/discovery.md)** searches only inside its universe and scores each stock against its setups.
-- **[The Writer](../agents/writer.md)** researches in its strategy and writes a stock's buy and floor triggers from its setups' rules.
+- **[Discovery](../agents/discovery.md)** searches only inside its universe and checks each stock against its playbooks.
+- **[The Writer](../agents/writer.md)** researches in its strategy and names the playbook a stock fits, and the save writes that playbook's watch triggers.
 - **Its sell rules** guard every stock it holds without being copied onto them, so changing its style changes every holding at once.
 - **[Morning runs](../agents/morning-runs.md)** review its book on its run days.
 - **[Trigger runs](../agents/trigger-runs.md)** decide in its style. A buy that fires while it's full waits for you to choose what it replaces.
