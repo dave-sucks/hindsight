@@ -489,16 +489,17 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
     could not return data on any plan we hold. Don't re-add it without a
     vendor that actually serves the chain.
 
-### Action Tools
-12. record_thesis — mint a NEW thesis (direction LONG/SHORT/PASS) for net-new coverage or direction flip. PASS lands status=PASSED (institutional memory). Unresearched watchlist seeds (direction=null, status=WATCHING) are minted only by non-agent code paths (UI/builder/editor) — agents can't mint them.
-13. update_thesis — patch an existing thesis durably (writes one ThesisUpdate audit row: UPDATED, REVIEWED, or STATUS_CHANGED; change_status accepts INVALIDATED / ARCHIVED (→ stored as RETIRED + retiredReason) and WATCHING; there is NO PASS alias — a researched decline on a committed watch is `record_thesis(direction: 'PASS')`, the chat's tool, and a holding is sold with close_position; the ACTIVE/CLOSED verbs were removed). **A save is a patch (2026-10-08, #808):** a value equal to what is stored is dropped before any rule reads it; a field that cannot be applied comes back by name in `data.refused_fields` and the rest of the call lands; a whole-call refusal remains only for a missing or foreign thesis, a terminal row and a seed's commitment. The single most-used tool — every daily-run REVIEWED entry, every tactical close-out, and every "remove from watchlist" is one of these.
-14. place_trade — Alpaca market order, creates Position, flips paired Thesis WATCHING→HOLDING and writes STATUS_CHANGED audit row. Every model call names the holding's sell price (`sell_if_below`, `sell_reason`): it is held to the playbook's sale rules (`saleRuleProblem`), sizes the buy, and the pending Position holds it (`stopLoss`, `stopReason`); nothing is read off the stock's triggers. The playbook's other triggers that come with the buy come as `triggers_with_buy` (`Position.buyTriggers`, saved as named), written at the fill.
-15. close_position — close an existing open position fully; flips Thesis HOLDING→RETIRED (retiredReason=SOLD).
-16. manage_position — partial close, scale in/out, move stop, trail stop, adjust target.
-17. record_run_summary — persist run summary + ranked picks + decision rationale. It does NOT run the narration→execution gate: that moved to complete_run's preflight on 2026-05-23 (P0-12), so an agent that self-corrects before the end of the run isn't marked FAILED for the attempt.
-18. complete_run — mark run COMPLETE (only allowed from RUNNING; FAILED status set by the narration-gate sticks).
+### Action Tools (one job each since #1050)
+- sell — sell all or part of a holding (`percent`). Code labels the sale (a protective fire's STOP or TARGET, else MANUAL; `belief_survived` says whether the case still holds, `enforce-close-reason.ts`). A whole sale retires the thesis as Sold, or puts it back on watch on a target or when the belief survived (`shouldRecycleToWatching`, `thesis-flips.ts`).
+- add — buy more of a holding; code sizes it (half the entry's risk).
+- place_trade — a buy: the stock, the side and the floor. `sell_if_below` is optional: with none, code prices the playbook's floor rule from the chart; a named floor needs its `sell_reason` and passes `saleRuleProblem`. The buy is sized by risk to the floor; the pending Position holds it (`stopLoss`, `stopReason`).
+- edit_triggers — the only way a trigger changes: `add` (a playbook trigger by reference, or the agent's own), `edit` and `remove` by id, each with a reason. The Writer, the Holding refresh and After the buy price triggers only through chart keys or live lines, and can't write a buy or add that is already true.
+- write_note — a note on a stock. Only a note answers a fire or a due review and moves the review clock.
+- set_conviction, set_catalyst_date — the stock's conviction, and its event date.
+- stop_watching, watch_again, pass_on_stock, watch_stock — watch status: end a watch, reopen a sold or promoted one, a researched no, and the chat's soft watch with a look-again.
+- record_run_summary, complete_run — the morning run's end-of-run bookkeeping; the summary's action check credits a sale from the `Order` table.
 
-NOTE: `manage_watchlist` was deleted 2026-05-13 in the watchlist collapse. To add to a watchlist, mint a `Thesis(direction=null, status='WATCHING')`. To remove, call `update_thesis(change_status='ARCHIVED')` (input alias → lands status=RETIRED, retiredReason=DROPPED).
+`record_thesis` and `update_thesis` are on no agent's list: code runs them as the Writer's save. To add a stock to a watchlist, send it to the Writer (or the chat's `watch_stock`); to remove one, `stop_watching`.
 
 ### Builder/Editor-only Tools
 19. read_knowledge_library — strategy archetypes, source catalog, signal types
