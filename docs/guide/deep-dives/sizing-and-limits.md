@@ -49,7 +49,7 @@ Two numbers watch the whole account. Open risk is what we'd lose if every floor 
 `sizeByRisk` in `lib/agent/position-sizing.ts`: `DEFAULT_RISK_PCT` 1, `CONVICTION_RISK_MULTIPLIER`, `BINARY_RISK_MULTIPLIER` 0.5 (`lib/agent/knowledge/setups.ts`), `CAUTION_SIZE_MULTIPLIER` 0.5, `ADD_RISK_FRACTION` 0.5. Limits come from `positionBand` (its ceiling is the lower of the largest trade and most in one stock) and `positionTotalCap` (`maxPositionTotal`, 0 means twice the largest trade).
 
 #### Callers
-`place-trade.ts` and `manage-position.ts` build their schema with `schemaFor`, which drops `notional` and `add_notional` unless the run mode is `PRINCIPAL_CHAT`. `sizedByPrincipalLine` words the out-of-band note.
+`place-trade.ts` and `add.ts` build their schema with `schemaFor`, which drops `notional` unless the run mode is `PRINCIPAL_CHAT` (an add is sized by `changePosition` in `manage-position.ts`). `sizedByPrincipalLine` words the out-of-band note.
 
 #### Regime
 `computeRegime` in `lib/agent/regime.ts`, from the daily `TickerIndicators` snapshot; `REGIME_BUFFER_PCT` is 1.

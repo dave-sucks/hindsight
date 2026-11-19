@@ -45,7 +45,7 @@ One per trigger action, and four the code finds with no trigger.
 
 A case inside a situation is a paragraph of its text, not a situation of its own: a buy into a full analyst, a review on a report or a filing, a watch with no view yet, a pinned note. The row carries the fact that picks it. A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts).
 
-A trade a trigger set to Auto made is written up by the trigger run that made it, from that run's own instructions; it is not a situation.
+A trade a trigger set to Auto made is written up by its own agent, the post-trade write-up (or, for a buy or an add sent at once, [After the buy](../agents/after-the-buy.md)), from its own instructions; it is not a situation.
 
 Each one's code, what it means and the exact text an agent is sent are in the [Situations library](../reference/situations-library.md).
 

@@ -6,16 +6,16 @@ This page covers how a save lands, what each agent is allowed to change, and wha
 
 ## What a save does
 
-When an agent saves, the first thing the tool does is throw away every value that equals what is already stored. An agent that reads a stock and sends the whole form back changes nothing, and the Activity line records only what moved. Before this, an echoed entry price was read as a change and one run was refused eleven times.
+When an agent saves, the first thing the tool does is throw away every value that equals what is already stored. An agent that reads a stock and sends the whole form back changes nothing, and the Activity line records only what moved.
 
-**A level is a trigger.** A save has no price fields: the buy, the floor and any upside level are triggers, changed, added and removed by `edit_triggers` (`edit` by id, `add`, `remove` by id). Until Nov 16 a save carried three level fields beside the triggers, each a second way to write one; the trigger run's model fills every field it is offered, so it sent the levels it kept empty, and in the 30 days to Nov 16, 16 saves took down a level their own note kept (PRAX lost its buy, floor and review in two runs that each said nothing had changed).
+**A level is a trigger.** A save has no price fields: the buy, the floor and any upside level are triggers, changed, added and removed by `edit_triggers` (`edit` by id, `add`, `remove` by id).
 
 A field that can't be applied comes back by name in `refused_fields`, with the one thing to change. The rest of the call lands. A save is refused whole only when nothing in it can land:
 
 - The thesis doesn't exist, or isn't yours.
 - The thesis is finished (passed or retired). A sold stock is the exception: it may go back on watch or get a note.
 - A stock with no view yet is saved without a `direction`. A morning run sends it to the [Writer](../agents/writer.md) instead.
-- A stock with no view yet is committed without a buy and a floor, or with triggers that don't check out.
+- A stock with no view yet is committed without its triggers, or with triggers that don't check out.
 
 A save with nothing left to change still counts as a review: it writes one "reviewed" line and moves the review clock.
 
@@ -23,16 +23,19 @@ A save with nothing left to change still counts as a review: it writes one "revi
 
 If you set a field or a trigger by hand after a run started, the run can't change it. The field comes back refused: "You set this by hand at 9:41 ET; not changed." Your chat is exempt, because it is you.
 
-## Each agent gets its own fields
+## Each agent gets its own tools
 
-The tool is built per agent, so an agent is never offered a field it may not change. A field that is offered gets filled.
+Every job is its own tool, and an agent is given only the ones it may use, each with only the fields its job needs. A field that is offered gets filled, so a field an agent may not change is never offered.
 
-- **Writer, 29 fields:** everything but the review's verdict. It alone writes the research sections, the score and the variant view.
-- **Chat, 18:** the claim, the view, the triggers, the note and the review's verdict.
-- **Morning run, 15:** the triggers, the setup, the conviction and status, the note and the review's verdict. No claim, no direction.
-- **Trigger run, 9:** the note, the triggers and the review's verdict. No conviction, no status change.
+| Who | Its thesis tools |
+|---|---|
+| The Writer | Its save, run in code (`update_thesis`, on no agent's list), then `edit_triggers` |
+| Chat | `write_note`, `edit_triggers`, `set_conviction`, `set_catalyst_date`, `stop_watching`, `watch_again` |
+| Morning run | The same six; its note carries the review's verdict |
+| Trigger run | `write_note` (with the verdict) and `edit_triggers`: no conviction, no status change |
+| Portfolio Manager | `write_note` and `edit_triggers`: no status, no conviction |
 
-The fields fall in six groups: write-up, claim, triggers (with the setup, horizon and event date), view (direction, conviction and status), note, and review: the verdict (stronger, unchanged, weaker or broken), its one line, and the earlier line the note answers. A wrong verdict word or line id comes back by name and the rest of the save lands. A test pins the counts, so a new field has to be placed on purpose.
+The claim, the view and the write-up are the Writer's alone. A review's note carries its verdict (stronger, unchanged, weaker or broken), its one line, and the earlier line it answers; a wrong verdict word or line id comes back by name and the rest of the save lands. A test pins each caller's tools and fields, so a new field has to be placed on purpose.
 
 ## Triggers, one at a time
 
@@ -48,19 +51,19 @@ Every refusal is recorded. Anything still open when a run ends goes back to the 
 
 An agent that sends the same refused call again gets a nudge on the second refusal. On the third, the run stops and closes as failed with the reason named. Morning and [trigger](../agents/trigger-runs.md) runs share this guard.
 
-Status changes follow one table. An agent can retire a stock as invalidated or dropped, or put a sold one back on watch. It can't mark a stock held or sold: those follow the order.
+Status changes follow one table. An agent can drop a stock it watches (`stop_watching`, retired as dropped) or put a sold one back on watch (`watch_again`). It can't mark a stock held or sold: those follow the order.
 
 <details>
 <summary>Technical details</summary>
 
 #### Patch
-`dropUnchanged` in `saveThesis` (`lib/agent/tools/update-thesis.ts`) runs first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent. The schema has no level fields, so nothing but `remove_trigger_ids` removes a trigger (PRAX's 11-16 call, replayed in `update-thesis-empty-levels.replay.test.ts`, keeps its buy, floor and review). The trigger run calls OpenAI's Responses API, which fills every field of a tool that sends no `strict`; the morning run calls Chat Completions, which doesn't.
+`dropUnchanged` in `saveThesis` (`lib/agent/tools/update-thesis.ts`) runs first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent. The schema has no level fields, so nothing but a `remove` in `edit_triggers` removes a trigger. The trigger run calls OpenAI's Responses API, which fills every field of a tool that sends no `strict`; the morning run calls Chat Completions, which doesn't.
 
 #### Hand edits
 `handEditsSince` reads `ThesisUpdate` rows since the run's start that `isYourEdit` marks. Skipped for `PRINCIPAL_CHAT`.
 
 #### Doors
-`schemaFor` in `lib/agent/define-tool.ts` builds each caller's schema. Counts (29 / 18 / 15 / 9) and the groups are pinned in `lib/agent/tools/update-thesis-doors.test.ts`.
+`schemaFor` in `lib/agent/define-tool.ts` builds each caller's schema. Each caller's tools and fields are pinned in `lib/agent/tools/thesis-doors.test.ts`.
 
 #### Trigger ops
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared with the thesis sheet and the buy's fill. Then one check of the result, `checkLadder`.

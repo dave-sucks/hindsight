@@ -10,7 +10,7 @@ A thesis is the record every agent reads and edits. Its life is a loop: research
 
 A thesis has two halves, written and kept by different hands.
 
-- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (why we own the company and what has to stay true, in plain words), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up, or you through [chat](../agents/chat.md), changes the belief, its assumptions and what would prove it wrong; a morning run can change the setup it trades as and its conviction.
+- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (why we own the company and what has to stay true, in plain words), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up changes the belief, its assumptions and what would prove it wrong; [chat](../agents/chat.md) sends the stock to the Writer when you ask for one. A morning run or chat can change its conviction.
 - **The [triggers](triggers.md):** one sentence each saying when to buy, add, trim, sell or look again. A stock has its triggers and nothing else: "the buy" and "the floor" are names for kinds of trigger, and there is no plan or price target of our own beside them ([Price targets](price-targets.md)). This is the half the agents keep up to date, one trigger at a time.
 
 Alongside both sits what's been said: the stock's Activity, one list. A trigger firing, an analyst's note, a proposal and what you did with it, your own notes and edits are each one line in it. A declined or expired proposal shows the stock's price at that moment, as an approved one shows the fill; an order that never went through approval (approvals off, or your own click) is one line, its fill. The rule is two sentences: the Activity tab shows the whole list, and the next run on the stock reads the newest 8 exactly as they read in the feed (`lib/thesis/activity-feed.ts`), where the Activity tab marks their end. The Overview's "Agent insights" is the newest 5 lines that carry a written paragraph (a trigger fire's figures don't count), with the first period in its heading; hovering the heading says what the agents read instead. A proposal waiting for you is pinned to the top of the Overview as the card. The home page's Activity is the same lists across the book, cut to the trades (each proposal's steps and every fill, a sale with its gain on what the shares cost) and the changes of watch status (started watching, stopped watching with the reason written on the line, a position opened or closed, a pass), each named by what is stored on the line, never by its words (`lib/thesis/account-activity.ts`). Beside them are the trades that never became a proposal: a trigger that fired and the analyst held ("Held, not sold", "Buy passed"), a trade a rule blocked, a run that broke, and any other refusal still open ("Thesis research blocked"). A refusal and a broken run are not Activity lines, so these are read from the runs, orders and refusals (`lib/portfolio/attempt-outcomes.ts`). A review's title says what kind of review it was, from the trigger that woke it: after a sale line fired, a "Sale review" with that line's condition ("Sale review below $42.70"); on a review trigger, "Pre-earnings review", "Post-earnings review", "Scheduled review" (the review clock), "Checkpoint review" (so many days after the buy), "Filing review", or "Review" with the price or chart condition it answered ("Review below the 200-day average"); a review no trigger woke is "Review". A line keeps the rule it answered as it stood, so the title holds after the rule is edited or removed; a morning note that names no trigger is linked by the app to the one fire open on the stock, or to the review clock when the review was due, so a clock review reads "Scheduled review". A review can end with a verdict (stronger, unchanged, weaker or broken) and name the earlier note it answers: its title carries the word ("Pre-earnings review · weaker"), and the agent's copy of the line also carries the verdict's one line, the date of the line it answers and each line's id. The app gives each line it makes a title and never a paragraph: every paragraph you read is an analyst's words or yours.
@@ -40,7 +40,7 @@ The Writer reads the numbers, the filings and the web, and comes back with one o
 
 ## How it gets bought
 
-While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the setup's confirmation and the news, and [proposes](approvals.md) the buy. On the live account, nothing fills until you approve it.
+While a stock is watched, its buy trigger is checked every five minutes. When the price crosses the level, a [trigger run](../agents/trigger-runs.md) looks at that one stock within minutes, checks the playbook's confirmation and the news, and [proposes](approvals.md) the buy. On the live account, nothing fills until you approve it.
 
 When the broker takes the buy, the thesis becomes **Holding**. At the fill, the watch triggers come off and the floor goes on: the buy, the "Stop watching if below" and the playbook's other watch triggers come off (a trigger written by hand stays), and "Sell if below" goes on at the price you approved on the proposal (the analyst's, or yours from Edit & Approve or the Trade ticket). Then one run on the stock, [After the buy](../agents/after-the-buy.md), puts on the playbook's holding triggers, each fitted to the thesis with its reason. Nothing is stamped from the fill price or the horizon. From then on the sell side guards it: the floor and the trail, usually inherited from the analyst's sell rules.
 
@@ -59,10 +59,11 @@ As the price and the story move, agents keep the triggers current one at a time,
 
 Who may change what:
 
-- **The Writer:** the whole thesis, claim included.
-- **Chat:** the triggers, and the belief and direction when you ask.
-- **A morning run:** the triggers, its verdict and a note.
+- **The Writer:** the whole thesis, claim included, and the playbook's watch triggers.
+- **Chat:** the triggers, the conviction and the catalyst date, whether we watch the stock, and notes. The belief and direction go through the Writer.
+- **A morning run:** the same, and its verdict on a review.
 - **A trigger run:** the triggers, its verdict and a note.
+- **The Portfolio Manager:** notes and triggers.
 - **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
 
 One rule holds over all of them: no agent can lower a floor on a stock we hold. Only you move it down.
@@ -97,7 +98,7 @@ A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · 
 `coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`
 
 #### Written by
-The Writer (`submit_thesis`, saved through `record_thesis` / `update_thesis`, which write its playbook's watch triggers; then `edit_triggers`). A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
+The Writer: `submit_thesis`, then code runs the save (`record_thesis` for a new thesis, `update_thesis` for a rewrite; neither is on any agent's list), which writes its playbook's watch triggers; then the Writer tailors them with `edit_triggers`. A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
 
 #### Agent Watch
 `isAgentWatched` in `lib/agent/triggers/agent-watch.ts`: a watch with a review schedule of its own.

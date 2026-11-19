@@ -9,7 +9,7 @@ Model: gpt-5.4
 Starts: Run days · 8:00 AM ET
 Steps: Up to 65
 Tools: 20
-Saves: 15 fields: triggers, verdict, note
+Saves: a note on each stock, trigger edits, conviction, catalyst date, watch status, proposals, a run summary
 ```
 
 ```chat
@@ -48,7 +48,7 @@ The run's first read is `get_portfolio_context`: positions, cash, the account's 
 
 - **A quiet stock** is one line: the price, the buy it waits on, the next review.
 - **A stock in a situation** gets a row with the fields that situation's decision reads (the position, every trigger, the belief, the chart numbers and the newest Activity lines on every row; the Street and an event-driven stock's event date on a buy, what would prove us wrong on a sale signal) and that situation's instructions, once.
-- **A stock whose review clock came due** gets the whole case: the bull and bear cases, the conviction reason, the setup, the snapshot.
+- **A stock whose review clock came due** gets the whole case: the bull and bear cases, the conviction reason, the playbook, the snapshot.
 
 <!-- asset: read-demo -->
 

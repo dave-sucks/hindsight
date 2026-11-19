@@ -6,6 +6,7 @@
 
 import {
   BookOpen,
+  Bot,
   CheckCircle2,
   FileText,
   Flag,
@@ -37,6 +38,7 @@ export type DocSlug =
   | "triggers"
   | "situations"
   | "approvals"
+  | "agents"
   | "price-targets"
   | "architecture"
   | "glossary"
@@ -58,7 +60,7 @@ export interface DocMeta {
 
 export const DOCS: readonly DocMeta[] = [
   { slug: "discovery", title: "Discovery", group: "Agents", icon: Search, blurb: "Screens earnings, movers and the web for stocks that fit an analyst, and sends the best to the Writer." },
-  { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, blurb: "Researches one stock in depth and writes its thesis, plan and all." },
+  { slug: "writer", title: "The Writer", group: "Agents", icon: PenLine, blurb: "Researches one stock in depth and writes its thesis and its first triggers." },
   { slug: "morning-runs", title: "Morning runs", group: "Agents", icon: Sun, blurb: "On its run days, each analyst reads its whole book and answers every stock in a situation." },
   { slug: "trigger-runs", title: "Trigger runs", group: "Agents", icon: Zap, blurb: "A trigger fires and the analyst looks at that one stock within minutes." },
   { slug: "after-the-buy", title: "After the buy", group: "Agents", icon: CheckCircle2, blurb: "Minutes after a buy or an add fills, puts the playbook's holding triggers on the stock, fitted to the thesis." },
@@ -67,12 +69,13 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "portfolio-digest", title: "The Portfolio Digest", group: "Agents", icon: FileText, blurb: "At 8 PM, your account's day, written from one snapshot of your portfolio." },
   { slug: "portfolio-manager", title: "Portfolio Manager", group: "Agents", icon: FileText, blurb: "Twice a week, reads the whole account and decides where the money belongs." },
   { slug: "analyst-builder", title: "Analyst builder", group: "Agents", icon: UserRound, blurb: "Interviews you and proposes a whole analyst, checked against today's market." },
-  { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the plan that acts on it." },
+  { slug: "theses", title: "Theses", group: "Concepts", icon: FileText, blurb: "A belief we can be wrong about, and the triggers that act on it." },
   { slug: "triggers", title: "Triggers", group: "Concepts", icon: Zap, blurb: "One sentence each: sell below, add above, review every 30 days." },
   { slug: "analysts", title: "Analysts", group: "Concepts", icon: UserRound, blurb: "A trading style with its own universe, sizing and sell rules." },
   { slug: "situations", title: "Situations", group: "Concepts", icon: Flag, blurb: "The eight reasons a stock needs an answer today." },
   { slug: "approvals", title: "Approvals", group: "Concepts", icon: CheckCircle2, blurb: "Analysts propose. You approve. Proposals expire after a day." },
-  { slug: "price-targets", title: "Price targets", group: "Concepts", icon: Target, blurb: "The house sets none. The plan is the buy, the floor and an upside rule; the Street's targets are a card and a line a rule can watch." },
+  { slug: "agents", title: "How an agent is built", group: "Concepts", icon: Bot, blurb: "The five parts of every agent, how to change one, and how a change is checked." },
+  { slug: "price-targets", title: "Price targets", group: "Concepts", icon: Target, blurb: "The house sets none, and there is no plan. A stock has its triggers; the Street's targets are a card and a price a trigger can watch." },
   { slug: "architecture", title: "Architecture", group: "Overview", icon: Layers, blurb: "How the pieces fit: data, the record, the clocks, the read, the agents and the gate." },
   { slug: "glossary", title: "Glossary", group: "Overview", icon: BookOpen, blurb: "Every term the app, the docs and the agents use, a sentence each." },
   { slug: "saving-a-thesis", title: "Saving a thesis", group: "Deep dives", icon: PenLine, blurb: "How every agent edit lands or is refused: a save is a patch, one trigger at a time, floors only go up." },
@@ -81,7 +84,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "trigger-fire-to-run", title: "From fire to run", group: "Deep dives", icon: Zap, blurb: "The five-minute check, what fires, and where each fire goes." },
   { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All eight situations: each code, what it means and the exact text an agent is sent." },
   { slug: "trigger-measures", title: "Trigger measures", group: "Reference", icon: Zap, blurb: "Every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in." },
-  { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every setup in the playbook: what must be true, where the buy, floor and target go, and when it has failed." },
+  { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every playbook: what must be true first, the triggers each writes, and when it has failed." },
 ];
 
 export function docBySlug(slug: string): DocMeta | undefined {

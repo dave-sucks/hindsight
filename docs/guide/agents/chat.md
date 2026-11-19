@@ -9,7 +9,7 @@ Model: claude-sonnet-4-6
 Starts: When you type
 Steps: Up to 45
 Tools: 33
-Saves: 24 fields: also belief, direction
+Saves: notes, trigger edits, conviction, catalyst date, watch status, proposals
 ```
 
 ```chat
@@ -53,7 +53,7 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 - **Your book:** `get_theses` and `get_portfolio_context`, the stocks, positions and cash.
 - **Your queue:** `list_proposals`, what's waiting for you, each with its reason and time left.
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
-- **Research:** the market data, filings, earnings, the web and X, the same tools as every other agent.
+- **Research:** the market data, filings, earnings and the web, the same tools as every other agent.
 
 Every message you send reaches chat with the date line: the day, the time and whether the account is paper or live. A lookup older than 15 minutes is hidden from it, so it looks again before it quotes a price. A conversation picked up days later never answers from the old numbers. What chat changed (a trade, an edit, a note) stays visible, so it never does it twice.
 

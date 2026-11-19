@@ -15,7 +15,7 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, CheckCircle2, FileText, Flag, Layers, MessageCircle, Newspaper, PenLine, Search, Sun, Target, UserRound, Zap, type LucideIcon } from "lucide-react";
+import { BookOpen, Bot, CheckCircle2, FileText, Flag, Layers, MessageCircle, Newspaper, PenLine, Search, Sun, Target, UserRound, Zap, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMock, type ChatStep } from "./chat-mock";
 import { Mono } from "./primitives";
@@ -100,6 +100,7 @@ const REFS: Record<DocSlug, { title: string; icon: LucideIcon }> = {
   analysts: { title: "analysts", icon: UserRound },
   situations: { title: "situations", icon: Flag },
   approvals: { title: "approvals", icon: CheckCircle2 },
+  agents: { title: "how an agent is built", icon: Bot },
   "price-targets": { title: "price targets", icon: Target },
   architecture: { title: "the architecture", icon: Layers },
   glossary: { title: "the glossary", icon: BookOpen },
