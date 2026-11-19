@@ -93,6 +93,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import { TRUE_NOW, trueNowIds } from "@/lib/agent/triggers/true-now";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_UNREAD, playbookWatchTriggers } from "@/lib/agent/knowledge/playbooks";
 
@@ -1526,13 +1527,15 @@ export function nothingCanFire(ticker: string, direction: string): string {
 }
 
 /** What the Writer reads after its save: the decision it sent, the stock's triggers as saved, and what wasn't written. */
-export function tailorMessage(o: { ticker: string; decision: unknown; status: string; direction: string | null; triggers: Trigger[]; notWritten: DroppedItem[] }): string {
+export function tailorMessage(o: { ticker: string; decision: unknown; status: string; direction: string | null; triggers: Trigger[]; notWritten: DroppedItem[]; trueNow?: ReadonlySet<string> }): string {
   const directional = o.direction === "LONG" || o.direction === "SHORT";
+  // A line that holds today is named, so the Writer keeps it or takes it off with its reason (ETN 11-19, true-now.ts).
+  const line = (t: Trigger) => `- ${sentenceOf(t)}${t.playbook === "WATCH" ? " (the playbook's)" : ""}${o.trueNow?.has(t.id) ? ` (${TRUE_NOW})` : ""} — ${t.rationale} [id ${t.id}]`;
   return [
     `You submitted this decision:\n${JSON.stringify(o.decision)}`,
     "",
     `Saved. $${o.ticker}'s triggers now:`,
-    ...(o.triggers.length ? o.triggers.map((t) => `- ${sentenceOf(t)}${t.playbook === "WATCH" ? " (the playbook's)" : ""} — ${t.rationale} [id ${t.id}]`) : ["(none)"]),
+    ...(o.triggers.length ? o.triggers.map(line) : ["(none)"]),
     ...(o.notWritten.length ? ["Not written:", ...o.notWritten.map((n) => `- ${n.why}: ${n.reason}`)] : []),
     "",
     !o.triggers.length && o.status !== "HOLDING" && directional
@@ -1570,7 +1573,18 @@ async function writerTailorPhase(input: {
   const messages: ModelMessage[] = [
     { role: "user", content: research.userPrompt },
     { role: "assistant", content: research.noteText || "(research note)" },
-    { role: "user", content: tailorMessage({ ticker: row.ticker, decision: sent, status: row.status, direction: row.direction, triggers, notWritten: input.notWritten }) },
+    {
+      role: "user",
+      content: tailorMessage({
+        ticker: row.ticker,
+        decision: sent,
+        status: row.status,
+        direction: row.direction,
+        triggers,
+        notWritten: input.notWritten,
+        trueNow: await trueNowIds(thesisId, { userId: input.ctx.userId, analystId: input.ctx.analystId, alpacaCreds: input.ctx.alpacaCreds }, triggers),
+      }),
+    },
   ];
   const replies: ModelMessage[] = [];
   const usage = emptyTokenUsage();
