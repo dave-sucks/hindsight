@@ -84,11 +84,11 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
   const c = F.HTFL;
   const passed = () => thesisRow({ id: c.passedThesis!, ticker: "HTFL", status: "PASSED", direction: null });
 
-  it("dispatch sends it as new research linked to the passed thesis, and says so", async () => {
+  it("send to the Writer finds it by the stock: new research linked to the passed thesis, and says so", async () => {
     const { refusal, result, db } = await replayTool("dispatch-thesis-research", "dispatchThesisResearch", {
       seed: { agentConfig: [agentConfigRow()], thesis: [passed()] },
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: REPLAY_ANALYST_ID },
-      args: { ticker: "HTFL", mode: "refresh", existing_thesis_id: c.passedThesis, reason: "The owner asked for HeartFlow's research refreshed." },
+      args: { ticker: "HTFL", brief: "The owner asked for HeartFlow's research refreshed." },
       mocks: { "@/lib/market-data/sec-filings": () => ({ fetchBookFilings: async () => ({ byTicker: new Map(), error: null }) }) },
     });
     expect(refusal).toBeNull();
@@ -98,15 +98,15 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
     expect(result.summary).not.toContain(c.passedThesis!);
   });
 
-  it("with a live thesis on the stock, that one is refreshed instead", async () => {
+  it("with a live thesis on the stock, that one is refreshed, and nothing is said of the passed one", async () => {
     const { db } = await replayTool("dispatch-thesis-research", "dispatchThesisResearch", {
       seed: { agentConfig: [agentConfigRow()], thesis: [passed(), thesisRow({ id: "htfl_live", ticker: "HTFL", status: "WATCHING" })] },
       ctx: { runMode: "PRINCIPAL_CHAT", analystId: REPLAY_ANALYST_ID },
-      args: { ticker: "HTFL", mode: "refresh", existing_thesis_id: c.passedThesis, reason: "The owner asked for HeartFlow's research refreshed." },
+      args: { ticker: "HTFL", brief: "The owner asked for HeartFlow's research refreshed." },
       mocks: { "@/lib/market-data/sec-filings": () => ({ fetchBookFilings: async () => ({ byTicker: new Map(), error: null }) }) },
     });
     expect(db.store.researchRun.at(-1)!.parameters).toMatchObject({ mode: "refresh", existingThesisId: "htfl_live", parentThesisId: null });
-    expect(String((db.store.researchRun.at(-1)!.parameters as { reason: string }).reason)).toMatch(/is passed, so its live thesis is refreshed instead\.$/);
+    expect(String((db.store.researchRun.at(-1)!.parameters as { reason: string }).reason)).not.toMatch(/passed/);
   });
 
   it("its decision, sent as a mint, saves linked to the passed thesis, which stays passed", async () => {

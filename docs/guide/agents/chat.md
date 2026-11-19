@@ -65,7 +65,7 @@ When your message is clear ("raise the floor to $1,650", "sell NVDA"), chat says
 - **Change the belief or direction:** only the Writer can. Chat sends the stock to the Writer, or sets its conviction (`set_conviction`) or catalyst date (`set_catalyst_date`).
 - **Trade:** a [proposal](../concepts/approvals.md) like any analyst's. Chat can name a size, and it's used as given. A buy for an analyst with no free slot is refused. While a buy waits on you, its triggers stay as proposed.
 - **Research:** "research CRWD" or `/research` starts the Writer with `dispatch_thesis_research`; `wait_for_thesis_refresh` brings the thesis back into the conversation.
-- **Pass, stop watching, watch again:** "we looked, and we pass" on a stock we don't cover is `pass_on_stock`, with the stock and the reason: saved as Passed, never woken, so the idea isn't pitched again; like a new thesis, it needs chat pinned to an analyst. A stock we watch is dropped with `stop_watching`; a sold one goes back on watch with `watch_again`.
+- **Pass, watch, stop watching, watch again:** "we looked, and we pass" on a stock we don't cover is `pass_on_stock`, with the stock and the reason: saved as Passed, never woken, so the idea isn't pitched again; like a new thesis, it needs chat pinned to an analyst. A stock we watch is dropped with `stop_watching`; a sold one goes back on watch with `watch_again`. A stock you want back at a price, with no view yet, goes on watch with `watch_stock` (for the pinned analyst, or the one it names) with its look-again, a price or a day, which code writes as its one review; later changes go through `edit_triggers`; a stock with a view goes to the Writer.
 
 It never approves or declines a proposal. That's always your click.
 

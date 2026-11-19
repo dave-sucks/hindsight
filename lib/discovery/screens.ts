@@ -11,8 +11,7 @@
  * Every rejection is named, so the chat can say why a name that looked
  * interesting isn't a candidate ("a beat the market sold: −8.2% on the
  * reaction day"). Every pass carries a `screenRow` — the numbers that made
- * the cut, in one line — which rides into dispatch_thesis_research as the
- * writer's seed.
+ * the cut, in one line — which goes in dispatch_thesis_research's brief.
  */
 
 import type { PriceStructure } from "@/lib/market-data/price-structure";

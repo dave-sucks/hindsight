@@ -272,11 +272,11 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
   },
 
   // ── Changing a thesis ────────────────────────────────────────────────
-  record_thesis: {
-    name: "New thesis",
+  watch_stock: {
+    name: "Watch a stock",
     kind: "thesis",
     sources: ["hindsight"],
-    summary: "Starts a thesis on a new stock, or records a researched pass so the idea isn't pitched again.",
+    summary: "Puts a stock you want back at a price or on a day on watch, with no view yet, and writes its one look-again review.",
   },
   pass_on_stock: {
     name: "Pass on a stock",

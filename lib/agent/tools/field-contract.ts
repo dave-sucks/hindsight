@@ -203,13 +203,8 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   dispatch_thesis_research: [
     f("ticker", "IDENTITY"),
     f("analyst_id", "IDENTITY"),
-    f("mode", "CHOSEN"),
-    f("existing_thesis_id", "IDENTITY"),
-    f("reason", "TEXT"),
-    f("setup_id", "CHOSEN"),
-    f("screen_row", "TEXT"),
-    f("research_notes", "TEXT"),
-    f("idea_source", "CARRIED", { note: "The pasted idea as the sender got it: who, the link, the day, their words. The writer tests it; the thesis keeps who as its source." }),
+    f("brief", "TEXT", { note: "Why this stock, what the sender found, whose idea it is and its own view. Code finds the thesis by the stock; the Writer picks the playbook." }),
+    f("source_link", "CARRIED", { note: "The link the idea came from. The thesis keeps it as its source." }),
   ],
   /** The writer's own submit tool — the decision, before the save. */
   submit_thesis: [

@@ -293,12 +293,6 @@ async function ruleAnswered(
 /** The doors whose save has no variant_view: a top tier sent there is stored MEDIUM until the writer gives it one. */
 const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT"]);
 
-/**
- * The doors whose agent has record_thesis (lib/agent/modes.ts), so the only
- * ones a refusal may send there. The morning run and the trigger run don't
- * have it: naming it to them points at a tool they can't call.
- */
-export const DOORS_WITH_RECORD_THESIS: ReadonlySet<string> = new Set(["PRINCIPAL_CHAT"]);
 
 /** What the save takes: the Writer's fields, the note optional (edit_triggers and the status doors write none). */
 type UpdateArgs = Omit<z.infer<typeof updateSchema>, "rationale"> & { rationale?: string };
@@ -777,7 +771,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     // claim is the writer's, so an agent's answer is a dispatch.
     const anAgent = ctx.runMode !== "THESIS_WRITER";
     const message = anAgent
-      ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+      ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research on $${existing.ticker}, ` +
         `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
         `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
       : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
@@ -812,19 +806,15 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // is stored one down, with the reason next to the rationale.
   let convictionDowngradeNote: string | null = null;
   if (args.direction && !isUnresearchedSeed(existing.direction)) {
-    // A refusal names only tools this door has: the morning run and the
-    // trigger run have no record_thesis.
-    const recordThesis = DOORS_WITH_RECORD_THESIS.has(ctx.runMode ?? "");
+    // A refusal names only tools an agent has: none has record_thesis.
     const pass = args.direction === "PASS";
     refuseField(
       "direction",
       pass
         ? existing.status === "HOLDING"
           ? "A stock we hold isn't passed: selling it is sell."
-          : `A thesis with a view isn't passed in place: stop_watching drops it.${recordThesis ? ` To keep the pass on record, record_thesis with direction PASS and parent_thesis_id "${existing.id}" writes it and retires this one.` : ""}`
-        : recordThesis
-          ? `A flip is a new thesis: record_thesis with parent_thesis_id "${existing.id}" writes it and retires this one.`
-          : "A flip is a new thesis; say so in your note.",
+          : "A thesis with a view isn't passed in place: stop_watching drops it."
+        : "A flip is a new thesis; say so in your note.",
       pass ? (existing.status === "HOLDING" ? "we hold it" : "a thesis with a view isn't passed") : "a flip is a new thesis",
     );
   }

@@ -74,7 +74,9 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −61, the same.
   // 2026-11-18: +68, the pinned analyst's name and id open its analyst text, as the scope block's first line did.
   // 2026-11-18: −283, the same, and pass_on_stock and read_database off the chat (#1047's chat lines).
-  chat: 35_255,
+  // 2026-11-19: −850, the send's own fields: a brief (why this stock, what was found, whose idea, its own view) and a source link; the mode, thesis id, reason, notes, setup and screen row examples go.
+  // 2026-11-19: −181, a soft watch is watch_stock with its look-again, and record_thesis leaves the text with the menu.
+  chat: 34_224,
 };
 
 /**
@@ -108,13 +110,15 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −869, the action tools one job each: update_thesis, manage_position and close_position become write_note, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again, sell and add; the trigger shape is sent once, on edit_triggers, each removal with its reason; a note has no length cap.
   // 2026-11-19: +585 each, T1: edit_triggers takes one of the stock's playbook triggers by its reference, and a chart key in a price or a move; its own trigger has no playbook mark.
   // 2026-11-19: +78 each, T2: place_trade's sell price is optional; left out, code prices the playbook's floor from the chart.
-  "research-run": 30_614,
+  // 2026-11-19: −2,157 each, send to the Writer takes the stock, a brief and a source link: code finds the thesis by the stock, and the Writer picks the playbook (−2,231 on the trigger run, whose stock is code's).
+  "research-run": 28_457,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
   // 2026-11-19: +585, the same edit_triggers.
   // 2026-11-19: +78, the same place_trade.
-  tactical: 25_929,
+  // 2026-11-19: −2,231, the same send, its stock code's.
+  tactical: 23_698,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -136,7 +140,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −401, the chat's add is #1050's own trigger (its playbook mark kept, no playbook references: it doesn't tailor playbooks) with a key allowed for a price.
   // 2026-11-19: −184, the chat's edit_triggers is #1050's as it was (no chart keys): back to a672's size.
   // 2026-11-19: +78, T2: place_trade's sell price is optional.
-  principal: 57_193,
+  // 2026-11-19: −2,159, the same send, and run_screen puts a row's numbers in its brief.
+  // 2026-11-19: −11,010, record_thesis (and its copy of the trigger shape) off the chat, watch_stock (the stock, the reason, a look-again price or day) on it.
+  principal: 44_024,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

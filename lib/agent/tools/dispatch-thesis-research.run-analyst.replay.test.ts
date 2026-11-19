@@ -5,16 +5,22 @@
  * ETN's write-up never ran. Only the chat with no analyst pinned names one.
  */
 import fx from "@/lib/agent/__fixtures__/dispatch-etn-2026-10-15.json";
-import { replayTool, agentConfigRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
+import { replayTool, agentConfigRow, thesisRow, REPLAY_ACCOUNT_ID } from "@/lib/replay";
 
 const run = { id: fx.run.id, accountId: REPLAY_ACCOUNT_ID, status: "RUNNING", mode: fx.run.mode, agentConfigId: fx.run.analystId, parameters: {}, startedAt: new Date(fx.run.startedAt), completedAt: null };
 const noEdgar = { "@/lib/market-data/sec-filings": () => ({ fetchBookFilings: async () => ({ byTicker: new Map() }) }) };
 
-it("ETN 10-15: the verbatim call dispatches for the run's analyst, the made-up slug unread", async () => {
+it("ETN 10-15: the call, in today's fields, sends ETN for the run's analyst, the made-up slug unread, and refreshes the thesis it finds by the stock", async () => {
   expect(fx.call.analyst_id).toBe("secular-compounder");
   const { refused, result, db } = await replayTool("dispatch-thesis-research", "dispatchThesisResearch", {
-    seed: { agentConfig: [agentConfigRow({ id: fx.run.analystId, name: "Secular Compounder" })], researchRun: [run] },
-    args: fx.call,
+    seed: {
+      agentConfig: [agentConfigRow({ id: fx.run.analystId, name: "Secular Compounder" })],
+      researchRun: [run],
+      // ETN's watch, the thesis the 10-15 call named by its id.
+      thesis: [thesisRow({ id: fx.call.existing_thesis_id, ticker: "ETN", status: "WATCHING", analystId: fx.run.analystId })],
+    },
+    // Its reason is the brief; the slug stays on the call and is never read.
+    args: { ticker: fx.call.ticker, analyst_id: fx.call.analyst_id, brief: fx.call.reason },
     ctx: { runId: fx.run.id, analystId: fx.run.analystId, runMode: fx.run.mode, runEnvironment: "LIVE" },
     mocks: noEdgar,
   });
@@ -22,6 +28,7 @@ it("ETN 10-15: the verbatim call dispatches for the run's analyst, the made-up s
   expect(result.summary).toMatch(/^Dispatched thesis-writer for \$ETN \(refresh\)/);
   const writer = db.store.researchRun.find((r) => r.mode === "THESIS_WRITER");
   expect(writer).toMatchObject({ agentConfigId: fx.run.analystId, parentRunId: fx.run.id });
+  expect(writer!.parameters).toMatchObject({ existingThesisId: fx.call.existing_thesis_id });
 });
 
 it("the field is offered to the chat with no analyst pinned, and to no one else", async () => {
