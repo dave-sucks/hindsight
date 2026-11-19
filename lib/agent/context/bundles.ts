@@ -32,8 +32,13 @@ export type SubjectOf<K extends SubjectKind> = Extract<Subject, { kind: K }>;
 
 /** Each subject's bundle: every fact read for it, in no order (each record gives its own). */
 export const BUNDLES: Record<SubjectKind, readonly ContextId[]> = {
-  /** A thesis: the row, the stock's numbers and chart, the analyst and its record by playbook, the stock's own playbook, its situations, and the market numbers. */
-  thesis: ["the_stock", "stock_data", "the_analyst", "playbook_record", "playbooks", "situations", "market_numbers"],
+  /**
+   * A thesis: the row, the stock's numbers and chart, the analyst and its
+   * record by playbook, the stock's own playbook, its situations, and the
+   * market numbers; and the analyst's playbooks, which the Writer picks the
+   * stock's from as it writes.
+   */
+  thesis: ["the_stock", "stock_data", "the_analyst", "playbook_record", "the_playbook", "playbooks", "situations", "market_numbers"],
   /** An analyst: the analyst, its playbooks, its book, the market and the portfolio, this week's earnings and filings, the calls refused, and the earnings calendar outside its book. */
   analyst: ["the_analyst", "playbooks", "the_book", "market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls", "earnings_calendar"],
   /** The account: the market, the portfolio and the book, and what the agent wrote on its last run. */

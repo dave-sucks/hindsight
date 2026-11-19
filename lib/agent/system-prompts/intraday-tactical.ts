@@ -177,7 +177,7 @@ export function triggerRunRequest(args: TacticalPromptArgs, facts: FireFacts = {
     pieces: args.portfolioPieces ?? null,
     context: {
       the_analyst: analystBrief(args.analyst, args.capacity),
-      playbooks: args.playbooks || null,
+      the_playbook: args.playbooks || null,
       situations: situationsText(args.stock.ticker, args.situations),
       the_stock: stockRowText(args.stock),
     },

@@ -54,18 +54,24 @@ describe("every record reads inside its subject's bundle", () => {
   });
 });
 
-describe("a thesis brings its own playbook only", () => {
-  it("a stock with a playbook: that one", async () => {
-    const text = await withDb({ agentConfig: [analyst], thesis: [thesisRow({ id: "t1", ticker: "NVDA", setupId: "PEAD", status: "HOLDING" })] }, async ({ FACTS }) =>
-      FACTS.playbooks.thesis!(thesisRun("NVDA", "t1") as never),
-    );
+describe("a thesis brings its own playbook, and its analyst's to pick from", () => {
+  const seed = { agentConfig: [analyst], thesis: [thesisRow({ id: "t1", ticker: "NVDA", setupId: "PEAD", status: "HOLDING" })] };
+
+  it("the stock's playbook: its own only", async () => {
+    const text = await withDb(seed, async ({ FACTS }) => FACTS.the_playbook.thesis!(thesisRun("NVDA", "t1") as never));
     expect(text).toContain("YOUR PLAYBOOKS");
     expect(text).toContain("Post-earnings drift");
     expect(text).not.toContain("Pullback to a rising moving average");
   });
 
-  it("a stock with none yet (the Writer's first look): each of its analyst's, to choose from", async () => {
-    const text = await withDb({ agentConfig: [analyst] }, async ({ FACTS }) => FACTS.playbooks.thesis!(thesisRun("AAON", null) as never));
+  it("a stock with none yet: each of its analyst's", async () => {
+    const text = await withDb({ agentConfig: [analyst] }, async ({ FACTS }) => FACTS.the_playbook.thesis!(thesisRun("AAON", null) as never));
+    expect(text).toContain("Post-earnings drift");
+    expect(text).toContain("Pullback to a rising moving average");
+  });
+
+  it("the analyst's playbooks, which the Writer picks from: every one, whatever the stock's", async () => {
+    const text = await withDb(seed, async ({ FACTS }) => FACTS.playbooks.thesis!(thesisRun("NVDA", "t1") as never));
     expect(text).toContain("Post-earnings drift");
     expect(text).toContain("Pullback to a rising moving average");
   });

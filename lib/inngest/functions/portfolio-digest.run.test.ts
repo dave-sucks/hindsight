@@ -115,7 +115,7 @@ describe("the 8 PM Portfolio Digest's run", () => {
     const body = sent[0] as { messages: Array<{ content: string }> };
     // One row per part the agent engine built: its own text, then its context: the date line and the portfolio.
     expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
-      ["Instructions", "Its own text", "job"],
+      ["Instructions", "Its instructions (portfolio-digest.md)", "job"],
       ["Context", "The date and account", "read"],
       ["Context", "The portfolio", "portfolio"],
     ]);

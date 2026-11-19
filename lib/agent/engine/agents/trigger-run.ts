@@ -28,7 +28,7 @@ export const TRIGGER_RUN: AgentRecord = {
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   // The playbooks only on a review of a stock we watch (the run passes none otherwise); the stock's situations end the instructions.
-  instructions: ["the_analyst", "trigger-run.md", "house-rules.md", "how-you-write.md", "playbooks", "situations"],
+  instructions: ["the_analyst", "trigger-run.md", "house-rules.md", "how-you-write.md", "the_playbook", "situations"],
   // The market numbers alone: the snapshot and the digests are the rest of the account (2026-11-18). The stock's
   // position is on its row, the analyst's room in its text, and code sizes a buy.
   context: ["market_numbers", "the_stock", "message"],

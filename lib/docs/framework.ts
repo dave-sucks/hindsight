@@ -158,7 +158,7 @@ export function recordParts(r: AgentRecord): Listed[] {
     // The facts its record sends with the instructions, where they were measured: context all the same.
     ...r.instructions
       .filter((e): e is ContextId => !isFile(e))
-      .map((e): Listed => ({ id: e, title: CONTEXT[e].title, kind: "context", where: "instructions", section: "context", about: CONTEXT[e].about, source: CONTEXT[e].source, ...(e === "situations" || e === "playbooks" ? { someRuns: true } : {}) })),
+      .map((e): Listed => ({ id: e, title: CONTEXT[e].title, kind: "context", where: "instructions", section: "context", about: CONTEXT[e].about, source: CONTEXT[e].source, ...(e === "situations" ? { someRuns: true } : {}) })),
     { id: "line", ...DATE_LINE, kind: "line", where: first, section: "context" },
     // Each read and the message, where the record lists it.
     ...r.context.map((id): Listed =>

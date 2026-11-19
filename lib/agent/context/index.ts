@@ -15,7 +15,7 @@ import { earningsThisWeek } from "./earnings-this-week";
 import { filingsThisWeek } from "./filings-this-week";
 import { lastOutput } from "./last-output";
 import { playbookRecord } from "./playbook-record";
-import { playbooks } from "./playbooks";
+import { playbooks, thePlaybook } from "./playbooks";
 import { refusedCalls } from "./refused-calls";
 import { situations } from "./situations";
 import { stockData } from "./stock-data";
@@ -34,6 +34,7 @@ export const PIECES: readonly ContextId[] = ["market_numbers", "market_digest", 
 export const FACTS: Record<Exclude<ContextId, "market_numbers" | "market_digest" | "portfolio" | "portfolio_digest">, Fact> = {
   the_analyst: theAnalyst,
   playbooks,
+  the_playbook: thePlaybook,
   situations,
   the_stock: theStock,
   stock_data: stockData,

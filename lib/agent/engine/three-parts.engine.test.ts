@@ -104,8 +104,8 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     expect(now["instructions:own"]).toBe(old["instructions:instructions"]);
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
-    // The playbooks, on a review of a watch, are a shared text now; the situations still end the instructions.
-    expect(now["instructions:playbooks"]).toBe(old["message:playbooks"]);
+    // The stock's playbook is sent with the instructions; the situations still end them.
+    expect(now["instructions:the_playbook"]).toBe(old["message:playbooks"]);
     expect(now["instructions:situations"]).toBe(old["instructions:situations"]);
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["stock_row", "the_stock"]]) {
       // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.

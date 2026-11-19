@@ -30,6 +30,7 @@ export type SharedFile = (typeof SHARED_FILES)[number];
 export type ContextId =
   | "the_analyst"
   | "playbooks"
+  | "the_playbook"
   | "situations"
   | "market_numbers"
   | "market_digest"

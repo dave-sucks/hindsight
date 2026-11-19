@@ -326,18 +326,6 @@ function bookReadOf(c: HeroCase): string | null {
   return bookReadText((result?.output?.value as { summary?: string; data?: unknown } | undefined) ?? null);
 }
 
-/**
- * A Writer refresh case's stock playbook, as the loader reads it off the
- * thesis (lib/agent/context/playbooks.ts): read from the database when the
- * case didn't save it. Read-only.
- */
-async function withStockPlaybook(c: HeroCase): Promise<void> {
-  if (c.mode !== "thesis-writer") return;
-  const e = c.promptArgs.existingThesis as { id?: string; setupId?: string | null } | null | undefined;
-  if (!e?.id || e.setupId !== undefined) return;
-  e.setupId = (await prisma.thesis.findUnique({ where: { id: e.id }, select: { setupId: true } }).catch(() => null))?.setupId ?? null;
-}
-
 /** A morning case's request, built by today's code from its inputs. */
 function morningRequest(c: HeroCase, now: Date, book: string | null = null) {
   // JSON turned the refusals' dates into strings; the builder wants dates.
@@ -418,7 +406,6 @@ function writtenBy(calls: Call[]): Array<{ tool: string; field: string; text: st
 async function runCase(name: string, runs: number, writtenPath: string | null, inSession: boolean, liveSearch = false, inputsOnly = false): Promise<{ name: string; passes: number; runs: number; lookFor: string }> {
   const c = JSON.parse(readFileSync(`scripts/hero-cases/${name}.json`, "utf8")) as HeroCase;
   const mode = MODES[c.mode];
-  await withStockPlaybook(c);
   const { system, first } = requestFor(c, await caseNow(c));
   // A trigger fire's or a morning run's first message is today's too; the recorded one is replaced.
   if (first != null) c.messages = [{ role: "user", content: first }, ...c.messages.slice(1)];

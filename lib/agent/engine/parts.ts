@@ -37,8 +37,8 @@ export const IMPORTED: Record<string, PartDef> = {
   },
 };
 
-/** The facts placed in an agent's instructions where its record lists them: the analyst, the playbooks, the stock's situations. */
-const PLACED_IN_INSTRUCTIONS: Record<"the_analyst" | "playbooks" | "situations", PartDef> = {
+/** The facts a record may send with an agent's instructions, where they were measured: the analyst, the playbooks, the stock's situations. */
+const PLACED_IN_INSTRUCTIONS: Record<"the_analyst" | "playbooks" | "the_playbook" | "situations", PartDef> = {
   the_analyst: {
     title: "The analyst",
     about: "The analyst it works for: its strategy in its own words, its rules (direction, hold style, size, slots, and the stocks it may cover where its fence narrows them) and its playbooks, a line each.",
@@ -46,7 +46,12 @@ const PLACED_IN_INSTRUCTIONS: Record<"the_analyst" | "playbooks" | "situations",
   },
   playbooks: {
     title: "The playbooks",
-    about: "Each of the analyst's playbooks in full: when it applies, what confirms a buy, and its watch triggers.",
+    about: "Each of the analyst's playbooks in full: when it applies, what confirms a buy, and its watch triggers. The Writer picks a stock's playbook from them.",
+    source: "lib/agent/knowledge/playbooks.ts (Settings → Playbooks)",
+  },
+  the_playbook: {
+    title: "The stock's playbook",
+    about: "The playbook the stock is on, in full: when it applies, what confirms a buy, and its watch triggers; each of its analyst's when it has none yet.",
     source: "lib/agent/knowledge/playbooks.ts (Settings → Playbooks)",
   },
   situations: {
