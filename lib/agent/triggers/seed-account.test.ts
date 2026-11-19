@@ -25,8 +25,9 @@ describe("accountSeedTriggers", () => {
   it("carries the earnings rules — a look before the report and a look on it", () => {
     const kinds = accountSeedTriggers().map((t) => shapeName(t.predicate));
     expect(kinds).toContain("report:before");
-    expect(kinds).toContain("surprise:beat");
-    expect(kinds).toContain("surprise:miss");
+    expect(kinds).toContain("report:after");
+    // One look on the report, not a beat rule and a miss rule beside it (NVDA 2026-11-18: two runs on one report).
+    expect(kinds.filter((k) => k?.startsWith("surprise:"))).toEqual([]);
     // Wakes, not clocks: every earnings rule is a REVIEW, never a trade.
     expect(
       accountSeedTriggers()

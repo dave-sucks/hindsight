@@ -181,7 +181,7 @@ rows are not these):
 | Account | up 7% in a day | ADD |
 | Account | every 7 days | REVIEW |
 | Account | reports earnings within 3 days | REVIEW |
-| Account | earnings beat · earnings miss | REVIEW |
+| Account | within 1 day after earnings | REVIEW — asks the analyst; a stock's own after-earnings review replaces it |
 | Account | a material filing | REVIEW |
 | PEAD Specialist | up 10% from entry · down 12% from entry | REVIEW |
 | Catalyst Event PM | 10 days before the event date | REVIEW |
