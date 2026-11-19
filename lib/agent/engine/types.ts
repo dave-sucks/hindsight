@@ -5,16 +5,19 @@
  * An agent is three things: its instructions, its context and its tools.
  * - Instructions: markdown files (./agents/*.md): its own, and the shared
  *   ones it uses (the house rules, how you write, the research rules).
- * - Context: the facts it is given, each one named read (./parts.ts); the
- *   record says where each goes: in the instructions (the analyst, the
- *   playbooks, the stock's situations, where they were measured) or the
- *   first message.
+ * - Context: the facts it is given, each one named read (./parts.ts), from
+ *   the bundle its run's subject brings (lib/agent/context/bundles.ts); the
+ *   record says which it reads and where each goes: in the instructions
+ *   (the analyst, the playbooks, the stock's situations, where they were
+ *   measured) or the first message.
  * - Tools: the tools it may call.
  * The run's task is the message, written by whoever starts the run; the
  * record's context list says where it goes in the first message. Every first
  * message opens with one line the engine writes: the date and time in ET, and
  * the account.
  */
+
+import type { SubjectKind } from "@/lib/agent/context/bundles";
 
 /** An instruction file: one markdown file in ./agents/. */
 export type InstructionFile = `${string}.md`;
@@ -73,6 +76,8 @@ export interface AgentRecord {
   runsWhen?: string;
   /** Who writes its message: a person, another agent, the trigger check or the schedule. */
   messageFrom: string;
+  /** What its run is about: the account, an analyst, a thesis, or the chat. Its context comes from that subject's bundle (lib/agent/context/bundles.ts), and it reads nothing outside it. */
+  subject: SubjectKind;
   model: string;
   maxSteps: number;
   /** How long its model call may run before it is stopped, in milliseconds. The agent runner (./run.ts) runs only a record that names one. */

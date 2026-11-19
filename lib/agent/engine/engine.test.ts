@@ -16,6 +16,7 @@ import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-st
 import { STANDIN_MARKET_NUMBERS } from "@/lib/agent/__fixtures__/market-numbers-standin";
 
 const loadPortfolioSnapshot = jest.fn();
+const portfolioDigest = jest.fn(async (..._a: unknown[]) => ({ narrative: "The account had a good day.", createdAt: new Date("2026-11-12T01:00:00Z") }));
 const marketDigest = jest.fn();
 const theses = [
   { ticker: "AAA", status: "HOLDING", coreBelief: "The company sells a product people keep buying. More.", triggers: [], researchRun: { agentConfig: { name: "Case Analyst" } } },
@@ -25,31 +26,28 @@ jest.mock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: a
 jest.mock("@/lib/portfolio/load-snapshot", () => ({ loadPortfolioSnapshot: (...a: unknown[]) => loadPortfolioSnapshot(...a) }));
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    portfolioDigest: { findFirst: async () => ({ narrative: "The account had a good day.", createdAt: new Date("2026-11-12T01:00:00Z") }) },
+    portfolioDigest: { findFirst: (...a: unknown[]) => portfolioDigest(...a) },
     marketDigest: { findFirst: (...a: unknown[]) => marketDigest(...a) },
     runEvent: { findFirst: async () => ({ message: "### Where the money is\nTwo stocks, one bet.", createdAt: new Date("2026-11-10T15:30:00Z") }) },
     thesis: { findMany: async () => theses },
   },
 }));
 
-import { buildAgentRequest, composeAgentRequest, dateLine, openingOf, type Sources } from "./engine";
+import { composeAgentRequest, dateLine, openingOf } from "./engine";
+import { buildAgentRequest } from "./build";
+import type { ContextRun } from "@/lib/agent/context";
 import { AGENTS } from "./agents";
 import { PORTFOLIO_MANAGER } from "./agents/portfolio-manager";
 import { MORNING_RUN } from "./agents/morning-run";
-import { loadPortfolioPieces, portfolioPieceText } from "@/lib/agent/portfolio-block";
-import { lastWriteup } from "@/lib/agent/portfolio-manager/run";
-import { loadBook } from "@/lib/agent/book";
+import { portfolioPieceText } from "@/lib/agent/portfolio-block";
 import { byParts } from "@/lib/agent/run-requests";
 import { PORTFOLIO_DIGEST } from "./agents/portfolio-digest";
 import { MARKET_REVIEWER } from "./agents/market-reviewer";
 import { isFile, ownFile, providerToolNames } from "./types";
 
 const NOW = new Date(GOLDEN.now);
-const book = { accountId: "acct", environment: "LIVE" as const };
-const sources: Sources = {
-  portfolioPieces: (want) => loadPortfolioPieces({ ...book, now: NOW, ...want }),
-  context: { the_book: () => loadBook(book), last_output: async () => `## Your last write-up\n${await lastWriteup(book)}` },
-};
+/** A run about the account, the stand-in book: its facts read by their loaders (lib/agent/context/). */
+const accountRun = (agent: ContextRun["agent"]): ContextRun => ({ subject: { kind: "account", userId: "user_1", accountId: "acct", environment: "LIVE" }, now: NOW, agent });
 
 beforeEach(() => {
   loadPortfolioSnapshot.mockReset().mockResolvedValue(STANDIN_SNAPSHOT);
@@ -89,15 +87,18 @@ describe("every agent is instructions, context and tools", () => {
     expect(openingOf(built)).toBe("Write today's.");
   });
 
-  it("refuses a fact the record lists and the run didn't give, in its first message or among its instructions", async () => {
-    await expect(buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { portfolioPieces: sources.portfolioPieces })).rejects.toThrow("reads the_book");
+  it("refuses a run about another subject, a fact outside its subject's bundle, and a fact it wasn't given", async () => {
+    await expect(buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { ...accountRun("portfolio_manager"), subject: { kind: "analyst", userId: "user_1", accountId: "acct", environment: "LIVE", analystId: "a1" } })).rejects.toThrow(
+      "portfolio_manager is about account, and its run is about analyst",
+    );
+    await expect(buildAgentRequest({ ...PORTFOLIO_MANAGER, context: ["the_stock", "message"] }, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"))).rejects.toThrow("reads the_stock, outside account's bundle");
     expect(() => composeAgentRequest(MORNING_RUN, { now: NOW, environment: "PAPER" }, { pieces: [], context: {} })).toThrow("reads the_analyst but it wasn't read");
   });
 });
 
 describe("the Portfolio Manager", () => {
   it("is its old request with only the documented moves: its context into the first message, Watching to the book, the day to the date line", async () => {
-    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, sources);
+    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"));
     const old = GOLDEN.system;
     const role = old.slice(0, old.indexOf("\n\n"));
     const houseAndWrite = between(old, "The principal's words", "\n\n## Market and portfolio");
@@ -115,13 +116,13 @@ describe("the Portfolio Manager", () => {
   });
 
   it("asks for the Market and portfolio reads without the 8 PM digest, because its record doesn't list it", async () => {
-    const want = jest.fn(sources.portfolioPieces!);
-    await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { ...sources, portfolioPieces: want });
-    expect(want).toHaveBeenCalledWith({ portfolioDigest: false });
+    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"));
+    expect(built.message).not.toContain("### Portfolio digest");
+    expect(built.parts.map((p) => p.id)).not.toContain("portfolio_digest");
   });
 
   it("names every part, in order, and the parts add up to what is sent", async () => {
-    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, sources);
+    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"));
     expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual([
       "instructions:Its own text",
       "instructions:House rules",
@@ -144,14 +145,18 @@ describe("the Portfolio Manager", () => {
   });
 
   it("a Market and portfolio read that can't be read prints its one line under the heading, as before", async () => {
-    const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, { ...sources, portfolioPieces: async () => [{ id: "unreadable", text: "The portfolio snapshot and the digest couldn't be read for this request." }] });
+    const built = composeAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, {
+      pieces: [{ id: "unreadable", text: "The portfolio snapshot and the digest couldn't be read for this request." }],
+      context: { the_book: "## The book\nb", last_output: "## Your last write-up\nw" },
+    });
     expect(built.message).toContain("\n\n## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request.\n\n## The book\n");
   });
 });
 
 describe("the portfolio digest", () => {
   it("is its old request with only the documented moves: the date line, and the snapshot under its heading", async () => {
-    const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER" }, { portfolioPieces: async () => [{ id: "portfolio_snapshot", text: portfolioPieceText(STANDIN_SNAPSHOT) }] });
+    const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER" }, { ...accountRun("portfolio_digest"), given: { snapshot: STANDIN_SNAPSHOT } });
+    expect(portfolioPieceText(STANDIN_SNAPSHOT)).toBe(`### Portfolio snapshot\n${DIGEST_GOLDEN.message}`);
     expect(built.instructions).toBe(DIGEST_GOLDEN.system);
     expect(built.message).toBe(`${dateLine(NOW, "PAPER")}\n\n## Market and portfolio\n\n### Portfolio snapshot\n${DIGEST_GOLDEN.message}`);
     expect(built.tools).toEqual([]);
@@ -160,9 +165,12 @@ describe("the portfolio digest", () => {
 
 describe("the Market Reviewer", () => {
   it("is sent its old instructions; its context is the market numbers, the portfolio, the book and its last output", async () => {
-    const built = await buildAgentRequest(MARKET_REVIEWER, { now: NOW, environment: "LIVE" }, {
-      portfolioPieces: (want) => loadPortfolioPieces({ ...book, now: NOW, ...want }),
-      context: { the_book: async () => "## The book\nb", last_output: async () => "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
+    const built = composeAgentRequest(MARKET_REVIEWER, { now: NOW, environment: "LIVE" }, {
+      pieces: [
+        { id: "market_numbers", text: "### Market numbers (as of 9:30 AM ET)\nn" },
+        { id: "portfolio_snapshot", text: "### Portfolio snapshot\ns" },
+      ],
+      context: { the_book: "## The book\nb", last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
     });
     expect(built.instructions).toBe(REVIEWER_GOLDEN.system);
     expect(built.parts.map((p) => p.title)).toEqual(["Its own text", "The date and account", "Market numbers", "The portfolio", "The book", "Its last output"]);

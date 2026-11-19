@@ -14,6 +14,7 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
   name: "Portfolio Manager",
   does: "Looks across the whole account and may propose up to three trades, each waiting for you.",
   messageFrom: "The schedule, which writes it no message: the date line is its start.",
+  subject: "account",
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 40,

@@ -20,6 +20,7 @@ export const CHAT: AgentRecord = {
   does: "Answers you: explains, researches, finds stocks, sends them to the Writer, edits triggers, writes notes and proposes trades (each waits for you).",
   runsWhen: "When you write to it, at the portfolio level or pinned to one analyst.",
   messageFrom: "You: the conversation. The date line and its context ride on each message you send.",
+  subject: "chat",
   model: MODES["principal"].model,
   maxSteps: MODES["principal"].maxSteps,
   tools: MODES["principal"].toolAllowlist ?? [],

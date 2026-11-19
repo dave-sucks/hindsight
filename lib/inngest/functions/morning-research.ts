@@ -1,14 +1,13 @@
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
-import { generateText, stepCountIs } from "ai";
+import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
-import { dailyRunRequest } from "@/lib/agent/system-prompt";
+import { morningRunRequest } from "@/lib/agent/system-prompt";
 import { openingOf } from "@/lib/agent/engine/engine";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { MODES } from "@/lib/agent/modes";
@@ -311,12 +310,6 @@ export const morningResearch = inngest.createFunction(
         }
 
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
-        // 2c. The prompt: the analyst's row (rendered once, lib/agent/analyst-brief.ts) and the run input.
-        const request = dailyRunRequest(
-          { ...config, setupOverrides: await loadSetupOverrides(config.accountId) },
-          runInput,
-        );
-        const systemPrompt = request.instructions;
 
         // 2d. Create tools with run context, then enforce the
         // research-run allowlist (Fix #5). The unified route already
@@ -352,6 +345,21 @@ export const morningResearch = inngest.createFunction(
                 .filter(([, v]) => v != null),
             )
           : allTools;
+
+        // 2c. The request: the analyst's facts read for it by the engine
+        // (lib/agent/context/: the analyst, the market and portfolio, its
+        // book as get_theses reads it, the week, the calls refused), its
+        // book through the run's own get_theses; the kickoff from the run input.
+        const request = await morningRunRequest(
+          {
+            subject: { kind: "analyst", userId: config.userId, accountId: config.accountId, environment: runEnvironment, analystId: config.id },
+            now: new Date(),
+            agent: "morning_run",
+            toolset: allTools as ToolSet,
+          },
+          runInput,
+        );
+        const systemPrompt = request.instructions;
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
         // Use AbortSignal to kill the agent before Vercel's 300s timeout kills the process.

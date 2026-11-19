@@ -40,20 +40,20 @@
  * own its lifecycle.
  */
 
-import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
+import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
+import type { AnalystCapacity } from "@/lib/agent/capacity";
+import { setupRecordText } from "@/lib/agent/context/playbook-record";
+import { stockDataText } from "@/lib/agent/context/stock-data";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
 import { WRITER, WRITER_GO } from "@/lib/agent/engine/agents/writer";
 import { HOLDING_REFRESH } from "@/lib/agent/engine/agents/holding-refresh";
 import type { AgentId, AgentRecord, BuiltRequest, RunnableRecord, SentPartManifest } from "@/lib/agent/engine/types";
 import { runAgent } from "@/lib/agent/engine/run";
 import { createResearchTools } from "@/lib/agent/tools";
-import { loadScorecardLines } from "@/lib/performance/load-setup-scorecard";
 import { setupsForAnalyst, type Setup } from "@/lib/agent/knowledge/setups";
-import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
 import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { generateText, stepCountIs, tool } from "ai";
 import type { ModelMessage, ToolSet } from "ai";
 import { modelFor } from "@/lib/agent/model";
@@ -85,8 +85,7 @@ import {
 import { recordThesis } from "@/lib/agent/tools/record-thesis";
 import { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
 import { updateThesis } from "@/lib/agent/tools/update-thesis";
-import { getTheses } from "@/lib/agent/tools/get-theses";
-import { stockFromRead, stockRowText } from "@/lib/agent/system-prompts/intraday-tactical";
+import { stockRowText } from "@/lib/agent/system-prompts/intraday-tactical";
 import { parseTriggersResilient, triggerInputSchema } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
@@ -256,6 +255,8 @@ interface WriterExistingThesis {
   horizon: string | null;
   coreBelief: string | null;
   company: string | null;
+  /** Its playbook: a refresh is given this playbook only. */
+  setupId?: string | null;
   /** The stored triggers, with ids — a refresh edits them one at a time. */
   triggers: Trigger[];
 }
@@ -273,6 +274,7 @@ export async function loadExistingThesis(
       horizon: true,
       coreBelief: true,
       company: true,
+      setupId: true,
       triggers: true,
     },
   });
@@ -284,6 +286,7 @@ export async function loadExistingThesis(
     horizon: row.horizon,
     coreBelief: row.coreBelief,
     company: row.company ?? null,
+    setupId: row.setupId ?? null,
     triggers: parseTriggersResilient(row.triggers).triggers as Trigger[],
   };
 }
@@ -349,7 +352,7 @@ export interface WriterResearchPromptOpts {
   ticker: string;
   mode: "mint" | "refresh";
   /** On a refresh, the thesis as it stands: its status picks the agent (writerRecordFor). */
-  existingThesis: Pick<WriterExistingThesis, "status"> | null;
+  existingThesis: Pick<WriterExistingThesis, "status" | "setupId"> | null;
   /** On a refresh, the stock as every run reads it (get_theses's short row); null when it couldn't be read. */
   stockRow?: Record<string, unknown> | null;
   reason: string;
@@ -369,6 +372,8 @@ export interface WriterResearchPromptOpts {
   playbooks?: ((setupId: string) => Template[]) | null;
   /** The Market and portfolio reads (lib/agent/portfolio-block.ts): the Writer reads the market numbers. */
   portfolioPieces?: PortfolioPiece[] | null;
+  /** The analyst's room, on a stock it doesn't hold (lib/agent/context/the-analyst.ts). */
+  room?: AnalystCapacity | null;
   /** The analyst's account: paper or live. */
   environment?: "PAPER" | "LIVE";
 }
@@ -400,11 +405,6 @@ function ideaSourceBlock(raw: IdeaSource | null | undefined): string | null {
   return `## Whose idea it was\nThe idea came from ${s.author}${s.posted_on ? `, posted ${s.posted_on}` : ""}${s.url ? ` (${s.url})` : ""}.${words}`;
 }
 
-/** This analyst's record by playbook: the read "playbook_record" (null when none). */
-function setupRecordText(lines: string[] | undefined): string | null {
-  return lines?.length ? `## Your record by playbook (closed trades since 2026-05-27)\n${lines.map((l) => `- ${l}`).join("\n")}` : null;
-}
-
 /**
  * The Writer's message: the sender's brief as it wrote it (why it sent the
  * stock, what it found, whose idea it was), what the chat found under its
@@ -415,9 +415,6 @@ export function writerMessage(o: Pick<WriterResearchPromptOpts, "ticker" | "reas
     .filter((x): x is string => Boolean(x))
     .join("\n\n");
 }
-
-/** The stock's data under its banner: the read "stock_data". */
-export const stockDataText = (dataBlock: string) => `## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\n${dataBlock}`;
 
 /**
  * The Writer's request, built by the agent engine from its record
@@ -436,15 +433,26 @@ function writerInput(opts: WriterResearchPromptOpts, first: { chatFound?: string
   return { now, environment: opts.environment ?? "PAPER", message: writerMessage(opts, first?.chatFound) };
 }
 
-/** The Writer's facts for this run: the analyst and its playbooks (placed in its instructions), and its first message's reads. */
+/** On a refresh, the stock's own playbook, as the account set it. Null when it has none. */
+function ownPlaybook(opts: WriterResearchPromptOpts): Setup[] | null {
+  const id = opts.existingThesis?.setupId;
+  const own = id ? setupsForAnalyst([id], opts.analyst.setupOverrides ?? undefined) : [];
+  return own.length ? own : null;
+}
+
+/**
+ * The Writer's facts from what a replay or a test has in hand, written as
+ * the loaders write them (lib/agent/context/): the analyst and its
+ * playbook (placed in its instructions), and its first message's reads.
+ */
 function writerTexts(opts: WriterResearchPromptOpts, first?: { dataBlock: string; chatFound?: string | null }) {
   const T = opts.ticker.toUpperCase();
   const refreshing = opts.mode === "refresh" && opts.existingThesis != null;
   return {
     context: {
-      the_analyst: analystBrief(opts.analyst),
-      // Each playbook's words, then its watch triggers as Settings → Playbook lists them.
-      playbooks: playbooksBlock(opts.setups ?? [], opts.playbooks ?? null),
+      the_analyst: analystBrief(opts.analyst, opts.room ?? null),
+      // The stock's own playbook in full; a stock with none yet gets each of the analyst's to choose from (lib/agent/context/playbooks.ts).
+      playbooks: playbooksBlock(ownPlaybook(opts) ?? opts.setups ?? [], opts.playbooks ?? null) || null,
       the_stock: refreshing ? stockRowText({ ticker: T, row: opts.stockRow ?? null }) : null,
       playbook_record: setupRecordText(opts.setupRecord),
       stock_data: first ? stockDataText(first.dataBlock) : null,
@@ -459,17 +467,6 @@ function writerTexts(opts: WriterResearchPromptOpts, first?: { dataBlock: string
  */
 export function writerRun(opts: Pick<WriterResearchPromptOpts, "mode" | "existingThesis">): RunnableRecord {
   return { ...writerRecordFor(opts), timeoutMs: RESEARCH_TIMEOUT_MS };
-}
-
-/** The stock as every run reads it, for a refresh: get_theses's short row (the trigger run reads the same). Null when the read fails. */
-async function readStockRow(ctx: ToolContext, ticker: string, thesisId: string): Promise<Record<string, unknown> | null> {
-  try {
-    const out = (await getTheses(ctx).execute!({ tickers: [ticker] } as never, { toolCallId: "read-the-stock", messages: [] })) as { ok?: boolean; data?: unknown };
-    return stockFromRead(out, thesisId)?.row ?? null;
-  } catch (err) {
-    console.warn(`[thesis-writer] the read of ${ticker} failed:`, err);
-    return null;
-  }
 }
 
 /** The agent a stock is written by: the Holding refresh for a stock we own, else the Writer. */
@@ -652,35 +649,22 @@ export async function writerResearchPhase(
     // (get_stock_data's prior coverage); record_thesis still refuses a mint at
     // or above a ≤14-day exit price without acknowledge_prior_exit.
 
-    // The save's own check, run in check-only mode from the submit step; its context also reads the stock on a refresh.
+    // The save's own check, run in check-only mode from the submit step; the stock's row is read through its tools.
     const saveCtx = await buildWriterToolCtx(args, analyst);
-    const stockRow = existingThesis ? await readStockRow(saveCtx, T, existingThesis.id) : null;
 
-    // The playbook's numbers as this account set them (DAV-273), and its triggers.
-    const setupOverrides = await loadSetupOverrides(analyst.accountId);
-    const seatSetups = setupsForAnalyst(analyst.setupIds, setupOverrides);
-    const playbooks = await loadPlaybooks(analyst.accountId);
+    // The message is the sender's brief; the analyst, the stock's playbook, its row and record are read for the thesis (lib/agent/context/).
+    const environment = analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
     const writerOpts: WriterResearchPromptOpts = {
-      analyst: { ...analyst, setupOverrides },
+      analyst,
       ticker: T,
       mode: args.mode,
       existingThesis,
-      stockRow,
       reason: args.reason,
       researchNotes: args.researchNotes ?? null,
       ideaSource: args.ideaSource ?? null,
-      setups: seatSetups,
-      playbooks,
-      setupRecord: await loadScorecardLines({
-        accountId: analyst.accountId,
-        analystId: analyst.id,
-        environment: analyst.tradingEnvironment ?? "PAPER",
-      }),
-      portfolioPieces: await loadPortfolioPieces({ accountId: analyst.accountId, environment: analyst.tradingEnvironment ?? "PAPER", portfolioDigest: false }),
-      environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER",
+      environment,
     };
     const first = { dataBlock: rawDataBlock, chatFound: args.chatFound };
-    const texts = writerTexts(writerOpts, first);
 
     const modeConfig = MODES["thesis-writer"];
 
@@ -722,10 +706,9 @@ export async function writerResearchPhase(
     // its record names the ones it is given.
     const run = await runAgent(writerRun(writerOpts), {
       input: writerInput(writerOpts, first, new Date()),
-      sources: {
-        portfolioPieces: async () => writerOpts.portfolioPieces ?? [],
-        context: Object.fromEntries(Object.entries(texts.context).map(([id, text]) => [id, async () => text ?? null])),
-      },
+      subject: { kind: "thesis", userId: analyst.userId, accountId: analyst.accountId, environment, analystId: analyst.id, ticker: T, thesisId: existingThesis?.id ?? null },
+      // Its own pull, which the save checks against: the stock's data.
+      given: { stockData: first.dataBlock },
       runId: args.childRunId,
       toolset: { ...(createResearchTools(saveCtx) as ToolSet), submit_thesis: submitThesisTool } as ToolSet,
       source: "thesis-writer",

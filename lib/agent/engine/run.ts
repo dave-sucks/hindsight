@@ -31,7 +31,9 @@ import { addTokenUsage, emptyTokenUsage, recordTokenUsage, type TokenUsage } fro
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { putNotesOnRunProposals } from "@/lib/proposals/auto-writeup";
 import { etDateOf } from "@/lib/market-data/intraday-window";
-import { buildAgentRequest, openingOf, type Sources } from "./engine";
+import { openingOf } from "./engine";
+import { buildAgentRequest } from "./build";
+import type { ContextRun, Subject } from "@/lib/agent/context";
 import type { AgentInput, BuiltRequest, ProviderToolId, RunnableRecord } from "./types";
 
 type Provider = "anthropic" | "openai";
@@ -58,8 +60,10 @@ const wentThrough = (output: unknown) => {
 
 export interface RunAgentArgs {
   input: AgentInput;
-  /** Where the record's blocks read their data. */
-  sources: Sources;
+  /** What the run is about: its context is read for it (lib/agent/context/). */
+  subject: Subject;
+  /** What the run has already read for its own work, handed over so it isn't read twice. */
+  given?: ContextRun["given"];
   /** The run that keeps the request; null keeps nothing (a dry run). */
   runId: string | null;
   /** Every tool, made for this run; the model is given the ones the record names. */
@@ -91,7 +95,7 @@ export interface AgentRun {
 }
 
 export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Promise<AgentRun> {
-  const request = await buildAgentRequest(record, args.input, args.sources);
+  const request = await buildAgentRequest(record, args.input, { subject: args.subject, now: args.input.now, agent: record.id, toolset: args.toolset, given: args.given });
   const picked = Object.fromEntries(request.tools.map((name) => [name, args.toolset[name]])) as ToolSet;
   const provider = providerOf(record.model);
   const provided = Object.fromEntries((record.providerTools ?? []).map((id) => [id, PROVIDER_TOOLS[id](provider, record)]));

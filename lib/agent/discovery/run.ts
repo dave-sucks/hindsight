@@ -10,28 +10,13 @@
 import type { ToolSet } from "ai";
 import { prisma } from "@/lib/prisma";
 import { createResearchTools } from "@/lib/agent/tools";
-import { analystRoom, analystScope } from "@/lib/agent/analyst-scope";
-import { analystBrief } from "@/lib/agent/analyst-brief";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
-import { loadBook } from "@/lib/agent/book";
+import { analystScope } from "@/lib/agent/analyst-scope";
 import type { AgentToRun, RunAgentArgs, RunFor } from "@/lib/agent/engine/run";
 import { DISCOVERY, SENDS_A_RUN } from "@/lib/agent/engine/agents/discovery";
 
 export const DISCOVERY_RUN_MODE = "DISCOVERY";
 
-type Line = { kind: "generic"; text: string } | { kind: "ticker"; ticker: string; tag?: string; text: string };
 type Exec = (input: Record<string, unknown>, options: unknown) => Promise<unknown>;
-
-/** The earnings calendar outside the analyst's book, as get_earnings_calendar hands it to the model: who reported in the last 7 days, who reports in the next 14. */
-export async function earningsCalendar(tools: ToolSet): Promise<string> {
-  const execute = (tools.get_earnings_calendar as unknown as { execute: Exec }).execute;
-  const read = async (window: "reported" | "upcoming", days: number) => {
-    const out = (await execute({ window, days, scope: "universe" }, { toolCallId: `context-${window}`, messages: [] })) as { ok: boolean; data?: { lines?: Line[] } };
-    if (!out.ok || !out.data?.lines) return `The calendar couldn't be read.`;
-    return out.data.lines.map((l) => (l.kind === "ticker" ? `- $${l.ticker} ${l.tag ?? ""}: ${l.text}` : l.text)).join("\n");
-  };
-  return [`## The earnings calendar`, `Reported, last 7 days:\n${await read("reported", 7)}`, `Reporting, next 14 days:\n${await read("upcoming", 14)}`].join("\n\n");
-}
 
 /** The run's tools with its send limit: SENDS_A_RUN stocks to the Writer a run. */
 export function withSendLimit(real: ToolSet): ToolSet {
@@ -67,17 +52,9 @@ export async function discoveryArgs(
   if (!ac) throw new Error(`Analyst ${target.analystId} is not in this account.`);
   const scope = await analystScope(ac, target.userId, target.environment);
   const toolset = createResearchTools({ runId: runId ?? "", userId: target.userId, accountId: target.accountId, runMode: DISCOVERY_RUN_MODE, ...scope }) as ToolSet;
-  const environment = ac.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
   return {
     input: { now: opts.now ?? new Date(), environment: target.environment },
-    sources: {
-      context: {
-        the_analyst: async () => analystBrief({ ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) }, await analystRoom(ac)),
-        // The analyst's stocks, read in the book it trades in, whichever book this run is in.
-        the_book: () => loadBook({ accountId: ac.accountId, environment, analystId: ac.id }),
-        earnings_calendar: () => earningsCalendar(toolset),
-      },
-    },
+    subject: { kind: "analyst", userId: target.userId, accountId: target.accountId, environment: target.environment, analystId: ac.id },
     toolset,
     // A dry run's stand-in dispatch goes under the limit, so its sends are counted as a real run's.
     wrapTools: (mine) => withSendLimit(opts.tools ? opts.tools(mine) : mine),

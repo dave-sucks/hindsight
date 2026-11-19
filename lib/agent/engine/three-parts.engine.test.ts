@@ -14,7 +14,11 @@
  * - the Writer's five rule texts are one, its own text one, its brief its
  *   message, and on a refresh the stock is its row;
  * - the chat's book and each analyst's room ride on your newest message; the
- *   pinned analyst's name and id open its analyst text.
+ *   pinned analyst's name and id open its analyst text;
+ * - context read by subject (lib/agent/context/): the morning run's book is
+ *   in its first message, its get_theses read, so its first step no longer
+ *   asks for it; the post-trade write-up reads the market numbers alone of
+ *   the Market and portfolio reads, as every run about a thesis does.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { before, partsOf } from "./__fixtures__/before";
@@ -25,7 +29,8 @@ import { CHAT_CASES } from "./__fixtures__/chat-cases";
 import { dailyRunRequest } from "@/lib/agent/system-prompt";
 import { triggerRunRequest } from "@/lib/agent/system-prompts/intraday-tactical";
 import { writerRequest } from "@/lib/agent/run-thesis-writer";
-import { analystsText, chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
+import { chatNewest, chatRequest } from "@/lib/agent/system-prompts/chat";
+import { analystsText } from "@/lib/agent/context/the-analysts";
 import { fenceLines, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { writtenNote } from "@/lib/agent/triggers/note";
@@ -59,7 +64,12 @@ describe("the morning run", () => {
     const regime = old["instructions:regime"]
       .replace(/^(## Regime and cash\n)(?:Your cash is in the portfolio snapshot below\.|Cash is \$[\d,]+\.)/, "$1Your cash is in the portfolio snapshot.")
       .replace(/a watch name at its buy level(?: \(today: [^)]*\))?/, "a watch name at its buy level (the start of the day names them)");
-    expect(now["instructions:own"]).toBe(`${old["instructions:instructions"]}\n\n${regime}`);
+    // Its book is in its first message: the first step reads it there.
+    const steps = old["instructions:instructions"].replace(
+      "1. Read your book. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL) and `get_theses`.",
+      "1. Read your book: it is in your first message, as `get_theses` hands it to you. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL).",
+    );
+    expect(now["instructions:own"]).toBe(`${steps}\n\n${regime}`);
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["earnings_week", "earnings_this_week"], ["filings_week", "filings_this_week"]]) {
@@ -98,7 +108,9 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     expect(now["instructions:playbooks"]).toBe(old["message:playbooks"]);
     expect(now["instructions:situations"]).toBe(old["instructions:situations"]);
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["stock_row", "the_stock"]]) {
-      expect([is, now[`message:${is}`]]).toEqual([is, old[`message:${was}`]]);
+      // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.
+      const notRead = a.autoTrade && ["market_digest", "portfolio", "portfolio_digest"].includes(is);
+      expect([is, now[`message:${is}`]]).toEqual([is, notRead ? undefined : old[`message:${was}`]]);
     }
     // The message: the trigger and its price once, what else the check knows, then the old ask.
     const t = a.trigger as Trigger;

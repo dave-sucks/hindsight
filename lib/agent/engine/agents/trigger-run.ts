@@ -24,6 +24,7 @@ export const TRIGGER_RUN: AgentRecord = {
   does: "Decides on one stock when one of its triggers fires: a trade (it waits for you), a trigger moved, or a note on why nothing.",
   runsWhen: "Every 5 minutes in market hours and at the 4:20 PM close check, when a trigger set to Send to Agent fires.",
   messageFrom: "The trigger check (lib/inngest/functions/tactical-run.ts): the trigger that fired, the price it fired at and the fire's facts, then the ask.",
+  subject: "thesis",
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   // The playbooks only on a review of a stock we watch (the run passes none otherwise); the stock's situations end the instructions.

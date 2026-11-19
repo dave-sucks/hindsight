@@ -12,6 +12,9 @@
  *   lists them. In a conversation the date line and the reads ride on each
  *   new message.
  *
+ * The facts are read by their loaders (lib/agent/context/), for the run's
+ * subject, before the request is put together (./build.ts).
+ *
  * Each part is put in a blank line after the one before, and the request
  * says which part is which, so the run can keep that with what it sent and
  * the Context panel can name each part. The engine writes one text of its
@@ -20,7 +23,7 @@
 import type { PortfolioPiece, PortfolioPieceId } from "@/lib/agent/portfolio-block";
 import { instructionText } from "./instructions";
 import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED } from "./parts";
-import { isFile, isShared, readsOf, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type Where } from "./types";
+import { isFile, isShared, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type Where } from "./types";
 
 /** Every text for one request, already read. */
 export interface Loaded {
@@ -28,13 +31,6 @@ export interface Loaded {
   pieces?: PortfolioPiece[] | null;
   /** Every other fact: its text for this run (null: none this run). */
   context?: Partial<Record<ContextId, string | null>>;
-}
-
-/** Where the facts come from, handed in by the run. */
-export interface Sources {
-  /** The Market and portfolio reads; `portfolioDigest` is false when the agent doesn't get the 8 PM digest. */
-  portfolioPieces?: (want: { portfolioDigest: boolean }) => Promise<PortfolioPiece[]>;
-  context?: Partial<Record<ContextId, () => Promise<string | null>>>;
 }
 
 /** Between two parts: a blank line. */
@@ -54,22 +50,6 @@ export function dateLine(now: Date, environment: "PAPER" | "LIVE"): string {
   const day = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
   return `${day}, ${time} ET, the ${environment} account.`;
-}
-
-/** Read every fact the record lists, then build the request. */
-export async function buildAgentRequest(record: AgentRecord, input: AgentInput, sources: Sources): Promise<BuiltRequest> {
-  const loaded: Loaded = { context: {} };
-  if (readsOf(record).some(isPiece)) {
-    if (!sources.portfolioPieces) throw new Error(`${record.id} reads the Market and portfolio context but its run gave no way to read it`);
-    loaded.pieces = await sources.portfolioPieces({ portfolioDigest: record.context.includes("portfolio_digest") });
-  }
-  for (const id of readsOf(record)) {
-    if (isPiece(id)) continue;
-    const load = sources.context?.[id];
-    if (!load) throw new Error(`${record.id} reads ${id} but its run gave no way to read it`);
-    loaded.context![id] = await load();
-  }
-  return composeAgentRequest(record, input, loaded);
 }
 
 /** Build the request from texts already read: the instruction files and the facts placed among them, then the first message. */

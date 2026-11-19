@@ -22,6 +22,7 @@ export const DISCOVERY: RunnableRecord = {
   name: "Discovery",
   does: "Finds stocks one analyst doesn't cover yet that fit its playbooks, and sends the best to the Writer with a brief. Its own text is a draft for you to rewrite.",
   messageFrom: "The schedule (lib/agent/engine/schedule.ts): its kickoff.",
+  subject: "analyst",
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 30,

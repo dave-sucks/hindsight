@@ -24,10 +24,11 @@ export const POST_TRADE_WRITEUP: AgentRecord = {
   does: "Writes the note you read on a trade an Auto trigger made: what is going on with the company and the stock, and whether it agrees with the trade.",
   runsWhen: "Right after a trigger set to Auto makes or tries a trade.",
   messageFrom: "The trigger check (lib/inngest/functions/tactical-run.ts): the trigger that fired and the trade it made or tried, then the ask.",
+  subject: "thesis",
   model: MODES["tactical"].model,
   maxSteps: MODES["tactical"].maxSteps,
   instructions: ["the_analyst", "post-trade-writeup.md", "house-rules.md", "how-you-write.md"],
-  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_stock", "message"],
+  context: ["market_numbers", "the_stock", "message"],
   tools: (MODES["tactical"].toolAllowlist ?? []).filter((name) => !NOT_ITS_TOOLS.has(name)),
   output: "One update_thesis note on the stock, which becomes the reason on the trade, then complete_run.",
 };

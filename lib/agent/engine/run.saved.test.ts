@@ -47,6 +47,10 @@ jest.mock("ai", () => ({
   },
 }));
 
+// Its one fact, its last output, read where the Portfolio Manager keeps it (lib/agent/context/last-output.ts).
+const lastWriteup = jest.fn(async () => "Bought nothing.");
+jest.mock("@/lib/agent/portfolio-manager/run", () => ({ lastWriteup: () => lastWriteup() }));
+
 import { runAgentAsRun, type AgentToRun, type RunAgentArgs } from "./run";
 import type { RunnableRecord } from "./types";
 
@@ -56,6 +60,7 @@ const RECORD: RunnableRecord = {
   does: "Tests.",
   runsWhen: "Never.",
   messageFrom: "The test.",
+  subject: "account",
   model: "gpt-5.4",
   maxSteps: 3,
   timeoutMs: 1_000,
@@ -67,7 +72,12 @@ const RECORD: RunnableRecord = {
 };
 
 const FOR = { userId: "user_1", accountId: "acct_1", environment: "PAPER" as const, analystId: "analyst_1" };
-const args = (): Omit<RunAgentArgs, "runId"> => ({ input: { now: new Date("2026-11-18T15:00:00Z"), environment: "PAPER" as const, message: "Go." }, sources: { context: { last_output: async () => "Bought nothing." } }, toolset: {}, source: "test-agent" });
+const args = (): Omit<RunAgentArgs, "runId"> => ({
+  input: { now: new Date("2026-11-18T15:00:00Z"), environment: "PAPER" as const, message: "Go." },
+  subject: { kind: "account", userId: FOR.userId, accountId: FOR.accountId, environment: FOR.environment },
+  toolset: {},
+  source: "test-agent",
+});
 
 const agent = (over: Partial<AgentToRun> = {}): AgentToRun => ({ record: RECORD, mode: "DISCOVERY", args, ...over });
 
@@ -111,7 +121,8 @@ it("marks it FAILED when it ends without its last reply", async () => {
 });
 
 it("marks it FAILED, with the thread saved, when a block can't be read", async () => {
-  const run = await runAgentAsRun(agent({ args: () => ({ ...args(), sources: { context: { last_output: async () => Promise.reject(new Error("no database")) } } }) }), FOR);
+  lastWriteup.mockRejectedValueOnce(new Error("no database"));
+  const run = await runAgentAsRun(agent(), FOR);
   expect(run.status).toBe("FAILED");
   expect(run.error).toBe("no database");
   expect(threads).toHaveLength(1);

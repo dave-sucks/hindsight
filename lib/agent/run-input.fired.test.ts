@@ -64,9 +64,9 @@ it("a fired trigger reaches the run as its sentence, not as a removed condition"
   ]);
 });
 
-it("carries the Market and portfolio block, loaded for the analyst's own account and book", async () => {
+it("reads none of the morning run's context: the Market and portfolio block is read for the analyst by its loader (lib/agent/context/)", async () => {
   blockArgs.length = 0;
   const input = await buildRunInput("analyst_1", "u");
-  expect(blockArgs).toEqual([{ accountId: "acct_1", environment: "LIVE" }]);
-  expect(input.portfolioPieces).toEqual([{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]);
+  expect(blockArgs).toEqual([]);
+  expect(input.portfolioPieces).toBeUndefined();
 });

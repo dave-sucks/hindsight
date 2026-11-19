@@ -1,6 +1,7 @@
 /**
  * The morning run's request: its record (lib/agent/engine/agents/morning-run.ts)
- * with this run's texts, built by the agent engine (`dailyRunRequest`).
+ * with its facts read for the analyst, built by the agent engine
+ * (`morningRunRequest`; a replay's from its recorded inputs, `dailyRunRequest`).
  *
  * Three-layer principle (see docs/PRINCIPLES.md):
  *   - Layer 1 (tool gates) enforce invariants. Not the prompt's job.
@@ -14,6 +15,13 @@ import type { RunInput } from "./run-input";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
+import { buildAgentRequest } from "@/lib/agent/engine/build";
+import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
+import type { ContextRun } from "@/lib/agent/context";
+import type { SubjectOf } from "@/lib/agent/context/bundles";
+import { loadPieces } from "@/lib/agent/context/market-and-portfolio";
+import { earningsWeekText } from "@/lib/agent/context/earnings-this-week";
+import { filingsWeekText } from "@/lib/agent/context/filings-this-week";
 import { MORNING_RUN, morningKickoff } from "@/lib/agent/engine/agents/morning-run";
 import type { BuiltRequest } from "@/lib/agent/engine/types";
 
@@ -24,60 +32,35 @@ import type { BuiltRequest } from "@/lib/agent/engine/types";
 // per-thesis trigger fires, matching-now state, and review-due math live
 // on each thesis row via get_theses' `needsAction` field.
 
-/** The book's earnings this week (live off the calendar): the earnings_this_week read, or null when there are none. */
-function earningsWeekText(runInput: RunInput): string | null {
-  const soon = runInput.earnings?.reportingSoon ?? [];
-  const justReported = runInput.earnings?.justReported ?? [];
-  if (soon.length > 0 || justReported.length > 0) {
-    const lines: string[] = ["## Earnings on your book this week"];
-    if (soon.length > 0) {
-      lines.push(
-        "Reporting: " +
-          soon
-            .map((e) => `${e.ticker} ${e.date}${e.hour === "bmo" ? " before open" : e.hour === "amc" ? " after close" : ""}`)
-            .join(" · "),
-      );
-    }
-    if (justReported.length > 0) {
-      lines.push("Just reported: " + justReported.map((e) => `${e.ticker} ${e.date} — ${e.summary}`).join(" · "));
-    }
-    lines.push(
-      "A held name reporting this week is a sizing question before the print; a name that just reported is re-underwritten on the numbers. The earnings triggers on these names handle the wake — this line is so you see the week whole.",
-    );
-    return lines.join("\n");
-  }
-  return null;
-}
+/** The watched stocks at their buy price this morning: the kickoff names them. */
+const atBuyOf = (runInput: Pick<RunInput, "triggersMatchingNow">) => (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
 
-/** The book's filings this week (live off EDGAR; DAV-269): the filings_this_week read, or null when there are none. */
-function filingsWeekText(runInput: RunInput): string | null {
-  const filings = runInput.filings?.recent ?? [];
-  if (filings.length > 0 || runInput.filings?.error) {
-    const lines: string[] = ["## Filings on your book this week"];
-    if (runInput.filings?.error) lines.push(`Filings unavailable: ${runInput.filings.error}`);
-    for (const f of filings) lines.push(`- ${f.ticker} ${f.date} — ${f.summary} · ${f.tier} · ${f.url}`);
-    lines.push(
-      "The filing triggers on these names handle the wake; this is so you see the week whole. A serious filing on a held name is read today, not at its next review.",
-    );
-    return lines.join("\n");
-  }
-  return null;
+/** The morning run's message: the kickoff, with the watched stocks at their buy price, and the cash when the snapshot couldn't be read. */
+export function morningMessage(runInput: Pick<RunInput, "triggersMatchingNow" | "portfolio">, pieces: PortfolioPiece[] | null | undefined): string {
+  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
+  return morningKickoff(atBuyOf(runInput), snapshotRead ? null : (runInput.portfolio?.cash ?? 0));
 }
 
 /**
- * The morning run's request, built by the agent engine from its record
- * (lib/agent/engine/agents/morning-run.ts): its instructions (the analyst
- * first), its context (the market and portfolio, the book's week, the calls
- * refused last time) and the schedule's kickoff, with the watched stocks at
- * their buy price this morning. The cron and the Run button send the same
- * request.
+ * The morning run's request: its record (lib/agent/engine/agents/morning-run.ts),
+ * its facts read for the analyst by the engine (lib/agent/context/: the
+ * analyst, the market and the portfolio, its book, the week's earnings and
+ * filings, the calls refused last time), and the schedule's kickoff. The
+ * cron and the Run button send the same request.
  */
-export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: string | null }, runInput: RunInput, now: Date = new Date()): BuiltRequest {
-  // How full this analyst is (DAV-292). The Compounder held 4 of 4 on
-  // 2026-09-18 with seven priced buy plans it could not buy, and nothing
-  // said so until place_trade refused ETN.
-  // Counted the way place_trade counts: held positions PLUS buys awaiting
-  // approval, which have already taken their slot.
+export async function morningRunRequest(run: ContextRun<SubjectOf<"analyst">>, runInput: Pick<RunInput, "triggersMatchingNow" | "portfolio">): Promise<BuiltRequest> {
+  const pieces = await loadPieces(run, { portfolioDigest: MORNING_RUN.context.includes("portfolio_digest") });
+  return buildAgentRequest(MORNING_RUN, { now: run.now, environment: run.subject.environment, message: morningMessage(runInput, pieces) }, run);
+}
+
+/**
+ * The morning run's request from what a replay or a test has in hand,
+ * written as the loaders write it (lib/agent/context/): the analyst with
+ * its room, the recorded Market and portfolio reads, its book (the
+ * get_theses read a recorded run made first), the week and the refused calls.
+ */
+export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: string | null }, runInput: RunInput, now: Date = new Date(), book: string | null = null): BuiltRequest {
+  // How full this analyst is (DAV-292), counted the way place_trade counts: held positions plus buys awaiting approval.
   const queued = runInput.pendingApprovalCount ?? 0;
   const capacity = {
     open: (runInput.portfolio?.positions?.length ?? 0) + queued,
@@ -85,21 +68,13 @@ export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: s
     held: (runInput.portfolio?.positions ?? []).map((p) => p.symbol),
     awaitingApproval: queued,
   };
-  // Watched stocks at their buy price this morning: the kickoff names them, and the cash when the snapshot couldn't be read.
-  const atBuy = (runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
-  const pieces = runInput.portfolioPieces ?? null;
-  const snapshotRead = !!pieces?.length && !pieces.some((p) => p.text.includes("couldn't be read"));
-
-  return composeAgentRequest(MORNING_RUN, { now, environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", message: morningKickoff(atBuy, snapshotRead ? null : (runInput.portfolio?.cash ?? 0)) }, {
+  return composeAgentRequest(MORNING_RUN, { now, environment: analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER", message: morningMessage(runInput, runInput.portfolioPieces) }, {
     pieces: runInput.portfolioPieces ?? null,
     context: {
       the_analyst: analystBrief(analyst, capacity),
-      earnings_this_week: earningsWeekText(runInput),
-      filings_this_week: filingsWeekText(runInput),
-      // Refused calls never redone (2026-09-25): PLTR's buy was refused on
-      // 09-25, the run ended COMPLETE, and nothing said the buy never
-      // happened. An open refusal is carried here until the same tool lands
-      // on the stock — a refusal is an input, never an ending.
+      the_book: book,
+      earnings_this_week: earningsWeekText(runInput.earnings),
+      filings_this_week: filingsWeekText(runInput.filings),
       refused_calls: blockedLastTimeSection(runInput.openRefusals ?? []) || null,
     },
   });

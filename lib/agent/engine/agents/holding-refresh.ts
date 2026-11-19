@@ -20,6 +20,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   does: "Re-researches a stock we own and rewrites its thesis: the belief, what would prove it wrong, and its sale, trim and add triggers, edited by id.",
   runsWhen: "When a stock we own is sent for a refresh: from the chat, a run or the Portfolio Manager.",
   messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
+  subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
   instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "research-rules.md", "holding-refresh.md"],

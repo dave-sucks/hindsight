@@ -10,8 +10,6 @@
  * its own save keeps both.
  */
 import { prisma } from "@/lib/prisma";
-import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
-import { loadBook } from "@/lib/agent/book";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import { writeSharedNote } from "@/lib/agent/shared-notes.server";
 import { runAgent, type AgentRun, type AgentToRun, type RunAgentArgs, type RunFor } from "@/lib/agent/engine/run";
@@ -50,22 +48,19 @@ const firstSentence = (text: string | null) => {
 /** How far back its own notes are shown to it, so it doesn't file the same story again. */
 const NOTES_SHOWN_MS = 5 * 86_400_000;
 
-/** What its context reads beyond the Market and portfolio reads: the book, and its own last output. And the book's tickers, which its notes may name. */
-export interface ReviewBookParts {
-  tickers: string[];
-  book: string;
-  lastOutput: string;
+/** The book's tickers: the stocks its notes may name. */
+export async function reviewTickers(book: Pick<ReviewBook, "accountId" | "environment">): Promise<string[]> {
+  const theses = await prisma.thesis.findMany({
+    where: { status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
+    select: { ticker: true },
+  });
+  return [...new Set(theses.map((t) => t.ticker.toUpperCase()))];
 }
 
-/** The book (every stock held or watched, with its belief), and its own notes of the last 5 days and its last digest. */
-export async function loadReviewBook(book: ReviewBook, now: Date): Promise<ReviewBookParts> {
+/** Its last output (the context's last_output): its own notes of the last 5 days and its last digest. */
+export async function reviewerLastOutput(book: ReviewBook, now: Date): Promise<string> {
   const today = etDateOf(now);
-  const [theses, text, last, notes] = await Promise.all([
-    prisma.thesis.findMany({
-      where: { status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: book.accountId, tradingEnvironment: book.environment } } },
-      select: { ticker: true },
-    }),
-    loadBook(book),
+  const [last, notes] = await Promise.all([
     // A last digest that can't be read is no reason to skip the morning: it reads as none.
     prisma.marketDigest
       .findFirst({ where: { accountId: book.accountId, environment: book.environment, date: { lt: new Date(`${today}T00:00:00.000Z`) } }, orderBy: { date: "desc" }, select: { date: true, digest: true } })
@@ -85,25 +80,17 @@ export async function loadReviewBook(book: ReviewBook, now: Date): Promise<Revie
     : notes.length
       ? notes.map((n) => `- ${[day(etDateOf(n.createdAt)), n.tickers.join(", "), n.impact, n.effect, firstSentence(n.body)].filter(Boolean).join(" · ")}`)
       : ["- none"];
-  return {
-    tickers: [...new Set(theses.map((t) => t.ticker.toUpperCase()))],
-    book: text ?? "## The book\nThe book couldn't be read this run.",
-    lastOutput: [
-      `## Your notes in the last 5 days\n${noteLines.join("\n")}`,
-      `## Your last digest\n${last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first."}`,
-    ].join("\n\n"),
-  };
+  return [
+    `## Your notes in the last 5 days\n${noteLines.join("\n")}`,
+    `## Your last digest\n${last ? `Written for ${day(last.date.toISOString().slice(0, 10))}:\n\n${last.digest}` : "None yet: this is your first."}`,
+  ].join("\n\n");
 }
 
-/** What its run is given: its reads (the market and portfolio, the book, its own last output), and its stocks for its reply's schema. No tools of ours. */
+/** What its run is given: its subject, the account, whose facts the engine reads (lib/agent/context/), and its stocks for its reply's schema. No tools of ours. */
 export async function reviewerArgs(book: Pick<RunFor, "accountId" | "environment" | "userId">, now: Date = new Date()): Promise<Omit<RunAgentArgs, "runId">> {
-  const parts = await loadReviewBook(book, now);
   return {
-    input: { now, environment: book.environment, stocks: parts.tickers },
-    sources: {
-      portfolioPieces: (want) => loadPortfolioPieces({ accountId: book.accountId, environment: book.environment, now, ...want }),
-      context: { the_book: async () => parts.book, last_output: async () => parts.lastOutput },
-    },
+    input: { now, environment: book.environment, stocks: await reviewTickers(book) },
+    subject: { kind: "account", userId: book.userId, accountId: book.accountId, environment: book.environment },
     toolset: {},
     source: "market-reviewer",
   };

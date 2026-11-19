@@ -1,7 +1,9 @@
 /**
- * The chat's request, from its record (lib/agent/engine/agents/chat.ts): its
- * instructions, at the portfolio level or pinned to one analyst, and what
- * rides on your newest message. Its first message is your conversation.
+ * The chat's request, from its record (lib/agent/engine/agents/chat.ts), from
+ * what a replay or a test has in hand: its instructions, at the portfolio
+ * level or pinned to one analyst, and what rides on your newest message. A
+ * live chat's facts are read for its scope (lib/agent/context/,
+ * app/api/agent/[mode]/route.ts). Its first message is your conversation.
  */
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst, type UniverseAnalyst } from "@/lib/agent/analyst-brief";
@@ -32,11 +34,6 @@ export function pinnedAnalystText(scope: ScopedAnalyst, room?: AnalystCapacity |
 export function chatRequest(opts: ChatPromptOpts, environment: "PAPER" | "LIVE" = "PAPER"): BuiltRequest {
   const scope = opts.scopedAnalyst;
   return composeAgentRequest(CHAT, { now: new Date(), environment }, { context: { the_analyst: scope ? pinnedAnalystText(scope, opts.room) : null } });
-}
-
-/** The read "the_analysts": each analyst's room, at the portfolio level. Null when there are none. */
-export function analystsText(roomLines: string[]): string | null {
-  return roomLines.length ? `## Each analyst's room (a buy for a FULL analyst is refused)\n${roomLines.map((l) => `  • ${l}`).join("\n")}` : null;
 }
 
 /**

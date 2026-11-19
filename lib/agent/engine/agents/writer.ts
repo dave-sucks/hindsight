@@ -35,6 +35,7 @@ export const WRITER: AgentRecord = {
   does: "Researches a new stock or one we watch and writes its thesis: the view, the playbook, the watch triggers at prices from the chart, and the claim every other agent reads.",
   runsWhen: "When a stock is sent to it: from the chat, a run or the Portfolio Manager.",
   messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
+  subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
   instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "playbooks", "research-rules.md", "writer.md"],

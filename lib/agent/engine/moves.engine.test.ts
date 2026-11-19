@@ -6,6 +6,10 @@
  * character for character, as main before the move
  * (./__fixtures__/requests.golden.json, hashed from ./__fixtures__/sent-requests.ts
  * at d510d495).
+ *
+ * Reading context by subject (lib/agent/context/) changed the requests
+ * CHANGED names, each for its reason; ./three-parts.engine.test.ts pins
+ * each change part by part. Every other request is main's.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { createHash } from "crypto";
@@ -23,6 +27,23 @@ import { PROPOSALS_A_RUN } from "@/lib/agent/portfolio-manager/limits";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 
+const BOOK = "the morning run's book is in its first message, so its first step reads it there";
+const MARKET_NUMBERS = "the post-trade write-up reads the market numbers alone of the Market and portfolio reads, as every run about a thesis does";
+const NO_EMPTY_PART = "an analyst with no playbooks gets no playbooks part (it was an empty one: a stray blank line)";
+const CHANGED: Record<string, string> = {
+  "morning.quiet": BOOK,
+  "morning.full": BOOK,
+  "morning.snapshot_unread": BOOK,
+  "morning.filings_unread": BOOK,
+  "sample.morning_run": BOOK,
+  "trigger.auto_sale": MARKET_NUMBERS,
+  "sample.post_trade_writeup": MARKET_NUMBERS,
+  "writer.mint_plain": NO_EMPTY_PART,
+  "writer.mint_notes_idea": NO_EMPTY_PART,
+  "writer.refresh_seed": NO_EMPTY_PART,
+  "writer.refresh_promoted": NO_EMPTY_PART,
+};
+
 describe("instructions are markdown files: a move, not an edit", () => {
   const sent = sentRequests();
 
@@ -30,8 +51,12 @@ describe("instructions are markdown files: a move, not an edit", () => {
     expect(Object.keys(sent).sort()).toEqual(Object.keys(GOLDEN.hashes).sort());
   });
 
-  it.each(Object.keys(GOLDEN.hashes))("%s is sent what main sent, character for character", (name) => {
+  it.each(Object.keys(GOLDEN.hashes).filter((n) => !CHANGED[n]))("%s is sent what main sent, character for character", (name) => {
     expect(hash(sent[name])).toBe((GOLDEN.hashes as Record<string, string>)[name]);
+  });
+
+  it.each(Object.entries(CHANGED))("%s changed: %s", (name) => {
+    expect(hash(sent[name])).not.toBe((GOLDEN.hashes as Record<string, string>)[name]);
   });
 });
 

@@ -47,6 +47,7 @@ export const MARKET_REVIEWER: RunnableRecord = {
   does: "Researches the market's day and writes the morning digest, and notes on our stocks its research touches.",
   runsWhen: "7:30 AM ET on market days, one run per traded book.",
   messageFrom: "The schedule (lib/inngest/functions/market-reviewer.ts), which writes it no message: the date line is its start.",
+  subject: "account",
   // The morning runs' model.
   model: MODES["research-run"].model,
   maxSteps: 1,

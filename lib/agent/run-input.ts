@@ -11,7 +11,7 @@
  * (e.g., Alpaca down) does NOT kill watchlist/theses/briefs.
  */
 
-import { loadPortfolioPieces, type PortfolioPiece } from "@/lib/agent/portfolio-block";
+import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
 import { prisma } from "@/lib/prisma";
 import { getLatestPrices, getAccount, type AlpacaCredentials } from "@/lib/alpaca";
 import {
@@ -26,9 +26,9 @@ import {
 import type { Horizon } from "@/lib/agent/horizon-policy";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { filingsOnBook } from "@/lib/agent/filings-on-book";
-import { listOpenRefusalsForAnalyst, type OpenRefusal } from "@/lib/agent/gate-rejections";
-import { describeEarningsReport, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
+import type { FilingsOnBook } from "@/lib/agent/filings-on-book";
+import type { EarningsWeek } from "@/lib/agent/context/earnings-this-week";
+import type { OpenRefusal } from "@/lib/agent/gate-rejections";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -37,7 +37,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RunInput {
-  /** The Market and portfolio block (lib/agent/portfolio-block.ts): the portfolio snapshot and the latest digest. */
+  /** A recorded run's Market and portfolio reads (lib/agent/portfolio-block.ts), for a replay; a live run's are read for the analyst (lib/agent/context/). */
   portfolioPieces?: PortfolioPiece[];
   /** Buys awaiting approval — they have taken their slot already (place_trade counts them). */
   pendingApprovalCount?: number;
@@ -139,28 +139,12 @@ export interface RunInput {
     rationale: string;
     matchDetail: string;
   }>;
-  // Earnings on the book this week, live off the calendar at run start
-  // (one call; the same one the trigger evaluator makes). Held and watched
-  // names reporting in the next 7 days, and those that reported in the
-  // last 3 with the figures. Rendered as one block so the run sees the
-  // week whole; the earnings triggers still do the waking.
-  earnings: {
-    reportingSoon: Array<{ ticker: string; date: string; hour: string | null }>;
-    justReported: Array<{ ticker: string; date: string; summary: string }>;
-  };
-  // Serious and material filings on the book in the last 7 days, read off
-  // EDGAR at run start (one call over the book's tickers; DAV-269). The
-  // filing triggers do the waking — this is so the run sees the week whole.
-  // `error` set when EDGAR couldn't be read: said in words, never "nothing
-  // filed".
-  filings: {
-    recent: Array<{ ticker: string; date: string; tier: "serious" | "material"; summary: string; url: string }>;
-    error?: string;
-  };
-  // The analyst's refused tool calls from the last 7 days that were never
-  // redone (2026-09-25). Rendered as "Blocked last time — resolve today":
-  // a refusal is carried to the next run, never dropped.
-  openRefusals: OpenRefusal[];
+  // A recorded run's earnings, filings and refused calls, for a replay. A
+  // live run's are read for the analyst (lib/agent/context/: earnings this
+  // week, filings this week, refused calls).
+  earnings?: EarningsWeek;
+  filings?: FilingsOnBook;
+  openRefusals?: OpenRefusal[];
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
@@ -537,49 +521,6 @@ export async function buildRunInput(
   // quotes). Picks up price-side predicate matches independent of the
   // 15-min cron's delivery cycle.
   // ─────────────────────────────────────────────────────────────────────
-  // Earnings on the book this week — fail-soft, never blocks the run.
-  let earnings: RunInput["earnings"] = { reportingSoon: [], justReported: [] };
-  try {
-    const book = new Set<string>([
-      ...symbols.map((t) => t.toUpperCase()),
-      ...watchlistItems.map((w) => String(w.symbol).toUpperCase()),
-    ]);
-    if (book.size > 0) {
-      const now = new Date();
-      const w = await fetchEarningsWindow({ now, lookaheadDays: 7 });
-      earnings = {
-        reportingSoon: [...w.upcoming.values()]
-          .filter((r) => book.has(r.symbol))
-          .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
-          .map((r) => ({ ticker: r.symbol, date: r.reportDate, hour: r.hour })),
-        justReported: [...w.reported.values()]
-          .filter((r) => book.has(r.symbol))
-          .sort((a, b) => b.reportDate.localeCompare(a.reportDate))
-          .map((r) => ({ ticker: r.symbol, date: r.reportDate, summary: describeEarningsReport(r) })),
-      };
-    }
-  } catch (err) {
-    console.error("[buildRunInput] earnings week failed (non-fatal):", err);
-  }
-
-  // Filings on the book this week — fail-soft; a failed read is said.
-  let filings: RunInput["filings"] = { recent: [] };
-  try {
-    const book = Array.from(
-      new Set<string>([
-        ...symbols.map((t) => t.toUpperCase()),
-        ...watchlistItems.map((w) => String(w.symbol).toUpperCase()),
-      ]),
-    );
-    if (book.length > 0) {
-      const { fetchBookFilings } = await import("@/lib/market-data/sec-filings");
-      const read = await fetchBookFilings({ tickers: book, now: new Date(), lookbackDays: 7 });
-      filings = filingsOnBook(read);
-    }
-  } catch (err) {
-    filings = { recent: [], error: `EDGAR couldn't be read: ${err instanceof Error ? err.message : String(err)}` };
-  }
-
   let triggersMatchingNow: RunInput["triggersMatchingNow"] = [];
   try {
     const { evaluateLiveTriggerMatches } = await import(
@@ -593,12 +534,6 @@ export async function buildRunInput(
     console.error("[buildRunInput] FAILED triggersMatchingNow:", err);
   }
 
-  // 12b. Refused calls never redone — what the run is told to resolve.
-  const openRefusals = await listOpenRefusalsForAnalyst(config.id, 7);
-
-  // 13. The Market and portfolio block's parts: the portfolio snapshot and the latest digest. Never throws.
-  const portfolioPieces = await loadPortfolioPieces({ accountId: config.accountId, environment: config.tradingEnvironment });
-
   // ── Structured load summary ────────────────────────────────────────
   console.log(
     `[buildRunInput] LOADED: analyst=${config.name} positions=${positions.length} watchlist=${watchlist.length} theses=${activeTheses.length} triggersFired=${triggersFiredSinceLastRun.length} triggersLive=${triggersMatchingNow.length} cash=$${cash.toFixed(0)} buyingPower=$${buyingPower.toFixed(0)}`,
@@ -606,7 +541,6 @@ export async function buildRunInput(
 
   const reviewSources = (await loadLevelSources([config.id]).catch(() => new Map())).get(config.id);
   return {
-    portfolioPieces,
     pendingApprovalCount,
     portfolio: {
       cash,
@@ -620,7 +554,6 @@ export async function buildRunInput(
         utilizationPct,
       },
     },
-    openRefusals,
     watchlist,
     activeTheses: activeTheses.map((t) => {
       const snapshotText = getThesisSnapshotText(t);
@@ -669,8 +602,6 @@ export async function buildRunInput(
     }),
     triggersFiredSinceLastRun,
     triggersMatchingNow,
-    earnings,
-    filings,
   };
 }
 

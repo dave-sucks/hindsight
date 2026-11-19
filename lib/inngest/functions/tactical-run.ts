@@ -17,19 +17,21 @@
 // theses; if conviction breaks the agent calls update_thesis with
 // change_status="INVALIDATED" and close_position.
 
-import { loadPortfolioPieces } from "@/lib/agent/portfolio-block";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { generateText, stepCountIs } from "ai";
+import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
-import { recordFor, triggerRunRequest, stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
+import { fireMessage, recordFor } from "@/lib/agent/system-prompts/intraday-tactical";
+import { buildAgentRequest } from "@/lib/agent/engine/build";
+import type { ContextRun } from "@/lib/agent/context";
+import type { SubjectOf } from "@/lib/agent/context/bundles";
+import { readStock } from "@/lib/agent/context/the-stock";
 import { openingOf } from "@/lib/agent/engine/engine";
-import { loadSetupOverrides } from "@/lib/agent/knowledge/load-setup-overrides";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
@@ -51,9 +53,7 @@ import {
   loadLevelSources,
   resolveThesisLadder,
 } from "@/lib/agent/triggers/load-levels";
-import { preCatalystWindowLine, setupsForAnalyst } from "@/lib/agent/knowledge/setups";
-import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
-import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
+import { preCatalystWindowLine } from "@/lib/agent/knowledge/setups";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -208,29 +208,6 @@ export const tacticalRun = inngest.createFunction(
       ]);
       if (!agentConfig) return null;
 
-      // How full the analyst is, for a buy fire (DAV-292). ETN 2026-09-18:
-      // the run confirmed the buy by its setup, called place_trade and only
-      // then learned the analyst held 4 of 4. Counted the way place_trade
-      // counts. Fail-soft: no line is better than no run.
-      const capacity = await (async () => {
-        if (trigger.action !== "ENTER" && trigger.action !== "ADD") return null;
-        if (agentConfig.maxOpenPositions == null) return null;
-        // Only a fire that would OPEN a position is capped. Adding to a
-        // stock we already own takes no new slot, so a full analyst must
-        // still be able to press a winner or buy a pullback in a name it
-        // holds — the rules the seats were just given (DAV-279).
-        if (position) return null;
-        try {
-          const rows = await prisma.position.findMany({
-            where: { analystId: fired.analystId, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
-            select: { symbol: true },
-          });
-          return { open: rows.length, max: agentConfig.maxOpenPositions, held: rows.map((r) => r.symbol) };
-        } catch {
-          return null;
-        }
-      })();
-
       return {
         // What this run's own lines use; the stock itself is read below
         // through get_theses, the same row every door reads.
@@ -251,7 +228,6 @@ export const tacticalRun = inngest.createFunction(
         ladder,
         // The market-cap band as numbers: a BigInt doesn't cross the step boundary.
         agentConfig: { ...agentConfig, marketCapMin: agentConfig.marketCapMin == null ? null : Number(agentConfig.marketCapMin), marketCapMax: agentConfig.marketCapMax == null ? null : Number(agentConfig.marketCapMax) },
-        capacity,
         position: position
           ? {
               id: position.id,
@@ -637,20 +613,23 @@ export const tacticalRun = inngest.createFunction(
           )
         : allTools;
 
-      // The stock, read the way every door reads it (step 10): get_theses on
-      // this ticker, after the fire's own line is written, so the fire and
-      // anything else true on the stock are its situations. The model reads
-      // the full row (lib/agent/row-for-model.ts). Fail-soft: a run that
-      // cannot read the row decides on the fire.
-      const read = await (async () => {
-        try {
-          const out = (await allTools.get_theses.execute!({ tickers: [thesis.ticker] } as never, { toolCallId: "read-the-stock", messages: [] })) as { ok?: boolean; data?: unknown };
-          return stockFromRead(out, thesis.id);
-        } catch (err) {
-          console.warn(`[tactical-run] the read of ${thesis.ticker} failed:`, err);
-          return null;
-        }
-      })();
+      // What the run is about: the thesis. Its context (the analyst, the
+      // stock's playbook, its row and situations, the market numbers) is read
+      // for it by the engine (lib/agent/context/). The row is read the way
+      // every door reads it, get_theses on this ticker, after the fire's own
+      // line is written, so the fire and anything else true on the stock are
+      // its situations. Fail-soft: a run that cannot read the row decides on
+      // the fire.
+      const record = recordFor({ autoTrade: auto });
+      const environment = agentConfig.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER";
+      const contextRun: ContextRun = {
+        subject: { kind: "thesis", userId: agentConfig.userId, accountId: agentConfig.accountId, environment, analystId: agentConfig.id, ticker: thesis.ticker, thesisId: thesis.id },
+        now: new Date(),
+        agent: record.id,
+        toolset: allTools as ToolSet,
+      };
+      // The fire's message names the trigger's note only when the row (which carries it) couldn't be read.
+      const read = await readStock(contextRun as ContextRun<SubjectOf<"thesis">>);
 
       // The message from the trigger check, so the run (and its page) starts
       // with WHY it fired: the trigger's sentence, its price, then these.
@@ -674,29 +653,19 @@ export const tacticalRun = inngest.createFunction(
         thesis.id,
         (thesis as { ticker: string }).ticker,
       );
-      const setupOverrides = await loadSetupOverrides(agentConfig.accountId);
-      // The Market and portfolio reads: the portfolio snapshot, written now, and the latest digest. Never throws.
-      const portfolioPieces = await loadPortfolioPieces({ accountId: agentConfig.accountId, environment: agentConfig.tradingEnvironment ?? "PAPER" });
       // What the check knows beyond the trigger and its price: the message says the trigger once, then these.
       const more = auto ? `${contextSuffix}${coFiredSuffix}` : `${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}`;
-      const request = triggerRunRequest({
-        analyst: { ...agentConfig, setupOverrides },
-        stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
-        trigger,
-        position,
-        fired: { price: fired.firedPrice ?? null },
-        capacity: ctx.capacity ?? null,
-        // The post-trade write-up writes up the trade; a situation asks for a decision it doesn't make.
-        situations: auto ? null : read?.situations ?? null,
-        autoTrade: auto ? { line: auto.line } : null,
-        portfolioPieces,
-        // A review on a stock we only watch may be a playbook's way in: the Writer's playbooks block.
-        playbooks:
-          !auto && trigger.action === "REVIEW" && !position
-            ? playbooksBlock(setupsForAnalyst(agentConfig.setupIds, setupOverrides), await loadPlaybooks(agentConfig.accountId))
-            : null,
-        environment: agentConfig.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER",
-      }, { more });
+      const message = fireMessage(
+        {
+          stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
+          trigger,
+          position,
+          fired: { price: fired.firedPrice ?? null },
+          autoTrade: auto ? { line: auto.line } : null,
+        },
+        { more },
+      );
+      const request = await buildAgentRequest(record, { now: contextRun.now, environment, message }, contextRun);
       const systemPrompt = request.instructions;
       const userPrompt = request.message;
 
