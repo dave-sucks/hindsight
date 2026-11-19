@@ -125,8 +125,6 @@ describe("the Portfolio Manager", () => {
     const built = await buildAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, accountRun("portfolio_manager"));
     expect(built.parts.map((p) => `${p.where}:${p.title}`)).toEqual([
       "instructions:Its instructions (portfolio-manager.md)",
-      "instructions:House rules",
-      "instructions:How you write",
       "message:The date and account",
       "message:Market numbers",
       "message:Market digest",
@@ -136,7 +134,9 @@ describe("the Portfolio Manager", () => {
     ]);
     const cut = (where: "instructions" | "message", text: string) => byParts(built.parts.filter((p) => p.where === where), text)!;
     const rows = [...cut("instructions", built.instructions).parts, ...cut("message", built.message).parts];
-    expect(rows.map((r) => r.group)).toEqual(["Instructions", "Instructions", "Instructions", "Context", "Context", "Context", "Context", "Context", "Context"]);
+    expect(rows.map((r) => r.group)).toEqual(["Instructions", "Context", "Context", "Context", "Context", "Context", "Context"]);
+    // Its one document, the rules it imports marked where they start.
+    expect(rows[0].sections.map((s) => s.label)).toEqual(["portfolio-manager.md", "@rules.md"]);
     expect(built.message.match(/^## Market and portfolio$/gm)).toHaveLength(1);
   });
 

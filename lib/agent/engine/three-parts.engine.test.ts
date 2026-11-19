@@ -156,8 +156,9 @@ describe("the Writer and the Holding refresh", () => {
     expect(now["instructions:house_rules"]).toBe(`${old["instructions:house_rules"]}\n\n${old["instructions:market_block_rule"]}`);
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     expect(now["instructions:playbooks"]).toBe(old["instructions:playbooks"]);
-    // Its own file imports the research rules (@research-rules.md): one document, the rules first.
-    expect(now["instructions:own"]).toBe(`${RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n")}\n\n${own(old["instructions:job"], old["instructions:decision"])}`);
+    // Its one document imports the rules and the research rules, each where it printed.
+    expect(now["instructions:research_rules"]).toBe(RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n"));
+    expect(now["instructions:own"]).toBe(own(old["instructions:job"], old["instructions:decision"]));
     expect(now["message:playbook_record"]).toBe(old["message:setup_record"]);
     expect(now["message:stock_data"]).toBe(old["message:stock_data"]);
     // The thesis now and a promotion are the stock's row; a recent sale is in the data's history.

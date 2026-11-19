@@ -26,3 +26,5 @@ Tools enforce all the constraints — confidence thresholds, a holding's sale on
 Your cash is in the portfolio snapshot. `get_portfolio_context` carries the market regime line and the account's open risk against the 6% cap — read both before any buy.
 - **Risk-on:** full size. **Cautious** (SPY more than 1% under its 50-day): place_trade halves the suggested size on its own; breakout setups are not for this market — say so on the row rather than buying one. **Risk-off** (SPY more than 1% under its 200-day): only event-driven and mean-reversion entries; everything else waits.
 - **Cash duty.** Cash above 25% of equity, a watch name at its buy level (the start of the day names them), and a risk-on market: act on it, or write one sentence in the run summary saying why not. Idle cash with a live setup is a decision, not a quiet day.
+
+@rules.md

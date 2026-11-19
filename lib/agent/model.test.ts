@@ -107,8 +107,8 @@ describe("the morning run", () => {
     for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
     // The agent engine built it: Context shows each part by name.
     const names = view!(main.record).categories.map((c) => c.name);
-    // Its instructions (its own file, the two rules files), then the analyst under Context, sent with them.
-    expect(names.slice(0, 4)).toEqual(["Its instructions (morning-run.md)", "House rules", "How you write", "The analyst"]);
+    // Its instructions, one document, then the analyst under Context, sent with them.
+    expect(names.slice(0, 2)).toEqual(["Its instructions (morning-run.md)", "The analyst"]);
     expect(names.slice(-2)).toEqual(["The message", "Tool menu"]);
     // Every request it sent, its retry's too, opens with the first message and the book's week in it.
     const firstUser = (body: string) => (JSON.parse(body).messages as Array<{ role: string; content: string }>).find((m) => m.role === "user")!.content;
@@ -167,7 +167,7 @@ describe("a trigger run", () => {
     expect(main.record.parts?.length).toBeGreaterThan(0);
     const categories = view!(main.record).categories;
     const names = categories.map((c) => c.name);
-    expect(names.slice(0, 4)).toEqual(["Its instructions (trigger-run.md)", "House rules", "How you write", "The analyst"]);
+    expect(names.slice(0, 2)).toEqual(["Its instructions (trigger-run.md)", "The analyst"]);
     expect(names.slice(-3)).toEqual(["The stock", "The message", "Tool menu"]);
     expect(categories.find((c) => c.name === "The message")!.sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
   });
@@ -224,8 +224,6 @@ describe("the chat", () => {
     // Its instructions one row per part of its record, the conversation as it was, then the newest message: what rides on it, each part named, then your words.
     expect(categories.map((c) => c.name)).toEqual([
       "Its instructions (chat.md)",
-      "House rules",
-      "How you write",
       "First message",
       "The conversation so far",
       "The date and account",
@@ -236,7 +234,7 @@ describe("the chat", () => {
       "Newest message",
       "Tool menu",
     ]);
-    expect(categories.map((c) => c.group)).toEqual(["Instructions", "Instructions", "Instructions", "Message", "Conversation", "Context", "Context", "Context", "Context", "Context", "Message", "Tools"]);
+    expect(categories.map((c) => c.group)).toEqual(["Instructions", "Message", "Conversation", "Context", "Context", "Context", "Context", "Context", "Message", "Tools"]);
     const row = (name: string) => categories.find((c) => c.name === name)!.sections[0].text;
     expect(row("The date and account")).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the LIVE account\.$/);
     expect(row("Market numbers")).toMatch(/^## Market and portfolio\n\n### Market numbers \(as of .+\)/);
@@ -285,8 +283,8 @@ describe("the Writer", () => {
     expect(records[0].record.parts?.length).toBeGreaterThan(0);
     const categories = view!(records[0].record).categories;
     const names = categories.map((c) => c.name);
-    // Its instructions are three rows (its own file imports the research rules); the analyst and the playbooks are Context, sent with them.
-    expect(names.slice(0, 5)).toEqual(["House rules", "How you write", "Its instructions (writer.md)", "The analyst", "The playbooks"]);
+    // Its instructions are one row (its document imports the rules and the research rules); the analyst and the playbooks are Context, sent with them.
+    expect(names.slice(0, 3)).toEqual(["Its instructions (writer.md)", "The analyst", "The playbooks"]);
     // Its first message: the date line, the sender's brief, then the reads.
     expect(names.indexOf("The message")).toBe(names.indexOf("The date and account") + 1);
     expect(names.slice(-2)).toEqual(["The stock's data", "Tool menu"]);

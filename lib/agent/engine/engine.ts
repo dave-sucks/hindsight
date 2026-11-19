@@ -21,9 +21,9 @@
  * own, the date line; every other text comes from the code that writes it.
  */
 import type { PortfolioPiece, PortfolioPieceId } from "@/lib/agent/portfolio-block";
-import { instructionText } from "./instructions";
-import { CONTEXT, DATE_LINE, GROUP_HEADINGS, SHARED } from "./parts";
-import { isFile, isShared, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type Where } from "./types";
+import { instructionSections } from "./instructions";
+import { CONTEXT, DATE_LINE, GROUP_HEADINGS } from "./parts";
+import { isFile, type AgentInput, type AgentRecord, type BuiltNewest, type BuiltRequest, type ContextId, type SentPartManifest, type Where } from "./types";
 
 /** Every text for one request, already read. */
 export interface Loaded {
@@ -57,8 +57,12 @@ export function composeAgentRequest(record: AgentRecord, input: AgentInput, load
   const instructions = new Printer("instructions");
   for (const e of record.instructions) {
     if (isFile(e)) {
-      const shared = isShared(e);
-      instructions.push({ id: e, title: shared ? SHARED[e].title : `Its instructions (${e})`, kind: shared ? "shared" : "own", source: `lib/agent/engine/agents/${e}` }, instructionText(e));
+      // Its one document, its imports inlined, and where each starts.
+      const sections = instructionSections(e);
+      instructions.push(
+        { id: e, title: `Its instructions (${e})`, kind: "own", source: `lib/agent/engine/agents/${e}`, ...(sections.length > 1 ? { sections: sections.map((x) => ({ label: x.label, chars: x.text.length })) } : {}) },
+        sections.map((x) => x.text).join(""),
+      );
       continue;
     }
     const text = loaded.context?.[e];

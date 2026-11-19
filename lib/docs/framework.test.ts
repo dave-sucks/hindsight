@@ -10,7 +10,7 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { providerToolNames } from "@/lib/agent/engine/types";
 import { AGENTS } from "@/lib/agent/engine/agents";
-import { CONTEXT, SHARED } from "@/lib/agent/engine/parts";
+import { CONTEXT } from "@/lib/agent/engine/parts";
 import { MODES } from "@/lib/agent/modes";
 import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 import { AGENT_SAMPLES } from "./agent-samples";
@@ -62,12 +62,12 @@ describe("the framework page's agents", () => {
     expect(sized.sizedOn).toMatchObject({ kind: "run", gone: ["An old part"] });
   });
 
-  it.each(AGENTS.map((r) => [r.id, r] as const))("%s: its parts are its record's, in order: its instructions, its context, its message; a shared text's and a read's title and line are the registry's", (_, record) => {
+  it.each(AGENTS.map((r) => [r.id, r] as const))("%s: its parts are its record's, in order: its instructions, its context, its message; a read's title and line are the registry's", (_, record) => {
     const a = byId.get(record.id)!;
     expect(a.parts.map((p) => `${p.where}:${p.id}`)).toEqual(recordParts(record).map((p) => `${p.where}:${p.id}`));
     expect([...new Set(a.parts.map((p) => p.section))]).toEqual(record.conversation ? ["instructions", "context"] : ["instructions", "context", "message"]);
-    for (const p of a.parts.filter((x) => x.kind === "shared" || x.kind === "context")) {
-      const def = p.kind === "shared" ? SHARED[p.id as keyof typeof SHARED] : CONTEXT[p.id as keyof typeof CONTEXT];
+    for (const p of a.parts.filter((x) => x.kind === "context")) {
+      const def = CONTEXT[p.id as keyof typeof CONTEXT];
       expect({ title: p.title, about: p.about, source: p.source }).toEqual({ title: def.title, about: def.about, source: def.source });
     }
     expect({ model: a.model, steps: a.maxSteps, tools: a.tools.names, provider: a.tools.provider }).toEqual({ model: record.model, steps: record.maxSteps, tools: [...record.tools], provider: providerToolNames(record) });

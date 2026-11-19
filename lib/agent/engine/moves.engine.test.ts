@@ -19,7 +19,7 @@ import GOLDEN from "./__fixtures__/requests.golden.json";
 import { sentRequests } from "./__fixtures__/sent-requests";
 import { AGENTS } from "./agents";
 import { importsOf, INSTRUCTIONS_DIR, instructionText } from "./instructions";
-import { isFile, ownFile, SHARED_FILES } from "./types";
+import { isFile, ownFile } from "./types";
 import { DIGEST_CHARS } from "./agents/market-reviewer";
 import { SENDS_A_RUN } from "./agents/discovery";
 import { WEB_SEARCH_MAX_USES } from "./agents/writer";
@@ -30,6 +30,7 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex").slice(0
 const BOOK = "the morning run's book is in its first message, so its first step reads it there";
 const MARKET_NUMBERS = "the post-trade write-up reads the market numbers alone of the Market and portfolio reads, as every run about a thesis does";
 const NO_EMPTY_PART = "an analyst with no playbooks gets no playbooks part (it was an empty one: a stray blank line)";
+const PLAYBOOKS_AFTER = "the Writer's playbooks follow its document, since the rules are its import (they printed between the rules and the research rules)";
 const CHANGED: Record<string, string> = {
   "morning.quiet": BOOK,
   "morning.full": BOOK,
@@ -42,6 +43,10 @@ const CHANGED: Record<string, string> = {
   "writer.mint_notes_idea": NO_EMPTY_PART,
   "writer.refresh_seed": NO_EMPTY_PART,
   "writer.refresh_promoted": NO_EMPTY_PART,
+  "writer.mint_playbooks": PLAYBOOKS_AFTER,
+  "writer.refresh_watch": PLAYBOOKS_AFTER,
+  "writer.mint_unread_playbooks": PLAYBOOKS_AFTER,
+  "sample.writer": PLAYBOOKS_AFTER,
 };
 
 describe("instructions are markdown files: a move, not an edit", () => {
@@ -64,7 +69,7 @@ describe("the instruction files", () => {
   it("each agent has one of its own, and every file it names or imports exists; no file goes unused", () => {
     const named = new Set<string>();
     for (const r of AGENTS) {
-      const own = r.instructions.filter((e) => isFile(e) && !(SHARED_FILES as readonly string[]).includes(e));
+      const own = r.instructions.filter(isFile);
       expect([r.id, own.length]).toEqual([r.id, 1]);
       expect([r.id, ownFile(r)]).toEqual([r.id, `${r.id.replace(/_/g, "-")}.md`]);
       for (const e of r.instructions) if (isFile(e)) for (const f of [e, ...importsOf(e)]) named.add(f);
@@ -72,11 +77,22 @@ describe("the instruction files", () => {
     expect(readdirSync(INSTRUCTIONS_DIR).filter((f) => f.endsWith(".md")).sort()).toEqual([...named].sort());
   });
 
-  it("an agent's instructions are its own file and the rules files: the research rules are imported, one line in the Writer's and the Holding refresh's own", () => {
-    for (const r of AGENTS) expect([r.id, r.instructions.filter(isFile).filter((f) => f !== ownFile(r))]).toEqual([r.id, r.instructions.filter((e) => (SHARED_FILES as readonly string[]).includes(e))]);
-    expect(importsOf("writer.md")).toEqual(["research-rules.md"]);
-    expect(importsOf("holding-refresh.md")).toEqual(["research-rules.md"]);
-    expect(instructionText("writer.md").startsWith(`${instructionText("research-rules.md")}\n\n## Your job`)).toBe(true);
+  it("an agent's instructions are one file: every agent that writes for you imports the rules, the Writer and the Holding refresh the research rules too", () => {
+    const imports = Object.fromEntries(AGENTS.map((r) => [r.id, importsOf(ownFile(r)!)]));
+    expect(imports).toEqual({
+      portfolio_manager: ["rules.md"],
+      writer: ["rules.md", "research-rules.md"],
+      holding_refresh: ["rules.md", "research-rules.md"],
+      trigger_run: ["rules.md"],
+      post_trade_writeup: ["rules.md"],
+      morning_run: ["rules.md"],
+      chat: ["rules.md"],
+      market_reviewer: [],
+      portfolio_digest: [],
+      discovery: [],
+    });
+    expect(instructionText("writer.md").startsWith(`${instructionText("rules.md")}\n\n${instructionText("research-rules.md")}\n\n## Your job`)).toBe(true);
+    expect(instructionText("trigger-run.md").endsWith(`\n\n${instructionText("rules.md")}`)).toBe(true);
   });
 
   it("is plain text: no ${…} left from a template, and each ends in one newline", () => {

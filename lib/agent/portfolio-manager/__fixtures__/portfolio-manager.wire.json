@@ -629,27 +629,19 @@
      "title": "Its instructions (portfolio-manager.md)",
      "kind": "own",
      "source": "lib/agent/engine/agents/portfolio-manager.md",
+     "sections": [
+      {
+       "label": "portfolio-manager.md",
+       "chars": 4442
+      },
+      {
+       "label": "@rules.md",
+       "chars": 5792
+      }
+     ],
      "where": "instructions",
      "sep": "",
-     "chars": 4440
-    },
-    {
-     "id": "house-rules.md",
-     "title": "House rules",
-     "kind": "shared",
-     "source": "lib/agent/engine/agents/house-rules.md",
-     "where": "instructions",
-     "sep": "\n\n",
-     "chars": 389
-    },
-    {
-     "id": "how-you-write.md",
-     "title": "How you write",
-     "kind": "shared",
-     "source": "lib/agent/engine/agents/how-you-write.md",
-     "where": "instructions",
-     "sep": "\n\n",
-     "chars": 5401
+     "chars": 10234
     },
     {
      "id": "line",

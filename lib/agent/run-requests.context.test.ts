@@ -1,7 +1,7 @@
 /**
  * A run's Context panel lists a request as the agent is made: Instructions
- * holds its own document and the two rules files; every fact is Context, the
- * ones its record sends with the instructions too, marked so.
+ * is its one document, each file it imports marked where it starts; every
+ * fact is Context, each with where it was sent.
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
@@ -10,7 +10,7 @@ import { viewOfRecord, type RequestRecord } from "@/lib/agent/run-requests";
 
 const NOW = new Date("2026-11-18T15:00:00Z");
 
-it("the Writer: three instruction rows, then the analyst and the playbooks under Context, sent with the instructions", () => {
+it("the Writer: one instructions row, its imports marked, then every fact under Context with where it was sent", () => {
   const built = composeAgentRequest(WRITER, { now: NOW, environment: "PAPER", message: "## Why you were dispatched\nA re-scan." }, {
     pieces: [{ id: "market_numbers", text: "### Market numbers\nn" }],
     context: { the_analyst: "## Analyst: Case\n\nI buy growth.", playbooks: "YOUR PLAYBOOKS\np", the_stock: null, playbook_record: null, stock_data: "## GROUND-TRUTH DATA\nd" },
@@ -26,18 +26,18 @@ it("the Writer: three instruction rows, then the analyst and the playbooks under
     requests: [{ system: [{ type: "text", text: built.instructions }], messages: [{ role: "user", content: built.message }] }],
     parts: built.parts,
   };
-  const rows = viewOfRecord(record).categories.map((c) => [c.group, c.name, c.sentWith ?? ""]);
+  const rows = viewOfRecord(record).categories.map((c) => [c.group, c.name, c.sentIn ?? ""]);
   expect(rows).toEqual([
-    ["Instructions", "House rules", ""],
-    ["Instructions", "How you write", ""],
     ["Instructions", "Its instructions (writer.md)", ""],
     ["Context", "The analyst", "instructions"],
     ["Context", "The playbooks", "instructions"],
-    ["Context", "The date and account", ""],
+    ["Context", "The date and account", "first message"],
     ["Message", "The message", ""],
-    ["Context", "Market numbers", ""],
-    ["Context", "The stock's data", ""],
+    ["Context", "Market numbers", "first message"],
+    ["Context", "The stock's data", "first message"],
   ]);
-  // Its own document carries the research rules it imports.
-  expect(viewOfRecord(record).categories[2].sections[0].text).toContain("## Date awareness");
+  // Its one document, each import marked where it starts: the rules, the research rules, then its own words.
+  const doc = viewOfRecord(record).categories[0];
+  expect(doc.sections.map((s) => s.label)).toEqual(["@rules.md", "writer.md", "@research-rules.md", "writer.md"]);
+  expect(doc.sections[2].text).toContain("## Date awareness");
 });

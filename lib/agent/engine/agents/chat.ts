@@ -4,9 +4,9 @@
  * (app/api/agent/[mode]/route.ts, mode "principal"). `chatRequest` and
  * `chatNewest` (lib/agent/system-prompts/chat.ts) read its texts.
  *
- * Its instructions: its own text (the same on every run; it says what both
- * scopes mean), the house rules, how you write, and pinned to an analyst, the
- * analyst. It is a conversation: its first message is yours, and the date
+ * Its instructions: chat.md, the same on every run (it says what both scopes
+ * mean; it imports the rules); pinned to an analyst, the analyst is sent
+ * after it. It is a conversation: its first message is yours, and the date
  * line and its context ride on each message you send: the market and the
  * portfolio, and pinned, the analyst's book; at the portfolio level, each
  * analyst's room.
@@ -25,7 +25,7 @@ export const CHAT: AgentRecord = {
   maxSteps: MODES["principal"].maxSteps,
   tools: MODES["principal"].toolAllowlist ?? [],
   // Pinned to an analyst, the analyst ends the instructions, after the fixed text.
-  instructions: ["chat.md", "house-rules.md", "how-you-write.md", "the_analyst"],
+  instructions: ["chat.md", "the_analyst"],
   // On each message you send: pinned, the analyst's book; at the portfolio level, each analyst's room.
   context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "the_analysts"],
   conversation: true,

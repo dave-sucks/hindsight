@@ -1,3 +1,5 @@
+@rules.md
+
 @research-rules.md
 
 ## Your job

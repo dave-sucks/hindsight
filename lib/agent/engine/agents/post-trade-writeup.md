@@ -40,3 +40,5 @@ The note: what is going on with the company and the stock and why, and what it m
 
 - 15 step max. Be ruthlessly concise.
 - Only this stock matters on this run.
+
+@rules.md

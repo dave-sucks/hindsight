@@ -19,7 +19,7 @@ A note can also be written once to several stocks: a list of them, one analyst o
 
 ## What you read
 
-Every agent writes for you in plain English, in one of two styles (`lib/agent/engine/agents/how-you-write.md`):
+Every agent writes for you in plain English, in one of two styles (`lib/agent/engine/agents/rules.md`):
 
 - **A note** (a review, a trigger run's decision, a trade's reason, a run-summary line) is one short paragraph, two to four sentences and about 60 to 90 words, said the way a markets podcaster would say it: short sentences, everyday words, none of the desk's ("catalyst", "thesis intact", "re-rate", "exposure"). It answers "what's going on with this stock, and what should I do?" in three parts: the first sentence says what happened and what the analyst is doing about it ("Microsoft jumped after earnings, and I'm proposing we add 4 shares"); then why and what the analyst makes of it (the company, or just its group?), with what you own and are up or down; then what would change the call. It keeps the two or three numbers that matter and drops the rest. What to find out comes from the stock's [situation](situations.md); the note is what was found. It never opens with a level or a trigger; a stop or a level appears at most once, in that last sentence. It picks up from the last note rather than repeating it.
 - **The stock's standing description** (the company line, the belief, the bull and bear cases, the variant view) reads like a company page: what the company does and how it makes money, why we own it, the case for and against, and what has to stay true. The numbers, the earnings history and what Wall Street thinks are live data beside it, never prose.

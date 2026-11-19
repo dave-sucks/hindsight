@@ -6,8 +6,8 @@
  * the research rules both follow are one file each imports
  * (./research-rules.md).
  *
- * Its instructions: its own file (which imports the research rules), the
- * house rules and how you write; the analyst is sent with them. Its context
+ * Its instructions: holding-refresh.md, which imports the rules and the
+ * research rules; the analyst is sent before it. Its context
  * and its message are the Writer's.
  */
 import { MODES } from "@/lib/agent/modes";
@@ -24,7 +24,7 @@ export const HOLDING_REFRESH: AgentRecord = {
   subject: "thesis",
   model: MODES["thesis-writer"].model,
   maxSteps: MODES["thesis-writer"].maxSteps,
-  instructions: ["the_analyst", "house-rules.md", "how-you-write.md", "holding-refresh.md"],
+  instructions: ["the_analyst", "holding-refresh.md"],
   context: WRITER_CONTEXT,
   tools: ["submit_thesis"],
   providerTools: ["web_search"],

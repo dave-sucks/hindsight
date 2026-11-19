@@ -1,10 +1,10 @@
 /**
  * What an agent can be given (docs/plans/AGENT_ENGINE.md), client-safe: the
- * shared instruction files, the facts that make up its context, and the one
- * line every first message opens with. Each says what it holds and the file
+ * instruction files an agent's own file imports, the facts that make up its
+ * context, and the one line every first message opens with. Each says what it holds and the file
  * its text comes from. The engine (./engine.ts) puts them together.
  */
-import type { ContextId, SharedFile } from "./types";
+import type { ContextId } from "./types";
 
 export interface PartDef {
   title: string;
@@ -14,22 +14,13 @@ export interface PartDef {
   source: string;
 }
 
-/** The rules files every agent that writes for you gets beside its own instructions. */
-export const SHARED: Record<SharedFile, PartDef> = {
-  "house-rules.md": {
-    title: "House rules",
-    about: "Your word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it.",
-    source: "lib/agent/engine/agents/house-rules.md",
-  },
-  "how-you-write.md": {
-    title: "How you write",
-    about: "How a note, a trade's reason, a trigger's note and the narration are written.",
-    source: "lib/agent/engine/agents/how-you-write.md",
-  },
-};
-
 /** The files an agent's own instructions import ("@research-rules.md" on its own line): part of that one document. */
 export const IMPORTED: Record<string, PartDef> = {
+  "rules.md": {
+    title: "Rules",
+    about: "The house rules (your word outranks everything about a stock; a note is information, not an order; the Market and portfolio context is context, and a stock's row beats it), then how a note, a trade's reason, a trigger's note and the narration are written. Every agent that writes for you imports it.",
+    source: "lib/agent/engine/agents/rules.md",
+  },
   "research-rules.md": {
     title: "Research rules",
     about: "How a thesis is researched and written: dates, the research note, the Street and the claim, earnings triggers, and what the owner reads first. The Writer's and the Holding refresh's instructions import it.",

@@ -3,13 +3,14 @@
  * Agents page and the Context panel read them.
  *
  * An agent is three things: its instructions, its context and its tools.
- * - Instructions: markdown files (./agents/*.md): its own, and the shared
- *   ones it uses (the house rules, how you write, the research rules).
+ * - Instructions: one markdown file (./agents/<agent>.md), the same on every
+ *   run; it imports the files it shares with other agents ("@rules.md",
+ *   "@research-rules.md").
  * - Context: the facts it is given, each one named read (./parts.ts), from
  *   the bundle its run's subject brings (lib/agent/context/bundles.ts); the
- *   record says which it reads and where each goes: in the instructions
- *   (the analyst, the playbooks, the stock's situations, where they were
- *   measured) or the first message.
+ *   record says which it reads and where each is sent: with the
+ *   instructions (the analyst, the playbooks, the stock's situations, where
+ *   they were measured) or in the first message.
  * - Tools: the tools it may call.
  * The run's task is the message, written by whoever starts the run; the
  * record's context list says where it goes in the first message. Every first
@@ -22,9 +23,6 @@ import type { SubjectKind } from "@/lib/agent/context/bundles";
 /** An instruction file: one markdown file in ./agents/. */
 export type InstructionFile = `${string}.md`;
 
-/** The rules files every agent that writes for you gets beside its own instructions (./parts.ts), as Claude Code always loads CLAUDE.md. */
-export const SHARED_FILES = ["house-rules.md", "how-you-write.md"] as const;
-export type SharedFile = (typeof SHARED_FILES)[number];
 
 /** A fact an agent is given (./parts.ts): placed in its instructions or its first message, where its record lists it. */
 export type ContextId =
@@ -84,9 +82,9 @@ export interface AgentRecord {
   /** How long its model call may run before it is stopped, in milliseconds. The agent runner (./run.ts) runs only a record that names one. */
   timeoutMs?: number;
   /**
-   * Its instructions, in order: its own instruction file, once, the shared
-   * files it uses, and any fact placed in them (the analyst at the top, the
-   * stock's situations at the end, where they were measured).
+   * Its instructions, in order: its one instruction file (the files it
+   * imports inside it), and the facts sent with it (the analyst at the top,
+   * the stock's situations at the end, where they were measured).
    */
   instructions: readonly InstructionEntry[];
   /**
@@ -123,9 +121,10 @@ export type RunnableRecord = AgentRecord & { timeoutMs: number };
 export type Where = "instructions" | "message" | "newest";
 
 /**
- * What a part of a request is: the agent's own instruction file, a shared
- * one, the date line, a fact (context, in the instructions or the first
- * message), or the run's task (the message).
+ * What a part of a request is: the agent's instruction file (its imports
+ * inside it), the date line, a fact (context, sent with the instructions or
+ * in the first message), or the run's task (the message). "shared" is a
+ * rules file a run saved before the rules were imported.
  */
 export type PartKind = "own" | "shared" | "line" | "context" | "message";
 
@@ -139,6 +138,8 @@ export interface SentPartManifest {
   /** The file the text comes from. */
   source: string;
   chars: number;
+  /** An instruction file's parts, in order: its own words and each file it imports, where each starts. */
+  sections?: Array<{ label: string; chars: number }>;
   /** What was sent before it ("" for the first part). */
   sep?: string;
 }
@@ -162,13 +163,9 @@ export interface BuiltNewest {
 }
 
 export const isFile = (e: InstructionEntry): e is InstructionFile => e.endsWith(".md");
-export const isShared = (f: InstructionFile): f is SharedFile => (SHARED_FILES as readonly string[]).includes(f);
 
-/** An agent's own instruction file. */
-export const ownFile = (r: Pick<AgentRecord, "instructions">): InstructionFile | null => r.instructions.find((e): e is InstructionFile => isFile(e) && !isShared(e)) ?? null;
-
-/** The shared instruction files an agent uses, in order. */
-export const sharedOf = (r: Pick<AgentRecord, "instructions">): SharedFile[] => r.instructions.filter((e): e is SharedFile => isFile(e) && isShared(e));
+/** An agent's own instruction file: its one document. */
+export const ownFile = (r: Pick<AgentRecord, "instructions">): InstructionFile | null => r.instructions.find(isFile) ?? null;
 
 /** Every fact an agent is given, in its instructions and its first message, in order. */
 export const readsOf = (r: Pick<AgentRecord, "instructions" | "context">): ContextId[] => [
