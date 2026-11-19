@@ -26,8 +26,13 @@ import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { collision, type TriggerOpResult } from "@/lib/agent/triggers/ops";
+import { applyTriggerOps, collision, type TriggerOpResult } from "@/lib/agent/triggers/ops";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
+import { editNumber } from "@/lib/agent/triggers/schema";
+import { conditionHolds, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
+import { readsSource, readsThePosition, shapeOf } from "@/lib/agent/triggers/condition";
+import { getLiveQuote } from "@/lib/market-data/live-quote";
+import { loadIndicatorSnapshots } from "@/lib/market-data/load-indicators";
 
 /** One of the stock's playbook triggers, by its reference as the playbook lists it. */
 const playbookTrigger = z.object({
@@ -96,6 +101,98 @@ export const FLOOR_LEFT = "The floor came with the buy; leave it. Only the owner
 
 /** The Writer's and the Holding refresh's call after the save, and After the buy's (lib/proposals/after-buy.ts). */
 const pricesFromTheChart = (ctx: ToolContext) => (ctx.runMode === "THESIS_WRITER" || ctx.runMode === "AFTER_BUY") && !!ctx.runStock;
+
+/**
+ * A planner's buy or add that is already true at today's price fires at the next check (a close-only one at the
+ * 16:20 pass): a trade now, not a plan. PANW 2026-11-19: After the buy wrote "Add if below $406.88 · only on the
+ * close" for a break above its old high, with the stock near $360. Trigger and morning runs keep a buy at today's
+ * price, the owner's buy-now.
+ */
+export const TRADE_NOW = "This would fire at the next check: that's a trade now, not a plan. Write the condition you mean (an add on a break above uses 'above').";
+
+const BUYS: ReadonlySet<string> = new Set(["ENTER", "ADD"]);
+
+/** An edit that changes what fires: its number, its action or its close. A note or a fire mode alone changes neither. */
+const changesWhatFires = (e: Edit) => editNumber(e as never).value != null || e.action != null || e.close != null;
+
+/**
+ * The planner's adds and edits that leave a buy or add true at today's price, refused with TRADE_NOW; the rest
+ * go on to the save. An edit is read as the save would apply it (applyTriggerOps). Pure.
+ */
+export function tradeNowRefusals(input: { adds: unknown[]; edits: Edit[]; stored: Trigger[]; direction: string | null; status: string; read: EvaluationContext }): { adds: unknown[]; edits: Edit[]; refused: TriggerOpResult[] } {
+  const { stored, direction, status, read } = input;
+  const tradesNow = (t: Trigger | undefined) => {
+    try {
+      return !!t && BUYS.has(t.action) && conditionHolds(t, read);
+    } catch {
+      return false; // A condition that can't be read is the save's to refuse.
+    }
+  };
+  const refused: TriggerOpResult[] = [];
+  const adds = input.adds.filter((a) => {
+    if (!tradesNow(a as Trigger)) return true;
+    refused.push({ op: "add", id: "", ok: false, text: `Added: ${sentenceOf(a as Trigger)}`, reason: TRADE_NOW });
+    return false;
+  });
+  const edits = input.edits.filter((e) => {
+    if (!changesWhatFires(e)) return true;
+    const after = applyTriggerOps({
+      stored,
+      ops: [{ op: "edit", id: e.id, ...editNumber(e as never), action: e.action, close: e.close, rationale: e.rationale }],
+      direction,
+      status,
+      actor: "AGENT",
+      currentPrice: read.latestQuote?.price ?? null,
+      mintId: () => "edited",
+    });
+    const r = after.results[0];
+    // One the save would refuse anyway is left to the save's own reason.
+    if (!r?.ok || !tradesNow(after.triggers.find((t) => t.id === r.id))) return true;
+    refused.push({ op: "edit", id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: TRADE_NOW });
+    return false;
+  });
+  return { adds, edits, refused };
+}
+
+/**
+ * The stock now, for reading a planner's buys and adds as the trigger check would: the live price, the chart
+ * snapshot and the open position when a condition reads them, and no session, so a close-only level is read at
+ * today's price. Null with no price: nothing is refused on a guess.
+ */
+async function readNow(thesisId: string, ctx: ToolContext, adds: Trigger[], editIds: string[]): Promise<{ read: EvaluationContext; stored: Trigger[]; direction: string | null; status: string } | null> {
+  const thesis = await prisma.thesis.findUnique({ where: { id: thesisId }, select: { ticker: true, status: true, direction: true, triggers: true, userId: true, createdAt: true, lastReviewedAt: true, catalystDate: true } });
+  if (!thesis || thesis.userId !== ctx.userId) return null;
+  const quote = (await getLiveQuote(thesis.ticker, { caller: "other", creds: ctx.alpacaCreds }).catch(() => null))?.quote;
+  if (!quote) return null;
+  const stored = parseTriggersResilient(thesis.triggers).triggers as Trigger[];
+  const shape = (t: Trigger) => {
+    try {
+      return shapeOf(t.predicate);
+    } catch {
+      return null;
+    }
+  };
+  const shapes = [...adds, ...stored.filter((t) => editIds.includes(t.id))].map(shape).filter((w) => w != null);
+  const now = new Date();
+  const indicators = shapes.some((w) => readsSource(w, "snapshot"))
+    ? ((await loadIndicatorSnapshots([thesis.ticker], now).catch(() => null))?.get(thesis.ticker) ?? null)
+    : null;
+  const position = thesis.status === "HOLDING" && ctx.analystId && shapes.some((w) => readsThePosition(w))
+    ? await prisma.position.findFirst({ where: { analystId: ctx.analystId, symbol: thesis.ticker, status: "OPEN" }, select: { avgCost: true, peakPrice: true, openedAt: true }, orderBy: { openedAt: "desc" } }).catch(() => null)
+    : null;
+  return {
+    read: {
+      latestQuote: { price: quote.c, changePct: quote.dp ?? 0, prevClose: quote.pc ?? undefined },
+      indicators,
+      position: position ? { avgCost: position.avgCost != null ? Number(position.avgCost) : null, peakPrice: position.peakPrice != null ? Number(position.peakPrice) : null, openedAt: position.openedAt } : null,
+      thesis: { createdAt: thesis.createdAt, lastReviewedAt: thesis.lastReviewedAt, catalystDate: thesis.catalystDate, direction: thesis.direction },
+      now,
+    },
+    stored,
+    direction: thesis.direction,
+    status: thesis.status,
+  };
+}
 
 /** The chat's: its own triggers as #1050 sent them. It writes triggers from the owner's words, so it takes no playbook reference and no chart key. */
 const chatSchema = schema.extend({ add: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add) });
@@ -248,10 +345,21 @@ export const editTriggers = defineTool({
       ...editsPriced.edits.filter((e) => floorIds.has(e.id)).map((e) => ({ op: "edit" as const, id: e.id, ok: false, text: `Edit trigger ${e.id}`, reason: FLOOR_LEFT })),
       ...(args.remove ?? []).filter((r) => floorIds.has(r.id)).map((r) => ({ op: "remove" as const, id: r.id, ok: false, text: `Remove trigger ${r.id}`, reason: FLOOR_LEFT })),
     ];
-    const priced = addsPriced.adds.filter((t) => !onFloor(t));
+    let priced = addsPriced.adds.filter((t) => !onFloor(t));
     editsPriced.edits = editsPriced.edits.filter((e) => !floorIds.has(e.id));
     const removes = (args.remove ?? []).filter((r) => !floorIds.has(r.id));
-    const refused = [...addsPriced.refused, ...editsPriced.refused, ...floorRefused];
+    // A planner's buy or add already true at today's price is a trade now (TRADE_NOW); read only when it sent one.
+    let tradeNowRefused: TriggerOpResult[] = [];
+    if (writer && (priced.some((t) => BUYS.has((t as Trigger).action)) || editsPriced.edits.some(changesWhatFires))) {
+      const now = await readNow(args.thesis_id, ctx, (priced as Trigger[]).filter((t) => BUYS.has(t.action)), editsPriced.edits.filter(changesWhatFires).map((e) => e.id));
+      if (now) {
+        const checked = tradeNowRefusals({ adds: priced, edits: editsPriced.edits, ...now });
+        priced = checked.adds;
+        editsPriced.edits = checked.edits;
+        tradeNowRefused = checked.refused;
+      }
+    }
+    const refused = [...addsPriced.refused, ...editsPriced.refused, ...floorRefused, ...tradeNowRefused];
     const nothingElse = !priced.length && !editsPriced.edits.length && !removes.length && args.setup_id === undefined;
     if (refused.length && nothingElse) {
       return { summary: `No trigger change: ${refused.map((r) => r.reason).join(" ")}`, data: { ok: false, error: "not_written", message: refused.map((r) => `${r.text} — ${r.reason}`).join(" "), trigger_ops: refused } };
