@@ -49,7 +49,9 @@ describe("the morning run's save", () => {
 
   it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {
     const text = SITUATIONS.REVIEW_DUE.guidance;
-    for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh", 'mode "refresh"', "existing_thesis_id"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
+    for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
+    // The send takes the stock: code finds the thesis by it.
+    for (const field of ['mode "refresh"', "existing_thesis_id"]) expect([field, text.includes(field)]).toEqual([field, false]);
     for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([f, text.includes(f)]).toEqual([f, false]);
   });
 

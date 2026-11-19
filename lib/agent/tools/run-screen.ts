@@ -60,7 +60,7 @@ export const runScreenTool = defineTool({
     "`\"BASE_BREAKOUT\"`: Trend Template, a tight base under a clear pivot. " +
     "`\"MOMENTUM_FLAG\"`: already up 30%+ over a month or a quarter, still in an uptrend, wide daily range, resting on a rising average — the leader that has been climbing for weeks rather than the stock that moved today. " +
     "The pool is the calendar (earnings setups) or today's movers (chart setups), minus names already covered; `scope: \"book\"` screens your own watchlist and holdings instead. " +
-    "Each candidate row carries its `screenRow` — pass it with `setup_id` into dispatch_thesis_research. Every name that failed is listed with the reason.",
+    "Each candidate row carries its `screenRow` — put its numbers in dispatch_thesis_research's brief. Every name that failed is listed with the reason.",
   schema: z.object({
     setup: z.enum(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK", "BASE_BREAKOUT", "MOMENTUM_FLAG"]),
     scope: z
@@ -185,7 +185,7 @@ export const runScreenTool = defineTool({
     }
     items.push({
       kind: "generic",
-      text: `To research one: dispatch_thesis_research(ticker, mode: "mint", setup_id: "${setup}", screen_row: <the row's numbers>). The writer checks the setup against the chart itself.`,
+      text: `To research one: dispatch_thesis_research(ticker, brief: <why, and the row's numbers>). The writer checks the setup against the chart itself.`,
     });
 
     return {

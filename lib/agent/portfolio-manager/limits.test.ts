@@ -61,7 +61,7 @@ describe("the run's limits, held by its tools", () => {
     expect(await call(t, "write_note", { thesis_id: "th_v", note: "Still holding." })).toMatchObject({ ok: false, error: expect.stringContaining("write-up") });
     await call(t, "sell", { ticker: "v" });
     expect((await call(t, "write_note", { thesis_id: "th_v", note: "Why I'd sell." })).ok).toBe(true);
-    await call(t, "dispatch_thesis_research", { existing_thesis_id: "th_mu", mode: "refresh" });
+    await call(t, "dispatch_thesis_research", { ticker: "mu", brief: "Its case reads out of date." });
     expect((await call(t, "write_note", { thesis_id: "th_mu", note: "Why it needs research." })).ok).toBe(true);
     expect((await call(t, "write_note", { thesis_id: "th_x", note: "Buy it on the break." })).ok).toBe(false);
     await call(t, "edit_triggers", { thesis_id: "th_x", add: [{ action: "ENTER" }] });

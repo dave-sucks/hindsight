@@ -777,7 +777,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     // claim is the writer's, so an agent's answer is a dispatch.
     const anAgent = ctx.runMode !== "THESIS_WRITER";
     const message = anAgent
-      ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research with mode "refresh" and existing_thesis_id "${existing.id}", ` +
+      ? `$${existing.ticker} has no view yet, and a seed's claim is the writer's: dispatch_thesis_research on $${existing.ticker}, ` +
         `then wait_for_thesis_refresh on the child run. The writer writes the belief and the triggers and commits the view (LONG, SHORT or PASS); ` +
         `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
       : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +

@@ -46,6 +46,8 @@ const TRADES: Record<string, string> = { place_trade: "ticker", add: "ticker", s
 export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Promise<string | null>): ToolSet {
   const proposed: string[] = [];
   const noteAllowed = new Set<string>();
+  // The stocks sent to research this run, by ticker: the send names the stock, not a thesis.
+  const researched = new Set<string>();
   type Exec = (input: Record<string, unknown>, options: unknown) => Promise<unknown>;
   const wrap = (name: string, before: (input: Record<string, unknown>) => Promise<string | null> | string | null, after?: (input: Record<string, unknown>, out: unknown) => void) => {
     const t = real[name] as unknown as { execute?: Exec } | undefined;
@@ -71,7 +73,7 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
     );
   }
   out.dispatch_thesis_research = wrap("dispatch_thesis_research", () => null, (input) => {
-    if (typeof input.existing_thesis_id === "string") noteAllowed.add(input.existing_thesis_id);
+    if (typeof input.ticker === "string") researched.add(input.ticker.toUpperCase());
   });
   // A trigger edit allows a note on that stock, as a trade or a research request does, once one of its ops landed.
   out.edit_triggers = wrap("edit_triggers", () => null, (input, result) => {
@@ -82,7 +84,7 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
     const id = String(input.thesis_id ?? "");
     if (noteAllowed.has(id)) return null;
     const ticker = (await tickerOf(id))?.toUpperCase();
-    return ticker && proposed.includes(ticker) ? null : "A note goes with a trade, a research request or a trigger edit you made on that stock this run. Put this view in your write-up.";
+    return ticker && (proposed.includes(ticker) || researched.has(ticker)) ? null : "A note goes with a trade, a research request or a trigger edit you made on that stock this run. Put this view in your write-up.";
   });
   return out as ToolSet;
 }
