@@ -13,6 +13,7 @@
  * A request to any other provider is returned unchanged.
  */
 import { convertToModelMessages, type ModelMessage, type SystemModelMessage, type ToolSet, type UIMessage } from "ai";
+import { withoutBookCard } from "@/lib/agent/book-card";
 
 const EPHEMERAL = { anthropic: { cacheControl: { type: "ephemeral" as const } } };
 
@@ -36,7 +37,7 @@ export function cachedMessages(provider: string, messages: ModelMessage[]): Mode
   return [...messages.slice(0, -1), { ...last, providerOptions: { ...last.providerOptions, ...EPHEMERAL } } as ModelMessage];
 }
 
-/** Earlier turns as the model reads them: each tool result through its tool's own view (forModel), not the UI copy. */
+/** Earlier turns as the model reads them: each tool result through its tool's own view (forModel), not the UI copy; never the book's card. */
 export function historyForModel(messages: Array<Omit<UIMessage, "id">>, tools: ToolSet): Promise<ModelMessage[]> {
-  return convertToModelMessages(messages, { tools });
+  return convertToModelMessages(withoutBookCard(messages), { tools });
 }

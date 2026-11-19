@@ -104,6 +104,27 @@ it("opens the run, saves its thread, token use and notes, and marks it COMPLETE 
   expect(run).toEqual(expect.objectContaining({ runId: "run_1", status: "COMPLETE", text: "Done." }));
 });
 
+it("a run whose first message carries the book opens its thread with get_theses's card of the same read", async () => {
+  const onScreen = { ok: true, ui: "thesis-card", summary: "1 thesis (0 active, 1 watching).", data: { theses: [{ ticker: "CEG" }], cards: [{ ticker: "CEG" }] }, sources: [] };
+  const reads: unknown[] = [];
+  const get_theses = {
+    execute: async (input: unknown) => (reads.push(input), onScreen),
+    toModelOutput: ({ output }: { output: typeof onScreen }) => ({ type: "json", value: { summary: output.summary, data: { theses: output.data.theses } } }),
+  };
+  // Discovery's shape: an analyst's run whose context reads its book.
+  const record: RunnableRecord = { ...RECORD, id: "discovery", subject: "analyst", instructions: ["discovery.md"], context: ["the_book", "message"] };
+  const subject = { kind: "analyst" as const, userId: FOR.userId, accountId: FOR.accountId, environment: FOR.environment, analystId: FOR.analystId };
+  await runAgentAsRun(agent({ record, args: () => ({ ...args(), subject, toolset: { get_theses } as never }) }), FOR);
+  expect(reads).toEqual([{}]);
+  expect(String(calls[0].prompt)).toContain("## Your book (get_theses)\n1 thesis (0 active, 1 watching).");
+  expect(String(calls[0].prompt)).not.toContain('"cards"');
+  expect(threads[0].opening).toEqual([
+    { role: "user", content: [{ type: "text", text: "Go." }] },
+    { role: "assistant", content: [{ type: "tool-call", toolCallId: "read-the-book", toolName: "get_theses", input: {} }] },
+    { role: "tool", content: [{ type: "tool-result", toolCallId: "read-the-book", toolName: "get_theses", output: { type: "json", value: onScreen } }] },
+  ]);
+});
+
 it("marks it FAILED when the call fails", async () => {
   reply = { text: "", fail: true };
   const run = await runAgentAsRun(agent(), FOR);

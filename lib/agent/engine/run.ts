@@ -29,6 +29,8 @@ import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
+import { bookCardInThread } from "@/lib/agent/book-card";
+import { bookOnScreen } from "@/lib/agent/context/the-book";
 import { putNotesOnRunProposals } from "@/lib/proposals/auto-writeup";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import { openingOf } from "./engine";
@@ -77,6 +79,8 @@ export interface RunAgentArgs {
 export interface AgentRun {
   /** What was sent: the instructions, the first message and which part is which. */
   request: BuiltRequest;
+  /** The run page's card of the book its first message carried (get_theses), when it read the book. */
+  bookCard?: unknown[];
   /** Its last reply, or null when it ended with none. */
   text: string | null;
   messages: unknown[];
@@ -95,7 +99,9 @@ export interface AgentRun {
 }
 
 export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Promise<AgentRun> {
-  const request = await buildAgentRequest(record, args.input, { subject: args.subject, now: args.input.now, agent: record.id, toolset: args.toolset, given: args.given });
+  const run: ContextRun = { subject: args.subject, now: args.input.now, agent: record.id, toolset: args.toolset, given: args.given };
+  const request = await buildAgentRequest(record, args.input, run);
+  const bookCard = bookCardInThread(await bookOnScreen(run));
   const picked = Object.fromEntries(request.tools.map((name) => [name, args.toolset[name]])) as ToolSet;
   const provider = providerOf(record.model);
   const provided = Object.fromEntries((record.providerTools ?? []).map((id) => [id, PROVIDER_TOOLS[id](provider, record)]));
@@ -111,7 +117,7 @@ export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Prom
     toolCalls: steps.flatMap((s) => (s.toolCalls ?? []).map((c) => ({ tool: c.toolName, input: c.input }))),
     texts: steps.flatMap((s) => (s.text?.trim() ? [s.text] : [])),
   });
-  const done = (out: Partial<AgentRun>): AgentRun => ({ request, text: null, messages: [], steps: [], toolCalls: [], texts: [], usage, requests, ...out });
+  const done = (out: Partial<AgentRun>): AgentRun => ({ request, bookCard, text: null, messages: [], steps: [], toolCalls: [], texts: [], usage, requests, ...out });
   const saved = ({ steps }: { steps: ReadonlyArray<StepLike> }) =>
     Boolean(record.endsWith && steps.at(-1)?.toolResults?.some((r) => r.toolName === record.endsWith && wentThrough(r.output)));
   try {
@@ -231,7 +237,7 @@ export async function runAgentAsRun(agent: AgentToRun, target: RunFor, message?:
   }
   // The opening is what a person reads in the first message; a first message that is all context has none.
   const said = openingOf(done.request);
-  const opening = said ? [{ role: "user", content: [{ type: "text", text: said }] }] : [];
+  const opening = [...(said ? [{ role: "user", content: [{ type: "text", text: said }] }] : []), ...(done.bookCard ?? [])];
   await saveRunThread(runId, agent.thread ? { opening, messages: agent.thread(done), steps: [] } : { opening, messages: done.messages, steps: done.steps }, source);
   await recordTokenUsage(runId, done.usage, record.model);
   await putNotesOnRunProposals({ runId, analystId: target.analystId ?? null, since: started }).catch((err) =>

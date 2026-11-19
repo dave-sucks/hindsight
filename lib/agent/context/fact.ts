@@ -38,3 +38,8 @@ export function once<T>(run: ContextRun, key: string, read: () => Promise<T>): P
   if (!reads.has(key)) reads.set(key, read());
   return reads.get(key) as Promise<T>;
 }
+
+/** A read already made for the run, without making it. */
+export function readSoFar<T>(run: ContextRun, key: string): Promise<T> | undefined {
+  return memo.get(run)?.get(key) as Promise<T> | undefined;
+}

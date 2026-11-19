@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
 import { saveRunThread } from "@/lib/agent/run-thread";
+import { bookCardInThread } from "@/lib/agent/book-card";
+import { bookOnScreen } from "@/lib/agent/context/the-book";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
@@ -350,15 +352,15 @@ export const morningResearch = inngest.createFunction(
         // (lib/agent/context/: the analyst, the market and portfolio, its
         // book as get_theses reads it, the week, the calls refused), its
         // book through the run's own get_theses; the kickoff from the run input.
-        const request = await morningRunRequest(
-          {
-            subject: { kind: "analyst", userId: config.userId, accountId: config.accountId, environment: runEnvironment, analystId: config.id },
-            now: new Date(),
-            agent: "morning_run",
-            toolset: allTools as ToolSet,
-          },
-          runInput,
-        );
+        const contextRun: Parameters<typeof morningRunRequest>[0] = {
+          subject: { kind: "analyst", userId: config.userId, accountId: config.accountId, environment: runEnvironment, analystId: config.id },
+          now: new Date(),
+          agent: "morning_run",
+          toolset: allTools as ToolSet,
+        };
+        const request = await morningRunRequest(contextRun, runInput);
+        // The run page's card of the book in its first message: the same read, shown.
+        const bookCard = bookCardInThread(await bookOnScreen(contextRun));
         const systemPrompt = request.instructions;
 
         // 2e. Run the agent (generateText, not streamText — no client to stream to)
@@ -1024,10 +1026,10 @@ export const morningResearch = inngest.createFunction(
             );
           }
 
-          // The conversation for /runs/[id] (run-thread.ts). It opens with the start of the day; the blocks the model read are on the Context panel.
+          // The conversation for /runs/[id] (run-thread.ts). It opens with the start of the day and the book's card; the blocks the model read are on the Context panel.
           await saveRunThread(
             run.id,
-            { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }], messages: response?.messages, steps },
+            { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }, ...bookCard], messages: response?.messages, steps },
             "morning-research",
           );
 
@@ -1115,6 +1117,7 @@ export const morningResearch = inngest.createFunction(
                   {
                     opening: [
                       { role: "user", content: [{ type: "text", text: openingOf(request) }] },
+                      ...bookCard,
                       { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" },
                     ],
                     messages: recoveryResp.response?.messages,
