@@ -34,7 +34,7 @@ It runs on Claude Sonnet with Claude's web search. In a side-by-side test it wro
 
 ## When it runs
 
-When asked: by another agent with `dispatch_thesis_research`, by you with Send to Agent on a stock, or when an analyst is promoted to live money. Each request is its own run, five at a time.
+When asked: by another agent with `dispatch_thesis_research`, by you with Send to Agent on a stock, or when an analyst is promoted to live money. Each request is its own run, five at a time. A stock is never written twice at once: a send is refused while a Writer runs on it in the account, and for half an hour after this analyst's Writer finished it, pointing at what that one wrote (`findInFlightWriter`, `lib/agent/thesis-writer-dispatch.ts`).
 
 - **[Discovery](discovery.md)** sends every new stock it wants watched.
 - **[Chat](chat.md)** sends one when you ask for research, or type `/research`.

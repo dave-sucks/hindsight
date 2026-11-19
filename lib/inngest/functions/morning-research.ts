@@ -2,7 +2,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
-import { saveRunThread } from "@/lib/agent/run-thread";
+import { asJsonMessages, saveRunThread } from "@/lib/agent/run-thread";
 import { bookCardInThread } from "@/lib/agent/book-card";
 import { bookOnScreen } from "@/lib/agent/context/the-book";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
@@ -59,8 +59,8 @@ async function sendAgentWatchWriteups(
       skipped.push(`${row.ticker} (over today's ${AGENT_WATCH_WRITEUPS_PER_MORNING})`);
       continue;
     }
-    if (await findInFlightWriter(analyst.accountId, row.ticker)) {
-      skipped.push(`${row.ticker} (a writer is running)`);
+    if (await findInFlightWriter(analyst.accountId, row.ticker, analyst.id)) {
+      skipped.push(`${row.ticker} (a writer is running or just wrote it)`);
       continue;
     }
     const recentRuns = await prisma.researchRun.findMany({
@@ -810,7 +810,8 @@ export const morningResearch = inngest.createFunction(
               retryToolCalls = await runRetry([
                 // The first message carries the market and portfolio and the book's week.
                 { role: "user", content: userPrompt },
-                ...responseMessages,
+                // As JSON, as the thread is saved: a Date in a tool's output fails the SDK's check (asJsonMessages).
+                ...asJsonMessages(responseMessages),
                 { role: "user", content: nudgeWithRefusals },
               ]);
             } catch (seedErr) {
