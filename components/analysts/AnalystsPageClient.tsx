@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TradeRow, TradeRowShell } from "@/components/ui/trade-row";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
 import type { AnalystListItem } from "@/lib/actions/analyst.actions";
+import { useAnalystPause } from "@/components/analysts/use-analyst-pause";
 import { BuilderShowcaseTrigger, BuilderShowcaseButton } from "@/components/domain/run-showcase-trigger";
 import { ChatEntryComposer } from "@/components/assistant-ui/chat-entry-composer";
 import {
@@ -76,6 +77,7 @@ function PlaceholderTradeRow() {
 
 function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete: (id: string) => void }) {
   const router = useRouter();
+  const pause = useAnalystPause(analyst);
   const rawPrompt = analyst.description ?? analyst.analystPrompt ?? null;
   const promptText = rawPrompt ? stripMarkdown(rawPrompt) : null;
 
@@ -95,11 +97,14 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
           {/* Row 1: badges (the right edge is left for the kebab) */}
           <div className="flex items-center gap-1.5 flex-wrap min-w-0 min-h-6 pr-8">
             {/* Always present — an analyst with nothing open still reads as
-                "no positions" rather than leaving the badge row empty. */}
+                "no positions" rather than leaving the badge row empty. A
+                paused analyst reads "Paused" here instead. */}
             <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
-              {openCount === 0
-                ? "No Positions"
-                : `${openCount} ${openCount === 1 ? "Position" : "Positions"}`}
+              {!analyst.enabled
+                ? "Paused"
+                : openCount === 0
+                  ? "No Positions"
+                  : `${openCount} ${openCount === 1 ? "Position" : "Positions"}`}
             </span>
             {winRatePct != null && (
               <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium tabular-nums bg-muted text-muted-foreground">
@@ -133,17 +138,21 @@ function AnalystCard({ analyst, onDelete }: { analyst: AnalystListItem; onDelete
             <MoreHorizontal />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}`)}>
+            <DropdownMenuItem onClick={() => router.push(`/analysts/${analyst.id}`)}>
               View details
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => router.push(`/analysts/${analyst.id}/edit`)}>
+            <DropdownMenuItem onClick={() => router.push(`/analysts/${analyst.id}/edit`)}>
               Edit config
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-negative focus:text-negative"
-              onSelect={() => onDelete(analyst.id)}
+              variant={pause.pause ? "destructive" : "default"}
+              disabled={pause.pending}
+              onClick={pause.toggle}
             >
+              {pause.label}
+            </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(analyst.id)}>
               Delete analyst
             </DropdownMenuItem>
           </DropdownMenuContent>
