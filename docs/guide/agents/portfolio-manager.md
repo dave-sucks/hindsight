@@ -56,7 +56,7 @@ Its note on the stock, written right after the trade call, is the reason you rea
 - Selling one stock to buy another is two proposals. You may approve one and not the other.
 - A trade you declined, or let lapse, is not proposed again until something new has happened.
 - Where you have written that you are holding a stock, it ranks the stock honestly and proposes no sale.
-- A case that looks wrong goes to research (the [Writer](writer.md)); it does not rewrite the case.
+- A case that looks wrong goes to research (the [Writer](writer.md)); it does not rewrite the case. The research is for the analyst whose thesis it is; on a stock two analysts hold or watch, the request names which one, or is refused with both listed.
 - Its note on a stock is not the analyst's review: the stock's review clock keeps counting.
 - Doing nothing is a normal result.
 
