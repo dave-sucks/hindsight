@@ -46,20 +46,13 @@ export function earningsStandingTriggers(): Trigger[] {
         "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
       source: "DEFAULT",
     },
+    // One look on every report, beat or miss: a stock's own after-report review shares its slot and replaces it.
     {
-      id: "seed:earnings-beat",
-      predicate: { watch: "surprise", is: "beat", value: 0 },
+      id: "seed:earnings-after",
+      predicate: { watch: "report", is: "after", value: 1 },
       action: "REVIEW",
       rationale:
-        "Reported a beat — re-underwrite. A clean beat-and-raise earns a higher target; a beat the stock sold on means the market wanted more.",
-      source: "DEFAULT",
-    },
-    {
-      id: "seed:earnings-miss",
-      predicate: { watch: "surprise", is: "miss", value: 0 },
-      action: "REVIEW",
-      rationale:
-        "Reported a miss — is the thesis wrong, or early? Decide deliberately before the stop decides for us.",
+        "Reported — re-underwrite. A beat the stock sold on means the market wanted more; a miss asks whether the thesis is wrong or early.",
       source: "DEFAULT",
     },
   ];
