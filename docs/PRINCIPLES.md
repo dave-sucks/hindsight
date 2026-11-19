@@ -6,6 +6,44 @@
 
 ---
 
+## An agent is five things (2026-11-19)
+
+Every agent in Hindsight is built from five parts, each with exactly one home in the code. This is the shape Anthropic publishes for agents ([context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents), [writing tools](https://www.anthropic.com/engineering/writing-tools-for-agents)). If what you are building doesn't fit one of the five, the design is wrong.
+
+| Part | Home | What it is |
+|---|---|---|
+| Instructions | `lib/agent/engine/agents/<agent>.md` | The agent's job, the same on every run. Shared text only by import: `@rules.md` (house rules, how you write), `@research-rules.md` (the Writer, the Holding refresh). No code writes instruction text. |
+| Context | `lib/agent/context/`, ticked on `lib/agent/engine/agents/<agent>.ts` | Facts loaded up front, one loader per fact, chosen by what the run is about (a stock, an analyst, the account, the chat). Any agent can reuse any fact. Data, never rules. |
+| Tools | `lib/agent/tools/`, listed on the record | One job each, only the fields the action needs. Code fills what it knows (`fromRun`, `schemaFor`). A rule is a refusal in the tool's code that says what to do instead. |
+| Message | Whoever starts the run | You, another agent's brief, a trigger fire, a fill, the schedule. |
+| When it runs | `SCHEDULE` in `lib/agent/engine/schedule.ts`, or an event | Plus one automatic date line on every run. |
+
+The run page's Context panel and the Agents page (`/how-it-works/agents`) show all five for every agent, read from the same records.
+
+### How to add things
+
+| You want | Do this | Not this |
+|---|---|---|
+| An agent to know more | Write a loader for the fact (or reuse one) and tick it on the agent's record | Paste the fact into its `.md`, or build it in a run-only code path |
+| An agent to do something new | A tool with one job and few fields; code fills the rest | A new mode or field on an existing tool |
+| An agent to stop doing something | A refusal in the tool that says what to do instead | A "never do X" sentence |
+| Different handling in one situation | For now the `SITUATIONS` table; later a short skill file attached from a fact | An if-else that changes the prompt |
+| A new agent | A record, an `.md`, its context ticks and tools, a `SCHEDULE` line or an event | Its own cron, route or prompt builder |
+| A trigger on a stock | `edit_triggers`: a playbook trigger by reference, or the agent's own with a reason and a chart key for any price | Code that stamps triggers, or trigger fields on other tools |
+
+### Never
+- Choose instruction text in code by a stock's state, the day or a setting. Situations are the one existing case and are becoming short skills; add nothing to them without the owner.
+- Patch a failure with a prompt sentence. Find the layer first (the three layers below), then measure.
+- Put fields, variables or calculations in an agent's text. A number an agent needs is a fact or a key code fills.
+- Build agent-specific plumbing: a special loader path, a prompt builder, a flag only one run reads. Everything goes through the one engine (`buildAgentRequest`, `runAgent`).
+- Copy a shared rule into one agent. Change the shared file, or that agent's own `.md`.
+- Merge a change to what an agent is sent before the yardstick scores it.
+
+### How a change is checked
+Real cases replayed from recorded runs (`scripts/hero-case.ts`), cut faithful to their moment: nothing dated after the run. Build every case's request first with `--inputs-only` (free), rescore only the cases whose request changed, 4 runs each, and reuse the baseline's saved results. One heavy job at a time on the build machine.
+
+---
+
 ## How to use this when fixing a bug
 
 Before adding prompt text to fix an agent failure, ask which layer the fix belongs in:
