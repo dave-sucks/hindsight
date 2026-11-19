@@ -4,26 +4,37 @@
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
 
-/** The writer already running on this stock in this account; one RUNNING over 30 minutes is stuck and blocks nothing. */
+/** How long a Writer's run counts: one still RUNNING after this is stuck, and one this analyst's finished within it has just written the stock. */
+export const WRITER_WINDOW_MIN = 30;
+
+/**
+ * The Writer a new one on this stock would repeat: one RUNNING in this account
+ * (any analyst's), or, with `analystId`, one of this analyst's that started in
+ * the window and finished. A FAILED one blocks nothing; another analyst's
+ * finished one blocks nothing (it may write its own thesis). On 2026-11-19 the
+ * morning job's Writers for BEEM, CPA and DOYU finished at 08:02, and the
+ * Mergers run and its retry sent the three again at 08:02:18 and 08:02:59:
+ * the check saw only RUNNING.
+ */
 export async function findInFlightWriter(
   accountId: string,
   ticker: string,
-): Promise<{ id: string; agentConfigId: string | null; startedAt: Date } | null> {
-  const STUCK_WRITER_AGE_MIN = 30;
+  analystId?: string | null,
+): Promise<{ id: string; agentConfigId: string | null; startedAt: Date; status: string } | null> {
   return prisma.researchRun.findFirst({
     where: {
       accountId,
       mode: "THESIS_WRITER",
-      status: "RUNNING",
       parameters: { path: ["ticker"], equals: ticker },
-      startedAt: {
-        gte: new Date(Date.now() - STUCK_WRITER_AGE_MIN * 60 * 1000),
-      },
+      startedAt: { gte: new Date(Date.now() - WRITER_WINDOW_MIN * 60 * 1000) },
+      OR: [{ status: "RUNNING" }, ...(analystId ? [{ status: "COMPLETE", agentConfigId: analystId }] : [])],
     },
+    orderBy: { startedAt: "desc" },
     select: {
       id: true,
       agentConfigId: true,
       startedAt: true,
+      status: true,
     },
   });
 }

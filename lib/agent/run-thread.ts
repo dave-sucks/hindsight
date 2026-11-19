@@ -15,6 +15,17 @@ import type { ModelMessage } from "ai";
 import { prisma } from "@/lib/prisma";
 import { REQUEST_ROLE } from "@/lib/agent/run-requests";
 
+/**
+ * Messages as plain JSON, the way a thread is saved. A tool's output can hold a
+ * Date (a Prisma row), which the SDK's prompt check refuses ("The messages do
+ * not match the ModelMessage[] schema"): the morning cron's retry, seeded with
+ * the run's own messages, was refused that way and ran with no history, and on
+ * 2026-11-19 it sent DOYU and CPA to the Writer a second time.
+ */
+export function asJsonMessages<T>(messages: T[]): T[] {
+  return JSON.parse(JSON.stringify(messages, (_key, value) => (typeof value === "bigint" ? value.toString() : value))) as T[];
+}
+
 /** One step of a run: its tool results as execute() returned them, and its own messages. */
 export interface RunStep {
   toolResults?: ReadonlyArray<{ toolCallId: string; output?: unknown }>;

@@ -193,7 +193,26 @@ export const dispatchThesisResearch = defineTool({
     // this analyst). 30-minute age cap so a stuck writer doesn't block
     // forever; writers normally complete in 3-5 minutes.
     // ────────────────────────────────────────────────────────────────────
-    const inFlightWriter = await findInFlightWriter(analyst.accountId, T);
+    // This analyst's Writer that finished in the last half hour blocks too: the
+    // morning job's write-ups and the run's own sends met at 08:02 on 2026-11-19
+    // (BEEM, CPA, DOYU written twice). Its result is the answer.
+    const inFlightWriter = await findInFlightWriter(analyst.accountId, T, analyst.id);
+    if (inFlightWriter?.status === "COMPLETE") {
+      const ageMin = Math.round((Date.now() - inFlightWriter.startedAt.getTime()) / 60000);
+      console.warn(`[dispatch-thesis-research] ${T} written for analyst=${analyst.name} ${ageMin}m ago (run=${inFlightWriter.id}) — not sending it again.`);
+      return {
+        summary: `Dispatch refused for $${T}: ${analyst.name}'s Writer wrote it ${ageMin}m ago (run ${inFlightWriter.id}).`,
+        data: {
+          childRunId: null,
+          status: "FAILED" as const,
+          writtenBy: inFlightWriter.id,
+          note:
+            `$${T} was just written up for this analyst (run ${inFlightWriter.id}, started ${ageMin}m ago), and what it wrote is on the stock. ` +
+            `Read it with get_theses(tickers: ["${T}"]) and answer from it: a second Writer this soon repeats the same research.`,
+        },
+        sources: [],
+      };
+    }
     if (inFlightWriter) {
       const ownerAnalyst = inFlightWriter.agentConfigId
         ? await prisma.agentConfig.findUnique({
