@@ -217,9 +217,9 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     const label = protectiveExitCloseReason(sale.predicate, "LONG");
     expect(label).toBe("STOP");
     const r = await tool(
-      "close-position",
-      "closePosition",
-      { ticker: T, reason: "RISK_MANAGEMENT", belief_survived: true },
+      "sell",
+      "sell",
+      { ticker: T, belief_survived: true },
       { runMode: "INTRADAY_TACTICAL", analystId: REPLAY_ANALYST_ID, protectiveExitReason: label, protectiveExitTriggerLabel: sentenceOf(sale), firedTrigger: { id: sale.id, action: sale.action, ticker: T } },
       48.2,
     );

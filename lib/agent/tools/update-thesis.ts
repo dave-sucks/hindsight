@@ -309,6 +309,13 @@ type UpdateArgs = Omit<z.infer<typeof updateSchema>, "rationale"> & { rationale?
 export type RefusedField = { field: string; reason: string; why: string; to?: string | number };
 const forAgent = (r: RefusedField[]) => r.map(({ field, reason }) => ({ field, reason }));
 
+/** A status door's reply names a refused status change after the door (stop_watching, watch_again), the field its caller knows. */
+export function inOwnWords<T extends { data: unknown }>(saved: T, door: string): T {
+  const data = saved.data as { refused_fields?: Array<{ field: string; reason: string }> };
+  if (!data?.refused_fields) return saved;
+  return { ...saved, data: { ...data, refused_fields: data.refused_fields.map((r) => (r.field === "change_status" ? { ...r, field: door } : r)) } };
+}
+
 /** Each field update_thesis compares with the stored row, and the column that stores it. */
 const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
   ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],

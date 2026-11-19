@@ -15,10 +15,10 @@ const awaiting = (db: { store: Record<string, unknown[]> }) => (db.store.order a
 
 describe("the Portfolio Manager's trades always wait for the owner", () => {
   it("its sale is a proposal with the switch off", async () => {
-    const { result, db } = await replayTool("close-position", "closePosition", {
+    const { result, db } = await replayTool("sell", "sell", {
       seed: seed(),
       ctx: { runMode: "PORTFOLIO_MANAGER" },
-      args: { ticker: "AAA", reason: "MANUAL", belief_survived: true },
+      args: { ticker: "AAA", belief_survived: true },
       quotes: { AAA: 101 },
     });
     expect(JSON.stringify(result)).toMatch(/AWAITING_APPROVAL|awaiting/i);
@@ -26,19 +26,19 @@ describe("the Portfolio Manager's trades always wait for the owner", () => {
   });
 
   it("another run's sale on the same account is not held", async () => {
-    const { db } = await replayTool("close-position", "closePosition", {
+    const { db } = await replayTool("sell", "sell", {
       seed: seed(),
-      args: { ticker: "AAA", reason: "MANUAL", belief_survived: true },
+      args: { ticker: "AAA", belief_survived: true },
       quotes: { AAA: 101 },
     });
     expect(awaiting(db)).toHaveLength(0);
   });
 
   it("its trim is a proposal with the switch off", async () => {
-    const { db } = await replayTool("manage-position", "managePosition", {
+    const { db } = await replayTool("sell", "sell", {
       seed: seed(),
       ctx: { runMode: "PORTFOLIO_MANAGER" },
-      args: { symbol: "AAA", action: "partial_close", close_pct: 50 },
+      args: { ticker: "AAA", percent: 50 },
       quotes: { AAA: 101 },
     });
     expect(awaiting(db)).toHaveLength(1);

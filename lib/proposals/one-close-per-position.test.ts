@@ -70,7 +70,7 @@ jest.mock("@/lib/email-suppression", () => ({ isInsideMorningBatch: () => false 
 
 import { db, resetDb, type Row } from "./__fixtures__/position-db";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
-import { managePosition } from "@/lib/agent/tools/manage-position";
+import { sell } from "@/lib/agent/tools/sell";
 import type { ToolContext } from "@/lib/agent/tool-context";
 import { approveProposal } from "./execute";
 
@@ -243,7 +243,7 @@ describe("SMMT 2026-09-15 — two sell rules on one trigger check", () => {
 const position = () => db.positions.get(POSITION_ID)!;
 const trim = (args: { pct: number }) =>
   (
-    managePosition({
+    sell({
       runId: "run-trim",
       userId: ACCOUNT_ID,
       accountId: ACCOUNT_ID,
@@ -254,7 +254,7 @@ const trim = (args: { pct: number }) =>
     } as unknown as ToolContext) as unknown as {
       execute: (a: unknown) => Promise<{ data: Record<string, unknown> }>;
     }
-  ).execute({ symbol: "SMMT", action: "partial_close", close_pct: args.pct, reason: "take some off" });
+  ).execute({ ticker: "SMMT", percent: args.pct, note: "take some off" });
 
 describe("DAV-282 — a sale sells only what is still held", () => {
   it("an approved full close sells the 350 shares left after a 100-share trim filled, not the 450 it was queued at", async () => {

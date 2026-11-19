@@ -56,7 +56,7 @@ async function triggerRun(db: PrismaDouble, data: Record<string, unknown>) {
     jest.doMock("@/lib/agent/model", () => ({ modelFor: () => ({}) }));
     jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
     jest.doMock("@/lib/agent/tools", () => ({
-      createResearchTools: () => ({ manage_position: { execute: async (args: unknown) => (calls.push({ tool: "manage_position", args }), { ok: true, summary: "Partial close proposed: MU (-30%)" }) } }),
+      createResearchTools: () => ({ sell: { execute: async (args: unknown) => (calls.push({ tool: "sell", args }), { ok: true, summary: "Partial close proposed: MU (-30%)" }) } }),
     }));
     await import("@/lib/inngest/functions/tactical-run");
     await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } });
@@ -96,7 +96,7 @@ describe("MU: the Auto-trim fires once, and its fill uses it up", () => {
 
     const run = await triggerRun(db, fired[0]);
     expect(run.modelCalls).toBe(1);
-    expect(run.calls).toEqual([{ tool: "manage_position", args: expect.objectContaining({ symbol: "MU", action: "partial_close", close_pct: 30 }) }]);
+    expect(run.calls).toEqual([{ tool: "sell", args: expect.objectContaining({ ticker: "MU", percent: 30 }) }]);
     // Proposed, not filled: nothing is used up.
     expect((db.store.thesis[0] as { triggers: Array<{ id: string }> }).triggers.map((t) => t.id)).toEqual([FLOOR.id, TRIM.id]);
 

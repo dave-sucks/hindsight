@@ -214,7 +214,7 @@ describe("DAV-328 — the same answer on every path that sizes a buy", () => {
     // The entry was halved and the add was not — so the add came out the
     // size of the entry it was meant to be half of.
     const addTo = async (thesisOver: Record<string, unknown>) => {
-      const { refused, result } = await replayTool("manage-position", "managePosition", {
+      const { refused, result } = await replayTool("add", "add", {
         seed: {
           ...airSeed({
             ticker: "AGIO",
@@ -225,7 +225,7 @@ describe("DAV-328 — the same answer on every path that sizes a buy", () => {
           position: [positionRow({ symbol: "AGIO", quantity: 20, initialQty: 20, avgCost: 150, stopLoss: 135 })],
         },
         ctx: { ...tacticalCtx, maxPositionTotal: 20000 },
-        args: { symbol: "AGIO", action: "add_to_position", reason: "Base held; adding into the window." },
+        args: { ticker: "AGIO" },
         quotes: { AGIO: 150 },
       });
       expect(refused).toBe(false);

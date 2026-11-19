@@ -4,7 +4,7 @@
  * NVDA (PEAD, LIVE, 33 shares at $218.23) carried the setup's 2R partial,
  * "Trim if above 16.6% from our entry", written at the fill. Here the owner has
  * set its size to 30%. Auto sells 30%. Send to Agent tells the analyst
- * "Trim 30%", and its partial_close sells 30% unless the run names another
+ * "Trim 30%", and its sale sells 30% unless the run names another
  * size. The morning run reads the same sentence on the stock's trigger line.
  *
  * Real handlers; the model is captured, never called.
@@ -47,7 +47,7 @@ async function fire(fireMode: string) {
       createResearchTools: (ctx: Record<string, unknown>) => {
         contexts.push(ctx);
         const tool = (name: string) => ({ execute: jest.fn(async (args: Record<string, unknown>) => (toolCalls.push({ tool: name, args }), { ok: true, summary: "Proposed" })) });
-        return { manage_position: tool("manage_position"), get_theses: { execute: async () => ({ ok: false }) } };
+        return { sell: tool("sell"), get_theses: { execute: async () => ({ ok: false }) } };
       },
     }));
     await import("@/lib/inngest/functions/tactical-run");
@@ -60,17 +60,17 @@ async function fire(fireMode: string) {
   return { told: told.join("\n"), toolCalls, contexts };
 }
 
-/** The real manage_position partial_close, in a trigger run woken (or not) by the trim. */
+/** The real sell, in a trigger run woken (or not) by the trim. */
 async function trim(args: Record<string, unknown>, firedTrim?: { ticker: string; pct: number }) {
-  const { db } = await replayTool("manage-position", "managePosition", {
+  const { db } = await replayTool("sell", "sell", {
     seed: seed("ASK_NOW"),
-    args: { symbol: "NVDA", action: "partial_close", reason: "Up 16.6% from the buy at 2R: selling part into strength and keeping the rest on the trail.", ...args },
+    args: { ticker: "NVDA", ...args },
     ctx: { analystId: PEAD, runMode: "INTRADAY_TACTICAL", runEnvironment: "LIVE", ...(firedTrim ? { firedTrim } : {}) },
     quotes: { NVDA: 254.6 },
     mocks: { "@/lib/notify/proposal-push": () => ({ sendProposalPendingPush: async () => undefined }), "@/lib/emails/proposal-pending": () => ({ sendProposalPendingEmail: async () => undefined }) },
   });
   for (const m of ["@/lib/prisma", "@/lib/alpaca", "@/lib/actions/finnhub.actions", "@/lib/agent/research-helpers", "@/lib/inngest/client", "@/lib/notify/proposal-push", "@/lib/emails/proposal-pending"]) jest.dontMock(m);
-  return (db.store.order as Array<{ intent: string; quantity: number; status: string }>).filter((o) => o.intent === "PARTIAL_CLOSE");
+  return db.store.order as Array<{ intent: string; quantity: number; status: string }>;
 }
 
 beforeEach(() => {
@@ -82,7 +82,7 @@ afterEach(() => jest.restoreAllMocks());
 describe("NVDA's trim, sized 30%, in every mode", () => {
   it("Auto sells 30% with no analyst deciding; the analyst is then asked to write it up, not to decide", async () => {
     const r = await fire("DO_IT");
-    expect(r.toolCalls).toEqual([{ tool: "manage_position", args: expect.objectContaining({ symbol: "NVDA", action: "partial_close", close_pct: 30 }) }]);
+    expect(r.toolCalls).toEqual([{ tool: "sell", args: expect.objectContaining({ ticker: "NVDA", percent: 30 }) }]);
     expect(r.told).toContain("## What your note answers, in order");
     expect(r.told).not.toContain("## Decision framework");
   });
@@ -94,10 +94,10 @@ describe("NVDA's trim, sized 30%, in every mode", () => {
     expect(r.contexts.at(-1)).toMatchObject({ firedTrim: { ticker: "NVDA", pct: 30 } });
   });
 
-  it("the run's partial_close with no size sells 30% (9 of 33 shares); a size it names stands; with no trim behind it, half", async () => {
-    expect(await trim({}, { ticker: "NVDA", pct: 30 })).toMatchObject([{ quantity: 9, status: "AWAITING_APPROVAL" }]);
-    expect(await trim({ close_pct: 50 }, { ticker: "NVDA", pct: 30 })).toMatchObject([{ quantity: 16 }]);
-    expect(await trim({})).toMatchObject([{ quantity: 16 }]);
+  it("the run's sale with no size sells 30% (9 of 33 shares); a size it names stands; with no trim behind it, all of it", async () => {
+    expect(await trim({}, { ticker: "NVDA", pct: 30 })).toMatchObject([{ intent: "PARTIAL_CLOSE", quantity: 9, status: "AWAITING_APPROVAL" }]);
+    expect(await trim({ percent: 50 }, { ticker: "NVDA", pct: 30 })).toMatchObject([{ intent: "PARTIAL_CLOSE", quantity: 16 }]);
+    expect(await trim({})).toMatchObject([{ intent: "CLOSE", quantity: 33 }]);
   });
 
   it("Flag for Review: the morning run's trigger line says the size", () => {

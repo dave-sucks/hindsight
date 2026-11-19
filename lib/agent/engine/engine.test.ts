@@ -141,7 +141,7 @@ describe("the Portfolio Manager", () => {
   });
 
   it("has the tools its old run listed, in the same order", () => {
-    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "update_thesis", "place_trade", "manage_position", "close_position", "dispatch_thesis_research"]);
+    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "write_note", "edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"]);
   });
 
   it("a Market and portfolio read that can't be read prints its one line under the heading, as before", async () => {

@@ -60,7 +60,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     jest.doMock("@/lib/inngest/client", () => ({
       inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn(async (e: { name: string; data: unknown }) => sent.push(e)) },
     }));
-    // The model writes its note the way update_thesis would: one row on the stock for this run.
+    // The model writes its note the way write_note would: one row on the stock for this run.
     jest.doMock("ai", () => ({
       generateText: jest.fn(async (a: { system: string; prompt: string; tools: Record<string, unknown> }) => {
         asked.push({ system: a.system, prompt: a.prompt, tools: Object.keys(a.tools ?? {}) });
@@ -89,15 +89,15 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
             if (name === "place_trade") {
               await create("order", { id: "ord_trv", positionId: "pos_trv", symbol: "TRV", thesisId: "trv", intent: "OPEN", rationale: args.entry_rationale, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: SECULAR, symbol: "TRV" } });
             }
-            // A trim waiting for approval: manage_position writes no decision row until it fills.
-            if (name === "manage_position") {
-              const a = args as { reason?: string };
-              await create("order", { id: "ord_iot_trim", positionId: "pos_iot", symbol: "IOT", thesisId: "iot", intent: "PARTIAL_CLOSE", rationale: a.reason, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: PEAD, symbol: "IOT" } });
+            // A trim waiting for approval: the sale writes no decision row until it fills.
+            if (name === "sell") {
+              const a = args as { note?: string };
+              await create("order", { id: "ord_iot_trim", positionId: "pos_iot", symbol: "IOT", thesisId: "iot", intent: "PARTIAL_CLOSE", rationale: a.note, status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: PEAD, symbol: "IOT" } });
             }
             return { ok: true, summary: name === "place_trade" ? "Proposed: LONG 27 $TRV" : "Partial close proposed: IOT (-30%)" };
           }),
         });
-        return { place_trade: tool("place_trade"), manage_position: tool("manage_position"), close_position: tool("close_position"), get_theses: { execute: async () => ({ ok: false }) } };
+        return { place_trade: tool("place_trade"), add: tool("add"), sell: tool("sell"), get_theses: { execute: async () => ({ ok: false }) } };
       },
     }));
     await import("@/lib/inngest/functions/tactical-run");
@@ -129,7 +129,7 @@ describe("the trigger run's Market and portfolio block", () => {
 describe("the trigger run, by fire mode", () => {
   it("IOT's Auto-trim with approval on: the trim waits for approval, and the write-up still lands on it (it has no decision row yet)", async () => {
     const r = await fire({ thesisId: "iot", triggerId: IOT_TRIM.id, analystId: PEAD, ticker: "IOT", action: "TRIM", firedPrice: 48.2 }, stocks(IOT_TRIM));
-    expect(r.toolCalls).toEqual([expect.objectContaining({ tool: "manage_position", args: expect.objectContaining({ action: "partial_close", close_pct: 30 }) })]);
+    expect(r.toolCalls).toEqual([expect.objectContaining({ tool: "sell", args: expect.objectContaining({ percent: 30 }) })]);
     expect(r.asked).toHaveLength(1);
     expect(r.orders.find((o) => o.id === "ord_iot_trim")?.rationale).toBe(NOTE);
     expect(r.sent).toContainEqual({ name: "app/proposal.note.written", data: { orderId: "ord_iot_trim" } });
@@ -145,7 +145,7 @@ describe("the trigger run, by fire mode", () => {
     // One write-up: no trade tools, the write-up's own text (no longer a situation, 2026-11-15), the job is the note.
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].tools).not.toEqual(expect.arrayContaining(["place_trade"]));
-    expect(r.asked[0].tools.some((t) => ["place_trade", "close_position", "manage_position"].includes(t))).toBe(false);
+    expect(r.asked[0].tools.some((t) => ["place_trade", "sell", "add"].includes(t))).toBe(false);
     // The post-trade write-up's own instructions, the same on every run.
     // The analyst it works for, then its own fixed text.
     expect(r.asked[0].system.startsWith("## Analyst:")).toBe(true);
@@ -166,7 +166,7 @@ describe("the trigger run, by fire mode", () => {
     const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 });
     expect(r.closes).toHaveLength(0);
     expect(r.asked).toHaveLength(1);
-    expect(r.asked[0].tools).toEqual(expect.arrayContaining(["close_position"]));
+    expect(r.asked[0].tools).toEqual(expect.arrayContaining(["sell"]));
     expect(r.asked[0].system).toContain("## Decision framework");
     expect(r.runs[0].parameters).not.toHaveProperty("autoTrade");
     // A default note ("Sell if below $395. You set this.") restates the trigger: the run isn't shown it.

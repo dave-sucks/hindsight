@@ -1,6 +1,7 @@
 /**
- * update-thesis-morning-run.test.ts — the morning run's save: update_thesis
- * with the morning door's eighteen fields and the review's three, as #811 did for the trigger run.
+ * update-thesis-morning-run.test.ts — the morning run's save: since
+ * 2026-11-18 six tools, one job each (the note and the review's three, the
+ * trigger edits, the conviction, the catalyst date, and the two status tools).
  *
  * In the 30 days to 2026-10-08 the morning run made 285 saves; 224 carried
  * price_at_time, a copy of the price the row showed, and 25 rewrote the
@@ -16,37 +17,34 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { statSync } from "fs";
 import { zodSchema } from "ai";
-import type { z } from "zod";
 import { SITUATIONS } from "@/lib/agent/situations";
-import { updateThesis } from "./update-thesis";
+import { MODES } from "@/lib/agent/modes";
+import { createResearchTools } from "@/lib/agent/tools";
 
-const DOOR = [
-  "add_triggers", "answers_update_id", "catalyst_date", "change_status", "conviction", "conviction_rationale", "edit_triggers",
-  "horizon", "rationale", "remove_trigger_ids",
-  "setup_id", "thesis_id", "trigger_id", "verdict", "verdict_line",
-];
-const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode }) as never;
-const schemaOf = (runMode: string) => (updateThesis(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
-const enumOf = (runMode: string) => (zodSchema(schemaOf(runMode) as never).jsonSchema as { properties: Record<string, { enum?: string[] }> }).properties.change_status.enum;
+/** The morning run's thesis tools, one job each since 2026-11-18, and the fields each shows the model. */
+const DOORS: Record<string, string[]> = {
+  write_note: ["answers_update_id", "note", "thesis_id", "trigger_id", "verdict", "verdict_line"],
+  edit_triggers: ["add", "edit", "remove", "setup_id", "thesis_id"],
+  set_conviction: ["conviction", "conviction_rationale", "thesis_id"],
+  set_catalyst_date: ["catalyst_date", "thesis_id"],
+  stop_watching: ["reason", "thesis_id"],
+  watch_again: ["thesis_id"],
+};
+const fieldsOf = (t: string) => {
+  const all = createResearchTools({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode: "MORNING_PLAN", runEnvironment: "PAPER" } as never) as Record<string, { inputSchema: unknown }>;
+  return Object.keys((zodSchema(all[t].inputSchema as never).jsonSchema as { properties?: Record<string, unknown> }).properties ?? {}).sort();
+};
 
 describe("the morning run's save", () => {
-  it("offers exactly fifteen fields, change_status with its three values", () => {
-    expect(Object.keys(schemaOf("MORNING_PLAN").shape).sort()).toEqual(DOOR);
-    expect(DOOR).toHaveLength(15);
-    expect(enumOf("MORNING_PLAN")).toEqual(["INVALIDATED", "ARCHIVED", "WATCHING"]);
-    for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction"]) expect(DOOR).not.toContain(dropped);
-  });
-
-  it("leaves the other doors' saves as they were", () => {
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).toHaveLength(7);
-    expect(Object.keys(schemaOf("INTRADAY_TACTICAL").shape)).not.toContain("change_status");
-    const chat = Object.keys(schemaOf("PRINCIPAL_CHAT").shape);
-    expect(chat).toHaveLength(18);
-    for (const f of ["price_at_time", "snapshot", "variant_view"]) expect(chat).not.toContain(f);
-    expect(chat).toEqual(expect.arrayContaining(["core_belief", "key_assumptions", "invalidation_conditions", "direction"]));
-    expect(Object.keys(schemaOf("THESIS_WRITER").shape)).toHaveLength(22);
-    // Discovery's save lost the snapshot, which nothing wrote after a stock was first researched.
-    expect(Object.keys(schemaOf("DISCOVERY").shape)).toHaveLength(18);
+  it("is six tools, one job each, with exactly their fields; none takes the price, the write-up, the claim, a direction or the horizon", () => {
+    const allow = MODES["research-run"].toolAllowlist as readonly string[];
+    for (const [t, fields] of Object.entries(DOORS)) {
+      expect([t, allow.includes(t)]).toEqual([t, true]);
+      expect([t, fieldsOf(t)]).toEqual([t, fields]);
+    }
+    expect(allow).not.toContain("update_thesis");
+    const all = Object.values(DOORS).flat();
+    for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction", "horizon", "change_status"]) expect(all).not.toContain(dropped);
   });
 
   it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {

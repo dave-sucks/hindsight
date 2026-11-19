@@ -40,15 +40,15 @@ jest.mock("ai", () => ({
   ...jest.requireActual("ai"),
   stepCountIs: () => () => false,
   generateText: jest.fn(async (a: { tools?: Record<string, { execute: (x: unknown, o: unknown) => Promise<unknown> }> }) => {
-    if (mockState.sell && a.tools?.close_position) await a.tools.close_position.execute({ ticker: mockState.ticker, reason: "STOP", belief_survived: true }, { toolCallId: "sell", messages: [] });
+    if (mockState.sell && a.tools?.sell) await a.tools.sell.execute({ ticker: mockState.ticker, belief_survived: true }, { toolCallId: "sell", messages: [] });
     return { steps: [], response: { messages: [] }, text: "", usage: {} };
   }),
 }));
-// The trigger run's tools: the real close_position with the context the run builds; the stock's read is skipped.
+// The trigger run's tools: the real sell with the context the run builds; the stock's read is skipped.
 jest.mock("@/lib/agent/tools", () => ({
   createResearchTools: (ctx: Record<string, unknown>) => {
-    const { closePosition } = jest.requireActual("@/lib/agent/tools/close-position");
-    return { get_theses: { execute: async () => ({ ok: false }) }, close_position: closePosition({ ...ctx, groupId: (p: string) => p }) };
+    const { sell } = jest.requireActual("@/lib/agent/tools/sell");
+    return { get_theses: { execute: async () => ({ ok: false }) }, sell: sell({ ...ctx, groupId: (p: string) => p }) };
   },
 }));
 
@@ -114,7 +114,7 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
   const { tacticalRun } = await handler("@/lib/inngest/functions/tactical-run");
   const { POST: decline } = (await import("@/app/api/proposals/[orderId]/reject/route")) as { POST: (r: Request, c: unknown) => Promise<Response> };
   const { getTheses } = await import("@/lib/agent/tools/get-theses");
-  const { closePosition } = await import("@/lib/agent/tools/close-position");
+  const { sell } = await import("@/lib/agent/tools/sell");
 
   const mornings: Array<{ at: string; ok: boolean; situations: string[] | null }> = [];
   const events: Ev[] = [...(stock.events as Ev[]), ...extra, ["trail-on", fixture.trail.from] as Ev].sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
@@ -151,7 +151,7 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
         const read = (await getTheses(ctx as never).execute!({ tickers: [ticker] } as never, { toolCallId: "read", messages: [] })) as { ok?: boolean; data?: { theses?: Array<{ situations?: string[] }> } };
         mornings.push({ at, ok: read.ok === true, situations: read.data?.theses?.[0]?.situations ?? null });
         if (read.data?.theses?.[0]?.situations?.includes("PROTECTIVE_SALE")) {
-          await closePosition(ctx as never).execute!({ ticker, reason: "STOP", belief_survived: true } as never, { toolCallId: "sell", messages: [] });
+          await sell(ctx as never).execute!({ ticker, belief_survived: true } as never, { toolCallId: "sell", messages: [] });
         }
       }
     }

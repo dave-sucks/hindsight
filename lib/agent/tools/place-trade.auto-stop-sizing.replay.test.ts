@@ -69,7 +69,7 @@ describe("TRV — a 4.1% plan floor with an 8% setting is sized like an 8% stop"
 
 describe("the add path — MU held, 11 shares at $911.415, floor $850, an add at the 10-21 close of $913.67", () => {
   async function add(autoStop: { on: boolean; pct: number }) {
-    const { refused, result, db } = await replayTool("manage-position", "managePosition", {
+    const { refused, result, db } = await replayTool("add", "add", {
       seed: {
         thesis: [thesisRow({ id: "thesis_MU", ticker: "MU", status: "HOLDING", direction: "LONG", horizon: "COMPOUNDER", setupId: "MA_PULLBACK", conviction: "HIGH", entryPrice: 911.415, targetPrice: 1500, stopLoss: 850, analystId: REPLAY_ANALYST_ID })],
         position: [positionRow({ id: "position_MU", symbol: "MU", analystId: REPLAY_ANALYST_ID, quantity: 11, avgCost: 911.415, stopLoss: 850, targetPrice: 1500, thesisId: "thesis_MU" })],
@@ -77,7 +77,7 @@ describe("the add path — MU held, 11 shares at $911.415, floor $850, an add at
         account: [accountRow({ requireApprovalBuysPaper: true, requireApprovalBuysLive: true, autoStopOnBuy: autoStop.on, autoStopPct: autoStop.pct })],
       },
       ctx: { runMode: "PRINCIPAL_CHAT", runEnvironment: "PAPER", minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, maxOpenPositions: 10 },
-      args: { symbol: "MU", action: "add_to_position", reason: "Adding on the hold of the 50-day, per the seat's add rule." },
+      args: { ticker: "MU", note: "Adding on the hold of the 50-day, per the seat's add rule." },
       quotes: { MU: 913.67 },
     });
     expect(refused).toBe(false);

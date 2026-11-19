@@ -63,7 +63,7 @@ describe("an agent's tool definitions are the same on every request", () => {
 
   it("the trigger items the thesis tools show the model leave the server's fields out", () => {
     const defs = definitionsFor("principal", "PRINCIPAL_CHAT");
-    for (const name of ["update_thesis", "record_thesis"]) {
+    for (const name of ["edit_triggers", "record_thesis"]) {
       const def = defs.find((d) => d.name === name);
       expect(def).toBeDefined();
       for (const field of ["lastFiredAt", "firedFilings", "firedReports", "writtenPrice", "writtenAt"]) {

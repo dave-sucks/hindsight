@@ -123,17 +123,17 @@ describe("refuse the field, land the call", () => {
     expect(refusedOf(chat)[0].reason).toContain("record_thesis");
     for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) {
       const r = await replay(closeOut({ direction: "PASS" }), { ctx: { runMode } });
-      expect(refusedOf(r)[0]).toEqual({ field: "direction", reason: "A stock we hold isn't passed: selling it is close_position." });
+      expect(refusedOf(r)[0]).toEqual({ field: "direction", reason: "A stock we hold isn't passed: selling it is sell." });
     }
     const watch = await replay(closeOut({ direction: "PASS", entry_price: undefined }), { thesis: asml({ status: "WATCHING" }), ctx: { runMode: "MORNING_PLAN" } });
-    expect(refusedOf(watch)[0].reason).toMatch(/change_status ARCHIVED/);
+    expect(refusedOf(watch)[0].reason).toMatch(/stop_watching drops it/);
     expect(refusedOf(watch)[0].reason).not.toContain("record_thesis");
   });
 
   it("a kill on a holding with no sale this run: change_status is refused with close_position, the note lands", async () => {
     const r = await replay(closeOut({ change_status: "INVALIDATED" }));
     expect(r.refused).toBe(false);
-    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "change_status", reason: expect.stringContaining("close_position") })]);
+    expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "change_status", reason: expect.stringContaining("Call `sell` first") })]);
     expect(r.db.store.thesis[0].status).toBe("HOLDING");
     expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED", rationale: NOTE })]);
   });
@@ -193,7 +193,7 @@ describe("refuse the field, land the call", () => {
     const r = await replay({ thesis_id: "t_asml", rationale: "Still deciding on the live re-entry; the research holds." }, { thesis: promoted, ctx: { runMode: "MORNING_PLAN" } });
     expect(r.refused).toBe(false);
     expect(written(r.db)).toEqual([expect.objectContaining({ type: "REVIEWED" })]);
-    expect(String(r.result.summary)).toContain("Still promoted until place_trade or change_status WATCHING.");
+    expect(String(r.result.summary)).toContain("Still promoted until place_trade or watch_again.");
     expect(r.db.store.thesis[0].status).toBe("PROMOTED");
   });
 });

@@ -48,7 +48,7 @@ const mockLoadAccountRisk = jest.fn();
 jest.mock("@/lib/agent/load-account-risk", () => ({ loadAccountRisk: (...a: unknown[]) => mockLoadAccountRisk(...a), industryOf: jest.fn().mockResolvedValue(null) }));
 jest.mock("@/lib/agent/thesis-updates", () => ({ writeThesisUpdate: jest.fn().mockResolvedValue("tu_1") }));
 
-import { managePosition } from "./manage-position";
+import { add } from "./add";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
 const SMMT = {
@@ -60,7 +60,7 @@ const SMMT = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const tool = (runMode = "PRINCIPAL_CHAT") =>
-  managePosition({
+  add({
     runId: "run_1", userId: "user_1", accountId: "account_1", analystId: "analyst_1",
     runMode,
     alpacaCreds: { keyId: "k", secretKey: "s" },
@@ -84,28 +84,28 @@ const orderQty = () => {
 
 let lastResult: unknown = null;
 
-describe("add_to_position writes the order at today's price (the principal's own $5,000, from the chat)", () => {
+describe("add writes the order at today's price (the principal's own $5,000, from the chat)", () => {
   it("$5,000 into SMMT at $18.00 is 277 shares, not the 348 its $14.35 cost implies", async () => {
-    lastResult = await tool().execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    lastResult = await tool().execute({ ticker: "SMMT", notional: 5000, note: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(277);
   });
 
   it("when the quote fails it falls back to the average cost, never to zero", async () => {
     mockGetLatestPrice.mockRejectedValue(new Error("vendor down"));
-    lastResult = await tool().execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    lastResult = await tool().execute({ ticker: "SMMT", notional: 5000, note: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(348);
   });
 });
 
 describe("inside a run, the add is sized by the analyst's rules (DAV-317)", () => {
   it("SMMT at $18.00 with a $12 floor: 1% of $100k × 0.75 (MEDIUM) over a $6 stop distance = 125 shares, halved for an add = 62", async () => {
-    lastResult = await tool("INTRADAY_TACTICAL").execute({ symbol: "SMMT", action: "add_to_position", add_notional: 5000, reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    lastResult = await tool("INTRADAY_TACTICAL").execute({ ticker: "SMMT", notional: 5000, note: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(62);
   });
 
   it("with no equity reading, half the band by conviction — and the order still lands", async () => {
     mockLoadAccountRisk.mockResolvedValue(null);
-    lastResult = await tool("MORNING_PLAN").execute({ symbol: "SMMT", action: "add_to_position", reason: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
+    lastResult = await tool("MORNING_PLAN").execute({ ticker: "SMMT", note: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     // The band here is $0–$50,000 by conviction MEDIUM; half of it, in shares at $18.
     expect(orderQty()).toBeGreaterThan(0);
     expect(orderQty()).not.toBe(277);

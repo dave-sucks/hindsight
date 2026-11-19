@@ -11,6 +11,7 @@ import { saveThesis } from "@/lib/agent/tools/update-thesis";
 import { TRIGGER_EDITS } from "@/lib/agent/tools/thesis-fields";
 import { triggersInputArraySchema, editTriggerOpSchema } from "@/lib/agent/triggers/schema";
 import { NO_SETUP_FITS, SETUP_IDS } from "@/lib/agent/knowledge/setups";
+import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 
 const schema = z.object({
   thesis_id: z.string().describe("The stock's thesis id."),
@@ -28,8 +29,8 @@ export const editTriggers = defineTool({
     "Adds, edits or removes a stock's triggers, one at a time by id; each edit comes back in `trigger_ops`, accepted or refused with the reason, and a refused one leaves the rest in place. " +
     "On a stock we hold only the owner moves a sale's price down: if you think one is wrong, keep it and give the price you'd suggest in your note.",
   schema,
-  // A trigger run edits its own stock (tactical-run.ts).
-  schemaFor: (ctx) => (ctx.runStock ? schema.omit({ thesis_id: true }) : schema),
+  // A trigger run edits its own stock (tactical-run.ts). The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
+  schemaFor: (ctx) => (ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? schema.omit({ setup_id: true }) : schema),
   fromRun: (ctx) => (ctx.runStock ? { thesis_id: ctx.runStock.thesisId } : null),
   ui: "thesis-card" as const,
   gateLog: "edit_triggers",

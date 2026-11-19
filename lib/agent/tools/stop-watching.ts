@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { saveThesis } from "@/lib/agent/tools/update-thesis";
+import { inOwnWords, saveThesis } from "@/lib/agent/tools/update-thesis";
 
 export const stopWatching = defineTool({
   description: "For a stock we watch: stops watching it, and its thesis is retired as dropped with your reason as its last line. A stock we hold is sold with sell.",
@@ -18,5 +18,5 @@ export const stopWatching = defineTool({
   ui: "thesis-card" as const,
   gateLog: "stop_watching",
   progressLabel: () => "Stopping the watch",
-  execute: (args, ctx) => saveThesis({ thesis_id: args.thesis_id, change_status: "ARCHIVED", rationale: args.reason }, ctx),
+  execute: async (args, ctx) => inOwnWords(await saveThesis({ thesis_id: args.thesis_id, change_status: "ARCHIVED", rationale: args.reason }, ctx), "stop_watching"),
 });

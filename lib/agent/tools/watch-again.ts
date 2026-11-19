@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
-import { saveThesis } from "@/lib/agent/tools/update-thesis";
+import { inOwnWords, saveThesis } from "@/lib/agent/tools/update-thesis";
 
 export const watchAgain = defineTool({
   description: "For a stock we sold, or one promoted and not bought again: puts it back on watch. Its sale triggers come off; give it a buy or a review with edit_triggers.",
@@ -13,5 +13,5 @@ export const watchAgain = defineTool({
   ui: "thesis-card" as const,
   gateLog: "watch_again",
   progressLabel: () => "Watching it again",
-  execute: (args, ctx) => saveThesis({ thesis_id: args.thesis_id, change_status: "WATCHING" }, ctx),
+  execute: async (args, ctx) => inOwnWords(await saveThesis({ thesis_id: args.thesis_id, change_status: "WATCHING" }, ctx), "watch_again"),
 });

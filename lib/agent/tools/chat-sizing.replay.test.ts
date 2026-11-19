@@ -70,18 +70,18 @@ describe("a scoped chat's add, sized by the rules", () => {
     thesis: [thesisRow({ id: "t_add", ticker: "AAA", status: "HOLDING", direction: "LONG", conviction: "MEDIUM", entryPrice: 100, targetPrice: 140, stopLoss: 90, analystId: REPLAY_ANALYST_ID })],
     position: [positionRow({ id: "p_add", symbol: "AAA", analystId: REPLAY_ANALYST_ID, quantity: 100, avgCost: 100, stopLoss: 90, targetPrice: 140, thesisId: "t_add" })],
   });
-  const add = { symbol: "AAA", action: "add_to_position", reason: "Pressing the winner on the hold of the breakout, per the seat's add rule." };
+  const add = { ticker: "AAA", note: "Pressing the winner on the hold of the breakout, per the seat's add rule." };
   const addDollars = (db: { store: Record<string, Array<Record<string, unknown>>> }) => Number(db.store.order[0].quantity) * 100;
 
   it("is trimmed to the room left under the analyst's most in one stock", async () => {
-    const { refused, result, db } = await replayTool("manage-position", "managePosition", { seed: seed(), ctx: chat, args: add, quotes: { AAA: 100 } });
+    const { refused, result, db } = await replayTool("add", "add", { seed: seed(), ctx: chat, args: add, quotes: { AAA: 100 } });
     expect(refused).toBe(false);
     expect(addDollars(db)).toBe(2000);
     expect(JSON.stringify(result.data)).toMatch(/Trimmed to the room left under the most this analyst may hold in one stock \(\$12,000\)/);
   });
 
   it("without the most in one stock in the chat's settings, as before, the cap was twice the largest trade and the add went past $12,000", async () => {
-    const { db } = await replayTool("manage-position", "managePosition", { seed: seed(), ctx: { ...chat, maxPositionTotal: undefined }, args: add, quotes: { AAA: 100 } });
+    const { db } = await replayTool("add", "add", { seed: seed(), ctx: { ...chat, maxPositionTotal: undefined }, args: add, quotes: { AAA: 100 } });
     expect(10000 + addDollars(db)).toBeGreaterThan(12000);
   });
 });
