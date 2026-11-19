@@ -10,6 +10,8 @@ import type { Call } from "./action";
 export interface AfterBuyExpect {
   /** The playbook's holding triggers to put on by reference (the floor's template is on already). */
   refs: string[];
+  /** Those already on the stock (the same slot, the playbook's mark): present, so not owed. */
+  present?: string[];
   /** The floor on the stock, by id: it is the buy's and stays as it is. */
   floorId: string | null;
   /** Each chart key's number at the fill, to name the key a typed price stood in for. */
@@ -48,7 +50,7 @@ export function scoreAfterBuy(ex: AfterBuyExpect, calls: Call[], text: string, i
   const adds = edits.flatMap((e) => (Array.isArray(e.add) ? e.add : [])) as Array<Record<string, unknown>>;
   const byRef = new Set(adds.flatMap((a) => (typeof a.playbook_trigger === "string" ? [a.playbook_trigger.trim().toUpperCase()] : [])));
   // A holding trigger not put on is left off only with its reference named in the closing line.
-  const missing = ex.refs.filter((r) => !byRef.has(r) && !new RegExp(`\\b${r}\\b`).test(text));
+  const missing = ex.refs.filter((r) => !byRef.has(r) && !ex.present?.includes(r) && !new RegExp(`\\b${r}\\b`).test(text));
   if (missing.length) why.push(`${missing.join(", ")} neither put on by reference nor named as left off`);
 
   const own = adds.filter((a) => typeof a.playbook_trigger !== "string");

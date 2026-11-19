@@ -331,6 +331,22 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     expect(ops.find((o) => !o.ok && o.text.includes("Trim 50% if above $380"))?.reason).toBe(`The principal wrote Trim 25% if above $400 on $AAPL, and ${holdingRefs().find((ref) => ref === "H2")} would replace it: theirs stays. To change theirs, edit it by id with your reason.`);
   });
 
+  it("after an add, the Trim's reference re-prices the playbook's Trim already on the stock, around the new average: the same trigger, a new number", async () => {
+    seed();
+    const order = await propose();
+    fillNow();
+    await approveAndFill(order);
+    jest.useRealTimers();
+    await afterTheBuy();
+    const before = triggerFor(`Trim 50% if above $${TRIM}`)!;
+    // An add moves the average to $370: twice the $44.67 risk to the $325.33 floor above it is $459.34.
+    store = { ...store, position: rows("position").map((p) => (p.symbol === T ? { ...p, avgCost: 370 } : p)) };
+    const r = await afterTheBuy([playbookRefs(PLAYBOOK_TEMPLATES.BASE_BREAKOUT).find((x) => x.template.action === "TRIM")!.ref]);
+    expect(r.refused).toBe(false);
+    expect(triggerFor("Trim 50% if above $459.34")).toMatchObject({ id: before.id, action: "TRIM", playbook: "PROPOSAL" });
+    expect(stockTriggers().filter((t) => t.action === "TRIM")).toHaveLength(1);
+  });
+
   it("sold back to watch: the owner's review and the holding's clock stay, what needs a position comes off, and nothing is written", async () => {
     seed();
     const order = await propose();

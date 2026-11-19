@@ -20,6 +20,11 @@ describe("the run after a buy, graded", () => {
     expect(scoreAfterBuy(GEV, [two, note], "Left H4 off: the add waits for the report.").pass).toBe(true);
   });
 
+  it("a holding trigger already on the stock (the same slot, the playbook's mark) is present, not owed", () => {
+    const two = { toolName: "edit_triggers", input: { add: [{ playbook_trigger: "H2" }, { playbook_trigger: "H3" }] } };
+    expect(scoreAfterBuy({ ...GEV, present: ["H4"] }, [two, note], "").pass).toBe(true);
+  });
+
   it("its own trigger needs a reason, and any typed price fails, a key's number or not", () => {
     const own = { toolName: "edit_triggers", input: { add: [{ action: "REVIEW", predicate: { watch: "price", is: "above", value: 1003 } }] } };
     expect(scoreAfterBuy(GEV, [allOn, own, note], "").why).toBe("a trigger of its own with no reason; a typed price: $1003 ({pivot})");
