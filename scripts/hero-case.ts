@@ -711,7 +711,8 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     const { graded: oldShape, unmapped } = writer ? { graded: [writer.scored], unmapped: [] } : explainOldShape(calls, { isChat: c.mode === "principal", firedTrim: firedTrimOf(c) });
     const graded = oldShape;
     // An after-buy case is graded on its own calls (lib/agent/yardstick/after-buy.ts); the rest in the cases' shape.
-    const verdict = c.mode === "after-buy" ? scoreAfterBuy(c.afterBuy!, calls, text, invalid) : score(c.expect, graded, text, reads);
+    const afterBuy = c.mode === "after-buy" ? scoreAfterBuy(c.afterBuy!, calls, text, invalid) : null;
+    const verdict = afterBuy ?? score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
@@ -728,7 +729,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     // A read the case runs for real is part of what the run was shown.
     // A Writer's prices and numbers are graded on what it wrote itself: its decision and its trigger edits, keys and references unpriced.
     const gradedOn = readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown;
-    const grades = grade({ calls: writer ? writer.own : graded, narration: text }, gradedOn, c.grade ?? {});
+    const grades = { ...grade({ calls: writer ? writer.own : graded, narration: text }, gradedOn, c.grade ?? {}), ...(afterBuy ? { floorAttempts: afterBuy.floorAttempts } : {}) };
     // A sale moved by a key is read at the number code writes for it.
     if (writer) grades.saleLoosened = saleLoosened(writer.priced, salePricesShown(gradedOn));
     console.log(`GRADES ${JSON.stringify(grades)}`);

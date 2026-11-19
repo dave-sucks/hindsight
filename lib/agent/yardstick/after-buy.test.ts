@@ -5,13 +5,19 @@
  */
 import { scoreAfterBuy, type AfterBuyExpect } from "./after-buy";
 
-const GEV: AfterBuyExpect = { refs: ["H2", "H3", "H4"], floorId: "floor", keys: { "{swingLow}": 868.25, "{pivot}": 1003 }, priceTriggerIds: ["floor", "r850"], noteWanted: true };
+const GEV: AfterBuyExpect = { refs: ["H2", "H3", "H4"], floorId: "floor", floorRef: "H1", keys: { "{swingLow}": 868.25, "{pivot}": 1003 }, priceTriggerIds: ["floor", "r850"], noteWanted: true };
 const allOn = { toolName: "edit_triggers", input: { add: [{ playbook_trigger: "H2" }, { playbook_trigger: "h3" }, { playbook_trigger: "H4", rationale: "The second half once it works." }] } };
 const note = { toolName: "write_note", input: { note: "Bought GEV on the reclaim." } };
 
 describe("the run after a buy, graded", () => {
   it("passes: every holding trigger by reference, and the note the trade lacked", () => {
-    expect(scoreAfterBuy(GEV, [allOn, note], "Put on H2–H4.")).toEqual({ pass: true, why: "" });
+    expect(scoreAfterBuy(GEV, [allOn, note], "Put on H2–H4.")).toEqual({ pass: true, why: "", floorAttempts: [] });
+  });
+
+  it("is graded on what production saves: the floor guard drops floor edits, and each is counted", () => {
+    // V 2026-10-05: the floor re-stated at {sellPrice} and turned into an Auto-sell; a removal; the playbook's own floor added again.
+    const floor = { toolName: "edit_triggers", input: { edit: [{ id: "floor", fire_mode: "DO_IT", price: "{sellPrice}", rationale: "Keep the floor." }], remove: [{ id: "floor", reason: "A duplicate." }], add: [{ playbook_trigger: "H1" }] } };
+    expect(scoreAfterBuy(GEV, [allOn, floor, note], "")).toEqual({ pass: true, why: "", floorAttempts: ["add H1", "edit (On fire DO_IT) to {sellPrice}", "remove"] });
   });
 
   it("a holding trigger left off passes only when the closing line names it", () => {
@@ -34,9 +40,9 @@ describe("the run after a buy, graded", () => {
     expect(scoreAfterBuy(GEV, [allOn, keyed, note], "").pass).toBe(true);
   });
 
-  it("an edit or removal needs a reason, a number typed on a price trigger is a typed price, and the floor is left alone", () => {
-    const edit = { toolName: "edit_triggers", input: { edit: [{ id: "floor", value: 900 }], remove: [{ id: "r1" }] } };
-    expect(scoreAfterBuy(GEV, [allOn, edit, note], "").why).toBe("an edit with no reason; a removal with no reason; a typed price: $900; changed the floor");
+  it("an edit or removal needs a reason, and a number typed on a price trigger is a typed price", () => {
+    const edit = { toolName: "edit_triggers", input: { edit: [{ id: "r850", value: 900 }], remove: [{ id: "r1" }] } };
+    expect(scoreAfterBuy(GEV, [allOn, edit, note], "").why).toBe("an edit with no reason; a removal with no reason; a typed price: $900");
     const days = { toolName: "edit_triggers", input: { edit: [{ id: "clock", value: 45, rationale: "The report is in 45 days." }] } };
     expect(scoreAfterBuy(GEV, [allOn, days, note], "").pass).toBe(true);
   });

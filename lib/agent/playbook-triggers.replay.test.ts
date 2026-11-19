@@ -347,6 +347,21 @@ describe("AAPL 2026-11-13, fixed forward", () => {
     expect(stockTriggers().filter((t) => t.action === "TRIM")).toHaveLength(1);
   });
 
+  it("a holding from before playbook marks: a reference whose slot holds an unmarked agent trigger re-prices it in place", async () => {
+    seed();
+    const order = await propose();
+    fillNow();
+    await approveAndFill(order);
+    jest.useRealTimers();
+    // An agent's clock written before the playbook marks: no mark, the same slot as the playbook's clock.
+    setTriggers([...stockTriggers(), { id: "old-clock", action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Every two weeks.", source: "AGENT" }]);
+    const clock = playbookRefs(PLAYBOOK_TEMPLATES.BASE_BREAKOUT).find((x) => x.template.writtenOn === "FILL" && (x.template.predicate as { watch?: string }).watch === "repeat")!.ref;
+    const r = await afterTheBuy([clock]);
+    expect(r.refused).toBe(false);
+    expect(triggerFor("Review every 7 days")).toMatchObject({ id: "old-clock" });
+    expect(stockTriggers().filter((t) => (t.predicate as { watch?: string }).watch === "repeat")).toHaveLength(1);
+  });
+
   it("sold back to watch: the owner's review and the holding's clock stay, what needs a position comes off, and nothing is written", async () => {
     seed();
     const order = await propose();
