@@ -112,9 +112,6 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
 /** The tools a case may run for real: each only reads. */
 const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings", "read_knowledge_library"]);
 
-/** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
-const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "update_thesis", "sell", "add", "pass_on_stock", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
-
 /**
  * What code fills in each call before the tool runs (defineTool's fromRun): a
  * trigger fire's stock and the trigger that fired, handed to the tools as
@@ -174,10 +171,10 @@ function describedTools(c: HeroCase): ToolSet {
   } as never) as Record<string, { description?: string; inputSchema: unknown; toModelOutput?: unknown }>;
   // A fire's tools are its agent's: the post-trade write-up (promptArgs.autoTrade) has no trade tools, as the live run.
   const allowed = c.mode === "tactical" ? [...recordFor(c.promptArgs as { autoTrade?: { line: string } | null }).tools] : (MODES[c.mode].toolAllowlist ?? Object.keys(all));
-  const scoped = c.mode !== "principal" || c.toolCtx.analystId != null;
+  // The chat with no analyst pinned has its whole menu, as the route gives it: each write acts for the stock's analyst or names one.
   return Object.fromEntries(
     allowed
-      .filter((name) => all[name] && (scoped || !UNSCOPED_BLOCKED.includes(name)))
+      .filter((name) => all[name])
       .map((name) => [name, { description: all[name].description, inputSchema: all[name].inputSchema, toModelOutput: all[name].toModelOutput }]),
   ) as ToolSet;
 }

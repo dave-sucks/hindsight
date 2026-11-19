@@ -685,24 +685,13 @@ export async function POST(
     }, { researchedTickers: priorResearchedTickers });
 
     // Filter by allowlist if mode restricts tools
-    let filteredTools = modeConfig.toolAllowlist
+    const filteredTools = modeConfig.toolAllowlist
       ? Object.fromEntries(
           modeConfig.toolAllowlist
             .map((name) => [name, allTools[name as keyof typeof allTools]])
             .filter(([, v]) => v != null),
         )
       : allTools;
-
-    // The Master Chat's writes act for the stock's own analyst (analyst-scope.ts).
-    // A pass is a new thesis, which belongs to its run's analyst, and this run has none: it stays pinned-only.
-    const UNSCOPED_BLOCKED_WRITES = ["pass_on_stock"] as const;
-    if (agentMode === "principal" && !resolvedAnalystId) {
-      filteredTools = Object.fromEntries(
-        Object.entries(filteredTools).filter(
-          ([name]) => !UNSCOPED_BLOCKED_WRITES.includes(name as never),
-        ),
-      );
-    }
 
     // Layer in mode-specific "suggest" tools that aren't part of the
     // createResearchTools registry (they're plain `tool()` calls, not

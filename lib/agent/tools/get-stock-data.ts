@@ -30,12 +30,34 @@ import {
   formatTickerHistory,
   formatTickerHistoryShort,
 } from "@/lib/agent/context-bundle";
-import { lastSessionsFrom } from "@/lib/market-hours";
+import { lastSessionsFrom, sessionProgress } from "@/lib/market-hours";
 
 /** News from the last three sessions, at most six items, each with its whole summary. */
 const NEWS_SESSIONS = 3;
 const NEWS_MAX = 6;
 
+
+/**
+ * Today's volume, saying what it is: a count so far is that many minutes of trading against a FULL
+ * day's 20-day average, so it reads low early in the session (P at 10:09 on 2026-11-19: 0.48× after
+ * 39 minutes, passed as "a hard no"). With the last session's, labelled as that day's.
+ */
+export function todayVolumeRead(
+  ratio: number | null,
+  progress: { minutes: number; total: number } | null,
+  last?: { ratio: number | null; date: string | null },
+): string | null {
+  if (ratio == null) return null;
+  const now =
+    progress && progress.minutes >= progress.total
+      ? `today's full session ${ratio}× its 20-day average`
+      : progress && progress.minutes > 0
+        ? `so far today, ${progress.minutes} minutes into the ${progress.total}-minute session: ${ratio}× a full day's 20-day average`
+        : progress
+          ? `so far today, before the open: ${ratio}× a full day's 20-day average`
+          : `today ${ratio}× its 20-day average`;
+  return last?.ratio != null && last.date ? `${now}; the last full session (${last.date}) was ${last.ratio}×` : now;
+}
 
 export const getStockData = defineTool({
   description:
@@ -167,7 +189,13 @@ export const getStockData = defineTool({
            */
           today: {
             volumeSoFar: number;
+            /** volumeSoFar against a FULL day's 20-day average: during the session, part of a day against a whole one. */
             volumeVsAvg20: number | null;
+            /** The minutes of trading volumeSoFar covers, of sessionMinutes (equal once the session is over). */
+            minutesIntoSession: number | null;
+            sessionMinutes: number | null;
+            /** What the number is, in words (todayVolumeRead). */
+            volumeRead: string | null;
             open: number | null;
             gapPct: number | null;
           } | null;
@@ -201,13 +229,18 @@ export const getStockData = defineTool({
         const avg20 = recentVols.length === 20 ? recentVols.reduce((a, b) => a + b, 0) / 20 : null;
         const open = quote?.o ?? null;
         const prevClose = quote?.pc ?? null;
+        const ratio = todayBar && avg20 ? Math.round((todayBar.volume / avg20) * 100) / 100 : null;
+        const progress = sessionProgress(new Date());
         techData = {
           ...structure,
           volumeFeed: own.feed,
           today: todayBar
             ? {
                 volumeSoFar: todayBar.volume,
-                volumeVsAvg20: avg20 ? Math.round((todayBar.volume / avg20) * 100) / 100 : null,
+                volumeVsAvg20: ratio,
+                minutesIntoSession: progress?.minutes ?? null,
+                sessionMinutes: progress?.total ?? null,
+                volumeRead: todayVolumeRead(ratio, progress, { ratio: structure.volume.lastVsAvg20, date: tail?.date ?? null }),
                 open,
                 gapPct: open != null && prevClose ? Math.round(((open - prevClose) / prevClose) * 10000) / 100 : null,
               }
@@ -295,7 +328,7 @@ export const getStockData = defineTool({
         techData.base && !techData.base.brokenOut ? `base breakout ${$(techData.base.pivot)}` : null,
         techData.swings.lastLow ? `swing low ${$(techData.swings.lastLow.price)}` : null,
         techData.atr14 ? `moves ${$(techData.atr14.dollars)}/day` : null,
-        techData.today?.volumeVsAvg20 != null ? `volume ${techData.today.volumeVsAvg20}× normal today` : null,
+        techData.today?.volumeVsAvg20 != null ? `volume ${todayVolumeRead(techData.today.volumeVsAvg20, techData.today.sessionMinutes != null ? { minutes: techData.today.minutesIntoSession ?? 0, total: techData.today.sessionMinutes } : null)}` : null,
       ].filter(Boolean);
       if (chart.length) tickerSummaryParts.push(chart.join(" · "));
     }

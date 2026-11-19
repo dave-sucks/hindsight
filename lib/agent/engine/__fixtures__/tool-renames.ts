@@ -73,14 +73,19 @@ export const SITUATION_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["It is answered by an update_thesis citing the filing you read, or by the trade;", "It is answered by a write_note citing the filing you read, or by the trade;"],
 ];
 
+/** The unpinned chat's pass_on_stock (2026-11-19): it names its analyst, so the line saying a pass needs the chat pinned goes. */
+export const CHAT_PASS_TEXT: ReadonlyArray<readonly [string, string]> = [
+  ["Only a pass (pass_on_stock) needs the chat pinned; for new coverage,", "For new coverage,"],
+];
+
 /** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
 /** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }

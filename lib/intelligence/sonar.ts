@@ -101,9 +101,9 @@ If search results are thin, return fewer signals rather than padding with specul
   } as Parameters<typeof sonar.chat.completions.create>[0]) as OpenAI.Chat.ChatCompletion
 
   const content = response.choices[0]?.message?.content
-  if (!content) {
-    return { signals: [] }
-  }
+  // A reply that can't be read is a failed search, never "nothing found": the V write-up of
+  // 2026-11-19 read a cut-off reply as 0 results and missed the news that moved the stock.
+  if (!content) throw new SonarSearchFailed("the search service sent an empty reply")
 
   try {
     const parsed = JSON.parse(content) as SonarSignalResponse
@@ -113,7 +113,17 @@ If search results are thin, return fewer signals rather than padding with specul
     }
   } catch {
     console.error("[sonar] Failed to parse response as JSON:", content.slice(0, 200))
-    return { signals: [] }
+    throw new SonarSearchFailed(
+      response.choices[0]?.finish_reason === "length" ? "the reply was cut off before it ended" : "the reply couldn't be read",
+    )
+  }
+}
+
+/** A search that came back with nothing readable: the caller says it failed, never that it found nothing. */
+export class SonarSearchFailed extends Error {
+  constructor(reason: string) {
+    super(reason)
+    this.name = "SonarSearchFailed"
   }
 }
 

@@ -47,12 +47,15 @@ export type Conviction = "STRONG" | "HIGH" | "MEDIUM" | "LOW";
 export function StatusPill({
   status,
   agentWatchDays: days = null,
+  retiredReason = null,
 }: {
   status: ThesisStatus | string;
   /** Days between the agent's reviews; null = it isn't reviewing this. */
   agentWatchDays?: number | null;
+  /** How a retired thesis ended, for its label (Sold, Dropped). */
+  retiredReason?: string | null;
 }) {
-  const display = getThesisStatusDisplay(status);
+  const display = getThesisStatusDisplay(status, retiredReason);
   const agentWatched = status === "WATCHING" && days != null;
 
   if (!agentWatched) {
@@ -101,6 +104,8 @@ export interface ThesisHeaderProps {
   ticker: string;
   status: ThesisStatus | string;
   agentWatchDays: number | null;
+  /** How a retired thesis ended, for the pill (Sold, Dropped). */
+  retiredReason?: string | null;
   /** The owning analyst; with `thesisId`, the menu offers Send to agent. */
   analystId: string | null;
   thesisId?: string;
@@ -162,6 +167,7 @@ export function ThesisHeader({
   ticker,
   status,
   agentWatchDays,
+  retiredReason,
   analystId,
   thesisId,
   onSent,
@@ -184,7 +190,7 @@ export function ThesisHeader({
             <HugeiconsIcon icon={ArrowExpand01Icon} className="size-4" />
           </Button>
         ) : null}
-        <StatusPill status={status} agentWatchDays={agentWatchDays} />
+        <StatusPill status={status} agentWatchDays={agentWatchDays} retiredReason={retiredReason} />
         <div className="ml-auto flex items-center gap-0.5">
           <PinButton ticker={ticker} />
           <ThesisActionsMenu ticker={ticker} analystId={analystId} thesisId={thesisId} onSent={onSent} closeTrade={closeTrade} />

@@ -75,6 +75,6 @@ describe("NVDA, 2026-09-14 chat — the live quote was rate-limited", () => {
     const row: string = out.data.tickers[0].summary;
     expect(row).toContain(`50-day $${t.sma.d50.value.toFixed(2)}`);
     expect(row).toContain(`200-day $${t.sma.d200.value.toFixed(2)}`);
-    expect(row).toContain("volume 0.44× normal today");
+    expect(row).toMatch(/volume (so far today|today).* 0\.44× /);
   });
 });

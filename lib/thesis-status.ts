@@ -42,12 +42,24 @@ export interface ThesisStatusDisplay {
  */
 export function getThesisStatusDisplay(
   status: string | null | undefined,
+  retiredReason?: string | null,
 ): ThesisStatusDisplay {
+  if (status === "RETIRED" && retiredReason && retiredReason in RETIRED_LABEL) {
+    return { ...THESIS_STATUS_DISPLAY.RETIRED, label: RETIRED_LABEL[retiredReason] };
+  }
   if (status && status in THESIS_STATUS_DISPLAY) {
     return THESIS_STATUS_DISPLAY[status as ThesisStatus];
   }
   return UNKNOWN_THESIS_STATUS_DISPLAY;
 }
+
+/** A retired thesis says how it ended: sold, dropped from the watch, proven wrong, or replaced. */
+const RETIRED_LABEL: Record<string, string> = {
+  SOLD: "Sold",
+  DROPPED: "Dropped",
+  INVALIDATED: "Invalidated",
+  REPLACED: "Replaced",
+};
 
 const UNKNOWN_THESIS_STATUS_DISPLAY: ThesisStatusDisplay = {
   label: "Unknown",
@@ -94,3 +106,12 @@ export const THESIS_STATUS_DISPLAY: Record<ThesisStatus, ThesisStatusDisplay> = 
     tooltip: "No longer tracked — dropped, sold, or invalidated",
   },
 };
+
+/**
+ * The thesis a stock's page shows, from its theses newest first: the live one (holding, watching,
+ * promoted), else the newest, read as history with its status (Passed, Dropped, Sold). Null only
+ * for a stock never researched. P on 2026-11-19 had a full PASS and the page showed "No research yet".
+ */
+export function thesisToShow<T extends { status: string }>(newestFirst: T[]): T | null {
+  return newestFirst.find((t) => t.status === "HOLDING" || t.status === "WATCHING" || t.status === "PROMOTED") ?? newestFirst[0] ?? null;
+}

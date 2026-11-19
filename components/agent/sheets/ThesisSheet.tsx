@@ -1156,6 +1156,7 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           ticker={ticker}
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
+          retiredReason={state.retiredReason ?? null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

@@ -328,7 +328,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       "web_search",
       // ── Writes. Unscoped, each acts for the stock's own analyst
-      // (analyst-scope.ts); pass_on_stock needs the chat pinned, and watch_stock names its analyst when it isn't.
+      // (analyst-scope.ts); pass_on_stock and watch_stock name their analyst when it isn't pinned.
       // A stock wanted back at a price or on a day with no view yet: on watch, with its one look-again review.
       "watch_stock",
       // "We looked, and we pass": the stock and the reason, saved as Passed.

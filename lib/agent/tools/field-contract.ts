@@ -148,7 +148,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
   set_catalyst_date: [f("thesis_id", "IDENTITY"), f("catalyst_date", "JUDGED", { rule: "EVENT_DATE" })],
   stop_watching: [f("thesis_id", "IDENTITY"), f("reason", "TEXT")],
   watch_again: [f("thesis_id", "IDENTITY")],
-  pass_on_stock: [f("ticker", "IDENTITY"), f("reason", "TEXT")],
+  pass_on_stock: [f("ticker", "IDENTITY"), f("reason", "TEXT"), f("analyst_id", "IDENTITY", { note: "Only on the chat with no analyst pinned; one not on the account is refused by name." })],
   record_thesis: [
     f("ticker", "IDENTITY"),
     f("company_name", "CARRIED"),

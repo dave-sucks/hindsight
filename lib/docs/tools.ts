@@ -97,7 +97,7 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
       { source: "alpaca", title: "Live price", description: "The current price with the time it printed, the change and the day's range.", endpoint: "/v2/stocks/snapshots?symbols={ticker}", example: "NVDA $134.23 +2.1%" },
       { source: "finnhub", title: "Company profile", description: "Name, sector, market cap, exchange.", endpoint: "/stock/profile2?symbol={ticker}", example: "NVIDIA Corp · Technology · $3.3T" },
       { source: "finnhub", title: "Key financials", description: "P/E, P/B, beta, 52-week range, EPS.", endpoint: "/stock/metric?symbol={ticker}&metric=all", example: "P/E 65.2 · Beta 1.68 · 52W $75–$153" },
-      { source: "alpaca", title: "Technical setup", description: "RSI, moving averages, volume and trend from daily bars.", endpoint: "/v2/stocks/bars?symbols={ticker}&timeframe=1Day", example: "RSI 58 · Above the 20-day · Volume 1.3x average" },
+      { source: "alpaca", title: "Technical setup", description: "RSI, moving averages, volume and trend from daily bars. Today's volume is a count so far, N minutes into the session, against a full day's average, beside the last session's.", endpoint: "/v2/stocks/bars?symbols={ticker}&timeframe=1Day", example: "RSI 58 · Above the 20-day · Volume so far today, 39 minutes in: 0.48× a full day's average" },
       { source: "finnhub", title: "Recent headlines", description: "The five most recent news articles.", endpoint: "/company-news?symbol={ticker}", example: "\"NVIDIA Announces Blackwell GPUs\" · Reuters" },
       { source: "finnhub", title: "Wall Street ratings", description: "Buy, hold and sell ratings.", endpoint: "/stock/recommendation?symbol={ticker}", example: "Strong buy 38 · Buy 6 · Hold 3" },
     ],
@@ -174,7 +174,7 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     sources: ["perplexity", "anthropic"],
     summary: "Live web search. Most agents use Perplexity Sonar; the Writer uses Claude's own web search. Each run has a search budget.",
     resources: [
-      { source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering.", endpoint: "searchSignals(query, { recency })", example: "5 results · sentiment: bullish" },
+      { source: "perplexity", title: "Sonar web search", description: "Real-time web search with recency filtering. A reply that can't be read is a failed search, said as one and not counted against the budget, never \"0 results\".", endpoint: "searchSignals(query, { recency })", example: "5 results · sentiment: bullish" },
       { source: "anthropic", title: "Claude web search", description: "The Writer's searches, run by Claude inside its research call.", endpoint: "anthropic.tools.webSearch({ maxUses: 4 })" },
     ],
   },
@@ -282,7 +282,7 @@ export const TOOL_DOCS: Record<string, ToolDoc> = {
     name: "Pass on a stock",
     kind: "thesis",
     sources: ["hindsight"],
-    summary: "For a stock we don't cover: records that we researched it and pass, with the reason. Saved as Passed, never woken, so the idea isn't pitched again.",
+    summary: "For a stock we don't cover: records that we researched it and pass, with the reason. Saved as Passed, never woken, so the idea isn't pitched again. The chat with no analyst pinned names the analyst.",
   },
   write_note: {
     name: "Note",
