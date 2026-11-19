@@ -111,14 +111,16 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +585 each, T1: edit_triggers takes one of the stock's playbook triggers by its reference, and a chart key in a price or a move; its own trigger has no playbook mark.
   // 2026-11-19: +78 each, T2: place_trade's sell price is optional; left out, code prices the playbook's floor from the chart.
   // 2026-11-19: −2,157 each, send to the Writer takes the stock, a brief and a source link: code finds the thesis by the stock, and the Writer picks the playbook (−2,231 on the trigger run, whose stock is code's).
-  "research-run": 28_457,
+  // 2026-11-19: +1,230 each, edit_triggers says what each direction of `is` fires on, from the measure catalog.
+  "research-run": 29_687,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
   // 2026-11-19: +585, the same edit_triggers.
   // 2026-11-19: +78, the same place_trade.
   // 2026-11-19: −2,231, the same send, its stock code's.
-  tactical: 23_698,
+  // 2026-11-19: +1,230, the same `is` words.
+  tactical: 24_928,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -142,7 +144,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +78, T2: place_trade's sell price is optional.
   // 2026-11-19: −2,159, the same send, and run_screen puts a row's numbers in its brief.
   // 2026-11-19: −11,010, record_thesis (and its copy of the trigger shape) off the chat, watch_stock (the stock, the reason, a look-again price or day) on it.
-  principal: 44_024,
+  // 2026-11-19: +1,230, the same `is` words.
+  principal: 45_254,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

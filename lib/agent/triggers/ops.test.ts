@@ -68,7 +68,7 @@ describe("applyTriggerOps — one trigger per bucket", () => {
       },
     ]);
     expect(out.results).toEqual([
-      { op: "edit", id: "buy", ok: true, text: "Buy $183 → $175" },
+      { op: "edit", id: "buy", ok: true, text: "Buy $183 → $175", saved: "Buy if below $175 — Buy the pullback to $175 instead." },
     ]);
     const buys = out.triggers.filter((t) => t.action === "ENTER");
     expect(buys).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("applyTriggerOps — one trigger per bucket", () => {
         },
       },
     ]);
-    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Added: Review if earnings beat any amount" });
+    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Added: Review if earnings beat any amount", saved: "Review if earnings beat any amount — A beat re-opens the question." });
     expect(out.triggers.find((t) => t.id === "new-1")?.source).toBe("AGENT");
   });
 });
@@ -129,7 +129,7 @@ describe("applyTriggerOps — edits", () => {
       actor: "SYSTEM",
       mintId,
     });
-    expect(out.results[0]).toEqual({ op: "edit", id: "floor", ok: true, text: "Stop $935 → $969 (tightened)" });
+    expect(out.results[0]).toEqual({ op: "edit", id: "floor", ok: true, text: "Stop $935 → $969 (tightened)", saved: "Sell if below $969 — Exit below $969 — the protective line raised on 8/24." });
     expect(out.triggers[0].rationale).toBe("Exit below $969 — the protective line raised on 8/24.");
   });
 
@@ -191,7 +191,7 @@ describe("applyTriggerOps — the ratchet, per op", () => {
     ]);
     expect(out.results).toEqual([
       { op: "edit", id: "floor", ok: false, text: "Stop $150 → $140 (loosened)", reason: expect.stringMatching(/weakens the protection/), to: 140 },
-      { op: "edit", id: "clock", ok: true, text: "Review cadence 7 days → 1 days" },
+      { op: "edit", id: "clock", ok: true, text: "Review cadence 7 days → 1 days", saved: "Review every 1 day — Daily into the catalyst." },
     ]);
     expect(out.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ watch: "price", is: "below", value: 150 });
     expect(out.triggers.find((t) => t.id === "clock")!.predicate).toEqual({ watch: "repeat", value: 1 });
@@ -221,7 +221,7 @@ describe("applyTriggerOps — plan levels as ops", () => {
       currentPrice: 190,
       mintId,
     });
-    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Buy set: $175" });
+    expect(out.results[0]).toEqual({ op: "add", id: "new-1", ok: true, text: "Buy set: $175", saved: "Buy if below $175 — I buy when it comes back down to $175.00." });
     expect(out.triggers.find((t) => t.id === "new-1")).toMatchObject({ action: "ENTER", predicate: { watch: "price", is: "below", value: 175 } });
   });
 
@@ -262,7 +262,7 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
       { op: "remove", id: "eb59bfe1", ok: true, text: "Removed: Buy if above $58.50" },
       { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Stop watching if below $54.90" },
       { op: "remove", id: "d5dc23fd", ok: true, text: "Removed: Review if above $66.50" },
-      { op: "add", id: "new-1", ok: true, text: "Added: Buy if above $57.25" },
+      { op: "add", id: "new-1", ok: true, text: "Added: Buy if above $57.25", saved: "Buy if above $57.25 — Buy the reclaim of $57.25." },
     ]);
     expect(out.triggers).toEqual([
       expect.objectContaining({ id: "new-1", action: "ENTER", predicate: { watch: "price", is: "above", value: 57.25 } }),

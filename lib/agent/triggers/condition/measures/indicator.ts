@@ -1,7 +1,7 @@
 /** Indicator: volume, RSI, strength vs. the S&P, a gap up. docs/plans/TRIGGER_TYPES.md §3.3. */
 
 
-import { BELOW_ABOVE, type MeasureDef } from "../measure";
+import type { MeasureDef } from "../measure";
 import type { Condition } from "../types";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
@@ -23,7 +23,10 @@ export const rsi: MeasureDef = {
   reads: ["snapshot"],
   type: "indicator",
   label: "RSI",
-  buttons: BELOW_ABOVE,
+  buttons: [
+    { is: "below", label: "Below", means: "RSI is below the number (oversold)" },
+    { is: "above", label: "Above", means: "RSI is above the number (overbought)" },
+  ],
   value: { prefix: "RSI", placeholder: "30", range: { what: "RSI", min: 0, max: 100 } },
   settings: [
     {

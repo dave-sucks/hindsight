@@ -77,8 +77,11 @@ export interface MeasureDef {
   type: TriggerType;
   /** The tab. */
   label: string;
-  /** Two or three choices: the button group. */
-  buttons?: readonly { is: Direction; label: string }[];
+  /**
+   * Two or three choices: the button group. `means` is what each fires on, in
+   * plain words: the agents' tools describe `is` with it, and the guide prints it.
+   */
+  buttons?: readonly { is: Direction; label: string; means: string }[];
   /** One choice: said as a word inside the input ("Every", "At least", "Files"). */
   word?: string;
   value: ValueDef;
@@ -134,7 +137,7 @@ export interface MeasureDef {
   rule?: (c: Condition) => string | null;
 }
 
-export const BELOW_ABOVE = [
-  { is: "below", label: "Below" },
-  { is: "above", label: "Above" },
-] as const;
+/** What `is` means for a measure: each button and what it fires on ("above fires once …"). */
+export function directionWords(m: Pick<MeasureDef, "buttons">): string | null {
+  return m.buttons?.length ? `${m.buttons.map((b) => `${b.is} fires once ${b.means}`).join("; ")}.` : null;
+}

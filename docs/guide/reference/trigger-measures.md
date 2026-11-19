@@ -18,6 +18,8 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 
 `watch: "price"` · is: `below` / `above` · value: more than $0 · actions: buy, add, trim, sell, stop watching, review · reads: the live quote
 
+`is`: below fires once the price is below the value (a pullback); above fires once the price is above the value (a breakout, adding on strength).
+
 **Variables** (stands in for the number):
 
 - `prev_close`: Yesterday's close
@@ -64,6 +66,8 @@ A level, a line on the chart, or a move from somewhere that matters. Read agains
 ### Move
 
 `watch: "move"` · is: `below` / `near` / `above` · value: more than 0% and under 100% · actions: buy, add, trim, sell, stop watching, review · reads: the live quote
+
+`is`: below fires once the price is down that % or more from the line in variable (a drop from a recent close or our buy price; off the high since we bought, the trail); near fires once the price is within that % of the line (near an average, or just under the 52-week high); above fires once the price is up that % or more from the line (a run from a recent close, a gain from our buy price).
 
 **Variables** (the number is measured from it):
 
@@ -130,6 +134,8 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 `watch: "rsi"` · is: `below` / `above` · value: from 0 to 100 · actions: buy, add, trim, sell, stop watching, review · reads: snapshot
 
+`is`: below fires once RSI is below the number (oversold); above fires once RSI is above the number (overbought).
+
 **Settings:**
 
 - `period`: RSI length, default 14
@@ -178,6 +184,8 @@ Before a report, after a report, and what the report said. Read from the earning
 
 `watch: "report"` · is: `before` / `after` · value: a whole number from 1 to 14 days · actions: review · reads: earnings
 
+`is`: before fires once the next report is that many days away or fewer (a heads-up); after fires once the last report came out that many days ago or fewer (0: the report day).
+
 **Examples:**
 
 - "Review if within 3 days before earnings". Three days out: decide whether to hold through the print.
@@ -195,6 +203,8 @@ Before a report, after a report, and what the report said. Read from the earning
 ### Result
 
 `watch: "surprise"` · is: `miss` / `beat` · value: 0% or more · actions: review · reads: earnings
+
+`is`: miss fires once the last report missed the estimate by that % or more (0: any miss); beat fires once the last report beat the estimate by that % or more (0: any beat).
 
 **Examples:**
 
@@ -302,6 +312,8 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
 ### From a date
 
 `watch: "from_date"` · is: `after` / `before` · value: a whole number from 1 to 365 days · actions: trim, sell, stop watching, review · a clock, stands alone
+
+`is`: after fires once that many days have passed since the date in variable; before fires once the event date is that many days away or fewer (a window before it).
 
 **Variables** (the number is measured from it):
 

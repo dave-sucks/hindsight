@@ -8,7 +8,7 @@
  */
 
 import { zodSchema } from "ai";
-import { waitsForClose } from "./condition";
+import { MEASURES, directionWords, waitsForClose } from "./condition";
 import { parseTriggersResilient, predicateInputSchema, triggerActionSchema, triggerPredicateSchema, triggersArraySchema } from "./schema";
 
 const good = {
@@ -114,6 +114,22 @@ describe("the condition a model writes", () => {
     // A price reads a line in `value` and has no `variable`; a move has one.
     const price = arms.find((a) => (a.properties.watch as { const?: string }).const === "price")!;
     expect(Object.keys(price.properties)).toEqual(["watch", "is", "value", "settings"]);
+  });
+
+  // PANW 2026-11-19: After the buy wrote "Add if below $406.88" for a break back through its old high,
+  // because `is` said nothing. Every direction is described, by every caller's schema, in the catalog's words.
+  it("says what each direction of `is` fires on, from the catalog", () => {
+    for (const opts of [{}, { keys: true }, { keys: true, noTypedPrices: true }]) {
+      const json = zodSchema(predicateInputSchema(opts) as never).jsonSchema as { definitions: { Condition: { anyOf: Array<{ properties: Record<string, { const?: string; description?: string }> }> } } };
+      for (const arm of json.definitions.Condition.anyOf) {
+        const m = MEASURES[arm.properties.watch.const as keyof typeof MEASURES];
+        expect({ watch: m.id, is: arm.properties.is?.description }).toEqual({ watch: m.id, is: directionWords(m) ?? undefined });
+      }
+      const price = json.definitions.Condition.anyOf.find((a) => a.properties.watch.const === "price")!;
+      expect(price.properties.is.description).toBe(
+        "below fires once the price is below the value (a pullback); above fires once the price is above the value (a breakout, adding on strength).",
+      );
+    }
   });
 });
 
