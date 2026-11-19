@@ -8,7 +8,7 @@ It acts on what changed and leaves the quiet stocks alone. Every trade it wants 
 Model: gpt-5.4
 Starts: Run days · 8:00 AM ET
 Steps: Up to 65
-Tools: 15
+Tools: 20
 Saves: 15 fields: triggers, verdict, note
 ```
 
@@ -58,11 +58,13 @@ It also reads the analyst's brief: your strategy, word for word, its rules on di
 
 ## What it decides
 
-It works the list one stock at a time and takes exactly one action on each. One `update_thesis` answers all of a stock's situations at once. Before any trade it calls `get_stock_data` for the news and a fresh quote, and before any note on a stock it searches the web once for that stock's latest news. The note leads with what happened to the stock and why, then what it means for your position ([what you read](../concepts/theses.md#what-you-read)).
+It works the list one stock at a time and takes exactly one action on each. One `write_note` answers all of a stock's situations at once. Before any trade it calls `get_stock_data` for the news and a fresh quote, and before any note on a stock it searches the web once for that stock's latest news. The note leads with what happened to the stock and why, then what it means for your position ([what you read](../concepts/theses.md#what-you-read)).
 
-- **Sell or trim:** `close_position` or `manage_position`, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
-- **Buy or add:** `place_trade` or `manage_position`. The size is worked out by risk, inside the analyst's band; the run never picks it.
-- **Redraw the triggers:** `update_thesis`, one trigger at a time, by id. It can raise a floor; it can never lower one on a stock we hold.
+- **Sell or trim:** `sell`, all or part of the holding, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
+- **Buy or add:** `place_trade` or `add`. The size is worked out by risk, inside the analyst's band; the run never picks it.
+- **Redraw the triggers:** `edit_triggers`, one trigger at a time, by id, and the playbook they come from. It can raise a floor; it can never lower one on a stock we hold.
+- **Change its conviction or the catalyst date:** `set_conviction`, `set_catalyst_date`.
+- **Stop watching, or watch again:** `stop_watching` drops a watched stock; `watch_again` puts a sold one back on watch.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
 - **Answer you:** your notes come first, quoted, with what it decided on each.
 - **Leave your queue alone:** a sale waiting for your approval is yours to answer, so the run doesn't propose it again or argue it; its row says the proposal is waiting. Everything else on that stock still counts (a note, a review that's due, a report, a floor to fix, an add), and the run answers it with a note or an edit, never a second sale. A waiting buy isn't proposed twice.

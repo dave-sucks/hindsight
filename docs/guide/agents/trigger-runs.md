@@ -8,7 +8,7 @@ It checks the fire against what's true now, then proposes the trade, redraws the
 Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
-Tools: 13
+Tools: 14
 Saves: 7 fields: triggers, verdict, note
 ```
 
@@ -55,8 +55,8 @@ A give-back is measured from the highest price since the buy, over the whole hol
 
 ## What it decides
 
-- **Act:** propose the sale with `close_position`, the trim or add with `manage_position`, or the buy with `place_trade`, which names the sale: the playbook's "Sell if below" as `sell_if_below` with `sell_reason`, the price from the chart. The proposal shows it, and you can change it in Edit & Approve. The playbook's other triggers that come with the buy (its Trim, a review) are written by code when the buy fills, each number from the chart then and the buy. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
-- **Tighten the sale:** move the trigger to a price the chart supports. It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the price is wrong, it says so and names the price, and lowering it is yours to do on the thesis.
+- **Act:** propose the sale or the trim with `sell`, the add with `add`, or the buy with `place_trade`, which names the sale: the playbook's "Sell if below" as `sell_if_below` with `sell_reason`, the price from the chart. The proposal shows it, and you can change it in Edit & Approve. The playbook's other triggers that come with the buy (its Trim, a review) are written by code when the buy fills, each number from the chart then and the buy. On the live account, the [proposal](../concepts/approvals.md) reaches your queue, your email and your phone at once.
+- **Tighten the sale:** move the trigger to a price the chart supports (`edit_triggers`). It can raise a floor; it can never lower one, widen a trail or delete a protective trigger on a stock we hold. If it thinks the price is wrong, it says so and names the price, and lowering it is yours to do on the thesis.
 - **Write a playbook's watch triggers:** a review on a stock we only watch can be a playbook's way in (an episodic pivot's gap, a screen). Every trigger run is shown the stock's own playbook in full, with its watch triggers (a stock with no playbook yet, each of its analyst's), and writes the one that fits, each marked as the playbook's, every price from the chart that day.
 - **Write up an Auto trade:** with no trade tools, what is going on with the company and why, what it means for why we own it, the trade, and whether it agrees. If it would have done otherwise, it says so; you decide on the card. Its note is the trade's reason.
 - **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make stays on the morning run's list every day until a close goes back past the line, and so does one you declined or let lapse; the trigger fires again, with a new run, only after a close back on the other side. While a sale is waiting for your approval, that sale is yours to answer: no run proposes it again or argues it, and a run woken by something else on the stock answers that with a note or an edit.
@@ -65,7 +65,7 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 ## What happens next
 
-The run ends with at most one trade, exactly one `update_thesis` that says what it did and why, linked to the trigger that fired, and `complete_run`. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
+The run ends with at most one trade, exactly one `write_note` that says what it did and why, linked to the trigger that fired, and `complete_run`. It has no status tool: dropping a watch is the morning run's call. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
 - **A buy goes through:** the stock becomes a holding. Its buy and its Stop watching line come off, "Sell if below" goes on at the price approved on the proposal, and its sell side takes over.
 - **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.
@@ -95,7 +95,7 @@ Its record, `TRIGGER_RUN` (`lib/agent/engine/agents/trigger-run.ts`), whose run 
 `lib/agent/triggers/ratchet.ts` refuses any agent edit that lowers, widens, deletes or slows a protective sale. Your edits on the thesis sheet don't go through it.
 
 #### Auto
-`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `manage_position` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`). The write-up is its own agent, `POST_TRADE_WRITEUP` (`lib/agent/engine/agents/post-trade-writeup.ts`): its own fixed instructions, no trade tools, the same stock and trigger blocks, and no situations (`recordFor` picks it).
+`fireMode: DO_IT` skips the agent's decision: a sale goes to `closeOpenPosition`; a trim, a buy or an add calls `sell`, `add` or `place_trade` with the trigger's own arguments (`doItCall`), a buy or an add paid from cash (`ToolContext.payFromCash`). The order carries `autoTradeLine` until the write-up's note replaces it (`putNoteOnOrder`, `lib/proposals/auto-writeup.ts`). The write-up is its own agent, `POST_TRADE_WRITEUP` (`lib/agent/engine/agents/post-trade-writeup.ts`): its own fixed instructions, no trade tools, the same stock and trigger blocks, and no situations (`recordFor` picks it).
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a retry or follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`). The conversation on the page opens with its message, the fire and the ask (`openingOf`, `lib/agent/engine/engine.ts`); the instructions and the reads are in Context.

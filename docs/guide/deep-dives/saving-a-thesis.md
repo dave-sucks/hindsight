@@ -1,6 +1,6 @@
 # Saving a thesis
 
-**A save is a patch.** Every agent write to a [thesis](../concepts/theses.md) goes through one tool, `update_thesis`, and it changes only what is different from what is stored.
+**A save is a patch.** Every agent write to a [thesis](../concepts/theses.md) goes through one save (`saveThesis`), whichever tool asks for it (`write_note`, `edit_triggers`, `set_conviction`, `set_catalyst_date`, `stop_watching`, `watch_again`, and the Writer's `update_thesis`), and it changes only what is different from what is stored.
 
 This page covers how a save lands, what each agent is allowed to change, and what happens when part of a save is refused.
 
@@ -8,7 +8,7 @@ This page covers how a save lands, what each agent is allowed to change, and wha
 
 When an agent saves, the first thing the tool does is throw away every value that equals what is already stored. An agent that reads a stock and sends the whole form back changes nothing, and the Activity line records only what moved. Before this, an echoed entry price was read as a change and one run was refused eleven times.
 
-**A level is a trigger.** A save has no price fields: the buy, the floor and any upside level are triggers, changed by `edit_triggers` (by id), added by `add_triggers` and removed by `remove_trigger_ids`. Until Nov 16 a save carried three level fields beside the triggers, each a second way to write one; the trigger run's model fills every field it is offered, so it sent the levels it kept empty, and in the 30 days to Nov 16, 16 saves took down a level their own note kept (PRAX lost its buy, floor and review in two runs that each said nothing had changed).
+**A level is a trigger.** A save has no price fields: the buy, the floor and any upside level are triggers, changed, added and removed by `edit_triggers` (`edit` by id, `add`, `remove` by id). Until Nov 16 a save carried three level fields beside the triggers, each a second way to write one; the trigger run's model fills every field it is offered, so it sent the levels it kept empty, and in the 30 days to Nov 16, 16 saves took down a level their own note kept (PRAX lost its buy, floor and review in two runs that each said nothing had changed).
 
 A field that can't be applied comes back by name in `refused_fields`, with the one thing to change. The rest of the call lands. A save is refused whole only when nothing in it can land:
 
@@ -36,7 +36,7 @@ The fields fall in six groups: write-up, claim, triggers (with the setup, horizo
 
 ## Triggers, one at a time
 
-A trigger list is never replaced whole. An agent sends `add_triggers`, `edit_triggers` (by id) or `remove_trigger_ids`; that is the only way a trigger changes. Each op is one line in Activity. A refused op comes back by id and the rest land. An edit keeps the trigger's id; one that changes its condition or action starts it fresh, so a true one fires at the next check. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
+A trigger list is never replaced whole. An agent sends `edit_triggers` with `add`, `edit` (by id) or `remove` (by id); that is the only way a trigger changes. Each op is one line in Activity. A refused op comes back by id and the rest land. An edit keeps the trigger's id; one that changes its condition or action starts it fresh, so a true one fires at the next check. An agent's level change must carry a reason, so the sentence moves with the number. See [Triggers](../concepts/triggers.md).
 
 ## Floors only go up
 
@@ -54,7 +54,7 @@ Status changes follow one table. An agent can retire a stock as invalidated or d
 <summary>Technical details</summary>
 
 #### Patch
-`dropUnchanged` in `lib/agent/tools/update-thesis.ts` runs first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent. The schema has no level fields, so nothing but `remove_trigger_ids` removes a trigger (PRAX's 11-16 call, replayed in `update-thesis-empty-levels.replay.test.ts`, keeps its buy, floor and review). The trigger run calls OpenAI's Responses API, which fills every field of a tool that sends no `strict`; the morning run calls Chat Completions, which doesn't.
+`dropUnchanged` in `saveThesis` (`lib/agent/tools/update-thesis.ts`) runs first; `refuseField` collects `refused_fields`. A seed's commitment is checked as sent. The schema has no level fields, so nothing but `remove_trigger_ids` removes a trigger (PRAX's 11-16 call, replayed in `update-thesis-empty-levels.replay.test.ts`, keeps its buy, floor and review). The trigger run calls OpenAI's Responses API, which fills every field of a tool that sends no `strict`; the morning run calls Chat Completions, which doesn't.
 
 #### Hand edits
 `handEditsSince` reads `ThesisUpdate` rows since the run's start that `isYourEdit` marks. Skipped for `PRINCIPAL_CHAT`.
@@ -66,7 +66,7 @@ Status changes follow one table. An agent can retire a stock as invalidated or d
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared with the thesis sheet and the buy's fill. Then one check of the result, `checkLadder`.
 
 #### Ratchet
-`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`, run by `ops.ts` when the actor is an agent and the status is `HOLDING`. `update_thesis` always sends `actor: "AGENT"`; the sheet sends `PRINCIPAL`.
+`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`, run by `ops.ts` when the actor is an agent and the status is `HOLDING`. An agent's save always sends `actor: "AGENT"`; the sheet sends `PRINCIPAL`.
 
 #### Refusals
 `GateRejection` in `prisma/schema.prisma`, written by `recordGateRejection` and closed by `resolveGateRejections` (`lib/agent/gate-rejections.ts`). Carried forward by `lib/agent/refusal-carryover.ts`. The repeat guard is `lib/agent/repeat-refusal.ts` (nudge at 2, stop at 3), wired into `morning-research.ts` and `tactical-run.ts`.

@@ -6,7 +6,7 @@
  * them through the SDK's loop too, each parsed by its tool's real schema, so a
  * production call replays through the tools that replaced the one it was sent to.
  */
-import { generateText, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs, tool, type ToolSet } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { z } from "zod";
 import { replayTool, type Replay, type ReplayOptions } from "@/lib/replay/replay";
@@ -106,7 +106,7 @@ export async function sendAsTheRunWould(
       },
     });
   }
-  const out = await generateText({ model, prompt: "review", tools: tools as never, stopWhen: stepCountIs(calls.length + 1) });
+  const out = await generateText({ model, prompt: "review", tools: tools as ToolSet, stopWhen: stepCountIs(calls.length + 1) });
   const errors = out.steps.flatMap((x) => x.content.filter((p) => p.type === "tool-error"));
   if (errors.length || saves.length !== calls.length) throw new Error(`the SDK reached ${saves.length} of ${calls.length} tools: ${JSON.stringify(errors).slice(0, 600)}`);
   const last = saves[saves.length - 1];

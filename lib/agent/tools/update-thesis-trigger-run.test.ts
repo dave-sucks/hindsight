@@ -29,7 +29,7 @@ const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", ana
 const noteSchema = (runMode: string) => (writeNoteTool(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 const editSchema = (runMode: string) => (editTriggers(ctx(runMode)) as unknown as { inputSchema: z.ZodObject<z.ZodRawShape> }).inputSchema;
 /** A restated close-out as the note it is now: the old call's rationale is the note. */
-const asNote = (call: Record<string, unknown>) => ({ ...call, note: call.rationale });
+const asNote = (call: Record<string, unknown>): Record<string, unknown> => ({ ...call, note: call.rationale });
 const CALLS = (["ASML", "NVDA", "CEG", "MU"] as const).map((t) => [t, asNote(fixture[t].call as Record<string, unknown>)] as const);
 
 describe("the trigger run's save", () => {

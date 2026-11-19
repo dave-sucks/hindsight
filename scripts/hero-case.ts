@@ -56,6 +56,7 @@ import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
 import { grade } from "@/lib/agent/yardstick/grade";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
+import { inOldShape } from "@/lib/agent/yardstick/old-shape";
 
 interface HeroCase {
   what: string;
@@ -86,7 +87,8 @@ interface HeroCase {
   messages: ModelMessage[];
 }
 
-const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research"]);
+// The one-job tools since 2026-11-18 decide too (lib/agent/yardstick/old-shape.ts grades them in the old shape).
+const DECIDING = new Set(["update_thesis", "place_trade", "close_position", "manage_position", "dispatch_thesis_research", "sell", "add", "write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again", "pass_on_stock"]);
 
 function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
   const a = (call.input ?? {}) as Record<string, unknown>;
@@ -98,7 +100,7 @@ function isOn(call: Call, on: NonNullable<HeroCase["scoreOn"]>): boolean {
 const READS = new Set(["get_portfolio_context", "get_theses", "list_proposals", "get_market_context", "get_stock_data", "get_earnings_data", "get_sec_filings", "read_knowledge_library"]);
 
 /** Chat with no analyst selected can't write to a stock (route.ts, UNSCOPED_BLOCKED_WRITES). */
-const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis"];
+const UNSCOPED_BLOCKED = ["place_trade", "close_position", "manage_position", "record_thesis", "update_thesis", "sell", "add", "pass_on_stock", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"];
 
 /**
  * What code fills in each call before the tool runs (defineTool's fromRun): a
@@ -553,21 +555,23 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         })),
       });
     }
-    const verdict = score(c.expect, calls, text, reads);
+    // Graded in the cases' shape: today's one-job calls as the tools they replaced.
+    const graded = inOldShape(calls, c.mode === "principal");
+    const verdict = score(c.expect, graded, text, reads);
     if (verdict.pass) passes++;
     console.log(`## run ${i} — ${verdict.pass ? "pass" : `fail: ${verdict.why}`}${turns > 1 ? ` (${turns} turns)` : ""}`);
     if (text.trim()) console.log(text.trim().length > 600 ? text.trim().slice(0, 600) + "…" : text.trim());
     for (const call of calls) console.log(`CALL ${brief(call)}`);
     for (const bad of invalid) console.log(`INVALID ${bad.tool}: ${bad.error}`);
     for (const r of reads) console.log(`READ ${r.toolName}: ${String((r.output as { summary?: string; error?: string })?.summary ?? (r.output as { error?: string })?.error ?? "").slice(0, 240)}`);
-    const triggerFields = calls.map((c) => {
+    const triggerFields = graded.map((c) => {
       const a = (c.input ?? {}) as Record<string, unknown>;
       return { tool: c.toolName, ...Object.fromEntries(["triggers", "add_triggers", "edit_triggers"].filter((k) => a[k] != null).map((k) => [k, a[k]])) };
     });
     // A read the case runs for real is part of what the run was shown.
-    const grades = grade({ calls, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
+    const grades = grade({ calls: graded, narration: text }, readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown, c.grade ?? {});
     console.log(`GRADES ${JSON.stringify(grades)}`);
-    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(calls), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
+    if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
   console.log(`\n${name}: ${passes}/${runs} pass — tokens in ${tokensIn.toLocaleString("en-US")} (${tokensCached.toLocaleString("en-US")} cached), out ${tokensOut.toLocaleString("en-US")}`);
   return { name, passes, runs, lookFor: c.lookFor };

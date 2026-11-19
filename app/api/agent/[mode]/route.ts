@@ -695,7 +695,7 @@ export async function POST(
 
     // The Master Chat's writes act for the stock's own analyst (analyst-scope.ts).
     // A new thesis belongs to its run's analyst, and this run has none: it stays pinned-only.
-    const UNSCOPED_BLOCKED_WRITES = ["record_thesis"] as const;
+    const UNSCOPED_BLOCKED_WRITES = ["record_thesis", "pass_on_stock"] as const;
     if (agentMode === "principal" && !resolvedAnalystId) {
       filteredTools = Object.fromEntries(
         Object.entries(filteredTools).filter(
