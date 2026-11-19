@@ -197,9 +197,10 @@ describe("the writer names a setup by id from the same lines", () => {
       expect(prompt).toContain(lines.join("\n  "));
       expect(lines[0].startsWith(`${id} — `)).toBe(true);
     }
-    // The watch triggers read as Settings → Playbook says them, a chart number by its name.
-    expect(prompt).toContain('\n  - Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}: {"action":"ENTER","predicate":{"match":"all","conditions":[{"watch":"price","is":"above","value":"{pivot}","settings":{"close":true}}');
-    expect(prompt).toContain("{baseLow} chart.base.low — the base's low");
+    // One line per trigger: its reference, its sentence with each key and the key's name, its reason; no JSON.
+    expect(prompt).toContain("\n  - W1 · Buy if above {pivot} (the base's high) · only on the close and at least 1.5× normal volume and below {pivotChase} (the chase limit (5% above the base's high)) — The base's pivot plus 0.1–0.3%, and at most 5% past it.");
+    expect(prompt).toContain("{baseLow} is the low on the chart's Base line");
+    expect(prompt).not.toContain('"predicate"');
     // No sell, Trim, trail or time rule in words: those are the playbook's triggers.
     for (const word of ["Stop: ", "Take profit: ", "Manage", "Time: "]) expect([word, prompt.includes(word)]).toEqual([word, false]);
   });

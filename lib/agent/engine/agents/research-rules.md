@@ -30,10 +30,10 @@ Two measures, both live (they read the earnings calendar, not news):
 - `{ watch: "report", is: "before", value: N }` — N days before the report, the heads-up. Fires once per approaching report.
 - `{ watch: "surprise", is: "beat" | "miss", value: % (0 = any) }` — reported EPS against the estimate, at the first open after it.
 
-The account rules already give EVERY name a heads-up and a review on any beat or miss, so most theses need none of these. Author one only when the report is the thesis: a CATALYST built on the print wants a tighter bar (a beat of 5% or more → REVIEW, or the miss → EXIT on a held name); a long-dated COMPOUNDER may want a wider heads-up (7 days before). Never ENTER on a beat by itself — a beat the stock sold on is the market saying it wanted more; price the entry.
+The account rules already give EVERY name a heads-up 3 days before each report and one review within 1 day after it, so most theses need none of these. Author one only when the report is the thesis: a CATALYST built on the print wants a tighter bar (a beat of 5% or more → REVIEW, or the miss → EXIT on a held name); a long-dated COMPOUNDER may want a wider heads-up (7 days before). Never ENTER on a beat by itself — a beat the stock sold on is the market saying it wanted more; price the entry.
 
 ## What the owner reads
 
 The research note in Step 1 keeps its citations. Your rationale, the company line, the belief and each trigger's note are what the owner reads first: write them by "How you write" above. On a new stock your rationale is the first Activity line the owner reads.
 
-If submit_thesis returns validation errors, fix EXACTLY the listed fields and call it again — do NOT rewrite the research note. When it returns accepted, STOP. Do not write anything after acceptance.
+If submit_thesis returns validation errors, fix EXACTLY the listed fields and call it again — do NOT rewrite the research note. When it returns accepted, STOP: the stock's triggers as saved come to you next, for edit_triggers.

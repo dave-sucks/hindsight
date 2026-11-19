@@ -15,7 +15,8 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { TriggerOp } from "@/lib/agent/triggers/ops";
 import { fireModeLabel } from "@/lib/agent/triggers/fire-mode";
 import { TRIGGER_LIST_NAME, WRITTEN_ON, type Template, type WrittenOn } from "./playbook-templates";
-import { CHASE_LIMIT_PCT, PLACEHOLDERS, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import { CHASE_LIMIT_PCT, PLACEHOLDERS, PLACEHOLDER_NAMES, SETUPS, fillTemplate, templatePlaceholders, type Placeholder, type Setup, type TemplatePredicate } from "./setups";
+import type { When } from "@/lib/agent/triggers/condition";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 
@@ -54,32 +55,38 @@ export function playbookTemplates(account: { playbooks: unknown; playbooksSeeded
 export const PLAYBOOK_UNREAD = "The playbook couldn't be read, so none of its triggers were written";
 
 /** A template's condition as an agent writes it: an average or a high a measure reads in place of a number goes in `value`. */
-function asWritten(p: TemplatePredicate): unknown {
+export function asWritten(p: TemplatePredicate | When): unknown {
   if ("match" in p) return { match: p.match, conditions: p.conditions.map(asWritten) };
   const { variable, ...rest } = p;
   return variable && MEASURES[p.watch]?.variables?.mode === "replace" ? { ...rest, value: variable } : p;
 }
 
+/** A playbook's triggers by reference: W1, W2… its watch triggers; H1, H2… a holding's (those that come with the buy, then those written at the fill). */
+export function playbookRefs(templates: Template[]): Array<{ ref: string; template: Template }> {
+  const watch = templates.filter((t) => t.writtenOn === "WATCH").map((template, i) => ({ ref: `W${i + 1}`, template }));
+  const held = [...templates.filter((t) => t.writtenOn === "PROPOSAL"), ...templates.filter((t) => t.writtenOn === "FILL")];
+  return [...watch, ...held.map((template, i) => ({ ref: `H${i + 1}`, template }))];
+}
+
+/** A template's trigger as one sentence, each key followed by its name ("Buy if above {pivot} (the base's high) · only on the close"). */
+export function templateSentence(t: Template): string {
+  return sentenceOf(t as unknown as Trigger).replace(/\{[A-Za-z0-9]+\}/g, (m) => (PLACEHOLDER_NAMES[m as Placeholder] ? `${m} (${PLACEHOLDER_NAMES[m as Placeholder]})` : m));
+}
+
 /**
- * One of a playbook's lists of triggers, for an agent's prompt: each as the
- * trigger sentence Settings → Playbook shows, the trigger as the agent writes
- * it, and its reason; then where each {chart number} it names comes from.
- * The agent fills every price.
+ * One of a playbook's lists of triggers, for an agent's prompt: one line each,
+ * its reference, its sentence with each key, and its reason; then where each
+ * key comes from. Code prices a key from the chart when the trigger is written.
  */
 export function playbookTriggerText(templates: Template[] | null, on: WrittenOn): string[] {
   if (templates == null) return ["The playbook couldn't be read: write no trigger from it."];
-  const mine = templates.filter((t) => t.writtenOn === on);
+  const mine = playbookRefs(templates).filter((r) => r.template.writtenOn === on);
   if (!mine.length) return [`${TRIGGER_LIST_NAME[on]}: none.`];
-  const marks = [...new Set(mine.flatMap((t) => templatePlaceholders(t.predicate)))] as Placeholder[];
+  const marks = [...new Set(mine.flatMap((r) => templatePlaceholders(r.template.predicate)))] as Placeholder[];
   return [
     `${TRIGGER_LIST_NAME[on]}:`,
-    ...mine.map((t) => {
-      // A trim's size is the template's own.
-      const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
-      const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
-      return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
-    }),
-    ...(marks.length ? [`Where each chart number comes from: ${marks.map((m) => `${m} ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
+    ...mine.map(({ ref, template: t }) => `- ${ref} · ${templateSentence(t)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""} — ${t.rationale}`),
+    ...(marks.length ? [`Where each key comes from: ${marks.map((m) => `${m} is ${PLACEHOLDERS[m]}`).join("; ")}.`] : []),
   ];
 }
 
@@ -119,20 +126,21 @@ export function fillTemplateOps(templates: Template[] | null, stored: Trigger[],
   return { ops, notWritten };
 }
 
-/** What a fill reads a {placeholder} from: the chart then, the buy, and its sale price. */
+/** What a key reads its number from: the chart, the buy (null on a stock we only watch) and its sale price. */
 export interface FillPrices {
   chart: PriceStructure | null;
-  buy: number;
+  buy: number | null;
   sale: number | null;
 }
 
 /**
- * The number a {placeholder} stands for at the fill, read as PLACEHOLDERS
- * says. Undefined where there is none: no base, no gap, no prior high above
- * the buy, no chart.
+ * The number a key stands for, read as PLACEHOLDERS says. Undefined where
+ * there is none: no base, no gap, no prior high above the buy, no buy, no chart.
  */
 export function fillValue(name: Placeholder, at: FillPrices): number | undefined {
   const c = at.chart;
+  const buy = at.buy;
+  const above = c?.swings.lastHigh && buy != null && c.swings.lastHigh.price > buy ? c.swings.lastHigh.price : null;
   const values: Record<string, number | null | undefined> = {
     "{pivot}": c?.base?.pivot,
     "{pivotChase}": c?.base ? c.base.pivot * (1 + CHASE_LIMIT_PCT / 100) : null,
@@ -143,17 +151,61 @@ export function fillValue(name: Placeholder, at: FillPrices): number | undefined
     "{swingLow}": c?.swings.lastLow?.price,
     "{high20}": c?.range.high20,
     "{baseLow}": c?.base?.low,
-    "{priorHigh}": c?.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : null,
+    "{priorHigh}": above,
     // With no chart, whether a prior high is above the buy is unknown: no number.
-    "{priorHighOrTwiceRisk}": !c ? null : c.swings.lastHigh && c.swings.lastHigh.price > at.buy ? c.swings.lastHigh.price : at.sale != null && at.sale < at.buy ? at.buy + 2 * (at.buy - at.sale) : null,
+    "{priorHighOrTwiceRisk}": !c || buy == null ? null : above ?? (at.sale != null && at.sale < buy ? buy + 2 * (buy - at.sale) : null),
     "{low52}": c?.range.low52w,
     "{flagLow}": c?.range.low20,
     "{price}": c?.price,
     "{sellPrice}": at.sale,
-    "{riskPct}": at.sale != null && at.buy > 0 ? ((at.buy - at.sale) / at.buy) * 100 : null,
+    "{riskPct}": at.sale != null && buy != null && buy > 0 ? ((buy - at.sale) / buy) * 100 : null,
   };
   const v = values[name];
   return v != null && Number.isFinite(v) ? Math.round(v * 100) / 100 : undefined;
+}
+
+/** Why a key has no number today, in a few words. */
+export function noNumberWhy(name: Placeholder, at: FillPrices): string {
+  if (["{sellPrice}", "{riskPct}", "{priorHigh}", "{priorHighOrTwiceRisk}"].includes(name) && at.buy == null) return "it is measured from our buy, and we don't own the stock";
+  if (!at.chart && name !== "{sellPrice}") return "the chart couldn't be read";
+  if (["{pivot}", "{pivotChase}", "{baseLow}"].includes(name)) return "the chart has no base";
+  if (name.startsWith("{gapDay")) return "the chart has no gap of 3% or more in the last 10 sessions";
+  if (name === "{swingLow}") return "the chart has no confirmed swing low";
+  if (name === "{priorHigh}" || name === "{priorHighOrTwiceRisk}") return "the chart has no swing high above our buy";
+  if (name === "{sellPrice}" || name === "{riskPct}") return "the stock has no sell price";
+  return "the chart has no number for it today";
+}
+
+/** A template priced from `at`, marked with the list it is on; or the keys with no number today. */
+export function pricedTemplate(t: Template, at: FillPrices): { trigger: Omit<Trigger, "id"> } | { missing: Placeholder[] } {
+  const { writtenOn, predicate, judged: _judged, ...rest } = t;
+  void _judged;
+  const missing = (templatePlaceholders(predicate) as Placeholder[]).filter((m) => fillValue(m, at) == null);
+  if (missing.length) return { missing };
+  return { trigger: { ...rest, predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], playbook: writtenOn } };
+}
+
+/** Each key with no number today and why, in one clause ("{gapDayHigh}: the chart has no gap…"). */
+export function missingKeys(missing: Placeholder[], at: FillPrices): string {
+  return missing.map((m) => `${m}: ${noNumberWhy(m, at)}`).join("; ");
+}
+
+/**
+ * A playbook's watch triggers, priced from the chart, as an agent's save takes
+ * them (`asWritten`), each marked `playbook: "WATCH"`. One whose key the chart
+ * doesn't have today is not written, and `notWritten` says which and why.
+ */
+export function playbookWatchTriggers(templates: Template[], chart: PriceStructure | null): { triggers: Array<Record<string, unknown>>; notWritten: Array<{ ref: string; sentence: string; why: string }> } {
+  const at: FillPrices = { chart, buy: null, sale: null };
+  const triggers: Array<Record<string, unknown>> = [];
+  const notWritten: Array<{ ref: string; sentence: string; why: string }> = [];
+  for (const { ref, template } of playbookRefs(templates)) {
+    if (template.writtenOn !== "WATCH") continue;
+    const priced = pricedTemplate(template, at);
+    if ("missing" in priced) notWritten.push({ ref, sentence: sentenceOf(template as unknown as Trigger), why: missingKeys(priced.missing, at) });
+    else triggers.push({ ...priced.trigger, predicate: asWritten(priced.trigger.predicate as When) });
+  }
+  return { triggers, notWritten };
 }
 
 /**
@@ -172,12 +224,12 @@ export function withTheBuyTriggers(templates: Template[] | null, at: FillPrices,
     if (writtenOn !== "PROPOSAL" || judged) continue;
     const marks = templatePlaceholders(predicate) as Placeholder[];
     if (rest.action === "EXIT" && marks.includes("{sellPrice}")) continue;
-    const missing = marks.filter((m) => fillValue(m, at) == null);
-    if (missing.length) {
-      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${missing.join(", ")}` });
+    const priced = pricedTemplate({ ...rest, writtenOn, predicate }, at);
+    if ("missing" in priced) {
+      notWritten.push({ op: "kept", id: "", text: `Not written: the playbook's ${sentenceOf({ ...rest, predicate } as unknown as Trigger)}; the chart had no ${priced.missing.join(", ")}` });
       continue;
     }
-    triggers.push({ ...rest, id: mintId(), predicate: fillTemplate(predicate, (m) => fillValue(m, at)!) as Trigger["predicate"], source: "DEFAULT", playbook: "PROPOSAL" });
+    triggers.push({ ...priced.trigger, id: mintId(), source: "DEFAULT" });
   }
   return { triggers, notWritten };
 }

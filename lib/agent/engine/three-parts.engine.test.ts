@@ -108,7 +108,7 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     // The stock's playbook is sent with the instructions; the situations still end them.
-    expect(now["instructions:the_playbook"]).toBe(old["message:playbooks"]);
+    expect(now["instructions:the_playbook"]).toBe(old["message:playbooks"] === undefined ? undefined : withNewToolNames(old["message:playbooks"]));
     expect(now["instructions:situations"]).toBe(old["instructions:situations"] === undefined ? undefined : withNewToolNames(old["instructions:situations"], "INTRADAY_TACTICAL"));
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["stock_row", "the_stock"]]) {
       // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.
@@ -158,10 +158,10 @@ describe("the Writer and the Holding refresh", () => {
     expect(now["instructions:the_analyst"]).toBe(withFence(old["instructions:analyst_brief"], c.analyst));
     expect(now["instructions:house_rules"]).toBe(`${old["instructions:house_rules"]}\n\n${old["instructions:market_block_rule"]}`);
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
-    expect(now["instructions:playbooks"]).toBe(old["instructions:playbooks"]);
-    // Its one document imports the rules and the research rules, each where it printed.
-    expect(now["instructions:research_rules"]).toBe(RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n"));
-    expect(now["instructions:own"]).toBe(own(old["instructions:job"], old["instructions:decision"]));
+    expect(now["instructions:playbooks"]).toBe(old["instructions:playbooks"] === undefined ? undefined : withNewToolNames(old["instructions:playbooks"]));
+    // Its one document imports the rules and the research rules, each where it printed (T1's words applied, ./__fixtures__/t1-text.ts).
+    expect(now["instructions:research_rules"]).toBe(withNewToolNames(RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n")));
+    expect(now["instructions:own"]).toBe(withNewToolNames(own(old["instructions:job"], old["instructions:decision"])));
     expect(now["message:playbook_record"]).toBe(old["message:setup_record"]);
     expect(now["message:stock_data"]).toBe(old["message:stock_data"]);
     // The thesis now and a promotion are the stock's row; a recent sale is in the data's history.

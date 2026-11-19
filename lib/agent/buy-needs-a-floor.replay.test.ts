@@ -12,7 +12,8 @@ import cogt from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { checkLadder } from "@/lib/agent/triggers/ops";
-import { oldLevelFieldsAsTriggerOps, planTriggers, replayTool, triggerSentences, thesisRow } from "@/lib/replay";
+import { planTriggers, replayTool, triggerSentences, thesisRow } from "@/lib/replay";
+import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "@/lib/agent/run-thesis-writer";
 
@@ -43,8 +44,11 @@ describe("the Street line on the real rows is Wall Street's numbers alone (the r
 describe("COGT 09-28, the target taken out of the writer's real decision", () => {
   type Fixture = { run: { existingThesisId: string; ticker: string; price: number }; decision: Record<string, unknown>; thesis: Row };
   const fx = cogt as unknown as Fixture;
-  // The decision as the writer writes it now: its buy and floor are triggers (the level fields went 2026-11-16).
-  const decision = oldLevelFieldsAsTriggerOps({ ...fx.decision, target_price: undefined, target_basis: undefined }, [], "LONG") as unknown as ValidatedThesisDecision;
+  // The decision as the writer sends it: the thesis fields and its playbook (PRE_CATALYST); the save writes its watch triggers from the chart.
+  const { triggers: _t, entry_price: _ep, stop_loss: _sl, target_price: _tp, target_basis: _tb, ...fields } = fx.decision as Record<string, unknown>;
+  void [_t, _ep, _sl, _tp, _tb];
+  const decision = fields as unknown as ValidatedThesisDecision;
+  const chart = { price: fx.run.price, base: null, gaps: [], range: { high20: 36.95, low20: 33.1, high52w: 44, low52w: 20 }, swings: { lastLow: { price: 34.91 }, lastHigh: null } };
   const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: "COGT", mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
   let build: typeof BuildWriterSaveCall;
   const doors: Record<string, z.ZodTypeAny> = {};
@@ -67,7 +71,7 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
   });
 
   it.each(["THESIS_WRITER", "PRINCIPAL_CHAT"])("through the %s door: the seed commits LONG with a buy and a floor trigger and no target", async (mode) => {
-    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, decision, {}, { direction: null, status: "WATCHING" });
+    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null, priceStructure: chart } as never, decision, {}, { direction: null, status: "WATCHING" }, (id) => playbookTemplates(null, id));
     const parsed = doors[mode].safeParse(call.toolArgs);
     if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues.slice(0, 3)));
     const r = await replayTool("update-thesis", "updateThesis", { seed: { thesis: [thesisRow({ ...fx.thesis })] }, args: parsed.data as Row, ctx: { runMode: mode }, quotes: { COGT: fx.run.price } });

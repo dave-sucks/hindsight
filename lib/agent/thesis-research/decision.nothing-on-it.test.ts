@@ -1,7 +1,7 @@
 /**
  * decision.nothing-on-it.test.ts — a directional view saved with nothing on
- * it can never come back; the writer's own check says so, in its loop
- * (DAV-291).
+ * it can never come back; the writer is told so after its save, where it
+ * adds triggers now (DAV-291).
  *
  * Replay: $LUXE, PEAD Specialist, production 2026-09-18 06:53Z — the real
  * `submit_thesis` input. Two sessions after a +111% EPS beat that gapped
@@ -11,7 +11,10 @@
  * It was accepted. That morning the PEAD analyst watched eight stocks with
  * zero buy plans.
  */
+jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
+import { tailorMessage } from "@/lib/agent/run-thesis-writer";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 /** The writer's submit_thesis input, verbatim from the run's messages. */
 const LUXE_SUBMIT = {
@@ -51,33 +54,25 @@ const LUXE_SUBMIT = {
   "variant_view": "Consensus anchors to JPM's $10 Neutral and sees the gap as the event; I think the all-segments inflection is the start of a multi-quarter EBITDA re-rating that lifts estimates repeatedly \u2014 falsifiable if Q1 FY2027 shows any segment reverting to decline."
 } as unknown as ThesisDecisionInput;
 
-/** The chart block the writer was given that run. */
-const check = (d: ThesisDecisionInput) =>
-  validateThesisDecision(d, { mode: "mint", currentPrice: 9.48 });
+const saved = (triggers: Trigger[]) =>
+  tailorMessage({ ticker: "LUXE", decision: LUXE_SUBMIT, status: "WATCHING", direction: "LONG", triggers, notWritten: [] });
 
 describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
-  it("is sent back to its playbook's watch triggers, with no price of the code's", () => {
-    const r = check(LUXE_SUBMIT);
-    expect(r.ok).toBe(false);
-    const msg = r.errors.join(" | ");
+  it("the decision is accepted: its triggers come after the save", () => {
+    expect(validateThesisDecision(LUXE_SUBMIT, { mode: "mint", currentPrice: 9.48 }).ok).toBe(true);
+  });
+
+  it("saved with no trigger, the writer is told it can never come back, with the two reviews that bring it back and no price of the code's", () => {
+    const msg = saved([]);
     expect(msg).toMatch(/can never come back/);
-    expect(msg).toContain("the watch triggers of the playbook that fits (YOUR PLAYBOOKS), each price from the chart");
-    // The playbook's triggers carry every price: the reply names none from the chart.
-    expect(msg).not.toMatch(/7\.91|7\.75|\$\d/);
-    expect(msg).not.toMatch(/floor|ATR/);
     expect(msg).toContain('{watch:"repeat", value: days}');
+    expect(msg).toContain("edit_triggers");
+    expect(msg.slice(msg.indexOf("Saved."))).not.toMatch(/7\.91|7\.75|\$\d/);
   });
 
-  it("the same view with a wake is accepted — an unpriced view is still legal", () => {
-    const r = check({
-      ...LUXE_SUBMIT,
-      triggers: [{ predicate: { watch: "price", is: "below", value: 8.6 }, action: "REVIEW", rationale: "Back to the second gap day's low — price the drift entry here if it holds." }],
-    } as ThesisDecisionInput);
-    expect(r.errors.filter((e) => e.startsWith("levels:"))).toEqual([]);
-  });
-
-  it("a PASS needs nothing on it", () => {
-    const r = check({ direction: "PASS", rationale: "The gap used up the edge and nothing clears 2:1 from here." } as ThesisDecisionInput);
-    expect(r.errors.filter((e) => e.startsWith("levels:"))).toEqual([]);
+  it("saved with a wake, the writer is asked to tailor, not told it is stuck", () => {
+    const msg = saved([{ id: "r1", action: "REVIEW", predicate: { watch: "price", is: "below", value: 8.6 }, rationale: "Back to the second gap day's low." } as Trigger]);
+    expect(msg).not.toMatch(/can never come back/);
+    expect(msg).toContain("[id r1]");
   });
 });

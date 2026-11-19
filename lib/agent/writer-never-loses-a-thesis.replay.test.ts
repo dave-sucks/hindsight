@@ -18,30 +18,19 @@
  * SDK runs on a tool call (safeParseJSON with the tool's own input schema),
  * the Writer's check, the real save-call builder, the save's own input schema
  * and the real save (no model). HTFL goes through the real dispatch first.
+ * Since T1 the decision carries no trigger (the save writes the playbook's and
+ * the Writer tailors them with edit_triggers), so PRAX's and AAOI's filing
+ * triggers reach the save through edit_triggers, converted once by its schema.
  */
 import type { z } from "zod";
 import { asSchema, zodSchema } from "ai";
-import { safeParseJSON } from "@ai-sdk/provider-utils";
 import fixture from "@/lib/agent/__fixtures__/writer-lost-theses-2026-11.json";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
 import { thesisDecisionSchema, validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
-import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import type { buildWriterSaveCall as Build, makeSubmitThesisTool as MakeSubmit, withoutRefused as Without, RunThesisWriterArgs, WriterSaveOutcome } from "./run-thesis-writer";
 
 type Case = { run: string; price: number; passedThesis?: string; decision: Record<string, unknown> & { setup_id: string } };
 const F = fixture as unknown as Record<"PRAX" | "AAOI" | "HTFL", Case>;
-type T = { action: string; predicate: Record<string, unknown>; rationale: string };
-
-/**
- * The call as the model wrote it. A saved thread holds each tool call as the
- * SDK's parse returned it, so the fixture's filing has its type in
- * `variable`. The model wrote it in `value`: the SDK runs a tool only on a
- * call its schema accepts, and the schema reads a filing's type from `value`.
- */
-const asWritten = (d: Record<string, unknown>) => ({
-  ...d,
-  triggers: (d.triggers as T[]).map((t) => (t.predicate.watch === "filing" ? { ...t, predicate: { watch: "filing", value: t.predicate.variable } } : t)),
-});
 
 let build: typeof Build;
 let makeSubmit: typeof MakeSubmit;
@@ -67,8 +56,6 @@ const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<Writ
     execute: (raw: unknown) => Promise<{ accepted: boolean; errors?: string[]; saved_without?: string[] }>;
   };
 
-/** What the SDK does with the model's call before the tool runs (ai's doParseToolCall). */
-const sdkParse = (c: Case, call: unknown) => safeParseJSON({ text: JSON.stringify(call), schema: asSchema(submitTool(c, async () => ({ thesisId: null, wouldSave: true, fixable: false, error: null })).inputSchema) });
 
 /** The Writer's mint, through the save's schema as executeThroughSchema runs it, then the real record_thesis. */
 async function mint(ticker: string, c: Case, d: ValidatedThesisDecision, extra: { parentThesisId?: string; seed?: Row[] } = {}) {
@@ -86,64 +73,10 @@ async function mint(ticker: string, c: Case, d: ValidatedThesisDecision, extra: 
 
 const stored = (db: { store: Record<string, Row[]> }, ticker: string) => db.store.thesis.find((t) => t.ticker === ticker && t.status !== "PASSED")!;
 
-/** The model's call from the SDK's parse, through the Writer's check and the real save. */
-async function submitAndSave(ticker: string, c: Case, call: Record<string, unknown>) {
-  const sdk = await sdkParse(c, call);
-  if (!sdk.success) throw new Error(`the SDK refused the call: ${sdk.error.message}`);
-  const v = decide(c, sdk.value as Record<string, unknown>);
-  expect(v.errors).toEqual([]);
-  expect(v.decision!.dropped).toBeUndefined();
-  const { refusal, crashed, db } = await mint(ticker, c, v.decision!);
-  expect([refusal, crashed]).toEqual([null, false]);
-  const row = stored(db as never, ticker);
-  expect(db.store.thesisUpdate.filter((u) => u.thesisId === row.id && u.type === "CREATED")).toHaveLength(1);
-  return (row.triggers as T[]).map((t) => t.predicate);
-}
-
 describe("the model is sent the same submit_thesis schema as before", () => {
   it("byte for byte: the JSON schema of the decision schema itself", async () => {
     const sent = await asSchema(submitTool(F.PRAX, async () => ({ thesisId: null, wouldSave: true, fixable: false, error: null })).inputSchema).jsonSchema;
     expect(JSON.stringify(sent)).toBe(JSON.stringify(await zodSchema(thesisDecisionSchema).jsonSchema));
-  });
-});
-
-describe.each(["PRAX", "AAOI"] as const)("%s: the filing trigger the save refused", (ticker) => {
-  const c = F[ticker];
-  const call = asWritten(c.decision);
-  const filing = (call.triggers as T[]).find((t) => t.predicate.watch === "filing")!;
-
-  it("the SDK hands the Writer the call as the model wrote it, the filing's type still in `value`", async () => {
-    const sdk = await sdkParse(c, call);
-    expect(sdk.success).toBe(true);
-    expect((sdk as { value: { triggers: T[] } }).value.triggers).toContainEqual(filing);
-  });
-
-  it("a filing written as storage keeps it is handed back by the SDK, saying where its type goes", async () => {
-    const sdk = await sdkParse(c, c.decision);
-    expect(sdk.success).toBe(false);
-    expect((sdk as { error: Error }).error.message).toContain("goes in `value`, not `variable`");
-  });
-
-  it("the decision saves, the filing wake with it, converted once by the save", async () => {
-    expect(await submitAndSave(ticker, c, call)).toContainEqual({ watch: "filing", variable: filing.predicate.value });
-  });
-});
-
-describe("a trigger of two conditions holding a filing and a line", () => {
-  const c = F.PRAX;
-  const withGroup = (match: string) => ({ ...asWritten(c.decision), triggers: [...asWritten(c.decision).triggers.filter((t) => t.predicate.watch !== "filing"), { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match, conditions: [{ watch: "filing", value: "tier:RED" }, { watch: "price", is: "below", value: "sma50" }] }, rationale: "A red-tier filing under the 50-day: look again." }] });
-
-  it("saves whole, each condition converted once (until 2026-11-13 the Writer dropped it as not a condition)", async () => {
-    expect(await submitAndSave("PRAX", c, withGroup("all"))).toContainEqual({
-      match: "all",
-      conditions: [{ watch: "filing", variable: "tier:RED" }, { watch: "price", is: "below", variable: "sma50" }],
-    });
-  });
-
-  it("an \"or\" is handed back by the SDK, saying either one is two triggers (2026-11-17)", async () => {
-    const sdk = await sdkParse(c, { ...c.decision, triggers: withGroup("any").triggers });
-    expect(sdk.success).toBe(false);
-    expect((sdk as { error: Error }).error.message).toContain("is two triggers");
   });
 });
 
@@ -176,9 +109,10 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
     expect(String((db.store.researchRun.at(-1)!.parameters as { reason: string }).reason)).toMatch(/is passed, so its live thesis is refreshed instead\.$/);
   });
 
-  it("its decision, sent as a mint sends triggers, saves linked to the passed thesis, which stays passed", async () => {
-    const { add_triggers, ...rest } = c.decision;
-    const v = decide(c, { ...rest, triggers: add_triggers });
+  it("its decision, sent as a mint, saves linked to the passed thesis, which stays passed", async () => {
+    const { add_triggers: _a, edit_triggers: _e, remove_trigger_ids: _r, ...rest } = c.decision;
+    void [_a, _e, _r];
+    const v = decide(c, rest);
     expect(v.errors).toEqual([]);
     const { refusal, crashed, db } = await mint("HTFL", c, v.decision!, { parentThesisId: c.passedThesis, seed: [passed()] });
     expect([refusal, crashed]).toEqual([null, false]);
@@ -190,7 +124,7 @@ describe("HTFL: a refresh sent onto a thesis passed in August", () => {
 });
 
 describe("submit_thesis never says accepted unless the save will take it", () => {
-  const c = { ...F.AAOI, decision: { ...F.AAOI.decision, ...asWritten(F.AAOI.decision) } };
+  const c = F.AAOI;
   const tool = (check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) => ({
     onAccept,
     t: makeSubmit({ ticker: "AAOI", validate: { mode: "mint", currentPrice: c.price }, check, onAttempt: () => 1, onAccept }) as unknown as {
@@ -206,50 +140,22 @@ describe("submit_thesis never says accepted unless the save will take it", () =>
     expect(onAccept).not.toHaveBeenCalled();
   });
 
-  it("after two hand-backs a refused trigger is left out, the rest is accepted, and the reply names what was left out", async () => {
-    const check = jest.fn(async (d: ValidatedThesisDecision) => ((d.triggers ?? []).length === 3 ? refuses("bad", [{ path: ["triggers", 1, "predicate"], message: "Not a condition." }]) : saves));
+  it("after two hand-backs a refused optional field is left out, the rest is accepted, and the reply names what was left out", async () => {
+    const check = jest.fn(async (d: ValidatedThesisDecision) => (d.variant_view ? refuses("bad", [{ path: ["variant_view"], message: "Too vague." }]) : saves));
     const { t, onAccept } = tool(check);
-    expect((await t.execute(c.decision)).accepted).toBe(false);
-    expect((await t.execute(c.decision)).accepted).toBe(false);
-    const third = await t.execute(c.decision);
+    const call = { ...c.decision, variant_view: "Analysts expect X; I think Y." };
+    expect((await t.execute(call)).accepted).toBe(false);
+    expect((await t.execute(call)).accepted).toBe(false);
+    const third = await t.execute(call);
     expect(third.accepted).toBe(true);
-    expect(third.saved_without).toEqual([expect.stringMatching(/^the review trigger ".+" — Not a condition\.$/)]);
+    expect(third.saved_without).toEqual(["variant view — Too vague."]);
     const kept = onAccept.mock.calls[0][0] as ValidatedThesisDecision;
-    expect(kept.triggers).toHaveLength(2);
-    expect(kept.dropped).toEqual([expect.objectContaining({ field: "triggers", reason: "Not a condition." })]);
-  });
-});
-
-describe("a chat's rewrite keeps the row's levels, read off the stored shape", () => {
-  const floor = { id: "floor_1", action: "EXIT", predicate: { watch: "price", is: "below", value: 300 }, rationale: "The floor." };
-  const line = { action: "EXIT", predicate: { watch: "price", is: "below", value: "sma50" }, rationale: "Under the 50-day the run-up is broken." };
-  const call = () =>
-    build(
-      { childRunId: "r", analystId: REPLAY_ANALYST_ID, ticker: "PRAX", mode: "refresh", reason: "a replay", existingThesisId: "t", keepLevels: true },
-      { currentPrice: 324.76, catalystOnFile: null } as never,
-      { direction: "LONG", rationale: "A rewrite the chat asked for.", horizon: "CATALYST", add_triggers: [line] } as never,
-      {},
-      { direction: "LONG", status: "HOLDING", keep: [floor] as never },
-    ).toolArgs;
-
-  it("a sale on a line, as the model writes it, is a new trigger, not the floor the chat set", () => {
-    expect(call().add_triggers).toEqual([line]);
-    expect(String(call().rationale)).not.toContain("stop $sma50");
-  });
-});
-
-describe("what a save goes without is found in the call that was sent", () => {
-  const a = { action: "REVIEW", predicate: { watch: "price", is: "below", value: 1 }, rationale: "a" };
-  const b = { action: "REVIEW", predicate: { watch: "filing", value: "nope" }, rationale: "b" };
-  const d = { add_triggers: [a, b] } as unknown as ValidatedThesisDecision;
-
-  it("a chat's rewrite sends its added triggers less the kept levels, so place 0 in the call is the decision's second", () => {
-    expect(without(d, [{ path: ["add_triggers", 0, "predicate"], message: "bad" }], { add_triggers: [b] })!.add_triggers).toEqual([a]);
+    expect(kept.variant_view).toBeUndefined();
   });
 
-  it("a refusal of a level, the claim or a trigger code added is not something a save can go without", () => {
-    expect(without(d, [{ path: ["entry_price"], message: "bad" }])).toBeNull();
+  it("a refusal of the claim or of a trigger code wrote is not something a save can go without", () => {
+    const d = { ...c.decision } as unknown as ValidatedThesisDecision;
     expect(without(d, [{ path: ["core_belief"], message: "bad" }])).toBeNull();
-    expect(without(d, [{ path: ["add_triggers", 0], message: "bad" }], { add_triggers: [{ action: "REVIEW" }] })).toBeNull();
+    expect(without(d, [{ path: ["triggers", 0], message: "bad" }])).toBeNull();
   });
 });

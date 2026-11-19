@@ -22,18 +22,19 @@
  * ruling (DAV-335, 2026-09-29): on a stock we only watch, with no buy, a
  * review at any price is a wake, not a target — so the refresh saves, the
  * $146 review is a wake, and the target column stays empty.
+ *
+ * Since T1 the writer's save carries no trigger; the same removals and adds
+ * reach the save from edit_triggers after it, as replayed here.
  */
 import type { z } from "zod";
 import raw from "@/lib/agent/__fixtures__/vst-writer-refresh-2026-09-28.json";
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
-import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
-import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
+import { shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { applyTriggerOps, type TriggerOp } from "@/lib/agent/triggers/ops";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
 type Op = { op: string; id: string; text: string; ok?: boolean; reason?: string };
-type Submit = Parameters<typeof validateThesisDecision>[0];
+type Submit = { rationale: string; add_triggers?: Array<{ action: string; predicate: Record<string, unknown>; rationale: string }>; remove_trigger_ids?: string[]; edit_triggers?: unknown[] };
 const fx = raw as unknown as {
   runId: string;
   currentPrice: number;
@@ -60,42 +61,15 @@ const seed = () => ({
   account: [accountRow({ triggers: fx.account.triggers, triggersSeededAt: new Date(fx.account.triggersSeededAt) })],
 });
 
-/** The writer's own validation of its decision, as the run did it. */
-function decision(submit: Submit = fx.submit): ValidatedThesisDecision {
-  const v = validateThesisDecision(submit, {
-    mode: "refresh",
-    existingStatus: "WATCHING",
-    currentPrice: fx.currentPrice,
-  });
-  expect(v.errors).toEqual([]);
-  return v.decision as ValidatedThesisDecision;
-}
-
 /**
- * The update_thesis args the writer builds from a decision — its real
- * builder, loaded against a stub database (it only needs the import) — read
- * through update_thesis's input schema, as the writer's executeThroughSchema
- * reads them before the save runs.
+ * The update_thesis args the writer's trigger edits become — edit_triggers
+ * sends its adds and removals to the save as these — read through
+ * update_thesis's input schema, as the save reads them.
  */
-async function writerSaveArgs(d: ValidatedThesisDecision): Promise<Record<string, unknown>> {
-  let args: Record<string, unknown> = {};
+async function writerSaveArgs(submit: Submit = fx.submit): Promise<Record<string, unknown>> {
+  let args: Record<string, unknown> = { thesis_id: fx.thesisBefore.id, rationale: submit.rationale, add_triggers: submit.add_triggers, remove_trigger_ids: submit.remove_trigger_ids, edit_triggers: submit.edit_triggers };
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
-    const { buildWriterSaveCall } = await import("@/lib/agent/run-thesis-writer");
-    args = buildWriterSaveCall(
-      {
-        childRunId: fx.runId,
-        analystId: REPLAY_ANALYST_ID,
-        ticker: "VST",
-        mode: "refresh",
-        existingThesisId: fx.thesisBefore.id,
-        reason: "Convert the ENTER to a REVIEW at the same level if the score stays under 7.",
-      },
-      null,
-      d,
-      {},
-      { direction: "LONG", status: "WATCHING" },
-    ).toolArgs;
     const { updateThesis } = await import("@/lib/agent/tools/update-thesis");
     const door = (updateThesis({ runId: "r", userId: "u", accountId: "a", runMode: "THESIS_WRITER" } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
     const parsed = door.safeParse(args);
@@ -167,7 +141,7 @@ describe("the fixture is the production call", () => {
 
 describe("VST 2026-09-28 — the writer's refresh, through its check and its save", () => {
   it("the writer's check passes the refresh as written, and the save keeps the review at $146 as a wake", async () => {
-    const args = await writerSaveArgs(decision());
+    const args = await writerSaveArgs();
     const check = await save(args, true);
     // Under #732 this was refused (missing_enter_trigger): a review above
     // the price with no buy counted as a target with nothing to reach it from.
@@ -205,7 +179,7 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
       ...fx.submit,
       add_triggers: fx.submit.add_triggers?.filter((t) => shapeName(t.predicate) !== "price:above"),
     };
-    const saved = await save(await writerSaveArgs(decision(submit)), false);
+    const saved = await save(await writerSaveArgs(submit), false);
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];

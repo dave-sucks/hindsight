@@ -80,13 +80,12 @@ describe("the thesis fields, defined once", () => {
     expect(wordsOf(submit.properties.prior_exit_acknowledgment)).toBe(describe_("record_thesis", "acknowledge_prior_exit"));
   });
 
-  it("update_thesis and the writer word the trigger edits the same", async () => {
+  it("the writer's save carries no trigger edit, and edit_triggers words an edit as update_thesis does", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
     const submit = asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, Prop> };
-    for (const field of ["add_triggers", "edit_triggers", "remove_trigger_ids"]) {
-      expect(describe_("update_thesis", field)).not.toBe("");
-      expect(wordsOf(submit.properties[field])).toBe(describe_("update_thesis", field));
-    }
+    for (const field of ["triggers", "add_triggers", "edit_triggers", "remove_trigger_ids"]) expect([field, submit.properties[field]]).toEqual([field, undefined]);
+    expect(describe_("edit_triggers", "edit")).not.toBe("");
+    expect(describe_("edit_triggers", "edit")).toBe(describe_("update_thesis", "edit_triggers"));
   });
 });
 

@@ -2,11 +2,11 @@
  * playbook-triggers.replay.test.ts — a playbook's triggers, written by the
  * Writer, the buy proposal and the fill, on real production calls.
  *
- *   1. The Writer. HTFL: this PR's prompt, the real model, on the
- *      ground-truth data recorded 2026-11-13; its call, saved, writes
- *      exactly MA_PULLBACK's watch triggers, each marked. ZTS (2026-11-16):
- *      a view no playbook fits names none and carries the reviews that
- *      bring it back; nothing is marked a playbook's.
+ *   1. The Writer. HTFL (2026-11-13): its decision names MA_PULLBACK, and
+ *      the save writes exactly MA_PULLBACK's watch triggers, each marked,
+ *      priced by code (T1: the decision carries no trigger). ZTS
+ *      (2026-11-16): a view no playbook fits names none; the save writes
+ *      nothing, and its reviews come after the save, through edit_triggers.
  *   2. AAPL (the trigger run's buy, 2026-11-13, BASE_BREAKOUT): place_trade
  *      names the sell price and nothing else; the pending position saves it
  *      and its targetPrice stays empty.
@@ -141,7 +141,7 @@ async function writerMint(ticker: string, run: { id: string }, decision: Record<
   });
   const v = validateThesisDecision(decision as ThesisDecisionInput, { mode: "mint", existingStatus: null, currentPrice: price });
   expect(v.errors).toEqual([]);
-  const call = w.buildWriterSaveCall({ childRunId: run.id, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "discovery" } as never, { currentPrice: price } as never, v.decision as ValidatedThesisDecision, {}, null);
+  const call = w.buildWriterSaveCall({ childRunId: run.id, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "discovery" } as never, { currentPrice: price, priceStructure: null } as never, v.decision as ValidatedThesisDecision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
   const r = await replayTool("record-thesis", "recordThesis", {
     seed: { agentConfig: [agentConfigRow({ setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"] })], account: [accountRow()] },
     args: schema.parse(call.toolArgs) as Record<string, unknown>,
@@ -153,22 +153,21 @@ async function writerMint(ticker: string, run: { id: string }, decision: Record<
 }
 
 describe("the Writer writes its playbook's watch triggers", () => {
-  it("HTFL: the real model on this PR's prompt writes exactly MA_PULLBACK's watch triggers, each marked, and saves them", async () => {
+  it("HTFL: naming MA_PULLBACK, the save writes exactly its watch triggers, each marked", async () => {
     const htfl = await writerMint("HTFL", fx.htfl.run, fx.htfl.decision, fx.htfl.run.price);
     expect(htfl).toMatchObject({ status: "WATCHING", direction: "LONG", setupId: "MA_PULLBACK" });
     const watch = PLAYBOOK_TEMPLATES.MA_PULLBACK.filter((t) => t.writtenOn === "WATCH");
     expect(triggerSentences(htfl)).toEqual(watch.map((t) => sentenceOf(t as unknown as Trigger)));
     expect((htfl.triggers as Trigger[]).map((t) => [t.playbook, t.source])).toEqual(watch.map(() => ["WATCH", "AGENT"]));
-    // Each with the model's own reason, and the on-fire choice the template names (none: the action's default).
-    for (const t of htfl.triggers as Trigger[]) expect(t.rationale.length).toBeGreaterThan(20);
+    // Each with the playbook's reason, and the on-fire choice the template names (none: the action's default).
+    expect((htfl.triggers as Trigger[]).map((t) => t.rationale)).toEqual(watch.map((t) => t.rationale));
     expect((htfl.triggers as Trigger[]).map((t) => t.fireMode)).toEqual(["ASK_NOW", "NEXT_MORNING", "ASK_NOW"]);
   });
 
-  it("ZTS 2026-11-16: a view no playbook fits names none and carries the reviews that bring it back; no trigger is a playbook's", async () => {
+  it("ZTS 2026-11-16: a view no playbook fits names none, and the save writes no trigger: its reviews come after it", async () => {
     const zts = await writerMint("ZTS", fx.zts.run, fx.zts.decision, 83.84);
     expect(zts).toMatchObject({ status: "WATCHING", direction: "LONG", setupId: null });
-    expect(triggerSentences(zts)).toEqual(["Review if within 7 days before earnings", "Review if above $89.29"]);
-    expect((zts.triggers as Trigger[]).filter((t) => t.playbook)).toEqual([]);
+    expect(zts.triggers).toEqual([]);
   });
 });
 

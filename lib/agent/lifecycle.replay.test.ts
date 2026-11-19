@@ -48,6 +48,7 @@ import { protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import type * as Writer from "@/lib/agent/run-thesis-writer";
+import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 
 const fx = raw as unknown as { run: { id: string; ticker: string; price: number }; decision: Record<string, unknown> };
 const T = "HTFL";
@@ -61,8 +62,6 @@ const TRIM = 60.56;
 jest.mock("@/lib/proposals/fill-chart", () => ({
   loadFillChart: async () => ({ price: 52.18, swings: { lastHigh: { price: 60.56, date: "2026-10-29" }, lastLow: null }, gaps: [], base: null, range: { high20: 60.56, low20: 47.9, high52w: 60.56, low52w: 30, pctBelow52wHigh: 14, pctAbove52wLow: 74 } }),
 }));
-/** The playbook's watch clock, as the Writer writes it now. */
-const WATCH_CLOCK = { predicate: { watch: "repeat", value: 7 }, action: "REVIEW", rationale: "Re-checks that the 50-day is still rising.", playbook: "WATCH" };
 
 // ── The one database the steps share ──────────────────────────────────────
 let store: StoreSeed = {
@@ -112,13 +111,13 @@ function withItsPosition(order: Row): Row {
   return { ...order, position };
 }
 
-/** HTFL's recorded decision as the Writer writes it now: its levels are triggers. */
-function htflDecision(): ValidatedThesisDecision {
+/** HTFL's recorded decision as the Writer sends it now: the thesis fields and its playbook; its levels are its own triggers, added after the save. */
+function htflDecision(): { decision: ValidatedThesisDecision; own: unknown[] } {
   const { add_triggers, ...rest } = oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG");
-  const v = validateThesisDecision({ ...rest, triggers: [...((add_triggers ?? []) as unknown[]), WATCH_CLOCK] } as unknown as ThesisDecisionInput, { mode: "mint", existingStatus: null, currentPrice: fx.run.price });
+  const v = validateThesisDecision(rest as unknown as ThesisDecisionInput, { mode: "mint", existingStatus: null, currentPrice: fx.run.price });
   expect(v.errors).toEqual([]);
   expect("riskReward" in v).toBe(false);
-  return v.decision as ValidatedThesisDecision;
+  return { decision: v.decision as ValidatedThesisDecision, own: (add_triggers ?? []) as unknown[] };
 }
 
 /** The Writer's own save-call builder and result reader, and the save's schema. */
@@ -138,9 +137,10 @@ async function writerSave() {
 describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
   afterAll(() => jest.useRealTimers());
 
-  it("1. the Writer's real mint lands WATCHING with its buy, its Stop watching line on the close and its review; the agent reads sentences back", async () => {
+  it("1. the Writer's real mint lands WATCHING; after the save it trades the playbook's pullback buy and its Stop watching line for its own, on the close, and adds its review; the agent reads sentences back", async () => {
     const { build, schema } = await writerSave();
-    const call = build({ childRunId: fx.run.id, analystId: REPLAY_ANALYST_ID, ticker: T, mode: "mint", reason: "discovery" } as never, { currentPrice: fx.run.price } as never, htflDecision(), {}, null);
+    const { decision, own } = htflDecision();
+    const call = build({ childRunId: fx.run.id, analystId: REPLAY_ANALYST_ID, ticker: T, mode: "mint", reason: "discovery" } as never, { currentPrice: fx.run.price, priceStructure: null } as never, decision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
     expect(call.toolName).toBe("record_thesis");
     expect(JSON.stringify(call.toolArgs)).not.toMatch(OLD_KEYS);
     const args = schema.parse(call.toolArgs) as Record<string, unknown>;
@@ -150,14 +150,25 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
     // The double joins nothing: the new row carries its run inline, as the database's join would give it.
     store = { ...store, thesis: rows("thesis").map((t) => (t.researchRun ? t : { ...t, researchRun: { agentConfigId: REPLAY_ANALYST_ID, environment: "PAPER", agentConfig: { name: "PEAD Specialist", setupIds: ["MA_PULLBACK"] } } })) };
     expect(thesisOf()).toMatchObject({ status: "WATCHING", direction: "LONG", setupId: "MA_PULLBACK" });
+    expect(triggersOf().map((t) => t.playbook)).toEqual(["WATCH", "WATCH", "WATCH"]);
+    // The Writer's tailoring after the save: edit_triggers, each change with its reason.
+    const [near50, , under50] = triggersOf();
+    const edited = await tool(
+      "edit-triggers",
+      "editTriggers",
+      { thesis_id: thesisOf().id, remove: [{ id: near50.id, reason: "HTFL buys the reclaim on the close, not a touch of the 50-day." }, { id: under50.id, reason: "The watch ends under the last swing low." }], add: own },
+      { runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID },
+      fx.run.price,
+    );
+    expect(edited.refused).toBe(false);
     expect(triggerSentences(thesisOf())).toEqual([
+      "Review every 7 days",
       "Buy if above $51.94 · only on the close",
       "Stop watching if below $46.50 · only on the close",
       "Review if above $60.56",
-      "Review every 7 days",
     ]);
-    // The Writer's watch clock carries its mark; the triggers it wrote by hand don't.
-    expect(triggersOf().map((t) => t.playbook ?? null)).toEqual([null, null, null, "WATCH"]);
+    // The playbook's watch clock carries its mark; the triggers the Writer wrote by hand don't.
+    expect(triggersOf().map((t) => t.playbook ?? null)).toEqual(["WATCH", null, null, null]);
     expect(JSON.stringify(r.result)).not.toMatch(OLD_KEYS);
     expect(thesisOf()).not.toHaveProperty("entryPrice");
   });
@@ -319,7 +330,7 @@ describe("the chat's discovery path, check-only", () => {
     expect(sent).toEqual([expect.objectContaining({ name: "app/thesis.write.requested", data: expect.objectContaining({ childRunId: writer.id, ticker: T, mode: "mint", forceWatchingMint: true }) })]);
 
     const { build, read, schema } = await writerSave();
-    const call = build(sent[0].data as never, { currentPrice: fx.run.price } as never, htflDecision(), {}, null);
+    const call = build(sent[0].data as never, { currentPrice: fx.run.price, priceStructure: null } as never, htflDecision().decision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
     expect(JSON.stringify(call.toolArgs)).not.toMatch(OLD_KEYS);
     const r = await replayTool("record-thesis", "recordThesis", {
       seed: d.db.store,

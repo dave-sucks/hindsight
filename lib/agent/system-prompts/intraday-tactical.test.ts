@@ -299,8 +299,8 @@ describe("a trigger fire's request — a watch's review gets the Writer's playbo
     expect(prompt).toContain(block);
     expect(prompt).not.toContain("a playbook's way in");
     const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
-    expect(due).toContain('If it is a playbook\'s way in on a stock we watch (its note says the run writes the triggers): write that playbook\'s watch triggers with edit_triggers\' add and name it (setup_id), each with "playbook": "WATCH"');
-    expect(due).toContain("one whose price the chart doesn't have yet is left out. A trigger run has the lists under YOUR PLAYBOOKS");
+    expect(due).toContain("If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): add that playbook's watch triggers with edit_triggers' add, each by its reference (W1, W2…), and name it (setup_id)");
+    expect(due).toContain("one whose price the chart doesn't have yet comes back not written. A trigger run has the lists under YOUR PLAYBOOKS");
   });
 
   it("a playbook that couldn't be read says so, and the run writes none from it", () => {

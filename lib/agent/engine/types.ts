@@ -108,6 +108,8 @@ export interface AgentRecord {
   maxOutputTokens?: number;
   /** Its save: the tool that, once a call to it goes through, ends the run (the Writer's submit_thesis). */
   endsWith?: string;
+  /** The tools it is given once its save went through, in a call that continues from its note (the Writer's edit_triggers, run-thesis-writer.ts). */
+  afterSave?: readonly string[];
   /** A reply that is data: its name, and its JSON schema, made from the run's input only. */
   reply?: { name: string; schema: (input: AgentInput) => Record<string, unknown> };
   /** What it hands back. */

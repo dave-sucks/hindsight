@@ -11,8 +11,7 @@
  * and its message are the Writer's.
  */
 import { MODES } from "@/lib/agent/modes";
-import { WEB_SEARCH_MAX_USES } from "./writer";
-import { WRITER_CONTEXT } from "./writer";
+import { WEB_SEARCH_MAX_USES, WRITER_AFTER_SAVE, WRITER_CONTEXT } from "./writer";
 import type { AgentRecord } from "../types";
 
 export const HOLDING_REFRESH: AgentRecord = {
@@ -29,7 +28,8 @@ export const HOLDING_REFRESH: AgentRecord = {
   tools: ["submit_thesis"],
   providerTools: ["web_search"],
   searchesPerCall: WEB_SEARCH_MAX_USES,
-  // The run ends once its save goes through.
+  // The run ends once its save goes through; then it edits the holding's triggers where the research changed one.
   endsWith: "submit_thesis",
-  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, the claim and any trigger edits; the save writes the thesis.",
+  afterSave: WRITER_AFTER_SAVE,
+  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view and the claim; the save writes the thesis, and edit_triggers changes a trigger the research changed.",
 };

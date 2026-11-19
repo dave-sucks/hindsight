@@ -10,13 +10,12 @@
  * 400 rule; IBRX and BBIO for that and a trigger kind that doesn't exist
  * (`REVIEW_AFTER_DAYS`, meant as "look again in N days"). None got a retry.
  *
- * On main all three fail validation. After the fix all three pass: the
- * rationale is kept whole, the invented kind is read as the review cadence
- * it meant, and what was fixed is written on the decision so it shows on
- * the stock.
+ * On main all three failed validation. All three pass: the rationale is
+ * kept whole. (Their triggers went with submit_thesis's trigger fields: the
+ * save writes the playbook's, and the writer tailors them after it.) What
+ * was fixed is written on the decision so it shows on the stock.
  */
 import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
-import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 
@@ -33,28 +32,11 @@ const opts = {
 };
 
 describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written down", () => {
-  it("DYN: a 501-character conviction rationale is kept whole", () => {
-    const v = validateThesisDecision(fx.DYN.last.input, opts);
+  it.each(["DYN", "IBRX", "BBIO"] as const)("%s: accepted; its conviction rationale is kept whole", (t) => {
+    const v = validateThesisDecision(fx[t].last.input, opts);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(400);
-    expect(v.decision?.triggers?.map((t) => shapeName(t.predicate))).toEqual(["repeat"]);
-    expect(v.decision?.notes).toBeUndefined();
-  });
-
-  it.each(["IBRX", "BBIO"] as const)("%s: the invented REVIEW_AFTER_DAYS becomes the review cadence it meant, and says so", (t) => {
-    const input = fx[t].last.input;
-    const sent = (input.triggers as unknown as Array<{ predicate: { kind: string; days: number } }>)[0].predicate;
-    expect(sent.kind).toBe("REVIEW_AFTER_DAYS");
-
-    const v = validateThesisDecision(input, opts);
-    expect(v.errors).toEqual([]);
-    expect(v.ok).toBe(true);
-    const trig = v.decision?.triggers ?? [];
-    expect(trig).toHaveLength(1);
-    expect(trig[0].predicate).toMatchObject({ watch: "repeat", value: sent.days });
-    expect(trig[0].action).toBe("REVIEW");
-    expect(v.decision?.notes?.join(" ")).toMatch(/REVIEW_AFTER_DAYS.*saved as a review in \d+ days/);
+    expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(t === "DYN" ? 400 : 0);
   });
 
   it("a top-tier call without a variant view is stored one tier down, with the reason, not refused", () => {
@@ -62,15 +44,5 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction).toBe("MEDIUM");
     expect(v.decision?.notes?.join(" ")).toMatch(/Conviction stored as MEDIUM: HIGH needs a variant view/);
-  });
-
-  it("a trigger the app cannot read at all is dropped and named for the stock's Activity; the decision still saves", () => {
-    const v = validateThesisDecision(
-      { ...fx.DYN.last.input, triggers: [{ predicate: { kind: "MOON_PHASE", full: true }, action: "REVIEW", rationale: "?" } as never, ...(fx.DYN.last.input.triggers ?? [])] },
-      opts,
-    );
-    expect(v.ok).toBe(true);
-    expect(v.decision?.triggers).toHaveLength(1);
-    expect(v.decision?.dropped).toEqual([{ field: "triggers", why: 'the review trigger "?"', reason: expect.stringMatching(/condition|measure/i) }]);
   });
 });

@@ -61,7 +61,10 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +116, the same three moves; its five rule texts are one, its own text one, and its brief its message (the "## Today" line goes).
   // 2026-11-18: −61, the same.
   // 2026-11-18: −2, an analyst with no playbooks gets no playbooks part (it was an empty one, a stray blank line).
-  writer: 17_378,
+  // 2026-11-19: +21, T1: the save writes the playbook's watch triggers and the Writer tailors them after it with edit_triggers; each playbook trigger is one line with its reference, and no JSON.
+  // 2026-11-19: +44, the same: a price in the Writer's own trigger is a chart key or a line, and the held refresh moves its sale to a key.
+  // 2026-11-19: +40, the same: a view with no buy yet carries its look-again on the save (a report or a day), a price one through edit_triggers.
+  writer: 17_483,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -103,11 +106,13 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −432 each, place_trade takes no company, exchange or price: the tool reads the live quote, and the other two it never read.
   // 2026-11-18: −5,706 each, place_trade takes no triggers_with_buy: the fill writes the playbook's triggers that come with the buy, from the chart and the buy.
   // 2026-11-18: −869, the action tools one job each: update_thesis, manage_position and close_position become write_note, edit_triggers, set_conviction, set_catalyst_date, stop_watching, watch_again, sell and add; the trigger shape is sent once, on edit_triggers, each removal with its reason; a note has no length cap.
-  "research-run": 29_951,
+  // 2026-11-19: +585 each, T1: edit_triggers takes one of the stock's playbook triggers by its reference, and a chart key in a price or a move; its own trigger has no playbook mark.
+  "research-run": 30_536,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
-  tactical: 25_266,
+  // 2026-11-19: +585, the same edit_triggers.
+  tactical: 25_851,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -125,6 +130,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-18: −432, the same place_trade fields.
   // 2026-11-18: −5,706, the same place_trade field.
   // 2026-11-18: −4,946, the same tools, pass_on_stock on and read_database off; the belief, direction and horizon leave the chat's thesis edit.
+  // 2026-11-19: +585, the same edit_triggers.
+  // 2026-11-19: −401, the chat's add is #1050's own trigger (its playbook mark kept, no playbook references: it doesn't tailor playbooks) with a key allowed for a price.
+  // 2026-11-19: −184, the chat's edit_triggers is #1050's as it was (no chart keys): back to a672's size.
   principal: 57_115,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };

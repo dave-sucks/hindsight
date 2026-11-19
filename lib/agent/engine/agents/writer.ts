@@ -30,10 +30,13 @@ export const WRITER_CONTEXT: readonly FirstMessagePart[] = ["message", "market_n
 /** The last line of the sender's brief. */
 export const WRITER_GO = "Write the research note now, then call submit_thesis.";
 
+/** What the Writer is given after its save: the stock's triggers, one at a time (writerTailorPhase, run-thesis-writer.ts). */
+export const WRITER_AFTER_SAVE = ["edit_triggers"] as const;
+
 export const WRITER: AgentRecord = {
   id: "writer",
   name: "Writer",
-  does: "Researches a new stock or one we watch and writes its thesis: the view, the playbook, the watch triggers at prices from the chart, and the claim every other agent reads.",
+  does: "Researches a new stock or one we watch and writes its thesis: the view, the playbook (whose watch triggers the save writes at prices from the chart), and the claim every other agent reads; then tailors the triggers.",
   runsWhen: "When a stock is sent to it: from the chat, a run or the Portfolio Manager.",
   messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
   subject: "thesis",
@@ -46,7 +49,8 @@ export const WRITER: AgentRecord = {
   tools: ["submit_thesis"],
   providerTools: ["web_search"],
   searchesPerCall: WEB_SEARCH_MAX_USES,
-  // The run ends once its save goes through.
+  // The run ends once its save goes through; then it tailors the stock's triggers.
   endsWith: "submit_thesis",
-  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, playbook, watch triggers and the claim; the save writes the thesis.",
+  afterSave: WRITER_AFTER_SAVE,
+  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, playbook and the claim; the save writes the thesis and the playbook's watch triggers, and edit_triggers tailors them.",
 };
