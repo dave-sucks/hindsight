@@ -94,7 +94,7 @@ describe("a held refresh replayed on T1's flow", () => {
 describe("a view kept with a look-again (SNDK 2026-11-04)", () => {
   it("the save writes its one review beside nothing else, and the case reads it as a REVIEW trigger", () => {
     const decision = { direction: "LONG", rationale: "r", horizon: "TARGET", look_again: { after_next_report: true, why: "Whether the January report confirms NAND pricing." } };
-    const saved = savedByWriter(decision, wc, "2026-11-04");
+    const saved = savedByWriter(decision, wc);
     expect(saved.triggers.map((t) => sentenceOf(t))).toEqual(["Review if within 1 day after earnings"]);
     const scored = writerInOldShape({ toolName: "submit_thesis", input: decision }, saved, afterTailoring(saved, decision, wc, []), wc, []);
     expect(score({ call: [{ tool: "submit_thesis", where: { direction: { regex: "^(LONG|SHORT)$" }, "triggers.*.action": "REVIEW" } }] }, [scored], "").pass).toBe(true);

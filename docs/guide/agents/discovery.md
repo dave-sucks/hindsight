@@ -62,7 +62,7 @@ It works in two passes. The first reads the whole pool and drops what plainly do
 For each stock that survives, the chat says in a sentence or two what is changing in the business and whether the chart gives a place to buy it. There is no score; the sentence is the judgment. Every stock ends one of four ways:
 
 - **Research:** `dispatch_thesis_research` sends it to the Writer. Five per conversation at most, the clearest business reasons first.
-- **Watch:** strong but not ready to price, or past the five. Saved with `watch_stock` as a watch with no view yet and its look-again, a price or a day, so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
+- **Watch:** strong but not ready to price, or past the five. Saved with `watch_stock` as a watch with no view yet and its look-again, a price, the next report or an event's date, so "no room this week" never means "never." A watch with no wake-up at all is just a name on the list, waiting for you.
 - **Pass:** researched and declined. Saved as Passed with what would change the verdict, so it isn't pitched again without a reason.
 - **Skip:** dropped in the first pass. One line in the summary; nothing is saved.
 

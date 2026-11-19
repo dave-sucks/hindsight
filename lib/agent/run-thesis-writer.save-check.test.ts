@@ -137,6 +137,9 @@ function storedRow(fx: Fx) {
   };
 }
 
+/** The stock as the save reads it (stockForSave): its view, its status and its triggers. */
+const stockOf = (fx: Fx) => ({ direction: "LONG", status: fx.thesis.status, triggers: storedRow(fx).triggers as never });
+
 function writerArgs(fx: Fx, ticker: string): RunThesisWriterArgs {
   return {
     childRunId: "writer_child_run",
@@ -182,7 +185,7 @@ describe("FIVE 2026-09-15 — stop and target explanations of 264 and 266 charac
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
+      existing: stockOf(fx),
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
@@ -205,7 +208,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
+      existing: stockOf(fx),
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
@@ -220,7 +223,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
+      existing: stockOf(fx),
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
   });
@@ -234,7 +237,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
       pull: null,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
+      existing: stockOf(fx),
     });
     expect(outcome).toMatchObject({ wouldSave: true, error: null });
     expect(mockThesisUpdate).not.toHaveBeenCalled();
@@ -260,7 +263,7 @@ describe("FIVE 2026-09-15 — the same decision with the explanations cut to fit
       pull: { currentPrice: livePrice.FIVE } as never,
       decision: v.decision as ValidatedThesisDecision,
       ctx,
-      existing: { direction: "LONG", status: fx.thesis.status },
+      existing: stockOf(fx),
     });
     expect(outcome.error).toBeNull();
     expect(outcome.wouldSave).toBe(true);
@@ -288,6 +291,9 @@ describe("a new thesis (mint) is checked the same way", () => {
     add_triggers: undefined,
     edit_triggers: undefined,
     remove_trigger_ids: undefined,
+    // The decision carries no trigger since #1051, and a view that would save with nothing that can fire is refused:
+    // this one names when to look again.
+    look_again: { after_next_report: true, why: "Whether the next report keeps the drift going." },
   };
 
   it("would save, and creates nothing while checking", async () => {
