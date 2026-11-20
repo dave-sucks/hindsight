@@ -182,12 +182,7 @@ export const reconcileOrders = inngest.createFunction(
                 ? new Date(alpacaOrder.filled_at)
                 : new Date();
 
-              const handled = await applyFillByIntent(order, fillPrice, fillQty, filledAt);
-              if (handled) {
-                filled++;
-                await maybeCancelOrphanedSellProposals(order);
-                await sendIfABuy(order);
-              }
+              if (await applyFill(order, fillPrice, fillQty, filledAt)) filled++;
               return;
             }
 
@@ -206,17 +201,7 @@ export const reconcileOrders = inngest.createFunction(
                 const partialFilledAt = alpacaOrder.filled_at
                   ? new Date(alpacaOrder.filled_at)
                   : new Date();
-                const handled = await applyFillByIntent(
-                  order,
-                  partialPrice,
-                  partialQty,
-                  partialFilledAt,
-                );
-                if (handled) {
-                  filled++;
-                  await maybeCancelOrphanedSellProposals(order);
-                  await sendIfABuy(order);
-                }
+                if (await applyFill(order, partialPrice, partialQty, partialFilledAt)) filled++;
                 return;
               }
               const finalStatus = status === "rejected" ? "REJECTED" : "CANCELLED";
@@ -303,6 +288,14 @@ async function maybeCancelOrphanedSellProposals(order: PendingOrderRow): Promise
 async function sendIfABuy(order: PendingOrderRow): Promise<void> {
   const intent = order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE");
   if (intent === "OPEN" || intent === "ADD") await sendBuyFilled(order.id);
+}
+
+/** A fill applied once: the row flipped, a stale sale voided, and a buy's run asked for. A fill already applied does nothing. */
+async function applyFill(order: PendingOrderRow, price: number, qty: number, at: Date): Promise<boolean> {
+  if (!(await applyFillByIntent(order, price, qty, at))) return false;
+  await maybeCancelOrphanedSellProposals(order);
+  await sendIfABuy(order);
+  return true;
 }
 
 /**
@@ -619,4 +612,4 @@ async function markOrderRejectedAndCancelPosition(
 
 // Re-export for tests that exercise the fill application directly, without
 // standing up Inngest (same pattern as trigger-evaluator's __test__).
-export const __test__ = { applyFillByIntent, maybeEvaluateClosedPosition };
+export const __test__ = { applyFillByIntent, applyFill, maybeEvaluateClosedPosition };

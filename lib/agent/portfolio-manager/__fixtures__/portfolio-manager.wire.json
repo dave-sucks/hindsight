@@ -276,7 +276,8 @@
              "enum": [
               "below",
               "above"
-             ]
+             ],
+             "description": "below fires once the price is below the value (a pullback); above fires once the price is above the value (a breakout, adding on strength)."
             },
             "value": {
              "anyOf": [
@@ -334,7 +335,8 @@
               "below",
               "near",
               "above"
-             ]
+             ],
+             "description": "below fires once the price is down that % or more from the line in variable (a drop from a recent close or our buy price; off the high since we bought, the trail); near fires once the price is within that % of the line (near an average, or just under the 52-week high); above fires once the price is up that % or more from the line (a run from a recent close, a gain from our buy price)."
             },
             "value": {
              "anyOf": [
@@ -400,7 +402,8 @@
              "enum": [
               "below",
               "above"
-             ]
+             ],
+             "description": "below fires once RSI is below the number (oversold); above fires once RSI is above the number (overbought)."
             },
             "value": {
              "type": "number"
@@ -486,7 +489,8 @@
              "enum": [
               "before",
               "after"
-             ]
+             ],
+             "description": "before fires once the next report is that many days away or fewer (a heads-up); after fires once the last report came out that many days ago or fewer (0: the report day)."
             },
             "value": {
              "type": "number"
@@ -511,7 +515,8 @@
              "enum": [
               "miss",
               "beat"
-             ]
+             ],
+             "description": "miss fires once the last report missed the estimate by that % or more (0: any miss); beat fires once the last report beat the estimate by that % or more (0: any beat)."
             },
             "value": {
              "type": "number"
@@ -633,7 +638,8 @@
              "enum": [
               "after",
               "before"
-             ]
+             ],
+             "description": "after fires once that many days have passed since the date in variable; before fires once the event date is that many days away or fewer (a window before it)."
             },
             "value": {
              "type": "number"
@@ -761,6 +767,10 @@
         "ticker": {
          "type": "string",
          "description": "The stock, e.g. NVDA."
+        },
+        "analyst_id": {
+         "description": "Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.",
+         "type": "string"
         },
         "brief": {
          "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",
@@ -1066,7 +1076,8 @@
               "enum": [
                "below",
                "above"
-              ]
+              ],
+              "description": "below fires once the price is below the value (a pullback); above fires once the price is above the value (a breakout, adding on strength)."
              },
              "value": {
               "anyOf": [
@@ -1124,7 +1135,8 @@
                "below",
                "near",
                "above"
-              ]
+              ],
+              "description": "below fires once the price is down that % or more from the line in variable (a drop from a recent close or our buy price; off the high since we bought, the trail); near fires once the price is within that % of the line (near an average, or just under the 52-week high); above fires once the price is up that % or more from the line (a run from a recent close, a gain from our buy price)."
              },
              "value": {
               "anyOf": [
@@ -1190,7 +1202,8 @@
               "enum": [
                "below",
                "above"
-              ]
+              ],
+              "description": "below fires once RSI is below the number (oversold); above fires once RSI is above the number (overbought)."
              },
              "value": {
               "type": "number"
@@ -1276,7 +1289,8 @@
               "enum": [
                "before",
                "after"
-              ]
+              ],
+              "description": "before fires once the next report is that many days away or fewer (a heads-up); after fires once the last report came out that many days ago or fewer (0: the report day)."
              },
              "value": {
               "type": "number"
@@ -1301,7 +1315,8 @@
               "enum": [
                "miss",
                "beat"
-              ]
+              ],
+              "description": "miss fires once the last report missed the estimate by that % or more (0: any miss); beat fires once the last report beat the estimate by that % or more (0: any beat)."
              },
              "value": {
               "type": "number"
@@ -1423,7 +1438,8 @@
               "enum": [
                "after",
                "before"
-              ]
+              ],
+              "description": "after fires once that many days have passed since the date in variable; before fires once the event date is that many days away or fewer (a window before it)."
              },
              "value": {
               "type": "number"
@@ -1551,6 +1567,10 @@
          "ticker": {
           "type": "string",
           "description": "The stock, e.g. NVDA."
+         },
+         "analyst_id": {
+          "description": "Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.",
+          "type": "string"
          },
          "brief": {
           "description": "What the Writer reads first: why this stock, what you found (the numbers, the links), whose idea it is, and your own view.",

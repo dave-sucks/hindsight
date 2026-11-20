@@ -32,17 +32,25 @@ describe("watch_stock", () => {
     expect(db.store.thesisUpdate.filter((u) => (u as { thesisId?: string }).thesisId === t.id).map((u) => (u as { type?: string }).type)).toEqual(["CREATED"]);
   }, 30_000);
 
-  it("a day is a review every that many days", async () => {
+  // A day used to be "Review every N days", a clock that every note restarted (the #1051 review).
+  it("an event's date is saved as the stock's event date, and the review is the day after it", async () => {
     const day = new Date(Date.now() + 30 * 86_400_000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    const { db } = await watch({ look_again_date: day });
-    expect(triggerSentences(mltx(db)[0])[0]).toMatch(/^Review every (29|30|31) days$/);
+    const { db } = await watch({ look_again_event_date: day });
+    const [t] = mltx(db);
+    expect(triggerSentences(t)).toEqual(["Review 1 day after the event date"]);
+    expect((t as { catalystDate?: Date }).catalystDate?.toISOString().slice(0, 10)).toBe(day);
   }, 30_000);
 
-  it("exactly one look-again: neither or both is refused, and nothing is written", async () => {
-    for (const args of [{}, { look_again_price: 8, look_again_date: "2026-12-17" }]) {
+  it("after the next report is the day after it", async () => {
+    const { db } = await watch({ look_again_after_next_report: true });
+    expect(triggerSentences(mltx(db)[0])).toEqual(["Review if within 1 day after earnings"]);
+  }, 30_000);
+
+  it("exactly one look-again: none or two is refused, and nothing is written", async () => {
+    for (const args of [{}, { look_again_price: 8, look_again_event_date: "2026-12-17" }, { look_again_after_next_report: true, look_again_event_date: "2026-12-17" }]) {
       const { result, db } = await watch(args);
       expect(result.data).toMatchObject({ status: "FAILED" });
-      expect(String(result.data?.note)).toMatch(/exactly one of look_again_price or look_again_date/);
+      expect(String(result.data?.note)).toMatch(/exactly one of look_again_price, look_again_after_next_report or look_again_event_date/);
       expect(mltx(db)).toHaveLength(0);
     }
   }, 30_000);

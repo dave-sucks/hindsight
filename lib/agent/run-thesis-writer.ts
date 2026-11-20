@@ -93,6 +93,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import { TRUE_NOW, trueNowIds } from "@/lib/agent/triggers/true-now";
 import { isNamedSetup } from "@/lib/agent/knowledge/setups";
 import { PLAYBOOK_UNREAD, playbookWatchTriggers } from "@/lib/agent/knowledge/playbooks";
 
@@ -997,8 +998,6 @@ export interface WriterSaveCall {
   notWritten: DroppedItem[];
 }
 
-/** Today, ET (YYYY-MM-DD): the day a look-again's date is counted from. */
-const etToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 
 /** Every playbook's templates for the account (loadPlaybooks); null when they couldn't be read. */
 export type WriterPlaybooks = ((setupId: string) => Template[]) | null;
@@ -1066,13 +1065,19 @@ export function buildWriterSaveCall(
   const sections = sectionArgs;
   const writes = writerPlaybookWrites(d, pull, args.mode === "mint" ? null : existing, playbooks);
   if (args.mode === "mint") {
-    const look = lookAgainTrigger(d.look_again, etToday());
+    const look = lookAgainTrigger(d.look_again);
     const review = args.reviewCadenceDays
       ? [{ predicate: { watch: "repeat", value: args.reviewCadenceDays }, action: "REVIEW", rationale: `Look at this every ${args.reviewCadenceDays} day(s), from the last review.` }]
       : [];
+    // The save keeps one of each kind: the clock the stock was sent with first, then the playbook's, then the look-again.
+    const sent = oneOfEachKind([
+      { whose: "the review clock it was sent with,", triggers: review },
+      { whose: "the playbook's", triggers: writes.add },
+      { whose: "the look-again,", triggers: look ? [look] : [] },
+    ]);
     return {
       toolName: "record_thesis",
-      notWritten: writes.notWritten,
+      notWritten: [...writes.notWritten, ...(d.direction === "PASS" ? [] : sent.notWritten)],
       toolArgs: {
         ticker: T,
         company_name: pull?.companyName ?? undefined,
@@ -1094,7 +1099,7 @@ export function buildWriterSaveCall(
         key_assumptions: d.key_assumptions,
         invalidation_conditions: d.invalidation_conditions,
         // A PASS carries no triggers (record_thesis's gate).
-        triggers: d.direction === "PASS" ? undefined : [...writes.add, ...review, ...(look ? [look] : [])],
+        triggers: d.direction === "PASS" ? undefined : sent.triggers,
         // P1-35: pass the model's engagement with a recent sale through
         // to record_thesis's recently-sold gate.
         acknowledge_prior_exit: d.prior_exit_acknowledgment,
@@ -1119,7 +1124,7 @@ export function buildWriterSaveCall(
       ? ` ⚠ Writer's refreshed view is ${d.direction} vs stored ${existing.direction} — orchestrator should re-evaluate direction.`
       : "";
   const pass = d.direction === "PASS";
-  const refreshLook = pass ? null : lookAgainTrigger(d.look_again, etToday());
+  const refreshLook = pass ? null : lookAgainTrigger(d.look_again);
   return {
     toolName: "update_thesis",
     notWritten: writes.notWritten,
@@ -1142,6 +1147,69 @@ export function buildWriterSaveCall(
       ...sections,
     },
   };
+}
+
+/**
+ * One trigger of each kind, as the save keeps them (record_thesis's
+ * mergeTriggers keeps the first of a kind): an earlier group's wins, and one
+ * left out goes on the stock as a "Not applied" line naming what stays. A
+ * look-again used to vanish unseen behind the clock the stock was sent with.
+ * Pure.
+ */
+export function oneOfEachKind(groups: ReadonlyArray<{ whose: string; triggers: Array<Record<string, unknown>> }>): {
+  triggers: Array<Record<string, unknown>>;
+  notWritten: DroppedItem[];
+} {
+  const taken = new Map<string, Trigger>();
+  const triggers: Array<Record<string, unknown>> = [];
+  const notWritten: DroppedItem[] = [];
+  for (const g of groups) {
+    for (const t of g.triggers) {
+      const read = triggerInputSchema.safeParse(t);
+      // One the schema can't read is the save's to refuse, with its reason.
+      if (!read.success) { triggers.push(t); continue; }
+      const slot = triggerSlot(read.data as Trigger);
+      const there = taken.get(slot);
+      if (there) {
+        notWritten.push({ field: "triggers", why: `${g.whose} ${sentenceOf(read.data as Trigger)}`, reason: `a stock carries one trigger of a kind, and ${sentenceOf(there)} stays` });
+        continue;
+      }
+      taken.set(slot, read.data as Trigger);
+      triggers.push(t);
+    }
+  }
+  return { triggers, notWritten };
+}
+
+/**
+ * A LONG or SHORT decision that would leave a watch with nothing on it that
+ * can fire is refused at the save, with what to do instead (DAV-291, LUXE
+ * 2026-09-18). The rule was a refusal until #1051 made it one reminder after
+ * the save. It reads the triggers the save would leave: a watch the save puts
+ * its playbook's watch triggers on passes, whatever it carried before. A
+ * stock we hold has its floor; a PASS on a stock with a view leaves the view
+ * as it is, flagged for the orchestrator. Rules inherited from the analyst or
+ * the account don't count. Null when it may save.
+ */
+export function nothingCanFireRefusal(call: WriterSaveCall, d: Pick<ValidatedThesisDecision, "direction">, existing: StockForSave | null): string | null {
+  if (d.direction !== "LONG" && d.direction !== "SHORT") return null;
+  if (existing?.status === "HOLDING") return null;
+  const a = call.toolArgs as { ticker?: string; triggers?: unknown[]; add_triggers?: unknown[]; remove_trigger_ids?: string[] };
+  const left =
+    call.toolName === "record_thesis"
+      ? (a.triggers ?? []).length
+      : (existing?.triggers ?? []).filter((t) => !(a.remove_trigger_ids ?? []).includes(t.id)).length + (a.add_triggers ?? []).length;
+  if (left > 0) return null;
+  const refresh = call.toolName === "update_thesis";
+  const view = refresh && existing?.direction != null;
+  const look = "look_again: after_next_report, or after_event with the event's date in catalyst_date";
+  // What can pass: a refresh writes a playbook's triggers only when the playbook changes (#1065).
+  const fix = !refresh
+    ? `Name the playbook whose watch triggers this chart can price today (setup_id), or give ${look}.`
+    : (a.remove_trigger_ids ?? []).length
+      ? `Keep its playbook (${existing?.setupId}): naming another takes its triggers off, and the one named puts none on that this chart can price today. Or give ${look}.`
+      : `Give ${look}. A refresh puts a playbook's watch triggers on only when it names ${existing?.setupId ? `another playbook than ${existing.setupId}` : "a playbook"} whose triggers this chart can price today.`;
+  return `This would save a ${d.direction} watch with nothing on it that can fire: no buy, no trigger and no review, so it could never come back. ${fix}${view ? "" : " Or PASS with the reason."}`;
 }
 
 export { resolveEventDate } from "@/lib/agent/thesis-research/catalyst-on-file";
@@ -1258,6 +1326,8 @@ export async function checkDecisionAgainstSave(input: {
   playbooks?: WriterPlaybooks;
 }): Promise<WriterSaveOutcome> {
   const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existing, input.playbooks ?? null);
+  const nothing = nothingCanFireRefusal(call, input.decision, input.existing);
+  if (nothing) return { thesisId: null, wouldSave: false, error: nothing, fixable: true };
   const checkCtx: ToolContext = { ...input.ctx, dryRun: true };
   const toolInstance = call.toolName === "record_thesis" ? recordThesis(checkCtx) : updateThesis(checkCtx);
   try {
@@ -1526,13 +1596,15 @@ export function nothingCanFire(ticker: string, direction: string): string {
 }
 
 /** What the Writer reads after its save: the decision it sent, the stock's triggers as saved, and what wasn't written. */
-export function tailorMessage(o: { ticker: string; decision: unknown; status: string; direction: string | null; triggers: Trigger[]; notWritten: DroppedItem[] }): string {
+export function tailorMessage(o: { ticker: string; decision: unknown; status: string; direction: string | null; triggers: Trigger[]; notWritten: DroppedItem[]; trueNow?: ReadonlySet<string> }): string {
   const directional = o.direction === "LONG" || o.direction === "SHORT";
+  // A line that holds today is named, so the Writer keeps it or takes it off with its reason (ETN 11-19, true-now.ts).
+  const line = (t: Trigger) => `- ${sentenceOf(t)}${t.playbook === "WATCH" ? " (the playbook's)" : ""}${o.trueNow?.has(t.id) ? ` (${TRUE_NOW})` : ""} — ${t.rationale} [id ${t.id}]`;
   return [
     `You submitted this decision:\n${JSON.stringify(o.decision)}`,
     "",
     `Saved. $${o.ticker}'s triggers now:`,
-    ...(o.triggers.length ? o.triggers.map((t) => `- ${sentenceOf(t)}${t.playbook === "WATCH" ? " (the playbook's)" : ""} — ${t.rationale} [id ${t.id}]`) : ["(none)"]),
+    ...(o.triggers.length ? o.triggers.map(line) : ["(none)"]),
     ...(o.notWritten.length ? ["Not written:", ...o.notWritten.map((n) => `- ${n.why}: ${n.reason}`)] : []),
     "",
     !o.triggers.length && o.status !== "HOLDING" && directional
@@ -1570,7 +1642,18 @@ async function writerTailorPhase(input: {
   const messages: ModelMessage[] = [
     { role: "user", content: research.userPrompt },
     { role: "assistant", content: research.noteText || "(research note)" },
-    { role: "user", content: tailorMessage({ ticker: row.ticker, decision: sent, status: row.status, direction: row.direction, triggers, notWritten: input.notWritten }) },
+    {
+      role: "user",
+      content: tailorMessage({
+        ticker: row.ticker,
+        decision: sent,
+        status: row.status,
+        direction: row.direction,
+        triggers,
+        notWritten: input.notWritten,
+        trueNow: await trueNowIds(thesisId, { userId: input.ctx.userId, analystId: input.ctx.analystId, alpacaCreds: input.ctx.alpacaCreds }, triggers),
+      }),
+    },
   ];
   const replies: ModelMessage[] = [];
   const usage = emptyTokenUsage();

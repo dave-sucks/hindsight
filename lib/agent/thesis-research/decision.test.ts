@@ -15,6 +15,10 @@ import {
   validateThesisDecision,
   type ThesisDecisionInput,
 } from "./decision";
+import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { triggerSlot } from "@/lib/agent/triggers/condition/slot";
+import { triggerInputSchema } from "@/lib/agent/triggers/schema";
+import type { Trigger } from "@/lib/agent/triggers/types";
 
 const validLong: ThesisDecisionInput = {
   direction: "LONG",
@@ -100,18 +104,21 @@ describe("submit_thesis carries no trigger language", () => {
 });
 
 describe("look_again: a view with no buy yet says when to look again, instead of a pass (SNDK 2026-11-04)", () => {
-  const opts = { ...mintOpts, todayEt: "2026-11-04" };
+  const opts = mintOpts;
   const view = { ...validLong, setup_id: undefined };
 
-  it("after the next report, or on a day 1 to 365 days out, with why: accepted", () => {
+  it("after the next report, or after the stock's event date with that date, with why: accepted", () => {
     expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: "Whether the January report confirms NAND pricing." } }, opts).ok).toBe(true);
-    expect(validateThesisDecision({ ...view, look_again: { on_date: "2027-01-28", why: "After the January report." } }, opts).ok).toBe(true);
+    // CORT 2026-11-19 (local-cort-writer-mint): "Review the day after the FDA decision" on Dec 17.
+    expect(validateThesisDecision({ ...view, catalyst_date: "2026-12-17", look_again: { after_event: true, why: "The day after the FDA decision." } }, opts).ok).toBe(true);
   });
 
-  it("neither or both, a day out of reach, or no why: sent back with the fix", () => {
-    expect(validateThesisDecision({ ...view, look_again: { why: "w" } }, opts).errors).toEqual(["look_again: give one of after_next_report or on_date, with why."]);
-    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, on_date: "2027-01-28", why: "w" } }, opts).ok).toBe(false);
-    expect(validateThesisDecision({ ...view, look_again: { on_date: "2026-11-01", why: "w" } }, opts).errors[0]).toMatch(/not a day 1 to 365 days from today/);
+  it("neither or both, an event with no date, or no why: sent back with the fix", () => {
+    expect(validateThesisDecision({ ...view, look_again: { why: "w" } }, opts).errors).toEqual(["look_again: give one of after_next_report or after_event, with why."]);
+    expect(validateThesisDecision({ ...view, catalyst_date: "2026-12-17", look_again: { after_next_report: true, after_event: true, why: "w" } }, opts).ok).toBe(false);
+    expect(validateThesisDecision({ ...view, look_again: { after_event: true, why: "w" } }, opts).errors).toEqual([
+      "look_again.after_event: give the event's date in catalyst_date; for a plain date with no event, add a review clock with edit_triggers after the save.",
+    ]);
     expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: " " } }, opts).errors[0]).toMatch(/look_again\.why/);
   });
 
@@ -120,10 +127,15 @@ describe("look_again: a view with no buy yet says when to look again, instead of
     expect(v.errors).toEqual(["look_again: a PASS takes none. A view you would look again at is LONG or SHORT with no buy and this look-again; or pass with none."]);
   });
 
-  it("code writes the one review: the day after the next report, or every that many days from the day", () => {
-    expect(lookAgainTrigger({ after_next_report: true, why: " After the report. " }, "2026-11-04")).toEqual({ action: "REVIEW", predicate: { watch: "report", is: "after", value: 1 }, rationale: "After the report." });
-    expect(lookAgainTrigger({ on_date: "2026-11-18", why: "Two weeks on." }, "2026-11-04")).toEqual({ action: "REVIEW", predicate: { watch: "repeat", value: 14 }, rationale: "Two weeks on." });
-    expect(lookAgainTrigger(undefined, "2026-11-04")).toBeNull();
+  it("code writes the one review: the day after the next report, or the day after the event date, never a clock that slides", () => {
+    const report = lookAgainTrigger({ after_next_report: true, why: " After the report. " });
+    const event = lookAgainTrigger({ after_event: true, why: "The day after the FDA decision." });
+    expect(report).toEqual({ action: "REVIEW", predicate: { watch: "report", is: "after", value: 1 }, rationale: "After the report." });
+    expect(event).toEqual({ action: "REVIEW", predicate: { watch: "from_date", is: "after", value: 1, variable: "event" }, rationale: "The day after the FDA decision." });
+    expect([report, event].map((t) => sentenceOf(triggerInputSchema.parse(t) as unknown as Trigger))).toEqual(["Review if within 1 day after earnings", "Review 1 day after the event date"]);
+    // Neither is a review clock: a note doesn't move it, and it never takes the stock's clock's place.
+    expect([report, event].map((t) => triggerSlot(triggerInputSchema.parse(t) as unknown as Trigger))).not.toContain(triggerSlot({ action: "REVIEW", predicate: { watch: "repeat", value: 30 } } as never));
+    expect(lookAgainTrigger(undefined)).toBeNull();
   });
 });
 

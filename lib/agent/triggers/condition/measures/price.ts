@@ -6,7 +6,7 @@
  */
 
 
-import { BELOW_ABOVE, type MeasureDef } from "../measure";
+import type { MeasureDef } from "../measure";
 import { PRICE_VARIABLES, variableDef } from "../variables";
 
 import { trailFireLevel } from "../../trail";
@@ -20,7 +20,10 @@ export const price: MeasureDef = {
   id: "price",
   type: "price",
   label: "$ Price",
-  buttons: BELOW_ABOVE,
+  buttons: [
+    { is: "below", label: "Below", means: "the price is below the value (a pullback)" },
+    { is: "above", label: "Above", means: "the price is above the value (a breakout, adding on strength)" },
+  ],
   value: { prefix: "$", placeholder: "0.00", range: { what: "A typed price", unit: "$", over: 0 }, missing: "Enter a price, or use a price variable." },
   variables: { mode: "replace", options: PRICE_VARIABLES, title: "Use a price instead" },
   settings: [
@@ -67,9 +70,9 @@ export const move: MeasureDef = {
   type: "price",
   label: "% Move",
   buttons: [
-    { is: "below", label: "Below" },
-    { is: "near", label: "Within" },
-    { is: "above", label: "Above" },
+    { is: "below", label: "Below", means: "the price is down that % or more from the line in variable (a drop from a recent close or our buy price; off the high since we bought, the trail)" },
+    { is: "near", label: "Within", means: "the price is within that % of the line (near an average, or just under the 52-week high)" },
+    { is: "above", label: "Above", means: "the price is up that % or more from the line (a run from a recent close, a gain from our buy price)" },
   ],
   value: {
     suffix: "%",

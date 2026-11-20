@@ -329,7 +329,7 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "web_search",
       // ── Writes. Unscoped, each acts for the stock's own analyst
       // (analyst-scope.ts); pass_on_stock and watch_stock name their analyst when it isn't pinned.
-      // A stock wanted back at a price or on a day with no view yet: on watch, with its one look-again review.
+      // A stock wanted back at a price, after its next report or after an event, with no view yet: on watch, with its one look-again review.
       "watch_stock",
       // "We looked, and we pass": the stock and the reason, saved as Passed.
       "pass_on_stock",

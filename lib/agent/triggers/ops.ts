@@ -131,6 +131,12 @@ export interface TriggerOpResult {
   unchanged?: true;
   /** The number a refused op asked for, so the save's record names what did not land. */
   to?: number;
+  /**
+   * An add or edit that landed: the trigger as saved, its sentence beside its
+   * reason, so whoever sent it reads what it now says. PANW 2026-11-19 was told
+   * "Added: Add if below $406.88" and never saw it beside its "back through its old high".
+   */
+  saved?: string;
 }
 
 export interface ApplyTriggerOpsInput {
@@ -268,7 +274,8 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
 
   const commit = (next: Trigger[], result: TriggerOpResult) => {
     stored = next;
-    results.push(result);
+    const t = result.op === "remove" ? undefined : next.find((x) => x.id === result.id);
+    results.push(t ? { ...result, saved: `${describeTrigger(t)} — ${t.rationale}` } : result);
   };
 
   const notStored = (id: string): string => {

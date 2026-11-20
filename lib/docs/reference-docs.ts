@@ -5,7 +5,7 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { DIALOG_ACTIONS, TRIGGER_TYPES, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { DIALOG_ACTIONS, TRIGGER_TYPES, directionWords, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
@@ -29,6 +29,9 @@ function measureSection(m: MeasureDef): string[] {
   ].filter((x): x is string => x != null);
 
   const out = [`### ${m.label.replace(/^[^A-Za-z]+/, "")}`, "", facts.join(" · "), ""];
+  // What each direction fires on: the words the agents' tools describe `is` with.
+  const means = directionWords(m);
+  if (means) out.push(`\`is\`: ${means}`, "");
 
   if (m.variables) {
     const how = m.variables.mode === "replace" ? "stands in for the number" : "the number is measured from it";

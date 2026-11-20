@@ -109,7 +109,7 @@ On a stock we hold, no agent can lower a floor, widen a trail, remove a protecti
 `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }` for two or more that must all hold, one level deep. Stored on the thesis, the analyst or the account.
 
 #### Catalog
-One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into the five types by `catalog.ts`. Words from `describe.ts`.
+One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into the five types by `catalog.ts`. Words from `describe.ts`. Each direction button carries what it fires on (`means`, "above fires once the price is above the value (a breakout, adding on strength)"): the agents' tools describe `is` with it (`directionWords`, read by `lib/agent/triggers/schema.ts`), and the measures reference prints it.
 
 #### Check
 `trigger-evaluator.ts`: every 5 minutes in market hours, plus a close pass 16:20–16:34 ET. Chart measures read the 06:30 `TickerIndicators` snapshot.

@@ -95,6 +95,8 @@ interface HeroCase {
   messages: ModelMessage[];
   /** An after-buy case's grade (lib/agent/yardstick/after-buy.ts). */
   afterBuy?: AfterBuyExpect;
+  /** A Writer case: its stock's triggers that held at the case's moment, by id, named in the triggers it reads after its save (true-now.ts). */
+  trueNow?: string[];
 }
 
 /** An after-buy case's recorded inputs: the trade as the fill sends it, and its context as of the fill. */
@@ -236,7 +238,7 @@ async function tailorTurns(o: {
   const messages: ModelMessage[] = [
     { role: "user", content: said },
     { role: "assistant", content: o.note || "(research note)" },
-    { role: "user", content: tailorMessage({ ticker: o.wc.ticker, decision: o.decision, status: o.saved.status, direction: o.saved.direction, triggers: o.saved.triggers, notWritten: o.saved.notWritten }) },
+    { role: "user", content: tailorMessage({ ticker: o.wc.ticker, decision: o.decision, status: o.saved.status, direction: o.saved.direction, triggers: o.saved.triggers, notWritten: o.saved.notWritten, trueNow: new Set(o.c.trueNow ?? []) }) },
   ];
   const calls: Call[] = [];
   const invalid: Array<{ tool: string; error: string }> = [];
@@ -612,7 +614,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
         const w = writerArgs(c);
         for (const t of result.toolCalls as Array<{ toolCallId: string; toolName: string; invalid?: boolean; input?: unknown }>) {
           if (t.invalid || t.toolName !== "submit_thesis") continue;
-          const v = validateThesisDecision(t.input as never, { mode: w.mode, existingStatus: w.existingThesis?.status ?? null, currentPrice: null, todayEt: (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) });
+          const v = validateThesisDecision(t.input as never, { mode: w.mode, existingStatus: w.existingThesis?.status ?? null, currentPrice: null });
           if (v.ok) continue;
           handBacks.set(t.toolCallId, { accepted: false, errors: v.errors, instruction: "Fix exactly these fields and call submit_thesis again. Do NOT rewrite the research note." });
           handedBack.push({ errors: v.errors });
@@ -691,7 +693,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     if (submitCall) {
       const wc = writerCaseOf(c);
       const decision = (submitCall.input ?? {}) as Record<string, unknown>;
-      const saved = savedByWriter(decision, wc, (await caseNow(c)).toLocaleDateString("en-CA", { timeZone: "America/New_York" }));
+      const saved = savedByWriter(decision, wc);
       const t = ["WATCHING", "HOLDING", "PROMOTED"].includes(saved.status)
         ? await tailorTurns({ c, model, system, provider: mode.provider, providerOptions, decision, note: text, saved, wc })
         : { calls: [], text: "", invalid: [], usage: { in: 0, cached: 0, out: 0 } };

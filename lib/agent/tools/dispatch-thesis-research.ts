@@ -21,6 +21,7 @@ import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
 import { findInFlightWriter } from "@/lib/agent/thesis-writer-dispatch";
+import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 
 
 /** The longest screen row the writer's prompt carries. */
@@ -53,9 +54,14 @@ export const dispatchThesisResearch = defineTool({
     source_link: z.string().optional().describe("The link to the post or article the idea came from, when there is one."),
   }),
   // Only the chat with no analyst pinned names one; any other run writes for its own (ETN 10-15: a made-up slug).
+  // The Portfolio Manager names one only when two analysts hold or watch the stock (CRWD 11-19).
   // A trigger run sends its own stock (fromRun).
   schemaFor: (ctx, schema) => {
-    const mine = namesAnalyst(ctx) ? schema : schema.omit({ analyst_id: true });
+    const mine = namesAnalyst(ctx)
+      ? schema
+      : isManagerRun(ctx)
+        ? schema.extend({ analyst_id: z.string().optional().describe("Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.") })
+        : schema.omit({ analyst_id: true });
     return ctx.runMode === "INTRADAY_TACTICAL" ? mine.omit({ ticker: true }) : mine;
   },
   fromRun: (ctx) => (ctx.runStock ? { ticker: ctx.runStock.ticker } : null),
@@ -72,10 +78,32 @@ export const dispatchThesisResearch = defineTool({
     // Verify the analyst exists + belongs to this account before inserting
     // the child run row. The FK on ResearchRun.agentConfigId is SetNull, so
     // a bogus id wouldn't fail at insert — it'd just orphan the run.
-    // The Portfolio Manager has no analyst: the stock goes to the analyst whose live thesis it is.
-    const thesisAnalyst = async () =>
-      (await prisma.thesis.findFirst({ where: { ticker: T, userId: ctx.userId, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] } }, orderBy: { createdAt: "desc" }, select: { researchRun: { select: { agentConfigId: true } } } }))?.researchRun?.agentConfigId;
-    const analystId = namesAnalyst(ctx) ? args.analyst_id : (ctx.analystId ?? (ctx.runMode === "PORTFOLIO_MANAGER" ? await thesisAnalyst() : undefined));
+    // The Portfolio Manager has no analyst: the stock goes to the analyst whose live thesis it is, in this account.
+    // With two (CRWD 11-19: watched by the PEAD Specialist and the Secular Compounder), it names one or is refused.
+    let analystId: string | undefined = namesAnalyst(ctx) ? args.analyst_id : ctx.analystId;
+    if (isManagerRun(ctx)) {
+      const live = await prisma.thesis.findMany({
+        where: { ticker: T, accountId: ctx.accountId, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] } },
+        orderBy: { createdAt: "desc" },
+        select: { researchRun: { select: { agentConfigId: true } } },
+      });
+      const ids = [...new Set(live.map((t) => t.researchRun?.agentConfigId).filter((id): id is string => !!id))];
+      const found = ids.length ? await prisma.agentConfig.findMany({ where: { id: { in: ids }, accountId: ctx.accountId }, select: { id: true, name: true } }) : [];
+      // Newest thesis first.
+      const owners = ids.flatMap((id) => found.filter((o) => o.id === id));
+      const named = args.analyst_id ? owners.find((o) => o.id === args.analyst_id) : owners.length === 1 ? owners[0] : undefined;
+      if (!named) {
+        const list = owners.map((o) => `${o.name} (${o.id})`).join(", ");
+        const note =
+          owners.length === 0
+            ? `No analyst holds or watches $${T}, so there is no thesis to refresh.`
+            : args.analyst_id
+              ? `${args.analyst_id} doesn't hold or watch $${T}. The analysts who do: ${list}. Send it again with one of their ids in analyst_id.`
+              : `$${T} is held or watched by ${owners.length} analysts: ${list}. Send it again with the one whose thesis to refresh in analyst_id.`;
+        return { summary: `Dispatch refused for $${T}: ${note}`, data: { childRunId: null, status: "FAILED" as const, note }, sources: [] };
+      }
+      analystId = named.id;
+    }
     const analyst = await prisma.agentConfig.findFirst({
       where: { id: analystId ?? "", accountId: ctx.accountId },
       select: {
@@ -196,8 +224,13 @@ export const dispatchThesisResearch = defineTool({
     // This analyst's Writer that finished in the last half hour blocks too: the
     // morning job's write-ups and the run's own sends met at 08:02 on 2026-11-19
     // (BEEM, CPA, DOYU written twice). Its result is the answer.
+    // The block is for runs racing each other; the owner's chat asking for a refresh goes through, saying when the last was written.
     const inFlightWriter = await findInFlightWriter(analyst.accountId, T, analyst.id);
-    if (inFlightWriter?.status === "COMPLETE") {
+    let writtenLately: string | null = null;
+    if (inFlightWriter?.status === "COMPLETE" && ctx.runMode === "PRINCIPAL_CHAT") {
+      const ageMin = Math.round((Date.now() - inFlightWriter.startedAt.getTime()) / 60000);
+      writtenLately = `$${T} was last written up for this analyst ${ageMin}m ago (run ${inFlightWriter.id}).`;
+    } else if (inFlightWriter?.status === "COMPLETE") {
       const ageMin = Math.round((Date.now() - inFlightWriter.startedAt.getTime()) / 60000);
       console.warn(`[dispatch-thesis-research] ${T} written for analyst=${analyst.name} ${ageMin}m ago (run=${inFlightWriter.id}) — not sending it again.`);
       return {
@@ -213,7 +246,7 @@ export const dispatchThesisResearch = defineTool({
         sources: [],
       };
     }
-    if (inFlightWriter) {
+    if (inFlightWriter && inFlightWriter.status !== "COMPLETE") {
       const ownerAnalyst = inFlightWriter.agentConfigId
         ? await prisma.agentConfig.findUnique({
             where: { id: inFlightWriter.agentConfigId },
@@ -356,12 +389,13 @@ export const dispatchThesisResearch = defineTool({
     });
 
     return {
-      summary: `Dispatched thesis-writer for $${T} (${mode}) — child run ${childRun.id}${sentAs ? `. ${sentAs}` : ""}`,
+      summary: `Dispatched thesis-writer for $${T} (${mode}) — child run ${childRun.id}${sentAs ? `. ${sentAs}` : ""}${writtenLately ? ` ${writtenLately}` : ""}`,
       data: {
         childRunId: childRun.id,
         ticker: T,
         mode,
         ...(sentAs ? { sentAs } : {}),
+        ...(writtenLately ? { writtenLately } : {}),
         // V2 writer typical wall time (~200-250s observed target; see
         // docs/plans/THESIS_WRITER_V2.md). The old 90_000 was copied from
         // the V1 synthesis sub-call's budget and was fiction for the

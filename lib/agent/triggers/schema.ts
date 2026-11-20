@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Condition, Direction, SettingDef, VariableId, Watch, When } from "./condition/types";
-import type { MeasureDef } from "./condition/measure";
+import { directionWords, type MeasureDef } from "./condition/measure";
 import { MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
 import { settingRefusal } from "./condition/range";
@@ -132,7 +132,8 @@ function fittingVariables(m: MeasureDef) {
 function measureBranch(m: MeasureDef, keys = false, noTypedPrices = false) {
   // The branch's fields say what the measure takes; its sentence (`m.shape`) is for a refusal, not repeated here.
   const shape: Record<string, z.ZodTypeAny> = { watch: z.literal(m.id) };
-  if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]);
+  // What each direction fires on, in the catalog's words (PANW 11-19: "below" written for a break above its old high).
+  if (m.buttons) shape.is = z.enum(m.buttons.map((b) => b.is) as [Direction, ...Direction[]]).describe(directionWords(m)!);
   const fitting = fittingVariables(m);
   const ids = fitting.map((o) => o.id) as [VariableId, ...VariableId[]];
   // A key, where this caller takes one: code writes today's number (edit_triggers).

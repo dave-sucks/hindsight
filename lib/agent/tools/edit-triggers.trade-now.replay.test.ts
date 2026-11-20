@@ -105,3 +105,22 @@ describe("a planner's buy or add already true at today's price is refused: a tra
     expect(triggerSentences(stored(r))).toContain("Add if below $406.88 · only on the close");
   });
 });
+
+describe("the reply puts each trigger it saved beside its reason", () => {
+  // The reply said "Added: Add if below $406.88 · only on the close" and never put the run's own reason next to it.
+  it("PANW's add, kept on a trigger run, comes back as its sentence beside 'back through its old high'", async () => {
+    const r = await edit(TRIGGER_RUN, { add: [ADD_BELOW] });
+    expect(ops(r)).toEqual([
+      expect.objectContaining({ op: "add", ok: true, text: "Added: Add if below $406.88 · only on the close", saved: `Add if below $406.88 · only on the close — ${ADD_BELOW.rationale}` }),
+    ]);
+  });
+
+  it("every landed add in After the buy's call comes back the same way; a refused one has no saved line", async () => {
+    const r = await edit(AFTER_BUY, { add: THE_CALL });
+    const landed = ops(r).filter((o) => o.ok);
+    expect(landed.length).toBeGreaterThan(0);
+    for (const o of landed) expect((o as { saved?: string }).saved).toMatch(/^.+ — .+/);
+    expect(ops(r).filter((o) => !o.ok).every((o) => !("saved" in o))).toBe(true);
+    expect(landed.map((o) => (o as { saved?: string }).saved)).toContain(`Review if below 12% from our entry — ${THE_CALL[1].rationale}`);
+  });
+});
