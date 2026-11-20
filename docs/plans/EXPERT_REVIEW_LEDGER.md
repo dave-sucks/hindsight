@@ -1,11 +1,11 @@
 # The expert review: ledger
 
-The running record of the review in `docs/PRINCIPLES.md` §8. Every unit is reviewed in the details by a fresh session taking both perspectives (§1), one unit at a time. Start one with `/expert-review` (the next unit marked **Next**) or `/expert-review <unit>`.
+The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (`/expert-review`) runs it. For each unit, one at a time, the lead starts a fresh session (`/expert-review-unit <unit>`) that reviews the unit in the details, taking both perspectives (§1).
 
 **How to use this file**
-- Read it whole before a unit. "Changed shared things" says what earlier units changed that yours may quote.
-- When a unit finishes, update its row (status, PR), add anything later units must know to "Changed shared things", and mark the next unit **Next**.
-- A unit that finds something wrong outside its own scope writes one line under "Structure questions" or "Found, not yet assigned", and doesn't fix it.
+- Every session reads it whole before starting. "Changed shared things" says what earlier units changed that a later unit may quote.
+- Only the lead edits it. When a unit finishes, the lead updates the unit's row (status, PR), adds anything later units must know to "Changed shared things", and marks the next unit **Next**.
+- A unit that finds something wrong outside its own scope reports it to the lead, who writes one line under "Structure questions" or "Found, not yet assigned". Nobody fixes it outside its unit.
 - Status values: **Next**, Building, In review (PR open), Done, Bulk (reviewed inside a bulk unit), Deleted.
 
 ---

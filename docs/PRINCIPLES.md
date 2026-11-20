@@ -151,7 +151,7 @@ A new field fails the test suite until it has a row.
 
 ## 8. Reviewing a part, in the details
 
-The rules, screens, skills, tools and instructions are reviewed one part at a time, by a session that takes both perspectives (§1). Progress lives in `docs/plans/EXPERT_REVIEW_LEDGER.md`. Start a unit with `/expert-review`.
+The rules, screens, skills, tools and instructions are reviewed one part at a time, by sessions that take both perspectives (§1). One lead session runs the review (`/expert-review`). For each unit it starts a fresh session (`/expert-review-unit <unit>`), checks that session's PR against this standard, keeps the ledger (`docs/plans/EXPERT_REVIEW_LEDGER.md`), and brings each PR to the owner. The owner starts the lead once, then reads and merges.
 
 **The order** follows how a trader thinks, so every edit flows one way:
 1. **The rulebook, or what we trade on:** the rules for everything, each playbook, and the book and market rules.
