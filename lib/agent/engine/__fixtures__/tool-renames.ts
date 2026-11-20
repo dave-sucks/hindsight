@@ -109,14 +109,19 @@ export const WHAT_YOU_CAN_DO: ReadonlyArray<readonly [string, string]> = [
   [SALE_FIRED_BEFORE, situationText("PROTECTIVE_SALE", true)],
 ];
 
+/** A fired buy is left as it is once proposed (2026-11-20): the trigger run's re-set after a blown-through price is a holding's sale and gain triggers'. */
+export const PASSED_BUY_TEXT: ReadonlyArray<readonly [string, string]> = [
+  ["After a move that blew through a trigger's price, re-set it", "On a stock we hold, after a move that blew through a sale's or a gain trigger's price, re-set it"],
+];
+
 /** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO, ...PASSED_BUY_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
 /** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO, ...PASSED_BUY_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }
