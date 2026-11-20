@@ -32,15 +32,15 @@ A thesis has two pieces of state, and every look by its analyst ends with one ev
 
 **Outlook** is what we expect of the stock from here: bullish, neutral or bearish, with a sentence of why. The Writer must set it, with its reason, on every thesis it writes. Nothing fills it in from the direction: a thesis written before outlooks existed has none, reads "Not rated", and gets one at its analyst's first look. The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching, and an agent reads the word on the stock's line and the reason wherever it reads the conviction's.
 
-**Conviction** is how confident we are in that outlook and its reasons:
+**Conviction** is how confident we are in the belief as written, whichever way it points:
 
 - **High:** the evidence clearly supports it, and nothing against it is unanswered.
 - **Medium:** reasoned and plausible; untested, or the evidence is mixed.
 - **Low:** thin or contested; an assumption has missed or is in doubt.
 
-It is not how bullish we are and not whether to buy today, so high conviction in a neutral outlook is a real view. It sizes a buy, and its reason is about the business, never the price.
+It is not how bullish we are and not whether to buy today, so high conviction in a neutral or a bearish outlook is a real view. It sizes a buy. A move in the price is not a reason for it, though what the price already reflects can be part of the belief.
 
-**The verdict** is what the evidence since the last look did to the thesis. Every note from a morning run or a trigger run carries one:
+**The verdict** is what the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is stronger. Every note from a morning run or a trigger run carries one:
 
 - **Stronger:** the evidence supports the thesis more than before.
 - **Unchanged:** nothing bore on it. A move in the price alone is unchanged.

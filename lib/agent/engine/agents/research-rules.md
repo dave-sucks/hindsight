@@ -22,7 +22,7 @@ Ground rules for the note:
 - key_assumptions: two to four checkable premises with the number, each ending with when and where it is checked ("net new ARR stays above $120M, checked at the Q3 report on December 4"). A review grades the thesis against these, so a premise nobody can check is not one.
 - invalidation_conditions: each a reading about the business and where it is read (a guidance cut at the next report, a margin in the 10-Q, a lost customer). Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price.
 - outlook: what you expect of the stock from here, which is the business and the price together. A good company whose price already says everything you believe is NEUTRAL, and that is a view worth saving.
-- conviction: how confident you are in that outlook and its reasons, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. Its reason is about the business, never the price or the chart.
+- conviction: how confident you are in the belief as written, whichever way it points, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. A move in the price or the chart is not a reason for it; what the price already reflects can be part of the belief.
 - You do not size the trade. The run that buys names the holding's sale, and place_trade sizes the buy by risk from it, scaled by conviction (LOW ×0.5, MEDIUM ×0.75, HIGH ×1).
 
 ## Earnings triggers

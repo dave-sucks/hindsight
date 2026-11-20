@@ -107,10 +107,10 @@ export function thesisFields() {
     conviction: z
       .enum(["HIGH", "MEDIUM", "LOW"])
       .describe(
-        "How confident you are in the outlook and its reasons. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. " +
+        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. " +
           "It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale.",
       ),
-    conviction_rationale: z.string().describe("Why you are this confident, in a few plain sentences about the business and the evidence. Never the stock's price, an average or the chart."),
+    conviction_rationale: z.string().describe("Why you are this confident, in a few plain sentences: the evidence for the belief. A move in the price or the chart is not evidence; what the price already reflects can be part of the belief."),
     variant_view: z.string().describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. Leave it out when you don't."),
     live_price: z
       .number()
@@ -125,7 +125,7 @@ export function thesisFields() {
     verdict: z
       .string()
       .describe(
-        "What the evidence since the last look did to the thesis. STRONGER: it supports the thesis more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the thesis, not fatally. " +
+        "What the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is STRONGER. STRONGER: it supports the belief more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the belief, not fatally. " +
           "BROKEN: something written under 'would prove it wrong' has happened, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line.",
       ),
     verdict_line: z.string().describe("One sentence: what happened and which assumption or 'would prove it wrong' line it touched, when there is one."),

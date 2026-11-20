@@ -377,13 +377,13 @@ model Thesis {
   outlook             String?
   outlookReason       String?
 
-  // How confident we are in the outlook and its reasons: HIGH, MEDIUM or LOW.
-  // Not how bullish we are and not whether to buy today. It moves only in a
+  // How confident we are in the belief as written, whichever way it points:
+  // HIGH, MEDIUM or LOW. Not how bullish we are and not whether to buy today. It moves only in a
   // review, with that review's verdict (lib/agent/tools/update-thesis.ts).
   // Sizes a buy (lib/agent/position-sizing.ts). Null on a stock with no view.
   conviction          String?
 
-  // Why this conviction, about the business. Sent whenever conviction is.
+  // Why this conviction: the evidence for the belief. Sent whenever conviction is.
   convictionRationale String?
 
   // Where we differ from Wall Street about the business, in a sentence

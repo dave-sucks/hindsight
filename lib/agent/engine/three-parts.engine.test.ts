@@ -59,7 +59,7 @@ const withOutlook = (text: string) => {
     ["revised up in the last 4 weeks is a reason for conviction;", "revised up in the last 4 weeks is a reason for a bullish outlook;"],
     [
       "- conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest middle (most theses).\n",
-      "- outlook: what you expect of the stock from here, which is the business and the price together. A good company whose price already says everything you believe is NEUTRAL, and that is a view worth saving.\n- conviction: how confident you are in that outlook and its reasons, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. Its reason is about the business, never the price or the chart.\n",
+      "- outlook: what you expect of the stock from here, which is the business and the price together. A good company whose price already says everything you believe is NEUTRAL, and that is a view worth saving.\n- conviction: how confident you are in the belief as written, whichever way it points, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. A move in the price or the chart is not a reason for it; what the price already reflects can be part of the belief.\n",
     ],
     ["scaled by conviction (LOW ×0.5 … STRONG ×1.25).", "scaled by conviction (LOW ×0.5, MEDIUM ×0.75, HIGH ×1)."],
   ];
