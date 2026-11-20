@@ -60,7 +60,6 @@ import { listRuns } from "./list-runs";
 import { readRun } from "./read-run";
 import { readAccuracyReports } from "./read-accuracy-reports";
 import { listProposals } from "./list-proposals";
-import { readDatabase } from "./read-database";
 
 interface ToolCtx {
   runId: string;
@@ -208,18 +207,9 @@ export function createResearchTools(
     read_run: readRun(newCtx),
     read_accuracy_reports: readAccuracyReports(newCtx),
     list_proposals: listProposals(newCtx),
-    read_database: readDatabase(newCtx),
   };
 
-  // Backward-compat aliases for old persisted RunMessages
-  const tools = toolsBase as Record<string, unknown>;
-  tools.show_thesis = toolsBase.record_thesis;
-  tools.summarize_run = toolsBase.complete_run;
-
-  return toolsBase as typeof toolsBase & {
-    show_thesis: typeof toolsBase.record_thesis;
-    summarize_run: typeof toolsBase.complete_run;
-  };
+  return toolsBase;
 }
 
 // ── Individual tool exports ────────────────────────────────────────────────────
@@ -273,4 +263,3 @@ export { listRuns } from "./list-runs";
 export { readRun } from "./read-run";
 export { readAccuracyReports } from "./read-accuracy-reports";
 export { listProposals } from "./list-proposals";
-export { readDatabase } from "./read-database";
