@@ -116,12 +116,12 @@ export async function POST(
   const accountId = await getAccountId(user.id);
   if (!accountId) return new Response("No account", { status: 403 });
 
-  // research-run + podcast-segment-run actually mutate (place_trade /
-  // record_thesis / write_segment_transcript). Builder/editor modes
-  // are read-only — they suggest configs but never persist. Gate
-  // VIEWER on the mutating subset. (`tactical` mode is internal-only
-  // and doesn't enter via this route.)
-  if (agentMode === "research-run" || agentMode === "podcast-segment-run") {
+  // research-run, the chat (principal) and podcast-segment-run actually
+  // mutate (place_trade / sell / add / write_segment_transcript).
+  // Builder/editor modes are read-only — they suggest configs but never
+  // persist. Gate VIEWER on the mutating subset. (`tactical` mode is
+  // internal-only and doesn't enter via this route.)
+  if (agentMode === "research-run" || agentMode === "principal" || agentMode === "podcast-segment-run") {
     const role = await getUserRole(user.id, accountId);
     if (role === "VIEWER") return new Response("Forbidden", { status: 403 });
   }
@@ -164,8 +164,9 @@ export async function POST(
     // A morning run's analyst and run input: its request is built once the run's tools are made, since its book is their get_theses read.
     let morning: { subject: SubjectOf<"analyst">; runInput: RunInput } | null = null;
     if (runId) {
+      // This account's own run: another account's run id reads as not found.
       const runRow = await prisma.researchRun.findFirst({
-        where: { id: runId },
+        where: { id: runId, accountId },
         select: { environment: true, agentConfigId: true, mode: true },
       });
       // A run that takes no messages (its page has no composer).
@@ -173,6 +174,8 @@ export async function POST(
       if (runRow) {
         runEnvironment = (runRow.environment as "PAPER" | "LIVE") ?? "PAPER";
         savedMode = runRow.mode;
+      } else if (agentMode === "research-run") {
+        return new Response("Run not found", { status: 404 });
       }
     }
 
@@ -203,7 +206,7 @@ export async function POST(
         (runId
           ? (
               await prisma.researchRun.findFirst({
-                where: { id: runId },
+                where: { id: runId, accountId },
                 select: { agentConfigId: true },
               })
             )?.agentConfigId ?? undefined
@@ -216,11 +219,11 @@ export async function POST(
         const ac = await prisma.agentConfig.findFirst({
           where: { id: resolvedAnalystId, accountId },
         });
-        if (ac) {
-          briefAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
-          const watchlistSymbols = await getWatchlistSymbols(ac.id);
-          agentConfig = analystToolSettings(ac, watchlistSymbols);
-        }
+        // An analyst that isn't on this account gets no run: its tools would write under it.
+        if (!ac) return new Response(`Analyst ${resolvedAnalystId} not found or not in this account.`, { status: 404 });
+        briefAnalyst = { ...ac, setupOverrides: await loadSetupOverrides(ac.accountId) };
+        const watchlistSymbols = await getWatchlistSymbols(ac.id);
+        agentConfig = analystToolSettings(ac, watchlistSymbols);
       }
 
       const runInput = resolvedAnalystId

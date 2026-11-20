@@ -227,8 +227,19 @@ export const placeTrade = defineTool({
       if (effectiveAnalystId) {
         const analystEnabledCheck = await prisma.agentConfig.findUnique({
           where: { id: effectiveAnalystId },
-          select: { enabled: true, name: true },
+          select: { enabled: true, name: true, tradingEnvironment: true, accountId: true },
         });
+        // A buy is for an analyst on the run's own account, and lands in that analyst's own book.
+        // A run opened before a promote or demote would buy in the old one (2026-11-19).
+        if (analystEnabledCheck?.accountId && analystEnabledCheck.accountId !== ctx.accountId) {
+          return blocked(ticker, args.direction, "not this account's analyst", `Trade blocked: that analyst is not on this account.`);
+        }
+        const runBook = ctx.runEnvironment ?? "PAPER";
+        const analystBook = analystEnabledCheck?.tradingEnvironment;
+        if ((analystBook === "PAPER" || analystBook === "LIVE") && analystBook !== runBook) {
+          const name = (b: string) => (b === "LIVE" ? "Live" : "Paper");
+          return blocked(ticker, args.direction, "wrong book", `Trade blocked: this run was opened on ${name(runBook)} and ${analystEnabledCheck?.name} now trades on ${name(analystBook)}. Start a new run to buy it.`);
+        }
         if (analystEnabledCheck && !analystEnabledCheck.enabled) {
           const blockedMsg =
             `Trade blocked: analyst "${analystEnabledCheck.name}" is disabled — ` +

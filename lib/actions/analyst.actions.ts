@@ -796,7 +796,7 @@ export async function deleteAnalyst(analystId: string): Promise<{ refused: strin
   // 2. Find all positions for this analyst
   const positions = await prisma.position.findMany({
     where: { analystId },
-    select: { id: true, symbol: true, status: true, environment: true },
+    select: { id: true, symbol: true, status: true, environment: true, quantity: true, direction: true },
   });
   const positionIds = positions.map((p) => p.id);
 
@@ -806,11 +806,12 @@ export async function deleteAnalyst(analystId: string): Promise<{ refused: strin
     return { refused: `${config.name} holds ${live.length} Live position${live.length === 1 ? "" : "s"} (${live.map((p) => p.symbol).join(", ")}). Close ${live.length === 1 ? "it" : "them"} before deleting this analyst.` };
   }
 
-  // 3. Close its open Paper positions, best effort (one may not exist at the broker)
-  const { closePosition: closeAlpacaPos } = await import("@/lib/alpaca");
+  // 3. Sell its own open Paper shares, best effort (they may not exist at the broker).
+  //    Its own count, never the whole symbol: another analyst may hold the same stock.
+  const { closePositionPartial } = await import("@/lib/alpaca");
   const creds = await resolveAlpacaCredentials(config.userId, "PAPER");
   for (const pos of positions) {
-    if (pos.status === "OPEN") await closeAlpacaPos(pos.symbol, creds, "PAPER").catch(() => {});
+    if (pos.status === "OPEN") await closePositionPartial(pos.symbol, pos.quantity, pos.direction === "SHORT" ? "buy" : "sell", creds, "PAPER").catch(() => {});
   }
 
   // 4. Find theses from those runs

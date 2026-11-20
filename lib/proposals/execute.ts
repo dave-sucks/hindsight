@@ -87,7 +87,8 @@ export class ProposalExecutionError extends Error {
     | "SALE_UNDER_WAY"
     | "NOTHING_HELD"
     | "NO_ROOM_IN_POSITION"
-    | "POSITION_CLOSED";
+    | "POSITION_CLOSED"
+    | "WRONG_BOOK";
   retryable: boolean;
   constructor(code: ProposalExecutionError["code"], message: string, retryable = false) {
     super(message);
@@ -135,6 +136,7 @@ export async function approveProposal(
           targetPrice: true,
           stopLoss: true,
           stopReason: true,
+          analyst: { select: { name: true, tradingEnvironment: true } },
         },
       },
     },
@@ -182,6 +184,15 @@ export async function approveProposal(
   const qtyEdited = effectiveQty !== order.quantity;
 
   const positionEnvironment = order.position.environment as "PAPER" | "LIVE";
+  // A new buy lands in its analyst's own book: one proposed before a promote or demote is not sent in the old one (2026-11-19).
+  const analyst = order.position.analyst as { name: string; tradingEnvironment: string } | null | undefined;
+  if (intent === "OPEN" && analyst && (analyst.tradingEnvironment === "LIVE" ? "LIVE" : "PAPER") !== positionEnvironment) {
+    const name = (b: string) => (b === "LIVE" ? "Live" : "Paper");
+    throw new ProposalExecutionError(
+      "WRONG_BOOK",
+      `This buy was proposed on ${name(positionEnvironment)} and ${analyst.name} now trades on ${name(analyst.tradingEnvironment)}. Decline it; a new run proposes it in the right account.`,
+    );
+  }
   const creds: AlpacaCredentials | undefined =
     (await resolveAlpacaCredentials(order.position.userId, positionEnvironment)) ??
     undefined;

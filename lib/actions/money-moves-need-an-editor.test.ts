@@ -30,6 +30,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 const mockBroker = jest.fn<Promise<unknown>, unknown[]>();
 jest.mock("@/lib/alpaca", () => ({
   closePosition: (...a: unknown[]) => mockBroker("closePosition", ...a),
+  closePositionPartial: (...a: unknown[]) => mockBroker("closePositionPartial", ...a),
   cancelOrder: (...a: unknown[]) => mockBroker("cancelOrder", ...a),
   placeMarketOrder: (...a: unknown[]) => mockBroker("placeMarketOrder", ...a),
   getOrder: async () => ({ status: "canceled" }),
@@ -134,6 +135,11 @@ describe("Liquidate an orphan sells only what the app has no row for", () => {
     expect(mockBroker).not.toHaveBeenCalled();
   });
 
+  it("a broker asset id, which would slip past that check, is refused: only a ticker is taken", async () => {
+    expect(await said(liquidateOrphan("b0b6dd9d-8b9b-48a9-ba46-b9d54906e415", "LIVE"))).toBe("That isn't a ticker.");
+    expect(mockBroker).not.toHaveBeenCalled();
+  });
+
   it("a holding with no row is sold on the book it was found in", async () => {
     mockDb.mockImplementation((call) => (call === "position.count" ? 0 : {}));
     await liquidateOrphan("XYZ", "LIVE");
@@ -156,10 +162,10 @@ describe("Delete analyst never touches a Live holding", () => {
     expect([writes(), mockBroker.mock.calls]).toEqual([[], []]);
   });
 
-  it("a Paper analyst's open position is closed with Paper keys on Paper, then it is deleted", async () => {
-    analyst([{ id: "p3", symbol: "MU", status: "OPEN", environment: "PAPER" }]);
+  it("a Paper analyst's own 12 MU shares are sold with Paper keys on Paper, never the whole symbol, then it is deleted", async () => {
+    analyst([{ id: "p3", symbol: "MU", status: "OPEN", environment: "PAPER", quantity: 12, direction: "LONG" }]);
     expect(await said(deleteAnalyst("analyst_pead"))).toBe("done");
-    expect(mockBroker.mock.calls).toEqual([["closePosition", "MU", { keyId: "PAPER_key", secretKey: "s" }, "PAPER"]]);
+    expect(mockBroker.mock.calls).toEqual([["closePositionPartial", "MU", 12, "sell", { keyId: "PAPER_key", secretKey: "s" }, "PAPER"]]);
     expect(writes()).toContain("agentConfig.delete");
   });
 });
