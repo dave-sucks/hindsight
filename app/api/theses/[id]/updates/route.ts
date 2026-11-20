@@ -3,8 +3,9 @@
  *
  * The stock's whole Activity feed, newest first: the saved lines plus each
  * proposal's steps built from its order (lib/thesis/activity-feed.ts). Powers
- * the Activity tab inside ThesisSheet. The dossier route reads the newest 8
- * of the same feed for the Overview, and the agents read those same 8.
+ * the Activity tab inside ThesisSheet. The dossier route reads the newest 5
+ * with a note off the same feed for the Overview; the agents read it in four
+ * parts (lib/agent/stock-context.ts).
  * Scoped to the requesting user.
  *
  * Query: ?limit=N (default 50, max 200).

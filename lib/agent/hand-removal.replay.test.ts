@@ -13,7 +13,7 @@
  *    and they removed it (10:58). The 10-08 morning run's `said` listed the
  *    add and the fire, not the removal.
  *
- * Since 2026-10-30 the agent reads the stock's newest 8 Activity lines as the
+ * From 2026-10-30 to 2026-11-19 the agent read the stock's newest 8 Activity lines as the
  * owner sees them, a removal by hand included: it is "Edited by you" with its
  * change, like the add before it. A removal newer than an add is always in
  * the 8 when the add is, so a run can never read the add and miss the removal.
@@ -39,7 +39,7 @@ const fx = raw as unknown as {
   removedBuy: Listed;
 };
 
-const HEADER = "WHAT'S BEEN SAID ON $ABT — its newest 8 Activity lines, newest first, as the owner sees them:";
+const HEADER = "ACTIVITY ON $ABT — where it stands, the last look, what happened since, and what is open:";
 const REMOVED_BUY = "Buy if below 6% from the close 5 days ago";
 const toRow = (l: Line): ActivityRow & { id: string; summary: string } => ({ ...l, timestamp: new Date(l.timestamp) });
 const rowsBefore = (iso: string) => fx.updates.filter((u) => new Date(u.timestamp).getTime() < new Date(iso).getTime()).map(toRow);
@@ -74,8 +74,7 @@ describe("the 10-07 08:00 read, the run that set the buy again", () => {
 
   it("the four hand edits of 10-06 are four lines, newest first, the removal among them", () => {
     const text = read().text!;
-    // ABT had six lines by then, so the block says six.
-    expect(text.startsWith("WHAT'S BEEN SAID ON $ABT — its newest 6 Activity lines, newest first, as the owner sees them:")).toBe(true);
+    expect(text.startsWith(HEADER)).toBe(true);
     const edits = [
       "Edited by you [Added: Review if above $10]",
       `Edited by you [Removed: ${REMOVED_BUY}]`,
@@ -93,9 +92,10 @@ describe("after a run answers: the 10-07 08:05 answer", () => {
   const answer = fx.updates.find((u) => u.runId === fx.runs.morning1007.id)!;
   const after = new Date(new Date(answer.timestamp).getTime() + 1000).toISOString();
 
-  it("the removal is still one of the 8 lines", () => {
+  it("the removal is behind the last look, which read it; a later look reads that look's note", () => {
     const { text } = stockContextFor({ ticker: "ABT", rows: rowsBefore(after) });
-    expect(text).toContain(`Edited by you [Removed: ${REMOVED_BUY}]`);
+    expect(text).not.toContain(`Edited by you [Removed: ${REMOVED_BUY}]`);
+    expect(text).toContain("Since then: nothing.");
   });
 });
 
@@ -156,15 +156,17 @@ describe("the 10-08 08:00 read of ABT, through get_theses", () => {
     }
   }
 
-  it("the row's `said` carries both removals as the lines they are; the cleanup is older than the 8", async () => {
+  it("the row's `said` carries what the owner did since the last look, as the lines they are; what came before that look is behind it", async () => {
     const full = await morningRead();
     expect(full).not.toBeNull();
     const said = (rowForModel(full!, { named: false, size: sizeFor(full!, false) }) as Record<string, unknown>).said as string;
     expect(said.startsWith(HEADER)).toBe(true);
     expect(said).toContain("10-07 10:58 · Edited by you [Removed: Review if below $110]");
     expect(said).toContain("10-07 10:04 · Edited by you [Added: Review if below $110]");
-    expect(said).toContain("10-07 10:05 · $97.95 · Trigger: Review if below $110");
-    expect(said).toContain(`Edited by you [Removed: ${REMOVED_BUY}]`);
+    expect(said).toContain("  Triggers fired 1 time: Review if below $110 ×1 (last 10-07 10:05 at $97.95)");
+    // The 10-06 removal of the buy came before the 10-07 08:05 look, which read it and is the last look here.
+    expect(said).not.toContain(`Edited by you [Removed: ${REMOVED_BUY}]`);
+    expect(said).toContain("The last look:\n  10-07 08:05 · $98.16 · Updated [Removed: Review if above $10; Entry set: $100.60; Stop set: $95.48; Target set: $135]");
     expect(said).not.toContain("Price up 7% today");
     // On main the run read exactly what production handed it.
     expect(said).not.toBe(fx.runs.morning1008.said);

@@ -1,19 +1,23 @@
 /**
  * stock-context.ts — what an agent is handed about one stock before it
- * decides: the stock's newest 8 Activity lines, exactly as they read in the
- * feed (lib/thesis/activity-feed.ts). The Overview shows the same 8, so the
- * owner always sees what the agent read. One list, one number, no cutting.
+ * decides: its Activity (lib/thesis/activity-feed.ts) in four parts, cut by
+ * kind and not by how recent a line is (`activityRead`):
  *
- * Until 2026-10-30 this file built six lists, each a patch for one bad day
- * (the last three notes cut to 900 and 500 characters, the principal's three
- * newest notes, three removals by hand, the fires since the last answer, the
- * decisions since it, a waiting sale as shares and a time), and nobody could
- * say in a sentence what the agent read. Now it reads the feed.
+ *   Where it stands — the last verdict that wasn't "unchanged", since when
+ *                     and why, and conviction.
+ *   The last look   — the newest lines a run wrote with a note, in full.
+ *   Since then      — every line after that look, one each; price triggers
+ *                     that fired are one count.
+ *   Open            — a proposal that waits, and the owner's last decline
+ *                     with its words.
  *
- * Two facts the situations read off the WHOLE feed, not the 8, stay here:
- * the fires no run has answered (`openFires`) and the principal's newest
- * word no run has answered (`unansweredWord`). Those decide whether the
- * stock is on a run's list; the 8 lines are what the run then reads.
+ * No paragraph is printed twice. A stock compared across the account (the
+ * Portfolio Manager's read) gets the first and last parts only (`brief`).
+ * Every agent's read of a stock's Activity is built here and nowhere else.
+ *
+ * Two facts read off the same feed stay here: the fires no run has answered
+ * (`openFires`), which decide whether the stock is on a run's list, and what
+ * the owner set on each trigger (`ownerSets`), said on the trigger's own line.
  *
  * Pure: needs-action.ts imports it.
  */
@@ -26,10 +30,12 @@ import {
   proposalUserMessage,
   reviewTitle,
   titleSegments,
+  triggerPhrase,
   type TimelineUpdate,
   type TitleTrigger,
 } from "@/components/agent/sheets/thesis-timeline-utils";
-import { notedItems, recentItems, RECENT_ITEMS, type FeedItem } from "@/lib/thesis/activity-feed";
+import { conditionsOf, shapeOf } from "@/lib/agent/triggers/condition";
+import { hasWrittenParagraph, type FeedItem } from "@/lib/thesis/activity-feed";
 
 /** One Activity line, as the callers load it. Any order. */
 export interface ActivityRow {
@@ -58,16 +64,24 @@ export interface OpenFire {
 }
 
 export interface StockContext {
-  /** The block, ready to print; null when the feed is empty. */
+  /** The four parts, ready to print; null when the feed is empty. */
   text: string | null;
-  /** The Overview's "Agent insights" as lines: the newest Activity lines with a written paragraph. */
-  insights: string[];
+  /** Where it stands and what is open: what a stock compared across the account carries. */
+  brief: string | null;
   openFires: OpenFire[];
+  /** The owner's newest change to each trigger, by trigger id. */
+  ownerSets: Map<string, OwnerSet>;
+}
+
+/** The owner's newest change to a trigger: when, and what it was before (null when it was added, or nothing in its sentence moved). */
+export interface OwnerSet {
+  at: Date;
+  was: string | null;
 }
 
 type Changes = {
   source?: { to?: unknown };
-  triggerOps?: { to?: Array<{ op?: string; text?: string }> };
+  triggerOps?: { to?: Array<{ op?: string; id?: string; text?: string }> };
   proposal?: { to?: { intent?: string; quantity?: number; proposedQuantity?: number; edited?: boolean; userMessage?: string } };
 };
 const changesOf = (r: ActivityRow): Changes =>
@@ -147,8 +161,9 @@ export function asTimelineUpdate(item: FeedItem): TimelineUpdate {
  * title the owner sees, what changed, the paragraph if someone wrote one, the
  * verdict's line, the line it answers, and its own id (the one a later note
  * answers). The same title grammar as the Activity tab, so the two never differ.
+ * A paragraph or verdict line already in `seen` is left off: no note reads twice.
  */
-export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>): string {
+export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>, seen?: Set<string>): string {
   const tu = asTimelineUpdate(item);
   const kind = eventKind(tu);
   // A plain review reads as the page titles it: the kind of review, from the trigger it answered ("Pre-earnings review · weaker"); everything that happened keeps its title.
@@ -160,8 +175,16 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   const parts = [etStamp(item.timestamp), item.priceAtTime != null ? money(item.priceAtTime) : null, title].filter(Boolean);
   let line = `  ${parts.join(" · ")}`;
   if (chips.length) line += ` [${chips.join("; ")}]`;
-  if (paragraph) line += ` — "${oneLine(paragraph)}"`;
-  if (item.verdictLine) line += ` — verdict: "${oneLine(item.verdictLine)}"`;
+  const once = (text: string | null | undefined): string | null => {
+    const t = text ? oneLine(text) : "";
+    if (!t || seen?.has(t)) return null;
+    seen?.add(t);
+    return t;
+  };
+  const said = once(paragraph);
+  const verdict = once(item.verdictLine);
+  if (said) line += ` — "${said}"`;
+  if (verdict) line += ` — verdict: "${verdict}"`;
   if (item.answersUpdateId) line += ` — answers the ${item.answersAt ? etStamp(item.answersAt) : item.answersUpdateId} line`;
   // An order's own step has no saved line to answer; a Proposed step answers as the run's note it carries.
   // A shared note is no line of this stock's to answer by id.
@@ -170,23 +193,131 @@ export function saidLine(item: FeedItem, triggers?: ReadonlyArray<TitleTrigger>)
   return line;
 }
 
-/** The block every agent reads first on a stock: the newest 8 lines of its feed. `triggers` is the thesis's resolved list, so a review's title names the trigger it answered. */
-export function saidBlock(ticker: string, feed: FeedItem[], triggers?: ReadonlyArray<TitleTrigger>): string | null {
-  const items = recentItems(feed);
-  if (items.length === 0) return null;
-  const T = ticker.toUpperCase();
-  return [
-    `WHAT'S BEEN SAID ON $${T} — its newest ${items.length === RECENT_ITEMS ? RECENT_ITEMS : items.length} Activity lines, newest first, as the owner sees them:`,
-    ...items.map((i) => saidLine(i, triggers)),
+/** "11-09", Eastern. */
+const etDay = (d: Date) => etStamp(d).split(" ")[0];
+
+/** A line a run wrote with a note: a look. */
+const isLook = (i: FeedItem) => !!i.runId && i.type !== "TRIGGER_FIRED" && i.type !== "NOTE" && i.type !== "SHARED_NOTE" && hasWrittenParagraph(i);
+const proposalStatus = (i: FeedItem) => (i.fieldChanges as { proposal?: { to?: { status?: unknown } } } | null)?.proposal?.to?.status;
+const waits = (i: FeedItem) => i.type === "PROPOSAL_PROPOSED" && proposalStatus(i) === "AWAITING_APPROVAL";
+
+/** A fire that says something happened (a report, a filing, a note), not that a price was reached: it keeps its own line. */
+const HAPPENED: ReadonlySet<string> = new Set(["report", "surprise", "filing", "note"]);
+function somethingHappened(i: FeedItem): boolean {
+  const when = shapeOf(i.triggerCondition);
+  return !!when && conditionsOf(when).some((c) => HAPPENED.has(c.watch));
+}
+
+/**
+ * Where the stock stands: the newest verdict that wasn't "unchanged", dated
+ * from the first look of the unbroken run that gave it (a look that said the
+ * same, or "unchanged", keeps it standing) with that look's own reason.
+ */
+function standingLine(feed: FeedItem[], conviction: string | null | undefined, seen: Set<string>): string | null {
+  const looks = feed.filter((i) => i.verdict);
+  const at = looks.findIndex((i) => i.verdict !== "UNCHANGED");
+  let stands: string | null = null;
+  if (at >= 0) {
+    let first = looks[at];
+    for (const l of looks.slice(at + 1)) {
+      if (l.verdict === first.verdict) first = l;
+      else if (l.verdict !== "UNCHANGED") break;
+    }
+    // The oldest look read here gave it too: it may have stood longer than the lines loaded show.
+    const orEarlier = first === looks[looks.length - 1] ? "at least " : "";
+    const why = first.verdictLine ? oneLine(first.verdictLine) : "";
+    // Said here, so the look that gave it doesn't say it again below.
+    if (why) seen.add(why);
+    stands = `${first.verdict!.toLowerCase()} since ${orEarlier}${etDay(first.timestamp)}${why ? ` — "${why}"` : ""}`;
+  } else if (looks.length) {
+    stands = "unchanged at every look read here";
+  }
+  const parts = [stands, conviction ? `conviction ${conviction}` : null].filter(Boolean);
+  return parts.length ? `Where it stands: ${parts.join(" · ")}` : null;
+}
+
+/** The price triggers that fired, as one line: each trigger's sentence, how often, and its newest fire. */
+function firesLine(fires: FeedItem[]): string | null {
+  if (fires.length === 0) return null;
+  const by = new Map<string, { n: number; last: FeedItem }>();
+  for (const f of fires) {
+    const key = f.triggerId ?? f.summary;
+    const seen = by.get(key);
+    if (seen) seen.n += 1;
+    else by.set(key, { n: 1, last: f });
+  }
+  const each = [...by.values()].map(({ n, last }) => `${triggerPhrase(last.summary)} ×${n} (last ${etStamp(last.timestamp)}${last.priceAtTime != null ? ` at ${money(last.priceAtTime)}` : ""})`);
+  return `  Triggers fired ${fires.length} time${fires.length === 1 ? "" : "s"}: ${each.join("; ")}`;
+}
+
+/**
+ * The stock's Activity as an agent reads it, in four parts (see the top of
+ * the file). `triggers` is the thesis's resolved list, so a review's title
+ * names the trigger it answered.
+ */
+export function activityRead(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger>; conviction?: string | null }): { text: string | null; brief: string | null } {
+  const { feed, triggers } = args;
+  if (feed.length === 0) return { text: null, brief: null };
+  const T = args.ticker.toUpperCase();
+  const seen = new Set<string>();
+  const standing = standingLine(feed, args.conviction, seen);
+
+  const lookAt = feed.findIndex(isLook);
+  const run = lookAt >= 0 ? feed[lookAt].runId : null;
+  const ofTheLook = (i: FeedItem) => run != null && i.runId === run && i.type !== "TRIGGER_FIRED";
+  const look = feed.filter(ofTheLook).map((i) => saidLine(i, triggers, seen));
+
+  const waiting = feed.filter(waits);
+  const decline = feed.find((i) => i.type === "PROPOSAL_REJECTED");
+  const inOpen = new Set([...waiting, ...(decline ? [decline] : [])]);
+  const since = (lookAt >= 0 ? feed.slice(0, lookAt) : feed).filter((i) => !ofTheLook(i) && !inOpen.has(i));
+  const counted = since.filter((i) => i.type === "TRIGGER_FIRED" && !somethingHappened(i));
+  const sinceLines = [...since.filter((i) => !counted.includes(i)).map((i) => saidLine(i, triggers, seen)), firesLine(counted)].filter((l): l is string => l != null);
+
+  // A waiting proposal is its title: its reason is a look's note, read above when it is the last one.
+  const open = [
+    ...waiting.map((i) => saidLine({ ...i, rationale: null, verdictLine: null, answersUpdateId: null }, triggers)),
+    ...(decline ? [saidLine(decline, triggers)] : []),
+  ];
+  const part = (label: string, lines: string[], none: string) => (lines.length ? [`${label}:`, ...lines] : [`${label}: ${none}`]);
+  const text = [
+    `ACTIVITY ON $${T} — where it stands, the last look, what happened since, and what is open:`,
+    ...(standing ? [standing] : []),
+    ...part("The last look", look, "none yet."),
+    ...part(lookAt >= 0 ? "Since then" : "What has happened", sinceLines, "nothing."),
+    ...part("Open", open, "nothing."),
     `Full history: get_theses(tickers: ["${T}"], include_history: true)`,
   ].join("\n");
+  const brief = [...(standing ? [standing] : []), ...(open.length ? ["Open:", ...open] : [])].join("\n") || null;
+  return { text, brief };
+}
+
+/** "Sell if below $930.60" beside "Sell if below $804" → "$930.60": the part of the old sentence the new one doesn't share. */
+function wasWords(before: string, after: string): string | null {
+  if (before === after) return null;
+  const a = before.split(" ");
+  const b = after.split(" ");
+  let same = 0;
+  while (same < a.length - 1 && a[same] === b[same]) same += 1;
+  return a.slice(same).join(" ");
+}
+
+/** The owner's newest change to each trigger, read off the stock's own Activity lines: when, and what the trigger was before. */
+export function ownerSets(feed: FeedItem[]): Map<string, OwnerSet> {
+  const out = new Map<string, OwnerSet>();
+  for (const item of feed) {
+    if (!isPrincipalRow(item)) continue;
+    const ops = changesOf(item).triggerOps?.to;
+    for (const o of Array.isArray(ops) ? ops : []) {
+      if (!o?.id || out.has(o.id) || o.op === "remove") continue;
+      const changed = /^Changed: (.+) → (.+)$/.exec(o.text ?? "");
+      out.set(o.id, { at: item.timestamp, was: changed ? wasWords(changed[1], changed[2]) : null });
+    }
+  }
+  return out;
 }
 
 /** What a run is handed on a stock, and the fires no run has answered, read off the whole feed. */
-export function buildStockContext(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
-  return {
-    text: saidBlock(args.ticker, args.feed, args.triggers),
-    insights: notedItems(args.feed).map((i) => saidLine(i, args.triggers).trim()),
-    openFires: openFires(args.feed),
-  };
+export function buildStockContext(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger>; conviction?: string | null }): StockContext {
+  return { ...activityRead(args), openFires: openFires(args.feed), ownerSets: ownerSets(args.feed) };
 }

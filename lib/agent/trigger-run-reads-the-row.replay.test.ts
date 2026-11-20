@@ -45,8 +45,8 @@ const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>, 
 const DELETED = ["THESIS (id:", "THE SETUP THIS PLAN WAS WRITTEN ON", "DEEP-RESEARCH EXCERPT", "CURRENT TRIGGER LADDER", "POSITION:\n"];
 /** What's been said arrives once, as the row's `said`, not as a block of its own. */
 const saidOnce = (prompt: string, ticker: string) => {
-  expect(prompt.split("WHAT'S BEEN SAID ON $").length - 1).toBe(1);
-  expect(prompt).toContain(`"said": "WHAT'S BEEN SAID ON $${ticker}`);
+  expect(prompt.split("ACTIVITY ON $").length - 1).toBe(1);
+  expect(prompt).toContain(`"said": "ACTIVITY ON $${ticker}`);
 };
 
 async function triggerRun(c: Fire) {

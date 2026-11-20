@@ -27,7 +27,6 @@ import { CONTEXT } from "@/lib/agent/engine/parts";
 import type { AgentId, ContextId } from "@/lib/agent/engine/types";
 import { partsByRarity } from "@/lib/docs/framework-content";
 import { factsOf, parseDoc } from "@/lib/docs/guide-parse";
-import { RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { cn } from "@/lib/utils";
 import { RunOutputs, type OutputId } from "./run-outputs";
 import { Eyebrow } from "./primitives";
@@ -288,7 +287,7 @@ function ThesisCard({ ref, onOpen }: { ref: (el: HTMLElement | null) => void; on
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted-foreground">The next run on CRWD reads its newest {RECENT_ITEMS} lines first.</p>
+        <p className="text-xs text-muted-foreground">The next run on CRWD reads where it stands, the last look&apos;s note and what happened since.</p>
       </div>
     </div>
   );

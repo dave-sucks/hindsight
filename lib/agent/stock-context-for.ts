@@ -1,9 +1,8 @@
 /**
- * stock-context-for.ts — the "what's been said" block for one stock, built
+ * stock-context-for.ts — one stock's Activity as an agent reads it, built
  * from its feed (lib/thesis/activity-feed.ts): the stock's saved Activity
- * lines plus its proposals' steps from their orders. get_theses and the
- * trigger run both read a stock through this, so every run reads the same
- * block the Overview shows.
+ * lines plus its proposals' steps from their orders. Every agent's read of a
+ * stock goes through this (get_theses, and the trigger run through it).
  */
 import { activityFeed, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { buildStockContext, type StockContext } from "@/lib/agent/stock-context";
@@ -19,9 +18,8 @@ import {
 import type { TitleTrigger } from "@/components/agent/sheets/thesis-timeline-utils";
 
 /**
- * How many of a stock's newest Activity lines are loaded (about a month).
- * The agent reads the newest 8 of the feed; the situations read all of these
- * for an unanswered fire.
+ * How many of a stock's newest Activity lines are loaded (about a month):
+ * what the agent's four parts and the situations' unanswered fires read.
  */
 export const ACTIVITY_LINES = 40;
 
@@ -36,7 +34,7 @@ export const ACTIVITY_SELECT = {
 /**
  * `notes` are the account's shared notes, newest first (lib/agent/shared-notes.ts).
  * The ones that cover this stock join its Activity, except the newest two
- * pinned ones (the owner's), which read in their own block above the newest 8.
+ * pinned ones (the owner's), which read in their own block above it.
  */
 export function stockContextFor(args: {
   ticker: string;
@@ -45,6 +43,8 @@ export function stockContextFor(args: {
   triggers?: ReadonlyArray<TitleTrigger>;
   notes?: readonly SharedNoteRow[];
   shares?: ReadonlyMap<string, NoteShare>;
+  /** The stock's conviction, said with where it stands. */
+  conviction?: string | null;
   now?: Date;
 }): StockContext {
   const now = args.now ?? new Date();
@@ -52,7 +52,7 @@ export function stockContextFor(args: {
   const pinned = covering.filter((n) => isPinned(n, now)).slice(0, PINNED_PER_STOCK);
   const shown = new Set(pinned.map((n) => n.id));
   const inFeed = covering.filter((n) => !shown.has(n.id)).map((n) => noteLine(n, args.ticker));
-  const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers });
+  const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers, conviction: args.conviction });
   if (pinned.length === 0) return base;
   return { ...base, text: [pinnedBlock(args.ticker, pinned, args.shares ?? new Map()), base.text].filter(Boolean).join("\n") };
 }
