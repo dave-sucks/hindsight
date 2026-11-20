@@ -502,7 +502,7 @@ On the sheet, under the trigger rows:
 ┌ Add trigger · Price ─────────────────────────────────────── ✕ ┐
 │  ACTION      [ Sell if                                    ▾ ] │
 │  CONDITION   [      $ Price      |       % Move           ]   │
-│              [ Below | Near | Above ] [ 25 % from ⟨High since we bought⟩ × {x} ]
+│              [ Below ▾ | 25 % | from the high since we bought ▾ ]
 │              High since we bought $303.40, so it fires at $227.55.          │
 │              CEG is $258.92. 12.1% away.                                    │
 │              [ Any time in the day                        ▾ ] │
@@ -515,7 +515,7 @@ On the sheet, under the trigger rows:
 └───────────────────────────────────────────────────────────────┘
 
 Every other type fills the same parts:
-  Schedule · From a date [ After | Before ]  [ 60 days from ⟨The buy⟩ × {x} ]
+  Schedule · From a date [ After ▾ | 60 days | from the buy ▾ ]
   Indicator · RSI      [ Below | Above ]   [ 30 on 0–100 ]        [ 14-day RSI ▾ ]
   Filing · SEC filing  [ Material | Red flag ] [ Any filing {x} ]  or [ ⟨8-K 5.02⟩ × {x} ]
 ```
@@ -527,6 +527,14 @@ Every other type fills the same parts:
   short menu grouped by kind (recent closes, our position, averages, highs
   and lows; or dates; or filing events), each with today's value. The chosen
   variable shows as a blue chip in the input; its × removes it.
+- **What a % or a day count is measured from is the control's third part**: a
+  plain select that always holds one ("from yesterday's close"), never a chip
+  that can be removed. The first part is the same select on every measure; a
+  measure with one direction lists that one ("Above", "Every"). Volume, strength
+  and a gap say "above" everywhere, as a % move does; insider buying, a head
+  count, says "at least". A pill leaves off "from yesterday's close",
+  the usual reference; a combination too long for its row breaks between its
+  conditions.
 - **Clicking a pill opens a popover**: the trigger read the same way as the
   pill (direction · value), the analyst's note and one line of facts. A
   stock's own trigger has Edit (the Add trigger dialog, filled in) and Delete. An analyst or account rule opens it

@@ -93,6 +93,9 @@ const OLD_PLACEHOLDERS: Record<string, string> = {
   "{riskPct}": "(the buy price − the sell price) ÷ the buy price, as a % — one risk",
 };
 
+/** Volume, strength and a gap said "at least" in a sentence until 2026-11-20; they say "above" now, as the form does. */
+const saidAtLeast = (s: string) => s.replace(/above (?=[-\d.]+(?:× normal volume|% gap up| points ahead))/g, "at least ");
+
 /** A playbook's list as playbookTriggerText printed it before T1: each trigger's sentence, its JSON as written, its reason. */
 function oldPlaybookTriggerText(templates: Template[], on: WrittenOn): string[] {
   const mine = templates.filter((t) => t.writtenOn === on);
@@ -103,7 +106,7 @@ function oldPlaybookTriggerText(templates: Template[], on: WrittenOn): string[] 
     ...mine.map((t) => {
       const sized = on === "PROPOSAL" && t.trimPct != null ? { trimPct: t.trimPct } : {};
       const written = { action: t.action, predicate: asWritten(t.predicate), ...(t.fireMode ? { fireMode: t.fireMode } : {}), ...sized };
-      return `- ${sentenceOf(t as unknown as Trigger)}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
+      return `- ${saidAtLeast(sentenceOf(t as unknown as Trigger))}${t.fireMode ? ` (${fireModeLabel(t.fireMode, t.action)})` : ""}: ${JSON.stringify(written)} — ${t.rationale}`;
     }),
     ...(marks.length ? [`Where each chart number comes from: ${marks.map((m) => `${m} ${OLD_PLACEHOLDERS[m]}`).join("; ")}.`] : []),
   ];

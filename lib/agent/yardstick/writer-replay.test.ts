@@ -39,7 +39,7 @@ describe("a Writer mint replayed on T1's flow", () => {
   it("the save writes EPISODIC_PIVOT's watch triggers at the chart's prices", () => {
     expect(saved).toMatchObject({ status: "WATCHING", direction: "LONG" });
     expect(saved.triggers.map((t) => sentenceOf(t))).toEqual([
-      "Review if at least 8% gap up and at least 3× normal volume",
+      "Review if above 8% gap up and above 3× normal volume",
       "Buy if above $1153.19 · only on the close",
       "Review if below $1126.86 · only on the close",
       "Review every 7 days",

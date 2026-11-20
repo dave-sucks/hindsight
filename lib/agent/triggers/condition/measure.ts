@@ -40,6 +40,8 @@ export interface VariablesDef {
   word?: (c: Condition) => string;
   /** Set when a variable is required: what the line under the input says until there is one. */
   required?: string;
+  /** The usual one, left off a pill: a % move is from yesterday's close unless the pill says otherwise. */
+  usual?: string;
 }
 
 export interface CheckContext {
@@ -82,7 +84,7 @@ export interface MeasureDef {
    * plain words: the agents' tools describe `is` with it, and the guide prints it.
    */
   buttons?: readonly { is: Direction; label: string; means: string }[];
-  /** One choice: said as a word inside the input ("Every", "At least", "Files"). */
+  /** One choice: the form's first place holds it alone ("Above", "Every", "Files"). */
   word?: string;
   value: ValueDef;
   variables?: VariablesDef;

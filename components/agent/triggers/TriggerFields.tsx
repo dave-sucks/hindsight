@@ -5,8 +5,13 @@
  * popover. A condition is the same fields for every type, drawn from the
  * catalog (lib/agent/triggers/condition/measures):
  *
- *   tabs · setting · [ Below ▾ | value: a number or a variable chip   {x} ]
+ *   tabs · setting · [ Below ▾ | value | from yesterday's close ▾ ]
  *   a line saying what to fix, while something is missing
+ *
+ * One joined control, the same three places on every measure: the direction
+ * (one select, with one choice where the measure has one: "Above", "Every"),
+ * the value, and what it is measured from when the measure has that. A
+ * price's value is a number or a variable chip from the {x} in the input.
  *
  * docs/plans/TRIGGER_TYPES.md §7.
  */
@@ -208,7 +213,9 @@ export function ConditionFields({
   const m = measureOf(condition);
   const type = typeDef(m.type);
   const problem = disabled ? null : conditionProblem(condition, ctx);
-  const choosesDirection = m.buttons != null && m.buttons.length > 1;
+  // The first place lists the measure's directions; a measure with one says its word there, as the only choice.
+  const choices = m.buttons?.map((b) => ({ id: b.is as string, label: b.label })) ?? (m.word ? [{ id: "only", label: m.word }] : []);
+  const chosen = m.buttons ? (condition.is ?? m.buttons[0].is) : "only";
   return (
     <div className="space-y-2">
       {type.measures.length > 1 ? (
@@ -233,11 +240,11 @@ export function ConditionFields({
         .map((s) => (
           <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
         ))}
-      {/* One control: the direction on the left, the value on the right. */}
+      {/* One control: the direction, the value, and what it is measured from. */}
       <ButtonGroup width="full">
-        {choosesDirection && m.buttons ? (
+        {choices.length > 0 ? (
           <Select
-            value={condition.is ?? m.buttons[0].is}
+            value={chosen}
             onValueChange={(v) => {
               const b = m.buttons?.find((x) => x.is === v);
               if (b) onChange(withDirection(condition, b.is, ctx));
@@ -245,18 +252,19 @@ export function ConditionFields({
             disabled={disabled}
           >
             <SelectTrigger aria-label="Direction">
-              <SelectValue>{m.buttons.find((b) => b.is === condition.is)?.label}</SelectValue>
+              <SelectValue>{choices.find((c) => c.id === chosen)?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false} align="start">
-              {m.buttons.map((b) => (
-                <SelectItem key={b.is} value={b.is}>
-                  {b.label}
+              {choices.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : null}
         <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
+        {m.variables?.mode === "from" ? <FromSelect condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} /> : null}
       </ButtonGroup>
       {problem ? <p className="text-xs text-muted-foreground">{problem}</p> : null}
     </div>
@@ -324,18 +332,11 @@ function ValueInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition.value]);
 
-  // A measure with one choice says it as a word: "Every", "At least", "Files".
-  const word = m.word;
   const replaced = vars?.mode === "replace" && condition.variable != null;
   const clear = disabled ? undefined : () => onChange(withVariable(condition, undefined));
 
   return (
     <InputGroup>
-      {word ? (
-        <InputGroupAddon>
-          <InputGroupText>{word}</InputGroupText>
-        </InputGroupAddon>
-      ) : null}
       {v.prefix && !replaced ? (
         <InputGroupAddon>
           <InputGroupText>{v.prefix}</InputGroupText>
@@ -371,18 +372,70 @@ function ValueInput({
           <InputGroupText>{v.suffix}</InputGroupText>
         </InputGroupAddon>
       ) : null}
-      {vars?.mode === "from" && condition.variable ? (
-        <InputGroupAddon align="inline-end">
-          <InputGroupText>{vars.word ? vars.word(condition) : "from"}</InputGroupText>
-          <VariableChip id={condition.variable} onRemove={clear} />
-        </InputGroupAddon>
-      ) : null}
-      {vars && options.length > 0 ? (
+      {vars?.mode === "replace" && options.length > 0 ? (
         <InputGroupAddon align="inline-end">
           <VariableSelect value={condition.variable} options={options} title={vars.title} onPick={(id) => onChange(withVariable(condition, id))} />
         </InputGroupAddon>
       ) : null}
     </InputGroup>
+  );
+}
+
+/** What a % or a day count is measured from: the control's third part, a plain select that always holds one. */
+function FromSelect({
+  condition,
+  onChange,
+  ctx,
+  disabled,
+}: {
+  condition: Condition;
+  onChange: (c: Condition) => void;
+  ctx: CheckContext;
+  disabled: boolean;
+}) {
+  const vars = measureOf(condition).variables;
+  if (!vars) return null;
+  const options = variableOptions(condition, ctx);
+  const word = vars.word ? vars.word(condition) : "from";
+  return (
+    <Select
+      value={condition.variable ?? null}
+      onValueChange={(v) => {
+        const picked = options.find((o) => o.id === v);
+        if (picked) onChange(withVariable(condition, picked.id));
+      }}
+      disabled={disabled}
+    >
+      <SelectTrigger aria-label={vars.title}>
+        <SelectValue>{condition.variable ? `${word} ${variableDef(condition.variable).chip}` : vars.title}</SelectValue>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end" width="content">
+        <VariableItems options={options} />
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** The variables a condition can take, as menu rows under their section names. */
+function VariableItems({ options }: { options: readonly VariableDef[] }) {
+  const groups = useMemo(() => {
+    const out = new Map<string, VariableDef[]>();
+    for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
+    return [...out];
+  }, [options]);
+  return (
+    <>
+      {groups.map(([group, items]) => (
+        <SelectGroup key={group}>
+          {groups.length > 1 ? <SelectLabel>{group}</SelectLabel> : null}
+          {items.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </>
   );
 }
 
@@ -413,11 +466,6 @@ function VariableSelect({
   title: string;
   onPick: (id: VariableId) => void;
 }) {
-  const groups = useMemo(() => {
-    const out = new Map<string, VariableDef[]>();
-    for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
-    return [...out];
-  }, [options]);
   return (
     <Select
       value={value ?? null}
@@ -430,16 +478,7 @@ function VariableSelect({
         <Variable />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} align="end" width="content">
-        {groups.map(([group, items]) => (
-          <SelectGroup key={group}>
-            {groups.length > 1 ? <SelectLabel>{group}</SelectLabel> : null}
-            {items.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
+        <VariableItems options={options} />
       </SelectContent>
     </Select>
   );

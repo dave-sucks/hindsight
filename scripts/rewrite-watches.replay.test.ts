@@ -85,14 +85,14 @@ describe("main()'s save step, end to end on MA: journal, clear, the playbook's t
     expect(said(r.triggers)).toEqual([
       "Buy if within 2% of the 50-day average",
       "Review every 7 days",
-      "Stop watching if below the 50-day average and at least 1.5× normal volume",
+      "Stop watching if below the 50-day average and above 1.5× normal volume",
     ]);
     // Code's own triggers: marked as the playbook's, each with its template's reason, written as code's (DEFAULT).
     expect(r.triggers.every((t) => t.playbook === "WATCH" && t.rationale.length > 0 && t.source === "DEFAULT")).toBe(true);
     const updates = r.db.store.thesisUpdate as Array<{ summary?: string; rationale?: string | null }>;
     expect(updates.map((u) => u.summary)).toEqual([
       expect.stringMatching(/^Cleared for the rewrite under its playbook: /),
-      "Its playbook's watch triggers, put on for the rewrite: Buy if within 2% of the 50-day average; Review every 7 days; Stop watching if below the 50-day average and at least 1.5× normal volume",
+      "Its playbook's watch triggers, put on for the rewrite: Buy if within 2% of the 50-day average; Review every 7 days; Stop watching if below the 50-day average and above 1.5× normal volume",
     ]);
     // Titles only, no paragraph the app wrote, and the review clock where it was.
     expect(updates.every((u) => u.rationale == null)).toBe(true);

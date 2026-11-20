@@ -28,7 +28,7 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it.
+- Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it.
 - Review every 7 days. The base can extend and its pivot move.
 - Stop watching if below {baseLow} · only on the close. The base's low.
 
@@ -70,7 +70,7 @@ A leader that already ran pulls back in an orderly way and surfs its rising shor
 
 **Triggers on a watch:**
 
-- Buy if above {flagHigh} · only on the close and at least 1.5× normal volume. The flag's high.
+- Buy if above {flagHigh} · only on the close and above 1.5× normal volume. The flag's high.
 - Review every 7 days. Re-checks the flag.
 - Stop watching if below {flagLow} · only on the close. The flag's low.
 
@@ -108,7 +108,7 @@ A neglected stock reprices on unexpected news with volume many times average; in
 
 **Triggers on a watch:**
 
-- Review if at least 8% gap up and at least 3× normal volume. The run reads the news and writes the triggers below.
+- Review if above 8% gap up and above 3× normal volume. The run reads the news and writes the triggers below.
 - Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
 - Review if below {gapDayMid} · only on the close. The gap day's middle.
 - Review every 7 days. Moves the levels to the finished gap day.
@@ -193,7 +193,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 - Buy if within 2% of the 50-day average. The average the stock's pullbacks held (or the 20-day), only while it is rising.
 - Review every 7 days. Re-checks that the average is still rising.
-- Stop watching if below the 50-day average and at least 1.5× normal volume. A close below the 50-day on volume ends the pullback. It reads during the day.
+- Stop watching if below the 50-day average and above 1.5× normal volume. A close below the 50-day on volume ends the pullback. It reads during the day.
 
 **Triggers with the buy:**
 
@@ -203,7 +203,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 **Triggers at the fill:**
 
 - Review every 7 days. The watch's clock, kept on the holding.
-- Sell if below the 50-day average and at least 1.5× normal volume. The pullback is over.
+- Sell if below the 50-day average and above 1.5× normal volume. The pullback is over.
 - Review 14 days after the buy. 10 sessions to reclaim the prior high.
 
 **When it's failing:**
@@ -262,7 +262,7 @@ Entered through `BASE_BREAKOUT`, `MOMENTUM_FLAG`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Review if within 5% of the 52-week high and at least 0 points ahead of the S&P. A screen: the run writes the breakout's, flag's or pullback's triggers.
+- Review if within 5% of the 52-week high and above 0 points ahead of the S&P. A screen: the run writes the breakout's, flag's or pullback's triggers.
 
 **When it's failing:**
 
@@ -292,7 +292,7 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
+- Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
 - Buy if within 2% of the 50-day average and within 70 days before the event date. Only while the 50-day is rising and the stock's pullbacks held it.
 - Buy if above {high20} · only on the close and within 70 days before the event date. The 20-day high, above today's price (the reclaim).
 - Review every 7 days. Moves the reclaim to the latest 20-day high.
@@ -376,7 +376,7 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and at least 1.5× normal volume. The base's pivot, on volume.
+- Buy if above {pivot} · only on the close and above 1.5× normal volume. The base's pivot, on volume.
 - Buy if within 2% of the 50-day average. Only while the 50-day is rising.
 - Buy if above the 50-day average. The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.
 - Review every 30 days. The compounder's own clock.

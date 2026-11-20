@@ -29,7 +29,7 @@ describe("a new watch gets every one of its playbook's watch triggers, priced fr
   it("EPISODIC_PIVOT: the gap review, the buy at the gap day's high, the review at its middle, the clock and Stop watching at its low", () => {
     const w = writerPlaybookWrites({ direction: "LONG", setup_id: "EPISODIC_PIVOT" }, pull, null, playbooks);
     expect(said(w.add)).toEqual([
-      "Review if at least 8% gap up and at least 3× normal volume",
+      "Review if above 8% gap up and above 3× normal volume",
       "Buy if above $1153.19 · only on the close",
       "Review if below $1126.86 · only on the close",
       "Review every 7 days",

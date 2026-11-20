@@ -50,18 +50,18 @@ export interface TriggerPillProps {
   streetMissing?: boolean;
 }
 
-/** What the pill and the popover show: the parts, and which parts are a clock. */
-function readTrigger(trigger: Trigger) {
+/** What the pill and the popover show: the parts, and which parts are a clock. `short` is the pill's own. */
+function readTrigger(trigger: Trigger, short = false) {
   const w = shapeOf(trigger.predicate);
   if (!w) return { parts: [{ label: "a removed condition" }] as PillPart[], timed: [false], w: null };
-  return { parts: pillParts(w), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
+  return { parts: pillParts(w, short), timed: conditionsOf(w).map((c) => measureOf(c).timed === true), w };
 }
 
 export function TriggerPill(props: TriggerPillProps) {
   const { trigger, held, level } = props;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const { parts, timed } = readTrigger(trigger);
+  const { parts, timed } = readTrigger(trigger, true);
   const draft = draftOf(trigger);
   return (
     <>
@@ -71,29 +71,37 @@ export function TriggerPill(props: TriggerPillProps) {
             <button
               type="button"
               className={cn(
-                "inline-flex h-7 cursor-pointer items-stretch overflow-hidden rounded-md border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex max-w-full min-w-0 cursor-pointer overflow-hidden rounded-md border text-xs transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 trigger.inherited ? "border-dashed border-muted-foreground/40" : "border-border",
               )}
             />
           }
         >
-          {/* A trim's size leads, so the row reads "Trim 30% if above $150". */}
-          {trigger.action === "TRIM" ? (
-            <span className="flex items-center gap-1 border-r border-border px-2 text-foreground tabular-nums">
-              {trimPctOf(trigger)}%<span className="text-muted-foreground">if</span>
-            </span>
-          ) : null}
-          {parts.map((p, i) => (
-            <Fragment key={i}>
-              {i > 0 ? <span className="flex items-center border-l border-border px-1.5 text-muted-foreground">and</span> : null}
-              <span className={cn("flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground", i > 0 && "border-l border-border")}>
-                {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
-                {timed[i] ? <SendToAgentIcon className="size-3" /> : null}
-                {p.label}
+          {/* One line when it fits. A combination that doesn't breaks between its conditions, never inside one:
+              each condition is one unbroken unit that fills its row, and the pill clips the lines at a row's start and top. */}
+          <span className="-ml-px -mt-px flex min-w-0 grow flex-wrap">
+            {/* A trim's size leads, so the row reads "Trim 30% if above $150". */}
+            {trigger.action === "TRIM" ? (
+              <span className="flex h-[27px] grow items-center gap-1 border-l border-t border-border px-2 whitespace-nowrap text-foreground tabular-nums">
+                {trimPctOf(trigger)}%<span className="text-muted-foreground">if</span>
               </span>
-              {p.value ? <span className="flex items-center border-l border-border px-2 text-foreground tabular-nums">{p.value}</span> : null}
-            </Fragment>
-          ))}
+            ) : null}
+            {parts.map((p, i) => (
+              <span key={i} className="flex h-[27px] min-w-0 max-w-full grow items-stretch border-l border-t border-border whitespace-nowrap">
+                {i > 0 ? <span className="flex items-center border-r border-border px-1.5 text-muted-foreground">and</span> : null}
+                <span className="flex items-center gap-1 bg-muted/30 px-2 text-muted-foreground">
+                  {/* A schedule puts the agent on a clock: the same mark as Send to Agent. */}
+                  {timed[i] ? <SendToAgentIcon className="size-3" /> : null}
+                  {p.label}
+                </span>
+                {p.value ? (
+                  <span className="flex min-w-0 grow items-center border-l border-border px-2 text-foreground tabular-nums">
+                    <span className="truncate">{p.value}</span>
+                  </span>
+                ) : null}
+              </span>
+            ))}
+          </span>
         </PopoverTrigger>
         <PopoverContent align="start" size="lg">
           <TriggerCard

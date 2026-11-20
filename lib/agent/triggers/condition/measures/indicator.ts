@@ -11,7 +11,7 @@ export const volume: MeasureDef = {
   reads: ["snapshot", "volume"],
   type: "indicator",
   label: "Volume",
-  word: "At least",
+  word: "Above",
   value: { suffix: "× normal volume", placeholder: "2", range: { what: "Volume", unit: "×", over: 0, max: 50 } },
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
@@ -51,7 +51,7 @@ export const strength: MeasureDef = {
   reads: ["snapshot"],
   type: "indicator",
   label: "vs. S&P",
-  word: "At least",
+  word: "Above",
   // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
   value: { suffix: "points ahead of the S&P", placeholder: "0", range: { what: "Strength vs the S&P", unit: " points", min: -100, max: 500 } },
   settings: [
@@ -79,7 +79,7 @@ export const gap: MeasureDef = {
   reads: ["snapshot"],
   type: "indicator",
   label: "Gap up",
-  word: "At least",
+  word: "Above",
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
   rises: () => true,
   fresh: () => ({ watch: "gap" }),

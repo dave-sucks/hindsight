@@ -38,7 +38,7 @@ The stock needs its event date on the thesis: each buy fires only within 70 days
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close, at least 1.5× normal volume, below $C, and within 70 days before the event date | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
+| Buy if above $P on the close, above 1.5× normal volume, below $C, and within 70 days before the event date | P: the base's pivot plus 0.1–0.3%; C: 5% past P. Only when the stock passes the breakout's checks |
 | Buy if within 2% of the 50-day average and within 70 days before the event date | Only while the 50-day is rising and the stock's pullbacks held it |
 | Buy if above $H on the close and within 70 days before the event date | H: the 20-day high, above today's price (the reclaim) |
 | Review every 7 days | Moves H to the latest 20-day high |
@@ -60,7 +60,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close, at least 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%; C: 5% past P |
+| Buy if above $P on the close, above 1.5× normal volume, and below $C | P: the base's pivot plus 0.1–0.3%; C: 5% past P |
 | Review every 7 days | The base can extend and its pivot move |
 | Stop watching if below $L on the close | L: the base's low |
 
@@ -86,12 +86,12 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 |---|---|
 | Buy if within 2% of the 50-day average (or the 20-day) | The average the stock's pullbacks held, only while it is rising |
 | Review every 7 days | Re-checks that the average is still rising |
-| Stop watching if below the 50-day average and at least 1.5× normal volume | "A close below the 50-day on volume ends the setup." It reads during the day: "only on the close" exists only for a typed price |
+| Stop watching if below the 50-day average and above 1.5× normal volume | "A close below the 50-day on volume ends the setup." It reads during the day: "only on the close" exists only for a typed price |
 
 | On a holding | How the level is picked | From |
 |---|---|---|
 | Sell if below $S | S: the pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy | Proposal |
-| Sell if below the 50-day average and at least 1.5× normal volume | The setup is over | Template |
+| Sell if below the 50-day average and above 1.5× normal volume | The setup is over | Template |
 | Trim 50% if above $H | H: the prior high the pullback came from (decided 1) | Proposal |
 | Review 10 sessions after the buy | Ten sessions to reclaim the prior high | Template |
 | Review every 7 days | | Kept |
@@ -124,7 +124,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Review if at least 8% gap up and at least 3× normal volume | Send to Agent: the run reads the news and writes the lines below |
+| Review if above 8% gap up and above 3× normal volume | Send to Agent: the run reads the news and writes the lines below |
 | Buy if above $H on the close | H: the gap day's high; on a day-2 hold above the gap day's middle, today's price |
 | Review if below $M on the close | M: the gap day's middle. Send to Agent |
 | Review every 7 days | Moves the levels to the finished gap day |
@@ -143,7 +143,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close and at least 1.5× normal volume | P: the base's pivot |
+| Buy if above $P on the close and above 1.5× normal volume | P: the base's pivot |
 | Buy if within 2% of the 50-day average | Only while the 50-day is rising |
 | Buy if above the 50-day average | The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now |
 | Review every 30 days | |
@@ -163,12 +163,12 @@ The first buy is half of full size. There is no take-profit: the playbook trims 
 ## The other six (no analyst uses these today)
 
 - **Momentum-leader flag** (`MOMENTUM_FLAG`):
-  - *Watch:* Buy if above $F on the close and at least 1.5× normal volume (F: the flag's high) · Review every 7 days · Stop watching if below $L on the close (L: the flag's low).
+  - *Watch:* Buy if above $F on the close and above 1.5× normal volume (F: the flag's high) · Review every 7 days · Stop watching if below $L on the close (L: the flag's low).
   - *Holding:* Sell if below $S (S: the buy day's low, at most one ADR under the buy) · Review 5 sessions after the buy · Review every 7 days.
 - **Mean-reversion bounce, RSI-2** (`RSI2_BOUNCE`):
   - *Watch:* Buy if above the 200-day average and below RSI 10 (2-day RSI) · Review every 7 days · Stop watching if below the 200-day average (it reads during the day).
   - *Holding:* Sell if below $S (S: the flush's low) · Sell if below the 200-day average · Sell if above RSI 65 (2-day RSI) · Review 5 sessions after the buy · Review every 7 days.
-- **52-week-high momentum** (`RS_52W_HIGH`), a screen: a watch wake, "Review if within 5% of the 52-week high and at least 0 points ahead of the S&P (3 months)", then the breakout's, flag's or pullback's lines.
+- **52-week-high momentum** (`RS_52W_HIGH`), a screen: a watch wake, "Review if within 5% of the 52-week high and above 0 points ahead of the S&P (3 months)", then the breakout's, flag's or pullback's lines.
 - **Insider cluster buying** (`INSIDER_CLUSTER`), a screen: a watch wake, "Review if at least 3 insiders buying in the last 30 days", then the breakout's or pullback's lines. Its "Sell if below $S" sits at the lowest insider purchase price, or 12% under the buy if that is higher.
 - **Estimate-revision momentum** (`ESTIMATE_REVISION`) and **sector rotation** (`SECTOR_ROTATION`), screens: no lines of their own.
 
