@@ -117,6 +117,16 @@ describe("what the skills say", () => {
     expect(file("PROTECTIVE_SALE")).toContain("Did the owner decline this sale, or let it lapse?");
     for (const c of SKILLS) expect([c, /lower (the|a) (floor|sale price)|move the floor down|loosen/i.test(file(c).replace("Never lower a floor.", ""))]).toEqual([c, false]);
   });
+  it("a report keeps its trading rules: a beat on costs, a miss with the case intact, no buy on a beat alone, no add into it", () => {
+    const held = situationText("REPORT", true);
+    for (const words of [
+      "add nothing into the report.",
+      "A miss with the case intact stays, floored under structure: say what would change your mind.",
+      "A profit beat with revenue short came from costs: raise nothing on it.",
+      "A beat alone is no reason to buy, nor a miss alone to sell.",
+    ]) expect([words, held.includes(words)]).toEqual([words, true]);
+    expect(situationText("REPORT", false)).toContain("A beat alone is no reason to buy, nor a miss alone to sell.");
+  });
   it("just sold: the four ways it can end", () => {
     for (const words of ["with a buy priced off today's chart", "on a review clock", "with nothing set", "or let it go"]) expect(file("SOLD_ONE_REVIEW")).toContain(words);
   });
