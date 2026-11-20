@@ -18,6 +18,7 @@
  */
 
 import { MARKET_DATA_FEED } from "@/lib/alpaca";
+import { fetchAllBarPages } from "@/lib/market-data/alpaca-bar-pages";
 import { movePctOverSessions } from "./indicator-snapshot";
 import { getAlpacaMovers, getMoverSnapshots, type MoverKind } from "./alpaca-screener";
 import { loadCompanyList } from "./sec-filings";
@@ -56,8 +57,8 @@ const TRAILING_CALENDAR_DAYS = 300;
 
 /**
  * Completed daily closes for many symbols in one call, oldest first, on the
- * feed the app reads. The bar cap is raised so 50 symbols × 6 months fit in
- * one page.
+ * feed the app reads. Every page is read: 50 symbols × 6 months is right at
+ * one page's cap.
  */
 export async function fetchClosesBatch(symbols: string[], now: Date): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>();
@@ -70,17 +71,13 @@ export async function fetchClosesBatch(symbols: string[], now: Date): Promise<Ma
     const url =
       `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(symbols.join(","))}` +
       `&timeframe=1Day&start=${start}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
-    const res = await fetch(url, {
-      headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey },
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) {
-      console.warn(`[movers] trailing bars returned ${res.status}`);
-      return out;
-    }
-    const body = (await res.json()) as { bars?: Record<string, Array<{ c: number; t: string }>> };
-    for (const [symbol, bars] of Object.entries(body.bars ?? {})) {
+    const pages = await fetchAllBarPages(
+      url,
+      { headers: { "APCA-API-KEY-ID": keyId, "APCA-API-SECRET-KEY": secretKey }, cache: "no-store", signal: AbortSignal.timeout(15_000) },
+      "movers",
+    );
+    if (!pages) return out;
+    for (const [symbol, bars] of Object.entries(pages.bySymbol)) {
       // Today's bar is a partial session; the current price is the live end.
       const completed = bars.filter((b) => b.t.slice(0, 10) < todayEt);
       out.set(symbol.toUpperCase(), completed.map((b) => b.c));
