@@ -228,9 +228,8 @@ export async function buildRunInput(
         symbol: t.ticker,
         reason: getThesisSnapshotText(t),
         priority: "NORMAL",
-        // P1-24 B4 dual-read: a new seed is direction=null (passes through);
-        // a legacy seed is 'PENDING' → null. Both surface as null = no view.
-        thesisDirection: t.direction === "PENDING" ? null : t.direction,
+        // A seed is direction=null: no view.
+        thesisDirection: t.direction,
         catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
         createdAt: t.createdAt,
         // The actual last-look stamp. This used to read the cached

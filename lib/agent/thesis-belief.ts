@@ -31,9 +31,8 @@
  */
 
 export interface ThesisBeliefArgs {
-  // P1-24 B4: `null` is the new unresearched-seed sentinel (legacy 'PENDING'
-  // kept for the dual-read window). Both bypass the belief gate.
-  direction: "LONG" | "SHORT" | "PASS" | "PENDING" | null;
+  // `null` is the unresearched-seed sentinel; it bypasses the belief gate.
+  direction: "LONG" | "SHORT" | "PASS" | null;
   coreBelief?: string | null;
   keyAssumptions?: string[] | null;
   invalidationConds?: string[] | null;
@@ -62,16 +61,10 @@ export function validateThesisBelief(
   args: ThesisBeliefArgs,
 ): ThesisBeliefResult {
   // PASS + unresearched-seed theses bypass the gate. PASS is "researched,
-  // decided not to trade" — narrative is in reasoning_summary + risk_flags.
-  // A seed (direction null/new or 'PENDING'/legacy) is "awaiting first
-  // research" — the structural belief is built when update_thesis promotes
-  // the seed → LONG/SHORT. P1-24 B4: `|| direction == null` catches the new
-  // sentinel.
-  if (
-    args.direction === "PASS" ||
-    args.direction === "PENDING" ||
-    args.direction == null
-  ) {
+  // decided not to trade" — its narrative is in reasoning_summary. A seed
+  // (direction null) is "awaiting first research" — the structural belief
+  // is built when update_thesis promotes the seed → LONG/SHORT.
+  if (args.direction === "PASS" || args.direction == null) {
     return { ok: true };
   }
 

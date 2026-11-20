@@ -87,9 +87,9 @@ export async function getPromotionPreview(
         status: { in: ["HOLDING"] },
         // Only promote committed directional theses. This is an explicit
         // ALLOWLIST (LONG/SHORT) rather than a denylist — it excludes PASS
-        // (institutional memory, never traded), unresearched seeds (legacy
-        // 'PENDING' or P1-24 B4 direction=null — no conviction, no paper
-        // position), and is robust to NULL (a `notIn` denylist would exclude
+        // (institutional memory, never traded), unresearched seeds
+        // (direction=null — no conviction, no paper position), and is
+        // robust to NULL (a `notIn` denylist would exclude
         // NULL only by Postgres three-valued-logic accident). The status
         // filter above already restricts to held theses; this makes the
         // direction intent unambiguous.

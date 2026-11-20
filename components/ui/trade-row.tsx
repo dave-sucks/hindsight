@@ -492,12 +492,10 @@ export function TradeRow({
 // Identical to TradeRow — same price, same GainPair, same everything. The ONLY
 // difference is the subline: a watched name has no position, so there's no
 // value + share count to put there.
-//   null / 'PENDING' → "Awaiting review"  (unresearched seed — explicit)
-//   anything else    → "Watching"
+//   null          → "Awaiting review"  (unresearched seed — explicit)
+//   anything else → "Watching"
 // The direction used to be tacked on ("Watching — long"). It was filler for an
 // otherwise-empty slot and it's gone; direction still seeds the thesis sheet.
-// P1-24 B4: the unresearched-seed sentinel is direction=null (legacy 'PENDING'
-// kept for the dual-read window). Both render "Awaiting review".
 
 interface WatchlistRowProps {
   ticker: string;
@@ -505,11 +503,11 @@ interface WatchlistRowProps {
   currentPrice?: number;
   /**
    * Thesis direction for the underlying WATCHING thesis. Seeds the thesis
-   * sheet; it is NOT printed on the row. An unresearched seed (explicit null,
-   * or legacy 'PENDING') is the one case that changes the subline — it reads
-   * "Awaiting review" instead of "Watching".
+   * sheet; it is NOT printed on the row. An unresearched seed (explicit null)
+   * is the one case that changes the subline — it reads "Awaiting review"
+   * instead of "Watching".
    */
-  direction?: "LONG" | "SHORT" | "PENDING" | null;
+  direction?: "LONG" | "SHORT" | null;
   onRemove?: () => void;
   className?: string;
   /** When present, clicking the row opens ThesisSheet instead of navigating to /stocks/:ticker. */
@@ -536,10 +534,8 @@ export function WatchlistRow({
     pinMenuItem,
     ...(onRemove ? [{ label: "Remove", onSelect: onRemove, destructive: true }] : []),
   ];
-  // P1-24 B4 dual-read: explicit null (new seed) or legacy 'PENDING' →
-  // "Awaiting review". Everything else is just "Watching".
-  const secondary =
-    direction === null || direction === "PENDING" ? "Awaiting review" : "Watching";
+  // An unresearched seed (explicit null) reads "Awaiting review"; everything else "Watching".
+  const secondary = direction === null ? "Awaiting review" : "Watching";
   return (
     <>
     <TradeRowShell

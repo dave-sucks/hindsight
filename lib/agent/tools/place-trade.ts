@@ -307,10 +307,8 @@ export const placeTrade = defineTool({
       // exit plan AND violate the legal (direction, status) pairs. The
       // agent must promote the seed → LONG/SHORT via update_thesis first.
       //
-      // P1-24 B4: an unresearched seed is direction=null (new) or 'PENDING'
-      // (legacy, pre-backfill). This gate is an ALLOWLIST — it rejects
-      // ANYTHING that is not exactly 'LONG' or 'SHORT', so it catches both
-      // null AND 'PENDING' (and any other non-committed value). A
+      // An unresearched seed is direction=null. This gate is an ALLOWLIST —
+      // it rejects ANYTHING that is not exactly 'LONG' or 'SHORT'. A
       // null-direction seed must NEVER become trade-eligible. Regression:
       // place-trade.test.ts "rejects a null-direction (unresearched) seed".
       {

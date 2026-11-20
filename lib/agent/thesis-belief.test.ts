@@ -32,10 +32,6 @@ describe("validateThesisBelief", () => {
     expect(validateThesisBelief({ direction: null })).toEqual({ ok: true });
   });
 
-  it("legacy 'PENDING' direction: still bypasses (dual-read window)", () => {
-    expect(validateThesisBelief({ direction: "PENDING" })).toEqual({ ok: true });
-  });
-
   // ── LONG happy path ────────────────────────────────────────────────────
 
   it("LONG with all three fields populated: ok", () => {
