@@ -168,7 +168,7 @@ A later layer quotes an earlier one; it never re-edits it. A unit that finds an 
 - how often each situation and each playbook occurs;
 - how often each rule fires.
 
-Anything unused is a candidate to delete. Anything rare is reviewed in bulk, in one unit. Anything used daily, or anything that reaches a trade, gets its own unit.
+Anything rare or unused is reviewed in bulk, in one unit. Anything used daily, or anything that reaches a trade, gets its own unit. A count decides how deep a review goes, never whether a thing stays: "nothing used it" says how and when we write it may be wrong. A deletion needs a trader's reason, from what traders in that style do and keep.
 
 **For every item in a unit** (a field, a rule, a sentence), answer three questions:
 1. What exactly would an expert in this style look at or do here? Name who works this way.
