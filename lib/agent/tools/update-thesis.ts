@@ -110,6 +110,8 @@ const updateSchema = z.object({
   key_assumptions: F.key_assumptions.optional(),
   invalidation_conditions: F.invalidation_conditions.optional(),
   setup_id: F.setup_id_or_none.optional(),
+  outlook: F.outlook.optional(),
+  outlook_reason: F.outlook_reason.optional(),
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
   variant_view: F.variant_view.optional(),
@@ -166,7 +168,8 @@ type UpdatePatch = Partial<{
   coreBelief: string | null;
   keyAssumptions: string[];
   invalidationConds: string[];
-  // ── Conviction Expression v4 (existing-row read) ──────────────────────
+  outlook: string | null;
+  outlookReason: string | null;
   conviction: string | null;
   convictionRationale: string | null;
   variantView: string | null;
@@ -290,9 +293,6 @@ async function ruleAnswered(
   }
 }
 
-/** The doors whose save has no variant_view: a top tier sent there is stored MEDIUM until the writer gives it one. */
-const DOORS_WITHOUT_VARIANT_VIEW: ReadonlySet<string> = new Set(["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT"]);
-
 
 /** What the save takes: the Writer's fields, the note optional (edit_triggers and the status doors write none). */
 type UpdateArgs = Omit<z.infer<typeof updateSchema>, "rationale"> & { rationale?: string };
@@ -314,7 +314,7 @@ export function inOwnWords<T extends { data: unknown }>(saved: T, door: string):
 /** Each field update_thesis compares with the stored row, and the column that stores it. */
 const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
   ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],
-  ["invalidation_conditions", "invalidationConds"], ["conviction", "conviction"],
+  ["invalidation_conditions", "invalidationConds"], ["outlook", "outlook"], ["outlook_reason", "outlookReason"], ["conviction", "conviction"],
   ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
   ["bull_case", "bullCase"], ["bear_case", "bearCase"], ["research_data", "researchData"],
 ];
@@ -454,9 +454,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       coreBelief: true,
       keyAssumptions: true,
       invalidationConds: true,
-      // Conviction Expression v4 — read existing values so gates can
-      // enforce coherence when only a subset of (conviction, rationale,
-      // variantView) is being patched.
+      outlook: true,
+      outlookReason: true,
       conviction: true,
       convictionRationale: true,
       variantView: true,
@@ -802,9 +801,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // with parent_thesis_id so the audit trail captures the chain.
   //
   // P1-24 B4: a seed is direction=null (new) or 'PENDING' (legacy).
-  // Set when a top-tier call arrives without its variant view: the tier
-  // is stored one down, with the reason next to the rationale.
-  let convictionDowngradeNote: string | null = null;
   if (args.direction && !isUnresearchedSeed(existing.direction)) {
     // A refusal names only tools an agent has: none has record_thesis.
     const pass = args.direction === "PASS";
@@ -841,19 +837,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
       // Conviction Expression v4 — PENDING promotion requires the
       // same writer-side fields record_thesis would have required.
-      if (!args.conviction) missing.push("conviction (STRONG/HIGH/MEDIUM/LOW)");
+      if (!args.conviction) missing.push("conviction (HIGH/MEDIUM/LOW)");
       if (!args.conviction_rationale || args.conviction_rationale.trim().length === 0) missing.push("conviction_rationale");
-      // A top-tier call without its variant view is stored as MEDIUM
-      // with the reason — never refused (DAV-316).
-      if (
-        (args.conviction === "STRONG" || args.conviction === "HIGH") &&
-        (!args.variant_view || args.variant_view.trim().length === 0)
-      ) {
-        // The morning run's and the chat's saves have no variant_view; the writer gives one.
-        convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
-          ? `Stored as MEDIUM: ${args.conviction} needs a variant view, which the writer gives it.`
-          : `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
-      }
       if (missing.length > 0) {
         return {
           summary: `Refused PENDING→${args.direction} promotion on $${existing.ticker} — missing structural fields.`,
@@ -886,43 +871,16 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     }
   }
 
-  // ── Conviction Expression v4 — coherence + consistency gates ────────
-  // See docs/plans/CONVICTION_EXPRESSION.md §3, §3.5. Three checks fire
-  // on non-PENDING-promotion paths:
-  //   1. Coherence: if patching `conviction`, must also patch rationale.
-  //   2. Coherence: if patching to STRONG/HIGH, variantView must exist
-  //      (either patched in this call, or already on the row).
-  // P1-24 B4: seed = direction null (new) or 'PENDING' (legacy).
-  const isPendingPromotionForConvictionGates = isUnresearchedSeed(
-    existing.direction,
-  );
-  if (!isPendingPromotionForConvictionGates) {
-    // Coherence check 1: a new tier comes with its reason; without one the
-    // tier is refused and the rest lands. Read as sent, so a reason equal
-    // to the stored one still counts as given.
+  // A new conviction or outlook comes with its reason; without one the field
+  // is refused and the rest lands. Read as sent, so a reason equal to the
+  // stored one still counts as given. A seed's commitment is checked above.
+  if (!isUnresearchedSeed(existing.direction)) {
     if (args.conviction !== undefined && !sent.conviction_rationale?.trim()) {
-      refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why the tier changed, or the old reason stops matching the tier.", "no reason given for the new tier");
+      refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why you are this confident now, or the old reason stops matching.", "no reason given for the new conviction");
     }
-    const effectiveConviction = args.conviction ?? existing.conviction;
-    const effectiveVariantView =
-      args.variant_view !== undefined
-        ? args.variant_view
-        : existing.variantView;
-
-    // Coherence check 2: STRONG/HIGH needs a variantView, even if just
-    // carried over from the existing row. Without one the tier is stored
-    // as MEDIUM with the reason next to it — a detail the app can fix is
-    // fixed by the app, never a refusal (DAV-316).
-    if (
-      (effectiveConviction === "STRONG" || effectiveConviction === "HIGH") &&
-      (!effectiveVariantView || effectiveVariantView.trim().length === 0)
-    ) {
-      convictionDowngradeNote = DOORS_WITHOUT_VARIANT_VIEW.has(ctx.runMode ?? "")
-        ? `Stored as MEDIUM: ${effectiveConviction} needs a variant view and none is on the row; the writer gives it.`
-        : `Stored as MEDIUM: ${effectiveConviction} needs a variant view (consensus expects X, I think Y) and none is on the row.`;
+    if (args.outlook !== undefined && !sent.outlook_reason?.trim()) {
+      refuseField("outlook", "Send outlook_reason with it: a sentence on what you expect of the stock from here and why.", "no reason given for the new outlook");
     }
-
-    // Conviction is the writer's view; it is not derived from any score.
   }
 
   // A terminal flip clears the triggers, so the price-shape rules below don't
@@ -1034,6 +992,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       // LONG / SHORT — the only other legal direction promotion (out of
       // an unresearched seed; guarded above).
       patch.direction = args.direction;
+      // What we expect of the stock starts from the kind of trade when the Writer sends no outlook.
+      if (args.outlook === undefined) patch.outlook = args.direction === "SHORT" ? "BEARISH" : "BULLISH";
     }
   }
   // Conviction Expression v4 — persist patched conviction fields.
@@ -1043,10 +1003,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   if (args.conviction !== undefined) patch.conviction = args.conviction;
   if (args.conviction_rationale !== undefined)
     patch.convictionRationale = args.conviction_rationale;
-  if (convictionDowngradeNote) {
-    patch.conviction = "MEDIUM";
-    patch.convictionRationale = `${args.conviction_rationale ?? existing.convictionRationale ?? ""}\n\n[${convictionDowngradeNote}]`.trim();
-  }
+  if (args.outlook !== undefined) patch.outlook = args.outlook;
+  if (args.outlook_reason !== undefined) patch.outlookReason = args.outlook_reason;
   if (args.variant_view !== undefined)
     patch.variantView =
       args.variant_view.trim().length === 0 ? null : args.variant_view;
@@ -1430,6 +1388,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     "coreBelief",
     "keyAssumptions",
     "invalidationConds",
+    "outlook",
+    "outlookReason",
     "conviction",
     "convictionRationale",
     "variantView",

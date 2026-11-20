@@ -48,6 +48,23 @@ const withFence = (old: string, a: UniverseAnalyst) => {
 };
 /** The house rules with the line on weighing the Market and portfolio context back in. */
 const MARKET_RULE = before("morning.quiet")["instructions:market_block_rule"];
+/** The research rules since outlook and conviction were told apart (2026-11-19): three lines of the old text, as they read now. */
+const withOutlook = (text: string) => {
+  const swaps: Array<[string, string]> = [
+    [" In conviction_rationale say where the price sits against the Street's average and high.", " In outlook_reason say where the price sits against the Street's average and high."],
+    ["revised up in the last 4 weeks is a reason for conviction;", "revised up in the last 4 weeks is a reason for a bullish outlook;"],
+    [
+      "- conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest middle (most theses).\n",
+      "- outlook: what you expect of the stock from here, which is the business and the price together. A good company whose price already says everything you believe is NEUTRAL, and that is a view worth saving.\n- conviction: how confident you are in that outlook and its reasons, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. Its reason is about the business, never the price or the chart.\n",
+    ],
+    ["scaled by conviction (LOW ×0.5 … STRONG ×1.25).", "scaled by conviction (LOW ×0.5, MEDIUM ×0.75, HIGH ×1)."],
+  ];
+  return swaps.reduce((s, [was, is]) => {
+    if (!s.includes(was)) throw new Error(`the old research rules have no "${was.slice(0, 40)}"`);
+    return s.replace(was, is);
+  }, text);
+};
+
 const house = (old: Record<string, string>) => `${old["instructions:house_rules"]}\n\n${MARKET_RULE}`;
 const count = (text: string, part: string) => text.split(part).length - 1;
 
@@ -160,7 +177,7 @@ describe("the Writer and the Holding refresh", () => {
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
     expect(now["instructions:playbooks"]).toBe(old["instructions:playbooks"] === undefined ? undefined : withNewToolNames(old["instructions:playbooks"]));
     // Its one document imports the rules and the research rules, each where it printed (T1's words applied, ./__fixtures__/t1-text.ts).
-    expect(now["instructions:research_rules"]).toBe(withNewToolNames(RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n")));
+    expect(now["instructions:research_rules"]).toBe(withOutlook(withNewToolNames(RESEARCH.map((k) => old[`instructions:${k}`]).join("\n\n"))));
     expect(now["instructions:own"]).toBe(withNewToolNames(own(old["instructions:job"], old["instructions:decision"])));
     expect(now["message:playbook_record"]).toBe(old["message:setup_record"]);
     expect(now["message:stock_data"]).toBe(old["message:stock_data"]);

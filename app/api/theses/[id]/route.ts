@@ -102,6 +102,8 @@ export async function GET(
       sourceSignalIds: true,
       parentThesisId: true,
       // Conviction Expression v4 — writer-side fields.
+      outlook: true,
+      outlookReason: true,
       conviction: true,
       convictionRationale: true,
       variantView: true,
@@ -408,6 +410,8 @@ export async function GET(
     sourceRationale: thesis.sourceRationale,
     sourceSignalIds: thesis.sourceSignalIds,
     parentThesisId: thesis.parentThesisId,
+    outlook: thesis.outlook,
+    outlookReason: thesis.outlookReason,
     conviction: thesis.conviction,
     convictionRationale: thesis.convictionRationale,
     variantView: thesis.variantView,

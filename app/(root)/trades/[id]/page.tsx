@@ -34,6 +34,8 @@ export default async function TradeDetailPage({
           thesis: {
             select: {
               ...thesisSheetStateSelect,
+              outlook: true,
+              outlookReason: true,
               conviction: true,
               createdAt: true,
               researchRun: { select: { id: true, agentConfigId: true } },
@@ -66,6 +68,8 @@ export default async function TradeDetailPage({
           ticker={position.symbol}
           status={thesis?.status ?? (isClosed ? 'RETIRED' : 'HOLDING')}
           agentWatchDays={agentWatchDays(thesis?.triggers)}
+          outlook={thesis?.outlook ?? null}
+          outlookReason={thesis?.outlookReason ?? null}
           analystId={position.analyst?.id ?? null}
           thesisId={thesis?.id}
           closeTrade={isOpen ? { tradeId: position.id } : null}

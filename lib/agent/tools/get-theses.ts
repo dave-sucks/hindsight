@@ -314,6 +314,7 @@ export const getTheses = defineTool({
         sourceKind: true,
         // Conviction Expression v4 — writer-side fields (read into the
         // agent's context + the resolver's actionability decision tree).
+        outlook: true,
         conviction: true,
         convictionRationale: true,
         variantView: true,
@@ -501,6 +502,7 @@ export const getTheses = defineTool({
       direction: t.direction,
       horizon: t.horizon,
       setupId: t.setupId ?? null,
+      outlook: t.outlook ?? null,
       conviction: t.conviction ?? null,
       company: t.company,
       coreBelief: t.coreBelief,

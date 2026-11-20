@@ -1,8 +1,8 @@
 /**
- * set_conviction — the analyst's conviction on a stock, with the reason. What
- * is left for a deciding agent of the thesis's own fields (the rest is the
- * Writer's): in the 30 days to 2026-11-18 the morning runs changed the tier 14
- * times. The rules are the save's (`saveThesis`, update-thesis.ts).
+ * set_conviction — the owner's own change to a stock's conviction or outlook,
+ * from the chat, with the reason. An analyst's run changes them only in the
+ * note that ends a review, with that review's verdict (write_note,
+ * lib/agent/thesis-review.ts), so this tool is on no run's list.
  */
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
@@ -12,14 +12,17 @@ import { thesisFields } from "@/lib/agent/tools/thesis-fields";
 const F = thesisFields();
 
 export const setConviction = defineTool({
-  description: "Changes your conviction on a stock, with the reason; one line in its Activity.",
+  description: "Changes a stock's conviction or its outlook, each with its reason; one line in its Activity.",
   schema: z.object({
     thesis_id: z.string().describe("The stock's thesis id."),
-    conviction: F.conviction,
-    conviction_rationale: F.conviction_rationale,
+    conviction: F.conviction.optional(),
+    conviction_rationale: F.conviction_rationale.optional(),
+    outlook: F.outlook.optional(),
+    outlook_reason: F.outlook_reason.optional(),
   }),
   ui: "thesis-card" as const,
   gateLog: "set_conviction",
-  progressLabel: (args) => `Setting conviction ${args.conviction}`,
-  execute: (args, ctx) => saveThesis({ thesis_id: args.thesis_id, conviction: args.conviction, conviction_rationale: args.conviction_rationale }, ctx),
+  progressLabel: (args) => (args.conviction ? `Setting conviction ${args.conviction}` : `Setting outlook ${args.outlook ?? ""}`),
+  execute: (args, ctx) =>
+    saveThesis({ thesis_id: args.thesis_id, conviction: args.conviction, conviction_rationale: args.conviction_rationale, outlook: args.outlook, outlook_reason: args.outlook_reason }, ctx),
 });

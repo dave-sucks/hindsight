@@ -29,6 +29,8 @@ const validLong: ThesisDecisionInput = {
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
   key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
   invalidation_conditions: ["Gross margin below 70% on next print", "Guidance cut on DC revenue"],
+  outlook: "BULLISH",
+  outlook_reason: "The data-center ramp is not in the price yet.",
   conviction: "HIGH",
   conviction_rationale:
     "I really like this setup — the catalyst is ahead and consensus is too conservative on DC revenue.",
@@ -69,11 +71,10 @@ describe("validateThesisDecision — belief + conviction requirements (LONG/SHOR
     expect(all).toContain("invalidation_conditions");
   });
 
-  it("STRONG/HIGH conviction without a variant view is stored as MEDIUM, with the reason — not refused", () => {
-    const v = validateThesisDecision({ ...validLong, conviction: "STRONG", variant_view: undefined }, mintOpts);
+  it("a HIGH conviction needs no view that differs from Wall Street: it is stored as sent", () => {
+    const v = validateThesisDecision({ ...validLong, conviction: "HIGH", variant_view: undefined }, mintOpts);
     expect(v.ok).toBe(true);
-    expect(v.decision?.conviction).toBe("MEDIUM");
-    expect(v.decision?.notes?.join(" ")).toContain("Conviction stored as MEDIUM");
+    expect(v.decision?.conviction).toBe("HIGH");
   });
 
   it("allows MEDIUM conviction without a variant view", () => {

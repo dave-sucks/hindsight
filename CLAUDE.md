@@ -392,7 +392,7 @@ plus `get_stock_data`.
   and Settings all save through `normalizeAnalystPatch` there.
   **Position sizing is three plain settings:**
   `minPositionSize` (smallest trade — a normal buy), `maxPositionSize`
-  (largest trade — a STRONG/HIGH conviction buy), `maxPositionTotal` (most
+  (largest trade — a HIGH conviction buy), `maxPositionTotal` (most
   in one stock — where adding to a winner stops; 0 = twice the largest
   trade). The agent does not size trades: inside a run, `place_trade` and
   `add` have no size field at all (the schema

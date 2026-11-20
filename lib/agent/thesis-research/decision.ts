@@ -43,6 +43,8 @@ export const thesisDecisionSchema = z.object({
   core_belief: W.core_belief.optional(),
   key_assumptions: W.key_assumptions.optional(),
   invalidation_conditions: W.invalidation_conditions.optional(),
+  outlook: W.outlook.optional(),
+  outlook_reason: W.outlook_reason.optional(),
   conviction: W.conviction.optional(),
   conviction_rationale: W.conviction_rationale.optional(),
   variant_view: W.variant_view.optional(),
@@ -179,18 +181,10 @@ export function validateThesisDecision(
 
     // ── Conviction Expression v4 ──────────────────────────────────────
     if (!d.conviction) {
-      errors.push("conviction: required for LONG/SHORT — STRONG/HIGH/MEDIUM/LOW, your real view.");
+      errors.push("conviction: required for LONG/SHORT — HIGH, MEDIUM or LOW: how confident you are in the outlook and its reasons.");
     }
     if (!d.conviction_rationale || d.conviction_rationale.trim().length === 0) {
       errors.push("conviction_rationale: required — the judgment in plain speech, not a paraphrase of the bull case.");
-    }
-    // A top-tier call needs a variant view. Without one the tier is MEDIUM —
-    // stored that way with a note, not refused. Three catalyst theses were
-    // thrown away on 2026-09-25 over a 400-character rule; a detail the app
-    // can fix is fixed by the app (DAV-316).
-    if ((d.conviction === "STRONG" || d.conviction === "HIGH") && (!d.variant_view || d.variant_view.trim().length < 10)) {
-      notes.push(`Conviction stored as MEDIUM: ${d.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`);
-      d.conviction = "MEDIUM";
     }
   }
 

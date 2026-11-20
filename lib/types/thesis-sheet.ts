@@ -204,7 +204,10 @@ export interface ThesisDossier {
   // ThesisSheet header keys off `conviction`; tooltip shows
   // `convictionRationale`; the variantView callout block keys off
   // `variantView` (rendered only when present).
-  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  /** What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH, and why. */
+  outlook?: string | null;
+  outlookReason?: string | null;
+  conviction: "HIGH" | "MEDIUM" | "LOW" | null;
   convictionRationale: string | null;
   variantView: string | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────

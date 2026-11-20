@@ -77,8 +77,7 @@ describe("entrySizeForConviction — the analyst's band, placed by conviction (D
     expect(entrySizeForConviction({ conviction: null, band: catalyst })).toBe(5_000);
   });
 
-  it("STRONG and HIGH buy the largest trade", () => {
-    expect(entrySizeForConviction({ conviction: "STRONG", band: catalyst })).toBe(8_000);
+  it("HIGH buys the largest trade", () => {
     expect(entrySizeForConviction({ conviction: "HIGH", band: catalyst })).toBe(8_000);
   });
 
@@ -95,14 +94,14 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
   const { sizeByRisk, positionBand } = require("./position-sizing");
   const band = positionBand({ minPositionSize: 5_000, maxPositionSize: 16_000 });
 
-  it("a STRONG buy with a 14% stop on a $100k book at 1% risk is ~$8.9k, not the $16k maximum", () => {
-    const r = sizeByRisk({ equity: 100_000, riskPct: 1, conviction: "STRONG", entry: 100, stop: 86, band });
-    // 1% × 1.25 = $1,250 at risk ÷ $14 a share = 89 shares.
-    expect(r.shares).toBe(89);
-    expect(r.notional).toBe(8_900);
+  it("a HIGH buy with a 14% stop on a $100k book at 1% risk is ~$7.1k, not the $16k maximum", () => {
+    const r = sizeByRisk({ equity: 100_000, riskPct: 1, conviction: "HIGH", entry: 100, stop: 86, band });
+    // 1% = $1,000 at risk ÷ $14 a share = 71 shares.
+    expect(r.shares).toBe(71);
+    expect(r.notional).toBe(7_100);
     expect(r.clampedBy).toBeNull();
-    expect(r.riskDollars).toBe(1_246);
-    expect(r.line).toBe("89 shares, $8,900, sized by risk: 1% of the $100,000 account × 1.25 for strong conviction = $1,250 at risk, over $14.00 to the stop.");
+    expect(r.riskDollars).toBe(994);
+    expect(r.line).toContain("at high conviction = $1,000 at risk, over $14.00 to the stop.");
   });
 
   it("the MU case: ~$16k over a 14% stop becomes a ~$7k position at MEDIUM", () => {

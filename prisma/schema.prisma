@@ -369,35 +369,25 @@ model Thesis {
   // (#924); the column waits for a later PR to drop it.
   scoring Json?
 
-  // ── Conviction Expression v4 ────────────────────────────────────────
-  // Writer's view-strength on this thesis. Separate axis from `direction`
-  // (which is bullish/bearish/no-view). Required on every directional
-  // thesis (LONG/SHORT) via Layer-1 gate. Null on PASS, PENDING, and
-  // pre-v4 legacy rows.
-  //   STRONG  — top-tier conviction. Goldman Conviction List equivalent.
-  //             Writer's best calls (~2-3 names per analyst typical).
-  //   HIGH    — solid conviction. Standard Buy / Overweight.
-  //   MEDIUM  — normal conviction. The honest middle.
-  //   LOW     — weak conviction. "Eh." Track but most signals skip.
-  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
+  // What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH, with
+  // a sentence of why. The Writer sets it with the thesis and the stock's
+  // analyst may change it at any review. Apart from `direction`, which is the
+  // kind of trade: a holding stays LONG after a rally has used up the upside.
+  // No code acts on it. Null on a stock with no view.
+  outlook             String?
+  outlookReason       String?
+
+  // How confident we are in the outlook and its reasons: HIGH, MEDIUM or LOW.
+  // Not how bullish we are and not whether to buy today. It moves only in a
+  // review, with that review's verdict (lib/agent/tools/update-thesis.ts).
+  // Sizes a buy (lib/agent/position-sizing.ts). Null on a stock with no view.
   conviction          String?
 
-  // One-sentence justification for the conviction tier (≤200 chars).
-  // Required whenever `conviction` is set (Layer-1). For backfilled rows,
-  // populated with "backfilled from composite on YYYY-MM-DD" so the UI
-  // can distinguish writer-attested rationales from derived defaults.
-  // See docs/plans/CONVICTION_EXPRESSION.md §3, §9.
+  // Why this conviction, about the business. Sent whenever conviction is.
   convictionRationale String?
 
-  // The writer's contrarian take. One sentence (≤300 chars):
-  //   "Consensus thinks X, I think Y, here's why."
-  // REQUIRED via Layer-1 gate when `conviction` is STRONG or HIGH —
-  // every buy-side pitch framework requires a variant view for top-tier
-  // conviction. Optional on MEDIUM/LOW where consensus alignment is
-  // acceptable. Daily-run uses this as the writer's specific edge that
-  // can be re-checked against today's signals (consensus moved to the
-  // writer's view → defer).
-  // See docs/plans/CONVICTION_EXPRESSION.md §3-§4.
+  // Where we differ from Wall Street about the business, in a sentence
+  // ("analysts expect X, I think Y, because Z"). Optional at every conviction.
   variantView         String?
 
   // ── PROMOTED state context (set only at PAPER→LIVE promotion) ───────

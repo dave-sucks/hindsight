@@ -39,10 +39,9 @@ describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written
     expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(t === "DYN" ? 400 : 0);
   });
 
-  it("a top-tier call without a variant view is stored one tier down, with the reason, not refused", () => {
+  it("a HIGH call with no view that differs from Wall Street is kept as HIGH", () => {
     const v = validateThesisDecision({ ...fx.DYN.last.input, conviction: "HIGH", variant_view: undefined }, opts);
     expect(v.ok).toBe(true);
-    expect(v.decision?.conviction).toBe("MEDIUM");
-    expect(v.decision?.notes?.join(" ")).toMatch(/Conviction stored as MEDIUM: HIGH needs a variant view/);
+    expect(v.decision?.conviction).toBe("HIGH");
   });
 });

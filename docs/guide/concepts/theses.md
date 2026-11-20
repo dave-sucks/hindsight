@@ -26,6 +26,37 @@ Every agent writes for you in plain English, in one of two styles (`lib/agent/en
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 
+## How a review ends
+
+A thesis has two pieces of state, and every look by its analyst ends with one event.
+
+**Outlook** is what we expect of the stock from here: bullish, neutral or bearish, with a sentence of why. The Writer sets it with the thesis (a thesis starts from its direction: long is bullish). The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching.
+
+**Conviction** is how confident we are in that outlook and its reasons:
+
+- **High:** the evidence clearly supports it, and nothing against it is unanswered.
+- **Medium:** reasoned and plausible; untested, or the evidence is mixed.
+- **Low:** thin or contested; an assumption has missed or is in doubt.
+
+It is not how bullish we are and not whether to buy today, so high conviction in a neutral outlook is a real view. It sizes a buy, and its reason is about the business, never the price.
+
+**The verdict** is what the evidence since the last look did to the thesis. Every note from a morning run or a trigger run carries one:
+
+- **Stronger:** the evidence supports the thesis more than before.
+- **Unchanged:** nothing bore on it. A move in the price alone is unchanged.
+- **Weaker:** the evidence goes against it, not fatally.
+- **Broken:** something written under what would prove it wrong has happened, or the belief no longer holds.
+
+Any verdict but unchanged says what happened and which assumption it touched.
+
+The rules between them are few (`lib/agent/thesis-review.ts`), and a note that breaks one comes back whole with what to send:
+
+- Conviction changes only in a look's note, in the same save as its verdict. It rises only on stronger and falls only on weaker or broken. A verdict doesn't have to move it.
+- Broken can't leave the outlook bullish, and on a stock we hold it comes with a sale: proposed, already waiting, or declined by you.
+- Nothing adds verdicts up. Outlook and conviction are whatever the latest look left them at.
+
+You change either one yourself from the chat (`set_conviction`), with no verdict.
+
 A thesis shows in three tabs, the same on its sheet, on the trade page and on the stock's page (the stock's page adds its Financials and News tabs and Hindsight's history of the stock under Activity). With no live thesis, the stock's page shows the newest one as history, its pill saying how it ended (Passed, Dropped, Sold) and its notes under Agent insights; only a stock never researched reads "No research yet" (`thesisToShow`, `lib/thesis-status.ts`). **Overview** is the timeline: the price, the chart, the flag for today's work, the Agent insights (the newest 5 written-up Activity lines) and the triggers, with the levels, the two analyst cards (the rating split, and the Street's targets on a line with the price and our entry) and the earnings record under them. **Research** is the analyst's view, in this order: the company in two sentences under "About <the company>", the belief under "Core thesis" with the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38"), the bull case, the bear case and what would prove us wrong as bullets, the recent SEC filings, then, folded, the assumptions (each ending with when and where it is checked) where we differ from the street, and the conviction's reason under its tier. The top row of the sheet and the trade page is the nav: the status pill and the conviction chip ("High conviction", with a flame on High and Strong), then at the right edge the pin, a ··· menu (Send to agent, Trade, Close trade with its warning) and, on the sheet, an expand button to the full page on the left and the X on the right. Under it, one line: the stock's logo, ticker and name. **Activity** is the whole list. A row written before the company line shows nothing where it would be, never a placeholder.
 
 ## Where it comes from
@@ -104,7 +135,7 @@ The Writer: `submit_thesis`, then code runs the save (`record_thesis` for a new 
 `isAgentWatched` in `lib/agent/triggers/agent-watch.ts`: a watch with a review schedule of its own.
 
 #### Edited by
-`edit_triggers`: `add`, `edit` by id, `remove` by id. Each agent's thesis tools and their fields are pinned by `thesis-doors.test.ts`: a run's note, its trigger edits, its conviction and catalyst date and the two watch tools; a trigger run gets the note and the trigger edits only, and the Writer its own save, `update_thesis`.
+`edit_triggers`: `add`, `edit` by id, `remove` by id. Each agent's thesis tools and their fields are pinned by `thesis-doors.test.ts`: a run's note, its trigger edits, its catalyst date and the two watch tools; a trigger run gets the note and the trigger edits only, and the Writer its own save, `update_thesis`.
 
 #### Status changes
 The buy turns WATCHING into HOLDING as soon as the broker accepts it (on approval, or inline when approval is off): `armHeldLadderOnFill` in `lib/proposals/thesis-flips.ts` removes the buy and the Stop watching triggers and every trigger marked `playbook: "WATCH"`, writes the order's own sell price ("Sell if below" at its `stopLoss`, with the analyst's `stopReason` as its note, or yours from the ticket), applies stop when buying (`lib/trading/auto-stop.ts`) when it is on, and leaves the sell rules inherited. The playbook's other holding triggers are put on by the run after the fill (`lib/proposals/after-buy.ts`), through `edit_triggers`, so the save's rules hold for them: yours win, and only you lower a floor. Nothing comes from the horizon. A watch's Stop watching trigger firing retires it as DROPPED (`stopWatching`, `lib/agent/triggers/stop-watching.ts`). A sale retires it as SOLD, unless it was a profit-take or the closing agent said the belief survived (`shouldRecycleToWatching`): then it goes back to WATCHING with the triggers that need a position removed (`closeThesisForPosition`) and nothing written.

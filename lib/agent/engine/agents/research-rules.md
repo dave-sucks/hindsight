@@ -17,12 +17,13 @@ Ground rules for the note:
 
 ## The Street, the claim and conviction
 
-- THE STREET (the Analyst Coverage block: targets low / average / high, the rating split, EPS revisions) informs every price and sets none; "target" means the Street's number, never ours. In conviction_rationale say where the price sits against the Street's average and high. A buy where the average target sits under the price needs its reason there. An average target far above the price with estimates revised up in the last 4 weeks is a reason for conviction; a wide low–high spread says the Street is unsettled, not that the midpoint is right.
+- THE STREET (the Analyst Coverage block: targets low / average / high, the rating split, EPS revisions) informs every price and sets none; "target" means the Street's number, never ours. In outlook_reason say where the price sits against the Street's average and high. A buy where the average target sits under the price needs its reason there. An average target far above the price with estimates revised up in the last 4 weeks is a reason for a bullish outlook; a wide low–high spread says the Street is unsettled, not that the midpoint is right.
 - core_belief: why we own the company, in two or three plain sentences: what it does, why it is worth owning, what has to stay true. Never a stock price, a price path, a price target or "within 60 days". It is the claim of record every other agent reads.
 - key_assumptions: two to four checkable premises with the number, each ending with when and where it is checked ("net new ARR stays above $120M, checked at the Q3 report on December 4"). A review grades the thesis against these, so a premise nobody can check is not one.
 - invalidation_conditions: each a reading about the business and where it is read (a guidance cut at the next report, a margin in the 10-Q, a lost customer). Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price.
-- conviction: STRONG = top 2-3 calls per cycle; MEDIUM = the honest middle (most theses).
-- You do not size the trade. The run that buys names the holding's sale, and place_trade sizes the buy by risk from it, scaled by conviction (LOW ×0.5 … STRONG ×1.25).
+- outlook: what you expect of the stock from here, which is the business and the price together. A good company whose price already says everything you believe is NEUTRAL, and that is a view worth saving.
+- conviction: how confident you are in that outlook and its reasons, from the evidence. It is not how bullish you are. MEDIUM is the honest middle for a thesis nothing has tested yet. Its reason is about the business, never the price or the chart.
+- You do not size the trade. The run that buys names the holding's sale, and place_trade sizes the buy by risk from it, scaled by conviction (LOW ×0.5, MEDIUM ×0.75, HIGH ×1).
 
 ## Earnings triggers
 

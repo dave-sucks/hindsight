@@ -69,7 +69,7 @@
      {
       "type": "function",
       "name": "write_note",
-      "description": "Writes your note on a stock: one line in its Activity that the owner and the next run on it read, ending a review with your verdict.",
+      "description": "Writes your note on a stock: one line in its Activity that the owner and the next run on it read.",
       "parameters": {
        "$schema": "http://json-schema.org/draft-07/schema#",
        "type": "object",
@@ -887,7 +887,7 @@
       {
        "type": "function",
        "name": "write_note",
-       "description": "Writes your note on a stock: one line in its Activity that the owner and the next run on it read, ending a review with your verdict.",
+       "description": "Writes your note on a stock: one line in its Activity that the owner and the next run on it read.",
        "parameters": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",

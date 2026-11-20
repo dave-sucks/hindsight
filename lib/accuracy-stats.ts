@@ -53,7 +53,6 @@ const CONVICTION_TIERS: Array<{ label: string; tier: string }> = [
   { label: "Low", tier: "LOW" },
   { label: "Medium", tier: "MEDIUM" },
   { label: "High", tier: "HIGH" },
-  { label: "Strong", tier: "STRONG" },
 ];
 
 function winRateFrom(wins: number, total: number): number | null {
