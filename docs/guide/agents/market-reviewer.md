@@ -63,8 +63,8 @@ A note is written only when the day's research touches why we own or watch a sto
 - its **effect**: stronger, weaker or neutral, for the reason we own or watch the stock.
 
 Each note is saved once, as a shared note to the stocks it names (`SharedNote`, see [Theses](../concepts/theses.md)), with its run and its two fields:
-- **High** is pinned for three days. Each stock it names is in the [a note to answer](../concepts/situations.md) situation, so the 8 AM morning run has it on its list and must answer it on that stock, until a run writes on the stock. Its run reads the note above the stock's newest 8 Activity lines.
-- **Low and medium** are not pinned: a line in each stock's Activity, read by the next run as one of the stock's newest 8.
+- **High** starts a look only through a trigger you saved: "Review if the Market Reviewer writes a high note on it" (Settings → Triggers, the News tab), with On fire set to Send to Agent. With that rule saved, the trigger check runs as soon as the notes are saved, and each stock a high note names gets one [trigger run](trigger-runs.md) with the news [skill](../concepts/situations.md), handed the note as what woke it. Without the rule, a high note starts no run. No note is pinned.
+- **Every note,** high, medium or low, is a line in each stock's Activity, read by the next look as one of the stock's newest 8. A medium or low note starts nothing.
 
 In each stock's Activity the note is one line: "Agent note to NVDA, AMD", then its two fields as one signal, the conviction chip's flame only on a high-impact note and Bullish, Bearish or Neutral for stronger, weaker or neutral (`components/domain/note-signal.tsx`). A run reads the same line with the words ("· high impact · weaker"). The line carries that stock's price when the note was saved (kept per stock in `SharedNote.prices`; at 7:30 that is the last close). The paragraph under it is the model's own text, its sources drawn as the citation pill. A note that fails to save never costs the digest.
 

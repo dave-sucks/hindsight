@@ -70,7 +70,7 @@ export interface LineContext {
 }
 
 /** What the trigger check loads for a condition beyond the live quote. */
-export type Source = "snapshot" | "volume" | "earnings" | "filings" | "street";
+export type Source = "snapshot" | "volume" | "earnings" | "filings" | "street" | "notes";
 
 export interface MeasureDef {
   id: Watch;

@@ -27,7 +27,6 @@ export const SITUATION_ORIGIN: Record<SituationCode, SituationOrigin> = {
   NEWS: "trigger",
   PROTECTION: "flag",
   REVIEW_DUE: "trigger",
-  NOTE_TO_ANSWER: "flag",
   SOLD_ONE_REVIEW: "flag",
 };
 

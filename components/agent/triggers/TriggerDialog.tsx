@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Add trigger: a menu of the five types, then the dialog for the one picked.
+ * Add trigger: a menu of the six types, then the dialog for the one picked.
  * Editing a trigger opens the same dialog, filled in. Every type fills the
  * same form (./TriggerFields). docs/plans/TRIGGER_TYPES.md §7.
  */

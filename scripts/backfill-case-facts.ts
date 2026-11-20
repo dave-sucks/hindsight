@@ -231,12 +231,10 @@ async function backfill(name: string, dryRun: boolean): Promise<void> {
       }
     }
     const needs = computeNeedsAction(input);
-    const unanswered = stockContextFor({ ticker, rows: rowsThen }).unansweredDecision != null;
     const sources: SituationSources = {
       needs, triggers: ladder, status,
       actionability: (resolved?.actionability as string | null) ?? null,
       buyBlockedByFull: row.buyBlockedByFull != null,
-      unansweredDecision: unanswered,
     };
     const situations = situationsFor(sources);
     const recordedLead = (row.needsAction as { kind?: string } | null)?.kind ?? null;

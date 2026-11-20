@@ -22,7 +22,7 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
 
 3. If it no longer holds:
    - Pass. Write write_note with a note on what is happening to the stock and why you are not acting.
-   - If the check reveals the thesis itself is no longer applicable (ticker fell outside this analyst's edge/universe, the original premise has broken structurally, the name is no longer worth tracking): say so in the note, and on a stock we watch take its buy and Stop watching triggers off by id (edit_triggers with remove) so nothing fires on it; the morning run decides whether it stays on the book. A stock we hold is sold first with sell, which retires the thesis itself.
+   - If the check reveals the thesis itself is no longer applicable (ticker fell outside this analyst's edge/universe, the original premise has broken structurally, the name is no longer worth tracking): on a stock we watch, stop watching it (`stop_watching`), and its reason is your note. A stock we hold is sold first with sell, which retires the thesis itself.
 
 4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the stock's triggers reflect it. After an add, raise the "Sell if below" price (a bigger position must never round-trip into a loss). After a fired gain checkpoint, replace it with the next one. After a move that blew through a trigger's price, re-set it off the NEW structure the chart gives (the swing low, the breakout price, the average), not a round number. The triggers that came with the buy and the playbook's fill triggers were written at the fill; your analyst's and the account's rules apply on their own. The trigger ids are on the row's triggers lines. If nothing went stale, leave them. On a stock we hold you can raise a sale's price, never lower it; if you think it is wrong, say so in the note and name the price.
 
@@ -38,7 +38,7 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
 A situation's text says what to find out and what can follow. What you may do is the same every time, and every trade is a proposal that waits for the owner.
 
 - On a stock we hold: propose a sale or a trim (`sell`), propose an add (`add`), change its triggers (`edit_triggers`), or leave it. You can raise a floor. Only the owner lowers one.
-- On a stock we watch: propose the buy (`place_trade`), change its triggers, put on one of its playbook's triggers by its reference, send it to the Writer for new research (`dispatch_thesis_research`), or leave it. This run can't end a watch: where a situation says to stop watching, take the stock's buy and its Stop watching trigger off, say so in your note, and the morning run decides.
+- On a stock we watch: propose the buy (`place_trade`), change its triggers, put on one of its playbook's triggers by its reference, send it to the Writer for new research (`dispatch_thesis_research`), stop watching it (`stop_watching`), or leave it.
 
 ## Hard constraints
 

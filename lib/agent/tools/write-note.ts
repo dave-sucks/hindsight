@@ -53,7 +53,7 @@ const schema = z.object({
   pinned_until: z
     .string()
     .optional()
-    .describe("YYYY-MM-DD: keep a note to several stocks in front of their runs until then, at most two weeks; each stock goes on the next run's list until a run answers it. A note to an analyst or the account lasts a week unless given an end."),
+    .describe("YYYY-MM-DD: keep a note to several stocks above their Activity lines until then, at most two weeks, so every look at them reads it first. A note to an analyst or the account lasts a week unless given an end."),
   about_date: z.string().optional().describe("YYYY-MM-DD: the market date the note is about, when there is one."),
 });
 

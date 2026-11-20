@@ -4,7 +4,8 @@
  * trading in it, or a stock held in it), through the agent runner
  * (runAgentAsRun). One model call with web search writes the market digest
  * and its notes on the stocks its research touched; its own save keeps the
- * digest and each note on its stocks, a high one pinned
+ * digest and each note on its stocks; a saved high note starts the check of
+ * the triggers that watch notes
  * (lib/agent/market-reviewer/run.ts). A market holiday writes nothing. Each
  * book is its own read-only run.
  */

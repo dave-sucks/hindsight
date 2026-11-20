@@ -47,7 +47,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +99, when the run sells or trims, it makes that call first and its note after (the note becomes the proposal's reason).
   // 2026-11-18: −145, the same: the trigger run's text and its situations name write_note, edit_triggers, sell and add.
   // 2026-11-19: +10, the same section in the trigger run's instructions (+934), and the sample's sale text is its skill, the part for a holding (−924).
-  tactical: 13_712,
+  // 2026-11-19: −253, the trigger run can stop watching a stock: the two passages on taking its triggers off for the morning run go.
+  tactical: 13_459,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -118,7 +119,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −2,157 each, send to the Writer takes the stock, a brief and a source link: code finds the thesis by the stock, and the Writer picks the playbook (−2,231 on the trigger run, whose stock is code's).
   // 2026-11-19: +1,230 each, edit_triggers says what each direction of `is` fires on, from the measure catalog.
   // 2026-11-19: +72 each, get_theses says the morning run's own list carries the situations' texts and every other read their names.
-  "research-run": 29_759,
+  // 2026-11-19: +168 each, edit_triggers takes the news note measure (watch "note": the Market Reviewer's high note on the stock).
+  "research-run": 29_927,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
@@ -127,7 +129,9 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −2,231, the same send, its stock code's.
   // 2026-11-19: +1,230, the same `is` words.
   // 2026-11-19: +72, the same get_theses.
-  tactical: 25_000,
+  // 2026-11-19: +168, the same measure.
+  // 2026-11-19: +508, stop_watching (its reason; code fills the stock).
+  tactical: 25_676,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -154,7 +158,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +1,230, the same `is` words.
   // 2026-11-19: +283, watch_stock's look-again is a price, the next report or the event's date.
   // 2026-11-19: +310, the same get_theses, and read_knowledge_library lists the situations (topic "situation").
-  principal: 45_847,
+  // 2026-11-19: +147, the same measure (+168), and write_note's pinned_until says a pinned note is read above the Activity lines, not that it lists the stock (−21).
+  principal: 45_994,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

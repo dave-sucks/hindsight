@@ -8,8 +8,8 @@ It checks the fire against what's true now, then proposes the trade, redraws the
 Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
-Tools: 14
-Saves: a note, trigger edits, a trade proposal
+Tools: 15
+Saves: a note, trigger edits, a trade proposal, a watch ended
 ```
 
 ```chat
@@ -65,7 +65,7 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 ## What happens next
 
-The run ends with at most one trade, exactly one `write_note` that says what it did and why, linked to the trigger that fired, and `complete_run`. It has no status tool: dropping a watch is the morning run's call. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
+The run ends with at most one trade, exactly one `write_note` that says what it did and why, linked to the trigger that fired, and `complete_run`. On a stock we watch it can also stop watching (`stop_watching`), which retires the thesis as dropped with the run's reason as its last line; it can't put a sold or dropped stock back on watch. A stock we hold is sold, never dropped. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
 - **A buy goes through:** the stock becomes a holding. Its buy and its Stop watching line come off, "Sell if below" goes on at the price approved on the proposal, and [After the buy](after-the-buy.md) puts on its holding triggers.
 - **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.

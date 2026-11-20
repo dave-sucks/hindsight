@@ -9,12 +9,17 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/define-tool";
 import { inOwnWords, saveThesis } from "@/lib/agent/tools/update-thesis";
 
+const schema = z.object({
+  thesis_id: z.string().describe("The stock's thesis id."),
+  reason: z.string().min(10).describe("Why we stop watching it, by How you write: what changed with the company or the stock."),
+});
+
 export const stopWatching = defineTool({
   description: "For a stock we watch: stops watching it, and its thesis is retired as dropped with your reason as its last line. A stock we hold is sold with sell.",
-  schema: z.object({
-    thesis_id: z.string().describe("The stock's thesis id."),
-    reason: z.string().min(10).describe("Why we stop watching it, by How you write: what changed with the company or the stock."),
-  }),
+  schema,
+  // A one-stock run stops watching its own stock.
+  schemaFor: (ctx) => (ctx.runStock ? schema.omit({ thesis_id: true }) : schema),
+  fromRun: (ctx) => (ctx.runStock ? { thesis_id: ctx.runStock.thesisId } : null),
   ui: "thesis-card" as const,
   gateLog: "stop_watching",
   progressLabel: () => "Stopping the watch",

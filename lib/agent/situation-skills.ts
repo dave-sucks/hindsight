@@ -28,8 +28,7 @@ export function skillSource(file: string): string {
 /**
  * A situation's text: its skill file without the paragraph for the other kind
  * of stock, or the whole file when `held` is null (both kinds are on the list,
- * or a person is reading it). Promoted and a note to answer are their text in
- * the table.
+ * or a person is reading it). Promoted to live is its text in the table.
  */
 export function situationText(code: SituationCode, held: boolean | null): string {
   const s = SITUATIONS[code];

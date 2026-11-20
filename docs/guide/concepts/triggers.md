@@ -20,7 +20,7 @@ The same sentence shows everywhere: on the thesis sheet, in Activity, and in wha
 
 ## What a trigger can watch
 
-Five kinds: the price, the chart's indicators, earnings, filings and a schedule. Pick one to see real examples and how each is checked.
+Six kinds: the price, the chart's indicators, earnings, filings, news and a schedule. Pick one to see real examples and how each is checked.
 
 <!-- asset: trigger-kinds -->
 
@@ -57,7 +57,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 | Sell | When it becomes true, then again after a close back on the other side. Until then the stock is on the morning run's list every day, declined or not, until a new sale price is set or a close goes back past the line. While a sale waits for your approval nothing new starts; it waits until you answer it or the stock closes back past the line (4:20 PM). |
 | Review | When it becomes true, then again after a close where it no longer holds. A review clock fires when due; the review starts the next period. |
 
-There are no waits. A filing fires once per filing and an earnings heads-up once per report, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".
+There are no waits. A filing fires once per filing, an earnings heads-up once per report and a news note once per note, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".
 
 **Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers. A date count before the event can be one of them: it is then a window, the days the other condition may fire in ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). On its own it is a schedule and can't buy.
 
@@ -109,7 +109,7 @@ On a stock we hold, no agent can lower a floor, widen a trail, remove a protecti
 `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }` for two or more that must all hold, one level deep. Stored on the thesis, the analyst or the account.
 
 #### Catalog
-One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into the five types by `catalog.ts`. Words from `describe.ts`. Each direction button carries what it fires on (`means`, "above fires once the price is above the value (a breakout, adding on strength)"): the agents' tools describe `is` with it (`directionWords`, read by `lib/agent/triggers/schema.ts`), and the measures reference prints it.
+One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into the six types by `catalog.ts`. Words from `describe.ts`. Each direction button carries what it fires on (`means`, "above fires once the price is above the value (a breakout, adding on strength)"): the agents' tools describe `is` with it (`directionWords`, read by `lib/agent/triggers/schema.ts`), and the measures reference prints it.
 
 #### Check
 `trigger-evaluator.ts`: every 5 minutes in market hours, plus a close pass 16:20–16:34 ET. Chart measures read the 06:30 `TickerIndicators` snapshot.

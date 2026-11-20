@@ -71,10 +71,10 @@ describe("get_theses reads the notes", () => {
   afterAll(() => jest.useRealTimers());
 
   type Read = { data: { theses: Array<Record<string, unknown>>; quiet_theses?: Array<Record<string, unknown>>; notes?: string[] } };
-  async function read(seed: Record<string, unknown[]>) {
+  async function read(seed: Record<string, unknown[]>, args: Record<string, unknown> = { limit: 50 }) {
     const { result, crashed } = await replayTool("get-theses", "getTheses", {
       seed: { thesis: [watch("t_mu", "MU"), watch("t_gev", "GEV"), watch("t_v", "V")], ...seed } as never,
-      args: { limit: 50 },
+      args,
       ctx: { runMode: "MORNING_PLAN" },
       quotes: { MU: 850, GEV: 900, V: 420 },
     });
@@ -83,22 +83,18 @@ describe("get_theses reads the notes", () => {
   }
   const listed = (d: Read["data"], id: string) => d.theses.find((t) => t.id === id);
 
-  it("each covered stock is listed with the note pinned above its lines; the others stay quiet", async () => {
+  it("a pinned note puts no stock on the list: every stock stays one quiet line, and no run is asked to answer it", async () => {
     const d = await read({ sharedNote: [sharedNote({})] });
-    for (const id of ["t_mu", "t_gev"]) {
-      const row = listed(d, id);
-      expect(row?.situations).toEqual(["NOTE_TO_ANSWER"]);
-      expect(String(row?.context)).toContain("Agent note to MU, GEV, about 2026-11-03");
-    }
-    expect(listed(d, "t_v")).toBeUndefined();
+    expect(d.theses).toEqual([]);
+    expect((d.quiet_theses ?? []).map((t) => t.ticker).sort()).toEqual(["GEV", "MU", "V"]);
     expect(d.notes).toBeUndefined();
   });
 
-  it("a stock a run has written on since leaves the list", async () => {
-    const answer = { id: "u_mu", thesisId: "t_mu", type: "REVIEWED", timestamp: ago(0.01), runId: "run_morning", summary: "Review", rationale: "Checked the vote against MU's case.", fieldChanges: {}, signalIds: [] };
-    const d = await read({ sharedNote: [sharedNote({})], thesisUpdate: [answer] });
-    expect(listed(d, "t_mu")).toBeUndefined();
-    expect(listed(d, "t_gev")?.situations).toEqual(["NOTE_TO_ANSWER"]);
+  it("a look at a covered stock reads the note above its lines; a stock outside it reads nothing of it", async () => {
+    const d = await read({ sharedNote: [sharedNote({})] }, { tickers: ["MU", "V"] });
+    expect(listed(d, "t_mu")?.situations).toEqual([]);
+    expect(String(listed(d, "t_mu")?.context)).toContain("Agent note to MU, GEV, about 2026-11-03");
+    expect(String(listed(d, "t_v")?.context ?? "")).not.toContain("Agent note");
   });
 
   it("a note to the account is read once, at the top of the read", async () => {

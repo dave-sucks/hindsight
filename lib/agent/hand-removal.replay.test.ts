@@ -19,7 +19,7 @@
  * the 8 when the add is, so a run can never read the add and miss the removal.
  */
 import raw from "@/lib/agent/__fixtures__/abt-hand-removal-2026-10-06.json";
-import { saidLine, unansweredWord, wantsAnswer, type ActivityRow } from "@/lib/agent/stock-context";
+import { saidLine, type ActivityRow } from "@/lib/agent/stock-context";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
 import { toFeedItem } from "@/lib/thesis/activity-feed";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
@@ -87,30 +87,15 @@ describe("the 10-07 08:00 read, the run that set the buy again", () => {
     expect(at).toEqual([...at].sort((a, b) => a - b));
     expect(text).not.toBe(fx.runs.morning1007.said);
   });
-
-  it("the newest edit asks for an answer, and so does the removal on its own", () => {
-    expect(read().unansweredDecision?.at).toEqual(line((u) => u.summary === "You added a trigger on ABT: Review if above $10").timestamp);
-    expect(wantsAnswer(removal1006)).toBe(true);
-  });
 });
 
 describe("after a run answers: the 10-07 08:05 answer", () => {
   const answer = fx.updates.find((u) => u.runId === fx.runs.morning1007.id)!;
   const after = new Date(new Date(answer.timestamp).getTime() + 1000).toISOString();
 
-  it("nothing of the principal's waits any more, and the removal is still one of the 8 lines", () => {
-    const { text, unansweredDecision } = stockContextFor({ ticker: "ABT", rows: rowsBefore(after) });
-    expect(unansweredDecision).toBeNull();
+  it("the removal is still one of the 8 lines", () => {
+    const { text } = stockContextFor({ ticker: "ABT", rows: rowsBefore(after) });
     expect(text).toContain(`Edited by you [Removed: ${REMOVED_BUY}]`);
-  });
-});
-
-describe("the 09-28 cleanup of copied rules is not the principal's decision", () => {
-  it("asks nothing of a run, alone or in the 10-07 read", () => {
-    expect(cleanup.summary).toBe("Removed a copied rule from ABT — Price up 7% today → add");
-    expect(wantsAnswer(cleanup)).toBe(false);
-    expect(unansweredWord([cleanup])).toBeNull();
-    expect(stockContextFor({ ticker: "ABT", rows: [cleanup] }).unansweredDecision).toBeNull();
   });
 });
 

@@ -12,12 +12,12 @@ import { isGroup, measureOf, shapeOf, type MeasureDef, type When } from "@/lib/a
  * Why a stock is in front of its analyst now. A trigger written in advance
  * fired (a sale or trim, a buy, an add); something happened (a report, a
  * filing, news); it is time to look again (a review, a floor to fix, a stock
- * just sold). Promoted and a note to answer are as they were.
+ * just sold). Promoted to live is its own case.
  */
 export type SituationCode =
   | "PROMOTED_AWAITING" | "PROTECTIVE_SALE" | "BUY_ARRIVES" | "ADD_OR_WINNER"
   | "REPORT" | "FILING" | "NEWS"
-  | "PROTECTION" | "REVIEW_DUE" | "NOTE_TO_ANSWER" | "SOLD_ONE_REVIEW";
+  | "PROTECTION" | "REVIEW_DUE" | "SOLD_ONE_REVIEW";
 
 /** What a stock's situations are read from: the work-flag list and the row's other fields. */
 export interface SituationSources {
@@ -29,9 +29,6 @@ export interface SituationSources {
   /** The resolver's label (ENTER_NOW, PROMOTED_DECIDE_TODAY …). */
   actionability: string | null;
   buyBlockedByFull: boolean;
-  unansweredDecision: boolean;
-  /** A note pinned on the stock and a group it belongs to, that no run has written after (lib/agent/shared-notes.ts). */
-  pinnedNote?: boolean;
   soldReview?: boolean;
 }
 
@@ -48,7 +45,7 @@ export function measuresOf(predicate: unknown): MeasureDef[] {
   return out;
 }
 
-/** A fire or a match: by what its trigger watches when that is a report or a filing, and by its action on this stock; any other is a review. */
+/** A fire or a match: by what its trigger watches when that is a report, a filing or a news note, and by its action on this stock; any other is a review. */
 function fireCodes(s: SituationSources, triggerId: string, action: string): SituationCode[] {
   const held = s.status === "HOLDING";
   const codes: SituationCode[] = [];
@@ -58,6 +55,7 @@ function fireCodes(s: SituationSources, triggerId: string, action: string): Situ
   const watched = measuresOf(s.triggers.find((t) => t.id === triggerId)?.predicate);
   if (watched.some((m) => m.type === "earnings")) codes.push("REPORT");
   if (watched.some((m) => m.id === "filing")) codes.push("FILING");
+  if (watched.some((m) => m.id === "note")) codes.push("NEWS");
   if (codes.length === 0) codes.push("REVIEW_DUE");
   return codes;
 }
@@ -85,7 +83,6 @@ export function situationsFor(s: SituationSources): SituationCode[] {
   const codes = s.needs.flatMap((f) => flagCodes(s, f));
   if (s.actionability === "PROMOTED_DECIDE_TODAY") codes.push("PROMOTED_AWAITING");
   if (s.buyBlockedByFull || s.actionability === "ENTER_NOW") codes.push("BUY_ARRIVES");
-  if (s.unansweredDecision || s.pinnedNote) codes.push("NOTE_TO_ANSWER");
   if (s.soldReview) codes.push("SOLD_ONE_REVIEW");
   return [...new Set(codes)];
 }
@@ -96,8 +93,7 @@ export function situationsFor(s: SituationSources): SituationCode[] {
  * skill file (lib/agent/engine/skills/, read by lib/agent/situation-skills.ts):
  * what to find out, what can follow and what done looks like, with a part for
  * a stock we hold and a part for a stock we watch. Nothing here or anywhere
- * else writes a word of a skill. Promoted and a note to answer keep their
- * text here as it was.
+ * else writes a word of a skill. Promoted to live keeps its text here as it was.
  */
 export const SITUATIONS: Record<SituationCode, { name: string; skill?: string; guidance?: string }> = {
   PROMOTED_AWAITING: {
@@ -124,33 +120,10 @@ Mistakes:
   ADD_OR_WINNER: { name: "add", skill: "add-fired.md" },
   REPORT: { name: "a report", skill: "report.md" },
   FILING: { name: "a filing", skill: "filing.md" },
-  // Nothing puts a stock in it yet: a high note starts it once news is something a trigger can watch.
+  // A trigger that watches the Market Reviewer's notes fired: a high note landed on the stock.
   NEWS: { name: "news", skill: "news.md" },
   PROTECTION: { name: "floor to fix", skill: "floor-to-fix.md" },
   REVIEW_DUE: { name: "review due", skill: "review.md" },
-  NOTE_TO_ANSWER: {
-    name: "a note to answer",
-    guidance: `When: the principal made a decision on this stock that no run has answered, or left a note since your last answer; or a note is pinned on this stock and no run has written on it since, which has its paragraph at the end. Their words are in \`said\`, with the price then and now.
-
-Answer, in order:
-1. Which is it: an instruction, a question, a decline, a resized approval, a note?
-2. What has happened with the company and the stock since they said it (get_stock_data, web_search)?
-
-What you can do:
-- An instruction ("add on a close above $74"): carry it out with the tools, usually as a trigger via edit_triggers.
-- A question: do the work it asks for and answer in your note. Answering the question is the action.
-- A decline with no reason: do not propose the same buy or add again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not.
-- An approval with a different size, or a price they set: honor their numbers, never revert them. A cut size is caution, a raised one is conviction.
-
-Answered: your one write_note on the stock, quoting them and saying what you decided on each.
-
-The note: their words, quoted, then your answer: what you found about the company and the stock, and what you did about each thing they asked.
-
-Mistakes:
-- Taking an expired proposal for a decision: it may be proposed again if the playbook holds.
-
-If a note is pinned: an Agent note (the 7:30 Market Reviewer's) or the principal's, on this stock alone or with others. It is in \`said\` under PINNED, above the Activity lines, with the stocks it covers and their share of the account, and it names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it. What does it say is coming, and when? Does it reach why we own or watch this stock? Check its claim and the stock's own news against the data (the Market numbers too). Do its triggers still fit what is coming: the floor and the size on a holding, the buy and the research on a watch? Then one of these. Act on it: on a holding, an add on good news (add sizes it), a trim or a sale proposal, or a floor moved up with edit_triggers; on a watch, a buy at today's price on good news (the buy trigger moved to at or near the current price, edit_triggers by its id), a buy price moved, the research refreshed through the writer (dispatch_thesis_research), or let it go. Or keep its triggers, saying in one sentence why the note doesn't change them for this stock. It is a read on the market, not an order: the stock's own case still decides, and a floor is never moved down or loosened because of it (only the principal lowers a floor). Your write_note names the pinned note and says what it means here; the stock leaves this situation once you have written, and the note stays pinned for the others it covers. The note: what the pinned note says is coming, what it means for this stock and why, then what you did, in one sentence.`,
-  },
   SOLD_ONE_REVIEW: { name: "just sold", skill: "just-sold.md" },
 };
 
@@ -183,8 +156,6 @@ export function listsTheStock(s: SituationSources): boolean {
   return (
     s.needs.length > 0 ||
     s.buyBlockedByFull ||
-    s.unansweredDecision ||
-    !!s.pinnedNote ||
     LABELS_THAT_LIST.has(s.actionability ?? "") ||
     s.status === "PROMOTED"
   );

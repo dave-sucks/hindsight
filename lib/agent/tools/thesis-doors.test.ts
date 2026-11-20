@@ -60,6 +60,8 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
   "trigger run": {
     write_note: ["answers_update_id", "note", "verdict", "verdict_line"],
     edit_triggers: ["add", "edit", "remove"],
+    // Its own stock: code fills the thesis.
+    stop_watching: ["reason"],
   },
   "portfolio manager": {
     write_note: ["note", "thesis_id"],
@@ -94,8 +96,8 @@ describe("what each caller may change on a thesis, by tool", () => {
     for (const f of writerOnly.filter((x) => x !== "change_status")) expect(byCaller.writer.update_thesis).toContain(f);
   });
 
-  it("the trigger run has no status tool and no playbook field", () => {
-    expect(Object.keys(byCaller["trigger run"]).sort()).toEqual(["edit_triggers", "write_note"]);
+  it("the trigger run can stop watching its stock, can't reopen a watch, and has no playbook field", () => {
+    expect(Object.keys(byCaller["trigger run"]).sort()).toEqual(["edit_triggers", "stop_watching", "write_note"]);
   });
 });
 
