@@ -102,6 +102,20 @@ describe("what people read: the form's words, direction · value", () => {
     expect(rowLabel("EXIT")).toBe("Sell if");
     expect(rowLabel("STOP_WATCHING")).toBe("Stop watching if");
   });
+
+  it("a pill leaves off only a % move's usual reference, yesterday's close; the popover and the sentence keep it", () => {
+    const day: When = { watch: "move", is: "above", value: 6, variable: "prev_close" };
+    expect(pillParts(day, true)).toEqual([{ label: "above", value: "6%" }]);
+    expect(pillParts(day)).toEqual([{ label: "above", value: "6% from yesterday's close" }]);
+    expect(triggerText("REVIEW", day)).toBe("Review if above 6% from yesterday's close");
+    // Every other reference changes what the number means, so the pill says it.
+    for (const variable of ["peak", "entry", "sma50"] as const) {
+      const w: When = { watch: "move", is: "below", value: 6, variable };
+      expect(pillParts(w, true)).toEqual(pillParts(w));
+    }
+    const date: When = { watch: "from_date", is: "before", value: 10, variable: "event" };
+    expect(pillParts(date, true)).toEqual(pillParts(date));
+  });
 });
 
 describe("the catalog", () => {

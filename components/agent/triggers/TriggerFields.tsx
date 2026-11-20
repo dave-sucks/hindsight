@@ -5,8 +5,13 @@
  * popover. A condition is the same fields for every type, drawn from the
  * catalog (lib/agent/triggers/condition/measures):
  *
- *   tabs · setting · [ Below ▾ | value: a number or a variable chip   {x} ]
+ *   tabs · setting · [ Below ▾ | value | from yesterday's close ▾ ]
  *   a line saying what to fix, while something is missing
+ *
+ * One joined control, the same three places on every measure: the direction
+ * (a select, or the measure's one word), the value, and what it is measured
+ * from when the measure has that. A price's value is a number or a variable
+ * chip from the {x} in the input.
  *
  * docs/plans/TRIGGER_TYPES.md §7.
  */
@@ -14,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, CalendarDays, DollarSign, FileText, Newspaper, Repeat, Variable, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ButtonGroup } from "@/components/ui/button-group";
+import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -233,7 +238,7 @@ export function ConditionFields({
         .map((s) => (
           <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
         ))}
-      {/* One control: the direction on the left, the value on the right. */}
+      {/* One control: the direction (or the measure's one word), the value, and what it is measured from. */}
       <ButtonGroup width="full">
         {choosesDirection && m.buttons ? (
           <Select
@@ -255,8 +260,14 @@ export function ConditionFields({
               ))}
             </SelectContent>
           </Select>
+        ) : m.word ? (
+          // A measure with one choice says it as a word: "Every", "At least", "Files".
+          <ButtonGroupText>
+            <span className="whitespace-nowrap">{m.word}</span>
+          </ButtonGroupText>
         ) : null}
         <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
+        {m.variables?.mode === "from" ? <FromSelect condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} /> : null}
       </ButtonGroup>
       {problem ? <p className="text-xs text-muted-foreground">{problem}</p> : null}
     </div>
@@ -324,18 +335,11 @@ function ValueInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condition.value]);
 
-  // A measure with one choice says it as a word: "Every", "At least", "Files".
-  const word = m.word;
   const replaced = vars?.mode === "replace" && condition.variable != null;
   const clear = disabled ? undefined : () => onChange(withVariable(condition, undefined));
 
   return (
     <InputGroup>
-      {word ? (
-        <InputGroupAddon>
-          <InputGroupText>{word}</InputGroupText>
-        </InputGroupAddon>
-      ) : null}
       {v.prefix && !replaced ? (
         <InputGroupAddon>
           <InputGroupText>{v.prefix}</InputGroupText>
@@ -371,18 +375,70 @@ function ValueInput({
           <InputGroupText>{v.suffix}</InputGroupText>
         </InputGroupAddon>
       ) : null}
-      {vars?.mode === "from" && condition.variable ? (
-        <InputGroupAddon align="inline-end">
-          <InputGroupText>{vars.word ? vars.word(condition) : "from"}</InputGroupText>
-          <VariableChip id={condition.variable} onRemove={clear} />
-        </InputGroupAddon>
-      ) : null}
-      {vars && options.length > 0 ? (
+      {vars?.mode === "replace" && options.length > 0 ? (
         <InputGroupAddon align="inline-end">
           <VariableSelect value={condition.variable} options={options} title={vars.title} onPick={(id) => onChange(withVariable(condition, id))} />
         </InputGroupAddon>
       ) : null}
     </InputGroup>
+  );
+}
+
+/** What a % or a day count is measured from: the control's third part, a plain select that always holds one. */
+function FromSelect({
+  condition,
+  onChange,
+  ctx,
+  disabled,
+}: {
+  condition: Condition;
+  onChange: (c: Condition) => void;
+  ctx: CheckContext;
+  disabled: boolean;
+}) {
+  const vars = measureOf(condition).variables;
+  if (!vars) return null;
+  const options = variableOptions(condition, ctx);
+  const word = vars.word ? vars.word(condition) : "from";
+  return (
+    <Select
+      value={condition.variable ?? null}
+      onValueChange={(v) => {
+        const picked = options.find((o) => o.id === v);
+        if (picked) onChange(withVariable(condition, picked.id));
+      }}
+      disabled={disabled}
+    >
+      <SelectTrigger aria-label={vars.title}>
+        <SelectValue>{condition.variable ? `${word} ${variableDef(condition.variable).chip}` : vars.title}</SelectValue>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end" width="content">
+        <VariableItems options={options} />
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** The variables a condition can take, as menu rows under their section names. */
+function VariableItems({ options }: { options: readonly VariableDef[] }) {
+  const groups = useMemo(() => {
+    const out = new Map<string, VariableDef[]>();
+    for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
+    return [...out];
+  }, [options]);
+  return (
+    <>
+      {groups.map(([group, items]) => (
+        <SelectGroup key={group}>
+          {groups.length > 1 ? <SelectLabel>{group}</SelectLabel> : null}
+          {items.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </>
   );
 }
 
@@ -413,11 +469,6 @@ function VariableSelect({
   title: string;
   onPick: (id: VariableId) => void;
 }) {
-  const groups = useMemo(() => {
-    const out = new Map<string, VariableDef[]>();
-    for (const o of options) out.set(o.group, [...(out.get(o.group) ?? []), o]);
-    return [...out];
-  }, [options]);
   return (
     <Select
       value={value ?? null}
@@ -430,16 +481,7 @@ function VariableSelect({
         <Variable />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} align="end" width="content">
-        {groups.map(([group, items]) => (
-          <SelectGroup key={group}>
-            {groups.length > 1 ? <SelectLabel>{group}</SelectLabel> : null}
-            {items.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        ))}
+        <VariableItems options={options} />
       </SelectContent>
     </Select>
   );

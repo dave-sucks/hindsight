@@ -40,6 +40,8 @@ export interface VariablesDef {
   word?: (c: Condition) => string;
   /** Set when a variable is required: what the line under the input says until there is one. */
   required?: string;
+  /** The usual one, left off a pill: a % move is from yesterday's close unless the pill says otherwise. */
+  usual?: string;
 }
 
 export interface CheckContext {

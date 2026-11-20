@@ -92,6 +92,7 @@ export const move: MeasureDef = {
     title: "Measured from",
     word: (c) => (c.is === "near" ? "of" : "from"),
     required: "Choose what the % is measured from.",
+    usual: "prev_close",
   },
   // A % from our position is a line that moves with it: a give-back off the high, a gain or loss off our entry.
   line: (c, ctx) => {

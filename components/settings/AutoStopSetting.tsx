@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Stop when buying — one row: the switch, the label, the percent. On the
- * account's Triggers page and on each analyst's Triggers tab. An analyst
- * shows the account's values until it is given its own.
+ * Stop when buying — one row: its name and what it does on the left, the
+ * percent and the switch on the right. On the account's Triggers page and on
+ * each analyst's Triggers tab. An analyst shows the account's values until it
+ * is given its own.
  */
 
 import { useEffect, useState, useTransition } from "react";
@@ -59,28 +60,38 @@ export function AutoStopSetting({ level, ownerId }: { level: "account" | "analys
   const locked = !view.canEdit || pending;
   return (
     <div className="space-y-1">
-      <div className="flex items-center gap-3">
-        <Switch id={id} checked={on} disabled={locked} onCheckedChange={(v) => save({ on: v, pct })} />
-        <Label htmlFor={id}>Automatically set Stop Limits when Buying a Stock</Label>
-        <div className="ml-auto w-20 shrink-0">
-          <InputGroup>
-            <InputGroupInput
-              type="text"
-              inputMode="decimal"
-              size={4}
-              value={text}
-              aria-label="Stop, percent under the buy price"
-              disabled={!on || locked}
-              onChange={(e) => setText(e.target.value)}
-              onBlur={commitPct}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitPct();
-              }}
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupText>%</InputGroupText>
-            </InputGroupAddon>
-          </InputGroup>
+      <div className="flex items-center justify-between gap-4">
+        {/* The account page's section names and explains it; an analyst's tab has no heading, so the row does. */}
+        {level === "account" ? (
+          <Label htmlFor={id}>Automatically set Stop Limits when Buying a Stock</Label>
+        ) : (
+          <div className="min-w-0 space-y-0.5">
+            <Label htmlFor={id}>Stop when buying</Label>
+            <p className="text-xs text-muted-foreground">Automatically sets a stop limit this far under the buy price when a stock is bought.</p>
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="w-20">
+            <InputGroup>
+              <InputGroupInput
+                type="text"
+                inputMode="decimal"
+                size={4}
+                value={text}
+                aria-label="Stop, percent under the buy price"
+                disabled={!on || locked}
+                onChange={(e) => setText(e.target.value)}
+                onBlur={commitPct}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitPct();
+                }}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupText>%</InputGroupText>
+              </InputGroupAddon>
+            </InputGroup>
+          </div>
+          <Switch id={id} checked={on} disabled={locked} onCheckedChange={(v) => save({ on: v, pct })} />
         </div>
       </div>
       {level === "analyst" ? (

@@ -65,15 +65,15 @@ export function triggerLabel(t: { action: string; trimPct?: number | null }): st
   return t.action === "TRIM" ? `Trim ${trimPctOf(t)}% if` : actionLabel(t.action);
 }
 
-/** The two halves: "below" and "$868". */
-export function conditionParts(c: Condition): PillPart {
+/** The two halves: "below" and "$868". `short` is the pill's own, with the measure's usual variable left off. */
+export function conditionParts(c: Condition, short = false): PillPart {
   const m = measureOf(c);
   const label = (m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "").toLowerCase();
-  return { label, value: valueText(c) };
+  return { label, value: valueText(c, "chip", short) };
 }
 
 /** The value half. `say` is "chip" on the pill and "words" in a sentence (the variable's own words). */
-function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
+function valueText(c: Condition, say: "chip" | "words" = "chip", short = false): string {
   const m = measureOf(c);
   const v = m.value;
   const vars = m.variables;
@@ -90,7 +90,7 @@ function valueText(c: Condition, say: "chip" | "words" = "chip"): string {
     const suffix = n === 1 && v.suffix === "days" ? "day" : v.suffix;
     text = number + (suffix ? (/^[%×]/.test(suffix) ? suffix : ` ${suffix}`) : "");
   }
-  if (vars?.mode === "from" && chip) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
+  if (vars?.mode === "from" && chip && !(short && c.variable === vars.usual)) text += ` ${vars.word ? vars.word(c) : "from"} ${chip}`;
   // A setting shows only when it isn't the default: "· only on the close", ", counting from the day after".
   const set = c.settings ?? {};
   for (const s of settingDefs(c)) {
@@ -125,9 +125,12 @@ function labelled(label: string, w: When): string {
   return `${!isGroup(w) && measureOf(w).timed ? label.replace(/ if$/, "") : label} ${whenText(w)}`;
 }
 
-/** A trigger's pill: two halves per condition, with "and" between conditions. */
-export function pillParts(w: When): PillPart[] {
-  return conditionsOf(w).map(conditionParts);
+/**
+ * A trigger's pill: two halves per condition, with "and" between conditions. `short` is the pill itself
+ * ("above 6%"); the popover and every sentence say it whole ("above 6% from yesterday's close").
+ */
+export function pillParts(w: When, short = false): PillPart[] {
+  return conditionsOf(w).map((c) => conditionParts(c, short));
 }
 
 /**
