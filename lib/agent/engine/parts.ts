@@ -84,6 +84,11 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "Every stock we hold and every stock we watch, a line each with its belief; a watch also with its buy triggers.",
     source: "lib/agent/book.ts",
   },
+  the_cases: {
+    title: "What each thesis rests on",
+    about: "For every stock we hold or watch: its assumptions and what would prove it wrong, as its thesis has them.",
+    source: "lib/agent/book.ts (loadCases)",
+  },
   the_analysts: {
     title: "The analysts",
     about: "Each analyst's room: its slots against its limit, its largest trade and the most in one stock.",
