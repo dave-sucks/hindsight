@@ -120,7 +120,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +1,230 each, edit_triggers says what each direction of `is` fires on, from the measure catalog.
   // 2026-11-19: +72 each, get_theses says the morning run's own list carries the situations' texts and every other read their names.
   // 2026-11-19: +168 each, edit_triggers takes the news note measure (watch "note": the Market Reviewer's high note on the stock).
-  "research-run": 29_927,
+  // 2026-11-20: −8 each, get_theses says a row's `said` is the last 3 reviews, the news and the owner's notes and declines.
+  "research-run": 29_919,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
@@ -131,7 +132,7 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +72, the same get_theses.
   // 2026-11-19: +168, the same measure.
   // 2026-11-19: +508, stop_watching (its reason; code fills the stock).
-  tactical: 25_676,
+  tactical: 25_668,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -159,7 +160,7 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +283, watch_stock's look-again is a price, the next report or the event's date.
   // 2026-11-19: +310, the same get_theses, and read_knowledge_library lists the situations (topic "situation").
   // 2026-11-19: +147, the same measure (+168), and write_note's pinned_until says a pinned note is read above the Activity lines, not that it lists the stock (−21).
-  principal: 45_994,
+  principal: 45_986,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

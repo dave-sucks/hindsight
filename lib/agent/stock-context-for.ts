@@ -15,11 +15,10 @@ import {
   type NoteShare,
   type SharedNoteRow,
 } from "@/lib/agent/shared-notes";
-import type { TitleTrigger } from "@/components/agent/sheets/thesis-timeline-utils";
 
 /**
  * How many of a stock's newest Activity lines are loaded (about a month):
- * what the agent's four parts and the situations' unanswered fires read.
+ * what the agent's list and the situations' unanswered fires are read from.
  */
 export const ACTIVITY_LINES = 40;
 
@@ -40,11 +39,8 @@ export function stockContextFor(args: {
   ticker: string;
   rows: StoredLine[];
   orders?: ProposalOrder[];
-  triggers?: ReadonlyArray<TitleTrigger>;
   notes?: readonly SharedNoteRow[];
   shares?: ReadonlyMap<string, NoteShare>;
-  /** The stock's conviction, said with where it stands. */
-  conviction?: string | null;
   now?: Date;
 }): StockContext {
   const now = args.now ?? new Date();
@@ -52,7 +48,7 @@ export function stockContextFor(args: {
   const pinned = covering.filter((n) => isPinned(n, now)).slice(0, PINNED_PER_STOCK);
   const shown = new Set(pinned.map((n) => n.id));
   const inFeed = covering.filter((n) => !shown.has(n.id)).map((n) => noteLine(n, args.ticker));
-  const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers, conviction: args.conviction });
+  const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }) });
   if (pinned.length === 0) return base;
   return { ...base, text: [pinnedBlock(args.ticker, pinned, args.shares ?? new Map()), base.text].filter(Boolean).join("\n") };
 }

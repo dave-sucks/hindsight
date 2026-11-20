@@ -91,8 +91,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
  * The fields a stock is sent with when it is being compared with other stocks
  * as a use of the account's money (the Portfolio Manager's get_theses): the
  * same for a holding and a watch, each with the names of the situations it is
- * in. `said` is where its Activity says it stands and what is open (the
- * first and last of the four parts); a watch carries `playbook_checks`
+ * in. `said` is the same Activity list every agent reads; a watch carries `playbook_checks`
  * (the triggers that come with the buy) where a holding carries `setup`.
  */
 export const COMPARING_FIELDS: readonly string[] = [
@@ -380,7 +379,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   // An account-wide read names each stock's analyst.
   put("analyst", str(row.analyst));
   put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
-  put("said", str(comparing ? row.contextBrief : row.context));
+  put("said", str(row.context));
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));

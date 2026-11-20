@@ -47,8 +47,8 @@ describe("a pinned note on the five, the morning before the vote", () => {
     expect(text).toContain("Agent note to MU, GEV, NVDA, PLTR, CEG, about 2026-11-03, pinned until 11-04");
     expect(text).toContain("$MU is one of 5 holdings in this note, 41% of the account.");
     // Above the stock's Activity, not in it.
-    expect(text.indexOf("PINNED ON")).toBeLessThan(text.indexOf("ACTIVITY ON $MU"));
-    expect(text.split("ACTIVITY ON")[1]).not.toContain("Agent note");
+    expect(text.indexOf("PINNED ON")).toBeLessThan(text.indexOf("Activity on $MU"));
+    expect(text.split("Activity on")[1]).not.toContain("the Market Reviewer");
   });
 
   it("puts no stock on a list: a pinned note is read, and no run is asked to answer it", () => {
@@ -69,7 +69,7 @@ describe("a pinned note on the five, the morning before the vote", () => {
   it("once it ends it is an ordinary Activity line, and never a run's answer", () => {
     const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], now: new Date("2026-11-06T13:00:00Z") });
     expect(after.text).not.toContain("PINNED");
-    expect(after.text).toContain("Agent note to MU, GEV, NVDA, PLTR, CEG");
+    expect(after.text).toContain("News by the Market Reviewer, ");
     expect(after.text).toContain("Tomorrow's vote puts data-center opposition on the ballot.");
     expect(isAgentAnswer(noteLine(note(), "MU") as Parameters<typeof isAgentAnswer>[0])).toBe(false);
   });

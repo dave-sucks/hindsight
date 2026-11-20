@@ -88,7 +88,7 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries where the stock stands, the last look's note, what happened since and what is open.",
+      "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries the last 3 reviews, up to 3 news notes, and the owner's notes and declines.",
     ),
   history_limit: z
     .number()
@@ -114,7 +114,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its Activity in four parts (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its Activity, newest first (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -172,7 +172,7 @@ export const getTheses = defineTool({
         theses,
         ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
         ...(!named && input?.include_history
-          ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `said` already carries where it stands, the last look, what happened since and what is open." }
+          ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `said` already carries the last 3 reviews, the news and the owner's notes and declines." }
           : {}),
         // The last line of the read, when its cap left stocks out.
         ...(leftOut ? { left_out: leftOut } : {}),
@@ -542,11 +542,9 @@ export const getTheses = defineTool({
       // Resolved ladder, not the stored column — see quietRows above.
       const triggerCount = (ladderByThesisId.get(t.id) ?? []).length;
       return {
-        // The stock's Activity, first, in four parts (lib/agent/stock-context.ts);
-        // `contextBrief` is the first and last parts, for a stock compared
-        // across the account. Null when the feed is empty.
+        // The stock's Activity, first: one list, the same for every agent
+        // (lib/agent/stock-context.ts). Null when nothing on it is read.
         context: contextByThesisId.get(t.id)?.text ?? null,
-        contextBrief: contextByThesisId.get(t.id)?.brief ?? null,
         ...t,
         ...analystOf(t),
         // The stock's own triggers, each as its sentence and id; one the owner set says when, and what it was (read off its Activity lines).

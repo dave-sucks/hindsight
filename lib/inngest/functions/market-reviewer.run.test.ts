@@ -340,8 +340,8 @@ describe("the 7:30 Market Reviewer", () => {
     expect([mu.situations, rows.find((t) => t.id === "t_asml")?.situations]).toEqual([[], []]);
     // Both notes are among MU's newest lines; nothing is pinned above them.
     expect(mu.context).not.toContain("PINNED");
-    expect(mu.context).toContain("Agent note to MU, ASML · high impact · weaker");
-    expect(mu.context).toContain("Agent note to MU · low impact · neutral");
+    expect(mu.context).toContain("News by the Market Reviewer, Nov 11, 7:30 AM at $650.00: high impact, weaker. New export rules");
+    expect(mu.context).toContain("News by the Market Reviewer, Nov 11, 7:30 AM at $650.00: low impact, neutral. A peer said");
   });
 
   it("a note that doesn't save leaves the digest saved and the run COMPLETE", async () => {

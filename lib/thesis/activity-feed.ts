@@ -2,8 +2,8 @@
  * activity-feed.ts — a stock's one Activity list.
  *
  * The rule: the Activity tab shows the whole list, the Overview shows the
- * newest 5 lines with a note, and an agent reads the list in four parts
- * (lib/agent/stock-context.ts). One function builds the list, so no two
+ * newest 5 lines with a note, and an agent reads a filtered cut of it,
+ * one sentence per line (lib/agent/stock-context.ts). One function builds the list, so no two
  * surfaces can disagree:
  * the stock's saved Activity lines (`ThesisUpdate`) plus its orders' steps:
  * a proposal's Proposed / Approved / Declined / Expired, built from its order

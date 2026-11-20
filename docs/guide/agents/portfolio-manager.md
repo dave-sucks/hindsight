@@ -28,7 +28,7 @@ It asks `get_theses` for stocks by ticker, the tool every agent uses. One field 
 - the [situations](../concepts/situations.md) the stock is in, by name: its analyst answers them, and the Portfolio Manager sees that something is up
 - the belief, its key assumptions, what would prove it wrong, and the reason for its conviction
 - its triggers
-- where its Activity says it stands (the last verdict that wasn't "unchanged", since when and why, and conviction) and what is open (a proposal that waits, your last decline with its words): the first and last of the four parts an analyst reads
+- its Activity, the same list an analyst reads: the last 3 reviews, up to 3 news notes, your notes and your declines
 - Wall Street's view and the catalyst date
 - the chart numbers, the playbook (on a watch, the triggers that come with the buy), the position and any proposal waiting
 

@@ -2,7 +2,7 @@
  * stock-context.test.ts — the rules behind what a run reads on a stock: what
  * counts as an agent's answer, which fires are still open, which of the
  * principal's lines ask for an answer, and the block itself: the stock's
- * Activity in four parts. Rows are CEG's and DOCU's, as stored.
+ * Activity as one list. Rows are CEG's and DOCU's, as stored.
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
 import {
@@ -10,7 +10,6 @@ import {
   isAgentAnswer,
   isPrincipalRow,
   openFires,
-  saidLine,
   type ActivityRow,
 } from "@/lib/agent/stock-context";
 import { activityFeed, toFeedItem } from "@/lib/thesis/activity-feed";
@@ -79,53 +78,43 @@ describe("open fires on CEG", () => {
   });
 });
 
-describe("the block: the stock's Activity in four parts", () => {
-  it("09-30 morning read: the last look titled as the Activity tab titles it, then what happened since", () => {
-    const feed = feedBefore("2026-09-30T12:04:25Z");
-    // The resolved list the run is handed: the 09-28 morning review answered the analyst's 200-day rule, and its title says so.
-    const triggers = [
-      { id: BELOW_200_DAY, action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
-      { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" } },
-    ];
-    const { text } = buildStockContext({ ticker: "CEG", feed, triggers, conviction: "MEDIUM" });
-    const lines = text!.split("\n");
-    expect(lines[0]).toBe("ACTIVITY ON $CEG — where it stands, the last look, what happened since, and what is open:");
-    // No look on CEG carried a verdict in September, so only conviction is said.
-    expect(lines[1]).toBe("Where it stands: conviction MEDIUM");
-    expect(lines[2]).toBe("The last look:");
-    // The 09-28 morning note, whole, titled by the trigger it answered.
-    expect(lines[3]).toContain('09-28 08:04 · $261.23 · Review below the 200-day average — "CEG\'s repeated 200-day review');
-    // Handed no list, the trigger is unknown and the title is the bare word.
-    expect(buildStockContext({ ticker: "CEG", feed }).text).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
-    // The 15% review that fired after it is counted, with its newest price.
-    expect(text).toContain("  Triggers fired 1 time: Trailing 15% from high — review ×1 (last 09-28 11:20 at $257.63)");
-    // The owner's 09-14 decline is open, whole; the 09-15 removal is behind the last look. The full history is one call away.
-    expect(text!.slice(text!.indexOf("\nOpen:"))).toContain(DECLINE_ENDS);
+describe("the block: the stock's Activity as one list", () => {
+  const body = (text: string | null) => text!.split("\n").slice(1, -1);
+
+  it("09-30 morning read: the last 3 reviews and the owner's decline, newest first", () => {
+    const { text } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-30T12:04:25Z") });
+    expect(text!.split("\n")[0]).toBe("Activity on $CEG, newest first: the last 3 reviews, up to 3 news notes, your notes and your declines.");
+    expect(body(text).map((l) => l.slice(0, l.indexOf(": ")))).toEqual([
+      "  Review by its analyst, Sep 28, 8:04 AM at $261.23",
+      "  Review by its analyst, Sep 25, 8:02 AM at $261.62",
+      "  Review by its analyst, Sep 23, 8:04 AM at $263.46",
+      "  Declined sell 30 shares by you, Sep 14, 11:43 AM",
+    ]);
+    // The 15% review that fired after the last review, the owner's 09-15 removal and the 09-28 cleanup are not in it.
+    expect(text).not.toContain("Trailing 15% from high");
     expect(text).not.toContain("Trailing 8% from high");
-    expect(lines[lines.length - 1]).toBe('Full history: get_theses(tickers: ["CEG"], include_history: true)');
+    expect(text).not.toContain("copied rule");
+    expect(text!.split("\n").at(-1)).toBe('Full history: get_theses(tickers: ["CEG"], include_history: true)');
   });
 
-  it("09-14 15:30 trigger run: the principal's decline is open, every one of its 709 characters", () => {
-    const { text, brief } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
+  it("09-14 15:30 trigger run: the principal's decline, every one of its 709 characters", () => {
+    const { text } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
     const whole = ((byId(DECLINE).fieldChanges as { proposal: { to: { userMessage: string } } }).proposal.to.userMessage).replace(/\s+/g, " ").trim();
     expect(whole.length).toBeGreaterThan(600);
-    expect(text).toContain(`Declined sell 30 shares — "${whole}"`);
+    expect(body(text)[0]).toBe(`  Declined sell 30 shares by you, Sep 14, 11:43 AM: ${whole} [id ${DECLINE}]`);
     expect(text).toContain(DECLINE_ENDS);
-    // A stock compared across the account reads it too.
-    expect(brief).toContain(DECLINE_ENDS);
   });
 
-  it("a line reads the same whoever wrote it: a fire with its figures, a hand edit with its change, a note in full", () => {
-    const fire = toFeedItem(byId("cmule97cz000004jzj66w096e"));
-    expect(saidLine(fire)).toMatch(/^ {2}09-28 11:20 · \$257\.63 · Trigger: Trailing 15% from high — review — "Gave back 15% from the high\./);
-    const edit = toFeedItem(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!);
-    expect(saidLine(edit)).toContain("Edited by you [Removed: Trailing 8% from high → exit]");
+  it("a note reads whole, with its id, the one a later note answers", () => {
     const long = "x".repeat(2_000);
     const note = toFeedItem({ id: "n", type: "NOTE", timestamp: new Date("2026-10-01T10:00:00Z"), runId: "chat", summary: "x", rationale: long, priceAtTime: 100 });
-    expect(saidLine(note)).toBe(`  10-01 06:00 · $100.00 · Your note — "${long}" [id n]`);
+    expect(body(buildStockContext({ ticker: "X", feed: [note] }).text)).toEqual([`  Note by you, Oct 1, 6:00 AM at $100.00: ${long} [id n]`]);
   });
 
-  it("nothing on record → no block", () => {
+  it("nothing on record, or only fires and edits → no block", () => {
     expect(buildStockContext({ ticker: "X", feed: [] }).text).toBeNull();
+    const fire = toFeedItem(byId("cmule97cz000004jzj66w096e"));
+    const edit = toFeedItem(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!);
+    expect(buildStockContext({ ticker: "CEG", feed: [fire, edit] }).text).toBeNull();
   });
 });
