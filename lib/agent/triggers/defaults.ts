@@ -30,19 +30,10 @@ export type ThesisState = "HELD" | "WATCHING" | "PROMOTED";
 // ── The add prompts ────────────────────────────────────────────────────
 
 /**
- * Reactive strength-press rung (docs/plans/SCALE_INTO_WINNERS.md PR2).
- *
- * A strong single-day up-move on a HELD position spawns a tactical run to
- * evaluate pressing the winner. `ADD` is a held-only action and asks the
- * analyst now by default (the agent decides + confirms), and it is
- * approval-gated, so a fire produces an add *proposal*.
- * a move from yesterday's close is cron-evaluable (reads the daily change), so
- * this fires intraday — the reactive complement to PR3's morning RUNNING_WINNER
- * flag.
- *
- * Deliberately UP-only for now. The pullback (down-day) add rung waits for PR4,
- * where the tactical run gains the market-wide-vs-company-specific judgment
- * needed to add into a dip without buying into thesis damage. Threshold tunable.
+ * The account's old up-7% add (docs/plans/SCALE_INTO_WINNERS.md PR2). No
+ * longer seeded (expert review 1.1, 2026-11-19): a one-day spike is a reason
+ * to look, not to buy more. Kept so rows that still carry its note read as
+ * code's (templateNotes).
  */
 const SCALE_IN_MOVE_PCT = 7;
 
@@ -81,16 +72,57 @@ export function scaleInOnPullbackTrigger(): Trigger {
 
 // ── Account-wide standing rules ──────────────────────────────────────────
 //
-// What every holding on the account gets: the +7% add prompt. The −7% add
-// is the Compounder's own (DAV-279: a trade doesn't average down). Sell
-// rules are NOT here and are NOT stamped onto theses at mint or fill — a
-// thesis rung beats every rule above it, so a stamped copy froze one 8%
-// sell onto every holding (ASML/CEG/WST, 2026-09-08). An analyst's own
-// sell rules live on the analyst (its Triggers tab), where its style is.
+// What every stock on the account gets, whatever its playbook (expert review
+// unit 1.1, docs/plans/EXPERT_REVIEW_1_1.md):
+// - the sale off the high, for every holding: "the account's 6% off the high
+//   governs every holding" (the owner, 2026-10-27). In the 12 weeks to
+//   2026-11-19 it would have sold 15 of the 18 positions, 14 of them for
+//   more than they fetched or are worth now.
+// - a look on a big day: 7% from yesterday's close on twice the normal
+//   volume, up or down ("either one" is two triggers). 41 such days on the
+//   book in 12 weeks outside report days, 21 with no other trigger that day.
+// It no longer carries the up-7% add: a one-day spike is a reason to look,
+// not to buy more (an add is the playbook's, on its own line). The rule is
+// one trigger per stock, never stamped onto a thesis: a thesis trigger in the
+// same slot beats it, so a stamped copy would freeze one number onto every
+// holding (ASML/CEG/WST, 2026-09-08).
 
-/** The account's universal add prompt. Fresh id per call. */
+/** The give-back off the high since we bought that sells a holding (the account's trail). */
+export const ACCOUNT_TRAIL_PCT = 6;
+/** A big day: this % from yesterday's close, up or down. */
+export const BIG_DAY_MOVE_PCT = 7;
+/** A big day: at least this many times the normal (20-day average) volume. */
+export const BIG_DAY_VOLUME_X = 2;
+
+function bigDayTrigger(is: "above" | "below"): Trigger {
+  return {
+    id: createId(),
+    predicate: {
+      match: "all",
+      conditions: [
+        { watch: "move", is, value: BIG_DAY_MOVE_PCT, variable: "prev_close" },
+        { watch: "volume", value: BIG_DAY_VOLUME_X },
+      ],
+    },
+    action: "REVIEW",
+    fireMode: "ASK_NOW",
+    rationale:
+      is === "above"
+        ? "A big day up on heavy volume: something happened. Find the news before deciding anything."
+        : "A big day down on heavy volume: find out why. A drop on the company's own news asks whether the reason we own or watch it still holds; a market-wide drop may not.",
+  };
+}
+
+/** The account's universal rules: the trail on every holding, and a look on a big day. Fresh ids per call. */
 export function accountStandingRules(): Trigger[] {
-  return [{ ...scaleInOnStrengthTrigger(), source: "DEFAULT" }];
+  const trail: Trigger = {
+    id: createId(),
+    predicate: { watch: "move", is: "below", value: ACCOUNT_TRAIL_PCT, variable: "peak" },
+    action: "EXIT",
+    fireMode: "ASK_NOW",
+    rationale: "Protects the gain. The sale was decided when we bought, so a good story doesn't overrule it.",
+  };
+  return [trail, bigDayTrigger("above"), bigDayTrigger("below")].map((t) => ({ ...t, source: "DEFAULT" as const }));
 }
 
 /**
@@ -173,7 +205,7 @@ export function resolvedCadenceDays(
 
 /** Every note the code in this file writes. Older rows carry them with no source, so note.ts matches the words. */
 export function templateNotes(): string[] {
-  return [...accountStandingRules(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
+  return [...accountStandingRules(), scaleInOnStrengthTrigger(), scaleInOnPullbackTrigger(), reviewCadenceTrigger(1), reviewCadenceTrigger(2)].map((t) => t.rationale ?? "");
 }
 
 /** Every write path saves each trigger with its fire mode: the one it names, else its action's default (./fire-mode). */

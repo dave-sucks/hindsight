@@ -9,8 +9,9 @@
  *
  * They are now DATA. A new account is seeded with them as ordinary
  * account rules — same shape, same pills, fully editable — and the code
- * templates become the seed, not a runtime layer. Since 2026-09-14 the
- * account seed carries no sell rules: those live on each analyst.
+ * templates become the seed, not a runtime layer. The seed is the reviewed
+ * rule set (expert review 1.1): the review clock, the trail off the high,
+ * the big-day looks, and the earnings and filing wakes.
  *
  * ## Seeded vs deliberately empty
  *
@@ -29,21 +30,22 @@ import { withFireMode } from "./fire-mode";
 
 /**
  * Earnings is not opt-in. Anything the account holds or watches gets a look
- * three days before it reports and a look on the report — a standing WAKE,
- * not a clock: it costs nothing until the company actually reports, and
- * then a look is exactly what a watch is for. Overridable per name through
- * the ordinary cascade; deletable here like any account rule. A REVIEW
- * fire on a watch lands in the next morning's batch — no per-trigger AI.
- * See docs/plans/MARKET_DATA.md §3.
+ * in the 5 days before it reports and a look the day after — a standing WAKE,
+ * not a clock: it costs nothing until the company reports. 5 days, not 3, so
+ * the morning run (which a Flag for Review waits for) always sees it before
+ * the report, even on a Monday, Wednesday and Friday schedule. The look after
+ * is sent to the agent at once: the first days after a report are when the
+ * drift is decided (Bernard and Thomas 1989), and the next morning run can be
+ * two days away. Overridable per name through the ordinary cascade; deletable
+ * here like any account rule. Expert review 1.1 (docs/plans/EXPERT_REVIEW_1_1.md).
  */
 export function earningsStandingTriggers(): Trigger[] {
   return [
     {
       id: "seed:earnings-within",
-      predicate: { watch: "report", is: "before", value: 3 },
+      predicate: { watch: "report", is: "before", value: 5 },
       action: "REVIEW",
-      rationale:
-        "Reports within 3 days — decide before the print: hold through it, trim, or wait to add. Size for the gap.",
+      rationale: "Decide before the report: hold through it, trim, or wait. Size for the gap.",
       source: "DEFAULT",
     },
     // One look on every report, beat or miss: a stock's own after-report review shares its slot and replaces it.
@@ -51,8 +53,9 @@ export function earningsStandingTriggers(): Trigger[] {
       id: "seed:earnings-after",
       predicate: { watch: "report", is: "after", value: 1 },
       action: "REVIEW",
+      fireMode: "ASK_NOW",
       rationale:
-        "Reported — re-underwrite. A beat the stock sold on means the market wanted more; a miss asks whether the thesis is wrong or early.",
+        "It reported: look again today. A beat the stock fell on means the market wanted more; a miss asks whether the reason we own or watch it is wrong or only early.",
       source: "DEFAULT",
     },
   ];
@@ -94,12 +97,11 @@ const STANDING_RULES_SINCE = new Date("2026-09-15T00:00:00Z");
 
 export function accountSeedTriggers(): Trigger[] {
   return [
-    // Review cadence is a standing account rule now, not a date column on
-    // every thesis. 7 days is the TARGET-horizon default the old
-    // HORIZON_REVIEW_DAYS table used; a CATALYST or TRADE thesis overrides
-    // it with a tighter one through the ordinary cascade.
+    // The review clock for a stock with none of its own: a weekly look, as a
+    // desk goes over its whole book each weekend. A playbook's own clock
+    // (30 days on a compounder) replaces it through the ordinary cascade.
     reviewCadenceTrigger(7),
-    // The add prompts. Sell rules live on each analyst, not the account.
+    // The trail on every holding and the big-day looks (defaults.ts).
     ...accountStandingRules(),
     ...standingWakeTriggers(),
   ].map((t) =>
@@ -177,12 +179,13 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
  *
  * This is NOT a cascade level: its rules resolve as ACCOUNT rules, and a
  * seeded account never reaches it. If you see the warning, that account
- * needs seeding.
+ * needs seeding. Its ids are the same on every read, so a rule that fired
+ * keeps its fire state: a fresh id would make the trail fire on every check.
  */
 export function unseededAccountFallback(accountId: string): Trigger[] {
   console.warn(
     `[trigger-levels] account=${accountId} has no seeded standing rules — ` +
       `falling back to the code constants. Run seedAccountTriggers().`,
   );
-  return accountStandingRules();
+  return accountStandingRules().map((t) => ({ ...t, id: `fallback:${triggerSlot(t)}` }));
 }
