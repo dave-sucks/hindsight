@@ -606,12 +606,18 @@ const SCALAR_LINES: Array<{
   { key: "targetPrice", label: "Upside", fmt: fmtLevel },
   { key: "stopLoss", label: "Floor", fmt: fmtLevel },
   { key: "entryPrice", label: "Buy", fmt: fmtLevel },
+  { key: "outlook", label: "Outlook", fmt: fmtOutlook },
   { key: "conviction", label: "Conviction", fmt: fmtPlain },
   { key: "horizon", label: "Horizon", fmt: fmtPlain },
 ];
 
 function fmtLevel(v: unknown): string {
   return typeof v === "number" ? `$${v.toFixed(2)}` : "—";
+}
+
+/** "Bullish"; a stock with no outlook yet reads "not rated". */
+function fmtOutlook(v: unknown): string {
+  return typeof v === "string" && v ? `${v.charAt(0)}${v.slice(1).toLowerCase()}` : "not rated";
 }
 
 function fmtPlain(v: unknown): string {

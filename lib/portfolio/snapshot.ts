@@ -34,6 +34,9 @@ export interface SnapshotHolding {
   move5dPct?: number | null;
   move20dPct?: number | null;
   conviction?: string | null;
+  /** What its analyst expects of the stock from here, with the reason; left off the line when not loaded or not rated. */
+  outlook?: string | null;
+  outlookReason?: string | null;
 }
 
 export interface SnapshotTrade {
@@ -213,9 +216,10 @@ const gist = (note: string) => {
 };
 
 /** The fields a holding's line and a watch's line share: the 5- and 20-day moves and the conviction. */
-function movesAndConviction(x: { move5dPct?: number | null; move20dPct?: number | null; conviction?: string | null }): string {
+function movesAndConviction(x: { move5dPct?: number | null; move20dPct?: number | null; conviction?: string | null; outlook?: string | null; outlookReason?: string | null }): string {
   const moves = [x.move5dPct != null ? `5-day ${signedPct(x.move5dPct)}` : null, x.move20dPct != null ? `20-day ${signedPct(x.move20dPct)}` : null].filter(Boolean).join(", ");
-  return `${moves ? ` · ${moves}` : ""}${x.conviction ? ` · conviction ${x.conviction}` : ""}`;
+  const outlook = x.outlook ? ` · outlook ${x.outlook.toLowerCase()}${x.outlookReason?.trim() ? ` (${x.outlookReason.trim()})` : ""}` : "";
+  return `${moves ? ` · ${moves}` : ""}${outlook}${x.conviction ? ` · conviction ${x.conviction}` : ""}`;
 }
 
 function holdingLine(h: HoldingLine, dayName: string): string {

@@ -33,7 +33,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: +45, context read by subject: the book is in the first message (the analyst's get_theses read), so the first step reads it there and calls get_portfolio_context alone.
   // 2026-11-18: −3, the action tools one job each: the instructions name write_note where they named update_thesis.
   // 2026-11-19: +712, situations are skills: what an analyst may do on a holding, a watch and a stock just sold is said once, in the morning run's own instructions.
-  daily: 10_167,
+  // 2026-11-20: +1,313 each, how a look ends: the verdict, and when conviction and outlook change, imported by the morning run and the trigger run.
+  daily: 11_480,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -49,7 +50,7 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-19: +10, the same section in the trigger run's instructions (+934), and the sample's sale text is its skill, the part for a holding (−924).
   // 2026-11-19: −253, the trigger run can stop watching a stock: the two passages on taking its triggers off for the morning run go.
   // 2026-11-20: +24, the sample stock's line says its outlook is not rated yet.
-  tactical: 13_483,
+  tactical: 14_796,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -83,7 +84,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-19: −181, a soft watch is watch_stock with its look-again, and record_thesis leaves the text with the menu.
   // 2026-11-19: −51, #1060: a pass no longer needs the chat pinned (not recorded then; main measured 34,173).
   // 2026-11-19: +26, watch_stock's look-again is the price, the next report or the event's date.
-  chat: 34_199,
+  // 2026-11-20: +104, set_conviction changes the outlook too.
+  chat: 34_303,
 };
 
 /**

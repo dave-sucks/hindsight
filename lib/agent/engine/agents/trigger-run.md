@@ -45,4 +45,6 @@ A situation's text says what to find out and what can follow. What you may do is
 - 15 step max. Be ruthlessly concise.
 - You are NOT reviewing your other theses. Only this stock matters on this run.
 
+@how-a-look-ends.md
+
 @rules.md

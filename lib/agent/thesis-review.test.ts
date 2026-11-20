@@ -10,8 +10,6 @@ const base: Review = {
   outlookTo: undefined,
   outlookReason: "The price reached the Street's average.",
   hasView: true,
-  holding: true,
-  saleOnRecord: false,
 };
 const ok = (r: Partial<Review>) => expect(reviewProblem({ ...base, ...r })).toBeNull();
 const refused = (r: Partial<Review>, says: string) => expect(reviewProblem({ ...base, ...r })).toContain(says);
@@ -59,10 +57,8 @@ describe("how a review of a thesis ends", () => {
     ok({ outlookTo: "BULLISH", outlookReason: undefined });
   });
 
-  it("broken can't stay bullish, and on a holding it comes with a sale", () => {
-    refused({ verdict: "BROKEN", verdictLine: "x" }, "can't stay BULLISH");
-    refused({ verdict: "BROKEN", verdictLine: "x", outlookTo: "BEARISH" }, "comes with its sale");
-    ok({ verdict: "BROKEN", verdictLine: "x", outlookTo: "BEARISH", saleOnRecord: true });
-    ok({ verdict: "BROKEN", verdictLine: "x", outlookTo: "NEUTRAL", holding: false });
+  it("outlook is a soft value: a broken verdict may leave it as it is, and no sale is asked for", () => {
+    ok({ verdict: "BROKEN", verdictLine: "The drug was rejected." });
+    ok({ verdict: "BROKEN", verdictLine: "The drug was rejected.", convictionTo: "LOW", outlookTo: "BEARISH" });
   });
 });

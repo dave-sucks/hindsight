@@ -49,13 +49,15 @@ It is not how bullish we are and not whether to buy today, so high conviction in
 
 Any verdict but unchanged says what happened and which assumption it touched.
 
-The rules between them are few (`lib/agent/thesis-review.ts`), and a note that breaks one comes back whole with what to send:
+Five things send a look's note back whole, each with what to send (`lib/agent/thesis-review.ts`):
 
-- Conviction changes only in a look's note, in the same save as its verdict. It rises only on stronger and falls only on weaker or broken. A verdict doesn't have to move it.
-- A new conviction or outlook comes with its reason, or the whole note comes back: one look leaves one Activity line.
-- Broken can't leave the outlook bullish, and on a stock we hold it comes with its sale: the whole holding's sale waiting for you now, or one you declined after the thesis was first called broken. A trim, a sale that lapsed, or a sale from before it broke is not that sale.
-- The post-trade write-up after an Auto trade is not a look: its note is that trade's reason and carries no verdict.
-- Nothing adds verdicts up. Outlook and conviction are whatever the latest look left them at.
+1. It has no verdict.
+2. Its verdict isn't unchanged and it doesn't say what happened.
+3. Conviction rises without stronger, or falls without weaker or broken.
+4. A new conviction or outlook comes with no reason.
+5. The stock has no outlook yet and the note sets none. That happens once a stock.
+
+Outlook is otherwise a soft value. No tool reads it to allow or refuse anything: a buy does not need a bullish outlook, and a bearish or a broken one forces no sale. What a broken belief usually means (conviction low, the outlook no longer bullish, the sale proposed on a holding) is guidance in the analysts' instructions, `how-a-look-ends.md`, not a rule. Nothing adds verdicts up, and agents read the current outlook and conviction with their reasons, never their history. The post-trade write-up after an Auto trade is not a look: its note carries no verdict.
 
 You change either one yourself from the chat (`set_conviction`), with no verdict.
 

@@ -18,7 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { writeNote, NOTE_CHARS } from "@/lib/agent/notes";
 import { saveThesis } from "@/lib/agent/tools/update-thesis";
 import { thesisFields } from "@/lib/agent/tools/thesis-fields";
-import { reviewProblem, verdictOf } from "@/lib/agent/thesis-review";
+import { reviewProblem } from "@/lib/agent/thesis-review";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { SHARED_NOTE_CHARS, type NoteAudience } from "@/lib/agent/shared-notes";
@@ -31,25 +31,6 @@ function endOfDay(day: string | undefined): Date | null {
   if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day.trim())) return null;
   const d = new Date(`${day.trim()}T23:59:00-05:00`);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/**
- * Whether a broken thesis on a holding has its sale: the whole holding's sale
- * waits for the owner now (one proposed in this run is waiting), or the owner
- * declined it after the thesis was first called BROKEN. A trim, a sale that
- * lapsed, and a sale from before it broke are not that sale. False when the
- * orders can't be read: the note then says to propose it.
- */
-async function saleOnRecord(thesisId: string, ticker: string, userId: string): Promise<boolean> {
-  const ofThisHolding = { side: "SELL", intent: "CLOSE", OR: [{ thesisId }, { position: { userId, symbol: ticker, status: "OPEN" } }] };
-  try {
-    if (await prisma.order.findFirst({ where: { ...ofThisHolding, status: "AWAITING_APPROVAL" }, select: { id: true } })) return true;
-    const broke = await prisma.thesisUpdate.findFirst({ where: { thesisId, verdict: "BROKEN" }, orderBy: { timestamp: "asc" }, select: { timestamp: true } });
-    if (!broke) return false;
-    return !!(await prisma.order.findFirst({ where: { ...ofThisHolding, status: "REJECTED", updatedAt: { gte: broke.timestamp } }, select: { id: true } }));
-  } catch {
-    return false;
-  }
 }
 
 const F = thesisFields();
@@ -122,9 +103,8 @@ export const writeNoteTool = defineTool({
     if (!isChat(ctx)) {
       if (!args.thesis_id) return { summary: "Name the stock's thesis_id. Nothing written.", data: { ok: false, error: "no_thesis" }, sources: [] };
       if (isLook(ctx)) {
-        const row = await prisma.thesis.findFirst({ where: { id: args.thesis_id, userId: ctx.userId }, select: { ticker: true, status: true, direction: true, conviction: true, outlook: true } });
+        const row = await prisma.thesis.findFirst({ where: { id: args.thesis_id, userId: ctx.userId }, select: { ticker: true, direction: true, conviction: true, outlook: true } });
         if (row) {
-          const holding = row.status === "HOLDING";
           const problem = reviewProblem({
             verdict: args.verdict,
             verdictLine: args.verdict_line,
@@ -135,8 +115,6 @@ export const writeNoteTool = defineTool({
             outlookTo: args.outlook,
             outlookReason: args.outlook_reason,
             hasView: row.direction === "LONG" || row.direction === "SHORT",
-            holding,
-            saleOnRecord: holding && verdictOf(args.verdict) === "BROKEN" ? await saleOnRecord(args.thesis_id, row.ticker, ctx.userId) : false,
           });
           if (problem) return { summary: `Nothing written on $${row.ticker}. ${problem}`, data: { ok: false, error: "review_not_ended", fix: problem }, sources: [] };
         }

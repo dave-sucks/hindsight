@@ -36,6 +36,7 @@ const PLAYBOOKS_AFTER = "the Writer's playbooks follow its document, since the r
 const FIRST_READ = "the Market Reviewer is given what each thesis rests on, and its notes text says what impact and effect are for (2026-11-19)";
 const OUTLOOK = "the research rules tell outlook from conviction (2026-11-19); the other Writer cases changed before and carry it too";
 const NOT_RATED = "the stock's line says its outlook, and these cases' stocks have none yet (2026-11-20)";
+const HOW_A_LOOK_ENDS = "the analysts' runs import how-a-look-ends.md, the chat's line says its tool sets the outlook too, and the Portfolio Manager reads an analyst's rating (2026-11-20)";
 const CHANGED: Record<string, string> = {
   "morning.quiet": BOOK,
   "morning.full": BOOK,
@@ -61,6 +62,13 @@ const CHANGED: Record<string, string> = {
   "trigger.trim_principal_note": NOT_RATED,
   "trigger.add_held": NOT_RATED,
   "sample.trigger_run": NOT_RATED,
+  "trigger.row_unread": HOW_A_LOOK_ENDS,
+  "chat.unscoped": HOW_A_LOOK_ENDS,
+  "chat.unscoped_rooms": HOW_A_LOOK_ENDS,
+  "chat.pinned": HOW_A_LOOK_ENDS,
+  "chat.pinned_bare": HOW_A_LOOK_ENDS,
+  "sample.chat": HOW_A_LOOK_ENDS,
+  "sample.portfolio_manager": HOW_A_LOOK_ENDS,
 };
 
 /** Agents main never had, so nothing of theirs was hashed. */
@@ -101,10 +109,10 @@ describe("the instruction files", () => {
       portfolio_manager: ["rules.md"],
       writer: ["rules.md", "research-rules.md"],
       holding_refresh: ["rules.md", "research-rules.md"],
-      trigger_run: ["rules.md"],
+      trigger_run: ["how-a-look-ends.md", "rules.md"],
       post_trade_writeup: ["rules.md"],
       after_buy: ["rules.md"],
-      morning_run: ["rules.md"],
+      morning_run: ["how-a-look-ends.md", "rules.md"],
       chat: ["rules.md"],
       market_reviewer: [],
       portfolio_digest: [],

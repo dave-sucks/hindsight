@@ -68,7 +68,8 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   buyBlockedByFull: ["BUY_ARRIVES"],
   heldThroughFloor: ["PROTECTIVE_SALE"],
   supersededBy: "review",
-  street: ["BUY_ARRIVES", "ADD_OR_WINNER"],
+  // A report and news are where an outlook is judged again, against where the Street stands.
+  street: ["BUY_ARRIVES", "ADD_OR_WINNER", "REPORT", "NEWS"],
   setup: ["BUY_ARRIVES"],
   playbook_checks: ["BUY_ARRIVES"],
   // Something happened: the question is which line of the case it touches.
