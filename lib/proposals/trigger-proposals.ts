@@ -7,7 +7,9 @@
  * 30-minute expiry sweep never lapses it. On the 16:20 ET close pass, if none
  * of those triggers holds on the day's close, it comes down itself: the order
  * is WITHDRAWN with the reason in words, and a proposed buy's staged position
- * is cancelled. On the close only, so a stock bouncing around its line
+ * is cancelled. A proposal whose triggers are no longer on the stock (taken
+ * off since it fired, on the stock or among the rules it inherits) comes down
+ * the same way. On the close only, so a stock bouncing around its line
  * doesn't open and close the proposal all day. Approve and reject are as
  * they were.
  *
@@ -32,6 +34,18 @@ export interface TriggerProposal {
 
 const usd = (n: number) => money(Math.round(n * 100) / 100);
 
+/**
+ * Every trigger id a stock carries or inherits: its own stored triggers,
+ * read raw so one that can't be parsed still counts, and its analyst's and
+ * account's rules. A proposal's trigger outside this set was taken off.
+ */
+export function triggerIdsOnStock(stored: unknown, inherited: { analyst: Trigger[]; account: Trigger[] } | undefined): Set<string> {
+  const own = Array.isArray(stored)
+    ? stored.flatMap((t) => (t && typeof t === "object" && typeof (t as { id?: unknown }).id === "string" ? [(t as { id: string }).id] : []))
+    : [];
+  return new Set([...own, ...(inherited?.analyst ?? []).map((t) => t.id), ...(inherited?.account ?? []).map((t) => t.id)]);
+}
+
 /** Why the proposal came down, in words: "closed back above $236 at $238.10". */
 export function backPast(t: Trigger, ctx: EvaluationContext): string {
   const close = ctx.latestQuote?.price;
@@ -49,13 +63,15 @@ export function backPast(t: Trigger, ctx: EvaluationContext): string {
 /**
  * The close pass, for one stock: a trigger's proposal comes down when none of
  * its triggers holds on the close, read with the check's own reader
- * (`evaluateTrigger`) against the day's close. A trigger no longer on the
- * stock can't be read, so a proposal whose triggers are all gone waits for
- * the owner.
+ * (`evaluateTrigger`) against the day's close, or when none of them is on the
+ * stock any more (`onStock`). One on the stock that the ladder leaves out (a
+ * paused analyst's buy) can't be read, so the proposal waits.
  */
 export async function withdrawOnTheClose(args: {
   /** The stock's resolved triggers. */
   ladder: Trigger[];
+  /** Every trigger id the stock carries or inherits (`triggerIdsOnStock`). Absent: a gone trigger waits. */
+  onStock?: ReadonlySet<string>;
   /** The close pass's context: the day's close as the price. */
   ctx: EvaluationContext;
   proposals: TriggerProposal[];
@@ -65,8 +81,9 @@ export async function withdrawOnTheClose(args: {
   const out: Array<{ id: string; reason: string }> = [];
   for (const p of args.proposals) {
     const behind = p.triggerIds.map((id) => args.ladder.find((t) => t.id === id)).filter((t): t is Trigger => t != null);
-    if (behind.length === 0 || behind.some((t) => args.readable?.(t) === false || evaluateTrigger(t.predicate, args.ctx))) continue;
-    const reason = backPast(behind[0], args.ctx);
+    const gone = args.onStock != null && p.triggerIds.every((id) => !args.onStock!.has(id));
+    if (!gone && (behind.length === 0 || behind.some((t) => args.readable?.(t) === false || evaluateTrigger(t.predicate, args.ctx)))) continue;
+    const reason = gone ? `${p.triggerIds.length > 1 ? "its triggers are" : "its trigger is"} no longer on the stock` : backPast(behind[0], args.ctx);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.order.updateMany({ where: { id: p.id, status: "AWAITING_APPROVAL" }, data: { status: "WITHDRAWN", withdrawnReason: reason } });
       // A proposed buy staged a position that was never held; it goes, as on an expiry.

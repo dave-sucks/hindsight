@@ -2,7 +2,8 @@
  * A proposal a trigger makes stays open while its trigger holds (the owner's
  * ruling, 2026-11-13), over 30 days of production: NVDA, CEG and PLTR from
  * 2026-10-14 to 11-13 (__fixtures__/trigger-proposals-2026-10.json), and a
- * trigger's buy and add on the day each was proposed (ABBV, WST).
+ * trigger's buy and add on the day each was proposed (ABBV, WST), and WST's buy
+ * whose trigger was taken off after it fired (2026-11-17 → 11-20).
  *
  * Through the real entry points, in time order: the five-minute check at each
  * time it fired in production and its 16:20 ET close pass every day, the
@@ -263,6 +264,49 @@ describe("a trigger's buy and add come down on the close too", () => {
     await closePass(db, "WST", { "2026-10-28": DAY(396.95, 404.985, 396.83, 403.64), "2026-10-29": DAY(420.69, 438.27, 415.32, 416.67) }, "2026-10-29T20:20:05Z");
     expect(db.store.order[0]).toMatchObject({ status: "WITHDRAWN", withdrawnReason: "closed at $416.67; no longer above 7% from yesterday's close" });
     expect(db.store.position[0]).toMatchObject({ status: "OPEN" });
+  });
+
+  // WST as stored on 2026-11-20: the buy "Buy if below $415.14" fired 11-17 at 15:55 ET and proposed 18 shares;
+  // the watch rewrite took that trigger off 11-19 at 23:00 UTC ("Cleared for the rewrite") and put the
+  // playbook's watch triggers on. The proposal pointed at a trigger no longer on the stock, so no close could
+  // find it false, and it waited. The 11-20 bar is Alpaca's as read that afternoon.
+  const WST = {
+    thesis: "cmsplcu9u000004l71leub93x",
+    gone: "1d09278f-b9cd-4601-97e1-e00c8e64a010",
+    triggers: [
+      { id: "d5751a2b-4215-457a-8628-f31e76cf54a5", action: "ENTER", source: "DEFAULT", fireMode: "ASK_NOW", playbook: "WATCH", predicate: { match: "all", conditions: [{ is: "above", value: 438.27, watch: "price", settings: { close: true } }, { value: 1.5, watch: "volume" }] }, rationale: "(not kept)" },
+      { id: "e1b590c6-f0e9-414a-b40c-d04d8ace6246", action: "REVIEW", source: "DEFAULT", fireMode: "NEXT_MORNING", playbook: "WATCH", predicate: { value: 30, watch: "repeat" }, rationale: "(not kept)" },
+      { id: "c27a560c-b25e-4e49-8b5e-cf28eb2d0711", action: "STOP_WATCHING", source: "DEFAULT", fireMode: "ASK_NOW", playbook: "WATCH", predicate: { is: "below", watch: "price", settings: { close: true }, variable: "sma200" }, rationale: "(not kept)" },
+      { id: "b2529163-0902-4973-8c14-e3efbebb6622", action: "REVIEW", source: "AGENT", fireMode: "NEXT_MORNING", predicate: { is: "after", value: 1, watch: "report" }, rationale: "(not kept)" },
+      { id: "ac52fd97-ed59-48e8-a93d-ebd667c7d120", action: "ENTER", source: "AGENT", fireMode: "ASK_NOW", predicate: { is: "above", watch: "price", settings: { close: true }, variable: "sma20" }, rationale: "(not kept)" },
+    ],
+    bars: { "2026-11-19": DAY(407.08, 407.08, 389.25, 396.69), "2026-11-20": DAY(387.71, 400.9, 387.71, 390.515) },
+  };
+  const wstBook = (over: { enabled?: boolean; triggerIds?: string[] } = {}) =>
+    prismaDouble({
+      account: [accountRow({ id: ACCOUNT, requireApprovalSellsLive: true, requireApprovalBuysLive: true, triggers: [], triggersSeededAt: new Date("2026-09-18T12:00:00Z") })],
+      agentConfig: [agentConfigRow({ id: SECULAR, accountId: ACCOUNT, userId: ACCOUNT, tradingEnvironment: "LIVE", enabled: over.enabled ?? true, triggers: [] })],
+      thesis: [thesisRow({ id: WST.thesis, userId: ACCOUNT, accountId: ACCOUNT, ticker: "WST", status: "WATCHING", direction: "LONG", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", triggers: WST.triggers, researchRun: { agentConfigId: SECULAR, agentConfig: { enabled: over.enabled ?? true, name: "x", setupIds: [] } } })],
+      position: [positionRow({ id: "cmwkvix4h000308l7zdkju8ou", userId: ACCOUNT, accountId: ACCOUNT, analystId: SECULAR, symbol: "WST", status: "PENDING_APPROVAL", quantity: 18, avgCost: 414.355, environment: "LIVE", openedAt: new Date("2026-11-17T15:55:19.217Z") })],
+      order: [order({ id: "cmwkvix4u000408l7vsokb6nz", positionId: "cmwkvix4h000308l7zdkju8ou", thesisId: WST.thesis, symbol: "WST", intent: "OPEN", quantity: 18, triggerIds: over.triggerIds ?? [WST.gone], proposedPrice: 414.355, createdAt: new Date("2026-11-17T15:55:19.212Z") })],
+    });
+
+  it("WST 11-17: the buy whose trigger the watch rewrite took off comes down on the next close, with one Activity line, and its staged position goes", async () => {
+    const db = wstBook();
+    await closePass(db, "WST", WST.bars, "2026-11-20T21:20:05Z");
+    expect(db.store.order[0]).toMatchObject({ status: "WITHDRAWN", withdrawnReason: "its trigger is no longer on the stock" });
+    expect(db.store.position[0]).toMatchObject({ status: "CANCELLED" });
+    const { proposalSteps } = await import("@/lib/thesis/activity-feed");
+    const row = db.store.order[0] as unknown as Parameters<typeof proposalSteps>[0];
+    const steps = proposalSteps({ ...row, rationale: null, rejectionMessage: null, alpacaConfirmedAt: null, filledPrice: null, updatedAt: new Date("2026-11-20T21:20:05Z") });
+    expect(steps.filter((s) => s.type === "PROPOSAL_WITHDRAWN").map((s) => s.summary)).toEqual(["Withdrawn: its trigger is no longer on the stock"]);
+  });
+
+  it("a paused analyst's buy whose trigger is still on the stock waits: the pause leaves the buy off the ladder, it doesn't take it off the stock", async () => {
+    const db = wstBook({ enabled: false, triggerIds: ["ac52fd97-ed59-48e8-a93d-ebd667c7d120"] });
+    await closePass(db, "WST", WST.bars, "2026-11-20T21:20:05Z");
+    expect(db.store.order[0]).toMatchObject({ status: "AWAITING_APPROVAL" });
+    expect(db.store.position[0]).toMatchObject({ status: "PENDING_APPROVAL" });
   });
 
   it("a proposal no trigger made is left to its 24 hours", async () => {
