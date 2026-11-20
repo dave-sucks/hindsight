@@ -21,8 +21,8 @@ import { z } from "zod";
 import { zodSchema, type Schema } from "ai";
 import { thesisFields } from "@/lib/agent/tools/thesis-fields";
 
-/** The fields the writer shares with record_thesis and update_thesis, defined once, in the writer's form: no number ranges on the score parts, as before (validateThesisDecision refuses a score out of range). */
-const W = thesisFields({ writer: true });
+/** The fields the writer shares with record_thesis and update_thesis, defined once. */
+const W = thesisFields();
 
 /**
  * The submit_thesis tool's input schema. The tool is not sent in Anthropic's
