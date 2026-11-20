@@ -84,7 +84,7 @@ export interface MeasureDef {
    * plain words: the agents' tools describe `is` with it, and the guide prints it.
    */
   buttons?: readonly { is: Direction; label: string; means: string }[];
-  /** One choice: said as a word inside the input ("Every", "At least", "Files"). */
+  /** One choice: the form's first place holds it alone ("Above", "Every", "Files"). */
   word?: string;
   value: ValueDef;
   variables?: VariablesDef;

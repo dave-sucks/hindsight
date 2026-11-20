@@ -9,9 +9,9 @@
  *   a line saying what to fix, while something is missing
  *
  * One joined control, the same three places on every measure: the direction
- * (a select, or the measure's one word), the value, and what it is measured
- * from when the measure has that. A price's value is a number or a variable
- * chip from the {x} in the input.
+ * (one select, with one choice where the measure has one: "Above", "Every"),
+ * the value, and what it is measured from when the measure has that. A
+ * price's value is a number or a variable chip from the {x} in the input.
  *
  * docs/plans/TRIGGER_TYPES.md §7.
  */
@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, CalendarDays, DollarSign, FileText, Newspaper, Repeat, Variable, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -213,7 +213,9 @@ export function ConditionFields({
   const m = measureOf(condition);
   const type = typeDef(m.type);
   const problem = disabled ? null : conditionProblem(condition, ctx);
-  const choosesDirection = m.buttons != null && m.buttons.length > 1;
+  // The first place lists the measure's directions; a measure with one says its word there, as the only choice.
+  const choices = m.buttons?.map((b) => ({ id: b.is as string, label: b.label })) ?? (m.word ? [{ id: "only", label: m.word }] : []);
+  const chosen = m.buttons ? (condition.is ?? m.buttons[0].is) : "only";
   return (
     <div className="space-y-2">
       {type.measures.length > 1 ? (
@@ -238,11 +240,11 @@ export function ConditionFields({
         .map((s) => (
           <SettingSelect key={s.key} condition={condition} setting={s} onChange={onChange} disabled={disabled} />
         ))}
-      {/* One control: the direction (or the measure's one word), the value, and what it is measured from. */}
+      {/* One control: the direction, the value, and what it is measured from. */}
       <ButtonGroup width="full">
-        {choosesDirection && m.buttons ? (
+        {choices.length > 0 ? (
           <Select
-            value={condition.is ?? m.buttons[0].is}
+            value={chosen}
             onValueChange={(v) => {
               const b = m.buttons?.find((x) => x.is === v);
               if (b) onChange(withDirection(condition, b.is, ctx));
@@ -250,21 +252,16 @@ export function ConditionFields({
             disabled={disabled}
           >
             <SelectTrigger aria-label="Direction">
-              <SelectValue>{m.buttons.find((b) => b.is === condition.is)?.label}</SelectValue>
+              <SelectValue>{choices.find((c) => c.id === chosen)?.label}</SelectValue>
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false} align="start">
-              {m.buttons.map((b) => (
-                <SelectItem key={b.is} value={b.is}>
-                  {b.label}
+              {choices.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        ) : m.word ? (
-          // A measure with one choice says it as a word: "Every", "At least", "Files".
-          <ButtonGroupText>
-            <span className="whitespace-nowrap">{m.word}</span>
-          </ButtonGroupText>
         ) : null}
         <ValueInput condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} />
         {m.variables?.mode === "from" ? <FromSelect condition={condition} onChange={onChange} ctx={ctx} disabled={disabled} /> : null}

@@ -529,8 +529,10 @@ Every other type fills the same parts:
   variable shows as a blue chip in the input; its × removes it.
 - **What a % or a day count is measured from is the control's third part**: a
   plain select that always holds one ("from yesterday's close"), never a chip
-  that can be removed. A measure with one direction says it as a word in the
-  first part ("At least", "Every"). A pill leaves off "from yesterday's close",
+  that can be removed. The first part is the same select on every measure; a
+  measure with one direction lists that one ("Above", "Every"). Volume, strength
+  and a gap say "Above" there and "at least" in a sentence, which is what the
+  check does. A pill leaves off "from yesterday's close",
   the usual reference; a combination too long for its row breaks between its
   conditions.
 - **Clicking a pill opens a popover**: the trigger read the same way as the
