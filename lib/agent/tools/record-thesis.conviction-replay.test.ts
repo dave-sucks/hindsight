@@ -37,8 +37,8 @@ const mintArgs = {
   ],
 };
 
-describe("record_thesis — STRONG/HIGH without a variant view", () => {
-  it("saves the thesis with conviction MEDIUM and says why on the row", async () => {
+describe("record_thesis — HIGH with no view that differs from Wall Street", () => {
+  it("saves the thesis as HIGH, and its outlook stays empty when none was sent", async () => {
     const { refused, refusal, db } = await replayTool("record-thesis", "recordThesis", {
       seed: { agentConfig: [agentConfigRow({ setupIds: ["PRE_CATALYST"] })], account: [accountRow()] },
       ctx: { runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID },
@@ -49,12 +49,13 @@ describe("record_thesis — STRONG/HIGH without a variant view", () => {
     expect(refused).toBe(false);
     const rows = db.store.thesis as Array<Record<string, unknown>>;
     expect(rows).toHaveLength(1);
-    expect(rows[0].conviction).toBe("MEDIUM");
-    expect(String(rows[0].convictionRationale)).toMatch(/Stored as MEDIUM: HIGH needs a variant view/);
+    expect(rows[0].conviction).toBe("HIGH");
+    // The saved decision named no outlook: none is invented from its direction.
+    expect(rows[0].outlook).toBeNull();
     expect(rows[0].status).toBe("WATCHING");
   });
 
-  it("with a variant view the tier is kept", async () => {
+  it("with one, the same", async () => {
     const { refused, db } = await replayTool("record-thesis", "recordThesis", {
       seed: { agentConfig: [agentConfigRow({ setupIds: ["PRE_CATALYST"] })], account: [accountRow()] },
       ctx: { runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID },

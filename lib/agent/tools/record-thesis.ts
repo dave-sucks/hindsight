@@ -115,6 +115,8 @@ const recordFields = z.object({
   core_belief: F.core_belief.optional(),
   key_assumptions: F.key_assumptions.optional(),
   invalidation_conditions: F.invalidation_conditions.optional(),
+  outlook: F.outlook.optional(),
+  outlook_reason: F.outlook_reason.optional(),
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
   variant_view: F.variant_view.optional(),
@@ -288,7 +290,7 @@ export const recordThesis = defineTool({
                 note:
                   `You currently hold ${heldPosition.direction} ${heldPosition.quantity} shares of ${args.ticker}. PASS is for tickers you researched and decided NOT to trade — it is incompatible with holding the name. ` +
                   `If your conviction on this position has dropped, the correct tools are:\n` +
-                  `  • set_conviction(thesis_id, conviction: <a lower tier>, conviction_rationale: "<why>") and edit_triggers(thesis_id, edit: [<the floor's id, a tighter value>]) — keep the position but reflect lower conviction, OR\n` +
+                  `  • write_note(thesis_id, note, verdict: "WEAKER", verdict_line, conviction: <a lower level>, conviction_rationale: "<why>") and edit_triggers(thesis_id, edit: [<the floor's id, a tighter value>]) — keep the position but reflect lower conviction, OR\n` +
                   `  • sell(ticker, belief_survived: false) — exit the position; the thesis retires as broken.\n` +
                   `Find the active LONG/SHORT thesis_id via get_theses(tickers: ["${args.ticker}"]). Do NOT retry record_thesis on ${args.ticker} with direction PASS — it will reject again.`,
               },
@@ -400,14 +402,9 @@ export const recordThesis = defineTool({
         };
       }
 
-      // What the save stores for conviction: the tier as sent, or one tier
-      // down with the reason, when a top-tier call came without its edge.
-      let storedConviction: string | null = args.conviction ?? null;
-      let storedConvictionNote: string | null = null;
-
       // ── Conviction Expression v4 — field-presence gates (§3) ──────────
       // Directional theses (LONG/SHORT) require conviction + rationale +
-      // size. STRONG/HIGH without a variantView are stored as MEDIUM (below). PASS/PENDING
+      // an outlook with its reason. PASS/PENDING
       // bypass. See docs/plans/CONVICTION_EXPRESSION.md §3.
       if (isDirectional) {
         if (!args.conviction) {
@@ -420,10 +417,8 @@ export const recordThesis = defineTool({
               thesis_id: null,
               status: "FAILED" as const,
               note:
-                `Every directional thesis (LONG/SHORT) requires a conviction tier — STRONG / HIGH / MEDIUM / LOW. ` +
-                `STRONG = top-tier (your best 2-3 calls per cycle); HIGH = solid conviction with variant view; ` +
-                `MEDIUM = normal; LOW = weak. Pair with conviction_rationale (one sentence why this tier). ` +
-                `A STRONG or HIGH call without a variant_view ("consensus thinks X, I think Y") is stored as MEDIUM.`,
+                `Every thesis with a view (LONG/SHORT) needs a conviction: HIGH, MEDIUM or LOW, how confident you are in the outlook and its reasons. ` +
+                `Send it with conviction_rationale, a sentence or two about the business and the evidence.`,
             },
             sources: [],
           };
@@ -444,19 +439,6 @@ export const recordThesis = defineTool({
             },
             sources: [],
           };
-        }
-        // A top-tier call needs a variant view. Without one the tier is
-        // stored as MEDIUM with the reason next to it — a detail the app
-        // can fix is fixed by the app, never a refusal (DAV-316).
-        if (
-          (args.conviction === "STRONG" || args.conviction === "HIGH") &&
-          (!args.variant_view || args.variant_view.trim().length === 0)
-        ) {
-          storedConvictionNote = `Stored as MEDIUM: ${args.conviction} needs a variant view (consensus expects X, I think Y) and none was given.`;
-          storedConviction = "MEDIUM";
-          console.warn(
-            `[record-thesis] Analyst=${ctx.analystId} ticker=${args.ticker} ${args.conviction} without variant_view — stored as MEDIUM.`,
-          );
         }
       }
 
@@ -694,13 +676,14 @@ export const recordThesis = defineTool({
         // ── Conviction Expression v4 ─────────────────────────────────
         // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Layer-1 gates
         // above enforced required-when-directional + variantView-on-
-        // STRONG/HIGH + the two consistency gates; by the time we reach
+        // the two consistency gates; by the time we reach
         // persistence the values are either valid for the directional
         // path or null for PASS/PENDING.
-        conviction: storedConviction,
-        convictionRationale: storedConvictionNote
-          ? `${args.conviction_rationale ?? ""}\n\n[${storedConvictionNote}]`.trim()
-          : (args.conviction_rationale ?? null),
+        // What we expect of the stock from here, as the Writer judged it; never filled from the direction.
+        outlook: isDirectional ? (args.outlook ?? null) : null,
+        outlookReason: isDirectional ? (args.outlook_reason ?? null) : null,
+        conviction: args.conviction ?? null,
+        convictionRationale: args.conviction_rationale ?? null,
         variantView: args.variant_view ?? null,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final

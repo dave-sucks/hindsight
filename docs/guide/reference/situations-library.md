@@ -69,7 +69,7 @@ A buy trigger fired. A trigger written in advance to buy this stock fired or is 
 2. Does the price still hold? If it touched the buy price and slipped back, say so.
 3. Did the playbook's buy confirm? Go down the playbook's checks for this buy. Leave volume out before mid-session and outside market hours.
 4. Did the owner decline this buy? If nothing they named has changed since, pass.
-5. Does the case still hold? At low conviction, buy only when a second sign confirms it.
+5. Does the case still hold, and do you still expect the stock to do well from this price? At low conviction, buy only when a second sign confirms it.
 
 A stock we watch. Every check holds: propose the buy with its floor, the playbook's or one you name under structure on the chart with its reason. A check failed: move the buy price to where the chart now puts it, or take the buy off and keep a review that brings the stock back. A buy moved just above today's price to avoid the question comes straight back.
 
@@ -97,7 +97,7 @@ Done: one note that says why the stock moved and whether that confirms why we ow
 
 ## A report
 
-`REPORT` · rank 5 of 10 · `report.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
+`REPORT` · rank 5 of 10 · `report.md` · the row adds `street`, `assumptions`, `would_prove_it_wrong` · sent to the run that answers
 
 A trigger on the company's earnings report fired: the report is coming, or it just landed.
 
@@ -143,7 +143,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 ## News
 
-`NEWS` · rank 7 of 10 · `news.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
+`NEWS` · rank 7 of 10 · `news.md` · the row adds `street`, `assumptions`, `would_prove_it_wrong` · sent to the run that answers
 
 Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.
 
@@ -181,7 +181,7 @@ Done: one note that says how the stock got here and what is driving it now, with
 
 ## Review due
 
-`REVIEW_DUE` · rank 9 of 10 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to the run that answers
+`REVIEW_DUE` · rank 9 of 10 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `outlook_reason`, `variant_view`, `snapshot` · sent to the run that answers
 
 The review clock came round, or the price reached a level the analyst asked to look at again.
 

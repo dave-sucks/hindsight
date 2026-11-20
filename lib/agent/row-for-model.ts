@@ -68,7 +68,8 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   buyBlockedByFull: ["BUY_ARRIVES"],
   heldThroughFloor: ["PROTECTIVE_SALE"],
   supersededBy: "review",
-  street: ["BUY_ARRIVES", "ADD_OR_WINNER"],
+  // A report and news are where an outlook is judged again, against where the Street stands.
+  street: ["BUY_ARRIVES", "ADD_OR_WINNER", "REPORT", "NEWS"],
   setup: ["BUY_ARRIVES"],
   playbook_checks: ["BUY_ARRIVES"],
   // Something happened: the question is which line of the case it touches.
@@ -81,6 +82,8 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   bull_case: "review",
   bear_case: "review",
   conviction_rationale: "review",
+  // Why the outlook is what it is: what a look that re-reads the case has to check against today.
+  outlook_reason: "review",
   variant_view: ["BUY_ARRIVES"],
   snapshot: "review",
   // Only when asked for by name.
@@ -95,7 +98,7 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
  * (the triggers that come with the buy) where a holding carries `setup`.
  */
 export const COMPARING_FIELDS: readonly string[] = [
-  "stock", "id", "analyst", "situations", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
+  "stock", "id", "analyst", "situations", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale", "outlook_reason",
   "triggers", "said", "street", "catalyst", "chart", "setup", "playbook_checks", "research",
 ];
 
@@ -319,6 +322,13 @@ function priceLine(row: Row): string | null {
   return `${money(current)}${dp != null ? `, ${pct(dp)} today` : ""}${at ? ` (${etStamp(at)})` : ""}`;
 }
 
+/** "outlook bullish" on the stock's line, or that a stock with a view has not been rated yet; nothing on a stock with no view. */
+function outlookWord(row: Row): string | null {
+  if (row.direction !== "LONG" && row.direction !== "SHORT") return null;
+  const outlook = str(row.outlook);
+  return outlook ? `outlook ${outlook.toLowerCase()}` : "outlook not rated yet";
+}
+
 /** A dated-event stock with no date: nothing to schedule around (step 12, part 3). */
 const catalystDateMissing = (row: Row) => row.horizon === "CATALYST" && date(row.catalystDate) == null;
 
@@ -372,7 +382,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   const sent = comparing ? new Set(COMPARING_FIELDS) : rowKeysFor(codes, { size, named });
   const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
 
-  put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
+  put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), outlookWord(row), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
   // What the company does and how it makes money, in two sentences: the Writer's, on every stock written up from 2026-11-03.
   put("company", str(row.company) ? stripSourceTags(row.company as string) : null);
   put("id", row.id);
@@ -393,6 +403,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   put("bull_case", strings(list<{ text?: unknown }>(obj(row.bullCase)?.bullets).map((b) => b?.text)));
   put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
   put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
+  put("outlook_reason", str(row.outlookReason) ? stripSourceTags(row.outlookReason as string) : null);
   put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
   // What a fire checks, and on a watch the triggers that come with the buy (playbook_checks), in place of the compact line: on the full row, and on the trigger run's row (whatever its situation).
   const lines = size === "full" || playbookChecksOn ? strings(obj(row.setup)?.lines) : [];

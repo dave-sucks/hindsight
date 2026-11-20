@@ -8,6 +8,7 @@
  */
 
 import { zodSchema } from "ai";
+import { ratedNow } from "@/lib/replay/rated";
 import {
   heldDecisionSchema,
   lookAgainTrigger,
@@ -29,6 +30,8 @@ const validLong: ThesisDecisionInput = {
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
   key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
   invalidation_conditions: ["Gross margin below 70% on next print", "Guidance cut on DC revenue"],
+  outlook: "BULLISH",
+  outlook_reason: "The data-center ramp is not in the price yet.",
   conviction: "HIGH",
   conviction_rationale:
     "I really like this setup — the catalyst is ahead and consensus is too conservative on DC revenue.",
@@ -39,29 +42,28 @@ const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 10
 
 describe("validateThesisDecision — accept paths", () => {
   it("accepts a fully-specified LONG mint, and reports no reward/risk (the house sets no target)", () => {
-    const v = validateThesisDecision(validLong, mintOpts);
+    const v = validateThesisDecision(ratedNow(validLong), mintOpts);
     expect(v.ok).toBe(true);
     expect(v.errors).toEqual([]);
     expect("riskReward" in v).toBe(false);
   });
 
   it("accepts a PASS with only rationale + horizon (no prices, no conviction)", () => {
-    const v = validateThesisDecision(
-      { direction: "PASS", rationale: "No setup at current prices; revisit below the 50d around $85.", horizon: "TARGET" },
+    const v = validateThesisDecision(ratedNow({ direction: "PASS", rationale: "No setup at current prices; revisit below the 50d around $85.", horizon: "TARGET" }),
       mintOpts,
     );
     expect(v.ok).toBe(true);
   });
 
   it("accepts a LONG with no playbook named: the view stays, and its review comes after the save", () => {
-    const v = validateThesisDecision({ ...validLong, setup_id: undefined }, mintOpts);
+    const v = validateThesisDecision(ratedNow({ ...validLong, setup_id: undefined }), mintOpts);
     expect(v.ok).toBe(true);
   });
 });
 
 describe("validateThesisDecision — belief + conviction requirements (LONG/SHORT)", () => {
   it("rejects missing core_belief / thin assumptions / thin invalidations", () => {
-    const v = validateThesisDecision({ ...validLong, core_belief: undefined, key_assumptions: ["only one"], invalidation_conditions: [] }, mintOpts);
+    const v = validateThesisDecision(ratedNow({ ...validLong, core_belief: undefined, key_assumptions: ["only one"], invalidation_conditions: [] }), mintOpts);
     expect(v.ok).toBe(false);
     const all = v.errors.join(" ");
     expect(all).toContain("core_belief");
@@ -69,27 +71,26 @@ describe("validateThesisDecision — belief + conviction requirements (LONG/SHOR
     expect(all).toContain("invalidation_conditions");
   });
 
-  it("STRONG/HIGH conviction without a variant view is stored as MEDIUM, with the reason — not refused", () => {
-    const v = validateThesisDecision({ ...validLong, conviction: "STRONG", variant_view: undefined }, mintOpts);
+  it("a HIGH conviction needs no view that differs from Wall Street: it is stored as sent", () => {
+    const v = validateThesisDecision(ratedNow({ ...validLong, conviction: "HIGH", variant_view: undefined }), mintOpts);
     expect(v.ok).toBe(true);
-    expect(v.decision?.conviction).toBe("MEDIUM");
-    expect(v.decision?.notes?.join(" ")).toContain("Conviction stored as MEDIUM");
+    expect(v.decision?.conviction).toBe("HIGH");
   });
 
   it("allows MEDIUM conviction without a variant view", () => {
-    expect(validateThesisDecision({ ...validLong, conviction: "MEDIUM", variant_view: undefined }, mintOpts).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow({ ...validLong, conviction: "MEDIUM", variant_view: undefined }), mintOpts).ok).toBe(true);
   });
 });
 
 describe("validateThesisDecision — horizon conditionals", () => {
   it("CATALYST requires catalyst_date", () => {
-    const v = validateThesisDecision({ ...validLong, horizon: "CATALYST", catalyst_date: undefined }, mintOpts);
+    const v = validateThesisDecision(ratedNow({ ...validLong, horizon: "CATALYST", catalyst_date: undefined }), mintOpts);
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("catalyst_date");
   });
 
   it("rejects an unparseable catalyst_date", () => {
-    const v = validateThesisDecision({ ...validLong, horizon: "CATALYST", catalyst_date: "next month sometime" }, mintOpts);
+    const v = validateThesisDecision(ratedNow({ ...validLong, horizon: "CATALYST", catalyst_date: "next month sometime" }), mintOpts);
     expect(v.ok).toBe(false);
     expect(v.errors.join(" ")).toContain("not a parseable date");
   });
@@ -108,22 +109,22 @@ describe("look_again: a view with no buy yet says when to look again, instead of
   const view = { ...validLong, setup_id: undefined };
 
   it("after the next report, or after the stock's event date with that date, with why: accepted", () => {
-    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: "Whether the January report confirms NAND pricing." } }, opts).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow({ ...view, look_again: { after_next_report: true, why: "Whether the January report confirms NAND pricing." } }), opts).ok).toBe(true);
     // CORT 2026-11-19 (local-cort-writer-mint): "Review the day after the FDA decision" on Dec 17.
-    expect(validateThesisDecision({ ...view, catalyst_date: "2026-12-17", look_again: { after_event: true, why: "The day after the FDA decision." } }, opts).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow({ ...view, catalyst_date: "2026-12-17", look_again: { after_event: true, why: "The day after the FDA decision." } }), opts).ok).toBe(true);
   });
 
   it("neither or both, an event with no date, or no why: sent back with the fix", () => {
-    expect(validateThesisDecision({ ...view, look_again: { why: "w" } }, opts).errors).toEqual(["look_again: give one of after_next_report or after_event, with why."]);
-    expect(validateThesisDecision({ ...view, catalyst_date: "2026-12-17", look_again: { after_next_report: true, after_event: true, why: "w" } }, opts).ok).toBe(false);
-    expect(validateThesisDecision({ ...view, look_again: { after_event: true, why: "w" } }, opts).errors).toEqual([
+    expect(validateThesisDecision(ratedNow({ ...view, look_again: { why: "w" } }), opts).errors).toEqual(["look_again: give one of after_next_report or after_event, with why."]);
+    expect(validateThesisDecision(ratedNow({ ...view, catalyst_date: "2026-12-17", look_again: { after_next_report: true, after_event: true, why: "w" } }), opts).ok).toBe(false);
+    expect(validateThesisDecision(ratedNow({ ...view, look_again: { after_event: true, why: "w" } }), opts).errors).toEqual([
       "look_again.after_event: give the event's date in catalyst_date; for a plain date with no event, add a review clock with edit_triggers after the save.",
     ]);
-    expect(validateThesisDecision({ ...view, look_again: { after_next_report: true, why: " " } }, opts).errors[0]).toMatch(/look_again\.why/);
+    expect(validateThesisDecision(ratedNow({ ...view, look_again: { after_next_report: true, why: " " } }), opts).errors[0]).toMatch(/look_again\.why/);
   });
 
   it("a PASS takes none: the view it describes is a LONG or SHORT with this look-again", () => {
-    const v = validateThesisDecision({ direction: "PASS", rationale: "No setup today; I would look again after the January report.", horizon: "TARGET", look_again: { after_next_report: true, why: "w" } }, opts);
+    const v = validateThesisDecision(ratedNow({ direction: "PASS", rationale: "No setup today; I would look again after the January report.", horizon: "TARGET", look_again: { after_next_report: true, why: "w" } }), opts);
     expect(v.errors).toEqual(["look_again: a PASS takes none. A view you would look again at is LONG or SHORT with no buy and this look-again; or pass with none."]);
   });
 

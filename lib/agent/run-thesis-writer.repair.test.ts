@@ -41,6 +41,7 @@ jest.mock("@/lib/agent/thesis-research/pull-data", () => ({ pullThesisData: jest
 
 import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
 import { prisma } from "@/lib/prisma";
+import { ratedNow } from "@/lib/replay/rated";
 import type { ThesisDecisionInput } from "@/lib/agent/thesis-research/decision";
 import { writerResearchPhase } from "./run-thesis-writer";
 
@@ -109,7 +110,7 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       // The model is shown exactly what it sent and why it was refused.
       expect(opts.messages?.[2]?.content).toMatch(/"direction":"LONG"/);
       expect(opts.messages?.[2]?.content).toMatch(/invalidation_conditions/);
-      const r = await opts.tools!.submit_thesis!.execute(fx.last.input, { toolCallId: "t2", messages: [] });
+      const r = await opts.tools!.submit_thesis!.execute(ratedNow(fx.last.input), { toolCallId: "t2", messages: [] });
       expect(r.accepted).toBe(true);
       return { text: "", steps: [], response: { messages: [] } };
     }

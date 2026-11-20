@@ -154,6 +154,9 @@ export interface ToolContext {
    */
   runStock?: { ticker: string; thesisId: string; triggerId: string };
 
+  /** Set for the post-trade write-up: the Auto trade is made and its note is that trade's reason, not a review of the thesis (write_note asks it for no verdict). */
+  afterAutoTrade?: boolean;
+
   /** Set only for an Auto trigger: the account's cash. A buy or add costing more is refused, as on the Trade button (null = unreadable). */
   payFromCash?: number | null;
 

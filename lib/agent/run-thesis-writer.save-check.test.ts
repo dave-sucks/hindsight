@@ -72,6 +72,7 @@ jest.mock("@/lib/agent/gate-rejections", () => ({
 }));
 
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
+import { ratedNow } from "@/lib/replay/rated";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { checkDecisionAgainstSave, type RunThesisWriterArgs } from "./run-thesis-writer";
@@ -172,14 +173,14 @@ describe("FIVE 2026-09-15 — stop and target explanations of 264 and 266 charac
   const fx = fixtures.FIVE;
 
   it("passes the writer's own rules", () => {
-    expect(validateThesisDecision(fx.submit, validateOpts(fx, "FIVE")).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow(fx.submit), validateOpts(fx, "FIVE")).ok).toBe(true);
   });
 
   it("passes the save check too — a long explanation is a detail, not a refusal (DAV-316)", async () => {
     // The save used to refuse these against a 240-character cap on
     // stop_basis / target_basis and the research was lost. The cap is gone.
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(fx.submit, validateOpts(fx, "FIVE"));
+    const v = validateThesisDecision(ratedNow(fx.submit), validateOpts(fx, "FIVE"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "FIVE"),
       pull: null,
@@ -197,12 +198,12 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
   const fx = fixtures.DOCU;
 
   it("passes the writer's own rules (the gap that threw the research away)", () => {
-    expect(validateThesisDecision(fx.submit, validateOpts(fx, "DOCU")).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow(fx.submit), validateOpts(fx, "DOCU")).ok).toBe(true);
   });
 
   it("passes the save check: the $76 review it kept is a wake, not a target (QB ruling 2026-09-29)", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(ratedNow(fx.submit), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
       pull: null,
@@ -217,7 +218,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
 
   it("with its floor kept it saves: a watch's Stop watching line needs no buy", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(withFloorKept(fx.submit), validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(ratedNow(withFloorKept(fx.submit)), validateOpts(fx, "DOCU"));
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
       pull: null,
@@ -230,7 +231,7 @@ describe("DOCU 2026-09-15 — buy level removed, the $76 review left behind", ()
 
   it("DOCU's real call (the floor taken off) passes the check and writes nothing", async () => {
     mockThesisFindUnique.mockResolvedValue(storedRow(fx));
-    const v = validateThesisDecision(fx.submit, validateOpts(fx, "DOCU"));
+    const v = validateThesisDecision(ratedNow(fx.submit), validateOpts(fx, "DOCU"));
     expect(v.ok).toBe(true);
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "DOCU"),
@@ -255,7 +256,7 @@ describe("FIVE 2026-09-15 — the same decision with the explanations cut to fit
       stop_basis: "Under the 38.2% retracement $229.20 — $226.80 is 1.0 ATR ($9.91) below price; a gap fill toward the 50-day $224.67 breaks the drift.",
       target_basis: "1.272 extension of the $173.10 → $263.88 leg = $288.57; 5.3R from $236.57 with a $9.77 risk.",
     };
-    const v = validateThesisDecision(short, validateOpts(fx, "FIVE"));
+    const v = validateThesisDecision(ratedNow(short), validateOpts(fx, "FIVE"));
     expect(v.ok).toBe(true);
     const outcome = await checkDecisionAgainstSave({
       args: writerArgs(fx, "FIVE"),
@@ -297,7 +298,7 @@ describe("a new thesis (mint) is checked the same way", () => {
   };
 
   it("would save, and creates nothing while checking", async () => {
-    const v = validateThesisDecision(mintDecision, mintOpts);
+    const v = validateThesisDecision(ratedNow(mintDecision), mintOpts);
     expect(v.ok).toBe(true);
     const outcome = await checkDecisionAgainstSave({
       args: mintArgs,
@@ -316,7 +317,7 @@ describe("a new thesis (mint) is checked the same way", () => {
     // The same name is already covered — record_thesis sends the writer to
     // update_thesis rather than minting a second row.
     (prisma.thesis.findFirst as jest.Mock).mockResolvedValue({ id: fx.thesis.id, direction: "LONG", status: "WATCHING" });
-    const v = validateThesisDecision(mintDecision, mintOpts);
+    const v = validateThesisDecision(ratedNow(mintDecision), mintOpts);
     const outcome = await checkDecisionAgainstSave({
       args: mintArgs,
       pull: { currentPrice: livePrice.DOCU } as never,

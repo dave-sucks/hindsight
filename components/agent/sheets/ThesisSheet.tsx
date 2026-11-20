@@ -931,7 +931,7 @@ export function ThesisBody({
   const website = quote?.website ?? null;
   const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
-  const conviction = (state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  const conviction = (state.conviction ?? null) as "HIGH" | "MEDIUM" | "LOW" | null;
   const factChips =
     conviction || facts.length > 0 || host ? (
       <div className="flex flex-wrap items-center gap-1.5">
@@ -1154,6 +1154,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
           retiredReason={state.retiredReason ?? null}
+          outlook={state.outlook ?? null}
+          outlookReason={state.outlookReason ?? null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

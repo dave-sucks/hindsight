@@ -8,7 +8,7 @@ It acts on what changed and leaves the quiet stocks alone. Every trade it wants 
 Model: gpt-5.4
 Starts: Run days · 8:00 AM ET
 Steps: Up to 65
-Tools: 20
+Tools: 19
 Saves: a note on each stock, trigger edits, conviction, catalyst date, watch status, proposals, a run summary
 ```
 
@@ -63,7 +63,8 @@ It works the list one stock at a time and takes exactly one action on each. One 
 - **Sell or trim:** `sell`, all or part of the holding, as a proposal; the run's note on the stock is its reason. A sale you declined or let lapse, with the price still past the line, is proposed again with today's reasons, or the note says why the analyst holds.
 - **Buy or add:** `place_trade` or `add`. The size is worked out by risk, inside the analyst's band; the run never picks it.
 - **Redraw the triggers:** `edit_triggers`, one trigger at a time, by id, and the playbook they come from. It can raise a floor; it can never lower one on a stock we hold.
-- **Change its conviction or the catalyst date:** `set_conviction`, `set_catalyst_date`.
+- **End its look with a verdict:** every `write_note` carries one (stronger, unchanged, weaker or broken), and a change to conviction or outlook rides in that same note; see [how a review ends](../concepts/theses.md#how-a-review-ends).
+- **Change the catalyst date:** `set_catalyst_date`.
 - **Stop watching, or watch again:** `stop_watching` drops a watched stock; `watch_again` puts a sold one back on watch.
 - **Get fresh research:** `dispatch_thesis_research` sends the stock to [the Writer](writer.md).
 - **Answer you:** your notes come first, quoted, with what it decided on each.

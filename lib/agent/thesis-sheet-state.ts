@@ -44,6 +44,8 @@ export const thesisSheetStateSelect = {
   sourceSignalIds: true,
   parentThesisId: true,
   // Conviction Expression v4
+  outlook: true,
+  outlookReason: true,
   conviction: true,
   convictionRationale: true,
   variantView: true,

@@ -34,7 +34,19 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["Then write the note with `write_note(thesis_id, text)`", "Then write the note with `write_note(thesis_id, note)`"],
   ["   \u2022 Not worth one AND you would not want the name back \u2192 `record_thesis(direction:\"PASS\", reasoning_summary:\"...\", invalidation_conditions:[...])`. Terminal:", "   \u2022 Not worth one AND you would not want the name back \u2192 `pass_on_stock(ticker, reason)`: the way to record \"we looked, and we pass\". Terminal:"],
   ["(\"close my $NVDA position right now\" \u2192 just call close_position)", "(\"close my $NVDA position right now\" \u2192 just call sell)"],
-  ["For read-only and small edits (watchlist add, update_thesis with new target), just do it.", "For read-only and small edits (watchlist add, a trigger edit), just do it."],
+  ["For read-only and small edits (watchlist add, update_thesis with new target), just do it.", "For read-only and small edits (watchlist add, a trigger edit), just do it."],  // How a look ends (2026-11-20): the chat's line on its tool, the write-up's note, and the Portfolio Manager reading an analyst's rating.
+  [
+    "acts for the stock's own analyst, under its rules and the approval screen.",
+    "acts for the stock's own analyst, under its rules and the approval screen. `set_conviction` changes a stock's conviction or its outlook at the owner's word, each with its reason.",
+  ],
+  [
+    "and whether you agree, and if not, what you would do instead.",
+    "and whether you agree, and if not, what you would do instead. Your note is the reason on a trade already made, so it carries no verdict and changes no conviction or outlook: the analyst's next look does that.",
+  ],
+  [
+    "What we paid is not part of the answer.",
+    "What we paid is not part of the answer. Each stock's outlook and conviction are its analyst's rating, with the reason beside each. A holding its own analyst rates neutral or bearish is the first place to look for a sale or a trim. Where you disagree with a rating, send the stock to research and say why.",
+  ],
 ];
 
 /** The same renames in the situation texts (lib/agent/situations.ts), the trigger run's lines among them. */

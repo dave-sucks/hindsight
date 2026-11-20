@@ -99,7 +99,7 @@ describe("get_theses — the read", () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
-    expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · conviction MEDIUM");
+    expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · outlook bullish · conviction MEDIUM");
     // The short row carries the snapshot's first paragraph and the cases.
     expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);

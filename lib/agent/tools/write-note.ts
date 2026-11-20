@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { writeNote, NOTE_CHARS } from "@/lib/agent/notes";
 import { saveThesis } from "@/lib/agent/tools/update-thesis";
 import { thesisFields } from "@/lib/agent/tools/thesis-fields";
+import { reviewProblem } from "@/lib/agent/thesis-review";
 import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
 import { SHARED_NOTE_CHARS, type NoteAudience } from "@/lib/agent/shared-notes";
@@ -44,6 +45,11 @@ const schema = z.object({
   note: z.string().min(10).describe(RUN_NOTE),
   verdict: F.verdict.optional(),
   verdict_line: F.verdict_line.optional(),
+  // A review may move the thesis's state in the same save (lib/agent/thesis-review.ts).
+  conviction: F.conviction.optional(),
+  conviction_rationale: F.conviction_rationale.optional(),
+  outlook: F.outlook.optional(),
+  outlook_reason: F.outlook_reason.optional(),
   answers_update_id: F.answers_update_id.optional(),
   trigger_id: z.string().optional().describe("The fired trigger this note answers, by id, when more than one fired."),
   // The chat's: the principal's note to several stocks, one analyst or the account.
@@ -58,16 +64,23 @@ const schema = z.object({
 });
 
 const THE_CHATS = { thesis_id: true, note: true, tickers: true, analyst_id: true, whole_account: true, pinned_until: true, about_date: true } as const;
-const A_RUNS = { thesis_id: true, note: true, verdict: true, verdict_line: true, answers_update_id: true, trigger_id: true } as const;
+/** A look by the stock's analyst: the note that ends a review, with its verdict and any change to conviction or outlook. */
+const A_LOOKS = { thesis_id: true, note: true, verdict: true, verdict_line: true, conviction: true, conviction_rationale: true, outlook: true, outlook_reason: true, answers_update_id: true, trigger_id: true } as const;
+/** Every other run's note: the stock and the text. */
+const A_RUNS = { thesis_id: true, note: true } as const;
+/** The runs that review a thesis: the morning run and the trigger run. */
+/** The post-trade write-up shares the trigger run's mode and is not one: its trade is made, and its note is that trade's reason. */
+const isLook = (ctx: { runMode?: string; afterAutoTrade?: boolean }) => (ctx.runMode === "MORNING_PLAN" || ctx.runMode === "INTRADAY_TACTICAL") && !ctx.afterAutoTrade;
 const isChat = (ctx: { runMode?: string }) => ctx.runMode === "PRINCIPAL_CHAT";
 
 /** Each caller's fields: a run's note has a thesis; a trigger run's thesis and trigger are code's; the Portfolio Manager's note has no verdict. */
-function schemaFor(ctx: { runMode?: string; runStock?: unknown }) {
+function schemaFor(ctx: { runMode?: string; runStock?: unknown; afterAutoTrade?: boolean }) {
   if (isChat(ctx)) return schema.pick(THE_CHATS).extend({ note: z.string().min(10).max(Math.max(NOTE_CHARS, SHARED_NOTE_CHARS)).describe("The note, in the principal's words.") });
-  const run = schema.pick(A_RUNS).extend({ thesis_id: z.string().describe("The stock's thesis id.") });
-  if (ctx.runStock) return run.omit({ thesis_id: true, trigger_id: true });
-  if (isManagerRun(ctx)) return run.pick({ thesis_id: true, note: true });
-  return run;
+  const thesis_id = z.string().describe("The stock's thesis id.");
+  if (!isLook(ctx)) return schema.pick(A_RUNS).extend({ thesis_id });
+  // A look ends with its verdict: a note sent without one comes back with what to send (reviewProblem), not a schema error.
+  const look = schema.pick(A_LOOKS).extend({ thesis_id });
+  return ctx.runStock ? look.omit({ thesis_id: true, trigger_id: true }) : look;
 }
 
 export const writeNoteTool = defineTool({
@@ -75,7 +88,9 @@ export const writeNoteTool = defineTool({
   descriptionFor: (ctx) =>
     isChat(ctx)
       ? "Writes the principal's note: their reasoning, what they are waiting for, what would change their mind, in their words. On one stock (thesis_id), or once to several stocks (tickers), one analyst or the whole account, where every stock it covers reads it. Information only — a price, size or condition they agreed to is a trigger (edit_triggers) or a trade, never text in a note. Only after they said yes on the question card, or asked for the note by name. The analyst reads their newest notes first on every review."
-      : "Writes your note on a stock: one line in its Activity that the owner and the next run on it read, ending a review with your verdict.",
+      : isLook(ctx)
+        ? "Ends your look at a stock: one note in its Activity that the owner and the next run read, with your verdict on the thesis. If the evidence changed how confident you are, or what you expect of the stock, send the new conviction or outlook with its reason in this same call."
+        : "Writes your note on a stock: one line in its Activity that the owner and the next run on it read.",
   schema,
   schemaFor,
   // A trigger run notes its own stock and the trigger that fired (tactical-run.ts).
@@ -87,8 +102,36 @@ export const writeNoteTool = defineTool({
   execute: async (args, ctx) => {
     if (!isChat(ctx)) {
       if (!args.thesis_id) return { summary: "Name the stock's thesis_id. Nothing written.", data: { ok: false, error: "no_thesis" }, sources: [] };
+      if (isLook(ctx)) {
+        const row = await prisma.thesis.findFirst({ where: { id: args.thesis_id, userId: ctx.userId }, select: { ticker: true, direction: true, conviction: true, outlook: true } });
+        if (row) {
+          const problem = reviewProblem({
+            verdict: args.verdict,
+            verdictLine: args.verdict_line,
+            convictionFrom: row.conviction,
+            convictionTo: args.conviction,
+            convictionReason: args.conviction_rationale,
+            outlookFrom: row.outlook,
+            outlookTo: args.outlook,
+            outlookReason: args.outlook_reason,
+            hasView: row.direction === "LONG" || row.direction === "SHORT",
+          });
+          if (problem) return { summary: `Nothing written on $${row.ticker}. ${problem}`, data: { ok: false, error: "review_not_ended", fix: problem }, sources: [] };
+        }
+      }
       const saved = await saveThesis(
-        { thesis_id: args.thesis_id, rationale: args.note, verdict: args.verdict, verdict_line: args.verdict_line, answers_update_id: args.answers_update_id, trigger_id: args.trigger_id },
+        {
+          thesis_id: args.thesis_id,
+          rationale: args.note,
+          verdict: args.verdict,
+          verdict_line: args.verdict_line,
+          conviction: args.conviction,
+          conviction_rationale: args.conviction_rationale,
+          outlook: args.outlook,
+          outlook_reason: args.outlook_reason,
+          answers_update_id: args.answers_update_id,
+          trigger_id: args.trigger_id,
+        },
         ctx,
       );
       return { ...saved, ui: "thesis-card" as const };

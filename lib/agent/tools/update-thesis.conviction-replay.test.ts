@@ -23,23 +23,23 @@ const existing = () =>
     analystId: REPLAY_ANALYST_ID,
   });
 
-describe("update_thesis — a patch to STRONG with no variant view", () => {
-  it("lands, with conviction stored as MEDIUM and the reason next to the rationale", async () => {
+describe("update_thesis — a patch to HIGH with no view that differs from Wall Street", () => {
+  it("lands as HIGH, with its reason as written", async () => {
     const { refused, refusal, db } = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [existing()], agentConfig: [agentConfigRow()], account: [accountRow()] },
       args: {
         thesis_id: "thesis_nvda",
         rationale: "Upgrading after the print: the datacenter number cleared the bar we set.",
-        conviction: "STRONG",
-        conviction_rationale: "Best call on the book this quarter.",
+        conviction: "HIGH",
+        conviction_rationale: "The datacenter number cleared the bar we set.",
       },
       quotes: { NVDA: 128 },
     });
     expect(refusal).toBeNull();
     expect(refused).toBe(false);
     const row = (db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === "thesis_nvda")!;
-    expect(row.conviction).toBe("MEDIUM");
-    expect(String(row.convictionRationale)).toMatch(/Stored as MEDIUM: STRONG needs a variant view/);
+    expect(row.conviction).toBe("HIGH");
+    expect(row.convictionRationale).toBe("The datacenter number cleared the bar we set.");
     expect(db.store.thesisUpdate).toHaveLength(1);
   });
 

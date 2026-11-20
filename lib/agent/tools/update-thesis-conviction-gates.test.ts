@@ -204,7 +204,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
       expect(result.data.error).toBe("pending_promotion_missing_fields");
       expect(result.data.missing).toEqual(
         expect.arrayContaining([
-          expect.stringMatching(/conviction \(STRONG/),
+          expect.stringMatching(/conviction \(HIGH/),
           "conviction_rationale",
         ]),
       );

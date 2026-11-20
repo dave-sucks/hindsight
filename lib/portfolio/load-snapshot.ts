@@ -103,7 +103,7 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
   const theses = await prisma.thesis
     .findMany({
       where: { status: "HOLDING", researchRun: { agentConfig: { accountId, tradingEnvironment: environment } } },
-      select: { ticker: true, status: true, conviction: true },
+      select: { ticker: true, status: true, conviction: true, outlook: true, outlookReason: true },
       orderBy: { createdAt: "asc" },
     })
     // The account's numbers never wait on these: a holding's line is whole without them.
@@ -140,6 +140,8 @@ export async function loadPortfolioSnapshot(args: { accountId: string; environme
         move5dPct: move(t, price, 5),
         move20dPct: move(t, price, 20),
         conviction: heldThesis.get(t)?.conviction ?? null,
+        outlook: heldThesis.get(t)?.outlook ?? null,
+        outlookReason: heldThesis.get(t)?.outlookReason ?? null,
       };
     }),
     trades: fills

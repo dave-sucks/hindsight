@@ -41,11 +41,12 @@ describe("the keys a situation's row sends", () => {
       }
     }
   });
-  it("a report, a filing and news read the assumptions and what would prove the case wrong, and nothing else of the whole case", () => {
+  it("a report, a filing and news read the assumptions and what would prove the case wrong; a report and news read Wall Street's view too, where an outlook is judged again; nothing else of the whole case", () => {
     for (const code of ["REPORT", "FILING", "NEWS"] as const) {
       const sent = rowKeysFor([code], { size: "short", named: false });
       for (const k of ["assumptions", "would_prove_it_wrong"]) expect([code, k, sent.has(k)]).toEqual([code, k, true]);
-      for (const k of ["bull_case", "bear_case", "snapshot", "street"]) expect([code, k, sent.has(k)]).toEqual([code, k, false]);
+      for (const k of ["bull_case", "bear_case", "snapshot"]) expect([code, k, sent.has(k)]).toEqual([code, k, false]);
+      expect([code, "street", sent.has("street")]).toEqual([code, "street", code !== "FILING"]);
     }
   });
   it("the standing fields go on every row; the whole case only on the review clock; the sections and history only by name", () => {

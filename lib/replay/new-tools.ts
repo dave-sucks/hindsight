@@ -1,7 +1,9 @@
 /**
  * An update_thesis call saved before 2026-11-18, as the one-job calls a run
  * makes now: the status (watch_again first, stop_watching last, carrying the
- * note), the trigger edits, the conviction, the catalyst date, then the note.
+ * note), the trigger edits, the catalyst date, then the note. A look ends with
+ * its verdict (lib/agent/thesis-review.ts): a saved call that had none is sent
+ * as UNCHANGED, and its conviction rides on the note. The chat keeps set_conviction.
  * `replayCalls` runs them in order on one database; `sendAsTheRunWould` sends
  * them through the SDK's loop too, each parsed by its tool's real schema, so a
  * production call replays through the tools that replaced the one it was sent to.
@@ -21,7 +23,7 @@ export interface ToolCall {
 /** The tools each run mode has for a thesis (lib/agent/modes.ts); the trigger run's thesis and trigger are code's. */
 const HAS: Record<string, readonly string[]> = {
   INTRADAY_TACTICAL: ["write_note", "edit_triggers"],
-  MORNING_PLAN: ["write_note", "edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"],
+  MORNING_PLAN: ["write_note", "edit_triggers", "set_catalyst_date", "stop_watching", "watch_again"],
   PRINCIPAL_CHAT: ["edit_triggers", "set_conviction", "set_catalyst_date", "stop_watching", "watch_again"],
 };
 
@@ -39,7 +41,8 @@ export function asTheNewTools(call: Record<string, unknown>, runMode = "MORNING_
   if ((status === "ARCHIVED" || status === "INVALIDATED") && has("stop_watching")) {
     out.push({ module: "stop-watching", exportName: "stopWatching", args: { thesis_id: call.thesis_id, reason: call.rationale } });
   } else if (call.rationale !== undefined && has("write_note")) {
-    const review = { verdict: call.verdict, verdict_line: call.verdict_line, answers_update_id: call.answers_update_id };
+    const state = { conviction: call.conviction, conviction_rationale: call.conviction_rationale, outlook: call.outlook, outlook_reason: call.outlook_reason };
+    const review = { verdict: call.verdict ?? "UNCHANGED", verdict_line: call.verdict_line, ...(has("set_conviction") ? {} : state), answers_update_id: call.answers_update_id };
     out.push({ module: "write-note", exportName: "writeNoteTool", args: { ...own, note: call.rationale, ...review, ...(runMode === "INTRADAY_TACTICAL" ? {} : { trigger_id: call.trigger_id }) } });
   }
   return out;

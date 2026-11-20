@@ -24,9 +24,8 @@ import { createResearchTools } from "@/lib/agent/tools";
 
 /** The morning run's thesis tools, one job each since 2026-11-18, and the fields each shows the model. */
 const DOORS: Record<string, string[]> = {
-  write_note: ["answers_update_id", "note", "thesis_id", "trigger_id", "verdict", "verdict_line"],
+  write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "thesis_id", "trigger_id", "verdict", "verdict_line"],
   edit_triggers: ["add", "edit", "remove", "setup_id", "thesis_id"],
-  set_conviction: ["conviction", "conviction_rationale", "thesis_id"],
   set_catalyst_date: ["catalyst_date", "thesis_id"],
   stop_watching: ["reason", "thesis_id"],
   watch_again: ["thesis_id"],
@@ -37,7 +36,7 @@ const fieldsOf = (t: string) => {
 };
 
 describe("the morning run's save", () => {
-  it("is six tools, one job each, with exactly their fields; none takes the price, the write-up, the claim, a direction or the horizon", () => {
+  it("is five tools, one job each, with exactly their fields; none takes the price, the write-up, the claim, a direction or the horizon", () => {
     const allow = MODES["research-run"].toolAllowlist as readonly string[];
     for (const [t, fields] of Object.entries(DOORS)) {
       expect([t, allow.includes(t)]).toEqual([t, true]);
