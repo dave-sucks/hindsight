@@ -12,12 +12,6 @@
  * to choose a value is not here: when a value is wrong, the tool's reply says
  * why (thesis-belief.ts for the belief fields, record_thesis and
  * update_thesis for conviction, the trigger ops for a refused trigger edit).
- *
- * `writer` is the writer's form: its score parts carry no number range in the
- * schema, as the writer's fields never did. The range is in the words, and the
- * writer's decision check refuses a score outside it (thesis-research/
- * decision.ts). The writer's tool is not sent in Anthropic's strict mode, on
- * purpose (run-thesis-writer.ts says why).
  */
 import { z } from "zod";
 import { NO_SETUP_FITS, SETUP_IDS } from "@/lib/agent/knowledge/setups";
@@ -51,8 +45,7 @@ export const TRIGGER_EDITS = {
 export const VERDICTS = ["STRONGER", "UNCHANGED", "WEAKER", "BROKEN"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-export function thesisFields(opts: { writer?: boolean } = {}) {
-  const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
+export function thesisFields() {
   // The four notes went 2026-11-03: nothing read them. A sent note is kept; none is asked for.
   return {
     direction: z

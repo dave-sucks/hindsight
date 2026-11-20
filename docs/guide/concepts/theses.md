@@ -95,7 +95,7 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · UNCHANGED · WEAKER · BROKEN), `verdictLine` and `answersUpdateId`, written by `write_note` and read into the agent's copy by `saidLine` in `lib/agent/stock-context.ts`.
 
 #### The parts
-`coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `scoring`, `conviction`, `setupId`, `triggers`
+`coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `conviction`, `setupId`, `triggers`
 
 #### Written by
 The Writer: `submit_thesis`, then code runs the save (`record_thesis` for a new thesis, `update_thesis` for a rewrite; neither is on any agent's list), which writes its playbook's watch triggers; then the Writer tailors them with `edit_triggers`. A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.
