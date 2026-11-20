@@ -18,7 +18,8 @@ import { setupChecklist } from "@/lib/agent/knowledge/setup-checklist";
 import { PLAYBOOK_TEMPLATES } from "@/lib/agent/knowledge/playbook-templates";
 import { playbookTemplates, playbookTriggerText, playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { guidanceFor, SITUATIONS } from "@/lib/agent/situations";
+import { SITUATIONS } from "@/lib/agent/situations";
+import { guidanceFor, situationText } from "@/lib/agent/situation-skills";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
 const trailTrigger: Trigger = {
@@ -143,22 +144,22 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
       makeArgs({
         trigger: stop,
         stock: { ticker: "MU", direction: "LONG", row: row({ ticker: "MU" }) },
-        situations: { codes: ["PROTECTIVE_SALE", "NOTE_TO_ANSWER"], guidance: guidanceFor(["PROTECTIVE_SALE", "NOTE_TO_ANSWER"]) },
+        situations: { codes: ["PROTECTIVE_SALE", "NEWS"], guidance: guidanceFor([{ code: "PROTECTIVE_SALE", held: true }, { code: "NEWS", held: true }]) },
       }),
     );
-    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NOTE_TO_ANSWER), and what each asks:");
-    expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + SITUATIONS.PROTECTIVE_SALE.guidance);
-    expect(prompt).toContain("Two sales fired together: one decision covers both");
-    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NOTE_TO_ANSWER — "));
+    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NEWS), and what each asks:");
+    expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + situationText("PROTECTIVE_SALE", true));
+    expect(prompt).toContain("Two sales that fired together get one decision.");
+    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NEWS — news\nNews on a stock."));
     // The end of the instructions, before the stock's facts in the first message.
     expect(prompt.indexOf("## Its situations")).toBeLessThan(prompt.indexOf("its row (get_theses)"));
   });
 
-  it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so PROTECTIVE_SALE's pointer is true here too", () => {
+  it("ASML 10-07: a declined sale's facts are on the row under the morning row's name, so the run can read the owner's words the sale skill asks for", () => {
     const declined = { floorPrice: 1835, declined: 1, lapsed: 0, rejectMessage: null, recentLow: 1785.74 };
     const prompt = triggerRunSent(makeArgs({ stock: { ticker: "HPE", direction: "LONG", row: row({ heldThroughFloor: declined }) } }));
     expect(prompt).toContain(`"heldThroughFloor": ${JSON.stringify(declined, null, 2).replace(/\n/g, "\n  ")}`);
-    expect(SITUATIONS.PROTECTIVE_SALE.guidance).toContain("`heldThroughFloor` counts each, with the sale's price, the recent low and their note");
+    expect(situationText("PROTECTIVE_SALE", true)).toContain("4. Did the owner decline this sale, or let it lapse? Read their words.");
   });
 
   it("no declined sale: nothing prints", () => {
@@ -193,16 +194,16 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
 // brief, and what a buy into a full analyst should do is the buy's paragraph on it.
 describe("a trigger fire's request — the analyst's room on a buy fire", () => {
   const stock = { ticker: "ETN", direction: "LONG", row: row({ ticker: "ETN", status: "WATCHING", setupId: "COMPOUNDER_ACCUMULATION", position: null }) };
-  it("a full analyst: the brief says so before the stock; the answer is the situation's", () => {
+  it("a full analyst: the brief says so before the stock; what to do is the buy tool's refusal, in no skill", () => {
     const prompt = triggerRunSent(makeArgs({
       stock,
       capacity: { open: 4, max: 4, held: ["ABT", "ASML", "CEG", "WST"] },
-      situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"]) },
+      situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor([{ code: "BUY_ARRIVES", held: false }]) },
     }));
     expect(prompt).toContain("- Positions: 4 of 4 — this analyst is FULL. place_trade will refuse any new buy until one closes. It holds $ABT, $ASML, $CEG, $WST.");
     expect(prompt.indexOf("this analyst is FULL")).toBeLessThan(prompt.indexOf("$ETN, its row (get_theses)"));
-    expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
-    expect(prompt).toContain("If the analyst is full: every slot is held or awaiting approval");
+    expect(prompt).toContain(situationText("BUY_ARRIVES", false));
+    expect(prompt).not.toContain("If the analyst is full");
     expect(prompt).not.toContain("THE ANALYST'S ROOM");
     expect(prompt).not.toContain("READ THIS BEFORE YOU RESEARCH");
   });
@@ -222,15 +223,15 @@ describe("a trigger fire's request — the analyst's room on a buy fire", () => 
 // twelve runs each, same hour: with it 1 of 12 proposed the sale and 8 tried
 // to delete the trailing stop; without it 11 of 12 proposed the sale.
 describe("a trigger fire's request — a declined sale is asked again", () => {
-  const PASS = "say so and pass";
+  const PASS = "If nothing they named has changed since, pass.";
   it("a protective sale fire carries no pass-after-decline line", () => {
     expect(triggerRunSent(makeArgs())).not.toContain(PASS);
   });
   it("a buy or add fire reads it in its situation: a declined buy is not re-proposed unchanged", () => {
     const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
-    expect(triggerRunSent(makeArgs({ trigger: enter, position: null, situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"], "INTRADAY_TACTICAL") } }))).toContain(PASS);
-    expect(triggerRunSent(makeArgs({ trigger: add, situations: { codes: ["ADD_OR_WINNER"], guidance: guidanceFor(["ADD_OR_WINNER"], "INTRADAY_TACTICAL") } }))).toContain(PASS);
+    expect(triggerRunSent(makeArgs({ trigger: enter, position: null, situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor([{ code: "BUY_ARRIVES", held: false }]) } }))).toContain(PASS);
+    expect(triggerRunSent(makeArgs({ trigger: add, situations: { codes: ["ADD_OR_WINNER"], guidance: guidanceFor([{ code: "ADD_OR_WINNER", held: true }]) } }))).toContain(PASS);
   });
 });
 
@@ -274,19 +275,20 @@ describe("a trigger fire's request — the stock's row, and of the account only 
   });
 });
 
-describe("the trigger run's situation words (step 12, part 2)", () => {
+describe("the trigger run's situations: the skills as written, the part for its stock", () => {
   const ALL = Object.keys(SITUATIONS) as Array<keyof typeof SITUATIONS>;
-  it("never name a status change: its save has none", () => {
-    for (const status of ["HOLDING", "WATCHING", "PROMOTED"]) {
+  it("a holding gets each skill's part for a holding, a watch the part for a watch, and neither the look back at a sold stock", () => {
+    for (const status of ["HOLDING", "WATCHING"]) {
       const read = stockFromRead({ ok: true, data: { theses: [savedRow({ status, situations: ALL })] } }, "thesis_1")!;
-      const text = Object.values(read.situations.guidance).join("\n");
-      expect(text.length).toBeGreaterThan(0);
-      for (const word of ["change_status", "INVALIDATED", "ARCHIVED", "stop_watching", "watch_again"]) expect([status, word, text.includes(word)]).toEqual([status, word, false]);
+      expect(Object.keys(read.situations.guidance)).toEqual(ALL.filter((c) => c !== "SOLD_ONE_REVIEW"));
+      for (const [code, text] of Object.entries(read.situations.guidance)) expect([status, code, text]).toEqual([status, code, situationText(code as keyof typeof SITUATIONS, status === "HOLDING")]);
     }
   });
-  it("the morning run's and the chat's keep the verbs", () => {
-    const text = Object.values(guidanceFor(ALL)).join("\n");
-    for (const word of ["stop_watching", "watch_again"]) expect([word, text.includes(word)]).toEqual([word, true]);
+  it("no skill names a status tool; how this run stops watching a stock is its own instructions'", () => {
+    const text = ALL.filter((c) => SITUATIONS[c].skill).map((c) => situationText(c, null)).join("\n");
+    for (const word of ["change_status", "INVALIDATED", "ARCHIVED", "stop_watching", "watch_again"]) expect([word, text.includes(word)]).toEqual([word, false]);
+    expect(triggerRunSent(makeArgs())).toContain("stop watching it (`stop_watching`), or leave it.");
+    expect(triggerRunSent(makeArgs())).not.toMatch(/can't end a watch|the morning run decides/);
   });
 });
 
@@ -294,13 +296,11 @@ describe("a trigger fire's request — a watch's review gets the Writer's playbo
   const review: Trigger = { id: "ep-gap", action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below." };
   const block = playbooksBlock(setupsForAnalyst(["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"]), (id) => playbookTemplates(null, id));
 
-  it("prints the same block the Writer reads; what to do with it is REVIEW_DUE's, the one copy", () => {
+  it("prints the same block the Writer reads; putting one of its triggers on by reference is the run's own instructions", () => {
     const prompt = triggerRunSent(makeArgs({ trigger: review, position: null, stock: { ticker: "HPE", direction: "LONG", row: row() }, playbooks: block }));
     expect(prompt).toContain(block);
     expect(prompt).not.toContain("a playbook's way in");
-    const due = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
-    expect(due).toContain("If it is a playbook's way in on a stock we watch (its note says the run writes the triggers): add that playbook's watch triggers with edit_triggers' add, each by its reference (W1, W2…), and name it (setup_id)");
-    expect(due).toContain("one whose price the chart doesn't have yet comes back not written. A trigger run has the lists under YOUR PLAYBOOKS");
+    expect(prompt).toContain("put on one of its playbook's triggers by its reference");
   });
 
   it("a playbook that couldn't be read says so, and the run writes none from it", () => {

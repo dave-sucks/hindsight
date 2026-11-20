@@ -19,7 +19,7 @@ import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
-import { findInFlightWriter, startWriterRun } from "@/lib/agent/thesis-writer-dispatch";
+import { sendNoViewWatch } from "@/lib/agent/thesis-writer-dispatch";
 import {
   isAnalystScheduledToday,
   isTradingDay,
@@ -30,10 +30,6 @@ import {
 
 /** At most this many write-ups a morning per account, oldest Agent Watch first. */
 const AGENT_WATCH_WRITEUPS_PER_MORNING = 3;
-/** A write-up that failed this recently waits; under 24h so yesterday's 8 AM failure is tried again this morning. */
-const FAILED_WRITEUP_WAIT_MS = 23 * 60 * 60 * 1000;
-/** A write-up that completed but left no view waits this long, so a broken one costs one paid retry a week. */
-const NO_VIEW_WRITEUP_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * A watched stock with a review clock of its own (an Agent Watch, the stock page's test) and no view yet is
@@ -59,46 +55,18 @@ async function sendAgentWatchWriteups(
       skipped.push(`${row.ticker} (over today's ${AGENT_WATCH_WRITEUPS_PER_MORNING})`);
       continue;
     }
-    if (await findInFlightWriter(analyst.accountId, row.ticker, analyst.id)) {
-      skipped.push(`${row.ticker} (a writer is running or just wrote it)`);
-      continue;
-    }
-    const recentRuns = await prisma.researchRun.findMany({
-      where: {
-        mode: "THESIS_WRITER",
-        status: { in: ["COMPLETE", "FAILED"] },
-        startedAt: { gte: new Date(Date.now() - NO_VIEW_WRITEUP_WAIT_MS) },
-        OR: [
-          { parameters: { path: ["existingThesisId"], equals: row.id } },
-          { parameters: { path: ["thesisId"], equals: row.id } },
-        ],
-      },
-      select: { status: true, startedAt: true },
-      orderBy: { startedAt: "desc" },
-    });
-    // A write-up that finished and still left no view is broken, not pending: a person looks, and it is paid for again a week on.
-    const completed = recentRuns.find((r) => r.status === "COMPLETE");
-    if (completed) {
-      skipped.push(`${row.ticker} (written up ${completed.startedAt.toISOString().slice(0, 10)} but no view — needs a look)`);
-      continue;
-    }
-    if (recentRuns.some((r) => r.startedAt.getTime() >= Date.now() - FAILED_WRITEUP_WAIT_MS)) {
-      skipped.push(`${row.ticker} (write-up failed in the last day)`);
-      continue;
-    }
-    const { childRunId } = await startWriterRun({
-      userId: analyst.userId,
-      accountId: analyst.accountId,
-      analystId: analyst.id,
-      environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
+    const res = await sendNoViewWatch({
+      thesisId: row.id,
       ticker: row.ticker,
-      mode: "refresh",
-      existingThesisId: row.id,
-      reviewCadenceDays: null,
+      analyst,
       reason: `Sent to research by the morning job: ${row.ticker} is on the watchlist with a ${days}-day review and no view yet.`,
-      source: "AGENT",
       dispatchedBy: "agent-watch-writeup",
     });
+    if ("notSent" in res) {
+      skipped.push(`${row.ticker} (${res.notSent})`);
+      continue;
+    }
+    const { childRunId } = res;
     sentPerAccount.set(analyst.accountId, (sentPerAccount.get(analyst.accountId) ?? 0) + 1);
     sent.push(`${row.ticker} (${analyst.name}, run ${childRunId})`);
   }

@@ -19,7 +19,7 @@
  */
 import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
-import { SITUATIONS } from "./situations";
+import { situationText } from "./situation-skills";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow } from "@/lib/replay";
 
 const runInput = () =>
@@ -43,28 +43,25 @@ const built = () =>
 /** The walk's one line, step 2, from a prompt. */
 const walkLine = (prompt: string) =>
   prompt.split("\n").find((l) => l.trimStart().startsWith("2. Walk your work list")) ?? "";
-const review = SITUATIONS.REVIEW_DUE.guidance;
+const review = situationText("REVIEW_DUE", true);
 
-describe("answering a fired review: REVIEW_DUE's guidance, which the read carries with the stock", () => {
-  it("asks for the trigger id and the sentence", () => {
-    // The save links the note to the one open fire or the due clock on its own (2026-11-03); the id is asked for only when several fired.
-    expect(review).toContain("trigger_id only when several fired");
-    expect(review).toContain("The note: what has happened with the company and the stock since your last note");
-    expect(review).toContain("Never a list of what you checked.");
+describe("answering a review: its skill, which the read carries with the stock", () => {
+  it("asks what changed since the last note, and for the verdict", () => {
+    expect(review).toContain("1. What has happened to the company and the stock since your last note? If nothing, say so.");
+    expect(review).toContain("Done: one note with what changed since the last one and the verdict.");
   });
 
-  it("says what to do when the row reports a repeat", () => {
-    expect(review).toContain("The same answer to a review that fired again");
-    expect(review).toContain("say what differs from last time");
+  it("says what to do when the answer would be the same as last time", () => {
+    expect(review).toContain("If you gave the same answer last time, change a trigger or say what is different now.");
   });
 
   it("threatens no refusal — none exists", () => {
     expect(review).not.toMatch(/does not answer a fire|will refuse|is refused/i);
   });
 
-  it("tells a held stock's review to go down its invalidation conditions", () => {
-    expect(review).toContain("go down `would_prove_it_wrong`: has any of it happened?");
-    expect(review).toContain("A condition that happened is an exit");
+  it("tells a held stock's review to go down what would prove it wrong", () => {
+    expect(review).toContain("Go down what would prove it wrong, then the assumptions. Name any line that has happened or failed.");
+    expect(review).toContain("A line proved the case wrong: propose the sale.");
   });
 
   it("the built prompt sends the run to the guidance", () => {

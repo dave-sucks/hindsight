@@ -287,7 +287,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
               <div className="flex flex-col gap-1 rounded-lg border border-dashed border-sky-400 bg-sky-400/10 p-3">
                 <span className="text-xs font-medium text-foreground">
                   + the situation&apos;s instructions, once: {instructions.name}{" "}
-                  <span className="text-muted-foreground">· {instructions.chars.toLocaleString("en-US")} characters, from the situations table</span>
+                  <span className="text-muted-foreground">· {instructions.chars.toLocaleString("en-US")} characters, from its skill file</span>
                 </span>
                 <span className="text-sm text-muted-foreground">&ldquo;{instructions.opening}&rdquo;</span>
               </div>

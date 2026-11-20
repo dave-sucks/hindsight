@@ -17,7 +17,7 @@ An agent is five things, each with one home. If a change doesn't fit one of them
 - **When it runs:** `SCHEDULE` (`lib/agent/engine/schedule.ts`) or an event.
 
 **Never:**
-- choose instruction text in code by a stock's state, the day or a setting (situations are the one existing case, and they are becoming short skills; add nothing to them without the owner);
+- choose instruction text in code by a stock's state, the day or a setting (situations are the one case: a short skill file attached from the stock's facts, the part for a holding or for a watch; add nothing to them without the owner);
 - patch a failure with a prompt sentence: find the layer (tool refusal, fact, or the job itself), then measure;
 - put fields, variables or calculations in an agent's text;
 - build agent-specific plumbing (a special loader path, a prompt builder, a flag one run reads);
@@ -116,8 +116,8 @@ op comes back by id and the rest of the call lands. The shared core is
 **A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
 `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }`
 for two or more that must all hold — the form's own fields. Each measure (`price`, `move`, `volume`,
-`rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `repeat`,
-`from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
+`rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `note`,
+`repeat`, `from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
 carrying its words, number, variables, settings, what the
 check loads, how it reads and what numbers it takes (`fits` / `valid`,
 read by `whenValid`); nothing switches on a kind. Storage holds the same
@@ -137,26 +137,41 @@ which fires on the next check because it is true. The
 signal kinds (SIGNAL_TYPE / GUIDANCE_CHANGE / FILING) were deleted in DAV-247 —
 news routing is paused (design doc `docs/plans/SIGNALS_REDESIGN.md`).
 
-## Situations (shipped 2026-10-08 — the one flag system, and the one home for situation text)
-`computeNeedsAction` (`lib/agent/needs-action.ts`) returns EVERY flag true on a
-stock, today's lead first. `situationsFor` (`lib/agent/situations.ts`) maps that
-list plus the row's facts to its situation codes (eight in all, 2026-11-15:
-one per trigger action, a sale or trim, a buy, an add, a review, and four the
-code finds with no trigger: floor to fix, a note to answer, just sold,
-promoted to live), and `SITUATIONS` in the same file is the ONE table of the
-text an agent gets for each (under 2,200 characters each; the buy, the
-review and the note end in one paragraph per case they took in, and are
-capped just above their length in `situations.test.ts`). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed
-for the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set
-of facts; `get_theses`, the thesis sheet, the quote route and `complete_run`'s
+## Situations (shipped 2026-10-08; skills since 2026-11-19 — the one flag system, and the one home for situation text)
+A situation is why a stock is in front of its analyst now. `computeNeedsAction`
+(`lib/agent/needs-action.ts`) returns EVERY flag true on a stock, today's lead
+first, and `situationsFor` (`lib/agent/situations.ts`) maps that list plus the
+row's facts to its situation codes. Three kinds: a trigger written in advance
+fired (a sale or trim, a buy, an add); something happened (a report, a filing,
+news: a trigger on the Market Reviewer's high note); it is time to look again
+(a review, floor to fix, just sold). Promoted to live is as it was, its text
+still in the table. "A note to answer" was deleted 2026-11-19: the owner's
+notes, hand edits and answers stay in the stock's Activity and put no stock on
+a list. Each of the nine is **one short skill
+file** in `lib/agent/engine/skills/` (named in `SITUATIONS`, read by
+`lib/agent/situation-skills.ts`): what to find out, in order, what can follow,
+and what done looks like, under 1,500 characters, with no tool name and
+nothing filled in by code (`situation-skills.test.ts`). A skill has a
+paragraph for a stock we hold and one for a stock we watch; code sends the one
+that fits and writes none of the words. What an analyst may do on a holding
+and on a watch is said once, in `morning-run.md` and `trigger-run.md`.
+**The text goes to the run that answers:** the morning run's own `get_theses`
+list carries one `guidance` block for the codes on it, and the trigger run
+gets its stock's through the `situations` context item. Every other reader (a
+read by ticker, the Portfolio Manager's rows, the chat) gets each situation's
+name on the row; the chat reads a skill with `read_knowledge_library` (topic
+`situation`). **Not situations:** a watch with no view (it has no case to
+review, so `sendNoViewWatch`, `lib/agent/thesis-writer-dispatch.ts`, sends it
+to the Writer when its clock or a trigger comes due, and no run is asked to);
+a second sale while one waits for the owner (`sell` refuses it); a buy into a
+full analyst (`place_trade` refuses it and says to name the holding it would
+replace). `loadWorkInputs` (`lib/agent/work-inputs.ts`) is the one feed for
+the flag math and `loadStockFacts` (`lib/agent/stock-facts.ts`) the one set of
+facts; `get_theses`, the thesis sheet, the quote route and `complete_run`'s
 close-out all go through them, so no two surfaces can disagree about a stock.
-`get_theses` puts `situations` on every row and one `guidance` block per read
-carrying only the codes on today's work list; the trigger run computes its
-stock's codes through the same function and prints the same texts. **The
-prompts carry no situation text.** A rule that applies when a stock is in a
-situation goes into the table, never into `system-prompt.ts` or
-`intraday-tactical.ts`. Nothing is stored: a situation is derived at read time.
-The plan and its step numbers: `docs/plans/AGENT_ARCHITECTURE.md` §11.
+**The prompts carry no situation text.** A rule that applies when a stock is in
+a situation goes into its skill file, never into an instruction file. Nothing
+is stored: a situation is derived at read time.
 
 ## Activity (shipped 2026-10-30 — one list, one paragraph per trade)
 A stock's Activity is one list (`lib/thesis/activity-feed.ts`): its saved
@@ -190,7 +205,7 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 | **Build or change an agent (its instructions, context, tools, schedule)** | **"Agents: how they're built" above, then `docs/PRINCIPLES.md`** |
 | **Review a playbook, rule, context item, skill, tool or agent in the details (the expert review)** | **`docs/PRINCIPLES.md` §8, `docs/plans/EXPERT_REVIEW_LEDGER.md`; start the lead once with `/expert-review`, and it runs each unit (`/expert-review-unit`) in its own session** |
 | Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
-| **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
+| **Change what an agent is told when a stock is in a situation (a flag)** | **Its skill file in `lib/agent/engine/skills/` (named in `SITUATIONS`, `lib/agent/situations.ts`); never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
 | Read the agent standard (how we build agents, down to the sentence) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
@@ -589,7 +604,11 @@ a list here goes stale.
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10 AM; Discovery, off
 - after-buy-run.ts — consumes `app/buy.filled`: the After the buy agent on every buy and add fill
-- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer
+- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer. No note
+  is pinned. A saved high note sends `app/market-notes.saved`, and the trigger
+  check then reads only the triggers that watch notes (the `note` measure):
+  "Review if the Market Reviewer writes a high note on it" is a rule the owner
+  saves; without it a high note starts no run.
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what

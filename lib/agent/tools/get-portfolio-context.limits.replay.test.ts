@@ -51,6 +51,6 @@ describe("get_portfolio_context — each analyst's room, on the whole book", () 
       args: { ticker: "ETN", direction: "LONG", entry_price: 400, thesis_id: "th_new" },
       quotes: { ETN: 400 },
     });
-    expect((result as unknown as { data: { message: string } }).data.message).toMatch(/already has 8 open positions, at its 8-slot cap/);
+    expect((result as unknown as { data: { message: string } }).data.message).toMatch(/already has 8 open positions, which is its limit of 8\. Replacing a holding is the owner's decision: in your note on \$ETN, name the holding it would replace/);
   });
 });

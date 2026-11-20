@@ -69,14 +69,14 @@ describe("the newest writer run on a stock, on its row", () => {
     writerRun("w_other", "FAILED", ago(1), { existingThesisId: "someone_else", ticker: "V", mode: "refresh" }),
   ];
 
-  it("a seed due its first research: a row, its research line says the write-up failed and when", async () => {
+  it("a watch with no view whose clock came due is still one quiet line: code sends it to the Writer, and its row by name says the write-up failed and when", async () => {
     const { row, listed } = await read(50, failedNewer());
-    expect(listed).toBe(true);
-    expect(row.situations).toEqual(["REVIEW_DUE"]);
+    expect(listed).toBe(false);
     expect(row.writerRun).toEqual({ status: "FAILED", startedAt: ago(2).toISOString() });
-    const short = (await rowForModel(row, "short")) as Record<string, unknown>;
-    expect(short.stock).toBe("MA · watch · no view · COMPOUNDER");
-    expect(short.research).toBe('No write-up yet; the last write-up failed 2026-10-07. Full row: get_theses(tickers: ["MA"]).');
+    expect(await rowForModel(row, "line")).toContain("MA · watch · no view · write-up failed 10-07 · COMPOUNDER");
+    const full = (await rowForModel(row, "full")) as Record<string, unknown>;
+    expect(full.stock).toBe("MA · watch · no view · COMPOUNDER");
+    expect(full.research).toBe("No write-up yet; the last write-up failed 2026-10-07.");
   });
 
   it("a seed not yet due: one quiet line, with the failed write-up and its date", async () => {

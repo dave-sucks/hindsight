@@ -116,7 +116,7 @@ describe("SMMT reaches the run as sold_to_review", () => {
     ]);
   });
 
-  it("the entry carries the sale's own numbers and the catalyst still ahead; the read carries how to answer", async () => {
+  it("the entry carries the sale's own numbers and the catalyst still ahead, under its situation", async () => {
     const { data } = await run();
     const { ask, situations } = data.sold_to_review[0];
     expect(ask).toContain("$16.92");
@@ -124,7 +124,6 @@ describe("SMMT reaches the run as sold_to_review", () => {
     expect(ask).toContain("on a stop");
     expect(ask).toContain(`Its catalyst is still ahead — ${CATALYST.toISOString().slice(0, 10)}.`);
     expect(situations).toEqual(["SOLD_ONE_REVIEW"]);
-    expect(data.guidance.SOLD_ONE_REVIEW).toContain("watch_again on its thesis_id");
   });
 
   it("the run's summary says how many still owe a decision, and names them", async () => {

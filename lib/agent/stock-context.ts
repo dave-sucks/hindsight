@@ -57,21 +57,12 @@ export interface OpenFire {
   summary: string | null;
 }
 
-/** The principal's newest word no run has answered: a note, a decline with a comment, a resized approval, a hand edit. */
-export interface UnansweredWord {
-  at: Date;
-  summary: string;
-}
-
 export interface StockContext {
   /** The block, ready to print; null when the feed is empty. */
   text: string | null;
   /** The Overview's "Agent insights" as lines: the newest Activity lines with a written paragraph. */
   insights: string[];
   openFires: OpenFire[];
-  unansweredDecision: UnansweredWord | null;
-  /** A note pinned on the stock that no run has written after (lib/agent/shared-notes.ts); absent when none is pinned. */
-  pinnedNote?: { id: string; at: Date } | null;
 }
 
 type Changes = {
@@ -108,40 +99,6 @@ export function isAgentAnswer(r: ActivityRow): boolean {
  * ask a run for an answer.
  */
 export const COPIED_RULE_CLEANUP = "Removed a copied rule from ";
-
-const isCopiedRuleCleanup = (r: ActivityRow) => (r.summary ?? "").startsWith(COPIED_RULE_CLEANUP);
-
-/**
- * The principal's word that asks a run for an answer: a note, a decline with
- * a comment, an approval at a changed size, or an edit by hand (a removal
- * included: ABT 10-07, a run never read the removal and set the buy again).
- * A bare decline and a plain approval decide nothing further; the cleanup of
- * copied rules decided nothing about the stock.
- */
-export function wantsAnswer(r: ActivityRow): boolean {
-  if (r.type === "NOTE") return true;
-  if (!isPrincipalRow(r)) return false;
-  const to = changesOf(r).proposal?.to;
-  if (r.type === "PROPOSAL_REJECTED") {
-    const raw = to?.userMessage ?? r.rationale ?? "";
-    // A no-message decline stored a "[REJECTED:USER] …" line until 2026-10-29; it stores none now.
-    return !!raw && !raw.startsWith("[REJECTED:USER]");
-  }
-  if (r.type === "PROPOSAL_APPROVED") return to?.edited === true;
-  if (r.type.startsWith("PROPOSAL_")) return false;
-  if (isCopiedRuleCleanup(r)) return false;
-  const ops = changesOf(r).triggerOps?.to ?? [];
-  return ops.some((o) => o?.text) || !!oneLine(r.summary ?? "");
-}
-
-/** The principal's newest word, newer than the newest agent answer, that asks for one. */
-export function unansweredWord(rows: ActivityRow[]): UnansweredWord | null {
-  for (const r of newestFirst(rows)) {
-    if (isAgentAnswer(r)) return null;
-    if (wantsAnswer(r)) return { at: r.timestamp, summary: oneLine(r.summary ?? r.type) };
-  }
-  return null;
-}
 
 /** Every trigger fired after the newest agent answer, newest first. */
 export function openFires(rows: ActivityRow[]): OpenFire[] {
@@ -225,12 +182,11 @@ export function saidBlock(ticker: string, feed: FeedItem[], triggers?: ReadonlyA
   ].join("\n");
 }
 
-/** What a run is handed on a stock, and the two facts the situations read off the whole feed. */
+/** What a run is handed on a stock, and the fires no run has answered, read off the whole feed. */
 export function buildStockContext(args: { ticker: string; feed: FeedItem[]; triggers?: ReadonlyArray<TitleTrigger> }): StockContext {
   return {
     text: saidBlock(args.ticker, args.feed, args.triggers),
     insights: notedItems(args.feed).map((i) => saidLine(i, args.triggers).trim()),
     openFires: openFires(args.feed),
-    unansweredDecision: unansweredWord(args.feed),
   };
 }

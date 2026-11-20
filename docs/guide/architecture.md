@@ -23,7 +23,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **The live price:** `lib/market-data/live-quote.ts`, Alpaca first and Finnhub behind it. How old a price is: `lib/market-data/quote-age.ts`.
 - **The facts about a stock:** `loadStockFacts` in `lib/agent/stock-facts.ts`, fed by `loadWorkInputs` in `lib/agent/work-inputs.ts`. The read, the thesis sheet, the quote route and a run's close-out all use them.
 - **What a stock needs today:** `computeNeedsAction` in `lib/agent/needs-action.ts`, turned into situations by `situationsFor` in `lib/agent/situations.ts`.
-- **What an agent is told in a situation:** `SITUATIONS` in `lib/agent/situations.ts`. Never a prompt.
+- **What an agent is told in a situation:** its skill file in `lib/agent/engine/skills/`, named in `SITUATIONS` (`lib/agent/situations.ts`). Never a prompt, and no code writes a word of it.
 - **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
 - **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
 - **The rules every agent shares:** `lib/agent/engine/agents/rules.md`, the house rules then how it writes, which each agent's own markdown file there imports (`@rules.md`).
@@ -39,7 +39,7 @@ Eastern time, on trading days unless it says otherwise.
 
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
 - **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys. Then Wall Street's price targets and EPS consensus for the same stocks.
-- **7:30 AM:** The [Market Reviewer](agents/market-reviewer.md), one run per book being traded: it researches the market itself and saves the market digest, and a note on each stock its research touched (a high-impact one puts the stock on the 8 AM run's list).
+- **7:30 AM:** The [Market Reviewer](agents/market-reviewer.md), one run per book being traded: it researches the market itself and saves the market digest, and a note on each stock its research touched (a high-impact one starts a look on the stock when you have saved the rule for it).
 - **8:00 AM:** Morning runs, on each analyst's run days.
 - **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
 - **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty (a proposal a trigger made has none: the 4:20 PM trigger pass withdraws it on a close back past its line).

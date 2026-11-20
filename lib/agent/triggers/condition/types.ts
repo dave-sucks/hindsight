@@ -11,8 +11,8 @@
  * Pure and client-safe: types only.
  */
 
-/** The five types in the Add trigger menu. Each groups some measures. */
-export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "schedule";
+/** The six types in the Add trigger menu. Each groups some measures. */
+export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "news" | "schedule";
 
 /** The measures: one catalog entry each (./measures). */
 export type Watch =
@@ -26,6 +26,7 @@ export type Watch =
   | "surprise"
   | "filing"
   | "insiders"
+  | "note"
   | "repeat"
   | "from_date";
 

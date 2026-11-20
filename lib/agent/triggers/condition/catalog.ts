@@ -1,5 +1,5 @@
 /**
- * The catalog: every measure, one entry each, grouped into the five types of
+ * The catalog: every measure, one entry each, grouped into the six types of
  * the Add trigger menu.
  *
  *   type (the menu) → measure (the tab) → settings · buttons · value input
@@ -15,6 +15,7 @@ import type { MeasureDef } from "./measure";
 import { gap, rsi, strength, volume } from "./measures/indicator";
 import { report, surprise } from "./measures/earnings";
 import { filing, insiders } from "./measures/filing";
+import { note } from "./measures/news";
 import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
 import type { Condition, SettingDef, SettingValue, TriggerType, VariableId, Watch, When } from "./types";
@@ -31,6 +32,7 @@ export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   surprise,
   filing,
   insiders,
+  note,
   repeat,
   from_date: fromDate,
 };
@@ -48,6 +50,7 @@ const TYPES: readonly Omit<TypeDef, "measures">[] = [
   { id: "indicator", label: "Indicator" },
   { id: "earnings", label: "Earnings" },
   { id: "filing", label: "Filing" },
+  { id: "news", label: "News" },
   { id: "schedule", label: "Schedule" },
 ];
 

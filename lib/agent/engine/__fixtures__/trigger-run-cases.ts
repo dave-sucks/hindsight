@@ -9,7 +9,7 @@
  */
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { guidanceFor } from "@/lib/agent/situations";
+import { guidanceFor } from "@/lib/agent/situation-skills";
 import { playbooksBlock, playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -57,7 +57,7 @@ export const TRIGGER_CASES = {
     position: null,
     fired: { price: 120.4 },
     capacity: { open: 4, max: 6, held: ["AAA", "BBB", "CCC", "DDD"] },
-    situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor(["BUY_ARRIVES"], "INTRADAY_TACTICAL") },
+    situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor([{ code: "BUY_ARRIVES", held: false }]) },
     pieces: TRIGGER_PIECES,
   },
   review_on_watch: {

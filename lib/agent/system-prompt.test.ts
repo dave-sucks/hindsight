@@ -4,7 +4,7 @@
  */
 import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import { dailyRunRequest } from "./system-prompt";
-import { SITUATIONS } from "./situations";
+import { situationText } from "./situation-skills";
 import type { RunInput } from "./run-input";
 
 const runInput = {
@@ -26,11 +26,12 @@ describe("the morning run — the daily run as a portfolio manager", () => {
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy's answers are BUY_ARRIVES's guidance, and a raise away is named as a mistake, not refused", () => {
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Take the buy off:");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("Moving the buy above the price to dodge it.");
+  it("a fired buy's answers are its skill's, and a raise away is said to come straight back, not refused", () => {
+    const buy = situationText("BUY_ARRIVES", false);
+    expect(buy).toContain("or take the buy off and keep a review that brings the stock back.");
+    expect(buy).toContain("A buy moved just above today's price to avoid the question comes straight back.");
     // Plan checks were deleted (2026-11-13): no text points at one.
-    expect(SITUATIONS.BUY_ARRIVES.guidance).not.toMatch(/plan.check/);
+    expect(buy).not.toMatch(/plan.check/);
     expect(prompt).not.toContain("a fired buy is a decision with two answers");
   });
   it("the prompt does not restate the deleted plan checks", () => {
@@ -46,9 +47,9 @@ describe("the morning run — the daily run as a portfolio manager", () => {
   it("filings on the book this week are listed, and a held name's review runs its setup's checklist", () => {
     expect(prompt).toContain("## Filings on your book this week");
     expect(prompt).toContain("PRAX 2026-07-02 — 8-K — auditor change (4.01) · serious");
-    // The setup's checklist and the filing's reading are guidance now.
-    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("Is the playbook still working? The row's `setup`: its failure signs, the manage rule, the time limit.");
-    expect(SITUATIONS.REVIEW_DUE.guidance).toContain("If it watches a filing: read the document first");
+    // The playbook's checklist is the review skill's, and the filing's reading is the filing skill's.
+    expect(situationText("REVIEW_DUE", true)).toContain("3. Is the playbook still working? Check its failure signs and its time limit.");
+    expect(situationText("FILING", true)).toContain("1. What does the document say? Read it.");
     expect(prompt).not.toContain("REVIEW from a filing trigger");
   });
 });
@@ -61,7 +62,7 @@ describe("the morning run — the analyst's room", () => {
   const withBook = (symbols: string[]) =>
     ({ ...runInput, portfolio: { ...(runInput as unknown as { portfolio: object }).portfolio, positions: symbols.map(pos) } }) as unknown as RunInput;
 
-  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is the buy's paragraph on a full analyst", () => {
+  it("Compounder, 4 of 4: says it is full and what it holds; what to do with a buy that fired is the buy tool's refusal", () => {
     const p = morningRunSent(
       { name: "Secular Compounder", maxPositionSize: 10000, minPositionSize: 4000, maxOpenPositions: 4 },
       withBook(["ABT", "ASML", "CEG", "WST"]),
@@ -69,7 +70,7 @@ describe("the morning run — the analyst's room", () => {
     expect(p).toContain("Positions: 4 of 4 — this analyst is FULL.");
     expect(p).toContain("It holds $ABT, $ASML, $CEG, $WST.");
     expect(p).not.toContain("**This analyst is full.**");
-    expect(SITUATIONS.BUY_ARRIVES.guidance).toContain("or say it waits for a free slot, and why.");
+    expect(situationText("BUY_ARRIVES", false)).not.toMatch(/full|slot/);
   });
 
   it("PEAD, 4 of 6: says two are free and carries no full-analyst rule", () => {

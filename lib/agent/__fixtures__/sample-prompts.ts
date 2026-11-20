@@ -9,7 +9,7 @@ import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { writerSent } from "@/lib/agent/__fixtures__/writer-sent";
 import type { RunInput } from "@/lib/agent/run-input";
 import type { PromptName } from "@/lib/agent/tools/field-contract";
-import { guidanceFor } from "@/lib/agent/situations";
+import { guidanceFor } from "@/lib/agent/situation-skills";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 
@@ -38,7 +38,7 @@ export const SAMPLE_PROMPTS: Record<PromptName, () => string> = {
       },
       trigger: trailTrigger, position: { peakPrice: 62.7 },
       // A trail sale on a holding: the one situation it puts the stock in.
-      situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor(["PROTECTIVE_SALE"]) },
+      situations: { codes: ["PROTECTIVE_SALE"], guidance: guidanceFor([{ code: "PROTECTIVE_SALE", held: true }]) },
     } as never),
   chat: () =>
     buildPrincipalSystemPrompt({

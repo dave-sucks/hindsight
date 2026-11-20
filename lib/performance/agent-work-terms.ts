@@ -8,22 +8,20 @@ import type { SituationCode } from "@/lib/agent/situations";
 export const RANGES = [7, 30, 90] as const;
 export type RangeDays = (typeof RANGES)[number];
 
-export const CATEGORIES = ["Selling and protection", "Buying and adding", "Upkeep", "Your word"] as const;
+export const CATEGORIES = ["Selling and protection", "Buying and adding", "Upkeep"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 /** Every situation's category: the one map to change when codes are cut or merged. */
 export const SITUATION_CATEGORY: Record<SituationCode, Category> = {
   PROTECTIVE_SALE: "Selling and protection", PROTECTION: "Selling and protection",
   BUY_ARRIVES: "Buying and adding", ADD_OR_WINNER: "Buying and adding",
-  REVIEW_DUE: "Upkeep", SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep",
-  NOTE_TO_ANSWER: "Your word",
+  REVIEW_DUE: "Upkeep", REPORT: "Upkeep", FILING: "Upkeep", NEWS: "Upkeep", SOLD_ONE_REVIEW: "Upkeep", PROMOTED_AWAITING: "Upkeep",
 };
 
-/** A code saved by a morning read before situations were merged (2026-11-15), as the one it is now. */
+/** A code saved by a morning read before situations were merged (2026-11-15), as the one it is now; a report and a filing are their own again (2026-11-19). */
 export const MERGED_CODE: Readonly<Record<string, SituationCode>> = {
   BUY_BLOCKED_FULL: "BUY_ARRIVES",
-  EARNINGS: "REVIEW_DUE", FILING: "REVIEW_DUE", QUIET_WATCH_WOKE: "REVIEW_DUE", FIRST_RESEARCH: "REVIEW_DUE",
-  YOUR_WORD_UNANSWERED: "NOTE_TO_ANSWER", PINNED_NOTE: "NOTE_TO_ANSWER",
+  EARNINGS: "REPORT", QUIET_WATCH_WOKE: "REVIEW_DUE", FIRST_RESEARCH: "REVIEW_DUE",
 };
 
 export const OUTCOMES = ["trade", "refused", "plan", "research", "note", "nothing"] as const;

@@ -14,7 +14,7 @@ A field that can't be applied comes back by name in `refused_fields`, with the o
 
 - The thesis doesn't exist, or isn't yours.
 - The thesis is finished (passed or retired). A sold stock is the exception: it may go back on watch or get a note.
-- A stock with no view yet is saved without a `direction`. A morning run sends it to the [Writer](../agents/writer.md) instead.
+- A stock with no view yet is saved without a `direction`. Code sends it to the [Writer](../agents/writer.md) instead, when its review clock or one of its triggers comes due.
 - A stock with no view yet is committed without its triggers, or with triggers that don't check out.
 
 A save with nothing left to change still counts as a review: it writes one "reviewed" line and moves the review clock.
@@ -32,7 +32,7 @@ Every job is its own tool, and an agent is given only the ones it may use, each 
 | The Writer | Its save, run in code (`update_thesis`, on no agent's list), then `edit_triggers` |
 | Chat | `write_note`, `edit_triggers`, `set_conviction`, `set_catalyst_date`, `stop_watching`, `watch_again` |
 | Morning run | The same six; its note carries the review's verdict |
-| Trigger run | `write_note` (with the verdict) and `edit_triggers`: no conviction, no status change |
+| Trigger run | `write_note` (with the verdict), `edit_triggers` and `stop_watching` on its own stock: no conviction, no watch again |
 | Portfolio Manager | `write_note` and `edit_triggers`: no status, no conviction |
 
 The claim, the view and the write-up are the Writer's alone. A review's note carries its verdict (stronger, unchanged, weaker or broken), its one line, and the earlier line it answers; a wrong verdict word or line id comes back by name and the rest of the save lands. A test pins each caller's tools and fields, so a new field has to be placed on purpose.

@@ -13,20 +13,21 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
-import { SITUATIONS } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 import { MODES } from "@/lib/agent/modes";
 import { editTriggers } from "@/lib/agent/tools/edit-triggers";
 
 const HELD = "A stock we hold is sold first with sell, which retires the thesis itself.";
 const tool = (runMode: string) => editTriggers({ runId: "r", userId: "u", accountId: "a", runMode } as never) as unknown as { description: string };
 
-it("the trigger run retires nothing: it takes a watched stock's buy and Stop watching triggers off by id, and sells a stock we hold", () => {
+it("the trigger run stops watching a stock we watch (the owner's call, 2026-11-19), and sells a stock we hold", () => {
   const prompt = SAMPLE_PROMPTS.tactical();
-  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch take its buy and Stop watching triggers off by id (edit_triggers with remove)");
+  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch, stop watching it (`stop_watching`), and its reason is your note.");
   expect(prompt).not.toMatch(/change_status|INVALIDATED|ARCHIVED/);
   expect(prompt.replace(/\s+/g, " ")).toContain(HELD);
-  // It has no status tool; the morning run has both.
-  for (const t of ["stop_watching", "watch_again"]) expect(MODES.tactical.toolAllowlist as readonly string[]).not.toContain(t);
+  // It can end a watch and can't reopen one; the morning run has both.
+  expect(MODES.tactical.toolAllowlist as readonly string[]).toContain("stop_watching");
+  expect(MODES.tactical.toolAllowlist as readonly string[]).not.toContain("watch_again");
   for (const t of ["stop_watching", "watch_again"]) expect(MODES["research-run"].toolAllowlist as readonly string[]).toContain(t);
 });
 
@@ -36,12 +37,12 @@ it("edit_triggers says only the principal moves a safety line down, with no exce
       "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
     );
   }
-  expect(SITUATIONS.PROTECTIVE_SALE.guidance).not.toMatch(/come down|re-draw/);
+  expect(situationText("PROTECTIVE_SALE", true)).not.toMatch(/come down|re-draw/);
 });
 
-it("REVIEW_DUE, which reaches stocks we hold in both runs, retires only a stock we watch", () => {
-  expect(SITUATIONS.REVIEW_DUE.guidance).toContain(
-    "- No longer applicable: stop_watching on a stock we watch; a stock we hold is sold with sell, which retires the thesis.",
-  );
+it("the review, which reaches stocks we hold in both runs, ends only a watch: a holding whose case broke is a proposed sale", () => {
+  expect(situationText("REVIEW_DUE", false)).toContain("The case no longer holds: stop watching.");
+  expect(situationText("REVIEW_DUE", true)).not.toContain("stop watching");
+  expect(situationText("REVIEW_DUE", true)).toContain("A line proved the case wrong: propose the sale.");
 });
 

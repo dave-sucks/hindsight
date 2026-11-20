@@ -67,12 +67,12 @@ The run page's Context panel and the Agents page (`/how-it-works/agents`) show a
 | An agent to know more | Write a loader for the fact (or reuse one) and tick it on the agent's record | Paste the fact into its `.md`, or build it in a run-only code path |
 | An agent to do something new | A tool with one job and few fields; code fills the rest | A new mode or field on an existing tool |
 | An agent to stop doing something | A refusal in the tool that says what to do instead | A "never do X" sentence |
-| Different handling in one situation | For now the `SITUATIONS` table (`lib/agent/situations.ts`); later a short skill file attached from a fact | An if-else that changes the prompt |
+| Different handling in one situation | Its skill file (`lib/agent/engine/skills/`), attached from the stock's facts; what an analyst may do stays in the agent's own instructions | An if-else that changes the prompt, or code that writes words into a skill |
 | A new agent | A record, an `.md`, its context ticks and tools, and a `SCHEDULE` line or an event | Its own cron, route or prompt builder |
 | A trigger on a stock | `edit_triggers`: a playbook trigger by reference, or the agent's own with a reason and a chart key for any price | Code that stamps triggers, or trigger fields on other tools |
 
 ### Never
-- Choose instruction text in code by a stock's state, the day or a setting. Situations are the one existing case, and they are becoming short skills; add nothing to them without the owner.
+- Choose instruction text in code by a stock's state, the day or a setting. Situations are the one case: a short skill file attached from the stock's facts, the part for a stock we hold or for one we watch. Add nothing to them without the owner.
 - Patch a failure with a prompt sentence. Find the layer first (§6), then measure.
 - Put fields, variables or calculations in an agent's text. A number an agent needs is a fact, or a key code fills.
 - Build agent-specific plumbing: a special loader path, a prompt builder, a flag only one run reads. Everything goes through the one engine (`buildAgentRequest`, `runAgent`).
@@ -89,7 +89,7 @@ Each kind of text is written by a different person on the desk. Write it in that
 |---|---|---|---|---|
 | Instructions (`<agent>.md`) | The head of the desk giving a new hire their job | Who they are, what they're for, what a good result looks like, how to weigh what needs judgment, and why | Steps, numbers, field names, situations, tool mechanics, anything code checks | As short as the job allows |
 | A context item (a fact) | The trading screen | Data: the columns a trader would pin, named and formatted for scanning. One stock per line, the same units everywhere, sorted the way a trader sorts. | Advice, rules, "you should" | Only the fields a decision uses. Bulky or optional data is a tool. |
-| A skill (today, a situation) | The desk's card for one moment | When this happens: what an expert checks, the choices, and what each choice needs | General rules (those are instructions) and data (that is context) | A few short paragraphs, attached only when the moment applies |
+| A skill (a situation) | The desk's card for one moment | When this happens: what to find out, in order, what can follow, and what done looks like | General rules and what an analyst may do (those are instructions), data (that is context), tool names, and anything for code to fill in | Under about 1,500 characters, attached only when the moment applies, to the run that answers it |
 | A tool's description and fields | The label on an order ticket | When to use it, what each field means in the app's words, what it refuses and what to do instead | Strategy, persuasion, cases | One or two sentences per field |
 | A refusal message | The risk manager | The rule in one sentence, and the next legal move | Blame, or a bare "no" | One or two sentences |
 | A trigger's reason | The trader writing on their own plan | What this level protects or waits for, in plain words | The level restated, or the rule's name | One sentence |
@@ -156,7 +156,7 @@ The rules, screens, skills, tools and instructions are reviewed one part at a ti
 **The order** follows how a trader thinks, so every edit flows one way:
 1. **The rulebook, or what we trade on:** the rules for everything, each playbook, and the book and market rules.
 2. **The screen, or what we look at:** the watchlist row, the holding row, the market block, one stock in full, and the rest of the context catalog.
-3. **Reactions:** each skill (today's situations).
+3. **Reactions:** each skill (a situation's).
 4. **Actions:** each tool's fields, descriptions and refusals.
 5. **Jobs:** the shared files (`rules.md`, `research-rules.md`), then each agent's instructions, the chat first.
 

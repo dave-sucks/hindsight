@@ -28,11 +28,11 @@ describe("the saved morning thread (one real run, 2026-11-13, rows cut to id, ti
     expect(data[THREAD_SHAPE.lists.sold].every((r) => typeof r.thesis_id === "string")).toBe(true);
   });
 
-  it("names only codes the app knows, one merged since (2026-11-15) or one deleted since (2026-11-13), and stays small", () => {
-    const deleted = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED"]);
+  it("names only codes the app knows, or one deleted since (three on 2026-11-13, a note to answer on 2026-11-19), and stays small", () => {
+    const deleted = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED", "PINNED_NOTE", "YOUR_WORD_UNANSWERED", "NOTE_TO_ANSWER"]);
     const all = Object.values(data).flat().flatMap((r) => r[THREAD_SHAPE.codes] as string[]);
     expect(all.every((c) => c in SITUATIONS || c in MERGED_CODE || deleted.has(c))).toBe(true);
-    expect(all.filter((c) => c in MERGED_CODE).map((c) => MERGED_CODE[c])).toEqual(["NOTE_TO_ANSWER"]);
+    expect(all.filter((c) => c in MERGED_CODE)).toEqual([]);
     expect(readFileSync(FIXTURE).length).toBeLessThan(20_000);
   });
 });
@@ -162,6 +162,7 @@ describe("the tab's numbers", () => {
       { days: 7, analystId: null, since: at("2026-11-06T00:00:00Z"), now: at("2026-11-13T00:00:00Z") },
     );
     const shown = Object.fromEntries(merged.situations.codes.map((c) => [c.code, c.shown]));
-    expect(shown).toMatchObject({ NOTE_TO_ANSWER: 1, REVIEW_DUE: 1, BUY_ARRIVES: 0 });
+    expect(shown).toMatchObject({ REPORT: 1, REVIEW_DUE: 0, BUY_ARRIVES: 0 });
+    expect(shown).not.toHaveProperty("NOTE_TO_ANSWER");
   });
 });

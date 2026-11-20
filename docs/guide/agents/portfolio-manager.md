@@ -25,6 +25,7 @@ It is given nothing in a format of its own. Your holdings are the snapshot's hol
 
 It asks `get_theses` for stocks by ticker, the tool every agent uses. One field rule, for comparing stocks, decides what comes back, the same for a holding and a watch:
 
+- the [situations](../concepts/situations.md) the stock is in, by name: its analyst answers them, and the Portfolio Manager sees that something is up
 - the belief, its key assumptions, what would prove it wrong, and the reason for its conviction
 - its triggers
 - the newest three Activity lines someone wrote a paragraph on (the Overview's Agent insights)

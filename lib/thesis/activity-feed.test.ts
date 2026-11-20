@@ -5,7 +5,7 @@
  * fires and the expiry job's lines, as stored. Text cut to its opening.
  */
 import { activityFeed, hasWrittenParagraph, notedItems, proposalSteps, recentItems, serializeFeedItem, NOTED_ITEMS, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
-import { saidBlock, unansweredWord } from "@/lib/agent/stock-context";
+import { saidBlock } from "@/lib/agent/stock-context";
 import { isPlainReview, reviewTitle, titleSegments, toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 
 const at = (iso: string) => new Date(iso);
@@ -120,10 +120,6 @@ describe("the newest 8: what the next run reads", () => {
     // Nothing older than the 8 and nothing the expiry job stitched.
     expect(text).not.toContain("Oct. 27");
     expect(text).not.toContain("expired without an answer");
-  });
-
-  it("nothing of the owner's waits for an answer on GEV: a lapse decides nothing", () => {
-    expect(unansweredWord(feed)).toBeNull();
   });
 
   it("an empty feed is no block; one line is the header, the line and the way to the rest", () => {

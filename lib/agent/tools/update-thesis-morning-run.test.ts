@@ -17,7 +17,8 @@ jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(()
 
 import { statSync } from "fs";
 import { zodSchema } from "ai";
-import { SITUATIONS } from "@/lib/agent/situations";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 import { MODES } from "@/lib/agent/modes";
 import { createResearchTools } from "@/lib/agent/tools";
 
@@ -47,12 +48,12 @@ describe("the morning run's save", () => {
     for (const dropped of ["price_at_time", "snapshot", "variant_view", "core_belief", "key_assumptions", "invalidation_conditions", "direction", "horizon", "change_status"]) expect(all).not.toContain(dropped);
   });
 
-  it("a review on a watch with no view sends the claim through the writer, and names no field this save lacks", () => {
-    const text = SITUATIONS.REVIEW_DUE.guidance;
-    for (const tool of ["dispatch_thesis_research", "wait_for_thesis_refresh"]) expect([tool, text.includes(tool)]).toEqual([tool, true]);
-    // The send takes the stock: code finds the thesis by it.
-    for (const field of ['mode "refresh"', "existing_thesis_id"]) expect([field, text.includes(field)]).toEqual([field, false]);
-    for (const f of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([f, text.includes(f)]).toEqual([f, false]);
+  it("no skill asks a run to write a claim: a watch with no view goes to the Writer by code, and the skills name no field of any save", () => {
+    for (const code of Object.keys(SITUATIONS) as SituationCode[]) {
+      if (!SITUATIONS[code].skill) continue;
+      const text = situationText(code, null);
+      for (const f of ["no view", "core_belief", "key_assumptions", "invalidation_conditions", "direction LONG", "existing_thesis_id"]) expect([code, f, text.includes(f)]).toEqual([code, f, false]);
+    }
   });
 
   it("the saved calls stay under the cap", () => {

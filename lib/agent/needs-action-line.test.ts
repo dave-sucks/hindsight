@@ -111,11 +111,6 @@ describe("the flag is a name and at most one fact", () => {
     [{ kind: "REVIEW_DUE", daysOverdue: 0 }, "Review due", null],
     [{ kind: "REVIEW_DUE", daysOverdue: 1 }, "Review due", "1 day overdue"],
     [{ kind: "REVIEW_DUE", daysOverdue: 6 }, "Review due", "6 days overdue"],
-    [
-      { kind: "REVIEW_DUE", daysOverdue: 3, pendingFirstReview: true },
-      "Review due",
-      "never researched",
-    ],
   ];
 
   it.each(cases)("%#", (na, name, detail) => {

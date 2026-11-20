@@ -31,7 +31,8 @@ function recordedReads(name: string): Read[] {
   return out;
 }
 
-const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as unknown as {
+// The morning run made these reads: its own list carries what each situation asks.
+const tool = getTheses({ runId: "r", userId: "u", analystId: "a", runMode: "MORNING_PLAN" } as never) as unknown as {
   toModelOutput: (o: { toolCallId: string; input: unknown; output: unknown }) => { value: { data: Record<string, unknown> } };
 };
 const forModel = (read: Read) => tool.toModelOutput({ toolCallId: "c", input: read.input, output: read.output }).value.data;
@@ -75,8 +76,11 @@ describe.each(CASES)("the saved case %s", (name) => {
       }
       for (const line of (model.quiet_theses as string[]) ?? []) expect(line).toMatch(/^[A-Z.]+ · (held|watch|promoted) · /);
       const codes = new Set(read.output.data.theses.flatMap((r) => r.situations as string[]));
-      expect(Object.keys(model.guidance as Record<string, string>).every((c) => codes.has(c))).toBe(true);
-      if (codes.size > 0) expect(Object.keys(model.guidance as Record<string, string>).length).toBeGreaterThan(0);
+      const named = ((read.input as { tickers?: string[]; ids?: string[] } | undefined)?.tickers?.length ?? 0) + ((read.input as { ids?: string[] } | undefined)?.ids?.length ?? 0) > 0;
+      const sent = Object.keys((model.guidance ?? {}) as Record<string, string>);
+      expect(sent.every((c) => codes.has(c))).toBe(true);
+      // A read by ticker carries each situation's name on the row, and no text.
+      if (named) expect(sent).toEqual([]);
     }
   });
 });

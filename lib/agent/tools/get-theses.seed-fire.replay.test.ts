@@ -1,16 +1,14 @@
 /**
- * get-theses.seed-fire.replay.test.ts — a fired review on a seed reaches the
- * read as a review whose paragraph on a watch with no view is its first
- * research (one situation per trigger action, 2026-11-15), and the read's
- * guidance is worded for the run reading it.
+ * get-theses.seed-fire.replay.test.ts — a fired review on a watch with no
+ * view is no situation: the stock has no case to review, so code sends it to
+ * the Writer and no run is asked to. With a view, the same fire is a review.
  *
- * MA, 2026-10-09 13:30:17 UTC: its strength wake fired. MA is a seed (no
- * view, no claim) with a 45-day review clock of its own, so the fire coded
- * REVIEW_DUE, and the morning read would have asked for a plan the stock
- * does not have. MA's row and the fire's audit row, as stored, through the
- * real get_theses and its real model-output hook.
+ * MA, 2026-10-09 13:30:17 UTC: its strength wake fired. MA had no view and no
+ * claim, with a 45-day review clock of its own. MA's row and the fire's audit
+ * row, as stored, through the real get_theses and its real model-output hook.
  */
 import { replayTool, thesisRow, thesisUpdateRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { situationText } from "@/lib/agent/situation-skills";
 
 const NOW = new Date("2026-10-09T14:00:00Z");
 const MA_ID = "cmum2tf9m000d04jfv0szuiap";
@@ -52,30 +50,26 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
   beforeAll(() => jest.useFakeTimers({ now: NOW, doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask", "hrtime", "performance"] }));
   afterAll(() => jest.useRealTimers());
 
-  it("the morning read lists it as a review whose text sends a watch with no view to its first research, and its row says no view", async () => {
+  it("the morning read doesn't list it: a watch with no view is in no situation, one quiet line that says no view, and no text is sent", async () => {
     const { screen, model } = await read("MORNING_PLAN");
-    expect(screen.find((t) => t.id === MA_ID)?.situations).toEqual(["REVIEW_DUE"]);
-    expect(Object.keys(model.guidance ?? {})).toEqual(["REVIEW_DUE"]);
-    expect(model.guidance?.REVIEW_DUE).toContain("A watch with no view: go straight to its paragraph.");
-    expect(model.guidance?.REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
-    expect(String(model.theses.find((t) => t.id === MA_ID)?.stock)).toContain("no view");
+    expect(screen.find((t) => t.id === MA_ID)).toBeUndefined();
+    expect(model.guidance).toBeUndefined();
+    expect(model.theses).toEqual([]);
+    expect(String((model as { quiet_theses?: string[] }).quiet_theses?.[0])).toContain("MA · watch · no view");
   });
 
-  it("a trigger run reading the same fire is told the first research is the morning run's, as before the merge", async () => {
-    const { model } = await read("INTRADAY_TACTICAL");
-    expect(model.guidance?.REVIEW_DUE).toContain("due its first research on that clock, and the morning run answers it: this run leaves it as it is.");
-    expect(model.guidance?.REVIEW_DUE).not.toContain("wait_for_thesis_refresh on the child run");
-  });
-
-  it("the same fire on a stock with a view (MA's row with a LONG view, a variant) is a review, worded per run", async () => {
+  it("the same fire on a stock with a view (MA's row with a LONG view, a variant) is a review: the morning run's list carries the skill's part for a watch", async () => {
     const withView = ma({ direction: "LONG" });
     const morning = await read("MORNING_PLAN", withView);
-    // It has no plan and no research either, so other situations ride along; the fire itself is REVIEW_DUE, never FIRST_RESEARCH.
-    expect(Object.keys(morning.model.guidance ?? {})).toEqual(expect.arrayContaining(["REVIEW_DUE"]));
-    expect(Object.keys(morning.model.guidance ?? {})).not.toContain("FIRST_RESEARCH");
-    expect(morning.model.guidance?.REVIEW_DUE).toContain("stop_watching on a stock we watch");
-    const trigger = await read("INTRADAY_TACTICAL", withView);
-    expect(trigger.model.guidance?.REVIEW_DUE).not.toContain("change_status");
-    expect(trigger.model.guidance?.REVIEW_DUE).toContain("the morning run decides whether it stays on the book");
+    expect(morning.screen.find((t) => t.id === MA_ID)?.situations).toEqual(["REVIEW_DUE"]);
+    expect(morning.model.guidance).toEqual({ REVIEW_DUE: situationText("REVIEW_DUE", false) });
+    expect(morning.model.guidance?.REVIEW_DUE).toContain("The case no longer holds: stop watching.");
+    expect(morning.model.guidance?.REVIEW_DUE).not.toContain("A stock we hold.");
+  });
+
+  it("a trigger run's own read of it carries the name and no text: its skill ends its instructions", async () => {
+    const trigger = await read("INTRADAY_TACTICAL", ma({ direction: "LONG" }));
+    expect(trigger.model.guidance).toBeUndefined();
+    expect(trigger.model.theses[0]?.situations).toEqual(["REVIEW_DUE (review due)"]);
   });
 });

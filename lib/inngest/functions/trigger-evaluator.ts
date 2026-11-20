@@ -87,6 +87,7 @@ import {
   rememberFired,
 } from "@/lib/market-data/sec-events";
 import type { When } from "@/lib/agent/triggers/condition";
+import { etStamp } from "@/lib/agent/stock-context";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -166,6 +167,12 @@ const needsEarningsData = (p: When) => reads(p, "earnings");
 const needsUpcomingEarnings = (p: When) => SHAPE_CHECKER.readsUpcomingReport(p);
 /** Does this predicate read SEC filings? Drives the one EDGAR call. */
 const needsFilings = (p: When) => reads(p, "filings");
+/** Does this predicate watch the Market Reviewer's notes? Drives the one query, and selects the triggers of the pass a saved note starts. */
+const needsNotes = (p: When) => reads(p, "notes");
+/** How far back a note counts: a rule saved today doesn't fire on last week's note. */
+const NOTE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+/** Sent when the Market Reviewer saves a high note (lib/agent/market-reviewer/run.ts). */
+export const NOTES_SAVED = "app/market-notes.saved";
 /** Does this predicate read the daily indicator snapshot? Drives the load. */
 const needsIndicators = (p: When) => reads(p, "snapshot");
 /** Does this predicate read Wall Street's targets? Drives the Street row load. */
@@ -468,9 +475,12 @@ export const triggerEvaluator = inngest.createFunction(
     // cron checks every 5 or every 15 min. Cost: one Alpaca call per hundred
     // tickers per pass.
     { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
+    // The Market Reviewer saved a high note (7:30 AM, before the session): the triggers that watch its notes are checked now.
+    { event: NOTES_SAVED },
   ],
-  async ({ step }) => {
+  async ({ event, step }) => {
     const now = new Date();
+    const notesPass = event?.name === NOTES_SAVED;
 
     // ── Cron path (intraday price reactivity) ──────────────────────────
     // Only evaluate price predicates during the regular session. The cron
@@ -479,8 +489,8 @@ export const triggerEvaluator = inngest.createFunction(
     // erratic, so a "down X% on the day" trigger can fire on a pre-market print
     // (observed: a 1% movement trigger fired at 9:00 AM). Gate on isMarketOpen()
     // (9:30–16:00 ET, holiday-aware).
-    const session = await step.run("check-market-hours", async () =>
-      isMarketOpen() ? "INTRADAY" : isClosePassTick(new Date()) ? "CLOSE" : null,
+    const session: "INTRADAY" | "CLOSE" | "NOTES" | null = await step.run("check-market-hours", async () =>
+      notesPass ? "NOTES" : isMarketOpen() ? "INTRADAY" : isClosePassTick(new Date()) ? "CLOSE" : null,
     );
     if (!session) {
       return { path: "cron", skipped: "market-closed" };
@@ -509,6 +519,7 @@ export const triggerEvaluator = inngest.createFunction(
         },
         select: {
           id: true,
+          userId: true,
           ticker: true,
           status: true,
           direction: true,
@@ -565,7 +576,8 @@ export const triggerEvaluator = inngest.createFunction(
         .map((c) =>
           session === "CLOSE"
             ? { ...c, ladder: c.ladder.filter((t) => hasCloseBasis(t.predicate)), fired: c.all.filter(firedSinceFalseClose) }
-            : { ...c, fired: [] as typeof c.all },
+            : // The pass a saved note starts fires only the triggers that watch notes: it runs before the session, and nothing else is read then.
+              { ...c, ladder: session === "NOTES" ? c.ladder.filter((t) => needsNotes(t.predicate)) : c.ladder, fired: [] as typeof c.all },
         )
         // No analyst owner ⇒ tactical-run can't dispatch; no rungs, no fired
         // trigger to read on the close and no trigger's proposal waiting ⇒ nothing to evaluate.
@@ -722,6 +734,22 @@ export const triggerEvaluator = inngest.createFunction(
         );
       }
 
+      // The Market Reviewer's high notes of the last day, for the owners of every stock carrying a trigger that watches them: a handful of rows, matched to each stock below. One query.
+      const noteStocks = candidates.filter((c) => checked(c).some((t) => needsNotes(t.predicate)));
+      const highNotes = noteStocks.length
+        ? await prisma.sharedNote.findMany({
+            where: {
+              author: "MARKET_REVIEWER",
+              impact: "high",
+              audience: "STOCKS",
+              userId: { in: Array.from(new Set(noteStocks.map((c) => c.thesis.userId))) },
+              createdAt: { gte: new Date(now.getTime() - NOTE_LOOKBACK_MS) },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, userId: true, tickers: true, body: true, createdAt: true },
+          })
+        : [];
+
       const events: FiringEvent[] = [];
       for (const { thesis, analystId, ladder: triggers, all, waiting, fired } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
@@ -757,9 +785,12 @@ export const triggerEvaluator = inngest.createFunction(
           earnings.upcoming.get(thesis.ticker),
           thesis.catalystDate ?? null,
         );
+        const notes = highNotes.filter((n) => n.userId === thesis.userId && n.tickers.includes(thesis.ticker));
         const ctx: EvaluationContext = {
           latestQuote,
-          session,
+          session: session === "CLOSE" ? "CLOSE" : "INTRADAY",
+          // a news note reads this: the Market Reviewer's high notes on the stock in the last day.
+          notes,
           indicators: indicators.get(thesis.ticker) ?? null,
           street: street.get(thesis.ticker) ?? null,
           today: { open: quote?.open ?? null, volume: todayBar?.volume ?? null },
@@ -878,8 +909,12 @@ export const triggerEvaluator = inngest.createFunction(
           // A filing fire names each filing, in words, with its link; an
           // insider cluster names its buyers (DAV-252), with the chart facts.
           const firedFilingList = filingsByTrigger.get(t.id);
+          // A note fire names the note that woke it: the newest one this trigger hadn't fired on.
+          const firedNote = needsNotes(t.predicate) ? notes[0] : undefined;
           const firedContext = firedFilingList
             ? firedFilingList.map(describeFiling).join(" ")
+            : firedNote
+              ? `The Market Reviewer's high note on ${thesis.ticker}, ${etStamp(firedNote.createdAt)}: "${firedNote.body.replace(/\s+/g, " ").trim()}"`
             : needsUpcomingEarnings(t.predicate)
                 ? upcoming
                   ? describeUpcomingReport(upcoming, now, upcomingRead.calendarDate)
@@ -915,7 +950,8 @@ export const triggerEvaluator = inngest.createFunction(
 
           // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
           // start no run; the morning run answers it.
-          if (waitsForMorning(t, sameDayLook(t))) {
+          // A watch with no view never waits for a morning run: its fire goes to the Writer (tactical-run.ts).
+          if (waitsForMorning(t, sameDayLook(t)) && !(thesis.status === "WATCHING" && thesis.direction == null)) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",

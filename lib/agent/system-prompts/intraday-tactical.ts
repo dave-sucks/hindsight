@@ -12,7 +12,8 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { AnalystCapacity } from "@/lib/agent/capacity";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
 import { isGroup, sentenceOf, shapeOf, trimPctOf } from "@/lib/agent/triggers/condition";
-import { guidanceCodes, guidanceFor, type SituationCode } from "@/lib/agent/situations";
+import { guidanceCodes, type SituationCode } from "@/lib/agent/situations";
+import { guidanceFor } from "@/lib/agent/situation-skills";
 import { situationsText } from "@/lib/agent/context/situations";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { writtenNote } from "@/lib/agent/triggers/note";
@@ -89,7 +90,7 @@ export function stockFromRead(
   return {
     row: notes?.length ? { ...short, notes_to_the_account: notes } : short,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.
-    situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL") },
+    situations: { codes: guidanceCodes(status, codes), guidance: guidanceFor(guidanceCodes(status, codes, "INTRADAY_TACTICAL").map((code) => ({ code, held: status === "HOLDING" }))) },
   };
 }
 

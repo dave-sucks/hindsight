@@ -11,8 +11,6 @@ import {
   isPrincipalRow,
   openFires,
   saidLine,
-  unansweredWord,
-  wantsAnswer,
   type ActivityRow,
 } from "@/lib/agent/stock-context";
 import { activityFeed, recentItems, RECENT_ITEMS, toFeedItem } from "@/lib/thesis/activity-feed";
@@ -81,53 +79,6 @@ describe("open fires on CEG", () => {
   });
 });
 
-describe("which of the principal's lines ask a run for an answer", () => {
-  // CEG 2026-09-30 16:07Z, as stored.
-  const floorEdit: ActivityRow = {
-    type: "UPDATED",
-    timestamp: new Date("2026-09-30T16:07:01.922Z"),
-    runId: null,
-    summary: "Principal edited CEG trigger — Price 248",
-    rationale: '[USER] Principal set Price = 248 on the "EXIT" trigger directly. Honor it; don\'t re-propose against it unless the thesis materially changes.',
-    fieldChanges: { source: { to: "USER", from: null }, stopLoss: { to: 248, from: 220 }, triggerOps: { to: [{ id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", op: "edit", text: "Stop $220 → $248 (tightened)" }], from: null } },
-  };
-
-  it("a decline with a comment, a resized approval, a hand edit, a removal by hand, a note: yes", () => {
-    expect(wantsAnswer(byId(DECLINE))).toBe(true);
-    const docu: ActivityRow = {
-      type: "PROPOSAL_APPROVED",
-      timestamp: new Date("2026-09-30T16:25:14.191Z"),
-      runId: null,
-      summary: "Approved OPEN on DOCU (edited 162→120 sh) — submitted to Alpaca (idem=4f185947)",
-      fieldChanges: { proposal: { to: { edited: true, intent: "OPEN", status: "APPROVED", quantity: 120, proposedQuantity: 162 } } },
-    };
-    expect(wantsAnswer(docu)).toBe(true);
-    expect(wantsAnswer(floorEdit)).toBe(true);
-    expect(wantsAnswer(rows.find((r) => r.summary?.startsWith("Principal removed CEG trigger"))!)).toBe(true);
-    expect(wantsAnswer({ type: "NOTE", timestamp: new Date(), runId: "chat", rationale: "Starter only." })).toBe(true);
-  });
-
-  it("a plain approval, a bare decline, the cleanup of copied rules, a run's line: no", () => {
-    expect(wantsAnswer(rows.find((r) => r.type === "PROPOSAL_APPROVED")!)).toBe(false);
-    expect(wantsAnswer({ type: "PROPOSAL_REJECTED", timestamp: new Date(), runId: null, fieldChanges: { proposal: { to: { intent: "CLOSE" } } } })).toBe(false);
-    for (const r of rows.filter((x) => x.summary?.startsWith("Removed a copied rule from CEG"))) expect(wantsAnswer(r)).toBe(false);
-    expect(wantsAnswer(byId("cmu6wy0gy001504l4naxr2ipd"))).toBe(false);
-  });
-
-  it("the 09-14 decline waits for an answer until the 15:30 trigger run writes one", () => {
-    expect(unansweredWord(before("2026-09-14T19:30:20Z"))?.at).toEqual(byId(DECLINE).timestamp);
-    expect(unansweredWord(before("2026-09-14T19:55:13Z"))).toBeNull();
-  });
-
-  it("a note newer than the last answer puts the stock on the list; an older one is answered", () => {
-    const at = (h: number) => new Date(Date.UTC(2026, 9, 1, h));
-    const note = (h: number, text: string): ActivityRow => ({ id: `n${h}`, type: "NOTE", timestamp: at(h), runId: "chat", rationale: text, priceAtTime: 100 });
-    const answer: ActivityRow = { id: "a", type: "UPDATED", timestamp: at(12), runId: "r", runMode: "MORNING_PLAN", rationale: "Hold." };
-    expect(unansweredWord([answer, note(14, "Starter only: the base hasn't resolved.")])?.at).toEqual(at(14));
-    expect(unansweredWord([answer, note(10, "Starter only.")])).toBeNull();
-  });
-});
-
 describe("the block: the newest 8 lines of the feed, as the owner sees them, whole", () => {
   it("09-30 morning read: the 8 newest, newest first, each as the Activity tab titles it", () => {
     const feed = feedBefore("2026-09-30T12:04:25Z");
@@ -136,7 +87,7 @@ describe("the block: the newest 8 lines of the feed, as the owner sees them, who
       { id: BELOW_200_DAY, action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
       { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" } },
     ];
-    const { text, unansweredDecision } = buildStockContext({ ticker: "CEG", feed, triggers });
+    const { text } = buildStockContext({ ticker: "CEG", feed, triggers });
     const lines = text!.split("\n");
     expect(lines[0]).toBe("WHAT'S BEEN SAID ON $CEG — its newest 8 Activity lines, newest first, as the owner sees them:");
     expect(lines).toHaveLength(RECENT_ITEMS + 2);
@@ -151,16 +102,14 @@ describe("the block: the newest 8 lines of the feed, as the owner sees them, who
     expect(text).not.toContain(DECLINE_ENDS);
     expect(text).not.toContain("Trailing 8% from high");
     expect(lines[9]).toBe('Full history: get_theses(tickers: ["CEG"], include_history: true)');
-    expect(unansweredDecision).toBeNull();
   });
 
   it("09-14 15:30 trigger run: the principal's decline is in the 8, every one of its 709 characters", () => {
-    const { text, unansweredDecision } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
+    const { text } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
     const whole = ((byId(DECLINE).fieldChanges as { proposal: { to: { userMessage: string } } }).proposal.to.userMessage).replace(/\s+/g, " ").trim();
     expect(whole.length).toBeGreaterThan(600);
     expect(text).toContain(`Declined sell 30 shares — "${whole}"`);
     expect(text).toContain(DECLINE_ENDS);
-    expect(unansweredDecision?.at).toEqual(byId(DECLINE).timestamp);
   });
 
   it("a line reads the same whoever wrote it: a fire with its figures, a hand edit with its change, a note in full", () => {

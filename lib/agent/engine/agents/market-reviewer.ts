@@ -60,5 +60,5 @@ export const MARKET_REVIEWER: RunnableRecord = {
   context: ["market_numbers", "portfolio", "the_book", "the_cases", "last_output", "message"],
   tools: [],
   providerTools: ["web_search"],
-  output: "One reply (JSON): the digest, saved for the day, and its notes (tickers: one of the stocks in this run's book), each saved on the stocks it names. A high note flags its stocks for the next run.",
+  output: "One reply (JSON): the digest, saved for the day, and its notes (tickers: one of the stocks in this run's book), each saved on the stocks it names. A high note starts a look on a stock only through a trigger the owner saved for it (Review on a high note).",
 };

@@ -258,10 +258,11 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       "get_catalyst_calendar",
       "web_search",
       "get_theses",
-      // Action. No status tools: a holding it ends is sold, and a watch it drops is the morning run's call.
+      // Action. A holding it ends is sold; a watch it ends is stopped (the owner's call, 2026-11-19).
       "place_trade",
       "sell",
       "add",
+      "stop_watching",
       // Refresh stale research before acting. Phase 2 of
       // THESIS_LIFECYCLE_FIX: a tactical run firing on a thesis with
       // research > STALE_DAYS old can dispatch + wait for a refresh

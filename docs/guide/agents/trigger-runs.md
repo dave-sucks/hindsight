@@ -8,8 +8,8 @@ It checks the fire against what's true now, then proposes the trade, redraws the
 Model: gpt-5.4
 Starts: Minutes after a fire
 Steps: Up to 15
-Tools: 14
-Saves: a note, trigger edits, a trade proposal
+Tools: 15
+Saves: a note, trigger edits, a trade proposal, a watch ended
 ```
 
 ```chat
@@ -35,7 +35,7 @@ Why a run and not an automatic order? A level is a call made days ago. The run c
 Every five minutes while the market is open, plus a pass at 4:20 PM for levels read on the close, every trigger on every stock is checked. When a trigger set to **Send to Agent** comes true (every trigger but a review, unless you chose otherwise), the fire is written into Activity and a trigger run starts on that stock.
 
 - **A trigger fires when it becomes true, like an order.** A buy, a review, a sale, an add or a trim fires on the first check its condition holds, and again only after a 4:20 PM close finds it false. A trade it leads to uses it up: when the order fills, it comes off the stock. Two buys on one stock true on the same check start one run.
-- **Reviews are flagged for the morning, unless sent to the agent.** A review is a question, not an order, so by default (**Flag for Review**) it goes on the stock's list for the next [morning run](morning-runs.md). Set to **Send to Agent**, it starts a trigger run the same day, which answers it with the review's guidance (each one is a run, about 6–18 cents). A worrying new filing on a stock we hold always gets a look the same day.
+- **Reviews are flagged for the morning, unless sent to the agent.** A review is a question, not an order, so by default (**Flag for Review**) it goes on the stock's list for the next [morning run](morning-runs.md). Set to **Send to Agent**, it starts a trigger run the same day, which answers it with the review's skill (each one is a run, about 6–18 cents). A fire on a watch with no view starts no run: code sends the stock to [the Writer](writer.md). A worrying new filing on a stock we hold always gets a look the same day.
 - **A trim names its size.** The run is told "Trim 30% if above $150", and a partial sale it makes without naming a size sells that 30%.
 - **An Auto trade is made first, then written up.** An Auto-sell, Auto-trim, Auto-buy or Auto-add happens with no agent deciding: the trigger run makes the trade the agent would have made, with the same tool, sizing and checks, and it goes through the same [approval](../concepts/approvals.md) as any trade. Then the same run reads the stock and writes the note, with no trade tools: what's going on with the company and why, what it means for why we own it, the trade, and whether the analyst agrees. That note is the trade's reason on the card and in the email. A refused trade is written up the same way. An Auto buy or add sent at once (approval off) is written up instead by the run after its fill, [After the buy](after-the-buy.md), so it is written up once. Like any trigger, it comes off the stock when its order fills.
 
@@ -65,7 +65,7 @@ Whatever it decides, it brings the stock's other triggers up to date: after an a
 
 ## What happens next
 
-The run ends with at most one trade, exactly one `write_note` that says what it did and why, linked to the trigger that fired, and `complete_run`. It has no status tool: dropping a watch is the morning run's call. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
+The run ends with at most one trade, exactly one `write_note` that says what it did and why, linked to the trigger that fired, and `complete_run`. On a stock we watch it can also stop watching (`stop_watching`), which retires the thesis as dropped with the run's reason as its last line; it can't put a sold or dropped stock back on watch. A stock we hold is sold, never dropped. A sale or a trim is proposed first and the note written after it. That note is the proposal's reason: the card, the email and Activity show it as the one paragraph on the trade. If you declined this same trade before, the note answers you.
 
 - **A buy goes through:** the stock becomes a holding. Its buy and its Stop watching line come off, "Sell if below" goes on at the price approved on the proposal, and [After the buy](after-the-buy.md) puts on its holding triggers.
 - **A sale goes through:** the thesis is retired as sold (or goes back to Watching after a profit-take), and a later [morning run](morning-runs.md) gives it one look back.

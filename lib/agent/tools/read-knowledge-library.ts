@@ -8,6 +8,8 @@
  *                   by ID, or the index of all twelve (DAV-244)
  *   - "source"    → full SourceEntry by ID (or index if id omitted)
  *   - "signal"    → full SignalType by ID (or index if id omitted)
+ *   - "situation" → a situation's skill by its code (or the list): what to
+ *                   find out, what can follow and what done looks like
  *
  * The builder calls this after the user describes what they want, so
  * it can propose an analyst grounded in a real archetype rather than
@@ -33,16 +35,18 @@ import {
 import { loadPlaybook } from "@/lib/agent/knowledge/load-playbook";
 import { playbookTriggerText } from "@/lib/agent/knowledge/playbooks";
 import { WRITTEN_ON, type Template } from "@/lib/agent/knowledge/playbook-templates";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { situationText, skillIndex } from "@/lib/agent/situation-skills";
 
 export const readKnowledgeLibrary = defineTool({
   description:
-    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), the playbooks (buy patterns: what must be true, how a buy is confirmed, and the triggers each one writes), vetted research sources, the signal-type taxonomy, AND podcast format archetypes (craft library for the podcast builder/editor). " +
-    "Call with {topic:'archetype'|'setup'|'source'|'signal'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
+    "Read an entry from the Hindsight knowledge library — curated strategy archetypes (trading), the playbooks (buy patterns: what must be true, how a buy is confirmed, and the triggers each one writes), vetted research sources, the signal-type taxonomy, the situations (what an analyst finds out, what can follow and what done looks like when a stock is in one; read it before you act on a stock's situation), AND podcast format archetypes (craft library for the podcast builder/editor). " +
+    "Call with {topic:'archetype'|'setup'|'source'|'signal'|'situation'|'podcast-format'} and optionally an id. Without an id you get the index; with an id you get the full entry. " +
     "Trading builders/editors: use this BEFORE suggest_config to ground in a real archetype. " +
     "Podcast builders/editors: use this with topic:'podcast-format' BEFORE suggest_podcast_config to pick a structural format (Daily News Brief, Weekly Roundup, Interview Show, Essay & Analysis, Recap & Reaction, Daily Tracker, Explainer Deep Dive) and adapt it to the user's pitch.",
   schema: z.object({
-    topic: z.enum(["archetype", "setup", "source", "signal", "podcast-format"]).describe(
-      "Which catalog to query: 'archetype' for trading styles, 'setup' for the playbooks (buy patterns), 'source' for research sources, 'signal' for signal types, 'podcast-format' for podcast structural formats.",
+    topic: z.enum(["archetype", "setup", "source", "signal", "situation", "podcast-format"]).describe(
+      "Which catalog to query: 'archetype' for trading styles, 'setup' for the playbooks (buy patterns), 'source' for research sources, 'signal' for signal types, 'situation' for a situation by the code on a stock's row, 'podcast-format' for podcast structural formats.",
     ),
     id: z.string().optional().describe(
       "The entry ID (e.g. 'EARNINGS_DRIFT', 'BASE_BREAKOUT', 'SEC_EDGAR', 'INSIDER_BUYING', 'DAILY_NEWS_BRIEF'). Leave empty to list the index.",
@@ -73,6 +77,9 @@ export const readKnowledgeLibrary = defineTool({
       return args.id
         ? `Reading the ${humanize(args.id)} signal type`
         : "Looking at the signal types we track";
+    }
+    if (args.topic === "situation") {
+      return args.id && args.id in SITUATIONS ? `Reading what "${SITUATIONS[args.id as SituationCode].name}" asks` : "Looking at the situations";
     }
     if (args.topic === "podcast-format") {
       return args.id
@@ -181,6 +188,23 @@ export const readKnowledgeLibrary = defineTool({
           entry: { ...entry, triggers: templates },
           content: formatSetupText(entry, templates),
         },
+        sources: [],
+      };
+    }
+
+    if (topic === "situation") {
+      const index = skillIndex();
+      const entry = index.find((x) => x.id === id);
+      if (!entry) {
+        return {
+          summary: id ? `Unknown situation: ${id}` : `${index.length} situations: ${index.map((x) => x.name).join(", ")}`,
+          data: { topic: "situation" as const, mode: "index" as const, count: index.length, index },
+          sources: [],
+        };
+      }
+      return {
+        summary: `Loaded what "${entry.name}" asks`,
+        data: { topic: "situation" as const, mode: "entry" as const, found: true, entry, content: situationText(entry.id, null) },
         sources: [],
       };
     }

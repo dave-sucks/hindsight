@@ -92,59 +92,54 @@ async function morningRead(rows: Record<string, Row[]>, c: Case) {
     replayTool("get-theses", "getTheses", { seed: rows, args: { detail: "actionable" }, ctx: ctxOf(c), quotes: { [ticker]: c.price } }),
   );
   if (crashed) throw new Error(`get_theses crashed: ${JSON.stringify(result).slice(0, 2000)}`);
-  const screen = result.data as { theses?: Row[]; quiet_theses?: Row[]; guidance?: Record<string, string> };
+  const screen = result.data as { theses?: Row[]; quiet_theses?: Row[] };
   const row = screen.theses?.find((r) => r.ticker === ticker) ?? null;
   const quiet = screen.quiet_theses?.find((r) => r.ticker === ticker) ?? null;
   return {
     row,
     quiet,
     modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
-    guidance: screen.guidance ?? {},
   };
 }
 
-describe.each(CASES)("%s at the 11-16 morning read: a sale card waits, and a high note is pinned on the stock", (ticker, c) => {
-  it("is listed in a note to answer, and the row says the sale card waits", async () => {
-    const { row, quiet, modelRow, guidance } = await morningRead(seed(c), c);
+describe.each(CASES)("%s at the 11-16 morning read: a sale card waits, and a high note is on the stock", (ticker, c) => {
+  it("is one quiet line that says the sale card waits: the note puts it on no list, and the card is the owner's", async () => {
+    const { row, quiet } = await morningRead(seed(c), c);
 
-    expect(quiet).toBeNull();
-    expect(row).not.toBeNull();
-    expect(row?.situations).toEqual(["NOTE_TO_ANSWER"]);
-    // The text an agent is sent for it travels with the read.
-    expect(Object.keys(guidance)).toEqual(["NOTE_TO_ANSWER"]);
-    // The row says the card waits: the run answers with a note or an edit, not a second sale.
-    expect(modelRow?.proposal_waiting).toMatch(/^sell 10 sh, placed 11-13 09:\d\d ET$/);
-    expect(String(row?.context)).toContain("Agent note to NVDA, MU");
+    expect(row).toBeNull();
+    expect(quiet).not.toBeNull();
+    // The sell tool refuses a second sale while it waits (below).
+    expect(String(rowForModel(quiet!, { named: false, size: "line" }))).toMatch(/proposal waiting: sell 10 sh, placed 11-13 09:\d\d ET/);
   });
 
-  it("the sale itself is not asked again: no sale in its situations, no sale as its lead", async () => {
-    const { row } = await morningRead(seed(c), c);
+  it("the sale itself is not asked again: no situation and no lead", async () => {
+    const { quiet } = await morningRead(seed(c), c);
 
-    expect(row?.situations).not.toContain("PROTECTIVE_SALE");
-    expect(row?.needsAction).toBeNull();
+    expect(quiet?.situations ?? []).toEqual([]);
+    expect(quiet?.needsAction ?? null).toBeNull();
   });
 
   it("with no card waiting, the same rows put the sale first: the card is what silences it", async () => {
     const { row } = await morningRead(seed(c, { card: false }), c);
 
-    expect(row?.situations).toEqual(["PROTECTIVE_SALE", "NOTE_TO_ANSWER"]);
+    expect(row?.situations).toEqual(["PROTECTIVE_SALE"]);
     expect(row?.needsAction).toMatchObject({ kind: "TRIGGER_MATCHING_NOW", action: "EXIT" });
   });
 
   it("a sale that fired and no run has answered is the card's too: still not asked again", async () => {
     // The fire is open: no run has written on the stock since it.
     const open = c.activity.filter((u) => u.type === "TRIGGER_FIRED");
-    const { row } = await morningRead(seed(c, { activity: open }), c);
+    const { row, quiet } = await morningRead(seed(c, { activity: open }), c);
 
-    expect(row?.situations).toEqual(["NOTE_TO_ANSWER"]);
-    expect(row?.needsAction).toBeNull();
+    expect(row).toBeNull();
+    expect(quiet?.needsAction ?? null).toBeNull();
   });
 
   it("a sale the principal declined before is the card's too: not asked again while a new card waits", async () => {
     const declined = { id: `declined_${ticker}`, status: "REJECTED", rejectionMessage: "not yet", quantity: 10, createdAt: "2026-11-10T15:00:00.000Z", updatedAt: "2026-11-10T16:00:00.000Z", expiresAt: null, triggerIds: [String((c.thesis.triggers as Row[]).find((t) => t.action === "EXIT")?.id)] };
     const waiting = await morningRead(seed(c, { earlier: [declined] }), c);
-    expect(waiting.row?.situations).toEqual(["NOTE_TO_ANSWER"]);
-    expect(waiting.row?.needsAction).toBeNull();
+    expect(waiting.row).toBeNull();
+    expect(waiting.quiet?.needsAction ?? null).toBeNull();
 
     // The same history with no card waiting is the declined sale's, asked again.
     const none = await morningRead(seed(c, { card: false, earlier: [declined] }), c);
@@ -154,8 +149,7 @@ describe.each(CASES)("%s at the 11-16 morning read: a sale card waits, and a hig
 });
 
 describe("a stock with only the sale card is still a quiet line", () => {
-  it.each(CASES)("%s, the note answered: nothing but the card, so nothing listed", async (_ticker, c) => {
-    // A run wrote on the stock after the note: it leaves the note's situation, and the card alone is not work.
+  it.each(CASES)("%s, a run has written since the note: nothing but the card, so nothing listed", async (_ticker, c) => {
     const answered = [...c.activity, { id: "act_answer", type: "REVIEWED", triggerId: null, timestamp: "2026-11-16T12:45:00.000Z", runId: "run_answered", priceAtTime: null, summary: "Reviewed", fieldChanges: {} }];
     const { row, quiet } = await morningRead(seed(c, { activity: answered }), c);
 
@@ -177,19 +171,33 @@ describe("complete_run owes the stocks the read lists, a sale card waiting or no
     return { message: String((result.data as { error?: string } | undefined)?.error ?? ""), status: db.store.researchRun[0].status };
   }
 
-  it.each(CASES)("%s: refused until the run answers the pinned note, naming a note to answer", async (ticker, c) => {
+  it.each(CASES)("%s: the read listed nothing, so the run owes nothing on it and closes", async (_ticker, c) => {
     const { message, status } = await closeOut(c, c.activity);
-
-    expect(status).toBe("RUNNING");
-    expect(message).toContain(`${ticker} (${c.thesis.id}): a note to answer`);
-  });
-
-  it.each(CASES)("%s: accepted once a run's note is on the stock after the pinned one", async (_ticker, c) => {
-    const note = { id: "act_run_note", type: "REVIEWED", triggerId: null, timestamp: "2026-11-16T13:02:30.000Z", runId: RUN.id, priceAtTime: null, summary: "Reviewed", fieldChanges: {} };
-    const { message, status } = await closeOut(c, [...c.activity, note]);
 
     expect(message).toBe("");
     expect(status).toBe("COMPLETE");
+  });
+
+});
+
+describe("a sale that already waits is a refusal: the sell tool says the card is the owner's to answer", () => {
+  const sellNow = (c: Case, args: Row, card = true) =>
+    at(fx.at, () => replayTool("sell", "sell", { seed: seed(c, { card }), args: { ticker: c.thesis.ticker, ...args }, ctx: ctxOf(c), quotes: { [c.thesis.ticker]: c.price } }));
+
+  it.each(CASES)("%s: a second sale, whole or part, is refused while the card waits, and no order is written or sent", async (ticker, c) => {
+    for (const args of [{ belief_survived: true }, { percent: 50 }]) {
+      const { result, sends, db } = await sellNow(c, args);
+      const data = result.data as { success?: boolean; status?: string; message?: string };
+      expect([data.success, data.status]).toEqual([false, "FAILED"]);
+      expect(data.message).toBe("A sale of 10 $" + ticker + " shares already waits for the owner. That card is theirs to answer: approve, edit or decline it. Say what you found in your note, or raise the sale's price with edit_triggers.");
+      expect(sends).toEqual([]);
+      expect(db.store.order).toHaveLength(1);
+    }
+  });
+
+  it.each(CASES)("%s: with no card waiting, the sale is not refused for one", async (_ticker, c) => {
+    const { result } = await sellNow(c, { belief_survived: true }, false);
+    expect(JSON.stringify(result)).not.toContain("already waits for the owner");
   });
 });
 

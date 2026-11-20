@@ -98,6 +98,7 @@ describe("the condition a model writes", () => {
     const arms = (json.definitions.Condition.oneOf ?? json.definitions.Condition.anyOf ?? []) as Array<{ properties: Record<string, { properties?: Record<string, unknown> }> }>;
     const fields = Object.fromEntries(arms.map((a) => [(a.properties.watch as { const?: string }).const, Object.keys(a.properties.settings?.properties ?? {})]));
     expect(fields).toEqual({
+      note: [],
       price: ["close"],
       move: [],
       volume: [],

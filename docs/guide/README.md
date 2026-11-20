@@ -57,7 +57,7 @@ The agents that work on a stock have the same five sections, in the same order: 
 - **[Theses](concepts/theses.md):** a belief we can be wrong about, and the triggers that act on it. Every stock on the book has one.
 - **[Triggers](concepts/triggers.md):** one sentence each, like "Sell if below $384". A stock has its triggers and nothing else: no plan, no price target of our own.
 - **[Analysts](concepts/analysts.md):** a trading style with its own universe, sizing and sell rules. Every thesis belongs to one.
-- **[Situations](concepts/situations.md):** the eight reasons a stock needs an answer today, each with its own instructions.
+- **[Situations](concepts/situations.md):** why a stock is in front of its analyst today, each with one short skill that says what to find out.
 - **[Approvals](concepts/approvals.md):** analysts propose, you approve, and a proposal expires after a day, except one a trigger made, which waits while its trigger holds.
 - **[Price targets](concepts/price-targets.md):** the house sets none, and there is no plan. A stock has its triggers (its playbook's triggers and any written by hand); Wall Street's targets are a card, and a price a trigger can watch.
 
@@ -74,7 +74,7 @@ One mechanism or one workflow, end to end, for when the concept doc isn't enough
 
 Exact lists built from the code, with a test that fails when they drift. Regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
 
-- **[Situations library](reference/situations-library.md):** all eight situations, each with its code, what it means and the exact text an agent is sent.
+- **[Situations library](reference/situations-library.md):** every situation, each with its code, what it means and the exact text an agent is sent.
 - **[Trigger measures](reference/trigger-measures.md):** every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in.
 - **[Playbooks](reference/setups.md):** every playbook: what must be true first, the triggers each writes, and when it has failed.
 

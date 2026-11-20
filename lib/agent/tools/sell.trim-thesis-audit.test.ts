@@ -22,7 +22,7 @@ const mockMaybeAwaitApproval = jest.fn().mockResolvedValue(null);
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
-    position: { findFirst: mockPositionFindFirst, count: jest.fn().mockResolvedValue(1) },
+    position: { findFirst: mockPositionFindFirst, findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(1) },
     thesis: { findUnique: mockThesisFindUnique, update: jest.fn() },
     order: { create: mockOrderCreate, update: mockOrderUpdate },
     $transaction: mockTransaction,

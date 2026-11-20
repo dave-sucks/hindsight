@@ -18,7 +18,7 @@ An agent's **record** (`lib/agent/engine/agents/<agent>.ts`) ties them together:
 
 ## How to change an agent
 
-- **What it is told:** edit its `.md`. Shared text (`rules.md`) changes every agent that imports it. A rule that applies when a stock is in a [situation](situations.md) goes in the situations table, never in an instruction file.
+- **What it is told:** edit its `.md`. Shared text (`rules.md`) changes every agent that imports it. A rule that applies when a stock is in a [situation](situations.md) goes in that situation's skill file, never in an instruction file.
 - **What it is given:** add or remove the fact in its record's context list. A new fact is a loader in `lib/agent/context/`, one per subject that has it, listed in the context index and in that subject's bundle, and named in `lib/agent/engine/parts.ts`, which is what the run's Context panel shows.
 - **What it can do:** add or remove a tool in its record's tool list. The morning run, the trigger run and the chat take theirs from `lib/agent/modes.ts`. A new tool is a `defineTool` in `lib/agent/tools/`, registered in `lib/agent/tools/index.ts`. Give it one job, let code fill the fields it knows (`fromRun`), and hide a field a caller may not set (`schemaFor`). A guard lives in the tool, and its refusal says what to do instead.
 - **When it runs:** a line in `SCHEDULE`, or the event that starts it.

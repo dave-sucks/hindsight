@@ -281,18 +281,9 @@ describe("8. a watchlist seed surfaces for its first research", () => {
     ).toBeNull();
   });
 
-  it("comes due as REVIEW_DUE + pendingFirstReview once the week is up", () => {
-    const result = leadOf({
-      thesis: seed,
-      activity: [],
-      latestQuote: null,
-      now: daysLater(7),
-    });
-    expect(result).toEqual({
-      kind: "REVIEW_DUE",
-      daysOverdue: 0,
-      pendingFirstReview: true,
-    });
+  it("carries no flag once the week is up: it has no case to review, and code sends it to the Writer", () => {
+    expect(leadOf({ thesis: seed, activity: [], latestQuote: null, now: daysLater(7) })).toBeNull();
+    expect(leadOf({ thesis: { ...seed, direction: "LONG" }, activity: [], latestQuote: null, now: daysLater(7) })).toEqual({ kind: "REVIEW_DUE", daysOverdue: 0 });
   });
 
   it("a recycled sold name (1-day cadence) is back on the desk next morning", () => {

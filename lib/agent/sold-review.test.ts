@@ -12,7 +12,7 @@
  * the trap a naive "any update since the close" check falls into.
  */
 import { soldReview } from "./sold-review";
-import { SITUATIONS } from "./situations";
+import { situationText } from "./situation-skills";
 
 const SMMT = {
   ticker: "SMMT",
@@ -46,10 +46,10 @@ describe("SMMT — the one look a sold stock gets", () => {
     expect(r.text).toContain("Its catalyst is still ahead — 2026-11-14.");
   });
 
-  it("is the sale's facts alone; the answers are SOLD_ONE_REVIEW's guidance", () => {
+  it("is the sale's facts alone; the answers are the just-sold skill's", () => {
     expect(r.text).toBe("Sold today at $16.92 for +$1,158 (+17.9%) on a stop. Nobody said whether the belief survived the exit. Its catalyst is still ahead — 2026-11-14.");
-    expect(SITUATIONS.SOLD_ONE_REVIEW.guidance).toContain("Keep watching with a buy");
-    expect(SITUATIONS.SOLD_ONE_REVIEW.guidance).toContain("Let it go.");
+    expect(situationText("SOLD_ONE_REVIEW", false)).toContain("watch it again with a buy");
+    expect(situationText("SOLD_ONE_REVIEW", false)).toContain("or let it go.");
   });
 });
 

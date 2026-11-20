@@ -1,4 +1,4 @@
-// Starting a writer run, once: the watchlist's hand send and the morning's Agent Watch write-ups share it.
+// Starting a writer run, once: the watchlist's hand send, the morning's write-ups and a no-view watch that came due share it.
 // Not "use server" — these take a user and account id, so the browser must never call them.
 
 import { prisma } from "@/lib/prisma";
@@ -98,4 +98,58 @@ export async function startWriterRun(args: {
   });
 
   return { childRunId: childRun.id };
+}
+
+/** A write-up that failed this recently waits; under 24h so yesterday's 8 AM failure is tried again this morning. */
+const FAILED_WRITEUP_WAIT_MS = 23 * 60 * 60 * 1000;
+/** A write-up that completed but left no view waits this long, so a broken one costs one paid retry a week. */
+const NO_VIEW_WRITEUP_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * A watch with no view has no case to review, so when it comes due code sends
+ * it to the Writer, which commits its view, and no run is asked to: the
+ * morning job for one with a review clock, the trigger check's run for one
+ * whose trigger fired. Not sent, with why, while a Writer is on it or just
+ * wrote it, for a week after a write-up that left no view, and for a day
+ * after one that failed.
+ */
+export async function sendNoViewWatch(args: {
+  thesisId: string;
+  ticker: string;
+  analyst: { id: string; accountId: string; userId: string; tradingEnvironment: string };
+  reason: string;
+  dispatchedBy: string;
+}): Promise<{ childRunId: string } | { notSent: string }> {
+  const { analyst } = args;
+  if (await findInFlightWriter(analyst.accountId, args.ticker, analyst.id)) return { notSent: "a writer is running or just wrote it" };
+  const recentRuns = await prisma.researchRun.findMany({
+    where: {
+      mode: "THESIS_WRITER",
+      status: { in: ["COMPLETE", "FAILED"] },
+      startedAt: { gte: new Date(Date.now() - NO_VIEW_WRITEUP_WAIT_MS) },
+      OR: [
+        { parameters: { path: ["existingThesisId"], equals: args.thesisId } },
+        { parameters: { path: ["thesisId"], equals: args.thesisId } },
+      ],
+    },
+    select: { status: true, startedAt: true },
+    orderBy: { startedAt: "desc" },
+  });
+  // A write-up that finished and still left no view is broken, not pending: a person looks, and it is paid for again a week on.
+  const completed = recentRuns.find((r) => r.status === "COMPLETE");
+  if (completed) return { notSent: `written up ${completed.startedAt.toISOString().slice(0, 10)} but no view — needs a look` };
+  if (recentRuns.some((r) => r.startedAt.getTime() >= Date.now() - FAILED_WRITEUP_WAIT_MS)) return { notSent: "write-up failed in the last day" };
+  return startWriterRun({
+    userId: analyst.userId,
+    accountId: analyst.accountId,
+    analystId: analyst.id,
+    environment: analyst.tradingEnvironment as "PAPER" | "LIVE",
+    ticker: args.ticker,
+    mode: "refresh",
+    existingThesisId: args.thesisId,
+    reviewCadenceDays: null,
+    reason: args.reason,
+    source: "AGENT",
+    dispatchedBy: args.dispatchedBy,
+  });
 }

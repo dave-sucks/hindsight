@@ -61,7 +61,7 @@ export function triggerMeasuresMarkdown(): string {
   const out: string[] = [
     "# Trigger measures",
     "",
-    "**Every condition a trigger can watch, with the shape it's saved in.** The twelve measures, grouped by the five types of the Add trigger menu.",
+    "**Every condition a trigger can watch, with the shape it's saved in.** The thirteen measures, grouped by the six types of the Add trigger menu.",
     "",
     "This file is built from `MEASURES` in `lib/agent/triggers/condition/catalog.ts` and the examples in `lib/docs/trigger-examples.ts`; don't edit it by hand. What a trigger is and when one fires is [Triggers](../concepts/triggers.md).",
     "",

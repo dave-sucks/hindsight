@@ -71,7 +71,7 @@ describe("the Master Chat buys for the thesis's analyst", () => {
   // ETN is the Secular Compounder's watch; it holds 8 of 8. analyst_id is what main's chat had to send.
   const buy = { ticker: "ETN", direction: "LONG", entry_price: book.prices.ETN, thesis_id: thesis("ETN").id, analyst_id: SECULAR };
   const pinnedToPead = { runMode: "PRINCIPAL_CHAT", runEnvironment: "LIVE", analystId: "cmnhxpjio000004jvox6kl6c7", maxOpenPositions: 6, minPositionSize: 3000, maxPositionSize: 14000, maxPositionTotal: 28000 };
-  const full = /already has 8 open positions, at its 8-slot cap/;
+  const full = /already has 8 open positions, which is its limit of 8\. Replacing a holding is the owner's decision: in your note on \$ETN, name the holding it would replace/;
 
   it("a buy for a full analyst is refused by its slot gate, as pinned", async () => {
     const asPinned = await replayTool("place-trade", "placeTrade", { seed: seed(), ctx: pinned, args: buy, quotes: book.prices });

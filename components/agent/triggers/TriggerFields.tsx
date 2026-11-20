@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CalendarDays, DollarSign, FileText, Repeat, Variable, X } from "lucide-react";
+import { Activity, CalendarDays, DollarSign, FileText, Newspaper, Repeat, Variable, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -52,6 +52,7 @@ export const TYPE_ICON: Record<TriggerType, typeof DollarSign> = {
   indicator: Activity,
   earnings: CalendarDays,
   filing: FileText,
+  news: Newspaper,
   schedule: Repeat,
 };
 

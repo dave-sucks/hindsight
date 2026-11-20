@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { guidanceCodes, guidanceFor, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, TRIGGER_RUN_LINES, type SituationCode, type SituationSources } from "./situations";
+import { guidanceCodes, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, type SituationCode, type SituationSources } from "./situations";
 import { MERGED_CODE } from "@/lib/performance/agent-work-terms";
 import type { Trigger } from "./triggers/types";
 
@@ -32,7 +32,6 @@ function sources(i: NeedsActionInput, over: Partial<SituationSources> = {}): Sit
     status: i.thesis.status ?? "HOLDING",
     actionability: null,
     buyBlockedByFull: false,
-    unansweredDecision: false,
     ...over,
   };
 }
@@ -75,15 +74,21 @@ describe("the situations a stock is in", () => {
     expect(situationsFor(sources(i))).toEqual(["REVIEW_DUE"]);
   });
 
-  it("ABT 10-07: a fired review on a watch, and the principal's word unanswered", () => {
+  it("ABT 10-07: a fired review on a watch is a review; the owner's hand edits that morning are no situation", () => {
     const i = input({ status: "WATCHING", triggers: [trig("rev", "REVIEW", below(115))] }, { activity: [fire("rev")] });
-    expect(situationsFor(sources(i, { unansweredDecision: true }))).toEqual(["REVIEW_DUE", "NOTE_TO_ANSWER"]);
+    expect(situationsFor(sources(i))).toEqual(["REVIEW_DUE"]);
   });
 
-  it("an earnings review riding inside a fired sale is a review too", () => {
+  it("a trigger on the Market Reviewer's high note is news, on a holding and on a watch", () => {
+    const high = trig("note", "REVIEW", { watch: "note" });
+    expect(situationsFor(sources(input({ triggers: [high] }, { activity: [fire("note")] })))).toEqual(["NEWS"]);
+    expect(situationsFor(sources(input({ status: "WATCHING", triggers: [high] }, { activity: [fire("note")] })))).toEqual(["NEWS"]);
+  });
+
+  it("an earnings review riding inside a fired sale is a report too", () => {
     const report = trig("er", "REVIEW", { match: "all", conditions: [{ watch: "surprise", is: "beat", value: 0 }, { watch: "move", is: "below", value: 3 }] });
     const i = input({ triggers: [trig("floor", "EXIT", below(80)), report] }, { activity: [fire("floor", 1), fire("er", 3)] });
-    expect(situationsFor(sources(i))).toEqual(["PROTECTIVE_SALE", "REVIEW_DUE"]);
+    expect(situationsFor(sources(i))).toEqual(["PROTECTIVE_SALE", "REPORT"]);
   });
 
   it("a sale true now behind a review true now is on the list, second", () => {
@@ -91,18 +96,23 @@ describe("the situations a stock is in", () => {
     expect(situationsFor(sources(i))).toEqual(["REVIEW_DUE", "PROTECTIVE_SALE"]);
   });
 
-  it("a filing review is a review; a sale fire on a stock we don't hold falls to REVIEW_DUE", () => {
+  it("a filing review is a filing, a report review a report, neither a review; a sale fire on a stock we don't hold falls to REVIEW_DUE", () => {
     const filed = input({ triggers: [trig("8k", "REVIEW", { watch: "filing", value: "tier:MATERIAL" })] }, { activity: [fire("8k")] });
-    expect(situationsFor(sources(filed))).toEqual(["REVIEW_DUE"]);
+    expect(situationsFor(sources(filed))).toEqual(["FILING"]);
+    const reported = input({ status: "WATCHING", triggers: [trig("er", "REVIEW", { watch: "surprise", is: "beat", value: 0 })] }, { activity: [fire("er")] });
+    expect(situationsFor(sources(reported))).toEqual(["REPORT"]);
     const watchedFloor = input({ status: "WATCHING", triggers: [trig("f", "EXIT", below(80))] }, { activity: [fire("f")] });
     expect(situationsFor(sources(watchedFloor))).toEqual(["REVIEW_DUE"]);
   });
 
-  it("a wake on a watch with no view and no clock of its own, and a seed due its first research, are reviews", () => {
+  it("a watch with no view is in no situation: a wake that fired and a clock that came due go to the Writer, not to a run", () => {
     const wake = input({ status: "WATCHING", direction: null, triggers: [trig("w", "REVIEW", below(50))] }, { activity: [fire("w")] });
-    expect(situationsFor(sources(wake))).toEqual(["REVIEW_DUE"]);
+    expect([computeNeedsAction(wake), situationsFor(sources(wake)), listsTheStock(sources(wake))]).toEqual([[], [], false]);
     const seed = input({ status: "WATCHING", direction: null, lastReviewedAt: null, triggers: [trig("c", "REVIEW", { watch: "repeat", value: 7 })] });
-    expect(situationsFor(sources(seed))).toEqual(["REVIEW_DUE"]);
+    expect([computeNeedsAction(seed), situationsFor(sources(seed)), listsTheStock(sources(seed))]).toEqual([[], [], false]);
+    // The same two with a view are reviews.
+    expect(situationsFor(sources({ ...wake, thesis: { ...wake.thesis, direction: "LONG" } }))).toEqual(["REVIEW_DUE"]);
+    expect(situationsFor(sources({ ...seed, thesis: { ...seed.thesis, direction: "LONG" } }))).toEqual(["REVIEW_DUE"]);
   });
 
   it("one situation per trigger action: a sale or trim, a buy, an add, anything else a review", () => {
@@ -119,8 +129,6 @@ describe("the situations a stock is in", () => {
     expect(situationsFor(sources(watch, { actionability: "ENTER_NOW" }))).toEqual(["BUY_ARRIVES"]);
     expect(situationsFor(sources(watch, { actionability: "STALE_PAST_CATALYST" }))).toEqual([]);
     expect(situationsFor(sources(watch, { soldReview: true }))).toEqual(["SOLD_ONE_REVIEW"]);
-    expect(situationsFor(sources(watch, { pinnedNote: true }))).toEqual(["NOTE_TO_ANSWER"]);
-    expect(situationsFor(sources(watch, { pinnedNote: true, unansweredDecision: true }))).toEqual(["NOTE_TO_ANSWER"]);
     expect(situationsFor(sources(input({ status: "PROMOTED" })))).toEqual(["PROMOTED_AWAITING"]);
   });
 
@@ -131,76 +139,34 @@ describe("the situations a stock is in", () => {
 });
 
 describe("the situations for a person: the sheet's flag line", () => {
-  it("MU 10-07: the fired review is the lead's; a note to answer follows it", () => {
+  it("MU 10-07: the fired review is the lead's, and the one label", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
-    expect(situationLabels(sources(i, { unansweredDecision: true }))).toEqual([
-      { code: "REVIEW_DUE", name: "review due", lead: true },
-      { code: "NOTE_TO_ANSWER", name: "a note to answer", lead: false },
-    ]);
+    expect(situationLabels(sources(i))).toEqual([{ code: "REVIEW_DUE", name: "review due", lead: true }]);
   });
   it("a sale on an earnings trigger: both codes are the lead's", () => {
     const report = trig("er", "EXIT", { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "price", is: "below", value: 90 }] });
     const i = input({ triggers: [report] }, { activity: [fire("er")] });
-    expect(situationLabels(sources(i, { unansweredDecision: true })).map((x) => [x.code, x.lead])).toEqual([
+    expect(situationLabels(sources(i)).map((x) => [x.code, x.lead])).toEqual([
       ["PROTECTIVE_SALE", true],
-      ["REVIEW_DUE", true],
-      ["NOTE_TO_ANSWER", false],
+      ["REPORT", true],
     ]);
   });
   it("every code has a name of a few plain words", () => {
-    expect(Object.keys(SITUATIONS)).toHaveLength(8);
+    expect(Object.keys(SITUATIONS)).toHaveLength(10);
     for (const { name } of Object.values(SITUATIONS)) expect(name.split(" ").length).toBeLessThanOrEqual(4);
   });
 });
 
-// The three that took in others' cases end in a paragraph per case; each is capped just above its length (2026-11-15; the buy names only its sale, 11-18;
-// the buy passed on and left as it is fires again only after a close finds it false, and a review that is a playbook's way in, 11-17;
-// a pullback buy that touched without the reversal is re-priced to a close above today's high, 11-17).
-const CAP: Partial<Record<SituationCode, number>> = { BUY_ARRIVES: 3_300, REVIEW_DUE: 7_640, NOTE_TO_ANSWER: 3_240 };
-const capOf = (code: string) => CAP[code as SituationCode] ?? 2_200;
-
-describe("the guidance: each situation's text, once", () => {
-  it("every text is under its cap and says when, what to do and what answers it", () => {
-    for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
-      expect([code, guidance.length <= capOf(code)]).toEqual([code, true]);
-      for (const part of ["When:", "Answered:", "The note:", "Mistakes:"]) expect([code, guidance.includes(part)]).toEqual([code, true]);
-    }
-  });
-  it("each says what its note covers, the company and the stock first; none asks for the bookkeeping", () => {
-    // The 10-27 sale notes ("still below the $987.31 line… second day after we let the floor lapse") came from
-    // PROTECTIVE_SALE's "say which day of the breach it is… name the rule you followed", and REVIEW_DUE's
-    // checklist notes from "saying what you checked".
-    for (const [code, { guidance }] of Object.entries(SITUATIONS)) {
-      const note = guidance.split("\n").find((l) => l.startsWith("The note: ")) ?? "";
-      expect([code, /\b(company|stock)\b/.test(note)]).toEqual([code, true]);
-      expect([code, guidance.match(/which day of the breach|name the rule|what you checked and why|say for each whether|full — waiting/g)]).toEqual([code, null]);
-    }
-  });
-  it("each text that can end in a sale says a waiting card is the principal's; the others don't", () => {
-    const SAYS = "`proposal_waiting` already shows a sell or trim";
-    const withIt = Object.entries(SITUATIONS).filter(([, { guidance }]) => guidance.includes(SAYS)).map(([code]) => code);
-    expect(withIt).toEqual(["ADD_OR_WINNER", "PROTECTION", "REVIEW_DUE", "NOTE_TO_ANSWER"]);
-    // Once in each, and the trigger run reads it too: its row carries the same line.
-    for (const code of withIt) expect(guidanceFor([code as SituationCode], "INTRADAY_TACTICAL")[code as SituationCode]!.split(SAYS)).toHaveLength(2);
-  });
-  it("comes in rank order, each text once, whatever order the codes arrive in", () => {
-    const codes: SituationCode[] = ["NOTE_TO_ANSWER", "PROTECTIVE_SALE", "NOTE_TO_ANSWER", "REVIEW_DUE"];
-    expect(Object.keys(guidanceFor(codes))).toEqual(["PROTECTIVE_SALE", "REVIEW_DUE", "NOTE_TO_ANSWER"]);
-  });
+describe("which texts a stock calls for (the texts themselves: situation-skills.test.ts)", () => {
   it("a promoted stock calls for the promotion's text alone", () => {
-    expect(guidanceCodes("PROMOTED", ["PROMOTED_AWAITING", "REVIEW_DUE", "NOTE_TO_ANSWER"])).toEqual(["PROMOTED_AWAITING"]);
+    expect(guidanceCodes("PROMOTED", ["PROMOTED_AWAITING", "REVIEW_DUE", "NEWS"])).toEqual(["PROMOTED_AWAITING"]);
     expect(guidanceCodes("HOLDING", ["REVIEW_DUE", "ADD_OR_WINNER"])).toEqual(["REVIEW_DUE", "ADD_OR_WINNER"]);
   });
-  it("a trigger run is not handed a situation whose answer needs fields its save lacks", () => {
+  it("a trigger run is not handed the look back at a sold stock: it can't put one back on watch", () => {
     const codes: SituationCode[] = ["PROTECTIVE_SALE", "REVIEW_DUE", "SOLD_ONE_REVIEW"];
     expect(guidanceCodes("HOLDING", codes, "INTRADAY_TACTICAL")).toEqual(["PROTECTIVE_SALE", "REVIEW_DUE"]);
     expect(guidanceCodes("HOLDING", codes, "MORNING_PLAN")).toEqual(codes);
     expect(guidanceCodes("HOLDING", codes)).toEqual(codes);
-    // A seed's first research is still the morning run's: the trigger run reads that line in its place.
-    const theirs = guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE!;
-    expect(theirs).toContain("due its first research on that clock, and the morning run answers it");
-    expect(theirs).not.toContain("wait_for_thesis_refresh on the child run");
-    expect(guidanceFor(["REVIEW_DUE"], "MORNING_PLAN").REVIEW_DUE).toContain("wait_for_thesis_refresh on the child run");
   });
 });
 
@@ -214,23 +180,12 @@ describe("a sale card waiting for the principal silences only that sale", () => 
     expect(situationsFor(card)).toEqual([]);
     expect(listsTheStock(card)).toBe(false);
   });
-  it("a pinned note, the principal's word, a review or an add still list it, and the sale is not among its situations", () => {
+  it("a review or an add still lists it, and the sale is not among its situations", () => {
     const i = input({ triggers: [sale, trig("add", "ADD", { watch: "price", is: "above", value: 80 }), trig("rev", "REVIEW", { watch: "repeat", value: 7 })], lastReviewedAt: new Date(NOW.getTime() - 9 * 86_400_000) }, { activity: [fire("sale")] });
     const card = (over: Partial<SituationSources>) => sources({ ...i, ...waiting }, over);
 
-    expect(situationsFor(card({ pinnedNote: true }))).toEqual(expect.arrayContaining(["NOTE_TO_ANSWER", "ADD_OR_WINNER", "REVIEW_DUE"]));
-    expect(situationsFor(card({ pinnedNote: true }))).not.toContain("PROTECTIVE_SALE");
-    expect(listsTheStock(card({ pinnedNote: true }))).toBe(true);
-    expect(listsTheStock(card({ unansweredDecision: true }))).toBe(true);
-    // With no note, the add and the review are the work.
     expect(situationsFor(card({}))).toEqual(["ADD_OR_WINNER", "REVIEW_DUE"]);
     expect(listsTheStock(card({}))).toBe(true);
-  });
-  it("the pinned note alone lists a stock whose only other flag is the card's sale", () => {
-    const i = input({ triggers: [sale] }, { activity: [fire("sale")], ...waiting });
-    expect(situationsFor(sources(i, { pinnedNote: true }))).toEqual(["NOTE_TO_ANSWER"]);
-    expect(listsTheStock(sources(i, { pinnedNote: true }))).toBe(true);
-    expect(listsTheStock(sources(i))).toBe(false);
   });
 });
 
@@ -239,7 +194,6 @@ describe("listsTheStock: today's rule", () => {
   it("each source that listed a stock before lists it", () => {
     expect(listsTheStock(sources(input({ triggers: [trig("f", "EXIT", below(120))] })))).toBe(true); // a work flag
     expect(listsTheStock(sources(watch, { buyBlockedByFull: true }))).toBe(true);
-    expect(listsTheStock(sources(watch, { unansweredDecision: true }))).toBe(true);
     for (const label of ["ENTER_NOW", "PROMOTED_DECIDE_TODAY"]) expect(listsTheStock(sources(watch, { actionability: label }))).toBe(true);
   });
   it("what did not list a stock still does not; a catalyst date behind us no longer does (2026-11-13)", () => {
@@ -295,8 +249,10 @@ describe("the live book after the close, replayed", () => {
   // Recorded 2026-10-08, before plan checks, stale research and "no setup
   // named" were deleted (2026-11-13): those codes are dropped from what main
   // said, and three stocks a plan check alone listed are quiet now.
-  const DELETED = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED"]);
-  const LISTED_BY_A_PLAN_CHECK = new Set(["SMCI", "SYK", "GD"]);
+  // "A note to answer" went too (2026-11-19): the owner's hand edits and answers stay in Activity and put no stock on a
+  // list, so GEV and MSFT, which only the owner's word listed, are quiet now, and ABT keeps its other situation.
+  const DELETED = new Set(["PLAN_PROBLEM", "STALE_RESEARCH", "NO_SETUP_NAMED", "YOUR_WORD_UNANSWERED", "PINNED_NOTE"]);
+  const LISTED_BY_A_PLAN_CHECK = new Set(["SMCI", "SYK", "GD", "GEV", "MSFT"]);
   // MU's ADD_OR_WINNER came from three quarters of the way to its target, which went with the target (2026-11-16).
   const NEAR_TARGET = new Set(["MU"]);
   // MU's floor had fired and no close has found it false since: a sale that fired stays on the morning's list (2026-11-17).
@@ -335,50 +291,20 @@ describe("a seed's claim is the writer's (step 12, part 1)", () => {
       { now },
     );
 
-  it("MA, a live seed with a review clock: due, its one situation is a review; not due, none", () => {
-    expect(situationsFor(sources(ma(new Date("2026-11-14T13:00:00Z"))))).toEqual(["REVIEW_DUE"]);
-    expect(situationsFor(sources(ma(new Date("2026-10-09T13:00:00Z"))))).toEqual([]);
+  it("MA, a live watch with no view and a review clock: due or not, it is in no situation; the Writer gets it", () => {
+    for (const now of ["2026-11-14T13:00:00Z", "2026-10-09T13:00:00Z"]) {
+      const src = sources(ma(new Date(now)));
+      expect([now, situationsFor(src), listsTheStock(src)]).toEqual([now, [], false]);
+    }
   });
 
-  it("the review's paragraph on a watch with no view sends the claim through the writer, and never asks a run to write it", () => {
-    const text = SITUATIONS.REVIEW_DUE.guidance.slice(SITUATIONS.REVIEW_DUE.guidance.indexOf("If it is a watch with no view yet:"));
-    for (const words of ["dispatch_thesis_research", "wait_for_thesis_refresh", "commits the view", "never write the claim yourself"]) expect([words, text.includes(words)]).toEqual([words, true]);
-    for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "direction LONG"]) expect([field, SITUATIONS.REVIEW_DUE.guidance.includes(field)]).toEqual([field, false]);
-    expect(text).toContain("No write-up yet");
-    expect(text).toContain("A failed write-up is dispatched again");
+  it("with a view, the same row with its clock due is a review", () => {
+    const due = ma(new Date("2026-11-14T13:00:00Z"));
+    expect(situationsFor(sources({ ...due, thesis: { ...due.thesis, direction: "LONG" } }))).toEqual(["REVIEW_DUE"]);
   });
 });
 
-describe("the words per run (step 12, part 2)", () => {
-  const ALL = Object.keys(SITUATIONS) as SituationCode[];
-  it("every trigger-run line replaces a line of its text, word for word", () => {
-    for (const [code, pairs] of Object.entries(TRIGGER_RUN_LINES) as Array<[SituationCode, ReadonlyArray<readonly [string, string]>]>) {
-      for (const [line] of pairs) expect([code, line, SITUATIONS[code].guidance.includes(line)]).toEqual([code, line, true]);
-    }
-  });
-  it("the trigger run's guidance never names a status tool it lacks; it takes the buy and the Stop watching line off by id and the morning run decides", () => {
-    const text = Object.values(guidanceFor(guidanceCodes("WATCHING", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
-    const promoted = Object.values(guidanceFor(guidanceCodes("PROMOTED", ALL, "INTRADAY_TACTICAL"), "INTRADAY_TACTICAL")).join("\n");
-    for (const word of ["change_status", "INVALIDATED", "ARCHIVED", "stop_watching", "watch_again"]) {
-      expect([word, text.includes(word)]).toEqual([word, false]);
-      expect([word, promoted.includes(word)]).toEqual([word, false]);
-    }
-    expect(guidanceFor(["REVIEW_DUE"], "INTRADAY_TACTICAL").REVIEW_DUE).toContain("take its buy and its Stop watching line off by id (edit_triggers with remove) and say so in the note; the morning run decides");
-    expect(guidanceFor(["PROMOTED_AWAITING"], "INTRADAY_TACTICAL").PROMOTED_AWAITING).toContain("the stock stays promoted and the morning run decides");
-  });
-  it("the morning run and the chat keep the verbs", () => {
-    for (const runMode of ["MORNING_PLAN", "PRINCIPAL_CHAT", undefined]) {
-      expect(guidanceFor(["REVIEW_DUE"], runMode).REVIEW_DUE).toContain("stop_watching on a stock we watch");
-      expect(guidanceFor(["REVIEW_DUE"], runMode).REVIEW_DUE).toContain("Or let it go: stop_watching.");
-      expect(guidanceFor(["PROMOTED_AWAITING"], runMode).PROMOTED_AWAITING).toContain("- Defer: watch_again.");
-    }
-  });
-  it("every text stays under the cap in every run's words", () => {
-    for (const code of ALL) for (const runMode of ["INTRADAY_TACTICAL", "MORNING_PLAN"]) expect([code, runMode, guidanceFor([code], runMode)[code]!.length <= capOf(code)]).toEqual([code, runMode, true]);
-  });
-});
-
-describe("MA 2026-10-09: a fired review on a watch with no view is a review, whatever its clock (2026-11-15)", () => {
+describe("MA 2026-10-09: a fired review on a watch with no view is no situation, whatever its clock", () => {
   // MA's row and the strength wake's fire at 13:30:17 UTC, as stored.
   const ma = input(
     {
@@ -394,12 +320,12 @@ describe("MA 2026-10-09: a fired review on a watch with no view is a review, wha
     },
     { now: new Date("2026-10-09T14:00:00Z"), activity: [{ type: "TRIGGER_FIRED", timestamp: new Date("2026-10-09T13:30:17.414Z"), triggerId: "e3c45d50-56de-4a17-9bf1-91e9c69c56ee", runId: null }] },
   );
-  it("a seed with its own clock: REVIEW_DUE, whose paragraph on a watch with no view is its first research", () => {
-    expect(situationsFor(sources(ma))).toEqual(["REVIEW_DUE"]);
+  it("with its own clock: none, and the stock is off the list", () => {
+    expect([situationsFor(sources(ma)), listsTheStock(sources(ma))]).toEqual([[], false]);
   });
-  it("without a clock of its own the same fire is a review too", () => {
+  it("without a clock of its own the same fire is none too", () => {
     const quiet = { ...ma, thesis: { ...ma.thesis, triggers: ma.thesis.triggers.slice(0, 1) } };
-    expect(situationsFor(sources(quiet))).toEqual(["REVIEW_DUE"]);
+    expect(situationsFor(sources(quiet))).toEqual([]);
   });
   it("a review fired on a stock with a view is REVIEW_DUE", () => {
     const withView = { ...ma, thesis: { ...ma.thesis, direction: "LONG" } };

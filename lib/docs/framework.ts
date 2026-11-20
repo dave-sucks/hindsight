@@ -8,7 +8,7 @@
  * the run kept with it (lib/agent/run-requests.ts), the same numbers the
  * run's Context panel shows. An agent with no saved run yet is sized on its
  * sample day (./agent-samples.ts), and the page says which. Its tools are the
- * record's. The situation texts are the SITUATIONS table itself.
+ * record's. The situation texts are the skill files themselves.
  *
  * The records and samples are built once per server instance (a deploy that
  * changes a record changes the page); the runs are read on each request. A
@@ -29,6 +29,7 @@ import { REQUEST_ROLE, byParts, viewOfRecord, type RequestRecord } from "@/lib/a
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 import { createResearchTools } from "@/lib/agent/tools";
 import { AGENT_SAMPLES } from "./agent-samples";
 import type { FrameworkAgent, FrameworkData, FrameworkPart } from "./framework-content";
@@ -213,9 +214,9 @@ function measure(): FrameworkData {
   const situations = (Object.keys(SITUATIONS) as SituationCode[]).map((code) => ({
     code,
     name: SITUATIONS[code].name,
-    chars: SITUATIONS[code].guidance.length,
+    chars: situationText(code, null).length,
     // The opening of the text, for the page to quote.
-    opening: SITUATIONS[code].guidance.replace(/`/g, "").split(/(?<=[.!?])\s+/)[0]?.slice(0, 220) ?? "",
+    opening: situationText(code, null).replace(/`/g, "").split(/(?<=[.!?])\s+/).slice(0, 2).join(" ").slice(0, 220),
     origin: SITUATION_ORIGIN[code],
   }));
   return { agents: AGENTS.map((r) => frameworkAgent(r, tools)), situations, read: buildFrameworkRead() };

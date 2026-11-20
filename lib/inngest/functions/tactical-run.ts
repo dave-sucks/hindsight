@@ -46,6 +46,7 @@ import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
+import { sendNoViewWatch } from "@/lib/agent/thesis-writer-dispatch";
 import { answers, firedTrigger } from "@/lib/proposals/staged";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
 import { getLiveQuote } from "@/lib/market-data/live-quote";
@@ -252,6 +253,21 @@ export const tacticalRun = inngest.createFunction(
     const paused = agentConfig.enabled === false;
     if (paused && !(trigger.action === "EXIT" && position)) {
       return { skipped: "analyst-paused", thesisId: fired.thesisId, triggerId: trigger.id };
+    }
+
+    // A watch with no view has no case for a run to judge: its fire sends it
+    // to the Writer, and no agent is asked to.
+    if (thesis.direction == null && !position) {
+      const sent = await step.run("send-no-view-watch", async () =>
+        sendNoViewWatch({
+          thesisId: thesis.id,
+          ticker: thesis.ticker,
+          analyst: agentConfig,
+          reason: `Sent to research when its trigger fired: ${thesis.ticker} is on the watchlist with no view yet.`,
+          dispatchedBy: "no-view-watch-fire",
+        }),
+      );
+      return { skipped: "no-view-watch", thesisId: fired.thesisId, triggerId: trigger.id, ...sent };
     }
 
     // ── Suppress redundant close runs while an exit is already queued ────────

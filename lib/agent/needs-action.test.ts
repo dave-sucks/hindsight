@@ -44,7 +44,7 @@ const baseThesis = {
   id: "thesis-1",
   // Committed direction by default — the production caller always passes the
   // DB value (string | null, never undefined). Seed-specific tests override
-  // with direction: null / "PENDING" to exercise the pendingFirstReview path
+  // with direction: null: a watch with no view, which carries no flag
   // (P1-24 B4). A committed default keeps the generic REVIEW_DUE tests from
   // accidentally tripping the seed discriminator.
   direction: "LONG" as string | null,
@@ -373,50 +373,14 @@ describe("computeNeedsAction — REVIEW_DUE", () => {
     expect(result).toEqual({ kind: "REVIEW_DUE", daysOverdue: 4 });
   });
 
-  it("flags pendingFirstReview on a null-direction seed (P1-24 B4)", () => {
-    // An unresearched watchlist seed now stores direction=null and is minted
-    // with a cadence trigger + null lastReviewedAt (falls back to createdAt),
-    // so it surfaces as REVIEW_DUE within a cadence; the null-direction
-    // discriminator must set pendingFirstReview so the prompt routes it to
-    // the "commit a direction" path (exactly as legacy 'PENDING' did).
-    const result = leadOf({
-      thesis: {
-        ...baseThesis,
-        direction: null,
-        triggers: [CADENCE_7D],
-        lastReviewedAt: lookedAt(11),
-      },
-      activity: [],
-      latestQuote: null,
-      now,
-    });
-    expect(result).toEqual({
-      kind: "REVIEW_DUE",
-      daysOverdue: 4,
-      pendingFirstReview: true,
-    });
+  it("a watch with no view carries no flag when its clock comes due: code sends it to the Writer", () => {
+    const seed = { thesis: { ...baseThesis, status: "WATCHING", direction: null, triggers: [CADENCE_7D], lastReviewedAt: lookedAt(11) }, activity: [], latestQuote: null, now };
+    expect(computeNeedsAction(seed)).toEqual([]);
+    // The same watch with a view is due.
+    expect(leadOf({ ...seed, thesis: { ...seed.thesis, direction: "LONG" } })).toEqual({ kind: "REVIEW_DUE", daysOverdue: 4 });
   });
 
-  it("flags pendingFirstReview on a legacy 'PENDING' seed (dual-read window)", () => {
-    const result = leadOf({
-      thesis: {
-        ...baseThesis,
-        direction: null,
-        triggers: [CADENCE_7D],
-        lastReviewedAt: lookedAt(11),
-      },
-      activity: [],
-      latestQuote: null,
-      now,
-    });
-    expect(result).toEqual({
-      kind: "REVIEW_DUE",
-      daysOverdue: 4,
-      pendingFirstReview: true,
-    });
-  });
-
-  it("does NOT flag pendingFirstReview on a committed LONG that is REVIEW_DUE", () => {
+  it("a committed LONG that is REVIEW_DUE is the flag and its days", () => {
     const result = leadOf({
       thesis: {
         ...baseThesis,
