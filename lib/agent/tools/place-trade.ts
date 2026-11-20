@@ -361,7 +361,7 @@ export const placeTrade = defineTool({
           },
         });
         if (openCount >= ctx.maxOpenPositions) {
-          const blockedMsg = `Trade blocked: this analyst already has ${openCount} open position${openCount !== 1 ? "s" : ""}, at its ${ctx.maxOpenPositions}-slot cap. Close something first.`;
+          const blockedMsg = `Trade blocked: this analyst already has ${openCount} open position${openCount !== 1 ? "s" : ""}, which is its limit of ${ctx.maxOpenPositions}. Replacing a holding is the owner's decision: in your note on $${ticker}, name the holding it would replace and why this is the better use of the money, or say it waits for room.`;
           // The same block as always — plus one line where a person looks
           // (DAV-286: ISRG was blocked here twice with nothing on screen).
           if (!ctx.dryRun) {

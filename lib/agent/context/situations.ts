@@ -1,6 +1,6 @@
 /**
- * situations: the situations the stock is in and what each asks
- * (lib/agent/situations.ts), from the same read as its row. They end the
+ * situations: the situations the stock is in and what each asks (its skill,
+ * lib/agent/situation-skills.ts), from the same read as its row. They end the
  * instructions of the agent that answers them.
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";

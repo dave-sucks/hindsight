@@ -14,7 +14,7 @@ A field that can't be applied comes back by name in `refused_fields`, with the o
 
 - The thesis doesn't exist, or isn't yours.
 - The thesis is finished (passed or retired). A sold stock is the exception: it may go back on watch or get a note.
-- A stock with no view yet is saved without a `direction`. A morning run sends it to the [Writer](../agents/writer.md) instead.
+- A stock with no view yet is saved without a `direction`. Code sends it to the [Writer](../agents/writer.md) instead, when its review clock or one of its triggers comes due.
 - A stock with no view yet is committed without its triggers, or with triggers that don't check out.
 
 A save with nothing left to change still counts as a review: it writes one "reviewed" line and moves the review clock.

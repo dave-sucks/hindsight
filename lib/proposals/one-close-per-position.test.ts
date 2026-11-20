@@ -349,20 +349,17 @@ describe("DAV-282 — a sale sells only what is still held", () => {
     expect(mockPlaceMarketOrder.mock.calls[0][0]).toMatchObject({ qty: 350 });
   });
 
-  it("with approval on, a trim is created already waiting — a close approved while it is queued is not refused", async () => {
+  it("with approval on, a trim while a close waits for the owner is refused: the card is theirs, and it is still there to approve", async () => {
     db.orders.push(closeOrder(FLOOR_ORDER, "AWAITING_APPROVAL", FLOOR_RATIONALE));
-    let approval: Promise<unknown> = Promise.resolve();
-    db.onAccountRead = async () => {
-      approval = approveProposal(FLOOR_ORDER, ACCOUNT_ID);
-      await approval.catch(() => undefined);
-    };
 
-    await trim({ pct: 30 });
+    const result = await trim({ pct: 30 });
 
-    await expect(approval).resolves.toMatchObject({ ok: true, intent: "CLOSE" });
-    expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    expect(result.data).toMatchObject({ success: false, status: "FAILED" });
+    expect(String(result.data.message)).toContain("already waits for the owner. That card is theirs to answer");
     expect(mockClosePositionPartial).not.toHaveBeenCalled();
-    expect(db.orders.filter((o) => o.intent === "PARTIAL_CLOSE" && o.status === "AWAITING_APPROVAL")).toHaveLength(0);
+    expect(db.orders.filter((o) => o.intent === "PARTIAL_CLOSE")).toHaveLength(0);
+    await expect(approveProposal(FLOOR_ORDER, ACCOUNT_ID)).resolves.toMatchObject({ ok: true, intent: "CLOSE" });
+    expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
   });
 
   it("if Alpaca refuses an approved close, its twin is still there to approve", async () => {

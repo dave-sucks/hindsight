@@ -4,7 +4,7 @@
  * Situations, drawn as a book of dots. Every read, code works out which
  * stocks are in a situation; those light up, and only their situations'
  * instructions travel with the read, once each. The texts and their lengths
- * are the SITUATIONS table, measured on the server; the book is an example.
+ * are the skill files, measured on the server; the book is an example.
  */
 
 import { useEffect, useState } from "react";

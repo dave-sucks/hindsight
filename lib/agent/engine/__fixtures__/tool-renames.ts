@@ -6,6 +6,8 @@
  * builder's text as a documented move; nothing else in an instruction changed.
  */
 import { T1_TEXT } from "./t1-text";
+import { BUY_FIRED_BEFORE, SALE_FIRED_BEFORE } from "./situation-texts-before";
+import { situationText } from "@/lib/agent/situation-skills";
 export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["then write your review with update_thesis.", "then write your review with write_note."],
   ["then write your note with update_thesis.", "then write your note with write_note."],
@@ -84,14 +86,23 @@ export const LOOK_AGAIN_TEXT: ReadonlyArray<readonly [string, string]> = [
   ["`watch_stock` with its look-again, the price or the day.", "`watch_stock` with its look-again: the price, the next report or the event's date."],
 ];
 
+/** Situations as skills (2026-11-19): what an analyst may do on a holding and on a watch is said once, in the morning run's and the trigger run's own instructions. */
+export const WHAT_YOU_CAN_DO: ReadonlyArray<readonly [string, string]> = [
+  ["## How tools work\n\nTools enforce", "## What you can do\n\nA situation's text says what to find out and what can follow. What you may do is the same every time, and every trade is a proposal that waits for the owner.\n\n- On a stock we hold: propose a sale or a trim (`sell`), propose an add (`add`), change its triggers (`edit_triggers`), or leave it. You can raise a floor. Only the owner lowers one.\n- On a stock we watch: propose the buy (`place_trade`), change its triggers, put on one of its playbook's triggers by its reference, send it to the Writer for new research (`dispatch_thesis_research`), stop watching it (`stop_watching`), or leave it.\n- On a stock just sold: watch it again (`watch_again`) and set what brings it back, or let it go.\n\n## How tools work\n\nTools enforce"],
+  ["   - Then complete_run.\n\n## Hard constraints\n", "   - Then complete_run.\n\n## What you can do\n\nA situation's text says what to find out and what can follow. What you may do is the same every time, and every trade is a proposal that waits for the owner.\n\n- On a stock we hold: propose a sale or a trim (`sell`), propose an add (`add`), change its triggers (`edit_triggers`), or leave it. You can raise a floor. Only the owner lowers one.\n- On a stock we watch: propose the buy (`place_trade`), change its triggers, put on one of its playbook's triggers by its reference, send it to the Writer for new research (`dispatch_thesis_research`), or leave it. This run can't end a watch: where a situation says to stop watching, take the stock's buy and its Stop watching trigger off, say so in your note, and the morning run decides.\n\n## Hard constraints\n"],
+  // The two situations on the fixtures: each text is its skill, the part for its kind of stock.
+  [BUY_FIRED_BEFORE, situationText("BUY_ARRIVES", false)],
+  [SALE_FIRED_BEFORE, situationText("PROTECTIVE_SALE", true)],
+];
+
 /** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
 /** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }

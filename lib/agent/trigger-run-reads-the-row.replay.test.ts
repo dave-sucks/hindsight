@@ -20,7 +20,7 @@ import { stockFromRead } from "@/lib/agent/system-prompts/intraday-tactical";
 import { triggerRunSent } from "@/lib/agent/__fixtures__/trigger-run-sent";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
 import { getSetup } from "@/lib/agent/knowledge/setups";
-import { SITUATIONS } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -115,7 +115,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     shortRow(row, saved, [], ["position", "plan_checks", "would_prove_it_wrong", "snapshot", "conviction_rationale"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
-    expect(prompt).toContain(SITUATIONS.BUY_ARRIVES.guidance);
+    expect(prompt).toContain(situationText("BUY_ARRIVES", false));
     expect(prompt).toContain(`(trigger ${fx.docu.fire.triggerId}; declared action: `);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "DOCU");
@@ -135,7 +135,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     shortRow(row, saved, ["position", "would_prove_it_wrong"], ["street", "snapshot", "conviction_rationale", "variant_view"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
-    expect(prompt).toContain(SITUATIONS.PROTECTIVE_SALE.guidance);
+    expect(prompt).toContain(situationText("PROTECTIVE_SALE", true));
     expect(prompt).toContain(`(trigger ${fx.nvda.fire.triggerId}; declared action: `);
     for (const name of DELETED) expect([name, prompt.includes(name)]).toEqual([name, false]);
     saidOnce(prompt, "NVDA");

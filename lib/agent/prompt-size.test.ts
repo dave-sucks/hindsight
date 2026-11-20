@@ -32,7 +32,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −61, the analyst's fence prints only where it narrows (the three lines for an unfenced analyst changed three of six morning decisions).
   // 2026-11-18: +45, context read by subject: the book is in the first message (the analyst's get_theses read), so the first step reads it there and calls get_portfolio_context alone.
   // 2026-11-18: −3, the action tools one job each: the instructions name write_note where they named update_thesis.
-  daily: 9_455,
+  // 2026-11-19: +712, situations are skills: what an analyst may do on a holding, a watch and a stock just sold is said once, in the morning run's own instructions.
+  daily: 10_167,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -45,7 +46,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −61, the same.
   // 2026-11-18: +99, when the run sells or trims, it makes that call first and its note after (the note becomes the proposal's reason).
   // 2026-11-18: −145, the same: the trigger run's text and its situations name write_note, edit_triggers, sell and add.
-  tactical: 13_702,
+  // 2026-11-19: +10, the same section in the trigger run's instructions (+934), and the sample's sale text is its skill, the part for a holding (−924).
+  tactical: 13_712,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -115,7 +117,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +78 each, T2: place_trade's sell price is optional; left out, code prices the playbook's floor from the chart.
   // 2026-11-19: −2,157 each, send to the Writer takes the stock, a brief and a source link: code finds the thesis by the stock, and the Writer picks the playbook (−2,231 on the trigger run, whose stock is code's).
   // 2026-11-19: +1,230 each, edit_triggers says what each direction of `is` fires on, from the measure catalog.
-  "research-run": 29_687,
+  // 2026-11-19: +72 each, get_theses says the morning run's own list carries the situations' texts and every other read their names.
+  "research-run": 29_759,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
@@ -123,7 +126,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +78, the same place_trade.
   // 2026-11-19: −2,231, the same send, its stock code's.
   // 2026-11-19: +1,230, the same `is` words.
-  tactical: 24_928,
+  // 2026-11-19: +72, the same get_theses.
+  tactical: 25_000,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -149,7 +153,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: −11,010, record_thesis (and its copy of the trigger shape) off the chat, watch_stock (the stock, the reason, a look-again price or day) on it.
   // 2026-11-19: +1,230, the same `is` words.
   // 2026-11-19: +283, watch_stock's look-again is a price, the next report or the event's date.
-  principal: 45_537,
+  // 2026-11-19: +310, the same get_theses, and read_knowledge_library lists the situations (topic "situation").
+  principal: 45_847,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

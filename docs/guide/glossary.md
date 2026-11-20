@@ -23,7 +23,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.
 - **Verdict:** how a review leaves the thesis: stronger, unchanged, weaker or broken, with one line on what moved it.
 - **Plan:** not a thing. A stock has its triggers and nothing else; "the buy" and "the floor" are names for kinds of trigger.
-- **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It's due its first research on its review clock.
+- **Seed:** a stock put on the watchlist with no view yet, by you or the analyst builder. It has no case to review, so when its review clock or one of its triggers comes due, code sends it to the Writer.
 - **Wake:** a review trigger on a watch with no buy, like a price or a date, that brings the stock back for a fresh look.
 - **Watching:** on the watchlist, waiting for its buy.
 - **Agent Watch:** a watch with its own review clock, so its analyst looks at it on a schedule. A plain watch waits for its triggers.
@@ -72,7 +72,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 ## What an agent reads
 
 - **The read:** an agent's view of its book from `get_theses`. Each stock is sent at the size today needs: a **line** for a quiet stock, a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
-- **Situation:** a reason a stock needs an answer today, worked out fresh on every read and never stored. There are eight: one per trigger action (sale, buy, add, review) and four the code finds with no trigger. See [Situations](concepts/situations.md).
+- **Situation:** why a stock is in front of its analyst today, worked out fresh on every read and never stored. Three kinds: a trigger written in advance fired (a sale or trim, a buy, an add), something happened (a report, a filing, news), or it is time to look again (a review, a floor to fix, a stock just sold). Each has one short skill. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and playbooks, written once and given to every agent.
 - **House rules:** the sentences every agent gets, whatever its job: your word comes first, a note is information, and how to write.

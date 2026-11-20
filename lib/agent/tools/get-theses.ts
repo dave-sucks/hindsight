@@ -33,7 +33,8 @@ import { chartFacts } from "@/lib/market-data/indicator-snapshot";
 import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { guidanceCodes, guidanceFor, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
+import { guidanceCodes, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
+import { guidanceFor } from "@/lib/agent/situation-skills";
 import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
 import { monthAgoStreetRows, newestStreetRows } from "@/lib/market-data/street-consensus-store";
@@ -113,7 +114,7 @@ const schema = z.object({
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). `guidance` says once per read what each situation asks. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its newest 8 Activity lines as the owner sees them (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -136,7 +137,7 @@ export const getTheses = defineTool({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { cards, ...rest } = data;
     if (isManagerRun(ctx)) {
-      // The same rows by the comparing rule (COMPARING_FIELDS), a holding and a watch alike. No situation text: its job is its own.
+      // The same rows by the comparing rule (COMPARING_FIELDS), a holding and a watch alike, each situation by its name: the stock's analyst answers it.
       const rows = Array.isArray(rest.theses) ? (rest.theses as Array<Record<string, unknown>>) : [];
       const note = (rest.manager as { note?: string } | undefined)?.note;
       return { ...result, data: { theses: rows.map((r) => rowForModel(r, { named: false, size: "short", comparing: true })), ...(note ? { note } : {}) } };
@@ -144,28 +145,29 @@ export const getTheses = defineTool({
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
     // The one builder (lib/agent/row-for-model.ts): each listed row with the
-    // fields its situations call for, each quiet row as one line. The guidance
-    // is read off the rows' situations here, so a recorded read replays with
-    // it (scripts/hero-case.ts) the way a live one carries it.
+    // fields its situations call for, each quiet row as one line.
     const rows = rest.theses as Array<Record<string, unknown>>;
     const theses = rows.map((row) => rowForModel(row, { named, size: sizeFor(row, named) }));
     const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
-    // Worded for the run that reads it: the trigger run's save has no status
-    // change, so its texts take the triggers off by id instead (step 12, part 2).
-    const guidance = guidanceFor(
-      [
-        ...rows.flatMap((r) => guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : [], ctx.runMode)),
-        ...sold.flatMap((x) => x.situations ?? []).filter((c) => guidanceCodes("RETIRED", [c], ctx.runMode).length > 0),
-      ],
-      ctx.runMode,
-    );
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { guidance: _screenGuidance, left_out: leftOut, ...restWithoutGuidance } = rest;
+    // What each situation asks goes to the run that answers the list, the
+    // morning run on its own read; a read by ticker and every other reader
+    // get each situation's name, on the row. One text per code: the part for
+    // a stock we hold, for one we watch, or both when the list has both.
+    const guidance =
+      !named && ctx.runMode === "MORNING_PLAN"
+        ? guidanceFor([
+            ...rows.flatMap((r) =>
+              guidanceCodes(String(r.status), Array.isArray(r.situations) ? (r.situations as SituationCode[]) : []).map((code) => ({ code, held: r.status === "HOLDING" })),
+            ),
+            ...sold.flatMap((x) => x.situations ?? []).map((code) => ({ code, held: false })),
+          ])
+        : {};
+    const { left_out: leftOut, ...restOfRead } = rest;
     return {
       ...result,
       data: {
-        ...restWithoutGuidance,
+        ...restOfRead,
         ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
         theses,
         ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
@@ -554,8 +556,7 @@ export const getTheses = defineTool({
         triggerCount,
         history: historyByThesis.get(t.id) ?? [],
         needsAction: needsActionByThesisId.get(t.id) ?? null,
-        // Every situation the stock is in, the lead's first; `guidance` on
-        // the result says what each asks.
+        // Every situation the stock is in, the lead's first.
         situations: situationsOf(t.id),
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
@@ -804,14 +805,6 @@ export const getTheses = defineTool({
         ? `${summary} ${soldToReview.length} recently sold stock${soldToReview.length === 1 ? "" : "s"} (${soldToReview.map((x) => `$${x.ticker}`).join(", ")}) still need${soldToReview.length === 1 ? "s" : ""} a keep-watching-or-let-it-go decision.`
         : summary);
 
-    // What each situation on the work list asks, once per read, in rank
-    // order (lib/agent/situations.ts). A promoted stock calls for the
-    // promotion's text alone; quiet rows are not today's work.
-    const guidance = guidanceFor([
-      ...fullTheses.flatMap((t) => guidanceCodes(t.status, situationsOf(t.id), ctx.runMode)),
-      ...soldToReview.flatMap((x) => x.situations),
-    ]);
-
     return {
       summary: summaryWithSold,
       data: {
@@ -820,7 +813,6 @@ export const getTheses = defineTool({
         count: theses.length,
         active: activeCount,
         watching: watchingCount,
-        ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
         // The notes every run reads once, at the top: the account's and the
         // analyst's, while they last (lib/agent/shared-notes.ts).
         ...(facts.runNotes.length > 0 ? { notes: facts.runNotes.map((n) => runNoteLine(n, analystNames.get(n.analystId ?? "") ?? null)) } : {}),

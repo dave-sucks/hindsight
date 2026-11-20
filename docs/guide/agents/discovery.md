@@ -70,7 +70,7 @@ For each stock that survives, the chat says in a sentence or two what is changin
 
 The Writer researches each stock it was sent and puts it on the watchlist with its playbook's watch triggers: a buy and the line that ends the watch. From there the [trigger](../concepts/triggers.md) check watches the buy all day, [morning runs](morning-runs.md) review it, and a buy happens only when the trigger fires and a [trigger run](trigger-runs.md) agrees, with your [approval](../concepts/approvals.md) on the live account.
 
-A watch sleeps until its wake-up comes true. Then the stock is in the "review due" [situation](../concepts/situations.md), whose paragraph on a watch with no view asks the next morning run whether to bring it back.
+A watch sleeps until its wake-up comes true. It has no view yet, so it is in no [situation](../concepts/situations.md): code sends it to [the Writer](writer.md), which researches it and commits a view or passes.
 
 The Writer runs it started land on their own; `wait_for_thesis_refresh` brings them back into the conversation.
 

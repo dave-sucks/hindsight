@@ -23,7 +23,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **The live price:** `lib/market-data/live-quote.ts`, Alpaca first and Finnhub behind it. How old a price is: `lib/market-data/quote-age.ts`.
 - **The facts about a stock:** `loadStockFacts` in `lib/agent/stock-facts.ts`, fed by `loadWorkInputs` in `lib/agent/work-inputs.ts`. The read, the thesis sheet, the quote route and a run's close-out all use them.
 - **What a stock needs today:** `computeNeedsAction` in `lib/agent/needs-action.ts`, turned into situations by `situationsFor` in `lib/agent/situations.ts`.
-- **What an agent is told in a situation:** `SITUATIONS` in `lib/agent/situations.ts`. Never a prompt.
+- **What an agent is told in a situation:** its skill file in `lib/agent/engine/skills/`, named in `SITUATIONS` (`lib/agent/situations.ts`). Never a prompt, and no code writes a word of it.
 - **A stock's row in the read:** `lib/agent/row-for-model.ts`, at one of three sizes.
 - **The analyst's brief:** `analystBrief` in `lib/agent/analyst-brief.ts`.
 - **The rules every agent shares:** `lib/agent/engine/agents/rules.md`, the house rules then how it writes, which each agent's own markdown file there imports (`@rules.md`).

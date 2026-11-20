@@ -92,27 +92,24 @@ async function morningRead(rows: Record<string, Row[]>, c: Case) {
     replayTool("get-theses", "getTheses", { seed: rows, args: { detail: "actionable" }, ctx: ctxOf(c), quotes: { [ticker]: c.price } }),
   );
   if (crashed) throw new Error(`get_theses crashed: ${JSON.stringify(result).slice(0, 2000)}`);
-  const screen = result.data as { theses?: Row[]; quiet_theses?: Row[]; guidance?: Record<string, string> };
+  const screen = result.data as { theses?: Row[]; quiet_theses?: Row[] };
   const row = screen.theses?.find((r) => r.ticker === ticker) ?? null;
   const quiet = screen.quiet_theses?.find((r) => r.ticker === ticker) ?? null;
   return {
     row,
     quiet,
     modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
-    guidance: screen.guidance ?? {},
   };
 }
 
 describe.each(CASES)("%s at the 11-16 morning read: a sale card waits, and a high note is pinned on the stock", (ticker, c) => {
   it("is listed in a note to answer, and the row says the sale card waits", async () => {
-    const { row, quiet, modelRow, guidance } = await morningRead(seed(c), c);
+    const { row, quiet, modelRow } = await morningRead(seed(c), c);
 
     expect(quiet).toBeNull();
     expect(row).not.toBeNull();
     expect(row?.situations).toEqual(["NOTE_TO_ANSWER"]);
-    // The text an agent is sent for it travels with the read.
-    expect(Object.keys(guidance)).toEqual(["NOTE_TO_ANSWER"]);
-    // The row says the card waits: the run answers with a note or an edit, not a second sale.
+    // The row says the card waits, and the sell tool refuses a second sale (sell.sale-waits.test.ts).
     expect(modelRow?.proposal_waiting).toMatch(/^sell 10 sh, placed 11-13 09:\d\d ET$/);
     expect(String(row?.context)).toContain("Agent note to NVDA, MU");
   });
@@ -190,6 +187,27 @@ describe("complete_run owes the stocks the read lists, a sale card waiting or no
 
     expect(message).toBe("");
     expect(status).toBe("COMPLETE");
+  });
+});
+
+describe("a sale that already waits is a refusal: the sell tool says the card is the owner's to answer", () => {
+  const sellNow = (c: Case, args: Row, card = true) =>
+    at(fx.at, () => replayTool("sell", "sell", { seed: seed(c, { card }), args: { ticker: c.thesis.ticker, ...args }, ctx: ctxOf(c), quotes: { [c.thesis.ticker]: c.price } }));
+
+  it.each(CASES)("%s: a second sale, whole or part, is refused while the card waits, and no order is written or sent", async (ticker, c) => {
+    for (const args of [{ belief_survived: true }, { percent: 50 }]) {
+      const { result, sends, db } = await sellNow(c, args);
+      const data = result.data as { success?: boolean; status?: string; message?: string };
+      expect([data.success, data.status]).toEqual([false, "FAILED"]);
+      expect(data.message).toBe("A sale of 10 $" + ticker + " shares already waits for the owner. That card is theirs to answer: approve, edit or decline it. Say what you found in your note, or raise the sale's price with edit_triggers.");
+      expect(sends).toEqual([]);
+      expect(db.store.order).toHaveLength(1);
+    }
+  });
+
+  it.each(CASES)("%s: with no card waiting, the sale is not refused for one", async (_ticker, c) => {
+    const { result } = await sellNow(c, { belief_survived: true }, false);
+    expect(JSON.stringify(result)).not.toContain("already waits for the owner");
   });
 });
 

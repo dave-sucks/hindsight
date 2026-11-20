@@ -162,6 +162,6 @@ describe("the tab's numbers", () => {
       { days: 7, analystId: null, since: at("2026-11-06T00:00:00Z"), now: at("2026-11-13T00:00:00Z") },
     );
     const shown = Object.fromEntries(merged.situations.codes.map((c) => [c.code, c.shown]));
-    expect(shown).toMatchObject({ NOTE_TO_ANSWER: 1, REVIEW_DUE: 1, BUY_ARRIVES: 0 });
+    expect(shown).toMatchObject({ NOTE_TO_ANSWER: 1, REPORT: 1, REVIEW_DUE: 0, BUY_ARRIVES: 0 });
   });
 });

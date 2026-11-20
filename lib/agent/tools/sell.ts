@@ -20,6 +20,7 @@ import { getAccount } from "@/lib/alpaca";
 import { getStockQuote } from "@/lib/actions/finnhub.actions";
 import { recordProposalRunEvent } from "@/lib/proposals/maybe-await-approval";
 import { answers } from "@/lib/proposals/staged";
+import { notExpired } from "@/lib/proposals/position-lock";
 import { changePosition } from "@/lib/agent/tools/manage-position";
 
 const schema = z.object({
@@ -58,6 +59,25 @@ export const sell = defineTool({
     const ticker = args.ticker.toUpperCase().trim();
     // Left out on a run a trim woke, the part is that trim's size (as manage_position's was).
     const part = args.percent ?? (ctx.firedTrim?.ticker === ticker ? ctx.firedTrim.pct : 100);
+    // A sale that already waits for the owner is theirs to answer: a second one, whole or part, is refused.
+    const openPositions = await prisma.position.findMany({
+      where: { userId: ctx.userId, symbol: ticker, status: "OPEN", environment: ctx.runEnvironment ?? "PAPER", ...(ctx.analystId ? { analystId: ctx.analystId } : {}) },
+      select: { id: true },
+    });
+    const waits = openPositions.length
+      ? await prisma.order.findFirst({
+          where: { positionId: { in: openPositions.map((p) => p.id) }, status: "AWAITING_APPROVAL", intent: { in: ["CLOSE", "PARTIAL_CLOSE"] }, ...notExpired(new Date()) },
+          select: { quantity: true, intent: true },
+        })
+      : null;
+    if (waits) {
+      const msg = `A ${waits.intent === "PARTIAL_CLOSE" ? "trim" : "sale"} of ${waits.quantity} $${ticker} share${waits.quantity === 1 ? "" : "s"} already waits for the owner. That card is theirs to answer: approve, edit or decline it. Say what you found in your note, or raise the sale's price with edit_triggers.`;
+      return {
+        summary: `$${ticker}: a sale already waits for the owner`,
+        data: { success: false, ticker, status: "FAILED" as const, message: msg, tickers: [{ ticker, tag: "Waiting", summary: msg, actionIcon: "failed" }] },
+        sources: [],
+      };
+    }
     if (part < 100) return changePosition({ symbol: ticker, action: "partial_close", close_pct: part, reason: args.note }, ctx);
     // The label: the protective trigger's that woke this run, else the model's belief call (DAV-192).
     const declared: DeclaredCloseReason = ctx.protectiveExitReason ?? (args.belief_survived === false ? "THESIS_INVALIDATED" : "MANUAL");

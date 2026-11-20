@@ -50,7 +50,7 @@ When you type. With an [analyst](../concepts/analysts.md) selected, chat works f
 
 - **Your portfolio, on every message:** the Market and portfolio reads ride on your newest message: the [market numbers](market-reviewer.md#the-market-numbers), the latest 7:30 [market digest](market-reviewer.md), the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (the numbers and the snapshot both written by code for that message), and the latest 8 PM [digest](portfolio-digest.md).
 - **Pinned to an analyst:** the analyst ends its instructions (its strategy, its rules, the stocks it may cover, its playbooks a line each), and the analyst's book rides on each message: every stock it holds and watches, a line each with its belief. At the portfolio level, each analyst's room rides on each message instead.
-- **Your book:** `get_theses` and `get_portfolio_context`, the stocks, positions and cash.
+- **Your book:** `get_theses` and `get_portfolio_context`, the stocks, positions and cash. A stock in a [situation](../concepts/situations.md) says so by name on its row; when you ask chat to act on one, it reads that situation's skill from the knowledge library first.
 - **Your queue:** `list_proposals`, what's waiting for you, each with its reason and time left.
 - **The record:** `list_runs`, `read_run` and `read_trade_results`, what the analysts did and how their trades turned out.
 - **Research:** the market data, filings, earnings and the web, the same tools as every other agent.

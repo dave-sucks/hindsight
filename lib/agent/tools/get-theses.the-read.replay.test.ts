@@ -17,6 +17,7 @@
  * Through the real get_theses execute and its real model-output hook.
  */
 import { replayTool, thesisRow, thesisUpdateRow, positionRow } from "@/lib/replay";
+import { situationText } from "@/lib/agent/situation-skills";
 
 const snapshot = { text: "Nuclear baseload under long contracts; a clean uptrend, score 8.", citations: [] };
 const bull = { bullets: [{ text: "Hyperscaler power deals reprice the fleet." }] };
@@ -84,14 +85,13 @@ async function read(args: Record<string, unknown>) {
     quotes: { SYK: 273, CEG: 280 },
   });
   const { getTheses } = await import("@/lib/agent/tools/get-theses");
-  const tool = getTheses({ runId: "r", userId: "u", analystId: "a" } as never) as unknown as {
-    toModelOutput: (o: { toolCallId: string; input: unknown; output: unknown }) => { value: { data: Record<string, unknown> } };
-  };
-  const model = tool.toModelOutput({ toolCallId: "c1", input: args, output: result }).value.data;
+  type ForModel = { toModelOutput: (o: { toolCallId: string; input: unknown; output: unknown }) => { value: { data: Record<string, unknown> } } };
+  const as = (runMode: string) => (getTheses({ runId: "r", userId: "u", analystId: "a", runMode } as never) as unknown as ForModel).toModelOutput({ toolCallId: "c1", input: args, output: result }).value.data;
+  const model = as("MORNING_PLAN");
   const screen = result.data as Record<string, unknown>;
   // The screen's row has a ticker; the model's row opens with its stock line.
   const row = (d: Record<string, unknown>) => ((d.theses as Array<Record<string, unknown>>) ?? []).find((t) => t.ticker === "SYK" || String(t.stock ?? "").startsWith("SYK ·")) as Record<string, unknown>;
-  return { model, screen, modelRow: row(model), screenRow: row(screen) };
+  return { model, screen, modelRow: row(model), screenRow: row(screen), as };
 }
 
 describe("get_theses — the read", () => {
@@ -128,12 +128,25 @@ describe("get_theses — the read", () => {
     expect(String(modelRow.research)).toMatch(/at \$348\.00/);
   });
 
-  it("the guidance arrives with the rows, read off their situations", async () => {
+  it("the morning run's own list carries what each situation asks: its skill, the part for a stock we watch", async () => {
     const { model, screenRow } = await read({});
     const sent = Object.keys(model.guidance as Record<string, string>);
     expect(sent).toContain("REVIEW_DUE");
     for (const code of sent) expect(screenRow.situations).toContain(code);
     expect(sent).toHaveLength((screenRow.situations as string[]).length);
+    expect((model.guidance as Record<string, string>).REVIEW_DUE).toBe(situationText("REVIEW_DUE", false));
+  });
+
+  it("every other reader gets the situation's name on the row and no text: a read by ticker, the chat, a trigger run's own read", async () => {
+    const byTicker = await read({ tickers: ["SYK"] });
+    expect(byTicker.model.guidance).toBeUndefined();
+    expect(byTicker.modelRow.situations).toContain("REVIEW_DUE (review due)");
+    const list = await read({});
+    for (const runMode of ["PRINCIPAL_CHAT", "INTRADAY_TACTICAL", "DISCOVERY"]) {
+      const data = list.as(runMode);
+      expect([runMode, data.guidance]).toEqual([runMode, undefined]);
+      expect(JSON.stringify(data.theses)).toContain("REVIEW_DUE (review due)");
+    }
   });
 
   it("the screen still gets the whole row", async () => {

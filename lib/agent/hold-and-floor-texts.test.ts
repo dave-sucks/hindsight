@@ -13,7 +13,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 
 import { SAMPLE_PROMPTS } from "@/lib/agent/__fixtures__/sample-prompts";
-import { SITUATIONS } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 import { MODES } from "@/lib/agent/modes";
 import { editTriggers } from "@/lib/agent/tools/edit-triggers";
 
@@ -36,12 +36,12 @@ it("edit_triggers says only the principal moves a safety line down, with no exce
       "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
     );
   }
-  expect(SITUATIONS.PROTECTIVE_SALE.guidance).not.toMatch(/come down|re-draw/);
+  expect(situationText("PROTECTIVE_SALE", true)).not.toMatch(/come down|re-draw/);
 });
 
-it("REVIEW_DUE, which reaches stocks we hold in both runs, retires only a stock we watch", () => {
-  expect(SITUATIONS.REVIEW_DUE.guidance).toContain(
-    "- No longer applicable: stop_watching on a stock we watch; a stock we hold is sold with sell, which retires the thesis.",
-  );
+it("the review, which reaches stocks we hold in both runs, ends only a watch: a holding whose case broke is a proposed sale", () => {
+  expect(situationText("REVIEW_DUE", false)).toContain("The case no longer holds: stop watching.");
+  expect(situationText("REVIEW_DUE", true)).not.toContain("stop watching");
+  expect(situationText("REVIEW_DUE", true)).toContain("A line proved the case wrong: propose the sale.");
 });
 

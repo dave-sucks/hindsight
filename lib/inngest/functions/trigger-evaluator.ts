@@ -915,7 +915,8 @@ export const triggerEvaluator = inngest.createFunction(
 
           // On fire "Flag for Review": write the TRIGGER_FIRED row (with the price that fired it) and
           // start no run; the morning run answers it.
-          if (waitsForMorning(t, sameDayLook(t))) {
+          // A watch with no view never waits for a morning run: its fire goes to the Writer (tactical-run.ts).
+          if (waitsForMorning(t, sameDayLook(t)) && !(thesis.status === "WATCHING" && thesis.direction == null)) {
             await writeThesisUpdate({
               thesisId: thesis.id,
               type: "TRIGGER_FIRED",

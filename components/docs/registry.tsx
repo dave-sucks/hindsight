@@ -82,7 +82,7 @@ export const DOCS: readonly DocMeta[] = [
   { slug: "sizing-and-limits", title: "Sizing and limits", group: "Deep dives", icon: Layers, blurb: "How big a trade is: risk to the floor, conviction, the market, the analyst's band and slots." },
   { slug: "proposal-to-fill", title: "From proposal to fill", group: "Deep dives", icon: CheckCircle2, blurb: "A trade's life from the agent's call through approval, the broker and the fill." },
   { slug: "trigger-fire-to-run", title: "From fire to run", group: "Deep dives", icon: Zap, blurb: "The five-minute check, what fires, and where each fire goes." },
-  { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "All eight situations: each code, what it means and the exact text an agent is sent." },
+  { slug: "situations-library", title: "Situations library", group: "Reference", icon: Flag, blurb: "Every situation: each code, what it means and the exact text an agent is sent." },
   { slug: "trigger-measures", title: "Trigger measures", group: "Reference", icon: Zap, blurb: "Every condition a trigger can watch, its numbers, variables and settings, and the shape it's saved in." },
   { slug: "setups", title: "Setups", group: "Reference", icon: BookOpen, blurb: "Every playbook: what must be true first, the triggers each writes, and when it has failed." },
 ];

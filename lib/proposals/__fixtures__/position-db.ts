@@ -76,6 +76,7 @@ const positionModel = {
     const hit = [...db.positions.values()].find((p) => matches(p, where));
     return hit ? { ...hit, analyst: { name: "Secular Compounder" } } : null;
   },
+  findMany: async ({ where }: { where: Row }) => [...db.positions.values()].filter((p) => matches(p, where)).map((p) => ({ ...p })),
   update: async ({ where, data }: { where: { id: string }; data: Row }) => {
     const row = db.positions.get(where.id)!;
     for (const [key, value] of Object.entries(data)) {

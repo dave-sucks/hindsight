@@ -39,9 +39,8 @@ export function sizeFor(_row: Row, named: boolean): RowSize {
 /**
  * When a row key is sent (the owner's grid, 2026-11-06):
  *   "always" — on every row in a situation;
- *   a list of situations — only when the stock is in one of them (each one's
- *   guidance in situations.ts names the key; row-for-model.by-situation.test.ts
- *   holds the two together);
+ *   a list of situations — only when the stock is in one of them (the fields
+ *   that situation's decision reads);
  *   "review" — only when the review clock came due (REVIEW_DUE), which reads
  *   the whole case;
  *   "named" — only when the stock is asked for by name.
@@ -72,8 +71,9 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
   street: ["BUY_ARRIVES", "ADD_OR_WINNER"],
   setup: ["BUY_ARRIVES"],
   playbook_checks: ["BUY_ARRIVES"],
-  assumptions: "review",
-  would_prove_it_wrong: ["PROTECTIVE_SALE"],
+  // Something happened: the question is which line of the case it touches.
+  assumptions: ["REPORT", "FILING", "NEWS"],
+  would_prove_it_wrong: ["PROTECTIVE_SALE", "REPORT", "FILING", "NEWS"],
   catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER"],
   paper_record: ["PROMOTED_AWAITING"],
   // The whole case: the review clock, and a named read.
@@ -90,12 +90,13 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
 /**
  * The fields a stock is sent with when it is being compared with other stocks
  * as a use of the account's money (the Portfolio Manager's get_theses): the
- * same for a holding and a watch. `said` is its newest INSIGHTS_COMPARED
+ * same for a holding and a watch, each with the names of the situations it is
+ * in. `said` is its newest INSIGHTS_COMPARED
  * Activity lines with a written paragraph; a watch carries `playbook_checks`
  * (the triggers that come with the buy) where a holding carries `setup`.
  */
 export const COMPARING_FIELDS: readonly string[] = [
-  "stock", "id", "analyst", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
+  "stock", "id", "analyst", "situations", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
   "triggers", "said", "street", "catalyst", "chart", "setup", "playbook_checks", "research",
 ];
 export const INSIGHTS_COMPARED = 3;

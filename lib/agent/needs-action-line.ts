@@ -42,11 +42,7 @@ export function needsActionFlag(na: NeedsAction): NeedsActionFlag {
     case "REVIEW_DUE":
       return {
         name: "Review due",
-        detail: na.pendingFirstReview
-          ? "never researched"
-          : na.daysOverdue > 0
-            ? `${na.daysOverdue} day${na.daysOverdue === 1 ? "" : "s"} overdue`
-            : null,
+        detail: na.daysOverdue > 0 ? `${na.daysOverdue} day${na.daysOverdue === 1 ? "" : "s"} overdue` : null,
       };
     case "SALE_DECLINED": {
       // A lapse is not a decline (2026-10-13): a sale only left to lapse says so.

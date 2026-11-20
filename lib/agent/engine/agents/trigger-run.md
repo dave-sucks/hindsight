@@ -33,6 +33,13 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
    - When the row's `said` lists the principal's decisions or other triggers fired since the last answer, your note answers what each asks (an earnings date coming, a gain to reassess, a drop to explain) inside the story of the stock, not as a list of the triggers.
    - Then complete_run.
 
+## What you can do
+
+A situation's text says what to find out and what can follow. What you may do is the same every time, and every trade is a proposal that waits for the owner.
+
+- On a stock we hold: propose a sale or a trim (`sell`), propose an add (`add`), change its triggers (`edit_triggers`), or leave it. You can raise a floor. Only the owner lowers one.
+- On a stock we watch: propose the buy (`place_trade`), change its triggers, put on one of its playbook's triggers by its reference, send it to the Writer for new research (`dispatch_thesis_research`), or leave it. This run can't end a watch: where a situation says to stop watching, take the stock's buy and its Stop watching trigger off, say so in your note, and the morning run decides.
+
 ## Hard constraints
 
 - 15 step max. Be ruthlessly concise.

@@ -9,6 +9,7 @@
 import fixture from "@/lib/agent/__fixtures__/short-row-ceg-2026-09-25.json";
 import { ROW_FIELDS, REVIEW_SITUATION, rowForModel, rowKeysFor } from "@/lib/agent/row-for-model";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
+import { situationText } from "@/lib/agent/situation-skills";
 
 type Row = Record<string, unknown>;
 const CODES = Object.keys(SITUATIONS) as SituationCode[];
@@ -18,35 +19,33 @@ const REVIEW = Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] === "review")
 const NAMED = Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] === "named");
 
 describe("the keys a situation's row sends", () => {
-  it("every key a situation's guidance names in backticks is sent with that situation", () => {
-    const keys = new Set(Object.keys(ROW_FIELDS));
-    for (const code of CODES) {
-      const named = [...SITUATIONS[code].guidance.matchAll(/`([A-Za-z_]+)(?:\.[A-Za-z_]+)?`/g)].map((m) => m[1]).filter((k) => keys.has(k));
-      const sent = rowKeysFor([code], { size: "short", named: false });
-      for (const k of named) expect([code, k, sent.has(k)]).toEqual([code, k, true]);
-    }
-  });
-  // The buy text named the variant view in plain words and the backtick scan
-  // missed it (the review of 2026-11-10), so the plain names a text uses for
-  // a conditional key are held to the row too.
+  // A skill names no field, so what its row carries is held to the words it uses.
   const PLAIN_NAMES: ReadonlyArray<[RegExp, string]> = [
     [/variant view|where we differ from the street/i, "variant_view"],
     [/\bassumptions?\b/i, "assumptions"],
     [/prove (?:it|us|the view) wrong/i, "would_prove_it_wrong"],
     [/the street|average target|price target/i, "street"],
-    [/chart numbers|the chart's/i, "chart"],
     [/\bbull case\b/i, "bull_case"],
     [/\bbear case\b/i, "bear_case"],
     [/company line/i, "company"],
     [/paper record/i, "paper_record"],
+    [/playbook's checks/i, "playbook_checks"],
+    [/failure signs/i, "setup"],
   ];
-  it("every conditional key a situation's guidance names in plain words is sent with that situation", () => {
+  it("every conditional key a situation's text names in plain words is sent with that situation", () => {
     for (const code of CODES) {
       const sent = rowKeysFor([code], { size: "short", named: false });
       for (const [re, k] of PLAIN_NAMES) {
-        if (!re.test(SITUATIONS[code].guidance)) continue;
+        if (!re.test(situationText(code, null))) continue;
         expect([code, k, sent.has(k)]).toEqual([code, k, true]);
       }
+    }
+  });
+  it("a report, a filing and news read the assumptions and what would prove the case wrong, and nothing else of the whole case", () => {
+    for (const code of ["REPORT", "FILING", "NEWS"] as const) {
+      const sent = rowKeysFor([code], { size: "short", named: false });
+      for (const k of ["assumptions", "would_prove_it_wrong"]) expect([code, k, sent.has(k)]).toEqual([code, k, true]);
+      for (const k of ["bull_case", "bear_case", "snapshot", "street"]) expect([code, k, sent.has(k)]).toEqual([code, k, false]);
     }
   });
   it("the standing fields go on every row; the whole case only on the review clock; the sections and history only by name", () => {

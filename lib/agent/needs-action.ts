@@ -82,7 +82,6 @@
 
 import { conditionHolds, shouldFire, type EvaluationContext } from "@/lib/agent/triggers/evaluate";
 import { isMarketOpen } from "@/lib/market-hours";
-import { isUnresearchedSeed } from "@/lib/agent/thesis-direction";
 import { computeLadderHealth } from "@/lib/agent/ladder-health";
 import { floorTooFar, type FloorStructure } from "@/lib/agent/floor-risk";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -213,12 +212,6 @@ export type NeedsAction =
   | {
       kind: "REVIEW_DUE";
       daysOverdue: number;
-      /**
-       * True when this is a PENDING thesis's first review — user/builder/
-       * editor seeded the ticker and the agent hasn't researched it yet.
-       * UI renders "Awaiting first research" instead of "Review overdue."
-       */
-      pendingFirstReview?: boolean;
     };
 
 // ─── Predicate-side filters ──────────────────────────────────────────────────
@@ -242,12 +235,7 @@ function isPriceOrTimePredicate(p: When): boolean {
 export interface NeedsActionInput {
   thesis: {
     id: string;
-    /**
-     * Direction is needed so unresearched seeds (user/builder/editor adds
-     * awaiting first research) surface as REVIEW_DUE with the
-     * `pendingFirstReview` discriminator. P1-24 B4: a seed is direction=null
-     * (new) or 'PENDING' (legacy) — both must set pendingFirstReview.
-     */
+    /** Null on a watch with no view yet: it carries no flag (the Writer gets it). */
     direction?: string | null;
     /**
      * Status drives PROMOTED_AWAITING_RESOLUTION at top precedence —
@@ -383,6 +371,10 @@ export function computeNeedsAction(
   input: NeedsActionInput,
 ): NeedsAction[] {
   const { thesis, latestQuote, now, hasPendingEntryProposal, hasPendingSaleProposal } = input;
+  // A watch with no view has no case to review, so it is nobody's work: when
+  // its clock or a trigger comes due, code sends it to the Writer
+  // (sendNoViewWatch, lib/agent/thesis-writer-dispatch.ts).
+  if (thesis.status === "WATCHING" && thesis.direction === null) return [];
   // A card waiting for the principal already makes its move, and that move is
   // theirs to answer: a buy's ENTER (P1-25 Change 4), a sale's EXIT or TRIM. The
   // fire that proposed it, or the price still past its line, asks nothing more
@@ -625,11 +617,6 @@ export function computeNeedsAction(
   //    agent catches it upfront. See lib/agent/triggers/defaults.ts
   //    header comment for the matching half (old review-date removed
   //    from watching defaults).
-  //
-  //    Special case: unresearched seeds (user/builder/editor adds, direction
-  //    null or legacy 'PENDING') carry a 7-day cadence trigger from mint and
-  //    a null lastReviewedAt (falls back to createdAt), so they surface as
-  //    REVIEW_DUE within a week with the pendingFirstReview discriminator.
   // The cadence trigger on the resolved ladder is the authority — "review
   // every N days", counted from the last actual review. It used to be a date
   // column the agent set by hand, which was a second store of the same idea
@@ -645,10 +632,7 @@ export function computeNeedsAction(
   let due: NeedsAction | null = null;
   const clock = reviewDue(thesis, now);
   if (clock) {
-    const result: NeedsAction = { kind: "REVIEW_DUE", daysOverdue: clock.daysOverdue };
-    // A seed has no committed view yet — route it to "commit a direction".
-    if (isUnresearchedSeed(thesis.direction)) result.pendingFirstReview = true;
-    due = result;
+    due = { kind: "REVIEW_DUE", daysOverdue: clock.daysOverdue };
   }
 
   // The lead, by the precedence above: a promoted stock; a declined sale; a

@@ -36,7 +36,7 @@ The market is an input, never a gate. Every buy tells the agent the reading, and
 
 ## Slots
 
-Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity, and the stock's "buy level reached" [situation](../concepts/situations.md) reads its paragraph on a full analyst. There the agent weighs the stock against the weakest holding and names which one it would replace. Replacing a holding is your decision.
+Each analyst holds at most a set number of stocks, 5 by default. A buy awaiting your approval already holds its slot, so counting only open positions would say there is room when the tool would refuse the buy. When an analyst is full, `place_trade` refuses a new buy until one closes. The refusal writes a line in Activity and tells the agent what to do instead: name, in its note on the stock, the holding it would replace and why this is the better use of the money, or say it waits for room. Replacing a holding is your decision.
 
 ## Account-wide lines
 

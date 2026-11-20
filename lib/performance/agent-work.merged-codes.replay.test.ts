@@ -20,20 +20,22 @@ const now = (c: string) => MERGED_CODE[c] ?? c;
 describe("48 morning reads, 2026-10-19 to 2026-11-13", () => {
   const all = runs.flatMap((r) => r.rows.flatMap(([, , codes]) => codes));
 
-  it("every saved code is one of the eight, merged into exactly one of them, or deleted by #979", () => {
+  it("every saved code is one of today's, merged into exactly one of them, or deleted by #979", () => {
     const kind = (c: string) => (c in SITUATIONS ? "current" : c in MERGED_CODE ? "merged" : DELETED.has(c) ? "deleted" : "unknown");
     const count: Record<string, number> = {};
     for (const c of all) count[kind(c)] = (count[kind(c)] ?? 0) + 1;
-    expect(count).toEqual({ current: 122, merged: 33, deleted: 418 });
+    // A filing saved under its old code is a filing again (2026-11-19), so 7 more are current.
+    expect(count).toEqual({ current: 129, merged: 26, deleted: 418 });
     for (const c of Object.keys(MERGED_CODE)) expect(Object.keys(SITUATIONS)).toContain(MERGED_CODE[c]);
   });
 
-  it("no stock on a list loses its last situation: the same stocks are listed, with fewer labels", () => {
+  it("no stock on a list loses its last situation: the same stocks are listed, each with its labels", () => {
     const listed = runs.flatMap((r) => r.rows.filter(([, list, codes]) => list !== "quiet" && codes.some((c) => !DELETED.has(c))));
     expect(listed.every(([, , codes]) => codes.filter((c) => !DELETED.has(c)).map(now).length > 0)).toBe(true);
     const before = listed.reduce((n, [, , codes]) => n + codes.filter((c) => !DELETED.has(c)).length, 0);
     const after = listed.reduce((n, [, , codes]) => n + new Set(codes.filter((c) => !DELETED.has(c)).map(now)).size, 0);
-    expect([listed.length, before, after]).toEqual([132, 153, 151]);
+    // A report and a filing no longer fold into the review, so no label is lost to a merge here.
+    expect([listed.length, before, after]).toEqual([132, 153, 153]);
   });
 
   it("the Agent work tab counts each saved code as the situation it is now", () => {
@@ -41,7 +43,8 @@ describe("48 morning reads, 2026-10-19 to 2026-11-13", () => {
     const raw: Raw = { analysts: [], levels: { analyst: [], account: [] }, runs: [], reads, updates: [], orders: [], theses: [], refusals: [] };
     const w = buildAgentWork(raw, { days: 30, analystId: null, since: new Date("2026-10-16T00:00:00Z"), now: new Date("2026-11-15T00:00:00Z") });
     expect(Object.fromEntries(w.situations.codes.map((c) => [c.code, c.shown]))).toEqual({
-      PROMOTED_AWAITING: 0, PROTECTIVE_SALE: 31, BUY_ARRIVES: 5, ADD_OR_WINNER: 4, PROTECTION: 4, REVIEW_DUE: 93, NOTE_TO_ANSWER: 12, SOLD_ONE_REVIEW: 2,
+      // A report (saved as EARNINGS) and a filing from before the 2026-11-15 merge are their own again; one saved as a review since then stays a review.
+      PROMOTED_AWAITING: 0, PROTECTIVE_SALE: 31, BUY_ARRIVES: 5, ADD_OR_WINNER: 4, REPORT: 9, FILING: 7, NEWS: 0, PROTECTION: 4, REVIEW_DUE: 79, NOTE_TO_ANSWER: 12, SOLD_ONE_REVIEW: 2,
     });
   });
 });

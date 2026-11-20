@@ -13,7 +13,7 @@
  */
 import { morningRunSent } from "@/lib/agent/__fixtures__/morning-run-sent";
 import type { RunInput } from "./run-input";
-import { SITUATIONS } from "./situations";
+import { situationText } from "./situation-skills";
 
 const runInput = () =>
   ({
@@ -40,15 +40,14 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
     expect(p).toContain("every `sold_to_review` entry");
   });
 
-  it("the four answers, the call that puts one back on watch and how the rest clears are SOLD_ONE_REVIEW's", () => {
-    const g = SITUATIONS.SOLD_ONE_REVIEW.guidance;
-    expect(g).toContain("Keep watching with a buy priced off today's chart.");
-    expect(g).toContain("Keep watching on a review cadence.");
-    expect(g).toContain("Keep watching with nothing set (legal, and it costs nothing).");
-    expect(g).toContain("Let it go.");
-    expect(g).toContain("watch_again on its thesis_id");
-    expect(g).toContain("write the one-line reason with write_note and it clears");
-    expect(g).toContain("the exit price, the date, why it sold, whether the belief survived");
+  it("the four answers are the just-sold skill's; how one is put back on watch is the run's own instructions", () => {
+    const g = situationText("SOLD_ONE_REVIEW", false);
+    expect(g).toContain("watch it again with a buy priced off today's chart");
+    expect(g).toContain("watch it again on a review clock");
+    expect(g).toContain("watch it again with nothing set, which costs nothing");
+    expect(g).toContain("or let it go.");
+    expect(g).toContain("The sale's price, date and reason come with the stock.");
+    expect(prompt()).toContain("- On a stock just sold: watch it again (`watch_again`) and set what brings it back, or let it go.");
   });
 
   it("the prompt no longer carries its own copy", () => {
