@@ -71,7 +71,7 @@ describe("the holding's playbook triggers, as the run after the buy reads them",
       "The triggers written at the fill:",
       "- H2 · Review every 30 days — The watch's clock, kept on the holding.",
       "- H3 · Review 60 days after the buy — The business checkpoint.",
-      "- H4 · Add if above 7% from our entry — The second half.",
+      "- H4 · Add if above 7% from our entry — The second half, once the first is up 7%.",
     ]);
     expect(text).not.toContain("H1");
     expect(text).not.toContain("{sellPrice}");

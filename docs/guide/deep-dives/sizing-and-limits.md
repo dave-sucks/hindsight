@@ -16,7 +16,7 @@ The shares are that risk divided by the distance from the entry to the floor. Wi
 
 With [stop when buying](../concepts/triggers.md) on, the distance is the wider of the stock's floor and the setting's line, because the sale floor will sit on that line. A 4% plan floor with an 8% setting is sized like an 8% stop, and the agent is told so (`sizingStop` in `lib/agent/position-sizing.ts`, for buys and adds).
 
-Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest, and never over its most in one stock, so a first buy always leaves the room the rule-sized adds need. The agent is told which limit moved it and what the risk alone had asked for. Every buy has a floor (named by the analyst, or the playbook's priced from the chart, or the buy is refused); with no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the agent is told why. An add risks half the shares a new buy would get.
+Then the analyst's dollar limits clamp it: never under its smallest trade, never over its largest, and never over its most in one stock, so a first buy always leaves the room the rule-sized adds need. The agent is told which limit moved it and what the risk alone had asked for. Every buy has a floor (named by the analyst, or the playbook's priced from the chart, or the buy is refused); with no equity reading, the buy is sized from the analyst's band by conviction (the largest trade for strong or high, the smallest otherwise), and the agent is told why. An add risks half the shares a new buy would get. A playbook that buys in two equal halves (Compounder accumulation) adds the dollars already paid for the holding instead, so the second half matches the first.
 
 ## Who picks the size
 
@@ -46,7 +46,7 @@ Two numbers watch the whole account. Open risk is what we'd lose if every floor 
 <summary>Technical details</summary>
 
 #### Sizing
-`sizeByRisk` in `lib/agent/position-sizing.ts`: `DEFAULT_RISK_PCT` 1, `CONVICTION_RISK_MULTIPLIER`, `BINARY_RISK_MULTIPLIER` 0.5 (`lib/agent/knowledge/setups.ts`), `CAUTION_SIZE_MULTIPLIER` 0.5, `ADD_RISK_FRACTION` 0.5. Limits come from `positionBand` (its ceiling is the lower of the largest trade and most in one stock) and `positionTotalCap` (`maxPositionTotal`, 0 means twice the largest trade).
+`sizeByRisk` in `lib/agent/position-sizing.ts`: `DEFAULT_RISK_PCT` 1, `CONVICTION_RISK_MULTIPLIER`, `BINARY_RISK_MULTIPLIER` 0.5 (`lib/agent/knowledge/setups.ts`), `CAUTION_SIZE_MULTIPLIER` 0.5, `ADD_RISK_FRACTION` 0.5, and `sameAsFirstAddNotional` for a playbook with `addSize: "SAME_AS_FIRST"` (`lib/agent/knowledge/setups.ts`). Limits come from `positionBand` (its ceiling is the lower of the largest trade and most in one stock) and `positionTotalCap` (`maxPositionTotal`, 0 means twice the largest trade).
 
 #### Callers
 `place-trade.ts` and `add.ts` build their schema with `schemaFor`, which drops `notional` unless the run mode is `PRINCIPAL_CHAT` (an add is sized by `changePosition` in `manage-position.ts`). `sizedByPrincipalLine` words the out-of-band note.

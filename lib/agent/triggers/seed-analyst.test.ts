@@ -41,9 +41,14 @@ describe("the seat templates", () => {
     expect(analystStandingTriggers([], mintId)).toEqual([]);
     expect(analystStandingTriggers(["PEAD", "BASE_BREAKOUT"], mintId)).toHaveLength(2);
   });
-  it("a new analyst starts with no sale and no add on a down day: the account's sale rules govern every holding", () => {
-    const rules = Object.entries(SETUP_STANDING_RULES).flatMap(([seat, rs]) => (rs ?? []).map((r) => ({ seat, action: r.action, predicate: r.predicate })));
-    expect(rules.filter((r) => r.action === "EXIT" || r.action === "TRIM" || (r.action === "ADD" && (r.predicate as { is?: string }).is === "below"))).toEqual([]);
+  it("one seat carries a sale, the compounder's 15% give-back in the account trail's slot; no seat trims or adds on a down day", () => {
+    const rules = Object.entries(SETUP_STANDING_RULES).flatMap(([seat, rs]) => (rs ?? []).map((r) => ({ seat, action: r.action, predicate: r.predicate, fireMode: r.fireMode })));
+    expect(rules.filter((r) => r.action === "EXIT" || r.action === "TRIM" || (r.action === "ADD" && (r.predicate as { is?: string }).is === "below"))).toEqual([
+      { seat: "COMPOUNDER_ACCUMULATION", action: "EXIT", predicate: { watch: "move", is: "below", value: 15, variable: "peak" }, fireMode: "DO_IT" },
+    ]);
+    // The same slot as the account's 6% trail, so on this seat's stocks it takes the trail's place (levels.ts).
+    const trail = { action: "EXIT" as const, predicate: { watch: "move", is: "below", value: 6, variable: "peak" } };
+    expect(triggerSlot(rules.find((r) => r.action === "EXIT")!)).toBe(triggerSlot(trail));
   });
 });
 

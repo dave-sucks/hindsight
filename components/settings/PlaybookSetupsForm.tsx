@@ -57,7 +57,7 @@ const NUMBER_FIELDS: NumberField[] = [
     key: "stopMaxPct",
     label: "Widest stop",
     suffix: "%",
-    help: "A TRADE stop can't sit further than this from entry. Blank = no cap.",
+    help: "The widest a stop may sit under the buy: on a TRADE, and on every compounder buy. Blank = no cap.",
     nullable: true,
     step: 0.5,
   },

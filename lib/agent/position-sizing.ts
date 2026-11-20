@@ -159,6 +159,15 @@ export const CAUTION_SIZE_MULTIPLIER = 0.5;
  */
 export const ADD_RISK_FRACTION = 0.5;
 
+/**
+ * A playbook that buys in two equal halves (`addSize: "SAME_AS_FIRST"`, the compounder): the add is the
+ * dollars paid for the holding so far, which for the second half is the first buy. Null when they can't be read.
+ */
+export function sameAsFirstAddNotional(p: { quantity: number; avgCost: number }): number | null {
+  const paid = p.quantity * p.avgCost;
+  return Number.isFinite(paid) && paid > 0 ? Math.round(paid * 100) / 100 : null;
+}
+
 export type Regime = "RISK_ON" | "CAUTION" | "RISK_OFF";
 
 export interface RiskSizingInput {
@@ -288,18 +297,19 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
 
 /**
  * The setup's rules for the holding's sale, read on `sell_if_below` (until 2026-11-16 they were read on a
- * watch's line, which never sells): at least the setup's minimum ATR from the buy, and on a TRADE at most
- * its widest %. The account's setup overrides apply. Null when the sale keeps them or the ATR is unknown.
+ * watch's line, which never sells): at least the setup's minimum ATR from the buy, and at most its widest %
+ * on the horizons it names (`sale.maxPctOn`, a TRADE when unset). The account's setup overrides apply. Null
+ * when the sale keeps them or the ATR is unknown.
  */
 export function saleRuleProblem(p: { setup: Setup; horizon: string | null; entry: number; stop: number; atr: number | null }): string | null {
   const dist = Math.abs(p.entry - p.stop);
   const $ = (n: number) => `$${n.toFixed(2)}`;
-  const { minAtr, maxPct } = p.setup.sale;
+  const { minAtr, maxPct, maxPctOn = ["TRADE"] } = p.setup.sale;
   if (p.atr != null && p.atr > 0 && dist < minAtr * p.atr) {
     return `the sale ${$(p.stop)} is ${(dist / p.atr).toFixed(2)} ATR from the ${$(p.entry)} buy (ATR ${$(p.atr)}). ${p.setup.name} needs it at least ${minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least ${$(minAtr * p.atr)} from the buy`;
   }
-  if (maxPct != null && p.horizon === "TRADE" && (dist / p.entry) * 100 > maxPct) {
-    return `the sale ${$(p.stop)} is ${((dist / p.entry) * 100).toFixed(1)}% from the buy; a TRADE on ${p.setup.name} caps it at ${maxPct}%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it`;
+  if (maxPct != null && p.horizon != null && (maxPctOn as readonly string[]).includes(p.horizon) && (dist / p.entry) * 100 > maxPct) {
+    return `the sale ${$(p.stop)} is ${((dist / p.entry) * 100).toFixed(1)}% from the buy; ${p.horizon === "TRADE" ? `a TRADE on ${p.setup.name}` : p.setup.name} caps it at ${maxPct}%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it`;
   }
   return null;
 }

@@ -26,7 +26,7 @@
 - **The account:** Review every 7 days (holdings) · Review within 5 days before earnings · Review if earnings beat or miss · Review if it files something material with the SEC · Add if above 7% from yesterday's close (holdings) · Sell if below 6% from the high since we bought (holdings).
 - **Catalyst Event PM:** Review 10 days before the event date · Review 30 days after it · Review if it files an 8-K 8.01 or 7.01.
 - **PEAD Specialist:** Review if above 10% from our entry · Review if below 12% from it.
-- **Secular Compounder:** Review if below 15% from the high since we bought · Review if below the 200-day average · Review if above or below 15% from our entry.
+- **Secular Compounder:** Sell if below 15% from the high since we bought (Auto-sell; in the account trail's slot, so it replaces the 6% trail on this analyst's stocks) · Review if below the 200-day average on the close · Review if above 15% from our buy. (Expert review 1.5, 2026-11-20: the seed for a new compounder seat; the owner's own analyst is his to change.)
 
 ## The six playbooks the analysts use
 
@@ -143,22 +143,23 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 
 | On a watch | How the level is picked |
 |---|---|
-| Buy if above $P on the close and above 1.5× normal volume | P: the base's pivot |
-| Buy if within 2% of the 50-day average | Only while the 50-day is rising |
-| Buy if above the 50-day average | The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now |
+| Buy if above $P on the close, above 1.5× normal volume, and above the 200-day average | P: the base's pivot |
+| Buy if within 2% of the 50-day average and above the 200-day average | A pullback to a rising 50-day |
+| Buy if above the 50-day average on the close and above the 200-day average | The reclaim |
 | Review every 30 days | |
-| Stop watching if below the 200-day average on the close | The uptrend broke; not an accumulation candidate until it's back |
+
+The watch has no price end: a business leaves the list when it breaks (the named invalidation, a cut forecast, a margin break), at a look. The analyst's 200-day review is the look on a break of the trend.
 
 | On a holding | How the level is picked | From |
 |---|---|---|
-| Sell if below $S | S: under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it | Proposal |
+| Sell if below $S | S: under the last swing low, at most 15% under the buy, at least the playbook's ATR distance under it | Proposal |
 | Review 60 days after the buy | The business checkpoint | Template |
-| Add if above 7% from our entry | The second half | Template |
+| Add if above 7% from our entry | The second half, the same dollars as the first | Template |
 | Review every 30 days | | Kept |
 
-The first buy is half of full size. There is no take-profit: the playbook trims only at valuation extremes, and no measure reads a valuation.
+The buy comes in two equal halves: the first sized so a sale at the floor costs the risk per trade, the second the same dollars (`addSize`). The give-back sale, 15% off the high since we bought, is the analyst's rule. There is no take-profit: a look at up 15% from the buy asks whether the price is getting ahead of the business, and no measure reads a valuation.
 
-*Can't be written:* the quality tests and the named invalidation, which the account's and analyst's reviews read, and the second half on a held 50-day pullback.
+*Can't be written:* the quality tests and the named invalidation, which the account's and analyst's reviews read; the 50-day's slope, which the run answering the buy checks (no measure reads an average's slope yet).
 
 ## The other six (no analyst uses these today)
 

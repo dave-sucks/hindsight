@@ -7,7 +7,8 @@
  * 1-share $922 LITE position against a $15,000 ceiling. Prose floors in
  * `analystPrompt` were Layer 3 doing Layer 1's job.
  */
-import { positionBand, positionTotalCap, DEFAULT_POSITION_CAP } from "./position-sizing";
+import { positionBand, positionTotalCap, DEFAULT_POSITION_CAP, sameAsFirstAddNotional } from "./position-sizing";
+import { SETUPS } from "@/lib/agent/knowledge/setups";
 
 describe("positionBand — smallest trade to largest trade", () => {
   it("floor and ceiling come straight from the two settings", () => {
@@ -160,5 +161,19 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
   it("no riskPct → the 1% default; unknown conviction → MEDIUM", () => {
     const r = sizeByRisk({ equity: 100_000, riskPct: null, conviction: "WHATEVER", entry: 100, stop: 90, band });
     expect(r.line).toContain("1% of the $100,000 account × 0.75 for whatever conviction");
+  });
+});
+
+// Expert review 1.5: the compounder buys in two equal halves, so its add is the dollars the first half cost.
+describe("sameAsFirstAddNotional — the second half matches the first", () => {
+  it("50 shares bought at $100 make a $5,000 second half, at whatever price the add fills", () => {
+    expect(sameAsFirstAddNotional({ quantity: 50, avgCost: 100 })).toBe(5000);
+  });
+  it("is null when what we paid can't be read, so the add falls back to half a risk-sized buy", () => {
+    expect(sameAsFirstAddNotional({ quantity: 0, avgCost: 100 })).toBeNull();
+    expect(sameAsFirstAddNotional({ quantity: 50, avgCost: Number.NaN })).toBeNull();
+  });
+  it("only the compounder buys this way", () => {
+    expect(SETUPS.filter((s) => s.addSize === "SAME_AS_FIRST").map((s) => s.id)).toEqual(["COMPOUNDER_ACCUMULATION"]);
   });
 });
