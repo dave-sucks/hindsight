@@ -108,8 +108,8 @@ describe("the framework page's agents", () => {
     }
   });
 
-  it("reads every situation's text: nine skills, and the two still in the table", () => {
-    expect(data.situations).toHaveLength(11);
+  it("reads every situation's text: nine skills, and promoted to live, still in the table", () => {
+    expect(data.situations).toHaveLength(10);
     for (const s of data.situations) expect(s.chars).toBeGreaterThan(50);
   });
 });

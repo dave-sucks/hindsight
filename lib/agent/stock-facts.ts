@@ -232,8 +232,6 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
       status: t.status,
       actionability: r?.actionability ?? null,
       buyBlockedByFull: blocked.has(t.id),
-      unansweredDecision: context.get(t.id)?.unansweredDecision != null,
-      pinnedNote: context.get(t.id)?.pinnedNote != null,
     });
   }
 

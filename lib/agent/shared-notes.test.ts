@@ -2,15 +2,16 @@
  * shared-notes.test.ts: a note written once and read on every stock it
  * covers (lib/agent/shared-notes.ts), with the morning of Mon
  * 2026-11-02 as the case: a note pinned on the five holdings the vote hit,
- * until the day after it. The note is the one the plan page shows; the
+ * until the day after it (the owner's kind of pin: a Market Reviewer note is
+ * never pinned now). The note is the one the plan page shows; the
  * Activity rows are made up.
  */
 import { stockContextFor } from "./stock-context-for";
 import { coversStock, inStockActivity, isPinned, newestEightForRuns, noteLine, runNotes, type SharedNoteRow } from "./shared-notes";
 import { activityFeed } from "@/lib/thesis/activity-feed";
 import { titleSegments } from "@/components/agent/sheets/thesis-timeline-utils";
-import { listsTheStock, situationsFor, SITUATIONS, type SituationSources } from "./situations";
-import { wantsAnswer, isAgentAnswer } from "./stock-context";
+import { listsTheStock, situationsFor, type SituationSources } from "./situations";
+import { isAgentAnswer } from "./stock-context";
 
 const NOV2 = new Date("2026-11-02T13:01:00Z");
 const note = (over: Partial<SharedNoteRow> = {}): SharedNoteRow => ({
@@ -48,45 +49,31 @@ describe("a pinned note on the five, the morning before the vote", () => {
     // Above the newest lines, not among them.
     expect(text.indexOf("PINNED ON")).toBeLessThan(text.indexOf("WHAT'S BEEN SAID ON $MU"));
     expect(text.split("WHAT'S BEEN SAID")[1]).not.toContain("Agent note");
-    expect(ctx.pinnedNote).toEqual({ id: "note_vote", at: note().createdAt });
   });
 
-  it("puts the stock on the list until a run writes on it, then clears for that stock only", () => {
-    const sources = (pinnedNote: boolean): SituationSources => ({
-      needs: [], triggers: [], status: "HOLDING", actionability: null,
-      buyBlockedByFull: false, unansweredDecision: false, pinnedNote,
-    });
-    expect(situationsFor(sources(true))).toEqual(["NOTE_TO_ANSWER"]);
-    expect(listsTheStock(sources(true))).toBe(true);
-    expect(listsTheStock(sources(false))).toBe(false);
-
-    const answered = stockContextFor({ ticker: "MU", rows: [row("2026-11-02T13:20:00Z"), ...MU_ROWS], notes: [note()], shares: SHARES, now: NOV2 });
-    expect(answered.pinnedNote).toBeNull();
-    expect(answered.text).toContain("PINNED ON $MU"); // still read until it ends
-    // GEV hasn't answered: still on its list.
-    expect(stockContextFor({ ticker: "GEV", rows: MU_ROWS, notes: [note()], now: NOV2 }).pinnedNote).not.toBeNull();
+  it("puts no stock on a list: a pinned note is read, and no run is asked to answer it", () => {
+    const sources: SituationSources = { needs: [], triggers: [], status: "HOLDING", actionability: null, buyBlockedByFull: false };
+    expect(situationsFor(sources)).toEqual([]);
+    expect(listsTheStock(sources)).toBe(false);
+    // Still read above the lines after a run writes on the stock, until it ends.
+    const later = stockContextFor({ ticker: "MU", rows: [row("2026-11-02T13:20:00Z"), ...MU_ROWS], notes: [note()], shares: SHARES, now: NOV2 });
+    expect(later.text).toContain("PINNED ON $MU");
+    expect(Object.keys(later)).not.toContain("pinnedNote");
   });
 
   it("a stock outside the note reads nothing of it", () => {
     const v = stockContextFor({ ticker: "V", rows: MU_ROWS, notes: [note()], now: NOV2 });
     expect(v.text).not.toContain("PINNED");
-    expect(v.pinnedNote).toBeUndefined();
   });
 
-  it("once it ends it is an ordinary Activity line, and never the owner's word or a run's answer", () => {
+  it("once it ends it is an ordinary Activity line, and never a run's answer", () => {
     const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], now: new Date("2026-11-06T13:00:00Z") });
     expect(after.text).not.toContain("PINNED");
     expect(after.text).toContain("Agent note to MU, GEV, NVDA, PLTR, CEG");
     expect(after.text).toContain("Tomorrow's vote puts data-center opposition on the ballot.");
-    expect(after.unansweredDecision).toBeNull();
-    const line = noteLine(note(), "MU") as Parameters<typeof wantsAnswer>[0];
-    expect(wantsAnswer(line)).toBe(false);
-    expect(isAgentAnswer(line)).toBe(false);
+    expect(isAgentAnswer(noteLine(note(), "MU") as Parameters<typeof isAgentAnswer>[0])).toBe(false);
   });
 
-  it("the situation's text names the rule on floors (situations.test.ts caps its length)", () => {
-    expect(SITUATIONS.NOTE_TO_ANSWER.guidance).toContain("only the principal lowers a floor");
-  });
 });
 
 describe("who a note reaches", () => {

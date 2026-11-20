@@ -15,8 +15,13 @@ jest.mock("@/lib/prisma", () => ({
     return db;
   },
 }));
-const mockJob: { handler?: (ctx: unknown) => Promise<unknown> } = {};
-jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, fn: (ctx: unknown) => Promise<unknown>) => ((mockJob.handler = fn), {}) } }));
+const mockJob: { handler?: (ctx: unknown) => Promise<unknown>; sent: Array<{ name: string; data: Record<string, unknown> }> } = { sent: [] };
+jest.mock("@/lib/inngest/client", () => ({
+  inngest: {
+    createFunction: (_c: unknown, _t: unknown, fn: (ctx: unknown) => Promise<unknown>) => ((mockJob.handler = fn), {}),
+    send: async (e: { name: string; data: Record<string, unknown> }) => void mockJob.sent.push(e),
+  },
+}));
 jest.mock("@/lib/auth/account", () => ({ getOwnerUserId: async () => "user_owner" }));
 // The one portfolio snapshot, stood in: made-up numbers, one holding.
 jest.mock("@/lib/portfolio/load-snapshot", () => {
@@ -127,6 +132,7 @@ async function runTheJob(at = AT) {
 }
 
 beforeEach(() => {
+  mockJob.sent = [];
   jest.useFakeTimers({ now: AT, doNotFake: ["setTimeout", "clearTimeout", "setImmediate", "nextTick", "queueMicrotask"] });
   mockOpenAI.bodies.length = 0;
   mockOpenAI.reply = reply();
@@ -252,18 +258,20 @@ describe("the 7:30 Market Reviewer", () => {
     // The run page: the day, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");
     expect(thread).toContain("Stocks rebounded, led by technology");
-    expect(thread).toContain("**Note on MU, ASML · high · weaker · flagged for review**");
+    expect(thread).toContain("**Note on MU, ASML · high · weaker**");
+    expect(thread).not.toContain("flagged for review");
     expect(thread).toContain("**Note on MU · low · neutral**");
 
     // Today's digest is the digest, as written, linked to its run.
     const today = digests.find((d) => (d.date as Date).toISOString() === "2026-11-11T00:00:00.000Z")!;
     expect(today).toMatchObject({ accountId: ACCOUNT, environment: "LIVE", model: "gpt-5.4", runId: runs[0].id, digest: DIGEST });
 
-    // Each note is saved on its stocks by the Market Reviewer, with its run, its two fields and each stock's price then; the high one pinned three days.
+    // Each note is saved on its stocks by the Market Reviewer, with its run, its two fields and each stock's price then. None is pinned; the saved high note starts the check of the triggers that watch notes, once.
     expect(notes).toEqual([
-      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: new Date("2026-11-14T12:30:00Z"), prices: { MU: 650, ASML: 1000 } }),
+      expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU", "ASML"], body: NOTES[0].text, impact: "high", effect: "weaker", pinnedUntil: null, prices: { MU: 650, ASML: 1000 } }),
       expect.objectContaining({ userId: "user_owner", author: "MARKET_REVIEWER", runId: runs[0].id, audience: "STOCKS", tickers: ["MU"], body: NOTES[1].text, impact: "low", effect: "neutral", pinnedUntil: null, prices: { MU: 650 } }),
     ]);
+    expect(mockJob.sent.filter((e) => e.name === "app/market-notes.saved")).toEqual([{ name: "app/market-notes.saved", data: { runId: runs[0].id, high: 1 } }]);
   });
 
   it("its first message carries its own notes of the last 5 days, newest first, each in a line", async () => {
@@ -291,7 +299,7 @@ describe("the 7:30 Market Reviewer", () => {
     );
   });
 
-  it("a high note puts its stocks on the next run's list, and every note is a titled line in each stock's Activity and in what a run reads", async () => {
+  it("a note puts no stock on a run's list, and every note, the high one too, is a titled line in each stock's Activity and in what a look reads", async () => {
     const { notes } = await runTheJob();
     // The database stamps createdAt on insert; the double doesn't, so the save time is set here, a second apart.
     notes.forEach((n, i) => (n.createdAt = new Date(AT.getTime() + i * 1000)));
@@ -324,17 +332,16 @@ describe("the 7:30 Market Reviewer", () => {
     const seed = { thesis: [watch("t_mu", "MU"), watch("t_asml", "ASML")], sharedNote: notes.map((n) => ({ ...n, userId: REPLAY_USER_ID })) };
     // This file's own database mock (for the job) answers before the replay's, so it holds the replay's seed.
     db = prismaDouble(seed as never);
-    const { result, crashed } = await replayTool("get-theses", "getTheses", { seed: seed as never, args: { limit: 50 }, ctx: { runMode: "MORNING_PLAN" }, quotes: { MU: 650, ASML: 1000 } });
+    const { result, crashed } = await replayTool("get-theses", "getTheses", { seed: seed as never, args: { tickers: ["MU", "ASML"] }, ctx: { runMode: "MORNING_PLAN" }, quotes: { MU: 650, ASML: 1000 } });
     expect(crashed).toBe(false);
     const rows = (result as unknown as { data: { theses: Array<{ id: string; situations: string[]; context: string }> } }).data.theses;
     const mu = rows.find((t) => t.id === "t_mu")!;
-    // Both stocks the high note names are on the list, with a note to answer.
-    expect(mu.situations).toContain("NOTE_TO_ANSWER");
-    expect(rows.find((t) => t.id === "t_asml")?.situations).toContain("NOTE_TO_ANSWER");
-    // The high note reads pinned above the stock's lines; the low one is one of its newest 8, in `said`.
-    const [pinned, said] = mu.context.split("WHAT'S BEEN SAID ON $MU");
-    expect(pinned).toContain(`PINNED ON $MU: notes read before its Activity lines:\n  11-11 07:30 · Agent note to MU, ASML · high impact · weaker, pinned until 11-14 — "${NOTES[0].text}"`);
-    expect(said).toContain(`11-11 07:30 · $650.00 · Agent note to MU · low impact · neutral — "${NOTES[1].text}"`);
+    // Neither stock is in a situation because of a note.
+    expect([mu.situations, rows.find((t) => t.id === "t_asml")?.situations]).toEqual([[], []]);
+    // Both notes are among MU's newest lines; nothing is pinned above them.
+    expect(mu.context).not.toContain("PINNED");
+    expect(mu.context).toContain("Agent note to MU, ASML · high impact · weaker");
+    expect(mu.context).toContain("Agent note to MU · low impact · neutral");
   });
 
   it("a note that doesn't save leaves the digest saved and the run COMPLETE", async () => {

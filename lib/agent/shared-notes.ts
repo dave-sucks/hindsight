@@ -6,16 +6,18 @@
  * its Activity (lib/agent/notes.ts); the owner's note on more than one stock,
  * and every note the Market Reviewer writes (on one stock or several, with
  * its impact and effect), is one SharedNote row, and each covered stock reads it.
+ * A note puts no stock on a run's list. A Market Reviewer note marked high can
+ * start a look through a trigger that watches notes (condition/measures/news.ts).
  *
  * Audiences:
  * - STOCKS: the stocks it names. A note in each one's Activity.
  * - ANALYST: that analyst's runs read it once, at the top, while it lasts.
  * - ACCOUNT: every run reads it once, at the top, while it lasts.
  *
- * A note to stocks can be pinned until a date at most two weeks out. Pinned,
- * it reads in its own block above the stock's newest 8 Activity lines and
- * doesn't count against them, and the stock is in the NOTE_TO_ANSWER situation
- * until a run writes on the stock after it. A note to the account or an
+ * The owner's note to stocks can be pinned until a date at most two weeks out.
+ * Pinned, it reads in its own block above the stock's newest 8 Activity lines
+ * and doesn't count against them. The Market Reviewer's notes are never
+ * pinned. A note to the account or an
  * analyst always has an end date (a week unless it says otherwise): a market
  * note with no end goes stale.
  *
@@ -169,13 +171,6 @@ export function noteLine(n: SharedNoteRow, ticker: string): StoredLine {
 export interface NoteShare {
   holdings: string[];
   share: number;
-}
-
-/** The newest pinned note on the stock that no run has written after. Null when every one is answered. */
-export function unansweredPinned(pinned: readonly SharedNoteRow[], rows: readonly ActivityRow[]): SharedNoteRow | null {
-  const answers = rows.filter(isAgentAnswer).map((r) => r.timestamp.getTime());
-  const newest = Math.max(-Infinity, ...answers);
-  return [...pinned].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).find((n) => newest <= n.createdAt.getTime()) ?? null;
 }
 
 /** The block read before a stock's Activity lines: its pinned notes, newest first, with what they hold. */

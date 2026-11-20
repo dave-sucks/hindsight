@@ -143,7 +143,7 @@ describe("an old kind from a model gets the list of measures", () => {
     expect(agent.success).toBe(false);
     const said = agent.error?.issues.map((i) => i.message).join(" ") ?? "";
     expect(said).toMatch(/"kind: PRICE_BELOW" is an old trigger kind, retired/);
-    expect(said).toMatch(/watch one of: price, move, volume, rsi, strength, gap, report, surprise, filing, insiders, repeat, from_date/);
+    expect(said).toMatch(/watch one of: price, move, volume, rsi, strength, gap, report, surprise, filing, insiders, note, repeat, from_date/);
     expect(triggerPredicateSchema.safeParse(old).error?.issues[0]?.message).toBe(said);
   });
 });

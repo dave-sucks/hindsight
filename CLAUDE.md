@@ -116,8 +116,8 @@ op comes back by id and the rest of the call lands. The shared core is
 **A condition is one shape** (shipped 2026-10, `docs/plans/TRIGGER_TYPES.md`):
 `{ watch, is?, value?, variable?, settings? }`, or `{ match: "all", conditions }`
 for two or more that must all hold — the form's own fields. Each measure (`price`, `move`, `volume`,
-`rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `repeat`,
-`from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
+`rsi`, `strength`, `gap`, `report`, `surprise`, `filing`, `insiders`, `note`,
+`repeat`, `from_date`) is ONE catalog entry in `lib/agent/triggers/condition/measures/`
 carrying its words, number, variables, settings, what the
 check loads, how it reads and what numbers it takes (`fits` / `valid`,
 read by `whenValid`); nothing switches on a kind. Storage holds the same
@@ -143,9 +143,11 @@ A situation is why a stock is in front of its analyst now. `computeNeedsAction`
 first, and `situationsFor` (`lib/agent/situations.ts`) maps that list plus the
 row's facts to its situation codes. Three kinds: a trigger written in advance
 fired (a sale or trim, a buy, an add); something happened (a report, a filing,
-news; nothing puts a stock in news yet); it is time to look again (a review,
-floor to fix, just sold). Promoted to live and a note to answer are as they
-were, their text still in the table. Each of the nine is **one short skill
+news: a trigger on the Market Reviewer's high note); it is time to look again
+(a review, floor to fix, just sold). Promoted to live is as it was, its text
+still in the table. "A note to answer" was deleted 2026-11-19: the owner's
+notes, hand edits and answers stay in the stock's Activity and put no stock on
+a list. Each of the nine is **one short skill
 file** in `lib/agent/engine/skills/` (named in `SITUATIONS`, read by
 `lib/agent/situation-skills.ts`): what to find out, in order, what can follow,
 and what done looks like, under 1,500 characters, with no tool name and
@@ -602,7 +604,11 @@ a list here goes stale.
 - morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
 - agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10 AM; Discovery, off
 - after-buy-run.ts — consumes `app/buy.filled`: the After the buy agent on every buy and add fill
-- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer
+- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer. No note
+  is pinned. A saved high note sends `app/market-notes.saved`, and the trigger
+  check then reads only the triggers that watch notes (the `note` measure):
+  "Review if the Market Reviewer writes a high note on it" is a rule the owner
+  saves; without it a high note starts no run.
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
 - daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what

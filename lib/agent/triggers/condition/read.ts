@@ -202,6 +202,12 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
     oncePerEvent: () => true,
   },
 
+  note: {
+    // A high note on the stock, written since this trigger last fired: one look per note.
+    holds: (_c, ctx) => (ctx.notes ?? []).some((n) => ctx.firedAt == null || n.createdAt.getTime() > ctx.firedAt.getTime()),
+    oncePerEvent: () => true,
+  },
+
   insiders: {
     holds: (c, ctx) => {
       const buys = ctx.indicators?.insiderBuys;

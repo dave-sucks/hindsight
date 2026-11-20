@@ -75,6 +75,15 @@ export interface EvaluationContext {
   firedFilings?: readonly string[];
 
   /**
+   * The Market Reviewer's high notes on this stock in the last day, newest
+   * first. Read by a news note. Absent → false.
+   */
+  notes?: ReadonlyArray<{ id: string; createdAt: Date; body: string }> | null;
+
+  /** When the trigger being evaluated last fired, set by `conditionHolds`: a news note holds on a note written after it. */
+  firedAt?: Date | null;
+
+  /**
    * The report dates the heads-up being evaluated has already fired for.
    * Same shape as `firedFilings`: per trigger, set by `shouldFire`.
    */
@@ -175,7 +184,8 @@ export interface Checker {
 }
 
 /** Does the trigger's condition hold now, read with its own memory of the filings and reports it fired on. */
-export function conditionHolds(trigger: Pick<Trigger, "predicate" | "firedFilings" | "firedReports">, ctx: EvaluationContext, checker: Checker = SHAPE_CHECKER): boolean {
+export function conditionHolds(trigger: Pick<Trigger, "predicate" | "firedFilings" | "firedReports" | "lastFiredAt">, ctx: EvaluationContext, checker: Checker = SHAPE_CHECKER): boolean {
+  if (trigger.lastFiredAt) ctx = { ...ctx, firedAt: new Date(trigger.lastFiredAt) };
   if (trigger.firedFilings?.length) ctx = { ...ctx, firedFilings: trigger.firedFilings };
   if (trigger.firedReports?.length) ctx = { ...ctx, firedReports: trigger.firedReports };
   return checker.holds(trigger.predicate, ctx);

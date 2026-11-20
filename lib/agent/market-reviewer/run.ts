@@ -10,6 +10,7 @@
  * its own save keeps both.
  */
 import { prisma } from "@/lib/prisma";
+import { inngest } from "@/lib/inngest/client";
 import { etDateOf } from "@/lib/market-data/intraday-window";
 import { writeSharedNote } from "@/lib/agent/shared-notes.server";
 import { runAgent, type AgentRun, type AgentToRun, type RunAgentArgs, type RunFor } from "@/lib/agent/engine/run";
@@ -31,10 +32,12 @@ export interface ReviewNote {
   effect: "stronger" | "weaker" | "neutral";
 }
 
-/** How long a high note stays pinned: its stocks are on the next run's list until a run writes on them. */
-const PIN_MS = 3 * 86_400_000;
-/** A high note is pinned; a low or medium one is a line in each stock's Activity. */
-export const notePin = (n: Pick<ReviewNote, "impact">, now: Date): Date | null => (n.impact === "high" ? new Date(now.getTime() + PIN_MS) : null);
+/**
+ * Sent once when a run saved a high note: the trigger check then reads the
+ * triggers that watch its notes (lib/inngest/functions/trigger-evaluator.ts,
+ * NOTES_SAVED). Every note is a line in each stock's Activity; none is pinned.
+ */
+const NOTES_SAVED = "app/market-notes.saved";
 
 export const REVIEWER_MODEL = MARKET_REVIEWER.model;
 export const REVIEWER_RUN_MODE = "MARKET_REVIEWER";
@@ -129,17 +132,16 @@ const searchedLine = (run: AgentRun, searches: string[]) =>
     .filter(Boolean)
     .join(" ");
 /** A note on the run page: a title the code writes, then the model's own text. */
-const noteText = (note: ReviewNote, now: Date) =>
-  `**Note on ${note.tickers.join(", ")} · ${note.impact} · ${note.effect}${notePin(note, now) ? " · flagged for review" : ""}**\n\n${note.text}`;
+const noteText = (note: ReviewNote) => `**Note on ${note.tickers.join(", ")} · ${note.impact} · ${note.effect}**\n\n${note.text}`;
 
 /** How its reply reads on the run page: what it searched, the digest, then each note. */
-export function reviewThread(run: AgentRun, now: Date = new Date()): unknown[] {
+export function reviewThread(run: AgentRun): unknown[] {
   const review = reviewOf(run);
-  const said = [...(run.usage.requests || review.searches.length ? [searchedLine(run, review.searches)] : []), ...(review.digest ? [review.digest] : []), ...review.notes.map((note) => noteText(note, now))];
+  const said = [...(run.usage.requests || review.searches.length ? [searchedLine(run, review.searches)] : []), ...(review.digest ? [review.digest] : []), ...review.notes.map(noteText)];
   return said.length ? [{ role: "assistant", content: said.map((text) => ({ type: "text", text })) }] : [];
 }
 
-/** Its own save: the day's digest for the book, and each note on its stocks, a high one pinned. A note that doesn't save never fails the digest. */
+/** Its own save: the day's digest for the book, and each note on its stocks; a saved high note starts the check of the triggers that watch notes. A note that doesn't save never fails the digest. */
 export async function keepReview(runId: string, run: AgentRun, book: RunFor): Promise<string | void> {
   const review = reviewOf(run);
   if (!review.digest) return review.error;
@@ -150,12 +152,20 @@ export async function keepReview(runId: string, run: AgentRun, book: RunFor): Pr
     create: { accountId: book.accountId, environment: book.environment, date: day, digest: review.digest, model: REVIEWER_MODEL, runId },
     update: { digest: review.digest, model: REVIEWER_MODEL, runId, createdAt: now },
   });
+  let high = 0;
   for (const note of review.notes) {
     try {
-      await writeSharedNote({ userId: book.userId, author: "MARKET_REVIEWER", runId, body: note.text, audience: "STOCKS", tickers: note.tickers, impact: note.impact, effect: note.effect, pinnedUntil: notePin(note, now) });
+      await writeSharedNote({ userId: book.userId, author: "MARKET_REVIEWER", runId, body: note.text, audience: "STOCKS", tickers: note.tickers, impact: note.impact, effect: note.effect });
+      if (note.impact === "high") high += 1;
     } catch (err) {
       console.warn(`[market-reviewer] a note on ${note.tickers.join(", ")} didn't save:`, err instanceof Error ? err.message : err);
     }
+  }
+  if (high === 0) return;
+  try {
+    await inngest.send({ name: NOTES_SAVED, data: { runId, high } });
+  } catch (err) {
+    console.warn("[market-reviewer] the note check wasn't started; the next pass in market hours reads the notes:", err);
   }
 }
 

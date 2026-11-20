@@ -1,6 +1,6 @@
 # Situations library
 
-**Every situation, and exactly what the agent is sent.** The 11 codes in rank order, each with what it means and the text an agent reads.
+**Every situation, and exactly what the agent is sent.** The 10 codes in rank order, each with what it means and the text an agent reads.
 
 This file is built from `SITUATIONS` in `lib/agent/situations.ts` and the skill files in `lib/agent/engine/skills/`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).
 
@@ -14,7 +14,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts` and the skill 
 
 ## Promoted to live
 
-`PROMOTED_AWAITING` · rank 1 of 11 · its text is in the table · the row adds `paper_record` · sent to the run that answers
+`PROMOTED_AWAITING` · rank 1 of 10 · its text is in the table · the row adds `paper_record` · sent to the run that answers
 
 A stock just moved from paper to live money and needs a decision this run.
 
@@ -39,7 +39,7 @@ Mistakes:
 
 ## Sale signal
 
-`PROTECTIVE_SALE` · rank 2 of 11 · `sale-fired.md` · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to the run that answers
+`PROTECTIVE_SALE` · rank 2 of 10 · `sale-fired.md` · the row adds `floor_risk`, `heldThroughFloor`, `would_prove_it_wrong` · sent to the run that answers
 
 A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.
 
@@ -58,7 +58,7 @@ Done: one note that says why the stock fell and whether that changes why we own 
 
 ## Buy price reached
 
-`BUY_ARRIVES` · rank 3 of 11 · `buy-fired.md` · the row adds `buyBlockedByFull`, `street`, `setup`, `playbook_checks`, `catalyst`, `variant_view` · sent to the run that answers
+`BUY_ARRIVES` · rank 3 of 10 · `buy-fired.md` · the row adds `buyBlockedByFull`, `street`, `setup`, `playbook_checks`, `catalyst`, `variant_view` · sent to the run that answers
 
 A buy trigger fired on a watched stock.
 
@@ -78,7 +78,7 @@ Done: one note that says what is going on with the company and why now is the ti
 
 ## Add
 
-`ADD_OR_WINNER` · rank 4 of 11 · `add-fired.md` · the row adds `floor_risk`, `street`, `catalyst` · sent to the run that answers
+`ADD_OR_WINNER` · rank 4 of 10 · `add-fired.md` · the row adds `floor_risk`, `street`, `catalyst` · sent to the run that answers
 
 An add trigger fired on a holding.
 
@@ -97,7 +97,7 @@ Done: one note that says why the stock moved and whether that confirms why we ow
 
 ## A report
 
-`REPORT` · rank 5 of 11 · `report.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
+`REPORT` · rank 5 of 10 · `report.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
 
 A trigger on the company's earnings report fired: the report is coming, or it just landed.
 
@@ -123,7 +123,7 @@ A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Befo
 
 ## A filing
 
-`FILING` · rank 6 of 11 · `filing.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
+`FILING` · rank 6 of 10 · `filing.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
 
 A trigger on the company's SEC filings fired.
 
@@ -143,7 +143,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 ## News
 
-`NEWS` · rank 7 of 11 · `news.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
+`NEWS` · rank 7 of 10 · `news.md` · the row adds `assumptions`, `would_prove_it_wrong` · sent to the run that answers
 
 Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.
 
@@ -163,7 +163,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 ## Floor to fix
 
-`PROTECTION` · rank 8 of 11 · `floor-to-fix.md` · the row adds `floor_risk` · sent to the run that answers
+`PROTECTION` · rank 8 of 10 · `floor-to-fix.md` · the row adds `floor_risk` · sent to the run that answers
 
 A gain with too little floor under it, or a floor that would lose too much of the account.
 
@@ -181,7 +181,7 @@ Done: one note that says how the stock got here and what is driving it now, with
 
 ## Review due
 
-`REVIEW_DUE` · rank 9 of 11 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to the run that answers
+`REVIEW_DUE` · rank 9 of 10 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to the run that answers
 
 The review clock came round, or the price reached a level the analyst asked to look at again.
 
@@ -200,38 +200,9 @@ A stock we watch. The case is stronger and the playbook's buy is true today: pro
 Change how often you look only with a reason: slower for a quiet stock, sooner before an event. Done: one note with what changed since the last one and the verdict. If you gave the same answer last time, change a trigger or say what is different now.
 ```
 
-## A note to answer
-
-`NOTE_TO_ANSWER` · rank 10 of 11 · its text is in the table · the standing fields only · sent to the run that answers
-
-You left a note or made a decision since the analyst's last answer, or a note is pinned on the stock (the Market Reviewer's or yours).
-
-```text
-When: the principal made a decision on this stock that no run has answered, or left a note since your last answer; or a note is pinned on this stock and no run has written on it since, which has its paragraph at the end. Their words are in `said`, with the price then and now.
-
-Answer, in order:
-1. Which is it: an instruction, a question, a decline, a resized approval, a note?
-2. What has happened with the company and the stock since they said it (get_stock_data, web_search)?
-
-What you can do:
-- An instruction ("add on a close above $74"): carry it out with the tools, usually as a trigger via edit_triggers.
-- A question: do the work it asks for and answer in your note. Answering the question is the action.
-- A decline with no reason: do not propose the same buy or add again unless its circumstances have changed. "Not this week" lapses after the week; "never this name" does not.
-- An approval with a different size, or a price they set: honor their numbers, never revert them. A cut size is caution, a raised one is conviction.
-
-Answered: your one write_note on the stock, quoting them and saying what you decided on each.
-
-The note: their words, quoted, then your answer: what you found about the company and the stock, and what you did about each thing they asked.
-
-Mistakes:
-- Taking an expired proposal for a decision: it may be proposed again if the playbook holds.
-
-If a note is pinned: an Agent note (the 7:30 Market Reviewer's) or the principal's, on this stock alone or with others. It is in `said` under PINNED, above the Activity lines, with the stocks it covers and their share of the account, and it names news that could change a decision here: a market date, a story moving a group, the company's own news, how much of the account rides on it. What does it say is coming, and when? Does it reach why we own or watch this stock? Check its claim and the stock's own news against the data (the Market numbers too). Do its triggers still fit what is coming: the floor and the size on a holding, the buy and the research on a watch? Then one of these. Act on it: on a holding, an add on good news (add sizes it), a trim or a sale proposal, or a floor moved up with edit_triggers; on a watch, a buy at today's price on good news (the buy trigger moved to at or near the current price, edit_triggers by its id), a buy price moved, the research refreshed through the writer (dispatch_thesis_research), or let it go. Or keep its triggers, saying in one sentence why the note doesn't change them for this stock. It is a read on the market, not an order: the stock's own case still decides, and a floor is never moved down or loosened because of it (only the principal lowers a floor). Your write_note names the pinned note and says what it means here; the stock leaves this situation once you have written, and the note stays pinned for the others it covers. The note: what the pinned note says is coming, what it means for this stock and why, then what you did, in one sentence.
-```
-
 ## Just sold
 
-`SOLD_ONE_REVIEW` · rank 11 of 11 · `just-sold.md` · the standing fields only · not sent to a trigger run
+`SOLD_ONE_REVIEW` · rank 10 of 10 · `just-sold.md` · the standing fields only · not sent to a trigger run
 
 A stock sold in the last two weeks is owed one look back.
 

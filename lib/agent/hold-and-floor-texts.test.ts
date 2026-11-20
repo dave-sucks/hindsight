@@ -20,13 +20,14 @@ import { editTriggers } from "@/lib/agent/tools/edit-triggers";
 const HELD = "A stock we hold is sold first with sell, which retires the thesis itself.";
 const tool = (runMode: string) => editTriggers({ runId: "r", userId: "u", accountId: "a", runMode } as never) as unknown as { description: string };
 
-it("the trigger run retires nothing: it takes a watched stock's buy and Stop watching triggers off by id, and sells a stock we hold", () => {
+it("the trigger run stops watching a stock we watch (the owner's call, 2026-11-19), and sells a stock we hold", () => {
   const prompt = SAMPLE_PROMPTS.tactical();
-  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch take its buy and Stop watching triggers off by id (edit_triggers with remove)");
+  expect(prompt.replace(/\s+/g, " ")).toContain("on a stock we watch, stop watching it (`stop_watching`), and its reason is your note.");
   expect(prompt).not.toMatch(/change_status|INVALIDATED|ARCHIVED/);
   expect(prompt.replace(/\s+/g, " ")).toContain(HELD);
-  // It has no status tool; the morning run has both.
-  for (const t of ["stop_watching", "watch_again"]) expect(MODES.tactical.toolAllowlist as readonly string[]).not.toContain(t);
+  // It can end a watch and can't reopen one; the morning run has both.
+  expect(MODES.tactical.toolAllowlist as readonly string[]).toContain("stop_watching");
+  expect(MODES.tactical.toolAllowlist as readonly string[]).not.toContain("watch_again");
   for (const t of ["stop_watching", "watch_again"]) expect(MODES["research-run"].toolAllowlist as readonly string[]).toContain(t);
 });
 

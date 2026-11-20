@@ -18,7 +18,7 @@ const BOOK = 48;
 const READS: ReadonlyArray<{ when: string; flagged: Record<number, string[]> }> = [
   { when: "Monday, 8:00 AM", flagged: { 3: ["REVIEW_DUE"], 17: ["REVIEW_DUE", "PROTECTION"], 30: ["REVIEW_DUE"] } },
   { when: "Tuesday, 8:00 AM", flagged: { 17: ["PROTECTIVE_SALE"] } },
-  { when: "Wednesday, 8:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["NOTE_TO_ANSWER"] } },
+  { when: "Wednesday, 8:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["REPORT"] } },
   { when: "Thursday, 8:00 AM", flagged: { 35: ["REVIEW_DUE"] } },
 ];
 

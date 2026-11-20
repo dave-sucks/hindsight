@@ -614,6 +614,24 @@
            "properties": {
             "watch": {
              "type": "string",
+             "const": "note"
+            },
+            "value": {
+             "type": "string",
+             "enum": []
+            }
+           },
+           "required": [
+            "watch",
+            "value"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "object",
+           "properties": {
+            "watch": {
+             "type": "string",
              "const": "repeat"
             },
             "value": {
@@ -1401,6 +1419,24 @@
                }
               },
               "additionalProperties": false
+             }
+            },
+            "required": [
+             "watch",
+             "value"
+            ],
+            "additionalProperties": false
+           },
+           {
+            "type": "object",
+            "properties": {
+             "watch": {
+              "type": "string",
+              "const": "note"
+             },
+             "value": {
+              "type": "string",
+              "enum": []
              }
             },
             "required": [

@@ -21,7 +21,7 @@ describe("nine skills, one file each", () => {
   });
   it("a situation's text is in its skill file or in the table, never both", () => {
     for (const [code, s] of Object.entries(SITUATIONS)) expect([code, !!s.skill !== !!s.guidance]).toEqual([code, true]);
-    expect(Object.keys(SITUATIONS).filter((c) => SITUATIONS[c as SituationCode].guidance)).toEqual(["PROMOTED_AWAITING", "NOTE_TO_ANSWER"]);
+    expect(Object.keys(SITUATIONS).filter((c) => SITUATIONS[c as SituationCode].guidance)).toEqual(["PROMOTED_AWAITING"]);
   });
   it("none is over 1,500 characters", () => {
     for (const c of SKILLS) expect([c, file(c).length <= 1_500]).toEqual([c, true]);
@@ -88,8 +88,8 @@ describe("the part that fits the stock", () => {
     expect(out.REPORT).toBe(situationText("REPORT", false));
     expect(out.FILING).toBe(file("FILING"));
   });
-  it("promoted and a note to answer are their text in the table, whatever the stock", () => {
-    expect(situationText("NOTE_TO_ANSWER", true)).toBe(SITUATIONS.NOTE_TO_ANSWER.guidance);
+  it("promoted to live is its text in the table, whatever the stock", () => {
+    expect(situationText("PROMOTED_AWAITING", true)).toBe(SITUATIONS.PROMOTED_AWAITING.guidance);
     expect(guidanceFor([{ code: "PROMOTED_AWAITING", held: false }]).PROMOTED_AWAITING).toBe(SITUATIONS.PROMOTED_AWAITING.guidance);
   });
 });

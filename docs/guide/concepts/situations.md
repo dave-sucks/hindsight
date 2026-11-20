@@ -33,7 +33,7 @@ The note is the write-up of what the situation sent the agent to find out. Every
 
 ## The situations
 
-A situation is why a stock is in front of its analyst now. There are three kinds, and two more that are their own case.
+A situation is why a stock is in front of its analyst now. There are three kinds, and one more that is its own case.
 
 | Kind | Situation | When |
 |---|---|---|
@@ -42,18 +42,15 @@ A situation is why a stock is in front of its analyst now. There are three kinds
 | | **Add** | An add trigger fired on a holding. Nearing an upside line is no situation of its own: the house has no target. |
 | Something happened | **A report** | A trigger on the company's earnings report fired, before it or after it. |
 | | **A filing** | A trigger on the company's SEC filings fired. |
-| | **News** | Something happened to the company, or the stock had a day far outside its normal. The skill is written; nothing puts a stock in it yet. |
+| | **News** | A trigger on the Market Reviewer's notes fired: it wrote a high note on the stock. It needs the rule "Review if the Market Reviewer writes a high note on it", which is yours to save. |
 | It is time to look again | **Review due** | The review clock came round, or the price reached a level the analyst asked to look at again. |
 | | **Floor to fix** | A holding's floor locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
 | | **Just sold** | Sold in the last two weeks, and no run has looked at it since. |
-| Its own case | **A note to answer** | You left a note, a decline or a resized approval that no run has answered, or a note is pinned on the stock. |
-| | **Promoted to live** | A paper analyst was promoted to live money, and its holdings need a decision. |
+| Its own case | **Promoted to live** | A paper analyst was promoted to live money, and its holdings need a decision. |
 
 On a watch, a review, a report and news can each end in a buy: when the case is stronger and the playbook's buy is true today, the analyst proposes it.
 
-Some things are deliberately not situations. A buy into a full analyst is refused by the buy tool, which says to name the holding the stock would replace. A sale that already waits for you is refused by the sell tool. A watch with no view yet has no case to review: when its review clock or one of its triggers comes due, code sends it to the Writer, and no run is asked to.
-
-A pinned note is a high-impact note the [Market Reviewer](../agents/market-reviewer.md) wrote at 7:30 on one stock or several, or one you wrote to several stocks at once (lib/agent/shared-notes.ts); it is a paragraph of "a note to answer".
+Some things are deliberately not situations. A buy into a full analyst is refused by the buy tool, which says to name the holding the stock would replace. A sale that already waits for you is refused by the sell tool. A watch with no view yet has no case to review: when its review clock or one of its triggers comes due, code sends it to the Writer, and no run is asked to. Your own words are not a situation either: a note you write, a trigger you edit, a floor you move, an approval you resize and a decline with a comment all stay in the stock's Activity, where every look reads them, and put no stock on a list. A sale you declined is still carried by the sale signal while the price is past it.
 
 A trade a trigger set to Auto made is written up by its own agent, the post-trade write-up (or, for a buy or an add sent at once, [After the buy](../agents/after-the-buy.md)), from its own instructions; it is not a situation.
 
@@ -63,10 +60,10 @@ Each one's code, what it means and the exact text an agent is sent are in the [S
 <summary>Technical details</summary>
 
 #### The list
-`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by what it watches when that is a report or a filing, and by its action (`fireCodes`); any other is a review. A watch with no view carries no flag (`computeNeedsAction`); `sendNoViewWatch` (`lib/agent/thesis-writer-dispatch.ts`) sends it to the Writer from the morning job and from a fire. A sale or trim card waiting for you is read there, as a waiting buy is: `computeNeedsAction` leaves out the sale fires, the sales true now and the declined sale, and nothing else. The close-out owes the stocks the read lists (`listsTheStock`), so it owes these too.
+`situationsFor` in `lib/agent/situations.ts`, over the flags from `computeNeedsAction`, today's lead first. A fired trigger maps by what it watches when that is a report, a filing or a news note, and by its action (`fireCodes`); any other is a review. A watch with no view carries no flag (`computeNeedsAction`); `sendNoViewWatch` (`lib/agent/thesis-writer-dispatch.ts`) sends it to the Writer from the morning job and from a fire. A sale or trim card waiting for you is read there, as a waiting buy is: `computeNeedsAction` leaves out the sale fires, the sales true now and the declined sale, and nothing else. The close-out owes the stocks the read lists (`listsTheStock`), so it owes these too.
 
 #### The texts
-The skill files in `lib/agent/engine/skills/`, one per situation, named in `SITUATIONS`; `lib/agent/situation-skills.ts` reads them and picks the part for a stock we hold or one we watch. Each is held under 1,500 characters by test, with no tool name and nothing for code to fill in. Promoted and a note to answer keep their text in the table. An Auto trade's note is written by its own agent, the post-trade write-up (`lib/agent/engine/agents/post-trade-writeup.ts`), which gets no situations.
+The skill files in `lib/agent/engine/skills/`, one per situation, named in `SITUATIONS`; `lib/agent/situation-skills.ts` reads them and picks the part for a stock we hold or one we watch. Each is held under 1,500 characters by test, with no tool name and nothing for code to fill in. Promoted to live keeps its text in the table. An Auto trade's note is written by its own agent, the post-trade write-up (`lib/agent/engine/agents/post-trade-writeup.ts`), which gets no situations.
 
 #### One feed
 `loadWorkInputs` and `loadStockFacts`, shared by the read, the thesis sheet, the quote route and the run close-out.

@@ -12,7 +12,6 @@ import {
   isPinned,
   noteLine,
   pinnedBlock,
-  unansweredPinned,
   PINNED_PER_STOCK,
   type NoteShare,
   type SharedNoteRow,
@@ -22,7 +21,7 @@ import type { TitleTrigger } from "@/components/agent/sheets/thesis-timeline-uti
 /**
  * How many of a stock's newest Activity lines are loaded (about a month).
  * The agent reads the newest 8 of the feed; the situations read all of these
- * for an unanswered fire or an unanswered word of the principal's.
+ * for an unanswered fire.
  */
 export const ACTIVITY_LINES = 40;
 
@@ -37,8 +36,7 @@ export const ACTIVITY_SELECT = {
 /**
  * `notes` are the account's shared notes, newest first (lib/agent/shared-notes.ts).
  * The ones that cover this stock join its Activity, except the newest two
- * pinned ones, which read in their own block above the newest 8 and put the
- * stock in NOTE_TO_ANSWER until a run writes on it after them.
+ * pinned ones (the owner's), which read in their own block above the newest 8.
  */
 export function stockContextFor(args: {
   ticker: string;
@@ -56,10 +54,5 @@ export function stockContextFor(args: {
   const inFeed = covering.filter((n) => !shown.has(n.id)).map((n) => noteLine(n, args.ticker));
   const base = buildStockContext({ ticker: args.ticker, feed: activityFeed({ updates: [...args.rows, ...inFeed], orders: args.orders ?? [] }), triggers: args.triggers });
   if (pinned.length === 0) return base;
-  const open = unansweredPinned(pinned, args.rows);
-  return {
-    ...base,
-    text: [pinnedBlock(args.ticker, pinned, args.shares ?? new Map()), base.text].filter(Boolean).join("\n"),
-    pinnedNote: open ? { id: open.id, at: open.createdAt } : null,
-  };
+  return { ...base, text: [pinnedBlock(args.ticker, pinned, args.shares ?? new Map()), base.text].filter(Boolean).join("\n") };
 }

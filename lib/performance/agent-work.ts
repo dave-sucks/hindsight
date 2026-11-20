@@ -144,7 +144,7 @@ export function measureLabel(condition: unknown, summary: string | null): string
     const v = c.variable ?? "";
     if (c.watch === "price") return /^sma\d+$/.test(v) ? "Price vs an average" : v.startsWith("street") ? "Price vs the Street target" : "Price vs a set price";
     if (c.watch === "move") return v === "entry" ? "Move from our entry" : v === "peak" ? "Give-back off the high" : v === "prev_close" ? "Move from yesterday's close" : "Move vs an average or high";
-    return { report: "Before a report", surprise: "Earnings beat or miss", filing: "A filing", insiders: "Insider buying", repeat: "Review every N days", from_date: "Days from a date", strength: "Strength vs the S&P", rsi: "RSI", volume: "Volume", gap: "A gap" }[c.watch] ?? c.watch;
+    return { report: "Before a report", surprise: "Earnings beat or miss", filing: "A filing", insiders: "Insider buying", note: "A high news note", repeat: "Review every N days", from_date: "Days from a date", strength: "Strength vs the S&P", rsi: "RSI", volume: "Volume", gap: "A gap" }[c.watch] ?? c.watch;
   };
   return [...new Set(conditionsOf(w).map(one))].join(" + ");
 }

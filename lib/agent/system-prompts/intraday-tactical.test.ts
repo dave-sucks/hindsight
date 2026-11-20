@@ -144,13 +144,13 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
       makeArgs({
         trigger: stop,
         stock: { ticker: "MU", direction: "LONG", row: row({ ticker: "MU" }) },
-        situations: { codes: ["PROTECTIVE_SALE", "NOTE_TO_ANSWER"], guidance: guidanceFor([{ code: "PROTECTIVE_SALE", held: true }, { code: "NOTE_TO_ANSWER", held: true }]) },
+        situations: { codes: ["PROTECTIVE_SALE", "NEWS"], guidance: guidanceFor([{ code: "PROTECTIVE_SALE", held: true }, { code: "NEWS", held: true }]) },
       }),
     );
-    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NOTE_TO_ANSWER), and what each asks:");
+    expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NEWS), and what each asks:");
     expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + situationText("PROTECTIVE_SALE", true));
     expect(prompt).toContain("Two sales that fired together get one decision.");
-    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NOTE_TO_ANSWER — "));
+    expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NEWS — news\nNews on a stock."));
     // The end of the instructions, before the stock's facts in the first message.
     expect(prompt.indexOf("## Its situations")).toBeLessThan(prompt.indexOf("its row (get_theses)"));
   });
@@ -284,10 +284,11 @@ describe("the trigger run's situations: the skills as written, the part for its 
       for (const [code, text] of Object.entries(read.situations.guidance)) expect([status, code, text]).toEqual([status, code, situationText(code as keyof typeof SITUATIONS, status === "HOLDING")]);
     }
   });
-  it("no skill names a status tool; that this run can't end a watch is its own instructions'", () => {
+  it("no skill names a status tool; how this run stops watching a stock is its own instructions'", () => {
     const text = ALL.filter((c) => SITUATIONS[c].skill).map((c) => situationText(c, null)).join("\n");
     for (const word of ["change_status", "INVALIDATED", "ARCHIVED", "stop_watching", "watch_again"]) expect([word, text.includes(word)]).toEqual([word, false]);
-    expect(triggerRunSent(makeArgs())).toContain("This run can't end a watch: where a situation says to stop watching, take the stock's buy and its Stop watching trigger off, say so in your note, and the morning run decides.");
+    expect(triggerRunSent(makeArgs())).toContain("stop watching it (`stop_watching`), or leave it.");
+    expect(triggerRunSent(makeArgs())).not.toMatch(/can't end a watch|the morning run decides/);
   });
 });
 

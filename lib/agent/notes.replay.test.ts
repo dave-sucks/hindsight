@@ -50,7 +50,7 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
     expect(Object.keys(notes[0].fieldChanges ?? {})).toEqual([]); // information only: nothing to replace or resolve
   });
 
-  it("Friday's morning read gives DOCU's note as one of its newest lines, whole, with the price then, and puts it on the full list", async () => {
+  it("the next look at DOCU reads the note as one of its newest lines, whole, with the price then; the note puts DOCU on no list", async () => {
     const written = await replayTool("write-note", "writeNoteTool", {
       seed: seed(stored) as never,
       args: { thesis_id: fx.thesis.id, note: fx.note },
@@ -62,12 +62,14 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
       const { result } = await replayTool("get-theses", "getTheses", {
         // The chat wrote the note at 13:05 ET, after the 12:25 approval (the double stamped it with today).
         seed: seed((written.db.store.thesisUpdate as Row[]).map((u) => ({ ...u, timestamp: u.type === "NOTE" ? new Date("2026-09-30T17:05:00Z") : u.timestamp }))) as never,
-        args: { detail: "actionable" },
+        args: { tickers: ["DOCU"] },
         ctx: { runMode: "MORNING_PLAN" },
         quotes: { DOCU: fx.price },
       });
-      const docu = (result as unknown as { data: { theses: Array<{ ticker: string; context: string }> } }).data.theses.find((t) => t.ticker === "DOCU");
+      const docu = (result as unknown as { data: { theses: Array<{ ticker: string; context: string; situations: string[] }> } }).data.theses.find((t) => t.ticker === "DOCU");
       expect(docu).toBeDefined();
+      // The owner's note and the resized approval are no situation: nothing asks a run to answer them.
+      expect(docu!.situations).toEqual([]);
       expect(docu!.context.startsWith("WHAT'S BEEN SAID ON $DOCU — its newest ")).toBe(true);
       expect(docu!.context).toContain('09-30 13:05 · $67.90 · Your note — "Bought a starter');
       expect(docu!.context).toContain("IAM stalls under 17% of ARR");

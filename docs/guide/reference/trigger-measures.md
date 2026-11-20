@@ -1,6 +1,6 @@
 # Trigger measures
 
-**Every condition a trigger can watch, with the shape it's saved in.** The twelve measures, grouped by the five types of the Add trigger menu.
+**Every condition a trigger can watch, with the shape it's saved in.** The thirteen measures, grouped by the six types of the Add trigger menu.
 
 This file is built from `MEASURES` in `lib/agent/triggers/condition/catalog.ts` and the examples in `lib/docs/trigger-examples.ts`; don't edit it by hand. What a trigger is and when one fires is [Triggers](../concepts/triggers.md).
 
@@ -291,6 +291,22 @@ What the company tells the SEC, and what its insiders buy. Read live from SEC ED
 
   ```json
   {"action":"REVIEW","predicate":{"watch":"insiders","value":3,"settings":{"days":90}}}
+  ```
+
+## News
+
+A high note from the Market Reviewer on the stock. Read right after the Market Reviewer saves its 7:30 AM notes, and on every pass in market hours. Only a note it marked high counts; a medium or low note starts nothing. One fire per stock per note: a note holds only if it was written after the trigger last fired, and within the last day.
+
+### News note
+
+`watch: "note"` · no number · actions: review · reads: notes
+
+**Examples:**
+
+- "Review if the Market Reviewer writes a high note on it". Something happened to the company that could change what we do today.
+
+  ```json
+  {"action":"REVIEW","predicate":{"watch":"note"}}
   ```
 
 ## Schedule

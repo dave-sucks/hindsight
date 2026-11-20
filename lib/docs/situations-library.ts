@@ -21,7 +21,6 @@ const PLAIN: Record<SituationCode, string> = {
   NEWS: "Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.",
   PROTECTION: "A gain with too little floor under it, or a floor that would lose too much of the account.",
   REVIEW_DUE: "The review clock came round, or the price reached a level the analyst asked to look at again.",
-  NOTE_TO_ANSWER: "You left a note or made a decision since the analyst's last answer, or a note is pinned on the stock (the Market Reviewer's or yours).",
   SOLD_ONE_REVIEW: "A stock sold in the last two weeks is owed one look back.",
 };
 
