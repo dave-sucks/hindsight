@@ -244,7 +244,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         entry_price: 100,
         current_price: 95,
         reasoning_summary: "Passed — does not fit strategy right now.",
-        risk_flags: ["Late stage chase", "RSI too high"],
         invalidation_conditions: ["Revisit if pullback to 20d on volume."],
         source_kind: "WATCHLIST_REVIEW",
         source_rationale: "Watchlist review; passing.",

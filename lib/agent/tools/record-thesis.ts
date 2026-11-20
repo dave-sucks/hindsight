@@ -33,69 +33,14 @@ const recordFields = z.object({
   company_name: z.string().optional().describe("Company name from get_stock_data"),
   exchange: z.string().optional().describe("Exchange from get_stock_data, e.g. NASDAQ"),
   direction: F.direction,
-  // ── Narrative fields ─────────────────────────────────────────────────
-  // Legacy plain-string args. Kept on the Zod schema so the daily-run +
-  // discovery agents that haven't been migrated to the V2 narrative shape
-  // can still write theses. Execute() wraps them in the new flat-column
-  // shape ({text, citations:[]} / {bullets:[{text}]}) before persistence.
-  // V2 thesis-writer agent should pass `snapshot`/`bull_case`/`bear_case`
-  // directly with citations.
   reasoning_summary: z
     .string()
     .optional()
     .describe(
       "The note the owner reads at the top of the new stock's page: what the company does, how it is doing and where the stock is and why, then your call. On a PASS, what you found and why it doesn't fit. Write it by How you write.",
     ),
-  thesis_bullets: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "3-5 key points supporting the thesis. Legacy shape — V2 agents prefer `bull_case: { bullets: [{ text, citation }] }`.",
-    ),
-  risk_flags: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "2-4 key risks. Legacy shape — V2 agents prefer `bear_case: { bullets: [{ text, citation }] }`.",
-    ),
   setup_id: F.setup_id.optional(),
   current_price: F.live_price.optional(),
-  // `hold_duration` arg removed 2026-05-18 (THESIS_CLEANUP PR-4). The
-  // value is derived from horizon at render time via
-  // holdDurationFromHorizon() — agents shouldn't have to think about it,
-  // and historically half of failed record_thesis calls were agents
-  // passing a horizon value ("TRADE") to this field by mistake.
-  //
-  // `confidence_score`, `signal_types`, `sources_used` args removed in
-  // PR-9 (2026-05-21) — the columns are dropped from the DB.
-  // Signal types ⇒ derivable from `source_signal_ids`.
-  // Sources ⇒ per-section citations inside the 9 narrative columns.
-  // Renamed from `fundamentals` (2026-05-23) to free that name for the V2
-  // narrative section below — the two were unrelated things with the same
-  // name (structured numbers vs prose paragraph) which made the
-  // thesis-writer prompt's section→arg mapping awkward. UI-only — never
-  // written to the DB. Agent passes from get_stock_data; renders in the
-  // inline tool-call card during a live run.
-  stock_fundamentals: z
-    .object({
-      // All numeric fundamentals accept null — get_stock_data legitimately
-      // returns null for unstable PE (negative earnings), 52w highs that
-      // haven't established yet, or zero-volume thin names. Plain
-      // .optional() rejects null at the Zod layer and forces the agent
-      // into a retry loop that fabricates 0 just to land the call (see
-      // 2026-05-13 INTC discovery run: first record_thesis rejected on
-      // pe_ratio:null, agent retried with pe_ratio:0 which is misleading).
-      market_cap: z.number().nullable().optional(),
-      pe_ratio: z.number().nullable().optional(),
-      beta: z.number().nullable().optional(),
-      avg_volume: z.number().nullable().optional(),
-      high_52w: z.number().nullable().optional(),
-      low_52w: z.number().nullable().optional(),
-      sector: z.string().nullable().optional(),
-      analyst_consensus: z.object({ buy: z.number(), hold: z.number(), sell: z.number() }).nullable().optional(),
-    })
-    .optional()
-    .describe("The stock's numbers from get_stock_data, shown on the thesis card."),
   parent_thesis_id: z.string().optional()
     .describe("The thesis this one replaces, on a direction flip."),
   // Where the idea came from. The routed-signal kind and its ids went with
@@ -128,27 +73,6 @@ const recordFields = z.object({
   catalyst_date: F.catalyst_date.optional(),
   // next_review_at is gone (DAV-221). Review timing is a review-clock
   // trigger counted from the last actual review; the mint templates stamp it.
-  // Explicit status arg. Daily watchlist-review and discovery both
-  // need to write WATCHING; trade-eligible coverage stays ACTIVE. When
-  // omitted the effective status is derived from source_kind:
-  // WATCHLIST_REVIEW → WATCHING, everything else → ACTIVE. Direction is
-  // independent — a WATCHING thesis can be LONG/SHORT (directional view
-  // we're tracking) or PASS (we looked, decided no, want to keep eyes on
-  // it for change-of-mind). The agent should pass status explicitly when
-  // intent matters; the default keeps existing call sites working.
-  status: z
-    // ARCHIVED/PASSED are TOLERATED on input (not recommended) only so a
-    // PASS that leaks a status field no longer Zod-rejects — the recurring
-    // discovery red error. They're ignored for directional theses: the
-    // effectiveStatusForTriggers guard below honors ONLY ACTIVE/WATCHING
-    // from input on a LONG/SHORT, and a PASS always lands PASSED regardless.
-    .enum(["WATCHING", "ARCHIVED", "PASSED"])
-    .optional()
-    .describe(
-      "A LONG or SHORT thesis lands WATCHING. PASS alone is a terminal pass: no triggers, never woken. " +
-        "PASS with WATCHING keeps the stock in view with no view yet: no direction, only the triggers you give it, and it is reviewed on a schedule only if one of them is a review schedule ({ watch: 'repeat', value: days }). " +
-        "(PASS with status WATCHING is for a stock you haven't formed a view on yet.)",
-    ),
 
   // ── Recently-sold acknowledgment (P1-35 Half B — the XENE re-buy guard) ──
   // A mint on a name THIS analyst sold in the last 14 days, priced at or
@@ -158,7 +82,6 @@ const recordFields = z.object({
   // knew the sale happened. The guard surfaces the prior exit and requires
   // this explicit engagement with it before minting at/above the exit.
   acknowledge_prior_exit: F.prior_exit.optional(),
-  research_data: F.research_data.optional(),
   company: F.company.optional(),
   bull_case: F.bull_case.optional(),
   bear_case: F.bear_case.optional(),
@@ -177,30 +100,12 @@ function refineThesis(val: { source_kind?: string; source_rationale?: string }, 
   }
 }
 
-export const thesisSchema = recordFields.superRefine(refineThesis);
-
-/**
- * The research sections only the writer's save fills (step 5 of
- * docs/plans/AGENT_ARCHITECTURE.md): no agent sent one in the 30 days to
- * 2026-10-05, and the plain-string bull/bear forms are older still. They
- * leave every agent's copy of the tool; the writer's save, and the paste-a-
- * thesis path that validates against `thesisSchema` itself, keep them.
- */
-const WRITER_ONLY_FIELDS = {
-  company: true,
-  bull_case: true,
-  bear_case: true,
-  research_data: true,
-  thesis_bullets: true,
-  risk_flags: true,
-} as const;
-const agentThesisSchema = recordFields.omit(WRITER_ONLY_FIELDS).superRefine(refineThesis);
+const thesisSchema = recordFields.superRefine(refineThesis);
 
 export const recordThesis = defineTool({
   description:
     "Write a new thesis on a stock. Direction is LONG, SHORT, or PASS — a PASS documents a stock you researched and won't trade. Never write a verdict as narration text instead of calling this tool.",
   schema: thesisSchema,
-  schemaFor: (ctx) => (ctx.runMode === "THESIS_WRITER" ? thesisSchema : agentThesisSchema),
   ui: "thesis-card" as const,
   gateLog: "record_thesis",
 
@@ -224,11 +129,10 @@ export const recordThesis = defineTool({
       // seed thesis to a real view, the path is
       // update_thesis(thesis_id, direction: "LONG"|"SHORT"|"PASS", ...).
 
-      const sourceSignalIds: string[] = [];
       const sourceRationale = args.source_rationale?.trim() ?? "";
 
       // Provenance gate: every thesis must declare WHERE the idea came from.
-      // Today 11 of 19 theses landed with null sourceSignalIds because the
+      // Today 11 of 19 theses landed with no provenance because the
       // agent passed neither signal IDs nor rationale and the old inference
       // fallback silently saved with empty provenance. The "don't tank the
       // run" argument doesn't apply anymore — we have a retry path in
@@ -347,7 +251,7 @@ export const recordThesis = defineTool({
       // agent can't decide whether a trigger fire is thesis-breaking,
       // and the daily run can't tell when an assumption has flipped.
       // PASS theses bypass — they're "researched, decided not to trade"
-      // and live in reasoning_summary + thesis_bullets + risk_flags.
+      // and live in reasoning_summary.
       const beliefCheck = validateThesisBelief({
         direction: args.direction,
         coreBelief: args.core_belief ?? null,
@@ -465,29 +369,13 @@ export const recordThesis = defineTool({
       // only by place_trade on a real fill). The `status` input enum still
       // tolerates ACTIVE as a legacy alias; it's silently collapsed to
       // WATCHING here, never persisted.
-      // PASS + status:"WATCHING" = "we looked, no view yet, keep the name in
-      // view." Stored shape: direction null, status WATCHING, no committed
-      // plan. It is an ordinary watched row, not a tier of its own — it
-      // carries whatever triggers the caller gave it (including none), and
-      // it is reviewed on a schedule only if the caller sent a
-      // review-clock trigger of its own (DAV-209).
-      const passKeepsWatch =
-        args.direction === "PASS" && args.status === "WATCHING";
-
-      const effectiveStatusForTriggers: "WATCHING" | "PASSED" =
-        args.direction === "PASS"
-          ? passKeepsWatch
-            ? "WATCHING"
-            : "PASSED"
-          : "WATCHING";
+      const effectiveStatusForTriggers: "WATCHING" | "PASSED" = args.direction === "PASS" ? "PASSED" : "WATCHING";
 
       // TERMINAL PASS theses reject triggers[] at write — no wake-up
       // needed. Future re-encounter mints a fresh thesis chained via
-      // parent_thesis_id. (A PASS you DO want woken from is the soft
-      // watch — pass status:"WATCHING" and the triggers become the wake.)
+      // parent_thesis_id.
       if (
         args.direction === "PASS" &&
-        !passKeepsWatch &&
         Array.isArray(args.triggers) &&
         args.triggers.length > 0
       ) {
@@ -498,7 +386,6 @@ export const recordThesis = defineTool({
             status: "FAILED" as const,
             note:
               `PASS = "researched, decided not to trade." It's terminal at write (status=PASSED) and lives as institutional memory only — no review cadence, no entry trigger, no wake-up. ` +
-              `If you want to keep the name in view, resend with status:"WATCHING" and keep the triggers. ` +
               `If you want a priced entry the system can act on, write a LONG/SHORT WATCHING thesis with an ENTER trigger at the level that would change your mind.`,
           },
           sources: [],
@@ -517,12 +404,8 @@ export const recordThesis = defineTool({
       // first, the caller's `current_price` second.
       let quoteForEntrySide: number | null = null;
       let freshPrice: number | null = null;
-      // A PASS has no buy, so it skips the quote — but a
-      // SOFT WATCH is a PASS that keeps watching, and its coverage row is
-      // measured from the price on the day it opened. Without a quote its
-      // CREATED row carried no price and the row had nothing to anchor to
-      // (ABBV, FTNT and MA, all minted 2026-09-29). A hard pass still skips.
-      if (args.direction !== "PASS" || passKeepsWatch) {
+      // A PASS has no buy, so it skips the quote.
+      if (args.direction !== "PASS") {
         try {
           const q = await getStockQuote(args.ticker);
           if (q && Number.isFinite(q.c) && q.c > 0) quoteForEntrySide = q.c;
@@ -544,7 +427,7 @@ export const recordThesis = defineTool({
       const mergedTriggers: Trigger[] = (() => {
         // Terminal PASS theses carry no triggers. Future re-encounter
         // mints a fresh directional thesis via parent_thesis_id.
-        if (args.direction === "PASS" && !passKeepsWatch) {
+        if (args.direction === "PASS") {
           return [];
         }
         // source=AGENT on everything the model supplied. Server-owned — any
@@ -556,10 +439,6 @@ export const recordThesis = defineTool({
           id: t.id || randomUUID(),
           source: "AGENT" as const,
         }));
-        // No committed view, so no review clock. Whatever triggers the caller sent, verbatim.
-        if (passKeepsWatch) {
-          return applyTriggerDefaults(supplied);
-        }
         if (!args.horizon) {
           return applyTriggerDefaults(supplied);
         }
@@ -603,25 +482,14 @@ export const recordThesis = defineTool({
       // What the stock cost when this was written, for the Activity rows below.
       const priceNow = freshPrice ?? quoteForEntrySide ?? null;
 
-      // ── Narrative reconciliation (PR-9 flat schema) ───────────────────
-      // The agent may pass either the legacy plain-string args
-      // (reasoning_summary / thesis_bullets / risk_flags) or the new V2
-      // section args (snapshot / bull_case / bear_case). V2 wins when both
-      // are supplied. Legacy wraps in the new shape with empty citations.
+      // ── Narrative (PR-9 flat schema) ──────────────────────────────────
+      // The note is the snapshot; the research sections are the Writer's.
       const snapshotPayload: object | undefined =
         (typeof args.reasoning_summary === "string" && args.reasoning_summary.length > 0
           ? { text: args.reasoning_summary, citations: [] }
           : undefined);
-      const bullCasePayload: object | undefined =
-        args.bull_case ??
-        (args.thesis_bullets && args.thesis_bullets.length > 0
-          ? { bullets: args.thesis_bullets.map((t) => ({ text: t })) }
-          : undefined);
-      const bearCasePayload: object | undefined =
-        args.bear_case ??
-        (args.risk_flags && args.risk_flags.length > 0
-          ? { bullets: args.risk_flags.map((t) => ({ text: t })) }
-          : undefined);
+      const bullCasePayload: object | undefined = args.bull_case;
+      const bearCasePayload: object | undefined = args.bear_case;
 
       // Narrative text for downstream consumers (ThesisUpdate.rationale,
       // RunEvent.message, TradeDecision.reasoning). Prefer the V2 snapshot
@@ -659,7 +527,6 @@ export const recordThesis = defineTool({
         // dropped from the zod schema in PR-4 (was a token waste, agents
         // routinely confused it with `horizon`). Column drops in PR-5.
         holdDuration: holdDurationFromHorizon(args.horizon),
-        sourceSignalIds,
         sourceKind: inferredSourceKind,
         sourceRationale: sourceRationale.length > 0 ? sourceRationale : null,
         // `fullResearch` is no longer written. `source` + `modelUsed` are kept
@@ -691,14 +558,8 @@ export const recordThesis = defineTool({
         // DB. See the build block above for the templating rules.
         triggers: mergedTriggers as object[],
         catalystDate: args.catalyst_date ? new Date(args.catalyst_date) : null,
-        // ── Deep-research artifacts (V2 flat schema, PR-9) ────────────────
-        // researchData is the raw markdown data block; the 9 columns below
-        // hold the parsed narrative sections. Use `undefined` for missing
-        // sections (Prisma omits the field; Json? defaults to NULL).
-        researchData:
-          typeof args.research_data === "string" && args.research_data.length > 0
-            ? args.research_data
-            : undefined,
+        // ── The research sections (V2 flat schema, PR-9) ──────────────────
+        // `undefined` for a missing section (Prisma omits the field; Json? defaults to NULL).
         company: args.company ?? undefined,
         snapshot: snapshotPayload,
         bullCase: bullCasePayload,
@@ -753,25 +614,6 @@ export const recordThesis = defineTool({
             select: { id: true, direction: true, status: true },
           });
           if (existingThesis) {
-            // A no-view row on an already-covered name adds nothing — the
-            // live HOLDING/WATCHING/PROMOTED row is strictly more than a
-            // keep-in-view row. Redirect rather than chain a duplicate row.
-            if (passKeepsWatch) {
-              return {
-                summary: `${args.ticker} is already covered (${existingThesis.status}): edit that thesis.`,
-                data: {
-                  thesis_id: null,
-                  status: "USE_UPDATE_THESIS" as const,
-                  existing_thesis_id: existingThesis.id,
-                  ticker: args.ticker,
-                  note:
-                    `NOT a failure — a ${existingThesis.status} thesis already exists for ${args.ticker} (id ${existingThesis.id}), which is more coverage than a name kept in view with no view. ` +
-                    `If your intent is to set that coverage down, call edit_triggers on it and replace its triggers with the wake conditions you want, dropping its buy and its Stop watching line. ` +
-                    `Do not retry record_thesis on ${args.ticker}.`,
-                },
-                sources: [],
-              };
-            }
             if (existingThesis.direction === args.direction) {
               // Same-direction reject. The agent should be calling
               // update_thesis here.
@@ -958,14 +800,7 @@ export const recordThesis = defineTool({
         }
       }
 
-      // Effective status: explicit `status` arg wins; otherwise derive
-      // from source_kind. WATCHLIST_REVIEW (and the watchlist-collapse
-      // call sites that follow) → WATCHING; everything else → ACTIVE.
-      // This is the producer fix that makes the WATCHING enum value
-      // (consumed by trigger-evaluator, morning-brief-generator,
-      // tactical-run, get-theses, update-thesis) actually populated.
-      // Reuse the value we hoisted earlier for the trigger factory so
-      // status, triggers, and the DB row never disagree.
+      // The status the triggers were built for: status, triggers and the row never disagree.
       const effectiveStatus = effectiveStatusForTriggers;
 
       // Check-only call (ctx.dryRun): every refusal above has had its chance.
@@ -977,109 +812,22 @@ export const recordThesis = defineTool({
         };
       }
 
-      let thesis;
-      try {
-        thesis = await prisma.thesis.create({
-          data: { ...coreData, status: effectiveStatus, parentThesisId: resolvedParentId },
-        });
-      } catch (v2Err: unknown) {
-        const errMsg = v2Err instanceof Error ? v2Err.message : String(v2Err);
-        // Narrow fallback: only trigger when the error is specifically about an
-        // unknown column/argument from the V2/V3 schema additions. The previous
-        // catch matched errMsg.includes("status") which matched almost ANY
-        // Prisma error (most error messages contain the word "status"), silently
-        // stripping sourceSignalIds / sourceKind / sourceRationale from every
-        // thesis regardless of the real error cause. That's why 100% of theses
-        // Apr 23-24 showed sourceKind=null — the fallback was eating real
-        // errors.
-        const isUnknownArgError =
-          errMsg.includes("Unknown arg") ||
-          errMsg.includes("Unknown argument") ||
-          // Prisma validation-error shapes vary across versions; catch the
-          // variants that name a specific new column:
-          (errMsg.includes("parentThesisId") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceSignalIds") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceKind") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("sourceRationale") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
-          // PR-9 flat schema cutover
-          (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
-          (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
-
-        if (isUnknownArgError) {
-          // LOUD log — we want to see this in Vercel if it ever happens.
-          console.error(
-            `[tool] record_thesis V2/V3 FALLBACK TRIGGERED for ${args.ticker}. ` +
-              `Prisma client appears out of sync with schema. Dropping new columns. ` +
-              `Full error: ${errMsg}`
-          );
-          const {
-            sourceSignalIds: _ids,
-            sourceKind: _kind,
-            sourceRationale: _rationale,
-            // PR 1 durable-state columns — also strip if Prisma client is
-            // out of sync with the schema.
-            horizon: _horizon,
-            coreBelief: _belief,
-            keyAssumptions: _assumptions,
-            invalidationConds: _invalid,
-            triggers: _triggers,
-            catalystDate: _cdate,
-            // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
-            // V2-era research column if Prisma client predates them.
-            researchData: _rdata,
-            researchUpdatedAt: _rupdated,
-            snapshot: _snap,
-            bullCase: _bcase,
-            bearCase: _xcase,
-            ...fallbackData
-          } = coreData;
-          void _ids;
-          void _kind;
-          void _rationale;
-          void _horizon;
-          void _belief;
-          void _assumptions;
-          void _invalid;
-          void _triggers;
-          void _cdate;
-          void _rdata;
-          void _rupdated;
-          void _snap;
-          void _bcase;
-          void _xcase;
-          thesis = await prisma.thesis.create({
-            data: { ...fallbackData, status: effectiveStatus },
-          });
-          resolvedParentId = null;
-        } else {
-          // Any other error is a real failure — log with full context and throw.
-          console.error(
-            `[tool] record_thesis create() FAILED for ${args.ticker}: ${errMsg}`
-          );
-          throw v2Err;
-        }
-      }
+      const thesis = await prisma.thesis.create({
+        data: { ...coreData, status: effectiveStatus, parentThesisId: resolvedParentId },
+      });
 
       // ── ThesisUpdate(CREATED) — durable activity log ─────────────────
       // Single source of truth for thesis history. Non-fatal: if this
       // fails the thesis still landed; we just lose the timeline row.
       // Logs LOUD so we notice if writes start dropping.
       const createdSummary =
-        args.direction === "PASS"
-          ? passKeepsWatch
-            ? `Watching ${args.ticker} (soft — wakes on triggers, no review cadence)`
-            : `Passed on ${args.ticker}`
-          : `${args.direction} thesis on ${args.ticker}`;
+        args.direction === "PASS" ? `Passed on ${args.ticker}` : `${args.direction} thesis on ${args.ticker}`;
       await writeThesisUpdate({
         thesisId: thesis.id,
         type: "CREATED",
         summary: createdSummary,
         fieldChanges: { status: { from: null, to: thesis.status } },
         rationale: narrativeText,
-        signalIds: sourceSignalIds,
         runId: ctx.runId,
         // What the stock cost when we started watching: the coverage row is
         // measured from it (a buy level is not a price the stock traded at).
@@ -1151,28 +899,10 @@ export const recordThesis = defineTool({
       // Watchlist-collapse: this thesis IS the watchlist row (when
       // status='WATCHING'). No mirror table to sync.
 
-      // V3 Session 3 — flip any cited routes to ACTED_ON. Scoped by analystId
-      // so one analyst citing a signal doesn't close out a peer's inbox entry.
-      // Non-fatal: if this fails the thesis is still saved, we just lose the
-      // status flip for that run.
-      if (ctx.analystId && sourceSignalIds.length > 0) {
-        try {
-          await prisma.analystSignalRoute.updateMany({
-            where: {
-              analystId: ctx.analystId,
-              signalId: { in: sourceSignalIds },
-            },
-            data: { status: "ACTED_ON" },
-          });
-        } catch (routeErr) {
-          console.warn("[tool] record_thesis: ACTED_ON route flip failed:", routeErr);
-        }
-      }
-
       // Persist RunEvent
       if (ctx.runId) {
         const evType =
-          args.direction === "PASS" && !passKeepsWatch ? "skip" : "thesis_complete";
+          args.direction === "PASS" ? "skip" : "thesis_complete";
         await prisma.runEvent.create({
           data: {
             runId: ctx.runId,

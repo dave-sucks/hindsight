@@ -88,13 +88,6 @@ interface ToolCtx {
   /** Snapshot of ResearchRun.environment — see ToolContext.runEnvironment. */
   runEnvironment?: "PAPER" | "LIVE";
   /**
-   * Chat-dispatched thesis-writer marker. P1-24: a record_thesis mint is
-   * always WATCHING regardless (HOLDING is execution-owned, set by
-   * place_trade). Set by dispatch_thesis_research for the Principal Chat
-   * flow; refresh dispatches and tactical inline calls leave it unset.
-   */
-  forceWatchingMint?: boolean;
-  /**
    * Deterministic STOP/TARGET close tag for a protective/price EXIT tactical
    * run — see ToolContext.protectiveExitReason. Set by tactical-run.ts when
    * the fired trigger is a price-level protective exit; sell uses

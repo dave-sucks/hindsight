@@ -229,7 +229,6 @@ async function refreshOne(
       mode: "refresh",
       existingThesisId: target.thesisId,
       reason,
-      forceWatchingMint: false,
     });
 
     const seconds = Math.round(result.elapsedMs / 1000);
