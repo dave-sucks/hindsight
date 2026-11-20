@@ -126,6 +126,8 @@ export const morningResearch = inngest.createFunction(
     // Optional: if triggered manually for a specific analyst, only run that one
     const targetConfigId = (event as { data?: { agentConfigId?: string } })
       ?.data?.agentConfigId ?? null;
+    // A manual start names its account and runs only that account's analysts; the 8 AM schedule names none.
+    const startedFor = (event as { data?: { accountId?: string } })?.data?.accountId ?? null;
 
     // ── Step 1: Load enabled AgentConfigs (all, or filtered to one) ──────────
 
@@ -134,6 +136,7 @@ export const morningResearch = inngest.createFunction(
         where: {
           enabled: true,
           ...(targetConfigId ? { id: targetConfigId } : {}),
+          ...(startedFor ? { accountId: startedFor } : {}),
         },
       });
     });

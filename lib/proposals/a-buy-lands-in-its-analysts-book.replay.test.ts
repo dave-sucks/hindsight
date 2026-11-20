@@ -28,7 +28,7 @@ describe("place_trade: the run's book is the analyst's book", () => {
   it("a run opened on Paper, the analyst since promoted to Live: refused, nothing written, nothing sent", async () => {
     const r = await buy("PAPER", { tradingEnvironment: "LIVE" });
     expect(r.result.data?.message).toBe("Trade blocked: this run was opened on Paper and PEAD Specialist now trades on Live. Start a new run to buy it.");
-    expect([r.db.store.position ?? [], r.db.store.order ?? []]).toEqual([[], []]);
+    expect([r.db.store.position ?? [], r.db.store.order ?? [], r.sends]).toEqual([[], [], []]);
   });
 
   it("the mirror, a Live run for an analyst since demoted to Paper: refused", async () => {
@@ -48,6 +48,7 @@ describe("place_trade: the run's book is the analyst's book", () => {
     expect(String(r.result.data?.message ?? "")).not.toMatch(/opened on|not on this account/);
     expect((r.db.store.position as Array<{ environment: string }>)[0].environment).toBe("PAPER");
     expect((r.db.store.order as Array<{ environment: string; status: string }>)[0]).toMatchObject({ environment: "PAPER", status: "PENDING" });
+    expect(r.sends.map((s) => [s.fn, s.args[2]])).toEqual([["placeMarketOrder", "PAPER"]]);
   });
 });
 

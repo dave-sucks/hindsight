@@ -21,7 +21,8 @@ export async function closeTrade(tradeId: string, reason: (typeof REASONS)[numbe
   return closeOpenPosition(tradeId, reason, undefined, "user");
 }
 
-export async function cancelTrade(tradeId: string): Promise<void> {
+/** Takes a position's unfilled orders off. A holding with none waiting comes back refused, in words. */
+export async function cancelTrade(tradeId: string): Promise<{ refused: string } | void> {
   await ownPosition(tradeId);
   return cancelPosition(tradeId);
 }

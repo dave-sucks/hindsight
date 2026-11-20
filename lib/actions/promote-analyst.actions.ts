@@ -196,6 +196,12 @@ export async function promoteAnalystToLive(
     };
   }
 
+  // The size the dialog sends is checked before anything is closed: a bad one failed the last write, after the paper positions were sold.
+  const size = options?.maxPositionSize;
+  if (size !== undefined && !(typeof size === "number" && Number.isFinite(size) && size > 0)) {
+    return { ok: false, error: "The largest trade must be a dollar amount above zero.", closedBeforeFailure: 0 };
+  }
+
   // 1. Validate live creds are reachable BEFORE we start closing paper positions.
   const liveCreds = await resolveAlpacaCredentials(userId, "LIVE");
   if (!liveCreds) {

@@ -1,5 +1,5 @@
-"use server";
-
+// Server-only. This file reads decrypted broker keys (resolveAlpacaCredentials), so nothing in it is a
+// server action. The four a browser may call are wrapped in keys.actions.ts, behind sign-in.
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { encryptAndPack, unpackAndDecrypt } from "@/lib/crypto";
@@ -298,7 +298,7 @@ export async function getElevenLabsVoices(): Promise<{ voices: ElevenLabsVoice[]
 
 // ─── Resolve credentials for a user ──────────────────────────────────────────
 // Used by agent routes and crons to get Alpaca creds.
-// Returns null if no user key found (callers fall back to env vars).
+// Returns null if no user key found: a read then falls back to the env keys, an order is refused.
 
 export async function resolveAlpacaCredentials(
   userId: string,

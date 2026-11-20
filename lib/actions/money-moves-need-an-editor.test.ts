@@ -10,6 +10,7 @@
  */
 let mockUser: { id: string } | null = { id: "owner_1" };
 let mockRole: string | null = "OWNER";
+let mockPartFill = false;
 jest.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { getUser: async () => ({ data: { user: mockUser } }) } }) }));
 jest.mock("@/lib/auth/account", () => ({
   getAccountId: async () => "acct_1",
@@ -33,7 +34,7 @@ jest.mock("@/lib/alpaca", () => ({
   closePositionPartial: (...a: unknown[]) => mockBroker("closePositionPartial", ...a),
   cancelOrder: (...a: unknown[]) => mockBroker("cancelOrder", ...a),
   placeMarketOrder: (...a: unknown[]) => mockBroker("placeMarketOrder", ...a),
-  getOrder: async () => ({ status: "canceled" }),
+  getOrder: async () => (mockPartFill ? { status: "canceled", filled_qty: "2", filled_avg_price: "259.10", filled_at: "2026-11-19T15:00:00Z" } : { status: "canceled", filled_qty: "0" }),
   getAllPositions: async () => [],
   getLatestPrice: async () => 100,
   getAccount: async () => ({}),
@@ -61,6 +62,7 @@ const said = (p: Promise<unknown>): Promise<string> =>
 beforeEach(() => {
   mockUser = { id: "owner_1" };
   mockRole = "OWNER";
+  mockPartFill = false;
   mockBroker.mockReset().mockResolvedValue({ id: "alp_1" });
   mockKeys.mockClear();
   mockCloseOpenPosition.mockClear();
@@ -114,17 +116,59 @@ describe("Close and Cancel act only on your own account's positions", () => {
   });
 });
 
-describe("Cancel uses the position's own book", () => {
-  it("a Live position's pending order is looked up and cancelled with Live keys on Live", async () => {
-    mockDb.mockImplementation((call) => {
+describe("Cancel takes unfilled orders off and never drops a holding", () => {
+  /** A Live position with `filled` filled orders and these orders waiting to fill. */
+  const position = (filled: number, waiting: Array<Record<string, unknown>>) =>
+    mockDb.mockImplementation((call, args) => {
       if (call === "position.findUnique") return { accountId: "acct_1" };
-      if (call === "position.findUniqueOrThrow") return { id: "pos_nvda", userId: "owner_1", status: "OPEN", environment: "LIVE", avgCost: 150 };
-      if (call === "order.findMany") return [{ id: "ord_1", alpacaOrderId: "alp_9", idempotencyKey: "idem", intent: "ADD", side: "BUY", quantity: 5 }];
+      if (call === "position.findUniqueOrThrow") return { id: "pos_ceg", symbol: "CEG", userId: "owner_1", status: "OPEN", environment: "LIVE", avgCost: 259 };
+      if (call === "order.count") return args?.where?.status === "FILLED" ? filled : waiting.length;
+      if (call === "order.findMany") return waiting;
       return {};
     });
-    await cancelTrade("pos_nvda");
+  const wrote = (call: string) => mockDb.mock.calls.filter(([c]) => c === call).map(([, a]) => (a as { data?: Record<string, unknown> }).data);
+  const ADD = { id: "ord_1", alpacaOrderId: "alp_9", idempotencyKey: "idem", intent: "ADD", side: "BUY", quantity: 5 };
+
+  // CEG as production holds it on 2026-11-19: 51 shares on Live, 3 filled orders, none waiting. The row menu offers Cancel on it.
+  it("CEG, a filled Live holding with nothing waiting: refused in words, the row is untouched, nothing is sent", async () => {
+    position(3, []);
+    expect(await said(cancelTrade("pos_ceg"))).toBe("CEG has no order waiting to fill, so there is nothing to cancel. Close the trade to sell it.");
+    expect([wrote("position.update"), mockBroker.mock.calls]).toEqual([[], []]);
+  });
+
+  it("a holding with an add waiting: the add is cancelled with Live keys on Live, and the holding stays open", async () => {
+    position(1, [ADD]);
+    expect(await said(cancelTrade("pos_ceg"))).toBe("done");
     expect(mockKeys).toHaveBeenCalledWith("owner_1", "LIVE");
     expect(mockBroker).toHaveBeenCalledWith("cancelOrder", "alp_9", { keyId: "LIVE_key", secretKey: "s" }, "LIVE");
+    expect(wrote("order.update")).toEqual([expect.objectContaining({ status: "CANCELLED" })]);
+    expect(wrote("position.update")).toEqual([]);
+  });
+
+  it("a buy that never filled: its order is cancelled and the row goes", async () => {
+    position(0, [{ ...ADD, intent: "OPEN" }]);
+    expect(await said(cancelTrade("pos_ceg"))).toBe("done");
+    expect(wrote("position.update")).toEqual([expect.objectContaining({ status: "CANCELLED" })]);
+  });
+
+  it("a buy that part-filled before the cancel landed is kept as a fill, never dropped as cancelled", async () => {
+    position(0, [{ ...ADD, intent: "OPEN" }]);
+    mockPartFill = true;
+    expect(await said(cancelTrade("pos_ceg"))).toMatch(/Cancel raced an Alpaca fill/);
+    expect(wrote("position.update")).toEqual([]);
+    expect(wrote("order.update")).toEqual([expect.objectContaining({ status: "FILLED", filledQty: 2 })]);
+  });
+});
+
+describe("Promote checks the size it is sent before it closes anything", () => {
+  it.each([[0], [-5], [Number.NaN], ["9000"]])("a largest trade of %p is refused and no position is touched", async (size) => {
+    mockDb.mockImplementation((call) => {
+      if (call === "agentConfig.findFirst") return { id: "analyst_pead", name: "PEAD Specialist", tradingEnvironment: "PAPER" };
+      if (call === "researchRun.findFirst") return null;
+      throw new Error(`promote went on to ${call}`);
+    });
+    expect(await said(promoteAnalystToLive("analyst_pead", { maxPositionSize: size as number }))).toBe("The largest trade must be a dollar amount above zero.");
+    expect(mockCloseOpenPosition).not.toHaveBeenCalled();
   });
 });
 
@@ -132,6 +176,7 @@ describe("Liquidate an orphan sells only what the app has no row for", () => {
   it("NVDA, which PEAD Specialist holds on Live, is refused: it is sold from its trade", async () => {
     mockDb.mockImplementation((call) => (call === "position.count" ? 1 : undefined));
     expect(await said(liquidateOrphan("nvda", "LIVE"))).toBe("NVDA is a position the app holds. Sell it from its trade.");
+    expect(mockDb).toHaveBeenCalledWith("position.count", { where: { accountId: "acct_1", environment: "LIVE", symbol: "NVDA", status: "OPEN" } });
     expect(mockBroker).not.toHaveBeenCalled();
   });
 
@@ -159,6 +204,13 @@ describe("Delete analyst never touches a Live holding", () => {
   it("PEAD Specialist, holding NVDA and IOT on Live: refused, nothing deleted, nothing sent", async () => {
     analyst([{ id: "p1", symbol: "NVDA", status: "OPEN", environment: "LIVE" }, { id: "p2", symbol: "IOT", status: "OPEN", environment: "LIVE" }]);
     expect(await said(deleteAnalyst("analyst_pead"))).toBe("PEAD Specialist holds 2 Live positions (NVDA, IOT). Close them before deleting this analyst.");
+    expect([writes(), mockBroker.mock.calls]).toEqual([[], []]);
+  });
+
+  it("a Paper analyst whose Paper keys can't be read: refused, nothing deleted (the shares would be left at the broker)", async () => {
+    analyst([{ id: "p3", symbol: "MU", status: "OPEN", environment: "PAPER", quantity: 12, direction: "LONG" }]);
+    mockKeys.mockResolvedValueOnce(null as never);
+    expect(await said(deleteAnalyst("analyst_pead"))).toMatch(/Paper Alpaca keys could not be read/);
     expect([writes(), mockBroker.mock.calls]).toEqual([[], []]);
   });
 

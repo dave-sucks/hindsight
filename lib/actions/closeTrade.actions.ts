@@ -692,13 +692,21 @@ export async function closeOpenPosition(
  *   - Only mark Position CANCELLED when *every* pending order is confirmed
  *     terminal (canceled/expired/rejected) on Alpaca's side.
  */
-export async function cancelPosition(positionId: string): Promise<void> {
+export async function cancelPosition(positionId: string): Promise<{ refused: string } | void> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
   });
 
   if (position.status !== "OPEN") {
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
+  }
+
+  // A holding stays a holding: Cancel takes its unfilled orders off, and the row goes only when nothing
+  // ever filled. It once marked a filled holding cancelled and left the shares at the broker (2026-11-19).
+  const everFilled = (await prisma.order.count({ where: { positionId, status: "FILLED" } })) > 0;
+  const waiting = await prisma.order.count({ where: { positionId, status: "PENDING" } });
+  if (everFilled && waiting === 0) {
+    return { refused: `${position.symbol} has no order waiting to fill, so there is nothing to cancel. Close the trade to sell it.` };
   }
 
   // The position's own book: Paper keys once looked a Live order up in the Paper account (2026-11-19).
@@ -761,7 +769,8 @@ export async function cancelPosition(positionId: string): Promise<void> {
   for (const c of confirmations) {
     if (!c.finalAlpaca) continue;
     const s = c.finalAlpaca.status;
-    if (s === "filled") filledRaces.push(c);
+    // Any shares bought count as a fill, so a part-filled order is never dropped as cancelled.
+    if (s === "filled" || parseFloat(c.finalAlpaca.filled_qty ?? "0") > 0) filledRaces.push(c);
     else if (!["canceled", "cancelled", "expired", "rejected"].includes(s)) stillOpen.push(c);
   }
 
@@ -818,6 +827,13 @@ export async function cancelPosition(positionId: string): Promise<void> {
           alpacaConfirmedAt: new Date(),
         },
       });
+    }
+
+    if (everFilled) {
+      await tx.positionEvent.create({
+        data: { positionId, eventType: "PRICE_CHECK", description: `${confirmations.length} pending order(s) cancelled. The holding is unchanged.` },
+      });
+      return;
     }
 
     await tx.position.update({

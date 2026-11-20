@@ -810,6 +810,10 @@ export async function deleteAnalyst(analystId: string): Promise<{ refused: strin
   //    Its own count, never the whole symbol: another analyst may hold the same stock.
   const { closePositionPartial } = await import("@/lib/alpaca");
   const creds = await resolveAlpacaCredentials(config.userId, "PAPER");
+  // Unreadable keys would leave every share at the broker with its row deleted.
+  if (!creds && positions.some((p) => p.status === "OPEN")) {
+    return { refused: `${config.name} holds Paper positions and this account's Paper Alpaca keys could not be read. Save them again in Settings, then delete it.` };
+  }
   for (const pos of positions) {
     if (pos.status === "OPEN") await closePositionPartial(pos.symbol, pos.quantity, pos.direction === "SHORT" ? "buy" : "sell", creds, "PAPER").catch(() => {});
   }

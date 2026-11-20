@@ -185,8 +185,9 @@ export default function TradesPage({
     if (!cancelTarget) return;
     setCancelLoading(true);
     try {
-      await cancelTrade(cancelTarget);
-      toast.success('Trade cancelled');
+      const res = await cancelTrade(cancelTarget);
+      if (res?.refused) throw new Error(res.refused);
+      toast.success('Order cancelled');
       setCancelTarget(null);
       router.refresh();
     } catch (err) {

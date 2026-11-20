@@ -5,10 +5,12 @@
  * Before this, the browser could send any address with a key (the Paper slot
  * could hold the Live one) and any column name with a switch.
  */
-jest.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { getUser: async () => ({ data: { user: { id: "owner_1" } }, error: null }) } }) }));
+let mockSignedIn = true;
+jest.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { getUser: async () => ({ data: { user: mockSignedIn ? { id: "owner_1" } : null }, error: null }) } }) }));
 jest.mock("@/lib/auth/account", () => ({ getAccountId: async () => "acct_1", getUserRole: async () => "OWNER", getOwnerUserId: async () => "owner_1" }));
 jest.mock("@/lib/crypto", () => ({ encryptAndPack: (v: string) => `enc:${v}`, unpackAndDecrypt: (v: string) => v.replace("enc:", "") }));
-jest.mock("@/lib/podcast/elevenlabs", () => ({ listVoices: async () => [] }));
+const mockListVoices = jest.fn(async (..._a: unknown[]) => [{ voice_id: "v1" }]);
+jest.mock("@/lib/podcast/elevenlabs", () => ({ listVoices: (...a: unknown[]) => mockListVoices(...a) }));
 jest.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const mockGetAccount = jest.fn(async (..._a: unknown[]) => ({}));
 jest.mock("@/lib/alpaca", () => ({ getAccount: (...a: unknown[]) => mockGetAccount(...a) }));
@@ -24,10 +26,23 @@ jest.mock("@/lib/prisma", () => ({
 
 import { resolveAlpacaCredentials, saveApiKey } from "@/lib/actions/api-keys.actions";
 import { setAccountApprovalToggle } from "@/lib/actions/account-settings.actions";
+import { getElevenLabsVoices } from "@/lib/actions/keys.actions";
 
 const PAPER = "https://paper-api.alpaca.markets";
 const LIVE = "https://api.alpaca.markets";
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSignedIn = true;
+});
+
+it("the voice list, read with the server's key, is only for someone signed in", async () => {
+  process.env.ELEVENLABS_API_KEY = "el_key";
+  mockSignedIn = false;
+  expect(await getElevenLabsVoices()).toEqual({ voices: [], error: "Not signed in" });
+  expect(mockListVoices).not.toHaveBeenCalled();
+  mockSignedIn = true;
+  expect((await getElevenLabsVoices()).voices).toHaveLength(1);
+});
 
 describe("a key's address is its slot's own", () => {
   it("production's two rows read back on their own addresses", async () => {
