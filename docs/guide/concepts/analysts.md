@@ -37,7 +37,7 @@ Every agent that touches one of its stocks reads the same brief first: the analy
 
 Every [proposal](approvals.md) names the analyst behind it, so you always know whose call it is.
 
-**Paused.** You pause and resume an analyst from its menu, on its card or its own page. Its card then reads Paused where the position count was. A paused analyst runs nothing: no morning runs, no trigger runs, no buys or adds. A stock it still holds keeps its sale triggers, its own and the ones it inherits, and each one that fires comes to you as a sale instead of waking the analyst. An Auto-sell goes through your approval switch as usual; any other sale always waits for your approval.
+**Paused.** You pause and resume an analyst from its menu, on its card or its own page (an owner or an editor; a view-only member can't). Its card then reads Paused where the position count was. A paused analyst runs nothing: no morning runs, no trigger runs, no buys or adds. A stock it still holds keeps its sale triggers, its own and the ones it inherits, and each one that fires comes to you as a sale instead of waking the analyst. An Auto-sell goes through your approval switch as usual; any other sale always waits for your approval.
 
 ## The playbook
 
