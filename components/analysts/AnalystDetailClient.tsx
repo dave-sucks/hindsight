@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { AnalystConfigSheet } from "@/components/analysts/AnalystConfigSheet";
 import { StockSearch } from "@/components/stocks/StockSearch";
 import { deleteAnalyst } from "@/lib/actions/analyst.actions";
+import { useAnalystPause } from "@/components/analysts/use-analyst-pause";
 import {
   AddToWatchlistDialog,
   type AddToWatchlistChoices,
@@ -47,6 +48,8 @@ import {
   Rocket,
   ShieldOff,
   MessageSquare,
+  Pause,
+  Play,
 } from "lucide-react";
 import {
   Dialog,
@@ -367,6 +370,7 @@ export default function AnalystDetailClient({
   const [showRunShowcase, setShowRunShowcase] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const pause = useAnalystPause(config);
   /** Ticker awaiting the two add questions, or null when none is. */
   const [pendingAdd, setPendingAdd] = useState<string | null>(null);
 
@@ -642,9 +646,14 @@ export default function AnalystDetailClient({
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    className="text-negative focus:text-negative"
-                    onClick={() => setDeleteOpen(true)}
+                    variant={pause.pause ? "destructive" : "default"}
+                    disabled={pause.pending}
+                    onClick={pause.toggle}
                   >
+                    {pause.pause ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                    {pause.label}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete analyst
                   </DropdownMenuItem>

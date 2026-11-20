@@ -60,7 +60,7 @@ jest.mock("@/lib/agent/triggers/seed-analyst", () => ({ seedAnalystTriggers: asy
 import { cancelTrade, closeTrade } from "@/lib/actions/trade.actions";
 import { closeStaleDbRow, liquidateOrphan, trustAlpacaQty } from "@/lib/actions/sync-reconcile.actions";
 import { closeAllLivePositionsAndDemote, demoteAnalystToPaper, promoteAnalystToLive } from "@/lib/actions/promote-analyst.actions";
-import { deleteAnalyst } from "@/lib/actions/analyst.actions";
+import { deleteAnalyst, setAnalystPaused } from "@/lib/actions/analyst.actions";
 
 /** What the action said, whether it threw it or returned it. */
 const said = (p: Promise<unknown>): Promise<string> =>
@@ -90,6 +90,8 @@ const ACTIONS: Array<[string, () => Promise<unknown>]> = [
   ["Demote to paper", () => demoteAnalystToPaper("analyst_pead")],
   ["Close all and demote", () => closeAllLivePositionsAndDemote("analyst_pead")],
   ["Delete analyst", () => deleteAnalyst("analyst_pead")],
+  ["Pause an analyst", () => setAnalystPaused("analyst_pead", true)],
+  ["Resume an analyst", () => setAnalystPaused("analyst_pead", false)],
 ];
 
 describe.each(ACTIONS)("%s", (_name, act) => {

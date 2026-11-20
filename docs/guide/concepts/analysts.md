@@ -37,7 +37,7 @@ Every agent that touches one of its stocks reads the same brief first: the analy
 
 Every [proposal](approvals.md) names the analyst behind it, so you always know whose call it is.
 
-**Paused.** A paused analyst runs nothing: no morning runs, no trigger runs, no buys or adds. A stock it still holds keeps its sale triggers, its own and the ones it inherits, and each one that fires comes to you as a sale instead of waking the analyst. An Auto-sell goes through your approval switch as usual; any other sale always waits for your approval.
+**Paused.** You pause and resume an analyst from its menu, on its card or its own page (an owner or an editor; a view-only member can't). Its card then reads Paused where the position count was. A paused analyst runs nothing: no morning runs, no trigger runs, no buys or adds. A stock it still holds keeps its sale triggers, its own and the ones it inherits, and each one that fires comes to you as a sale instead of waking the analyst. An Auto-sell goes through your approval switch as usual; any other sale always waits for your approval.
 
 ## The playbook
 
@@ -63,7 +63,7 @@ text: Enough supply to work with. How close to the decision should it sell: the 
 <summary>Technical details</summary>
 
 #### Stored as
-`AgentConfig`: `analystPrompt`, the universe fields, `exclusionList`, `minPositionSize` / `maxPositionSize` / `maxPositionTotal`, `riskPct`, `maxOpenPositions`, `setupIds`, `runDaysOfWeek`, `triggers`. Sizing math: `sizeByRisk` in `lib/agent/position-sizing.ts`.
+`AgentConfig`: `analystPrompt`, the universe fields, `exclusionList`, `minPositionSize` / `maxPositionSize` / `maxPositionTotal`, `riskPct`, `maxOpenPositions`, `setupIds`, `runDaysOfWeek`, `triggers`, `enabled` (off = paused; `setAnalystPaused` in `lib/actions/analyst.actions.ts`). Sizing math: `sizeByRisk` in `lib/agent/position-sizing.ts`.
 
 #### The brief
 `analystBrief` in `lib/agent/analyst-brief.ts`, the one text every door puts in its prompt.

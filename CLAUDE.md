@@ -419,7 +419,7 @@ plus `get_stock_data`.
 ## Pages
 - / (Dashboard) — MarketPulseStrip (Finnhub WebSocket), portfolio
   summary, Today's Picks, the activity feed
-- /analysts — analyst card grid with enable/disable toggles
+- /analysts — analyst card grid; each card's menu pauses or resumes the analyst (`AgentConfig.enabled`), and a paused card reads Paused
 - /analysts/new — AI-driven analyst creation (AgentChat in builder mode + AnalystConfigPanel)
 - /analysts/[id] — 2-col: Overview + config | floating editor chat;
   tabs for Runs and Trades

@@ -774,6 +774,19 @@ export async function updateAnalystField(
   revalidatePath("/analysts");
 }
 
+// ── setAnalystPaused ─────────────────────────────────────────────────────────
+
+/** Pause or resume an analyst: `AgentConfig.enabled`, the switch every scheduled and trigger run reads. */
+export async function setAnalystPaused(id: string, paused: boolean): Promise<void> {
+  // Resuming starts its runs and its trading again: an owner's or an editor's, like the other switches that do.
+  const { accountId } = await requireEditor();
+  if (typeof paused !== "boolean") throw new Error("Paused is true or false");
+  const { count } = await prisma.agentConfig.updateMany({ where: { id, accountId }, data: { enabled: !paused } });
+  if (count === 0) throw new Error("Analyst not found");
+
+  revalidatePath(`/analysts/${id}`);
+  revalidatePath("/analysts");
+}
 
 // ── deleteAnalyst (cascade delete all related data) ─────────────────────────
 
