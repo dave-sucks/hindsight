@@ -307,7 +307,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
               </span>
             }
           />
-          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the last 3 reviews, up to 3 news notes, and your notes and declines.</TooltipContent>
+          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the last 3 reviews, 3 news notes, 3 of your notes and your last decline.</TooltipContent>
         </Tooltip>
       </SectionLabel>
       <TimelineList

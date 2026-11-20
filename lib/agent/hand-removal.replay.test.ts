@@ -40,7 +40,7 @@ const fx = raw as unknown as {
   removedBuy: Listed;
 };
 
-const HEADER = "Activity on $ABT, newest first: the last 3 reviews, up to 3 news notes, your notes and your declines.";
+const HEADER = "Activity on $ABT, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.";
 const REMOVED_BUY = "Buy if below 6% from the close 5 days ago";
 const toRow = (l: Line): ActivityRow & { id: string; summary: string } => ({ ...l, timestamp: new Date(l.timestamp) });
 const rowsBefore = (iso: string) => fx.updates.filter((u) => new Date(u.timestamp).getTime() < new Date(iso).getTime()).map(toRow);

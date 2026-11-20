@@ -184,8 +184,9 @@ that never became a proposal (`lib/portfolio/attempt-outcomes.ts`). The Activity
 and every agent reads it as one list, newest first, one sentence per line
 (`activityRead` in `lib/agent/stock-context.ts`, the one builder of every
 agent's read). The rule is a filter and nothing else: the last 3 reviews (a
-run's line with a note; one per run), up to 3 news notes (the Market
-Reviewer's), the owner's notes, and the owner's declines that carry words;
+run's line with a note; one per run), the newest 3 news notes (the Market
+Reviewer's), the owner's newest 3 notes, and the owner's last decline that
+carries words (every kind has a number, `READ`);
 trigger edits, trigger fires and proposal steps with no words are left out.
 Each sentence is what it is, who wrote it, when, the price then, the
 verdict's word and the note. The Portfolio Manager's rows carry the same list. A trigger the owner

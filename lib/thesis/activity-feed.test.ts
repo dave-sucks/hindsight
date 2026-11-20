@@ -102,7 +102,7 @@ describe("the Overview's cut, and the agent's read of the same feed", () => {
   it("the agent reads the same feed as one list: the last 3 reviews, newest first; no fire, no proposal step", () => {
     const text = activityRead({ ticker: "GEV", feed })!;
     const lines = text.split("\n");
-    expect(lines[0]).toBe("Activity on $GEV, newest first: the last 3 reviews, up to 3 news notes, your notes and your declines.");
+    expect(lines[0]).toBe("Activity on $GEV, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
     expect(lines[1]).toBe("  Review by its analyst, Oct 29, 9:45 AM at $881.14: GE Vernova is around $883 on Oct. 29 after reporting a strong quarter [id cmvtljbyt000u07jtwe1op938]");
     expect(lines.slice(1, -1).every((l) => l.startsWith("  Review by "))).toBe(true);
     expect(lines.at(-1)).toBe('Full history: get_theses(tickers: ["GEV"], include_history: true)');

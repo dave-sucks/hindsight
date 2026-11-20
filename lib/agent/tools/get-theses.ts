@@ -88,7 +88,7 @@ const schema = z.object({
     .boolean()
     .optional()
     .describe(
-      "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries the last 3 reviews, up to 3 news notes, and the owner's notes and declines.",
+      "The raw activity log, returned for a read of named stocks (tickers or ids). Each row's `said` already carries the last 3 reviews, 3 news notes, 3 of the owner's notes and the last decline.",
     ),
   history_limit: z
     .number()

@@ -8,7 +8,7 @@
  */
 import raw from "@/lib/agent/__fixtures__/activity-read-iot-mu-2026-11-19.json";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
-import { NEWS_READ, ownerSets, REVIEWS_READ } from "@/lib/agent/stock-context";
+import { ownerSets, READ } from "@/lib/agent/stock-context";
 import { activityFeed, toFeedItem, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
@@ -32,7 +32,7 @@ describe("IOT's Activity as every agent reads it", () => {
   const list = body(text);
 
   it("is one list between a line that says the rule and the way to the rest", () => {
-    expect(text.split("\n")[0]).toBe("Activity on $IOT, newest first: the last 3 reviews, up to 3 news notes, your notes and your declines.");
+    expect(text.split("\n")[0]).toBe("Activity on $IOT, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
     expect(text.split("\n").at(-1)).toBe('Full history: get_theses(tickers: ["IOT"], include_history: true)');
   });
 
@@ -56,7 +56,7 @@ describe("IOT's Activity as every agent reads it", () => {
   });
 
   it("the fires, the proposals' own steps and the reviews before the last three are not sent", () => {
-    expect(REVIEWS_READ).toBe(3);
+    expect(READ).toEqual({ review: 3, news: 3, note: 3, decline: 1 });
     expect(list).toHaveLength(4);
     expect(text).not.toContain("Sell if below");
     expect(text).not.toContain("Proposed");
@@ -81,7 +81,6 @@ describe("the filter, on lines added to IOT's", () => {
   const list = body(text);
 
   it("up to 3 news notes, each with the Market Reviewer's two marks; the fourth is left out", () => {
-    expect(NEWS_READ).toBe(3);
     expect(list.filter((l) => l.startsWith("  News by the Market Reviewer"))).toEqual([
       "  News by the Market Reviewer, Nov 19, 7:34 AM at $38.90: high impact, weaker. News n4.",
       "  News by the Market Reviewer, Nov 19, 7:33 AM at $38.90: high impact, weaker. News n3.",
@@ -96,6 +95,20 @@ describe("the filter, on lines added to IOT's", () => {
     expect(text).not.toContain("price $39.10");
     // 3 news, the owner's note, then IOT's own four lines.
     expect(list).toHaveLength(8);
+  });
+});
+
+describe("every kind has a number", () => {
+  const mine = (id: string, iso: string): SharedNoteRow => ({ id, author: "OWNER", runId: null, body: `Mine ${id}.`, audience: "STOCKS", analystId: null, tickers: ["IOT"], eventDate: null, pinnedUntil: null, createdAt: new Date(iso), impact: null, effect: null, prices: null });
+  const olderDecline: StoredLine = { id: "d-old", type: "PROPOSAL_REJECTED", timestamp: new Date("2026-11-10T15:00:00Z"), summary: "Rejected CLOSE proposal on IOT", rationale: "Not yet.", fieldChanges: { proposal: { from: { status: "AWAITING_APPROVAL", orderId: "o-old" }, to: { intent: "CLOSE", status: "REJECTED", orderId: "o-old", quantity: 300, userMessage: "Not yet." } } } };
+  const list = body(iot([...["m4", "m3", "m2", "m1"].map((id, k) => noteLine(mine(id, `2026-11-19T12:1${4 - k}:00Z`), "IOT")), olderDecline]));
+
+  it("the owner's newest 3 notes, and only the last decline", () => {
+    expect(list.filter((l) => l.startsWith("  Note by you")).map((l) => l.slice(l.indexOf(": ") + 2))).toEqual(["Mine m4.", "Mine m3.", "Mine m2."]);
+    expect(list.filter((l) => l.startsWith("  Declined"))).toHaveLength(1);
+    expect(list.join("\n")).not.toContain("Not yet.");
+    // 3 reviews + 3 news + 3 notes + 1 decline is the most any stock can carry.
+    expect(Object.values(READ).reduce((a, b) => a + b, 0)).toBe(10);
   });
 });
 

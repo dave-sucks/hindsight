@@ -54,7 +54,7 @@ const fl = floorRaw as unknown as {
 const DECLINE = "cmu1ex281000104jq0w42txms";
 const DECLINE_ENDS = "Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.";
 const RAISE_THE_FLOOR = "hold and raise the floor under real structure (the 20-day low, the breakout level)";
-const HEADER = "Activity on $CEG, newest first: the last 3 reviews, up to 3 news notes, your notes and your declines.";
+const HEADER = "Activity on $CEG, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.";
 
 /** CEG's Activity lines before `at`, stored the way the database holds them (the run joined inline). */
 function linesBefore(at: string) {

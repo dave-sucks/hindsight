@@ -4,9 +4,9 @@
  * first, one sentence per line (`activityRead`). The rule is a filter and
  * nothing else:
  *
- *   in  — the last 3 reviews (a run's line with a note; one per run), up to
- *         3 news notes (the Market Reviewer's), the owner's notes, and the
- *         owner's declines that carry words;
+ *   in  — the newest 3 reviews (a run's line with a note; one per run), the
+ *         newest 3 news notes (the Market Reviewer's), the owner's newest 3
+ *         notes, and the owner's last decline that carries words (`READ`);
  *   out — trigger edits, trigger fires, and proposal steps with no words.
  *
  * Every sentence has the same parts: what it is, who wrote it, when, the
@@ -140,9 +140,9 @@ export function asTimelineUpdate(item: FeedItem): TimelineUpdate {
   };
 }
 
-/** How many of a stock's newest reviews and news notes an agent reads. */
-export const REVIEWS_READ = 3;
-export const NEWS_READ = 3;
+/** How many of each kind of line an agent reads, the newest of each. Every kind has a number. */
+export const READ = { review: 3, news: 3, note: 3, decline: 1 } as const;
+type Kind = keyof typeof READ;
 
 const WHEN = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** Who wrote a run's line, by the run's kind. */
@@ -154,7 +154,7 @@ const WRITERS: Record<string, string> = {
   PRINCIPAL_CHAT: "the chat",
 };
 
-type Read = { what: string; who: string; verdict: string | null; note: string };
+type Read = { kind: Kind; what: string; who: string; verdict: string | null; note: string };
 type SharedNote = { author?: string; impact?: string | null; effect?: string | null };
 
 /** The line as an agent reads it, or null when the filter leaves it out. */
@@ -166,19 +166,19 @@ function readOf(i: FeedItem): Read | null {
     const tu = asTimelineUpdate(i);
     const words = proposalUserMessage(tu) ?? (i.id.startsWith("order:") ? note : null);
     const t = titleSegments(tu);
-    return words ? { what: [t.primary, t.secondary].filter(Boolean).join(" "), who: "you", verdict: null, note: oneLine(words) } : null;
+    return words ? { kind: "decline", what: [t.primary, t.secondary].filter(Boolean).join(" "), who: "you", verdict: null, note: oneLine(words) } : null;
   }
   if (i.type.startsWith("PROPOSAL_") && !i.runId) return null;
   if (!note) return null;
   if (i.type === "SHARED_NOTE") {
     const n = ((i.fieldChanges as { sharedNote?: { to?: SharedNote } } | null)?.sharedNote?.to ?? {}) as SharedNote;
-    if (n.author !== "MARKET_REVIEWER") return { what: "Note", who: "you", verdict: null, note };
-    return { what: "News", who: "the Market Reviewer", verdict: [n.impact ? `${n.impact} impact` : null, n.effect].filter(Boolean).join(", ") || null, note };
+    if (n.author !== "MARKET_REVIEWER") return { kind: "note", what: "Note", who: "you", verdict: null, note };
+    return { kind: "news", what: "News", who: "the Market Reviewer", verdict: [n.impact ? `${n.impact} impact` : null, n.effect].filter(Boolean).join(", ") || null, note };
   }
-  if (i.type === "NOTE") return { what: "Note", who: "you", verdict: null, note };
+  if (i.type === "NOTE") return { kind: "note", what: "Note", who: "you", verdict: null, note };
   // A review: a run's line with a note. An edit saved with no note, the owner's edit and the app's own lines carry no run or no note.
   if (!i.runId || isNotelessEdit(i.fieldChanges)) return null;
-  return { what: "Review", who: WRITERS[i.runMode ?? ""] ?? "an agent", verdict: i.verdict ? i.verdict.toLowerCase() : null, note };
+  return { kind: "review", what: "Review", who: WRITERS[i.runMode ?? ""] ?? "an agent", verdict: i.verdict ? i.verdict.toLowerCase() : null, note };
 }
 
 /** "Review by its analyst, Nov 18, 8:01 AM at $39.27: weaker. <note> [id …]" — the id is the one a later note answers. */
@@ -191,22 +191,21 @@ function sentence(i: FeedItem, r: Read): string {
 /** The stock's Activity as every agent reads it (see the top of the file). */
 export function activityRead(args: { ticker: string; feed: FeedItem[] }): string | null {
   const runs = new Set<string>();
-  let news = 0;
+  const read: Record<Kind, number> = { review: 0, news: 0, note: 0, decline: 0 };
   const lines: string[] = [];
   for (const i of args.feed) {
     const r = readOf(i);
-    if (!r) continue;
-    if (r.what === "Review") {
-      // A run that saved its note on two lines is one review.
-      if (runs.has(i.runId!) || runs.size === REVIEWS_READ) continue;
-      runs.add(i.runId!);
-    } else if (r.what === "News" && ++news > NEWS_READ) continue;
+    if (!r || read[r.kind] === READ[r.kind]) continue;
+    // A run that saved its note on two lines is one review.
+    if (r.kind === "review" && runs.has(i.runId!)) continue;
+    if (r.kind === "review") runs.add(i.runId!);
+    read[r.kind] += 1;
     lines.push(sentence(i, r));
   }
   if (lines.length === 0) return null;
   const T = args.ticker.toUpperCase();
   return [
-    `Activity on $${T}, newest first: the last ${REVIEWS_READ} reviews, up to ${NEWS_READ} news notes, your notes and your declines.`,
+    `Activity on $${T}, newest first: the last ${READ.review} reviews, ${READ.news} news notes and ${READ.note} of your notes, and your last decline.`,
     ...lines,
     `Full history: get_theses(tickers: ["${T}"], include_history: true)`,
   ].join("\n");
