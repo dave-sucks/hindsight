@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { saveApiKey } from "@/lib/actions/api-keys.actions";
+import { saveApiKey } from "@/lib/actions/keys.actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import HindsightLogo from "@/components/HindsightLogo";

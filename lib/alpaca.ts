@@ -6,8 +6,9 @@
  * 1. Per-user credentials (AlpacaCredentials passed explicitly)
  * 2. Env-var fallback (ALPACA_API_KEY / ALPACA_API_SECRET / ALPACA_BASE_URL)
  *
- * All exported functions accept an optional `creds` parameter.
- * When omitted, falls back to env vars (backward-compatible).
+ * A read accepts an optional `creds` and falls back to the env keys. The
+ * functions that send, close or cancel an order take the order's book and
+ * refuse without that book's own keys (orderKeys).
  */
 
 import AlpacaAPI from "@alpacahq/alpaca-trade-api";
@@ -95,14 +96,33 @@ export interface OrderParams {
   clientOrderId?: string;
 }
 
-export interface LimitOrderParams extends OrderParams {
-  limitPrice: number;
-}
-
 // ─── Client factory ──────────────────────────────────────────────────────────
 
 const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
 const LIVE_BASE_URL = "https://api.alpaca.markets";
+
+/** The broker account an order is for. */
+export type Book = "PAPER" | "LIVE";
+type MaybeKeys = AlpacaCredentials | null | undefined;
+
+/** An order that was never sent. Its 4xx reads as a definite no to every sender, so the order row is marked REJECTED, never left PENDING. */
+export class OrderRefused extends Error {
+  readonly statusCode = 403;
+}
+
+/**
+ * The keys an order goes out on: its book's own, on its book's own host. A
+ * read may fall back to the env keys; an order never does (2026-11-19).
+ */
+export function orderKeys(creds: MaybeKeys, book: Book): AlpacaCredentials {
+  if (book !== "PAPER" && book !== "LIVE") throw new OrderRefused(`Order refused: "${String(book)}" is not Paper or Live.`);
+  const name = book === "LIVE" ? "Live" : "Paper";
+  if (!creds?.keyId || !creds.secretKey) throw new OrderRefused(`Order refused: this account's ${name} Alpaca keys could not be read. Save them again in Settings.`);
+  const host = book === "LIVE" ? LIVE_BASE_URL : PAPER_BASE_URL;
+  const given = (creds.baseUrl ?? PAPER_BASE_URL).replace(/\/+$/, "");
+  if (given !== host) throw new OrderRefused(`Order refused: a ${name} order's keys point at ${given}.`);
+  return { keyId: creds.keyId, secretKey: creds.secretKey, baseUrl: host };
+}
 
 /**
  * The consolidated tape (SIP), real time — every market-data call names it.
@@ -165,7 +185,8 @@ export async function getAccount(creds?: AlpacaCredentials): Promise<AlpacaAccou
 
 export async function placeMarketOrder(
   params: OrderParams,
-  creds?: AlpacaCredentials,
+  creds: MaybeKeys,
+  book: Book,
 ): Promise<AlpacaOrder> {
   const order: Record<string, unknown> = {
     symbol: params.symbol,
@@ -184,21 +205,7 @@ export async function placeMarketOrder(
     order.client_order_id = params.clientOrderId;
   }
 
-  return (await withTimeout(getClient(creds).createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
-}
-
-export async function placeLimitOrder(
-  params: LimitOrderParams,
-  creds?: AlpacaCredentials,
-): Promise<AlpacaOrder> {
-  return (await getClient(creds).createOrder({
-    symbol: params.symbol,
-    qty: params.qty,
-    side: params.side,
-    type: "limit",
-    time_in_force: "gtc",
-    limit_price: params.limitPrice,
-  })) as AlpacaOrder;
+  return (await withTimeout(getClient(orderKeys(creds, book)).createOrder(order), `placeMarketOrder(${params.symbol})`)) as AlpacaOrder;
 }
 
 export async function getOrder(orderId: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
@@ -266,8 +273,8 @@ export async function getAllPositions(creds?: AlpacaCredentials): Promise<Alpaca
   return (await getClient(creds).getPositions()) as AlpacaPosition[];
 }
 
-export async function closePosition(symbol: string, creds?: AlpacaCredentials): Promise<AlpacaOrder> {
-  return (await getClient(creds).closePosition(symbol)) as AlpacaOrder;
+export async function closePosition(symbol: string, creds: MaybeKeys, book: Book): Promise<AlpacaOrder> {
+  return (await getClient(orderKeys(creds, book)).closePosition(symbol)) as AlpacaOrder;
 }
 
 /**
@@ -278,7 +285,8 @@ export async function closePositionPartial(
   symbol: string,
   qty: number,
   side: "sell" | "buy",
-  creds?: AlpacaCredentials,
+  creds: MaybeKeys,
+  book: Book,
   clientOrderId?: string,
 ): Promise<AlpacaOrder> {
   const order: Record<string, unknown> = {
@@ -289,13 +297,13 @@ export async function closePositionPartial(
     time_in_force: "day",
   };
   if (clientOrderId) order.client_order_id = clientOrderId;
-  return (await getClient(creds).createOrder(
+  return (await getClient(orderKeys(creds, book)).createOrder(
     order as Parameters<ReturnType<typeof getClient>["createOrder"]>[0],
   )) as AlpacaOrder;
 }
 
-export async function cancelOrder(orderId: string, creds?: AlpacaCredentials): Promise<void> {
-  await getClient(creds).cancelOrder(orderId);
+export async function cancelOrder(orderId: string, creds: MaybeKeys, book: Book): Promise<void> {
+  await getClient(orderKeys(creds, book)).cancelOrder(orderId);
 }
 
 export async function getOpenOrders(creds?: AlpacaCredentials): Promise<AlpacaOrder[]> {

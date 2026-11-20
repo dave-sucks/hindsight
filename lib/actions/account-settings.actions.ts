@@ -93,6 +93,9 @@ export async function setAccountApprovalToggle(input: {
     throw new Error("Only the account owner can change approval settings");
   }
 
+  // The browser names the field: only these four, only true or false.
+  if (!Object.keys(DEFAULTS).includes(input.field) || typeof input.value !== "boolean") throw new Error("Unknown approval setting");
+
   const updated = await prisma.account.update({
     where: { id: accountId },
     data: { [input.field]: input.value },

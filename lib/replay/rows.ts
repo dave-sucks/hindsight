@@ -153,6 +153,7 @@ export function agentConfigRow(over: Row = {}): Row {
     userId: REPLAY_USER_ID,
     name: "Replay Analyst",
     enabled: true,
+    tradingEnvironment: "PAPER",
     minPositionSize: 3000,
     maxPositionSize: 14000,
     maxPositionTotal: 0,

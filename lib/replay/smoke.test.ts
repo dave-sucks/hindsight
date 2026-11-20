@@ -75,7 +75,7 @@ describe("the replay harness reaches a tool's real entry point", () => {
             updateThesis: () => ({
               execute: async () => {
                 const { placeMarketOrder } = await import("@/lib/alpaca");
-                return placeMarketOrder({} as never);
+                return placeMarketOrder({} as never, undefined, "PAPER");
               },
             }),
           }),

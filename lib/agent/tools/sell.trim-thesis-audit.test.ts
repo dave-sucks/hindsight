@@ -140,6 +140,8 @@ describe("manage_position — a trim writes the thesis history row (DAV-198)", (
     });
 
     expect(result.data.status).toBe("PARTIAL_CLOSE");
+    // On the position's own book.
+    expect((closePositionPartial as jest.Mock).mock.calls[0][4]).toBe("PAPER");
     expect(mockWriteThesisUpdate).toHaveBeenCalledTimes(1);
     expect(mockWriteThesisUpdate).toHaveBeenCalledWith(
       expect.objectContaining({

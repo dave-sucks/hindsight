@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff } from "lucide-react";
-import { saveApiKey } from "@/lib/actions/api-keys.actions";
+import { saveApiKey } from "@/lib/actions/keys.actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 

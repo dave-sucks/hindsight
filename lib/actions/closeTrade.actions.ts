@@ -1,5 +1,4 @@
-"use server";
-
+// Server-only. The two actions a browser may call are in trade.actions.ts, behind sign-in.
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import {
@@ -340,6 +339,7 @@ export async function closeOpenPosition(
         clientOrderId: idempotencyKey,
       },
       creds,
+      positionEnvironment,
     );
     alpacaOrderId = alpacaOrder.id;
     await prisma.order.update({
@@ -692,7 +692,7 @@ export async function closeOpenPosition(
  *   - Only mark Position CANCELLED when *every* pending order is confirmed
  *     terminal (canceled/expired/rejected) on Alpaca's side.
  */
-export async function cancelPosition(positionId: string): Promise<void> {
+export async function cancelPosition(positionId: string): Promise<{ refused: string } | void> {
   const position = await prisma.position.findUniqueOrThrow({
     where: { id: positionId },
   });
@@ -701,7 +701,18 @@ export async function cancelPosition(positionId: string): Promise<void> {
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
-  const creds = (await resolveAlpacaCredentials(position.userId)) ?? undefined;
+  // Cancel takes unfilled orders off, and the row goes only when nothing ever filled. With no order
+  // waiting it once marked a filled holding cancelled and left the shares at the broker (2026-11-19).
+  const everFilled = (await prisma.order.count({ where: { positionId, status: "FILLED" } })) > 0;
+  const waiting = await prisma.order.count({ where: { positionId, status: "PENDING" } });
+  if (waiting === 0) {
+    return { refused: `${position.symbol} has no order waiting to fill, so there is nothing to cancel. Close the trade to sell it.` };
+  }
+
+  // The position's own book: Paper keys once looked a Live order up in the Paper account (2026-11-19).
+  const book = position.environment === "LIVE" ? "LIVE" : "PAPER";
+  const creds = await resolveAlpacaCredentials(position.userId, book);
+  if (!creds) throw new Error(`This account's ${book === "LIVE" ? "Live" : "Paper"} Alpaca keys could not be read. Position not cancelled.`);
 
   const pendingOrders = await prisma.order.findMany({
     where: { positionId, status: "PENDING" },
@@ -718,7 +729,8 @@ export async function cancelPosition(positionId: string): Promise<void> {
     // No alpacaOrderId yet (DB-first crash gap). Try to recover via client_order_id.
     if (!alpacaId && order.idempotencyKey) {
       const { getOrderByClientOrderId } = await import("@/lib/alpaca");
-      const found = await getOrderByClientOrderId(order.idempotencyKey, creds).catch(() => null);
+      // Not found is null; a lookup that fails throws, and nothing is cancelled on a guess.
+      const found = await getOrderByClientOrderId(order.idempotencyKey, creds);
       if (found) alpacaId = found.id;
     }
 
@@ -729,7 +741,7 @@ export async function cancelPosition(positionId: string): Promise<void> {
     }
 
     try {
-      await cancelOrder(alpacaId, creds);
+      await cancelOrder(alpacaId, creds, book);
     } catch {
       // 4xx "not cancellable" usually means already filled or cancelled —
       // fall through to the getOrder below to learn the truth.
@@ -758,8 +770,10 @@ export async function cancelPosition(positionId: string): Promise<void> {
   for (const c of confirmations) {
     if (!c.finalAlpaca) continue;
     const s = c.finalAlpaca.status;
-    if (s === "filled") filledRaces.push(c);
-    else if (!["canceled", "cancelled", "expired", "rejected"].includes(s)) stillOpen.push(c);
+    const done = ["canceled", "cancelled", "expired", "rejected"].includes(s);
+    // An order that ended with shares bought is a fill, never dropped as cancelled. One still working is still open.
+    if (s === "filled" || (done && parseFloat(c.finalAlpaca.filled_qty ?? "0") > 0)) filledRaces.push(c);
+    else if (!done) stillOpen.push(c);
   }
 
   if (stillOpen.length > 0) {
@@ -817,6 +831,13 @@ export async function cancelPosition(positionId: string): Promise<void> {
       });
     }
 
+    if (everFilled) {
+      await tx.positionEvent.create({
+        data: { positionId, eventType: "PRICE_CHECK", description: `${confirmations.length} pending order(s) cancelled. The holding is unchanged.` },
+      });
+      return;
+    }
+
     await tx.position.update({
       where: { id: positionId },
       data: {
@@ -838,30 +859,4 @@ export async function cancelPosition(positionId: string): Promise<void> {
       },
     });
   });
-}
-
-// ─── Legacy aliases (for old code paths during migration) ────────────────────
-
-export type ClosedTradeResult = ClosedPositionResult;
-
-/**
- * Legacy alias used by the manual close UI (TradeActions, TradesPage,
- * AnalystDetailClient). All callers are manual button clicks, so we pass
- * source="user" — bypasses the Trade-as-Proposal gate by design.
- *
- * Note the return type widened to CloseOpenPositionOutcome to match the
- * underlying helper, but in practice the source="user" path always returns
- * { kind: "closed", ... }. Callers that need the closed shape can narrow
- * via `if (outcome.kind !== "closed") throw ...`. All current UI callers
- * discard the return value so the change is invisible to them.
- */
-export async function closeTrade(
-  tradeId: string,
-  reason: "TARGET" | "STOP" | "TIME" | "MANUAL",
-): Promise<CloseOpenPositionOutcome> {
-  return closeOpenPosition(tradeId, reason, undefined, "user");
-}
-
-export async function cancelTrade(tradeId: string): Promise<void> {
-  return cancelPosition(tradeId);
 }

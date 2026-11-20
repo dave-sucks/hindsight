@@ -49,6 +49,7 @@ jest.mock("@/lib/agent/load-account-risk", () => ({ loadAccountRisk: (...a: unkn
 jest.mock("@/lib/agent/thesis-updates", () => ({ writeThesisUpdate: jest.fn().mockResolvedValue("tu_1") }));
 
 import { add } from "./add";
+import { placeMarketOrder } from "@/lib/alpaca";
 import type { ToolContext } from "@/lib/agent/tool-context";
 
 const SMMT = {
@@ -88,6 +89,8 @@ describe("add writes the order at today's price (the principal's own $5,000, fro
   it("$5,000 into SMMT at $18.00 is 277 shares, not the 348 its $14.35 cost implies", async () => {
     lastResult = await tool().execute({ ticker: "SMMT", notional: 5000, note: "Pressing the winner on the pullback into the rising 20-day, per the seat's add rule." });
     expect(orderQty()).toBe(277);
+    // On the position's own book, with the run's keys.
+    expect((placeMarketOrder as jest.Mock).mock.calls.at(-1)?.slice(1)).toEqual([{ keyId: "k", secretKey: "s" }, "PAPER"]);
   });
 
   it("when the quote fails it falls back to the average cost, never to zero", async () => {

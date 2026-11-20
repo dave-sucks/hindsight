@@ -1,5 +1,5 @@
-"use server";
-
+// Server-only. This file reads decrypted broker keys (resolveAlpacaCredentials), so nothing in it is a
+// server action. The four a browser may call are wrapped in keys.actions.ts, behind sign-in.
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { encryptAndPack, unpackAndDecrypt } from "@/lib/crypto";
@@ -67,7 +67,6 @@ export type SaveApiKeyInput = {
   apiKey: string;
   apiSecret: string;
   label?: string;
-  baseUrl?: string;
 };
 
 const PAPER_BASE_URL = "https://paper-api.alpaca.markets";
@@ -150,7 +149,9 @@ export async function saveApiKey(
 ): Promise<{ success: boolean; verified: boolean; error?: string }> {
   try {
     const userId = await requireOwnerForKeyMutation();
-    const baseUrl = input.baseUrl ?? defaultBaseUrl(input.environment);
+    // A slot's host is its own: the Paper slot never holds the Live address.
+    if (input.environment !== "PAPER" && input.environment !== "LIVE") throw new Error("Unknown environment");
+    const baseUrl = defaultBaseUrl(input.environment);
 
     // Encrypt the credentials
     const encryptedKey = encryptAndPack(input.apiKey);
@@ -297,7 +298,7 @@ export async function getElevenLabsVoices(): Promise<{ voices: ElevenLabsVoice[]
 
 // ─── Resolve credentials for a user ──────────────────────────────────────────
 // Used by agent routes and crons to get Alpaca creds.
-// Returns null if no user key found (callers fall back to env vars).
+// Returns null if no user key found: a read then falls back to the env keys, an order is refused.
 
 export async function resolveAlpacaCredentials(
   userId: string,
@@ -314,7 +315,7 @@ export async function resolveAlpacaCredentials(
     where: {
       userId_provider_environment: { userId: ownerUserId, provider: "ALPACA", environment },
     },
-    select: { encryptedKey: true, encryptedSecret: true, baseUrl: true },
+    select: { encryptedKey: true, encryptedSecret: true },
   });
 
   if (!row) return null;
@@ -323,7 +324,7 @@ export async function resolveAlpacaCredentials(
     return {
       keyId: unpackAndDecrypt(row.encryptedKey),
       secretKey: unpackAndDecrypt(row.encryptedSecret),
-      baseUrl: row.baseUrl ?? defaultBaseUrl(environment),
+      baseUrl: defaultBaseUrl(environment),
     };
   } catch (err) {
     console.error("[api-keys] Failed to decrypt credentials for user", ownerUserId, err);

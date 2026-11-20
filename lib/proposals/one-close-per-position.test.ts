@@ -211,6 +211,7 @@ describe("SMMT 2026-09-15 — two sell rules on one trigger check", () => {
     ];
     await approveProposal("trim-1", ACCOUNT_ID);
     expect(mockClosePositionPartial).toHaveBeenCalledTimes(1);
+    expect(mockClosePositionPartial.mock.calls[0][4]).toBe("LIVE");
   });
 
   it("with approval off, a second close while one is submitted sends nothing", async () => {
@@ -236,6 +237,8 @@ describe("SMMT 2026-09-15 — two sell rules on one trigger check", () => {
 
     expect(outcome).toMatchObject({ kind: "closed", fillStatus: "FILLED" });
     expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
+    // On the position's own book (SMMT is Live).
+    expect(mockPlaceMarketOrder.mock.calls[0][2]).toBe("LIVE");
     expect(db.orders.find((o) => o.id === FLOOR_ORDER)!.status).toBe("CANCELLED");
   });
 });
@@ -266,6 +269,7 @@ describe("DAV-282 — a sale sells only what is still held", () => {
 
     expect(mockPlaceMarketOrder).toHaveBeenCalledTimes(1);
     expect(mockPlaceMarketOrder.mock.calls[0][0]).toMatchObject({ symbol: "SMMT", qty: 350, side: "sell" });
+    expect(mockPlaceMarketOrder.mock.calls[0][2]).toBe("LIVE");
     expect(db.orders.find((o) => o.id === FLOOR_ORDER)!.quantity).toBe(350);
   });
 

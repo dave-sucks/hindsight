@@ -41,7 +41,7 @@ import {
   updatePodcastVoice,
   type PodcastDetail,
 } from "@/lib/actions/podcast.actions";
-import { getElevenLabsVoices } from "@/lib/actions/api-keys.actions";
+import { getElevenLabsVoices } from "@/lib/actions/keys.actions";
 import type { ElevenLabsVoice } from "@/lib/podcast/elevenlabs";
 
 interface Props {

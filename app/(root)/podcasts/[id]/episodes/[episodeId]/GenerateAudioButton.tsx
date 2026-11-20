@@ -14,7 +14,7 @@ import {
 import { Mic, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { triggerEpisodeAudio, updatePodcastVoice } from "@/lib/actions/podcast.actions";
-import { getElevenLabsVoices } from "@/lib/actions/api-keys.actions";
+import { getElevenLabsVoices } from "@/lib/actions/keys.actions";
 import { estimateCost } from "@/lib/podcast/elevenlabs";
 import type { ElevenLabsVoice } from "@/lib/podcast/elevenlabs";
 

@@ -20,7 +20,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
-import { closeTrade } from "@/lib/actions/closeTrade.actions";
+import { closeTrade } from "@/lib/actions/trade.actions";
 
 export function CloseTradeDialog({
   tradeId,

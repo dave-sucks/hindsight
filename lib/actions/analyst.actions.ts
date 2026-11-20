@@ -11,6 +11,7 @@ import { pickProposalOrder } from "@/lib/trade-status";
 import { reviewCadenceTrigger } from "@/lib/agent/triggers/defaults";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
 import { getAccountId } from "@/lib/auth/account";
+import { requireEditor } from "@/lib/auth/editor";
 import { getHeldOrWatchedSymbols } from "@/lib/agent/watchlist-symbols";
 import { NEW_ANALYST_DEFAULTS, normalizeAnalystPatch, watchlistAdds, watchlistReasons } from "@/lib/analyst-settings";
 import {
@@ -776,11 +777,8 @@ export async function updateAnalystField(
 
 // ── deleteAnalyst (cascade delete all related data) ─────────────────────────
 
-export async function deleteAnalyst(analystId: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Not authenticated");
-  const accountId = await getAccountId(userId);
-  if (!accountId) throw new Error("No account");
+export async function deleteAnalyst(analystId: string): Promise<{ refused: string } | void> {
+  const { accountId } = await requireEditor();
 
   // Verify ownership
   const config = await prisma.agentConfig.findFirst({
@@ -798,20 +796,30 @@ export async function deleteAnalyst(analystId: string): Promise<void> {
   // 2. Find all positions for this analyst
   const positions = await prisma.position.findMany({
     where: { analystId },
-    select: { id: true, symbol: true, status: true },
+    select: { id: true, symbol: true, status: true, environment: true, quantity: true, direction: true },
   });
   const positionIds = positions.map((p) => p.id);
 
-  // 3. Close any open Alpaca positions
-  const { closePosition: closeAlpacaPos } = await import("@/lib/alpaca");
-  const creds = await resolveAlpacaCredentials(config.userId) ?? undefined;
+  // A Live holding is sold from its trade, never by a delete: the rows went while the real shares stayed, sold with Paper keys (2026-11-19).
+  const live = positions.filter((p) => p.status === "OPEN" && p.environment !== "PAPER");
+  if (live.length > 0) {
+    return { refused: `${config.name} holds ${live.length} Live position${live.length === 1 ? "" : "s"} (${live.map((p) => p.symbol).join(", ")}). Close ${live.length === 1 ? "it" : "them"} before deleting this analyst.` };
+  }
+
+  // 3. Sell its own open Paper shares, best effort (they may not exist at the broker).
+  //    Its own count, never the whole symbol: another analyst may hold the same stock.
+  const { closePositionPartial } = await import("@/lib/alpaca");
+  const creds = await resolveAlpacaCredentials(config.userId, "PAPER");
+  // Unreadable keys would leave every share at the broker with its row deleted.
+  if (!creds && positions.some((p) => p.status === "OPEN")) {
+    return { refused: `${config.name} holds Paper positions and this account's Paper Alpaca keys could not be read. Save them again in Settings, then delete it.` };
+  }
   for (const pos of positions) {
-    if (pos.status === "OPEN") {
-      try {
-        await closeAlpacaPos(pos.symbol, creds).catch(() => {});
-      } catch {
-        // Best effort — position may not exist
-      }
+    if (pos.status !== "OPEN") continue;
+    const failed: { statusCode?: number } | null = await closePositionPartial(pos.symbol, pos.quantity, pos.direction === "SHORT" ? "buy" : "sell", creds, "PAPER").then(() => null, (e) => e ?? {});
+    // The broker turning the keys away is not "no such shares": stop before the rows go.
+    if (failed?.statusCode === 401 || failed?.statusCode === 403) {
+      return { refused: `Alpaca refused this account's Paper keys, so ${config.name}'s Paper shares were not sold. Save the keys again in Settings, then delete it.` };
     }
   }
 

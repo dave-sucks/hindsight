@@ -79,6 +79,8 @@ export interface ReplayResult {
 export interface Replay {
   /** The raw envelope, for the rare assertion the fields below cannot make. */
   result: ReplayResult;
+  /** Every order the tool tried to send: the broker function and its arguments (keys, book). The send itself still throws. */
+  sends: Array<{ fn: string; args: unknown[] }>;
   /**
    * Did a gate refuse the call?
    *
@@ -181,6 +183,7 @@ export async function replayTool(
   opts: ReplayOptions = {},
 ): Promise<Replay> {
   const db = prismaDouble(opts.seed);
+  const sends: Replay["sends"] = [];
   const quotes = opts.quotes ?? {};
   let result: ReplayResult = { ok: false, error: "replay did not run" };
   let refusal: { error: string; message: string } | null = null;
@@ -225,10 +228,11 @@ export async function replayTool(
         // The write side, by its real export names. A replay that reaches a
         // broker throws — silence here would be the worst possible failure
         // for a harness whose whole job is to stop silent wrongness.
-        ["placeMarketOrder", "placeLimitOrder", "closePosition", "closePositionPartial", "cancelOrder"].map(
+        ["placeMarketOrder", "closePosition", "closePositionPartial", "cancelOrder"].map(
           (name) => [
             name,
-            jest.fn(async () => {
+            jest.fn(async (...args: unknown[]) => {
+              sends.push({ fn: name, args });
               throw new Error(`[replay] ${name} reached the broker — a replay must never place or cancel a real order`);
             }),
           ],
@@ -291,5 +295,5 @@ export async function replayTool(
     result.ok === false &&
     typeof result.error === "string" &&
     (result as { data?: unknown }).data === undefined;
-  return { result, refused: refusal !== null, refusal, crashed, db, calls: db.calls };
+  return { result, refused: refusal !== null, refusal, crashed, db, calls: db.calls, sends };
 }

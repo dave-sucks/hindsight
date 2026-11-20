@@ -13,13 +13,8 @@ import {
 } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { ConnectionCard, ConnectionSubRow } from "./ConnectionCard";
-import {
-  saveApiKey,
-  deleteApiKey,
-  reverifyApiKey,
-  type ApiKeyStatus,
-  type AlpacaEnvironment,
-} from "@/lib/actions/api-keys.actions";
+import { saveApiKey, deleteApiKey, reverifyApiKey } from "@/lib/actions/keys.actions";
+import type { ApiKeyStatus, AlpacaEnvironment } from "@/lib/actions/api-keys.actions";
 
 const LOGO = (
   <Image

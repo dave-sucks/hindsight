@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccount } from "@/lib/alpaca";
 import { getAccountId } from "@/lib/auth/account";
+import { editorOrWhy } from "@/lib/auth/editor";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { closeOpenPosition } from "@/lib/actions/closeTrade.actions";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -166,9 +167,9 @@ export async function promoteAnalystToLive(
   analystId: string,
   options?: { maxPositionSize?: number },
 ): Promise<PromotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", closedBeforeFailure: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, closedBeforeFailure: 0 };
+  const { userId, accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },
@@ -193,6 +194,12 @@ export async function promoteAnalystToLive(
       error: "A research run is currently in progress for this analyst. Wait for it to finish, then promote.",
       closedBeforeFailure: 0,
     };
+  }
+
+  // The size the dialog sends is checked before anything is closed: a bad one failed the last write, after the paper positions were sold.
+  const size = options?.maxPositionSize;
+  if (size !== undefined && !(typeof size === "number" && Number.isFinite(size) && size > 0)) {
+    return { ok: false, error: "The largest trade must be a dollar amount above zero.", closedBeforeFailure: 0 };
   }
 
   // 1. Validate live creds are reachable BEFORE we start closing paper positions.
@@ -600,9 +607,9 @@ export type DemotionResult =
 export async function demoteAnalystToPaper(
   analystId: string,
 ): Promise<DemotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", openLiveCount: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, openLiveCount: 0 };
+  const { accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },
@@ -643,9 +650,9 @@ export async function demoteAnalystToPaper(
 export async function closeAllLivePositionsAndDemote(
   analystId: string,
 ): Promise<PromotionResult> {
-  const userId = await getServerUserId();
-  const accountId = await getAccountId(userId);
-  if (!accountId) return { ok: false, error: "Account not found", closedBeforeFailure: 0 };
+  const who = await editorOrWhy();
+  if (who.error !== undefined) return { ok: false, error: who.error, closedBeforeFailure: 0 };
+  const { accountId } = who;
 
   const analyst = await prisma.agentConfig.findFirst({
     where: { id: analystId, accountId },

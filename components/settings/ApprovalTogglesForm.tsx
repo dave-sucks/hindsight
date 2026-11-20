@@ -20,6 +20,8 @@
 import { useState, useTransition } from "react";
 import { InfoRow } from "@/components/ui/info-row";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   setAccountApprovalToggle,
@@ -82,6 +84,8 @@ const ROWS: Array<{
 export function ApprovalTogglesForm({ initial, canEdit }: Props) {
   const [settings, setSettings] = useState<AccountApprovalSettings>(initial);
   const [pending, startTransition] = useTransition();
+  // Turning a Live switch off asks first: one stray click must not send real-money trades unreviewed.
+  const [confirming, setConfirming] = useState<ApprovalToggleField | null>(null);
 
   function toggle(field: ApprovalToggleField, value: boolean) {
     const prev = settings;
@@ -110,11 +114,36 @@ export function ApprovalTogglesForm({ initial, canEdit }: Props) {
           <Switch
             checked={settings[row.field]}
             disabled={!canEdit || pending}
-            onCheckedChange={(v) => toggle(row.field, v)}
+            onCheckedChange={(v) => (!v && row.field.endsWith("Live") ? setConfirming(row.field) : toggle(row.field, v))}
             aria-label={row.label}
           />
         </InfoRow>
       ))}
+      <Dialog open={confirming != null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Turn off approval for {ROWS.find((r) => r.field === confirming)?.label}?</DialogTitle>
+            <DialogDescription>
+              Agents and Auto triggers will send real-money trades to your Live account with no proposal first. Paper is not affected.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirming(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirming) toggle(confirming, false);
+                setConfirming(null);
+              }}
+            >
+              Turn off approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

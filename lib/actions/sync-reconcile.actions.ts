@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId, getOwnerUserId } from "@/lib/auth/account";
+import { requireEditor } from "@/lib/auth/editor";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import {
   closePosition,
@@ -82,9 +83,16 @@ export async function liquidateOrphan(
   environment: TradingEnvironment,
 ): Promise<Result> {
   try {
-    const { creds } = await resolveOwner(environment);
-    await closePosition(symbol, creds);
-    console.warn(`[sync-reconcile] liquidated ${environment} orphan ${symbol}`);
+    await requireEditor();
+    const { accountId, creds } = await resolveOwner(environment);
+    // A ticker and nothing else: the broker also takes an asset id, which would slip past the check below.
+    const ticker = String(symbol).trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker)) return { ok: false, error: "That isn't a ticker." };
+    // Only a holding the app has no row for: one it tracks is sold from its trade, through approval.
+    const tracked = await prisma.position.count({ where: { accountId, environment, symbol: ticker, status: "OPEN" } });
+    if (tracked > 0) return { ok: false, error: `${ticker} is a position the app holds. Sell it from its trade.` };
+    await closePosition(ticker, creds, environment);
+    console.warn(`[sync-reconcile] liquidated ${environment} orphan ${ticker}`);
     await refreshSnapshot(environment);
     return { ok: true };
   } catch (err) {
@@ -94,6 +102,7 @@ export async function liquidateOrphan(
 
 export async function closeStaleDbRow(positionId: string): Promise<Result> {
   try {
+    await requireEditor();
     const { userId, accountId } = await resolveOwnerBase();
     const position = await prisma.position.findUnique({
       where: { id: positionId },
@@ -158,6 +167,7 @@ export async function trustAlpacaQty(
   environment: TradingEnvironment,
 ): Promise<Result<{ delta: number }>> {
   try {
+    await requireEditor();
     const { accountId, creds } = await resolveOwner(environment);
     const alpacaPositions = await getAllPositions(creds);
     const alpacaPos = alpacaPositions.find(

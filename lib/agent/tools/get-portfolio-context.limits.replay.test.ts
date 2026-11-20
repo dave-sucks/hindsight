@@ -12,7 +12,8 @@ import book from "@/lib/agent/__fixtures__/portfolio-master-chat-2026-10-14.json
 
 const nameOf = (id: string) => book.analysts.find((a) => a.id === id)!.name;
 const seed = () => ({
-  agentConfig: book.analysts.map((a) => agentConfigRow({ ...a, accountId: REPLAY_ACCOUNT_ID, createdAt: new Date(a.createdAt) })),
+  // The book is the Live one: its three analysts trade on Live, as the runs below do.
+  agentConfig: book.analysts.map((a) => agentConfigRow({ ...a, tradingEnvironment: "LIVE", accountId: REPLAY_ACCOUNT_ID, createdAt: new Date(a.createdAt) })),
   position: book.positions.map((p) =>
     positionRow({ id: `pos_${p.symbol}`, symbol: p.symbol, analystId: p.analystId, analyst: { name: nameOf(p.analystId) }, status: p.status, environment: p.environment, avgCost: p.avgCost }),
   ),
