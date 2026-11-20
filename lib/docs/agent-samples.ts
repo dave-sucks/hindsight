@@ -78,7 +78,11 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     build: (record) => ({
       request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER" }, {
         pieces: PIECES,
-        context: { the_book: BOOK, last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nWritten for Wed, Nov 11:\n\n### Market overview\nStocks rose." },
+        context: {
+          the_book: BOOK,
+          the_cases: "## What each thesis rests on\n- MU\n  - Must stay true: memory prices rise each quarter, checked at each report\n  - Would prove it wrong: a guidance cut at the next report",
+          last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nWritten for Wed, Nov 11:\n\n### Market overview\nStocks rose.",
+        },
       }),
     }),
   },

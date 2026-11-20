@@ -8,6 +8,7 @@
 import { firstSentence } from "@/lib/portfolio/snapshot";
 import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import { stripCitationTags } from "@/lib/thesis/clean-text";
 
 export interface BookRow {
   ticker: string;
@@ -56,5 +57,47 @@ export async function loadBook(args: { accountId: string; environment: "PAPER" |
       belief: t.coreBelief,
       ...(t.status === "WATCHING" ? { buyIf: parseLevelTriggers(t.triggers, `watch=${t.ticker}`).filter((x) => x.action === "ENTER").map(sentenceOf) } : {}),
     })),
+  );
+}
+
+export interface CaseRow {
+  ticker: string;
+  status: "HOLDING" | "WATCHING";
+  assumptions: string[];
+  wouldProveItWrong: string[];
+}
+
+/** What each stock's thesis rests on, a stock once (the held one when two analysts cover it); a stock with neither list is left out. */
+export function casesText(rows: CaseRow[]): string {
+  const one = new Map<string, CaseRow>();
+  for (const r of rows) {
+    const k = r.ticker.toUpperCase();
+    if (!one.has(k) || (r.status === "HOLDING" && one.get(k)!.status !== "HOLDING")) one.set(k, r);
+  }
+  const clean = (xs: string[]) => xs.map((x) => stripCitationTags(x).trim()).filter(Boolean);
+  const lines = [...one.values()]
+    .sort((a, b) => a.ticker.localeCompare(b.ticker))
+    .flatMap((r) => {
+      const must = clean(r.assumptions);
+      const wrong = clean(r.wouldProveItWrong);
+      if (!must.length && !wrong.length) return [];
+      return [`- ${r.ticker.toUpperCase()}`, ...must.map((x) => `  - Must stay true: ${x}`), ...wrong.map((x) => `  - Would prove it wrong: ${x}`)];
+    });
+  return ["## What each thesis rests on", ...(lines.length ? lines : ["- none written"])].join("\n");
+}
+
+/** The assumptions and what would prove it wrong, for every stock held or watched in one account's book. Null when it can't be read. */
+export async function loadCases(args: { accountId: string; environment: "PAPER" | "LIVE" }): Promise<string | null> {
+  const { prisma } = await import("@/lib/prisma");
+  const theses = await prisma.thesis
+    .findMany({
+      where: { status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: args.accountId, tradingEnvironment: args.environment } } },
+      select: { ticker: true, status: true, keyAssumptions: true, invalidationConds: true },
+      orderBy: [{ ticker: "asc" }, { id: "asc" }],
+    })
+    .catch(() => null);
+  if (!theses) return null;
+  return casesText(
+    theses.map((t) => ({ ticker: t.ticker, status: t.status === "HOLDING" ? "HOLDING" : "WATCHING", assumptions: t.keyAssumptions ?? [], wouldProveItWrong: t.invalidationConds ?? [] })),
   );
 }
