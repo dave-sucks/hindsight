@@ -36,7 +36,7 @@ async function getCurrentUserId(): Promise<string | null> {
 /**
  * What the analyst page renders for each watchlist row. Sourced from a
  * `status='WATCHING'` Thesis. `direction` is `LONG|SHORT|null` (null = an
- * unresearched seed; legacy 'PENDING' during the B4 dual-read window); PASS
+ * unresearched seed); PASS
  * theses never appear here (they're PASSED/ARCHIVED, off the watchlist).
  *
  * `id` is now the underlying Thesis id (was AnalystWatchlistItem.id pre-collapse).
@@ -193,10 +193,8 @@ export async function getWatchlistItems(
       addedBy,
       priority: "NORMAL",
       status: "WATCHING", // legacy contract — UI ignores
-      // P1-24 B4 dual-read: an unresearched seed is direction=null (new) or
-      // 'PENDING' (legacy, pre-backfill). Normalize both to null so the row
-      // renders "Awaiting review".
-      thesisDirection: t.direction === "PENDING" ? null : t.direction,
+      // An unresearched seed is direction=null: the row renders "Awaiting review".
+      thesisDirection: t.direction,
       catalyst: t.catalystDate ? t.catalystDate.toISOString() : null,
       lastReviewedAt: t.lastReviewedAt,
       createdAt: t.createdAt,
@@ -363,8 +361,7 @@ export async function addWatchlistItem(
       addedBy: addedByDisplay,
       priority: "NORMAL",
       status: "WATCHING",
-      // P1-24 B4 dual-read: null (new seed) or legacy 'PENDING' → null.
-      thesisDirection: existing.direction === "PENDING" ? null : existing.direction,
+      thesisDirection: existing.direction,
       catalyst: null,
       lastReviewedAt: existing.lastReviewedAt,
       createdAt: existing.createdAt,
