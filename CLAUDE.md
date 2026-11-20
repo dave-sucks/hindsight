@@ -22,9 +22,9 @@ An agent is five things, each with one home. If a change doesn't fit one of them
 - put fields, variables or calculations in an agent's text;
 - build agent-specific plumbing (a special loader path, a prompt builder, a flag one run reads);
 - copy a shared rule into one agent;
-- merge a change to what an agent is sent before it is scored: `--inputs-only` first, rescore only the cases whose request changed, 4 runs each.
+- merge a change to what an agent is sent before it is scored: once per set of agent work, `--inputs-only` first, rescore only the cases whose request changed, 2 runs each (`docs/PRINCIPLES.md` §7).
 
-More context for an agent = a loader for the fact, ticked on its record. A new action = a tool. A new agent = a record, an `.md`, its ticks and a `SCHEDULE` line or event. Full version: `docs/PRINCIPLES.md` and the guide's "How an agent is built". The work is tracked on the Hindsight Roadmap, milestone E.
+More context for an agent = a loader for the fact, ticked on its record. A new action = a tool. A new agent = a record, an `.md`, its ticks and a `SCHEDULE` line or event. Full version: `docs/PRINCIPLES.md`, the standard (both perspectives, where each sentence goes and how it is written), and the guide's "How an agent is built". The work is tracked on the Hindsight Roadmap, milestone E.
 
 ## The Trigger Game Plan (shipped 2026-07-12 — read before touching anything trigger/position-related)
 Every thesis carries a **trigger ladder** (condition → action: ENTER/ADD/TRIM/
@@ -188,10 +188,11 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 |---|---|
 | **Learn what Hindsight is and how its parts fit (start here)** | **`docs/guide/README.md`**, one doc per agent and concept |
 | **Build or change an agent (its instructions, context, tools, schedule)** | **"Agents: how they're built" above, then `docs/PRINCIPLES.md`** |
+| **Review a playbook, rule, context item, skill, tool or agent in the details (the expert review)** | **`docs/PRINCIPLES.md` §8, `docs/plans/EXPERT_REVIEW_LEDGER.md`; start a unit with `/expert-review`** |
 | Change what the /docs pages say | `docs/guide/` (`agents/`, `concepts/`, `deep-dives/`, `reference/`); the pages draw those files (pictures are `<!-- asset: name -->` lines). The reference docs (Situations library, Trigger measures, Setups) are generated: `UPDATE_GUIDE=1 npx jest lib/docs/guide` |
 | **Change what an agent is told when a stock is in a situation (a flag)** | **`SITUATIONS` in `lib/agent/situations.ts`; never a prompt** |
 | **The Agent Rebuild: steps 6–11, the current plan and its numbers** | **`docs/plans/AGENT_ARCHITECTURE.md` §11** |
-| Understand the agent design rules (three-layer principle) | `docs/PRINCIPLES.md` |
+| Read the agent standard (how we build agents, down to the sentence) | `docs/PRINCIPLES.md` |
 | Read / update the product north star | `docs/VISION.md` |
 | Read the live thesis-system reference | `docs/THESIS_ARCHITECTURE.md` |
 | Understand triggers (predicates, which fires on which path, fire modes) | `docs/TRIGGERS.md` |
