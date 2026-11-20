@@ -36,6 +36,7 @@ export type ContextId =
   | "portfolio"
   | "portfolio_digest"
   | "the_book"
+  | "the_cases"
   | "the_analysts"
   | "the_stock"
   | "stock_data"

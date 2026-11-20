@@ -22,6 +22,7 @@ import { stockData } from "./stock-data";
 import { theAnalyst } from "./the-analyst";
 import { theAnalysts } from "./the-analysts";
 import { theBook } from "./the-book";
+import { theCases } from "./the-cases";
 import { theStock } from "./the-stock";
 
 export type { ContextRun } from "./fact";
@@ -41,6 +42,7 @@ export const FACTS: Record<Exclude<ContextId, "market_numbers" | "market_digest"
   stock_data: stockData,
   playbook_record: playbookRecord,
   the_book: theBook,
+  the_cases: theCases,
   the_analysts: theAnalysts,
   earnings_this_week: earningsThisWeek,
   filings_this_week: filingsThisWeek,

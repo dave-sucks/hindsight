@@ -33,6 +33,7 @@ const BOOK = "the morning run's book is in its first message, so its first step 
 const MARKET_NUMBERS = "the post-trade write-up reads the market numbers alone of the Market and portfolio reads, as every run about a thesis does";
 const NO_EMPTY_PART = "an analyst with no playbooks gets no playbooks part (it was an empty one: a stray blank line)";
 const PLAYBOOKS_AFTER = "the Writer's playbooks follow its document, since the rules are its import (they printed between the rules and the research rules)";
+const FIRST_READ = "the Market Reviewer is given what each thesis rests on, and its notes text says what impact and effect are for (2026-11-19)";
 const CHANGED: Record<string, string> = {
   "morning.quiet": BOOK,
   "morning.full": BOOK,
@@ -49,6 +50,7 @@ const CHANGED: Record<string, string> = {
   "writer.refresh_watch": PLAYBOOKS_AFTER,
   "writer.mint_unread_playbooks": PLAYBOOKS_AFTER,
   "sample.writer": PLAYBOOKS_AFTER,
+  "sample.market_reviewer": FIRST_READ,
 };
 
 /** Agents main never had, so nothing of theirs was hashed. */
