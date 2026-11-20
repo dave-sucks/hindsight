@@ -655,4 +655,3 @@ async function checkDeclaredActions(
 
 // Re-export for tests that exercise the preflight directly without
 // standing up a full run.
-export const __test__ = { runCompleteRunPreflight };

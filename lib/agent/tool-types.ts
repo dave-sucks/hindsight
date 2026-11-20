@@ -121,51 +121,6 @@ export interface SignalItem {
 
 // ─── Per-Tool Data Types ────────────────────────────────────────────────────
 
-/** get_market_context → data */
-export interface MarketContextData {
-  spy: { price: number; changePct: number; dayHigh: number; dayLow: number } | null;
-  /** VIXY, an ETF of VIX futures — its day move, never read as the VIX level (DAV-339). */
-  vixy: { price: number; changePct: number | null } | null;
-  /** The playbook regime (lib/agent/regime.ts), as of the last close; null when SPY's snapshot is missing. */
-  regime: "RISK_ON" | "CAUTION" | "RISK_OFF" | null;
-  regimeLine: string | null;
-  regimeAsOf: string | null;
-  spyTrend: {
-    sma20: number;
-    position: "above" | "below";
-    pctFromSma: number;
-  } | null;
-  sectors: { symbol: string; changePct: number }[];
-  macroEvents: {
-    event: string;
-    actual: number | null;
-    estimate: number | null;
-    impact: "HIGH" | "MEDIUM" | "LOW";
-  }[];
-  earningsDensity: { count: number; period: string };
-  apiErrors?: string[];
-}
-
-/** get_earnings_data → data */
-export interface EarningsDataData {
-  nextEarnings: { date: string; epsEstimate: number | null } | null;
-  beatRate: string;
-  recentQuarters: {
-    period: string;
-    actualEps: number;
-    estimatedEps: number;
-    surprise: number;
-    surprisePct: number;
-  }[];
-}
-
-/** get_sec_filings → data */
-export interface SecFilingsData {
-  filings: { type: string; date: string; description: string; items: string[]; tier: "RED" | "MATERIAL" | "CONTEXT"; url: string }[];
-  count: number;
-  error?: string;
-}
-
 /** web_search → data */
 export interface WebSearchToolData {
   query: string;

@@ -99,16 +99,6 @@ export interface RunSummaryInput {
 
 export type ActionColor = "green" | "red" | "blue" | "muted";
 
-/** Legacy overlay keys kept only for consumers still using icons. */
-export type RunActionIcon =
-  | "buy"
-  | "sell"
-  | "watch"
-  | "unwatch"
-  | "closed-win"
-  | "closed-loss"
-  | "failed";
-
 export interface ActionSegment {
   color: ActionColor;
   partial: boolean;

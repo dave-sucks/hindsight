@@ -237,13 +237,3 @@ export const EMPTY_STATES: Record<string, EmptyStateConfig> = {
     description: "Performance charts populate as analysts complete trades. Win rate, accuracy reports, and sector breakdowns are calculated weekly.",
   },
 };
-
-// ── Onboarding Steps ───────────────────────────────────────────────────────
-
-export interface OnboardingStep {
-  title: string;
-  description: string;
-  concept: ConceptKey;
-  visual: "analyst" | "intelligence" | "run" | "trade" | "loop";
-}
-

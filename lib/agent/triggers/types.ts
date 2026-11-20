@@ -33,21 +33,6 @@ import { protectiveCloseReason, risesWith } from "./condition/rules";
 import type { When } from "./condition/types";
 import type { FireMode } from "./fire-mode";
 
-export type SignalType =
-  | "NEWS"
-  | "EARNINGS"
-  | "FILING"
-  | "SOCIAL"
-  | "PRICE_ACTION"
-  | "ANALYST_NOTE"
-  | "OPTIONS"
-  | "MACRO"
-  | "SECTOR";
-
-export type Sentiment = "BULLISH" | "BEARISH" | "NEUTRAL";
-
-export type Urgency = "LOW" | "MEDIUM" | "HIGH" | "BREAKING";
-
 /**
  * What to do when a trigger fires. The tactical agent reads this to decide
  * which tool path to take. Note: the agent CAN override (e.g. trigger said
@@ -130,12 +115,6 @@ export type Trigger = {
    */
   playbook?: "WATCH" | "PROPOSAL" | "FILL";
 };
-
-/**
- * What gets stored on Thesis.triggers. Always an array; empty array is the
- * default for theses created before triggers were a thing.
- */
-export type ThesisTriggers = Trigger[];
 
 /**
  * The STOP/TARGET close reason a protective/price EXIT carries — the single

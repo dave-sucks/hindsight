@@ -75,13 +75,6 @@ export const WATCHLIST_STALE_DAYS_CAP = 35;
 const DEFAULT_STALE_DAYS = 7;
 
 /**
- * @deprecated Use STALE_DAYS_BY_HORIZON or pass the thesis's horizon
- * to classifyResearchAge. Kept as an alias for callers outside the
- * audited surface — equal to the conservative default.
- */
-export const STALE_DAYS = DEFAULT_STALE_DAYS;
-
-/**
  * Three-bucket freshness classification.
  *
  *   missing — `researchUpdatedAt` is null. The thesis exists but never

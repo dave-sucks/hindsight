@@ -111,21 +111,6 @@ function ToolCard({ tool, onOpen }: { tool: CatalogTool; onOpen: () => void }) {
   );
 }
 
-/** A plain grid of tools that open the dialog. Used by pages that show one agent's tools. */
-export function ToolGrid({ tools }: { tools: readonly CatalogTool[] }) {
-  const [open, setOpen] = useState<CatalogTool | null>(null);
-  return (
-    <>
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-        {tools.map((t) => (
-          <ToolCard key={t.code} tool={t} onOpen={() => setOpen(t)} />
-        ))}
-      </div>
-      <ToolDialog tool={open} onClose={() => setOpen(null)} />
-    </>
-  );
-}
-
 /** Tools as rows: the mark, the name, the machine name, one line of what it does. Opens the dialog. */
 export function ToolList({ tools }: { tools: readonly CatalogTool[] }) {
   const [open, setOpen] = useState<CatalogTool | null>(null);

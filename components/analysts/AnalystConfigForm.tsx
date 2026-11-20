@@ -860,10 +860,6 @@ export function RowLabel({ label, tooltip }: { label: string; tooltip?: React.Re
 export const GHOST_INPUT =
   "border-transparent bg-transparent shadow-none dark:bg-transparent hover:bg-accent/50 hover:border-input focus-visible:bg-background focus-visible:border-ring";
 
-export function EmptyHint({ children }: { children: React.ReactNode }) {
-  return <p className="text-xs text-muted-foreground/60">{children}</p>;
-}
-
 // ─── Chip combobox wrappers ──────────────────────────────────────────────────
 // Pure shadcn Combobox (multiple) — exactly the docs example. Long labels are
 // truncated by slicing the displayed string (a string concern, not CSS) so the

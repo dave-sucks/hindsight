@@ -42,19 +42,6 @@ export function Ul({ children }: { children: ReactNode }) {
   );
 }
 
-/** "Try asking": prompts the reader can copy into chat. */
-export function Prompts({ items }: { items: readonly string[] }) {
-  return (
-    <div className="flex flex-col gap-2 border-l-2 pl-4">
-      {items.map((p) => (
-        <p key={p} className="text-sm leading-6 text-foreground">
-          {p}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 /** One block of doc text: a heading and what follows it, spaced like a page. */
 export function DocSection({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (

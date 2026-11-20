@@ -118,4 +118,3 @@ export function usePositionRealtime({
 // Legacy alias for backwards compatibility
 export const useTradeRealtime = usePositionRealtime;
 export type RealtimeTrade = RealtimePosition;
-export type RealtimeTradeEvent = RealtimePositionEvent;

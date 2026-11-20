@@ -69,17 +69,6 @@ export interface PodcastDetail {
   segments: SegmentSummary[];
 }
 
-export interface SegmentRunRow {
-  id: string;
-  status: string;
-  startedAt: Date;
-  completedAt: Date | null;
-  transcriptId: string | null;
-  transcriptTitle: string | null;
-  durationSec: number | null;
-  citationCount: number;
-}
-
 // Removed: SegmentDetail / getSegmentDetail.
 // Segments don't have a dedicated page — they live as rows on the podcast
 // detail page. The SegmentConfigSheet operates on SegmentSummary (carried
