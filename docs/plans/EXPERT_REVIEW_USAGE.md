@@ -66,7 +66,7 @@ Calls the model made (code's up-front reads, such as the morning run's first `ge
 | `list_runs`, `read_run`, `read_accuracy_reports`, `read_trade_results` | 0 in 12 weeks | | | on the chat's list | **delete** from the chat's list |
 | `get_analyst_coverage`, `get_earnings_history`, `get_financials_deep`, `get_insider_activity`, `get_peers_with_metrics` | 0 in 12 weeks | | | registered in `lib/agent/tools/index.ts`, on no agent's list | **delete** |
 | `read_database` | 0 (2 in 12 weeks) | | | registered, on no agent's list | **delete** |
-| `manage_position` | 3 before Nov 19 | | | file kept, on no list; `add` replaced it | **delete** |
+| `manage_position` | 3 before Nov 19 | | | the file `lib/agent/tools/manage-position.ts` and its test kept, on no list; `add` replaced it | **delete** |
 
 Not counted: the builder and editor chats (`suggest_config`, `ask_question`, `read_knowledge_library`) are not saved as runs, so their calls are not in the database.
 
@@ -125,6 +125,8 @@ Deleted on Nov 15 and still in the 30 days: "plan problem" 337 rows and "stale r
 
 ## 4. How often each playbook occurs
 
+All twelve in `SETUP_IDS` (`lib/agent/knowledge/setups.ts`), plus stocks with none. "Archetypes" are the new-analyst seeds in `lib/agent/knowledge/strategy-archetypes.ts` that name the playbook; they are not live analysts.
+
 | Playbook | The Writer chose it (30 days) | Live watches / holdings now | Positions opened in 12 weeks | On which analysts' lists | Sort |
 |---|---|---|---|---|---|
 | Pullback to a rising average (`MA_PULLBACK`) | 34 | 8 / 0 | 0 (2 closed, MU) | all five enabled | own (1.4) |
@@ -136,10 +138,12 @@ Deleted on Nov 15 and still in the 30 days: "plan problem" 337 rows and "stale r
 | Momentum flag | 0 | 0 | 0 | none | **delete** (1.9) |
 | Insider cluster | 0 | 0 | 0 | none | **delete** (1.9) |
 | Estimate revision | 0 (no triggers in its template) | 0 | 0 | none | **delete** (1.9) |
-| Sector rotation | 0 (no triggers in its template) | 0 | 0 | Quality Leaders | **delete** (1.9), after the owner takes it off Quality Leaders |
+| Sector rotation | 0 (no triggers in its template) | 0 | 0 | Quality Leaders; the Sector Rotation archetype | **delete** (1.9), after the owner takes it off Quality Leaders |
+| Near the 52-week high (`RS_52W_HIGH`) | 0 (0 in 12 weeks) | 0 (no stock has ever been saved with it) | 0 | Quality Leaders (paper, 1 live stock); the Relative Strength Momentum and Sector Rotation archetypes | **delete** (1.9), after the owner takes it off Quality Leaders |
+| Oversold bounce (`RSI2_BOUNCE`) | 0 (0 in 12 weeks) | 0 (no stock has ever been saved with it) | 0 | none; the Oversold Bounce archetype | **delete** (1.9) |
 | No playbook (`NONE`, or none set) | 25 on the old save | 20 / 3 | **9 of 17** | — | see questions |
 
-Quality Leaders' list also names `RS_52W_HIGH`, which is not a playbook; the save drops it, so that analyst has one real playbook (`MA_PULLBACK`).
+`RS_52W_HIGH`'s template is one trigger, a REVIEW within 5% of the 52-week high and ahead of the S&P over 3 months, which its own reason calls a screen. `docs/PRINCIPLES.md` §2 says a rule that finds new stocks is a scan for Discovery, not a trigger. `RSI2_BOUNCE`'s seven triggers are the only place the `rsi` measure is used; deleting it leaves `rsi` with no user, which 1.2 should weigh. A PR that deletes these six playbooks also takes them off the archetypes: momentum flag and near the 52-week high (Relative Strength Momentum), oversold bounce (Oversold Bounce), sector rotation and near the 52-week high (Sector Rotation), insider cluster (Insider Cluster Buying). Quality Leaders would then have one playbook, `MA_PULLBACK`.
 
 ---
 
@@ -196,7 +200,7 @@ The measures a stored trigger uses today (181 triggers on live stocks and rules)
 | 1.6 Drift after earnings | own | 8 picks, 1 trade |
 | 1.7 Episodic pivot | bulk with 1.9 | 1 pick, no trade |
 | 1.8 Before an event | own | 24 picks, 4 trades closed in 12 weeks |
-| 1.9 The other playbooks | delete four | momentum flag, insider cluster, estimate revision, sector rotation: no use at all |
+| 1.9 The other playbooks | delete six | momentum flag, insider cluster, estimate revision, sector rotation, near the 52-week high (`RS_52W_HIGH`), oversold bounce (`RSI2_BOUNCE`): no Writer pick, no stock, no position |
 | 1.10 The book and the market | own | every buy |
 | 2.1 The watchlist row | own | in `the_book` (119 sends, 14.5k) and every `get_theses` (92) |
 | 2.2 The holding row | own | the same reads; every sale decision starts from it |
@@ -223,7 +227,7 @@ The measures a stored trigger uses today (181 triggers on live stocks and rules)
 | 5.8 The Market Reviewer and the evening digest | bulk, one unit | 7 and 10 runs, short texts, no tools |
 | 5.9 Discovery | own, short | off; 2 runs; the owner means to turn it on |
 
-**To delete** (each its own small PR, owner's call): the five registered tools on no list, `read_database`, `manage_position`; `list_runs`, `read_run`, `read_accuracy_reports` and `read_trade_results` from the chat's list; the momentum flag, insider cluster, estimate revision and sector rotation playbooks.
+**To delete** (each its own small PR, owner's call): the five registered tools on no list, `read_database`, `manage_position` (the file `lib/agent/tools/manage-position.ts` and its test `manage-position.add-sizing.test.ts`); `list_runs`, `read_run`, `read_accuracy_reports` and `read_trade_results` from the chat's list; the momentum flag, insider cluster, estimate revision, sector rotation, near the 52-week high and oversold bounce playbooks, and their names on the archetypes.
 
 ---
 
