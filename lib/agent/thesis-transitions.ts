@@ -24,9 +24,8 @@
  *
  *   status    = WATCHING | HOLDING | PROMOTED     (updatable)
  *             | PASSED | RETIRED                  (terminal — refuse)
- *   verb      = INVALIDATED (belief broke → RETIRED+INVALIDATED)
- *             | ARCHIVED    (walked away  → RETIRED+DROPPED)
- *             | WATCHING    (PROMOTED opt-out ONLY)
+ *   verb      = ARCHIVED    (walked away → RETIRED+DROPPED; stop_watching)
+ *             | WATCHING    (PROMOTED opt-out or a sold stock; watch_again)
  *             | undefined   (content-only patch)
  *
  *   HOLDING and RETIRED-sold are tool-owned account facts (P1-25/P1-24):
@@ -45,7 +44,7 @@ export interface TransitionInput {
   /** Why a RETIRED thesis was retired — SOLD / DROPPED / INVALIDATED / REPLACED. */
   retiredReason?: string | null;
   /** The change_status arg — Zod has already narrowed it to the verb enum. */
-  changeStatus: "INVALIDATED" | "ARCHIVED" | "WATCHING" | undefined;
+  changeStatus: "ARCHIVED" | "WATCHING" | undefined;
   /** ToolContext.runMode ("THESIS_WRITER", "MORNING_PLAN", ...). */
   runMode: string | undefined;
 }
@@ -95,7 +94,7 @@ const EARLY_RULES: TransitionRule[] = [
     // PM was handed SMMT, tried twice to answer it, and was refused here
     // both times.
     //
-    // Only those two shapes open. INVALIDATED or ARCHIVED on a sold row is
+    // Only those two shapes open. ARCHIVED on a sold row is
     // still history-editing, and DROPPED / INVALIDATED / REPLACED rows are
     // not on anyone's review list.
     code: "terminal_status",
@@ -115,46 +114,13 @@ const EARLY_RULES: TransitionRule[] = [
     },
   },
   {
-    // THESIS_WRITER role gate (GAPS P0-4). The thesis-writer is
-    // research-only. Status decisions on PROMOTED rows belong to the
-    // orchestrator (next daily run reads the refreshed research and
-    // chooses re-enter / defer / kill). 2026-05-26: 3 writer refreshes
-    // (AVGO, MRVL, TSM) flipped PROMOTED → WATCHING and required manual
-    // revert. See docs/THESIS_ARCHITECTURE.md §0 (the role split).
-    code: "thesis_writer_cannot_change_promoted_status",
-    check(i) {
-      if (
-        i.currentStatus !== "PROMOTED" ||
-        i.runMode !== "THESIS_WRITER" ||
-        i.changeStatus === undefined
-      ) {
-        return null;
-      }
-      return {
-        summary: `Refused status flip on PROMOTED $${i.ticker} — writer is research-only.`,
-        data: {
-          error: "thesis_writer_cannot_change_promoted_status",
-          current_status: i.currentStatus,
-          attempted: i.changeStatus,
-          message:
-            `update_thesis(change_status: "${i.changeStatus}") is refused from the thesis-writer on a PROMOTED thesis. ` +
-            `The writer's job is research refresh only — refreshed content (target / stop / triggers / belief / sections) lands on the row; the status decision belongs to the next daily run. ` +
-            `The PROMOTED state persists until the orchestrator (daily/tactical run) acts on the refreshed research.`,
-        },
-      };
-    },
-  },
-  {
     // PROMOTED has exactly two legal exits: place_trade fills → HOLDING,
     // or the WATCHING opt-out. Killing or archiving a name the analyst
     // held with conviction — that the user explicitly promoted — is the
     // wrong shape. Downgrade to WATCHING first; let the next run decide.
     code: "promoted_thesis_illegal_transition",
     check(i) {
-      if (
-        i.currentStatus !== "PROMOTED" ||
-        (i.changeStatus !== "INVALIDATED" && i.changeStatus !== "ARCHIVED")
-      ) {
+      if (i.currentStatus !== "PROMOTED" || i.changeStatus !== "ARCHIVED") {
         return null;
       }
       const errorMsg = `Cannot ${i.changeStatus} a PROMOTED thesis. The analyst held this in paper with conviction; the user explicitly promoted it. The only legal opt-out is watch_again (downgrade and keep tracking). Use that, or place_trade to re-enter.`;
@@ -170,13 +136,11 @@ const EARLY_RULES: TransitionRule[] = [
     },
   },
   {
-    // Resolution requirement — ORCHESTRATORS ONLY. A THESIS_WRITER
-    // reaching this rule necessarily has no change_status (the role gate
-    // above refused any defined value); that is the legal research-only
-    // refresh. Before 2026-08-13 this guard also fired on the writer's
-    // status-less call, which combined with the role gate to make EVERY
-    // writer refresh on a PROMOTED row structurally impossible — the
-    // CRWD/CEG promotion burn on 2026-08-11. See
+    // Resolution requirement — ORCHESTRATORS ONLY. The Writer's save sends
+    // no change_status: that is the legal research-only refresh. Before
+    // 2026-08-13 this guard also fired on the writer's status-less call,
+    // which made EVERY writer refresh on a PROMOTED row structurally
+    // impossible — the CRWD/CEG promotion burn on 2026-08-11. See
     // docs/plans/AGENT_PERF_COST_FIX.md §1.
     code: "promoted_thesis_requires_resolution",
     check(i) {
@@ -222,11 +186,7 @@ export function checkStatusTransition(
  * original conditional-query behavior (and its cost profile) exactly.
  */
 export function needsPairedCloseCheck(input: TransitionInput): boolean {
-  return (
-    (input.changeStatus === "INVALIDATED" ||
-      input.changeStatus === "ARCHIVED") &&
-    input.currentStatus === "HOLDING"
-  );
+  return input.changeStatus === "ARCHIVED" && input.currentStatus === "HOLDING";
 }
 
 /**
@@ -250,7 +210,7 @@ export function checkTerminateWithoutClose(
   if (!needsPairedCloseCheck(input)) return null;
   if (!facts.openPosition || facts.closedThisRun) return null;
 
-  const action = input.changeStatus; // "INVALIDATED" | "ARCHIVED"
+  const action = input.changeStatus; // "ARCHIVED"
   const pos = facts.openPosition;
   return {
     summary: `Cannot ${action} $${input.ticker} — open position requires sell first.`,
@@ -285,7 +245,7 @@ export function checkTerminateWithoutClose(
  *     eight weeks before the catalyst it was bought for.
  *
  * From anywhere else it is still a category error — the agent probably
- * meant INVALIDATED, or should be calling close_position.
+ * meant stop_watching, or should be calling sell.
  *
  * Checked where the verb is APPLIED (inside the change_status switch),
  * not with the early rules — moving it earlier would change which error

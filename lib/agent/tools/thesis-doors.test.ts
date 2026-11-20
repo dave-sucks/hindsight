@@ -87,7 +87,7 @@ describe("what each caller may change on a thesis, by tool", () => {
   });
 
   it("the claim, the view and the write-up are the Writer's alone", () => {
-    const writerOnly = ["core_belief", "key_assumptions", "invalidation_conditions", "direction", "horizon", "variant_view", "company", "bull_case", "bear_case", "research_data", "price_at_time", "change_status"];
+    const writerOnly = ["core_belief", "key_assumptions", "invalidation_conditions", "direction", "horizon", "variant_view", "company", "bull_case", "bear_case", "price_at_time", "change_status"];
     for (const [caller, doors] of Object.entries(byCaller)) {
       if (caller === "writer") continue;
       for (const fields of Object.values(doors)) expect(fields.filter((f) => writerOnly.includes(f))).toEqual([]);

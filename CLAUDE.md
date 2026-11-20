@@ -423,7 +423,7 @@ plus `get_stock_data`.
   PASSED; `stop_watching` lands RETIRED (DROPPED); `watch_again` lands WATCHING;
   a sale lands SOLD. `record_thesis` and `update_thesis` are on no agent's list:
   code runs them as the Writer's save (`lib/agent/run-thesis-writer.ts`), and
-  they still accept the old verbs.
+  update_thesis's save (`saveThesis`) is also the one behind the one-job tools.
 - Position — paper position via Alpaca (symbol, direction, avgCost,
   qty, status, closePrice, outcome, agentEvaluation)
 - PositionEvent — position lifecycle log (OPENED, PRICE_CHECK,

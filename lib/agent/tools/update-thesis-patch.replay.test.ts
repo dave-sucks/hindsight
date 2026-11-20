@@ -130,8 +130,8 @@ describe("refuse the field, land the call", () => {
     expect(refusedOf(watch)[0].reason).not.toContain("record_thesis");
   });
 
-  it("a kill on a holding with no sale this run: change_status is refused with close_position, the note lands", async () => {
-    const r = await replay(closeOut({ change_status: "INVALIDATED" }));
+  it("dropping a holding with no sale this run: change_status is refused with sell, the note lands", async () => {
+    const r = await replay(closeOut({ change_status: "ARCHIVED" }));
     expect(r.refused).toBe(false);
     expect(refusedOf(r)).toEqual([expect.objectContaining({ field: "change_status", reason: expect.stringContaining("Call `sell` first") })]);
     expect(r.db.store.thesis[0].status).toBe("HOLDING");

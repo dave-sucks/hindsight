@@ -134,7 +134,6 @@ export function thesisFields() {
       .describe("The id of the earlier Activity line this note answers, when it answers one (the pre-report note, after the report): the [id …] at the end of that line."),
 
     // The writer's research note, saved section by section.
-    research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),
     bull_case: sectionBullets.describe("Bull case: three to five cited bullets."),
     bear_case: sectionBullets.describe("Bear case: three to five cited bullets, on a LONG too."),
   };
