@@ -207,6 +207,19 @@ describe("the 7:30 Market Reviewer", () => {
         "Watching (1):",
         "- ASML · Secular Compounder · ASML compounds as High-NA EUV ramps.",
         "",
+        // What each thesis rests on (#1072): the assumptions and what would prove it wrong, a stock at a time.
+        "## What each thesis rests on",
+        "- ASML",
+        "  - Must stay true: assumption one",
+        "  - Must stay true: assumption two",
+        "  - Would prove it wrong: invalidation one",
+        "  - Would prove it wrong: invalidation two",
+        "- MU",
+        "  - Must stay true: assumption one",
+        "  - Must stay true: assumption two",
+        "  - Would prove it wrong: invalidation one",
+        "  - Would prove it wrong: invalidation two",
+        "",
         "## Your notes in the last 5 days",
         "- none",
         "",
@@ -233,6 +246,7 @@ describe("the 7:30 Market Reviewer", () => {
       ["Context", "Market numbers", "portfolio"],
       ["Context", "The portfolio", "portfolio"],
       ["Context", "The book", "read"],
+      ["Context", "What each thesis rests on", "read"],
       ["Context", "Its last output", "read"],
       ["Tools", "Tool menu", "tools"],
     ]);
@@ -281,7 +295,7 @@ describe("the 7:30 Market Reviewer", () => {
       ].join("\n"),
     );
     expect(review.run.request.instructions).toContain(
-      "Write a note on a story you already noted only when something new happened since, and say what is new.",
+      "a story you already noted gets a new note only when something new happened, and the note opens with what is new.",
     );
   });
 
