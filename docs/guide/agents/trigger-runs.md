@@ -61,7 +61,7 @@ A give-back is measured from the highest price since the buy, over the whole hol
 - **Write up an Auto trade:** with no trade tools, what is going on with the company and why, what it means for why we own it, the trade, and whether it agrees. If it would have done otherwise, it says so; you decide on the card. Its note is the trade's reason.
 - **Hold, with a reason:** what is going on with the stock and why it isn't acting. A sale it doesn't make stays on the morning run's list every day until a close goes back past the line, and so does one you declined or let lapse; the trigger fires again, with a new run, only after a close back on the other side. While a sale is waiting for your approval, that sale is yours to answer: no run proposes it again or argues it, and a run woken by something else on the stock answers that with a note or an edit.
 
-Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and a trigger whose price the stock blew through is reset off the new chart, not a round number.
+Whatever it decides, it brings the stock's other triggers up to date: after an add the floor goes up, and on a holding a sale or gain trigger whose price the stock blew through is reset off the new chart, not a round number. A buy that fired is left as it is once the buy is proposed, since the proposal waits on it; after a pass, the triggers are left saying what the run now waits for, and today's price is never the reason for a new buy price.
 
 ## What happens next
 

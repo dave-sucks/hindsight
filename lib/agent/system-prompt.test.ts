@@ -26,10 +26,15 @@ describe("the morning run — the daily run as a portfolio manager", () => {
     expect(prompt).not.toContain("THREE legal paths");
     expect(prompt).not.toContain("Retune the buy trigger");
   });
-  it("a fired buy's answers are its skill's, and a raise away is said to come straight back, not refused", () => {
+  it("a fired buy's answers are its skill's: a proposed buy is left alone, a pass leaves what it waits for, and nothing is refused", () => {
+    // WST 2026-11-09 to 11-17: five proposals, the buy moved to that day's price after each. AAPL 11-13: the move withdrew the run's own proposal.
     const buy = situationText("BUY_ARRIVES", false);
-    expect(buy).toContain("or take the buy off and keep a review that brings the stock back.");
-    expect(buy).toContain("A buy moved just above today's price to avoid the question comes straight back.");
+    expect(buy).toContain("Leave the buy as it is: the proposal waits on it.");
+    expect(buy).toContain("name it and leave the triggers saying what you wait for.");
+    expect(buy).toContain("Today's price is no reason for a new buy price.");
+    // A watch with no buy and no review is a stock nothing looks at again.
+    expect(buy).toContain("take the buy off and keep a review that brings it back, or stop watching.");
+    expect(buy).not.toContain("move the buy price to where the chart now puts it");
     // Plan checks were deleted (2026-11-13): no text points at one.
     expect(buy).not.toMatch(/plan.check/);
     expect(prompt).not.toContain("a fired buy is a decision with two answers");

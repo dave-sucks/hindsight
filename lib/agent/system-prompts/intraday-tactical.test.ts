@@ -230,7 +230,8 @@ describe("a trigger fire's request — a declined sale is asked again", () => {
   it("a buy or add fire reads it in its situation: a declined buy is not re-proposed unchanged", () => {
     const enter: Trigger = { id: "trig_buy", predicate: { watch: "price", is: "above", value: 60 }, action: "ENTER", rationale: "Buy the breakout." };
     const add: Trigger = { ...enter, id: "trig_add", action: "ADD" };
-    expect(triggerRunSent(makeArgs({ trigger: enter, position: null, situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor([{ code: "BUY_ARRIVES", held: false }]) } }))).toContain(PASS);
+    // A buy's line also covers the run's own earlier pass (2026-11-20).
+    expect(triggerRunSent(makeArgs({ trigger: enter, position: null, situations: { codes: ["BUY_ARRIVES"], guidance: guidanceFor([{ code: "BUY_ARRIVES", held: false }]) } }))).toContain("If what that note named hasn't changed, pass again");
     expect(triggerRunSent(makeArgs({ trigger: add, situations: { codes: ["ADD_OR_WINNER"], guidance: guidanceFor([{ code: "ADD_OR_WINNER", held: true }]) } }))).toContain(PASS);
   });
 });
