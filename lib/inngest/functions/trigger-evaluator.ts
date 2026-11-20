@@ -75,7 +75,7 @@ import { isMarketOpen, isTradingDay } from "@/lib/market-hours";
 import { getTodaySessionBars } from "@/lib/alpaca";
 import { raiseMarksFromDayBars, raiseWaterMarks } from "@/lib/trading/water-mark";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
-import { withdrawOnTheClose, type TriggerProposal } from "@/lib/proposals/trigger-proposals";
+import { triggerIdsOnStock, withdrawOnTheClose, type TriggerProposal } from "@/lib/proposals/trigger-proposals";
 import { ensureIndicatorSnapshots } from "@/lib/market-data/ensure-snapshots";
 import { newestStreetRows } from "@/lib/market-data/street-consensus-store";
 import { describeChartFire, describeStreetFire } from "@/lib/agent/triggers/condition/facts";
@@ -569,8 +569,13 @@ export const triggerEvaluator = inngest.createFunction(
             ? { ...c, ladder: pausedAnalystTriggers(c.ladder, c.thesis.status) }
             : c,
         )
-        // The whole ladder, read before the close pass narrows it: a trigger's proposal is read against it on the close.
-        .map((c) => ({ ...c, all: c.ladder, waiting: waitingByThesis.get(c.thesis.id) ?? [] }))
+        // The whole ladder, read before the close pass narrows it: a trigger's proposal is read against it on the close,
+        // and comes down when its trigger is no longer on the stock (read before a pause narrows the ladder).
+        .map((c) => {
+          const waiting = waitingByThesis.get(c.thesis.id) ?? [];
+          const onStock = waiting.length > 0 ? triggerIdsOnStock(c.thesis.triggers, levelSources.get(c.analystId ?? "")) : undefined;
+          return { ...c, all: c.ladder, waiting, onStock };
+        })
         // The close pass fires only rungs that wait for the close, and reads
         // every trigger that fired and hasn't been found false at a close since.
         .map((c) =>
@@ -751,7 +756,7 @@ export const triggerEvaluator = inngest.createFunction(
         : [];
 
       const events: FiringEvent[] = [];
-      for (const { thesis, analystId, ladder: triggers, all, waiting, fired } of candidates) {
+      for (const { thesis, analystId, ladder: triggers, all, waiting, onStock, fired } of candidates) {
         // Non-null by the filter above; narrowed for the FiringEvent below.
         if (!analystId) continue;
         const quote = quoteByTicker.get(thesis.ticker) ?? undefined;
@@ -831,9 +836,9 @@ export const triggerEvaluator = inngest.createFunction(
           // The day's move needs yesterday's close: with no quote and no snapshot close it reads 0, not false.
           (!readsTheDaysMove(t.predicate) || prevForClose != null);
 
-        // The close pass takes down a trigger's proposal whose triggers no longer hold on the close.
+        // The close pass takes down a trigger's proposal whose triggers no longer hold on the close, or are no longer on the stock.
         if (session === "CLOSE" && waiting.length > 0) {
-          await withdrawOnTheClose({ ladder: all, ctx, proposals: waiting, readable: read }).catch((e) =>
+          await withdrawOnTheClose({ ladder: all, onStock, ctx, proposals: waiting, readable: read }).catch((e) =>
             console.error(`[trigger-evaluator] ${thesis.ticker}: the close-pass proposal check failed; it waits for tomorrow's close.`, e),
           );
         }

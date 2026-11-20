@@ -431,8 +431,11 @@ owner's ruling 2026-11-13): it carries the triggers it answers
 (`Order.triggerIds`) and no `expiresAt`, waits while they hold (the check skips
 the stock's sale fires meanwhile), and the 16:20 ET close pass withdraws it
 (`WITHDRAWN`, with `withdrawnReason`) when none holds on the close, read with
-`evaluateTrigger` (`lib/proposals/trigger-proposals.ts`). A proposal no trigger
-made still lapses after 24 hours.
+`evaluateTrigger`, or when none is on the stock any more: taken off the stock,
+and not one of the rules it inherits (`triggerIdsOnStock`,
+`lib/proposals/trigger-proposals.ts`). A paused analyst's buy trigger is still
+on the stock, so its proposal waits. A proposal no trigger made still lapses
+after 24 hours.
 
 **Reviews wait for the morning by default:** a `REVIEW` fire means
 "re-evaluate," not "act now" — it converts to a trade rarely, so unset it is

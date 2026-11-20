@@ -39,7 +39,8 @@ stamped copy would freeze the old numbers. See TRIGGERS.md §2a.
 whose floor lags their gain; `complete_run` warn-gates unprotected holdings.
 Every trade a fire leads to goes through the approval switch (on: a proposal,
 which has no 24 hours: it waits while its trigger holds and the 16:20 ET close
-pass withdraws it when it doesn't, `lib/proposals/trigger-proposals.ts`). **On fire
+pass withdraws it when it doesn't, or when its trigger is no longer on the stock,
+`lib/proposals/trigger-proposals.ts`). **On fire
 is three choices (2026-10-22), two on a sell or trim (2026-11-14):** Auto (`DO_IT`: the
 trade with no agent deciding, sized and gated by the tool an agent would call;
 then its own agent, the post-trade write-up, writes it up with no trade tools,

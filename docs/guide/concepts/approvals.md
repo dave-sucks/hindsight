@@ -29,7 +29,7 @@ A trade made by a trigger set to Auto is written up by the analyst a minute or t
 - **Approve at a different size:** your size is used, and the next run reads it as caution or conviction. If the position or the analyst's room has shrunk since, the order is cut to what's left.
 - **Decline:** recorded on the stock and read by every run after it. A declined buy or add isn't proposed again unless something you named has changed. A declined sale is different: while the price stays past the line its trigger asks the analyst again every day, because [floors only go up](triggers.md), and the analyst proposes the sale again or says why it holds. A sale you want proposed every day, whatever the analyst thinks, is an Auto-sell.
 - **Let it expire:** after 24 hours a proposal lapses (one that runs out overnight is marked at the next market-day check). A lapse means "not now, ask me again", never a decline. A buy, add, trim or sale a trigger made never lapses: it waits for you while its trigger holds.
-- **Withdrawn:** a proposal a trigger made comes down on its own at 4:20 PM on a day the stock closes back past the trigger's line ("Withdrawn: closed back above $236 at $238.10"). On the close only, so a stock bouncing around the line doesn't open and close it all day.
+- **Withdrawn:** a proposal a trigger made comes down on its own at 4:20 PM on a day the stock closes back past the trigger's line ("Withdrawn: closed back above $236 at $238.10"), or once its trigger is no longer on the stock ("Withdrawn: its trigger is no longer on the stock"). On the close only, so a stock bouncing around the line doesn't open and close it all day.
 
 ## Live and paper
 
@@ -53,7 +53,7 @@ A trade's whole path, from the agent's call through the gate, the broker and the
 `approvalRequired` in `lib/proposals/maybe-await-approval.ts` reads the account's four settings for every trade path. Buys and adds are staged by `maybeAwaitApproval` (`place_trade`, `add`); a sale is staged by `closeOpenPosition` (`lib/actions/closeTrade.actions.ts`) under the position lock. A close you make by hand skips the gate.
 
 #### Stored as
-`Order` with status `AWAITING_APPROVAL`, the price the run read (`proposedPrice`) and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones. A proposal a trigger's fire made carries the triggers it answers (`triggerIds`) and no `expiresAt`; the trigger check's 4:20 PM pass marks it `WITHDRAWN` (`withdrawnReason`) when none of them holds on the close (`lib/proposals/trigger-proposals.ts`).
+`Order` with status `AWAITING_APPROVAL`, the price the run read (`proposedPrice`) and an `expiresAt` 24 hours out; `proposal-expiry.ts` closes the stale ones. A proposal a trigger's fire made carries the triggers it answers (`triggerIds`) and no `expiresAt`; the trigger check's 4:20 PM pass marks it `WITHDRAWN` (`withdrawnReason`) when none of them holds on the close, or none is on the stock or among the rules it inherits (`lib/proposals/trigger-proposals.ts`).
 
 #### Declines and lapses
 `lib/agent/declined-sale.ts` counts a decline (REJECTED) and a lapse (EXPIRED) apart; the row's `heldThroughFloor` carries both.
