@@ -186,6 +186,13 @@ export function validateThesisDecision(
     if (!d.conviction_rationale || d.conviction_rationale.trim().length === 0) {
       errors.push("conviction_rationale: required — the judgment in plain speech, not a paraphrase of the bull case.");
     }
+    // What it expects of the stock is the Writer's main judgment: never left out, never guessed from the direction.
+    if (!d.outlook) {
+      errors.push("outlook: required for LONG/SHORT — BULLISH, NEUTRAL or BEARISH: what you expect of the stock from here.");
+    }
+    if (!d.outlook_reason || d.outlook_reason.trim().length === 0) {
+      errors.push("outlook_reason: required — a sentence on what you expect of the stock from here and why.");
+    }
   }
 
   if (errors.length > 0) return { ok: false, errors };

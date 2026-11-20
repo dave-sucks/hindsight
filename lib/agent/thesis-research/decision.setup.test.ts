@@ -13,6 +13,7 @@
  */
 
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
+import { ratedNow } from "@/lib/replay/rated";
 
 const docu: ThesisDecisionInput = {
   direction: "LONG",
@@ -27,15 +28,15 @@ const docu: ThesisDecisionInput = {
 
 describe("DOCU 2026-09-09 — the real PEAD mint", () => {
   it("no setup named is accepted", () => {
-    expect(validateThesisDecision(docu, { mode: "mint" })).toMatchObject({ ok: true, errors: [] });
+    expect(validateThesisDecision(ratedNow(docu), { mode: "mint" })).toMatchObject({ ok: true, errors: [] });
   });
 
   it("naming PEAD is accepted", () => {
-    expect(validateThesisDecision({ ...docu, setup_id: "PEAD" }, { mode: "mint" })).toMatchObject({ ok: true, errors: [] });
+    expect(validateThesisDecision(ratedNow({ ...docu, setup_id: "PEAD" }), { mode: "mint" })).toMatchObject({ ok: true, errors: [] });
   });
 
   it("a setup this seat doesn't run is accepted as named", () => {
-    const v = validateThesisDecision({ ...docu, setup_id: "BASE_BREAKOUT" }, { mode: "mint" });
+    const v = validateThesisDecision(ratedNow({ ...docu, setup_id: "BASE_BREAKOUT" }), { mode: "mint" });
     expect(v.ok).toBe(true);
     expect(v.decision?.setup_id).toBe("BASE_BREAKOUT");
   });
@@ -43,8 +44,7 @@ describe("DOCU 2026-09-09 — the real PEAD mint", () => {
 
 describe("HPE 2026-09-15 — a PEAD refresh 13 days after the report", () => {
   it("is accepted: PEAD's window closed on day 3 and nothing sends it back for that", () => {
-    const v = validateThesisDecision(
-      { ...docu, setup_id: "PEAD", rationale: "The Q3 print remains a clean PEAD trigger, but two overhead gap zones broke the stop; the thesis stays LONG and WATCHING unpriced." },
+    const v = validateThesisDecision(ratedNow({ ...docu, setup_id: "PEAD", rationale: "The Q3 print remains a clean PEAD trigger, but two overhead gap zones broke the stop; the thesis stays LONG and WATCHING unpriced." }),
       { mode: "refresh", existingStatus: "WATCHING", currentPrice: 55.99 },
     );
     expect(v).toMatchObject({ ok: true, errors: [] });

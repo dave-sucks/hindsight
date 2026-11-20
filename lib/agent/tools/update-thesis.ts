@@ -992,8 +992,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       // LONG / SHORT — the only other legal direction promotion (out of
       // an unresearched seed; guarded above).
       patch.direction = args.direction;
-      // What we expect of the stock starts from the kind of trade when the Writer sends no outlook.
-      if (args.outlook === undefined) patch.outlook = args.direction === "SHORT" ? "BEARISH" : "BULLISH";
     }
   }
   // Conviction Expression v4 — persist patched conviction fields.

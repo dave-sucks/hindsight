@@ -1,6 +1,18 @@
 import { reviewProblem, type Review } from "./thesis-review";
 
-const base: Review = { verdict: "UNCHANGED", verdictLine: undefined, convictionFrom: "MEDIUM", convictionTo: undefined, outlookFrom: "BULLISH", outlookTo: undefined, holding: true, saleOnRecord: false };
+const base: Review = {
+  verdict: "UNCHANGED",
+  verdictLine: undefined,
+  convictionFrom: "MEDIUM",
+  convictionTo: undefined,
+  convictionReason: "The orders came in.",
+  outlookFrom: "BULLISH",
+  outlookTo: undefined,
+  outlookReason: "The price reached the Street's average.",
+  hasView: true,
+  holding: true,
+  saleOnRecord: false,
+};
 const ok = (r: Partial<Review>) => expect(reviewProblem({ ...base, ...r })).toBeNull();
 const refused = (r: Partial<Review>, says: string) => expect(reviewProblem({ ...base, ...r })).toContain(says);
 
@@ -31,6 +43,20 @@ describe("how a review of a thesis ends", () => {
 
   it("outlook may change on any verdict: a rally turns bullish into neutral with the thesis unchanged", () => {
     ok({ verdict: "UNCHANGED", outlookTo: "NEUTRAL", convictionFrom: "HIGH" });
+  });
+
+  it("a stock with a view and no outlook yet gets one at its first look; a seed has none to rate", () => {
+    refused({ outlookFrom: null }, "has no outlook yet");
+    ok({ outlookFrom: null, outlookTo: "NEUTRAL" });
+    ok({ outlookFrom: null, hasView: false });
+  });
+
+  it("a new conviction or outlook with no reason refuses the whole note, so one look is one line", () => {
+    refused({ verdict: "WEAKER", verdictLine: "x", convictionTo: "LOW", convictionReason: undefined }, "Send conviction_rationale");
+    refused({ outlookTo: "NEUTRAL", outlookReason: " " }, "Send outlook_reason");
+    // The level it already has, sent again, is no change and needs no reason.
+    ok({ convictionTo: "MEDIUM", convictionReason: undefined });
+    ok({ outlookTo: "BULLISH", outlookReason: undefined });
   });
 
   it("broken can't stay bullish, and on a holding it comes with a sale", () => {

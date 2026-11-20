@@ -123,7 +123,7 @@ describe("the short row", () => {
   });
 
   it("writes each line with its units", () => {
-    expect(row.stock).toBe("IOT · held · LONG · PEAD · conviction HIGH");
+    expect(row.stock).toBe("IOT · held · LONG · PEAD · outlook not rated yet · conviction HIGH");
     expect(row.situations).toEqual(["PROTECTIVE_SALE (sale signal)", "REVIEW_DUE (review due)"]);
     expect(row.said).toMatch(/^WHAT'S BEEN SAID ON \$IOT/);
     expect(row.position).toBe("300 sh at $39.06 → $40.51 (+3.7%), $12,153; opened 10-01; high since we bought $42.85");

@@ -35,6 +35,7 @@ const NO_EMPTY_PART = "an analyst with no playbooks gets no playbooks part (it w
 const PLAYBOOKS_AFTER = "the Writer's playbooks follow its document, since the rules are its import (they printed between the rules and the research rules)";
 const FIRST_READ = "the Market Reviewer is given what each thesis rests on, and its notes text says what impact and effect are for (2026-11-19)";
 const OUTLOOK = "the research rules tell outlook from conviction (2026-11-19); the other Writer cases changed before and carry it too";
+const NOT_RATED = "the stock's line says its outlook, and these cases' stocks have none yet (2026-11-20)";
 const CHANGED: Record<string, string> = {
   "morning.quiet": BOOK,
   "morning.full": BOOK,
@@ -54,6 +55,12 @@ const CHANGED: Record<string, string> = {
   "sample.market_reviewer": FIRST_READ,
   "writer.refresh_held": OUTLOOK,
   "sample.holding_refresh": OUTLOOK,
+  "trigger.trail_sale": NOT_RATED,
+  "trigger.buy_on_watch": NOT_RATED,
+  "trigger.review_on_watch": NOT_RATED,
+  "trigger.trim_principal_note": NOT_RATED,
+  "trigger.add_held": NOT_RATED,
+  "sample.trigger_run": NOT_RATED,
 };
 
 /** Agents main never had, so nothing of theirs was hashed. */

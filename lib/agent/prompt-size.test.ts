@@ -48,7 +48,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-18: −145, the same: the trigger run's text and its situations name write_note, edit_triggers, sell and add.
   // 2026-11-19: +10, the same section in the trigger run's instructions (+934), and the sample's sale text is its skill, the part for a holding (−924).
   // 2026-11-19: −253, the trigger run can stop watching a stock: the two passages on taking its triggers off for the morning run go.
-  tactical: 13_459,
+  // 2026-11-20: +24, the sample stock's line says its outlook is not rated yet.
+  tactical: 13_483,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.

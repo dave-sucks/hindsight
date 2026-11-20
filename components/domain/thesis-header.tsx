@@ -84,24 +84,24 @@ export function StatusPill({
 
 // ── OutlookPill ──
 // What we expect of the stock from here, beside the status pill: Bullish,
-// Neutral or Bearish, with its reason on hover. Only on a stock we hold or
-// watch that has a view.
+// Neutral or Bearish, with its reason on hover; "Not rated" until a look or
+// the Writer has judged it. The badge is used as it is, with no class of ours.
 const OUTLOOK_DOT: Record<string, string> = { BULLISH: "bg-positive", NEUTRAL: "bg-muted-foreground", BEARISH: "bg-negative" };
 
 export function OutlookPill({ outlook, reason = null }: { outlook: string | null | undefined; reason?: string | null }) {
-  if (!outlook || !OUTLOOK_DOT[outlook]) return null;
+  const rated = outlook && OUTLOOK_DOT[outlook] ? outlook : null;
   const pill = (
-    <Badge variant="secondary" className="gap-1.5 font-normal">
-      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", OUTLOOK_DOT[outlook])} />
-      {outlook.charAt(0)}
-      {outlook.slice(1).toLowerCase()}
+    <Badge variant="secondary">
+      {rated ? <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", OUTLOOK_DOT[rated])} /> : null}
+      {rated ? `${rated.charAt(0)}${rated.slice(1).toLowerCase()}` : "Not rated"}
     </Badge>
   );
-  if (!reason?.trim()) return pill;
+  const why = rated ? reason?.trim() : "No look at this stock has set its outlook yet.";
+  if (!why) return pill;
   return (
     <Tooltip>
       <TooltipTrigger render={pill} />
-      <TooltipContent side="bottom">{reason}</TooltipContent>
+      <TooltipContent side="bottom">{why}</TooltipContent>
     </Tooltip>
   );
 }

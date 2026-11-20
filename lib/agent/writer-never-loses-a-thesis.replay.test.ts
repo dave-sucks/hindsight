@@ -23,6 +23,7 @@
  * triggers reach the save through edit_triggers, converted once by its schema.
  */
 import type { z } from "zod";
+import { ratedNow } from "@/lib/replay/rated";
 import { asSchema, zodSchema } from "ai";
 import fixture from "@/lib/agent/__fixtures__/writer-lost-theses-2026-11.json";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
@@ -47,7 +48,7 @@ beforeAll(async () => {
 });
 
 const decide = (c: Case, d: Record<string, unknown> = c.decision) =>
-  validateThesisDecision(d as never, { mode: "mint", existingStatus: null, currentPrice: c.price });
+  validateThesisDecision(ratedNow(d as never), { mode: "mint", existingStatus: null, currentPrice: c.price });
 
 /** submit_thesis as the Writer builds it; its input schema is what the SDK parses the model's call with. */
 const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>, onAccept = jest.fn()) =>
@@ -143,7 +144,7 @@ describe("submit_thesis never says accepted unless the save will take it", () =>
   it("after two hand-backs a refused optional field is left out, the rest is accepted, and the reply names what was left out", async () => {
     const check = jest.fn(async (d: ValidatedThesisDecision) => (d.variant_view ? refuses("bad", [{ path: ["variant_view"], message: "Too vague." }]) : saves));
     const { t, onAccept } = tool(check);
-    const call = { ...c.decision, variant_view: "Analysts expect X; I think Y." };
+    const call = ratedNow({ ...c.decision, variant_view: "Analysts expect X; I think Y." });
     expect((await t.execute(call)).accepted).toBe(false);
     expect((await t.execute(call)).accepted).toBe(false);
     const third = await t.execute(call);

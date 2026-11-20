@@ -26,6 +26,7 @@
  * get_stock_data read.
  */
 import raw from "@/lib/agent/__fixtures__/playbook-triggers-2026-11.json";
+import { ratedNow } from "@/lib/replay/rated";
 import { replayTool, prismaDouble, triggerSentences, agentConfigRow, accountRow, thesisRow, REPLAY_ANALYST_ID, REPLAY_USER_ID, type Row } from "@/lib/replay";
 import type { StoreSeed } from "@/lib/replay/prisma-double";
 import { validateThesisDecision, type ThesisDecisionInput, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
@@ -158,7 +159,7 @@ async function writerMint(ticker: string, run: { id: string }, decision: Record<
     const { recordThesis } = await import("@/lib/agent/tools/record-thesis");
     schema = (recordThesis({ runMode: "THESIS_WRITER" } as never) as unknown as { inputSchema: z.ZodTypeAny }).inputSchema;
   });
-  const v = validateThesisDecision(decision as ThesisDecisionInput, { mode: "mint", existingStatus: null, currentPrice: price });
+  const v = validateThesisDecision(ratedNow(decision as ThesisDecisionInput), { mode: "mint", existingStatus: null, currentPrice: price });
   expect(v.errors).toEqual([]);
   const call = w.buildWriterSaveCall({ childRunId: run.id, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "discovery" } as never, { currentPrice: price, priceStructure: null } as never, v.decision as ValidatedThesisDecision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
   const r = await replayTool("record-thesis", "recordThesis", {

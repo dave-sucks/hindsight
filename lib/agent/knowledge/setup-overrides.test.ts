@@ -6,6 +6,7 @@
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { applySetupOverride, parseSetupOverrides, setupNumbers } from "./setup-overrides";
+import { ratedNow } from "@/lib/replay/rated";
 import { getSetup, setupsForAnalyst } from "./setups";
 import { validateThesisDecision } from "@/lib/agent/thesis-research/decision";
 
@@ -31,7 +32,7 @@ describe("applySetupOverride", () => {
       scoring: { trendStrength: { score: 2, note: "x" }, relativeStrength: { score: 2, note: "x" }, entryQuality: { score: 2, note: "x" }, catalystFreshness: { score: 2, note: "x" } },
       conviction: "MEDIUM" as const, conviction_rationale: "Honest middle; the guide raise is real and the stop is under structure.",
     };
-    const asWritten = validateThesisDecision(decision, { mode: "mint" });
+    const asWritten = validateThesisDecision(ratedNow(decision), { mode: "mint" });
     expect(asWritten.errors).toEqual([]);
     expect(getSetup("PEAD", { PEAD: { stopMaxPct: 12 } })!.sale.maxPct).toBe(12);
   });

@@ -30,7 +30,7 @@ Before writing a decision note, an agent searches the web once for the stock's l
 
 A thesis has two pieces of state, and every look by its analyst ends with one event.
 
-**Outlook** is what we expect of the stock from here: bullish, neutral or bearish, with a sentence of why. The Writer sets it with the thesis (a thesis starts from its direction: long is bullish). The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching.
+**Outlook** is what we expect of the stock from here: bullish, neutral or bearish, with a sentence of why. The Writer must set it, with its reason, on every thesis it writes. Nothing fills it in from the direction: a thesis written before outlooks existed has none, reads "Not rated", and gets one at its analyst's first look. The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching, and an agent reads the word on the stock's line and the reason wherever it reads the conviction's.
 
 **Conviction** is how confident we are in that outlook and its reasons:
 
@@ -52,7 +52,9 @@ Any verdict but unchanged says what happened and which assumption it touched.
 The rules between them are few (`lib/agent/thesis-review.ts`), and a note that breaks one comes back whole with what to send:
 
 - Conviction changes only in a look's note, in the same save as its verdict. It rises only on stronger and falls only on weaker or broken. A verdict doesn't have to move it.
-- Broken can't leave the outlook bullish, and on a stock we hold it comes with a sale: proposed, already waiting, or declined by you.
+- A new conviction or outlook comes with its reason, or the whole note comes back: one look leaves one Activity line.
+- Broken can't leave the outlook bullish, and on a stock we hold it comes with its sale: the whole holding's sale waiting for you now, or one you declined after the thesis was first called broken. A trim, a sale that lapsed, or a sale from before it broke is not that sale.
+- The post-trade write-up after an Auto trade is not a look: its note is that trade's reason and carries no verdict.
 - Nothing adds verdicts up. Outlook and conviction are whatever the latest look left them at.
 
 You change either one yourself from the chat (`set_conviction`), with no verdict.

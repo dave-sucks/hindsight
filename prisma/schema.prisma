@@ -373,7 +373,7 @@ model Thesis {
   // a sentence of why. The Writer sets it with the thesis and the stock's
   // analyst may change it at any review. Apart from `direction`, which is the
   // kind of trade: a holding stays LONG after a rally has used up the upside.
-  // No code acts on it. Null on a stock with no view.
+  // Null until someone has judged it: nothing fills it from the direction.
   outlook             String?
   outlookReason       String?
 

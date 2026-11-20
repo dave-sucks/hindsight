@@ -679,8 +679,8 @@ export const recordThesis = defineTool({
         // the two consistency gates; by the time we reach
         // persistence the values are either valid for the directional
         // path or null for PASS/PENDING.
-        // What we expect of the stock from here; with no outlook sent, the direction's own.
-        outlook: isDirectional ? (args.outlook ?? (args.direction === "SHORT" ? "BEARISH" : "BULLISH")) : null,
+        // What we expect of the stock from here, as the Writer judged it; never filled from the direction.
+        outlook: isDirectional ? (args.outlook ?? null) : null,
         outlookReason: isDirectional ? (args.outlook_reason ?? null) : null,
         conviction: args.conviction ?? null,
         convictionRationale: args.conviction_rationale ?? null,

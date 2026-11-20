@@ -16,6 +16,7 @@
  * was fixed is written on the decision so it shows on the stock.
  */
 import raw from "@/lib/agent/__fixtures__/writer-and-trade-refusals-2026-09-25.json";
+import { ratedNow } from "@/lib/replay/rated";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
 
@@ -33,14 +34,14 @@ const opts = {
 
 describe("the 2026-09-25 catalyst decisions are accepted, with the fixes written down", () => {
   it.each(["DYN", "IBRX", "BBIO"] as const)("%s: accepted; its conviction rationale is kept whole", (t) => {
-    const v = validateThesisDecision(fx[t].last.input, opts);
+    const v = validateThesisDecision(ratedNow(fx[t].last.input), opts);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction_rationale?.length).toBeGreaterThan(t === "DYN" ? 400 : 0);
   });
 
   it("a HIGH call with no view that differs from Wall Street is kept as HIGH", () => {
-    const v = validateThesisDecision({ ...fx.DYN.last.input, conviction: "HIGH", variant_view: undefined }, opts);
+    const v = validateThesisDecision(ratedNow({ ...fx.DYN.last.input, conviction: "HIGH", variant_view: undefined }), opts);
     expect(v.ok).toBe(true);
     expect(v.decision?.conviction).toBe("HIGH");
   });

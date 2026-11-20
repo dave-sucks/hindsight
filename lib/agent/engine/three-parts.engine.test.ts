@@ -48,6 +48,10 @@ const withFence = (old: string, a: UniverseAnalyst) => {
 };
 /** The house rules with the line on weighing the Market and portfolio context back in. */
 const MARKET_RULE = before("morning.quiet")["instructions:market_block_rule"];
+/** A row's stock line as it reads now for a stock with a view and no outlook yet: the words go before its conviction, or end the line. */
+const notRatedYet = (text: string) =>
+  text.replace(/("stock": "[^"]* · (?:LONG|SHORT)(?: · (?!conviction )[^"·]+)*)( · conviction [A-Z]+)?"/g, (_m, head: string, conv = "") => `${head} · outlook not rated yet${conv}"`);
+
 /** The research rules since outlook and conviction were told apart (2026-11-19): three lines of the old text, as they read now. */
 const withOutlook = (text: string) => {
   const swaps: Array<[string, string]> = [
@@ -130,7 +134,9 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["stock_row", "the_stock"]]) {
       // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.
       const notRead = a.autoTrade && ["market_digest", "portfolio", "portfolio_digest"].includes(is);
-      expect([is, now[`message:${is}`]]).toEqual([is, notRead ? undefined : old[`message:${was}`]]);
+      // The stock's line says its outlook since 2026-11-20; these cases' stocks have none yet.
+      const before = is === "the_stock" && old[`message:${was}`] !== undefined ? notRatedYet(old[`message:${was}`]) : old[`message:${was}`];
+      expect([is, now[`message:${is}`]]).toEqual([is, notRead ? undefined : before]);
     }
     // The message: the trigger and its price once, what else the check knows, then the old ask.
     const t = a.trigger as Trigger;

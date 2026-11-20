@@ -27,6 +27,7 @@
  * and the clock are doubled.
  */
 import type { z } from "zod";
+import { ratedNow } from "@/lib/replay/rated";
 import raw from "@/lib/agent/__fixtures__/lifecycle-htfl-2026-11-13.json";
 import {
   replayTool,
@@ -112,7 +113,7 @@ function withItsPosition(order: Row): Row {
 /** HTFL's recorded decision as the Writer sends it now: the thesis fields and its playbook; its levels are its own triggers, added after the save. */
 function htflDecision(): { decision: ValidatedThesisDecision; own: unknown[] } {
   const { add_triggers, ...rest } = oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG");
-  const v = validateThesisDecision(rest as unknown as ThesisDecisionInput, { mode: "mint", existingStatus: null, currentPrice: fx.run.price });
+  const v = validateThesisDecision(ratedNow(rest as unknown as ThesisDecisionInput), { mode: "mint", existingStatus: null, currentPrice: fx.run.price });
   expect(v.errors).toEqual([]);
   expect("riskReward" in v).toBe(false);
   return { decision: v.decision as ValidatedThesisDecision, own: (add_triggers ?? []) as unknown[] };

@@ -6,6 +6,7 @@
  * get_theses read them on 2026-11-04 (activity text and history left out).
  */
 import type { z } from "zod";
+import { ratedNow } from "@/lib/replay/rated";
 import etn from "@/lib/agent/__fixtures__/row-etn-2026-11-04.json";
 import pltr from "@/lib/agent/__fixtures__/row-pltr-2026-11-04.json";
 import cogt from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
@@ -65,7 +66,7 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
   });
 
   it("the Writer's own check passes a buy and a floor with no target", () => {
-    const v = validateThesisDecision(decision as unknown as ThesisDecisionInput, { mode: "refresh", existingStatus: "WATCHING", currentPrice: fx.run.price } as never);
+    const v = validateThesisDecision(ratedNow(decision as unknown as ThesisDecisionInput), { mode: "refresh", existingStatus: "WATCHING", currentPrice: fx.run.price } as never);
     expect(v.errors.filter((e) => /target/.test(e))).toEqual([]);
     expect(v.ok).toBe(true);
   });

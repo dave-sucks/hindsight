@@ -181,7 +181,7 @@ Done: one note that says how the stock got here and what is driving it now, with
 
 ## Review due
 
-`REVIEW_DUE` · rank 9 of 10 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `variant_view`, `snapshot` · sent to the run that answers
+`REVIEW_DUE` · rank 9 of 10 · `review.md` · the row adds `floor_risk`, `buyBlockedByFull`, `heldThroughFloor`, `supersededBy`, `street`, `setup`, `playbook_checks`, `assumptions`, `would_prove_it_wrong`, `catalyst`, `paper_record`, `company`, `bull_case`, `bear_case`, `conviction_rationale`, `outlook_reason`, `variant_view`, `snapshot` · sent to the run that answers
 
 The review clock came round, or the price reached a level the analyst asked to look at again.
 

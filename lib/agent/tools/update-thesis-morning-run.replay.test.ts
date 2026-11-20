@@ -88,7 +88,7 @@ describe("four real morning calls, sent verbatim through the SDK's loop to the m
 
 // A seed's view is the Writer's alone since 2026-11-18 (no agent sends a direction): its save, run in code.
 describe("a seed's first research at HIGH through the Writer's save", () => {
-  it("is stored as HIGH with no view that differs from Wall Street, and its outlook starts from its direction", async () => {
+  it("is stored as HIGH with no view that differs from Wall Street, and no outlook is invented", async () => {
     const seed = thesisRow({ id: "t_seed", ticker: "AAA", status: "WATCHING", direction: null, triggers: [] });
     const r = await replayTool("update-thesis", "updateThesis", {
       seed: { thesis: [seed] },
@@ -113,7 +113,7 @@ describe("a seed's first research at HIGH through the Writer's save", () => {
     });
     expect(r.refused).toBe(false);
     const row = r.db.store.thesis[0];
-    expect(row).toMatchObject({ direction: "LONG", conviction: "HIGH", outlook: "BULLISH", convictionRationale: "The order data turned before the price did." });
+    expect(row).toMatchObject({ direction: "LONG", conviction: "HIGH", convictionRationale: "The order data turned before the price did." });
   });
 });
 

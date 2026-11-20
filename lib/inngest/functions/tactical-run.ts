@@ -427,7 +427,7 @@ export const tacticalRun = inngest.createFunction(
     const triggerTrade = firedTrigger(thesis.ticker, trigger as Trigger, coFired);
 
     // The analyst's limits and keys, as every tool reads them: the same for the agent's run and an Auto trade.
-    const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; firedTrim?: { ticker: string; pct: number }; payFromCash?: number | null } = {}) =>
+    const toolsFor = async (extra: { protectiveExitReason?: "STOP" | "TARGET"; protectiveExitTriggerLabel?: string; firedTrim?: { ticker: string; pct: number }; payFromCash?: number | null; afterAutoTrade?: boolean } = {}) =>
       createResearchTools({
         firedTrigger: triggerTrade,
         runStock: { ticker: thesis.ticker, thesisId: thesis.id, triggerId: fired.triggerId },
@@ -627,7 +627,7 @@ export const tacticalRun = inngest.createFunction(
         : undefined;
       // A trim that woke the run sells its own size unless the run names another.
       const firedTrim = trigger.action === "TRIM" ? { ticker: thesis.ticker, pct: trimPctOf(trigger as Trigger) } : undefined;
-      const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel, firedTrim });
+      const allTools = await toolsFor({ protectiveExitReason, protectiveExitTriggerLabel, firedTrim, afterAutoTrade: !!auto });
 
       // The agent's own tools: the post-trade write-up has no trade tools, the Auto trade is made.
       const allowlist = recordFor({ autoTrade: auto }).tools;
