@@ -701,11 +701,11 @@ export async function cancelPosition(positionId: string): Promise<{ refused: str
     throw new Error(`Position ${positionId} is not OPEN (status: ${position.status})`);
   }
 
-  // A holding stays a holding: Cancel takes its unfilled orders off, and the row goes only when nothing
-  // ever filled. It once marked a filled holding cancelled and left the shares at the broker (2026-11-19).
+  // Cancel takes unfilled orders off, and the row goes only when nothing ever filled. With no order
+  // waiting it once marked a filled holding cancelled and left the shares at the broker (2026-11-19).
   const everFilled = (await prisma.order.count({ where: { positionId, status: "FILLED" } })) > 0;
   const waiting = await prisma.order.count({ where: { positionId, status: "PENDING" } });
-  if (everFilled && waiting === 0) {
+  if (waiting === 0) {
     return { refused: `${position.symbol} has no order waiting to fill, so there is nothing to cancel. Close the trade to sell it.` };
   }
 
@@ -729,7 +729,8 @@ export async function cancelPosition(positionId: string): Promise<{ refused: str
     // No alpacaOrderId yet (DB-first crash gap). Try to recover via client_order_id.
     if (!alpacaId && order.idempotencyKey) {
       const { getOrderByClientOrderId } = await import("@/lib/alpaca");
-      const found = await getOrderByClientOrderId(order.idempotencyKey, creds).catch(() => null);
+      // Not found is null; a lookup that fails throws, and nothing is cancelled on a guess.
+      const found = await getOrderByClientOrderId(order.idempotencyKey, creds);
       if (found) alpacaId = found.id;
     }
 
@@ -769,9 +770,10 @@ export async function cancelPosition(positionId: string): Promise<{ refused: str
   for (const c of confirmations) {
     if (!c.finalAlpaca) continue;
     const s = c.finalAlpaca.status;
-    // Any shares bought count as a fill, so a part-filled order is never dropped as cancelled.
-    if (s === "filled" || parseFloat(c.finalAlpaca.filled_qty ?? "0") > 0) filledRaces.push(c);
-    else if (!["canceled", "cancelled", "expired", "rejected"].includes(s)) stillOpen.push(c);
+    const done = ["canceled", "cancelled", "expired", "rejected"].includes(s);
+    // An order that ended with shares bought is a fill, never dropped as cancelled. One still working is still open.
+    if (s === "filled" || (done && parseFloat(c.finalAlpaca.filled_qty ?? "0") > 0)) filledRaces.push(c);
+    else if (!done) stillOpen.push(c);
   }
 
   if (stillOpen.length > 0) {

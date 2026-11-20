@@ -815,7 +815,12 @@ export async function deleteAnalyst(analystId: string): Promise<{ refused: strin
     return { refused: `${config.name} holds Paper positions and this account's Paper Alpaca keys could not be read. Save them again in Settings, then delete it.` };
   }
   for (const pos of positions) {
-    if (pos.status === "OPEN") await closePositionPartial(pos.symbol, pos.quantity, pos.direction === "SHORT" ? "buy" : "sell", creds, "PAPER").catch(() => {});
+    if (pos.status !== "OPEN") continue;
+    const failed: { statusCode?: number } | null = await closePositionPartial(pos.symbol, pos.quantity, pos.direction === "SHORT" ? "buy" : "sell", creds, "PAPER").then(() => null, (e) => e ?? {});
+    // The broker turning the keys away is not "no such shares": stop before the rows go.
+    if (failed?.statusCode === 401 || failed?.statusCode === 403) {
+      return { refused: `Alpaca refused this account's Paper keys, so ${config.name}'s Paper shares were not sold. Save the keys again in Settings, then delete it.` };
+    }
   }
 
   // 4. Find theses from those runs

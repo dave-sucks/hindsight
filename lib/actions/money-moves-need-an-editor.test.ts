@@ -11,6 +11,9 @@
 let mockUser: { id: string } | null = { id: "owner_1" };
 let mockRole: string | null = "OWNER";
 let mockPartFill = false;
+/** What the broker says of the order after the cancel request. */
+let mockAfterCancel: Record<string, unknown> | null = null;
+let mockLookupFails = false;
 jest.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { getUser: async () => ({ data: { user: mockUser } }) } }) }));
 jest.mock("@/lib/auth/account", () => ({
   getAccountId: async () => "acct_1",
@@ -34,7 +37,11 @@ jest.mock("@/lib/alpaca", () => ({
   closePositionPartial: (...a: unknown[]) => mockBroker("closePositionPartial", ...a),
   cancelOrder: (...a: unknown[]) => mockBroker("cancelOrder", ...a),
   placeMarketOrder: (...a: unknown[]) => mockBroker("placeMarketOrder", ...a),
-  getOrder: async () => (mockPartFill ? { status: "canceled", filled_qty: "2", filled_avg_price: "259.10", filled_at: "2026-11-19T15:00:00Z" } : { status: "canceled", filled_qty: "0" }),
+  getOrder: async () => mockAfterCancel ?? (mockPartFill ? { status: "canceled", filled_qty: "2", filled_avg_price: "259.10", filled_at: "2026-11-19T15:00:00Z" } : { status: "canceled", filled_qty: "0" }),
+  getOrderByClientOrderId: async () => {
+    if (mockLookupFails) throw new Error("Alpaca getOrderByClientOrderId 503");
+    return null;
+  },
   getAllPositions: async () => [],
   getLatestPrice: async () => 100,
   getAccount: async () => ({}),
@@ -63,6 +70,8 @@ beforeEach(() => {
   mockUser = { id: "owner_1" };
   mockRole = "OWNER";
   mockPartFill = false;
+  mockAfterCancel = null;
+  mockLookupFails = false;
   mockBroker.mockReset().mockResolvedValue({ id: "alp_1" });
   mockKeys.mockClear();
   mockCloseOpenPosition.mockClear();
@@ -151,6 +160,26 @@ describe("Cancel takes unfilled orders off and never drops a holding", () => {
     expect(wrote("position.update")).toEqual([expect.objectContaining({ status: "CANCELLED" })]);
   });
 
+  it("an old row with no orders at all: refused too, never dropped", async () => {
+    position(0, []);
+    expect(await said(cancelTrade("pos_ceg"))).toMatch(/nothing to cancel/);
+    expect(wrote("position.update")).toEqual([]);
+  });
+
+  it("an order still working at the broker, part-filled, is left exactly as it was: not cancelled, not marked filled", async () => {
+    position(0, [{ ...ADD, intent: "OPEN" }]);
+    mockAfterCancel = { status: "pending_cancel", filled_qty: "2", filled_avg_price: "259.10" };
+    expect(await said(cancelTrade("pos_ceg"))).toMatch(/did not cancel cleanly/);
+    expect([wrote("order.update"), wrote("position.update")]).toEqual([[], []]);
+  });
+
+  it("an order with no broker id whose lookup fails is not guessed to be unsent: nothing is cancelled", async () => {
+    position(0, [{ ...ADD, intent: "OPEN", alpacaOrderId: null }]);
+    mockLookupFails = true;
+    expect(await said(cancelTrade("pos_ceg"))).toMatch(/getOrderByClientOrderId 503/);
+    expect([wrote("order.update"), wrote("position.update")]).toEqual([[], []]);
+  });
+
   it("a buy that part-filled before the cancel landed is kept as a fill, never dropped as cancelled", async () => {
     position(0, [{ ...ADD, intent: "OPEN" }]);
     mockPartFill = true;
@@ -212,6 +241,13 @@ describe("Delete analyst never touches a Live holding", () => {
     mockKeys.mockResolvedValueOnce(null as never);
     expect(await said(deleteAnalyst("analyst_pead"))).toMatch(/Paper Alpaca keys could not be read/);
     expect([writes(), mockBroker.mock.calls]).toEqual([[], []]);
+  });
+
+  it("a Paper analyst whose Paper keys the broker turns away: refused before any row goes", async () => {
+    analyst([{ id: "p3", symbol: "MU", status: "OPEN", environment: "PAPER", quantity: 12, direction: "LONG" }]);
+    mockBroker.mockRejectedValueOnce(Object.assign(new Error("unauthorized"), { statusCode: 401 }));
+    expect(await said(deleteAnalyst("analyst_pead"))).toMatch(/Alpaca refused this account's Paper keys/);
+    expect(writes()).toEqual([]);
   });
 
   it("a Paper analyst's own 12 MU shares are sold with Paper keys on Paper, never the whole symbol, then it is deleted", async () => {

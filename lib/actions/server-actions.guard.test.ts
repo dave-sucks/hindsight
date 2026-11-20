@@ -20,7 +20,7 @@ const actionFiles = ["lib", "app", "components"].flatMap(files).filter((f) => is
 
 /** Every exported function of every server-action file, with its parameter list. */
 const actions = actionFiles.flatMap((file) =>
-  [...readFileSync(file, "utf8").matchAll(/^export async function (\w+)\s*\(([^)]*)\)/gm)].map((m) => ({ file, name: m[1], params: m[2] })),
+  [...readFileSync(file, "utf8").matchAll(/^export (?:async function (\w+)|const (\w+)\s*=\s*async)\s*\(([^)]*)\)/gm)].map((m) => ({ file, name: m[1] ?? m[2], params: m[3] })),
 );
 
 it("finds the app's server actions", () => {
@@ -33,7 +33,10 @@ it("the files that read keys or sell by argument are not server-action files", (
   expect(actionFiles).not.toContain("lib/actions/closeTrade.actions.ts");
 });
 
-it("no server action takes a user id, an account id or broker keys from its caller, or is a key reader", () => {
-  const trusting = actions.filter((a) => /\b(userId|ownerUserId|accountId|creds|alpacaCreds)\b|Credentials/.test(a.params) || /^resolve\w*(Key|Credentials)/.test(a.name));
+it("no server action takes a user id, an email, an account id or broker keys from its caller, or is a key reader", () => {
+  // Signing in and up is where a caller names themselves, with a password.
+  const trusting = actions
+    .filter((a) => a.file !== "lib/actions/auth.actions.ts")
+    .filter((a) => /\b(userId|ownerUserId|accountId|email|creds|alpacaCreds)\b|Credentials/.test(a.params) || /^resolve\w*(Key|Credentials)/.test(a.name));
   expect(trusting.map((a) => `${a.file}: ${a.name}(${a.params.replace(/\s+/g, " ").trim()})`)).toEqual([]);
 });
