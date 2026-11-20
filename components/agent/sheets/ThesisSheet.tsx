@@ -119,20 +119,6 @@ export type ThesisCardData = {
   needs_action?: NeedsAction | null;
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-export function hasFundamentalDetails(f: FundamentalsData): boolean {
-  return (
-    f.market_cap != null ||
-    f.pe_ratio != null ||
-    f.beta != null ||
-    f.avg_volume != null ||
-    f.high_52w != null ||
-    f.low_52w != null ||
-    !!f.sector
-  );
-}
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 // StatusPill and ConvictionBadge live in components/domain/thesis-header.tsx —

@@ -51,8 +51,6 @@ export interface ParsedBulletSection {
   bullets: ParsedBullet[];
 }
 
-export type ParsedSection = ParsedTextSection | ParsedBulletSection;
-
 export interface ParsedSections {
   company?: ParsedTextSection;
   bullCase?: ParsedBulletSection;

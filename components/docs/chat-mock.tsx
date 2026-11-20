@@ -192,11 +192,3 @@ export function ChatMock({
   );
 }
 
-/** Steps written as a list, for pages that only need the tool rows. */
-export function ToolRows({ label, rows }: { label: string; rows: readonly ChatRow[] }) {
-  return (
-    <Fragment>
-      <Step step={{ kind: "tools", label, rows }} />
-    </Fragment>
-  );
-}

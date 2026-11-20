@@ -76,9 +76,6 @@ export const CATALYST_WINDOW_DAYS: [number, number] = [PRE_CATALYST_ENTRY_CUTOFF
 export const INSIDER_MIN_BUYERS = 3;
 export const INSIDER_WINDOW_DAYS = 30;
 export const INSIDER_STOP_MAX_PCT = 12;
-/** RSI(2) mean reversion: buy below, sell above. */
-export const RSI2_ENTRY_BELOW = 10;
-export const RSI2_EXIT_ABOVE = 65;
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type Horizon = "TRADE" | "TARGET" | "CATALYST" | "COMPOUNDER";

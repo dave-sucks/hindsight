@@ -1,26 +1,13 @@
 /**
- * feeds.ts — the firm-aggregate signal types and their display labels.
- *
- * These mirror `Signal.aggregateType` (earnings calendar, market movers) as
- * the producers write it. They are display vocabulary only: the analyst
- * subscription dimension (`AgentConfig.feeds`) that once routed a whole
- * firehose was deleted 2026-09-11 — signal routing has been paused since
- * 2026-05-31 and the calendar and movers are read on demand
+ * feeds.ts — display labels for the firm-aggregate signal types
+ * (`Signal.aggregateType`: earnings calendar, market movers) on the kept
+ * signal history. The calendar and movers are read on demand
  * (get_earnings_calendar, get_market_movers).
  */
 
-export const FEEDS = [
-  "EARNINGS_CALENDAR",
-  "MARKET_MOVERS_GAINERS",
-  "MARKET_MOVERS_LOSERS",
-  "MARKET_MOVERS_ACTIVES",
-] as const;
-
-export type Feed = (typeof FEEDS)[number];
-
 /**
  * Human-readable label for an aggregate type. Returns the raw string when
- * it isn't one of the above so legacy values still display.
+ * it isn't one of these, so legacy values still display.
  */
 export function feedLabel(feed: string): string {
   switch (feed) {

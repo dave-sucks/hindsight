@@ -146,10 +146,6 @@ export function Section({
   );
 }
 
-export function Prose({ children }: { children: ReactNode }) {
-  return <p className="text-sm leading-relaxed text-muted-foreground">{children}</p>;
-}
-
 /**
  * The one place the docs set text in a monospace face: tool names, endpoints,
  * file paths, the literal text an agent reads. The house lint keeps font-mono

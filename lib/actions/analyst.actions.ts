@@ -142,20 +142,6 @@ export interface AnalystDetail {
   stats: AnalystStats;
 }
 
-export interface DashboardRun {
-  id: string;
-  analystId: string | null;
-  analystName: string | null;
-  source: string;
-  startedAt: Date;
-  completedAt: Date | null;
-  theses: {
-    ticker: string;
-    direction: string | null;
-    trade: { id: string; status: string; realizedPnl: number | null } | null;
-  }[];
-}
-
 // ── Helper ────────────────────────────────────────────────────────────────────
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -492,63 +478,6 @@ export async function getAnalystDetail(
       worstLoss,
     },
   };
-}
-
-// ── getRecentRunsForDashboard ─────────────────────────────────────────────────
-
-export async function getRecentRunsForDashboard(): Promise<DashboardRun[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-  const accountId = await getAccountId(userId);
-  if (!accountId) return [];
-
-  const runs = await prisma.researchRun.findMany({
-    where: { accountId },
-    orderBy: { startedAt: "desc" },
-    take: 8,
-    select: {
-      id: true,
-      source: true,
-      startedAt: true,
-      completedAt: true,
-      agentConfigId: true,
-      agentConfig: { select: { name: true } },
-      theses: {
-        select: {
-          ticker: true,
-          direction: true,
-          decisions: {
-            take: 1,
-            where: { decision: "BUY" },
-            select: {
-              position: {
-                select: { id: true, status: true, realizedPnl: true },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      },
-    },
-  });
-
-  return runs.map((r) => ({
-    id: r.id,
-    analystId: r.agentConfigId,
-    analystName: r.agentConfig?.name ?? null,
-    source: r.source,
-    startedAt: r.startedAt,
-    completedAt: r.completedAt,
-    theses: r.theses.map((th) => {
-      const pos = th.decisions[0]?.position;
-      return {
-        ticker: th.ticker,
-        direction: th.direction,
-        trade: pos ? { id: pos.id, status: pos.status, realizedPnl: pos.realizedPnl } : null,
-      };
-    }),
-  }));
 }
 
 // ── createAnalystFromBuilder (AI chat builder — richer config) ──────────────

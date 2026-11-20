@@ -243,39 +243,3 @@ export function SourceChipRow({
   );
 }
 
-// ─── Stacked favicon row (Perplexity-style overlapping icons) ────────────────
-
-export function SourceIconStack({
-  sources,
-  max = 4,
-  className,
-}: {
-  sources: SourceChipData[];
-  max?: number;
-  className?: string;
-}) {
-  if (sources.length === 0) return null;
-  const shown = sources.slice(0, max);
-  const remainder = sources.length - max;
-
-  return (
-    <div className={cn("flex items-center", className)}>
-      <div className="flex -space-x-1.5">
-        {shown.map((s, i) => (
-          <div
-            key={`${s.provider}-${i}`}
-            className="rounded-full border-2 border-background bg-muted flex items-center justify-center"
-            style={{ width: 22, height: 22, zIndex: max - i }}
-          >
-            <ProviderIcon provider={s.provider} url={s.url} size={14} />
-          </div>
-        ))}
-      </div>
-      {remainder > 0 && (
-        <span className="ml-1.5 text-[10px] text-muted-foreground tabular-nums">
-          +{remainder}
-        </span>
-      )}
-    </div>
-  );
-}

@@ -19,29 +19,6 @@ export function formatSignedCurrency(value: number): string {
   return value >= 0 ? `+${abs}` : `-${abs}`;
 }
 
-/** "12.34%" */
-export function formatPercent(value: number, decimals = 2): string {
-  return `${value.toFixed(decimals)}%`;
-}
-
-/** "+12.34%" or "-12.34%" */
-export function formatSignedPercent(value: number, decimals = 2): string {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}%`;
-}
-
-/** "just now", "5s ago", "3m ago", "2h ago", "4d ago" */
-export function formatRelativeTime(date: Date | string): string {
-  const d = Date.now() - new Date(date).getTime();
-  const s = Math.floor(d / 1000);
-  if (s < 10) return "just now";
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
 /** "Mar 14" from "2024-03-14", or "2:30 PM" from "2024-03-14T14:30" */
 export function formatDateLabel(d: string): string {
   if (d.includes("T")) {
