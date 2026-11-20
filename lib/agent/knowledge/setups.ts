@@ -36,10 +36,10 @@ export const CHASE_LIMIT_PCT = 5;
 export const PORTFOLIO_HEAT_PCT = 6;
 /** Most names held in one industry group. */
 export const MAX_NAMES_PER_INDUSTRY = 2;
-/** The widest a compounder's plan floor may sit under its buy. */
-export const COMPOUNDER_STOP_MAX_PCT = 25;
-/** A compounder giving back this much from its high opens a review. */
-export const COMPOUNDER_GIVEBACK_REVIEW_PCT = 15;
+/** The widest a compounder's floor may sit under its buy: past it, the give-back sells first. */
+export const COMPOUNDER_STOP_MAX_PCT = 15;
+/** A compounder giving back this much from its high since we bought is sold (the Secular Compounder's rule). */
+export const COMPOUNDER_GIVEBACK_PCT = 15;
 
 /** Binary catalysts (PDUFA, readouts) risk this share of normal (DAV-245 ruling 2). */
 export const BINARY_RISK_MULTIPLIER = 0.5;
@@ -135,10 +135,12 @@ export interface Setup {
     windowDays?: [number, number];
   };
   /**
-   * The sell price's numbers, read on the sell price a buy names (saleRuleProblem): the widest from the buy price, %, on a TRADE (null = no cap), and the closest, in ATR(14).
+   * The sell price's numbers, read on the sell price a buy names (saleRuleProblem): the widest from the buy price, % (null = no cap), on the horizons `maxPctOn` names (a TRADE when unset), and the closest, in ATR(14).
    * `floor`: the floor's own words in code, which price the floor when a buy names none (playbookFloor); none when the words name no key.
    */
-  sale: { maxPct: number | null; minAtr: number; floor?: SaleFloor };
+  sale: { maxPct: number | null; maxPctOn?: Horizon[]; minAtr: number; floor?: SaleFloor };
+  /** How an add is sized: half a new buy by risk (unset), or the dollars already paid for the holding, so the second half matches the first. */
+  addSize?: "SAME_AS_FIRST";
   /** Multiplies the risk-per-trade (1.0 normal; binary events 0.5). */
   riskMultiplier: number;
   sizing: string;
@@ -565,15 +567,16 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     ],
     entry: {
       entryVia: ["BASE_BREAKOUT", "MA_PULLBACK"],
-      confirmation: ["Thesis intact; volume matters less than for a trade", "A stock at new highs on a working thesis is working, not extended"],
+      confirmation: ["The thesis intact", "The 50-day average rising", "A stock at new highs on a working thesis is working, not extended"],
       chaseLimitPct: null,
     },
-    sale: { maxPct: COMPOUNDER_STOP_MAX_PCT, minAtr: MIN_STOP_ATR, floor: { key: "{swingLow}", maxPct: 25 } },
+    sale: { maxPct: COMPOUNDER_STOP_MAX_PCT, maxPctOn: ["COMPOUNDER"], minAtr: MIN_STOP_ATR, floor: { key: "{swingLow}", maxPct: COMPOUNDER_STOP_MAX_PCT } },
+    addSize: "SAME_AS_FIRST",
     riskMultiplier: 1,
-    sizing: "First tranche 50% of target size; second on strength (+7% from the first fill, or a new high after a pause) or on a held 50-day pullback in a market-wide dip. Never add into company-specific bad news.",
+    sizing: "Two equal halves: the first sized so a sale at the floor costs the risk per trade, the second the same dollars once the stock is up 7% from the buy.",
     failureSigns: ["The named invalidation happens", "Guidance cut", "Margin break"],
     summary:
-      "A business bought at conviction size and held through volatility, entered on confirmation rather than hope, sold only when the story breaks.",
+      "A great business held for years, bought in two equal halves while it is in a long uptrend, sold at the floor under its last low or on a 15% give-back from its high.",
   },
   {
     id: "SECTOR_ROTATION",

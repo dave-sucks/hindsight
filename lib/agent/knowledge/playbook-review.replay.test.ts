@@ -6,8 +6,9 @@
  *    the PEAD playbook yet; AAOI (PEAD Specialist, WATCHING) stands in with its 2026-11-11 gap as the
  *    11-16 snapshot stores it (+6.8%, low $51.53, middle $54.74) and its closes ($55.86 on 11-11,
  *    $52.85 on 11-12). The buy reads only the gap's middle.
- * 2. The Compounder's watch ends on a close below the 200-day, not the 52-week low ($118.15 on ACN,
- *    52% under its $247.70 close). ACN, its 11-16 snapshot (200-day $190.26).
+ * 2. The Compounder's watch has no price end (expert review 1.5, 2026-11-20): a close below the 200-day
+ *    leaves it on the list, and every buy waits for the stock above its 200-day. ACN, its 11-16
+ *    snapshot (200-day $190.26).
  * 3. A watch's list has no analyst or account rule on our position: the Secular Compounder's
  *    from-entry and from-the-high reviews, as stored, are not on ACN's; on a holding they are.
  */
@@ -91,26 +92,25 @@ describe("1. PEAD: the buy is the gap holding, and it fires at the next close", 
   });
 });
 
-describe("2. The Compounder's watch ends on a close below the 200-day", () => {
+describe("2. The Compounder's watch has no price end; its buys wait for the 200-day", () => {
   const triggers = watchTriggers("COMPOUNDER_ACCUMULATION", { "{pivot}": 271.76 });
-  const stop = triggers.find((t) => t.action === "STOP_WATCHING")!;
   const acnBook = () => book({ ...acn.thesis, createdAt: new Date(acn.thesis.createdAt + "Z"), lastReviewedAt: new Date("2026-11-17T10:00:00Z") }, acn.analyst.id, triggers);
 
-  it("ACN's reads 'Stop watching if below the 200-day average · only on the close'; the 52-week low's is gone", () => {
-    expect(sentenceOf(stop)).toBe("Stop watching if below the 200-day average · only on the close");
-    expect(stop.rationale).toBe("The uptrend broke; not an accumulation candidate until it's back.");
+  it("ACN's watch has no Stop watching line, and each buy reads 'and above the 200-day average'", () => {
+    expect(triggers.filter((t) => t.action === "STOP_WATCHING")).toEqual([]);
     expect(JSON.stringify(triggers)).not.toMatch(/low52/);
-    expect(triggers.find((t) => t.action === "ENTER" && (t.predicate as { watch?: string; variable?: string }).watch === "price" && (t.predicate as { variable?: string }).variable === "sma50")!.rationale).toBe("The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.");
+    expect(triggers.filter((t) => t.action === "ENTER").map((t) => sentenceOf(t))).toEqual([
+      "Buy if above $271.76 · only on the close and above 1.5× normal volume and above the 200-day average",
+      "Buy if within 2% of the 50-day average and above the 200-day average",
+      "Buy if above the 50-day average · only on the close and above the 200-day average",
+    ]);
   });
 
-  it("under the $190.26 200-day at 11:30 ET it does nothing; a close under it retires the watch", async () => {
+  it("a close under the $190.26 200-day leaves ACN on the list, and no buy fires under it", async () => {
     const db = acnBook();
-    // 11:30 ET under the line, and $193.40 at the close: the watch stays.
-    expect((await check(db, new Date("2026-11-18T16:30:00Z"), "ACN", 188.4, 191.2, acn.snapshot)).filter((e) => e.action === "STOP_WATCHING")).toEqual([]);
-    await check(db, new Date("2026-11-18T21:20:05Z"), "ACN", 193.4, 191.2, acn.snapshot);
+    const fired = await check(db, new Date("2026-11-19T21:20:05Z"), "ACN", 189.5, 193.4, acn.snapshot);
+    expect(fired.filter((e) => e.action === "STOP_WATCHING" || e.action === "ENTER")).toEqual([]);
     expect(db.store.thesis[0]).toMatchObject({ status: "WATCHING" });
-    await check(db, new Date("2026-11-19T21:20:05Z"), "ACN", 189.5, 193.4, acn.snapshot);
-    expect(db.store.thesis[0]).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED" });
   });
 });
 

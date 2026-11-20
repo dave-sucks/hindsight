@@ -4,9 +4,10 @@
  *
  * The rules an analyst carries on its Triggers tab, from its signature
  * setup — the first of `AgentConfig.setupIds` — and the playbook's E6 (the
- * time limit) and Part F (selling), as ruled on DAV-279 (2026-09-17). No seat
- * carries a sale or an add on a down day: the account's own sale rules govern
- * every holding. A new analyst starts with these instead of a blank tab; an
+ * time limit) and Part F (selling), as ruled on DAV-279 (2026-09-17). One seat
+ * carries a sale: the compounder's 15% give-back, which takes the account's
+ * trail's place on its stocks (the same slot). No seat carries an add on a
+ * down day. A new analyst starts with these instead of a blank tab; an
  * existing one can be re-seeded from them, shown as a diff first. Nothing here stamps onto a stock — this is
  * the analyst level of the cascade only. The stock's own lines from its
  * playbook are written at the fill from its templates (../knowledge/playbooks).
@@ -17,7 +18,7 @@
 
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { withFireMode, type FireMode } from "@/lib/agent/triggers/fire-mode";
-import { COMPOUNDER_GIVEBACK_REVIEW_PCT, isNamedSetup, type SetupId } from "./setups";
+import { COMPOUNDER_GIVEBACK_PCT, isNamedSetup, type SetupId } from "./setups";
 import type { When } from "@/lib/agent/triggers/condition";
 
 export interface SeatRule {
@@ -68,27 +69,26 @@ const CATALYST_RULES: SeatRule[] = [
   },
 ];
 
-/** Compounder (COMPOUNDER): only a named invalidation sells; price alarms are reviews (D11, F). */
+/**
+ * Compounder (COMPOUNDER): the give-back is the sale, in the account trail's slot, so it replaces the
+ * account's trail on this seat's stocks; the rest are looks (expert review 1.5, 2026-11-20).
+ */
 const COMPOUNDER_RULES: SeatRule[] = [
   {
-    action: "REVIEW",
-    predicate: { watch: "move", is: "below", value: COMPOUNDER_GIVEBACK_REVIEW_PCT, variable: "peak" },
-    rationale: `Down ${COMPOUNDER_GIVEBACK_REVIEW_PCT}% from its high. A question, not a sale: is the reason we bought still true? If it is, hold, and move the stop up under the gain.`,
+    action: "EXIT",
+    predicate: { watch: "move", is: "below", value: COMPOUNDER_GIVEBACK_PCT, variable: "peak" },
+    rationale: `The give-back: ${COMPOUNDER_GIVEBACK_PCT}% off the high since we bought.`,
+    fireMode: "DO_IT",
   },
   {
     action: "REVIEW",
-    predicate: { watch: "price", is: "below", variable: "sma200" },
-    rationale: "Below its 200-day average: the long-term trend is in doubt. Look at the business, not just the chart.",
+    predicate: { watch: "price", is: "below", variable: "sma200", settings: { close: true } },
+    rationale: "A close below the 200-day average: the long trend may be turning.",
   },
   {
     action: "REVIEW",
     predicate: { watch: "move", is: "above", value: 15, variable: "entry" },
-    rationale: "Up 15% from our buy: is the business doing what we bought it for? If so, it may be time to buy the second half, with the stop moved up under the gain.",
-  },
-  {
-    action: "REVIEW",
-    predicate: { watch: "move", is: "below", value: 15, variable: "entry" },
-    rationale: "Down 15% from our buy: is the reason we bought still true? For a long-term holding, a drop like this means a closer look, never an automatic sale.",
+    rationale: "Up 15% from our buy: a look at whether the price is getting ahead of the business.",
   },
 ];
 
@@ -110,6 +110,10 @@ const EARLIER_WORDS = [
   "Below the 200-day — the long trend is in question. Review the business, not the chart.",
   "Up 15% from entry — re-underwrite at the new price and raise the floor under real structure (DAV-279 ruling).",
   "Down 15% from entry — decide hold-vs-cut deliberately, before the stop decides (DAV-279 ruling).",
+  "Down 15% from its high. A question, not a sale: is the reason we bought still true? If it is, hold, and move the stop up under the gain.",
+  "Below its 200-day average: the long-term trend is in doubt. Look at the business, not just the chart.",
+  "Up 15% from our buy: is the business doing what we bought it for? If so, it may be time to buy the second half, with the stop moved up under the gain.",
+  "Down 15% from our buy: is the reason we bought still true? For a long-term holding, a drop like this means a closer look, never an automatic sale.",
 ];
 
 /** Every note a seat rule writes or once wrote: a template's, never an analyst's (lib/agent/triggers/note.ts). */

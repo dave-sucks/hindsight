@@ -2,8 +2,9 @@
  * The watch rewrite (scripts/rewrite-watches.ts), on production's rows and
  * charts of 2026-11-19 (Secular Compounder):
  * - ETN, cmqeg5hyu000a04l1jsoavysc: COMPOUNDER_ACCUMULATION, no triggers at
- *   all; closed at $338.34 under its 200-day ($397.49), so the playbook's
- *   "Stop watching if below the 200-day" holds today.
+ *   all; closed at $338.34 under its 200-day ($397.49). Since the expert
+ *   review (1.5, 2026-11-20) the playbook has no Stop watching line and every
+ *   buy waits for the 200-day, so nothing holds today.
  * - MA, cmum2tf9m000d04jfv0szuiap: MA_PULLBACK, three triggers an agent wrote.
  * - TRV, cmum3c72c000h04jp9ztyxxko: BASE_BREAKOUT, seven an agent wrote, one of
  *   them "Review 60 days after the buy", which needs a position.
@@ -103,13 +104,12 @@ describe("what comes off: what an agent or code wrote; the owner's, and a trigge
 });
 
 describe("what goes on: the playbook's watch triggers, priced from today's chart, as on a new watch", () => {
-  it("ETN: four of its playbook's five, the pivot's buy not written (no base on the chart)", () => {
+  it("ETN: three of its playbook's four, the pivot's buy not written (no base on the chart)", () => {
     const s = stampFor(ETN, ETN_CHART, playbooks);
     expect(said(stamped(s.add))).toEqual([
-      "Buy if within 2% of the 50-day average",
-      "Buy if above the 50-day average",
+      "Buy if within 2% of the 50-day average and above the 200-day average",
+      "Buy if above the 50-day average · only on the close and above the 200-day average",
       "Review every 30 days",
-      "Stop watching if below the 200-day average · only on the close",
     ]);
     expect(s.add.every((t) => t.playbook === "WATCH")).toBe(true);
     expect(s.notWritten.map((n) => n.reason)).toEqual(["{pivot}: the chart has no base"]);
@@ -132,14 +132,16 @@ describe("what goes on: the playbook's watch triggers, priced from today's chart
 });
 
 describe("a line that holds today is named to the Writer before it acts", () => {
-  it("ETN: the 200-day line holds at $338.34 (the 200-day $397.49), and the brief asks for the decision and its reason, neither side first", () => {
-    const etn = stamped(stampFor(ETN, ETN_CHART, playbooks).add);
-    const holding = holdingNow(etn, read(338.34, ETN_SNAPSHOT));
-    expect(said(holding)).toEqual(["Stop watching if below the 200-day average · only on the close"]);
-    expect(brief("Secular Compounder", "COMPOUNDER_ACCUMULATION", holding)).toContain(
+  it("ETN: nothing holds at $338.34 under its $397.49 200-day: the buys wait for the long uptrend, and no line ends the watch", () => {
+    expect(holdingNow(stamped(stampFor(ETN, ETN_CHART, playbooks).add), read(338.34, ETN_SNAPSHOT))).toEqual([]);
+  });
+
+  it("a Stop watching line that holds today is asked about as the end of the watch, neither side first", () => {
+    const stop = { id: "s", action: "STOP_WATCHING", predicate: { watch: "price", is: "below", variable: "sma200", settings: { close: true } }, rationale: "r" } as unknown as Trigger;
+    expect(brief("Secular Compounder", "MA_PULLBACK", [stop])).toContain(
       '"Stop watching if below the 200-day average · only on the close" is true today and fires at the next check, ending the watch. Say whether the watch should end, and why.',
     );
-    expect(brief("Secular Compounder", "COMPOUNDER_ACCUMULATION", holding)).not.toMatch(/Keep it|take it off/);
+    expect(brief("Secular Compounder", "MA_PULLBACK", [stop])).not.toMatch(/Keep it|take it off/);
   });
 
   it("a buy that holds today is asked about as a buy", () => {
@@ -155,8 +157,8 @@ describe("a line that holds today is named to the Writer before it acts", () => 
 
   it("the triggers the Writer reads after its save name it too", () => {
     const etn = stamped(stampFor(ETN, ETN_CHART, playbooks).add).map((t) => ({ ...t, playbook: "WATCH" as const }));
-    const msg = tailorMessage({ ticker: "ETN", decision: {}, status: "WATCHING", direction: "LONG", triggers: etn, notWritten: [], trueNow: new Set(["stamp-3"]) });
-    expect(msg).toContain("- Stop watching if below the 200-day average · only on the close (the playbook's) (true today: fires at the next check) — ");
+    const msg = tailorMessage({ ticker: "ETN", decision: {}, status: "WATCHING", direction: "LONG", triggers: etn, notWritten: [], trueNow: new Set(["stamp-1"]) });
+    expect(msg).toContain("- Buy if above the 50-day average · only on the close and above the 200-day average (the playbook's) (true today: fires at the next check) — ");
     expect(msg.match(/true today/g)).toHaveLength(1);
   });
 });

@@ -78,4 +78,14 @@ describe("saleRuleProblem", () => {
     const compounder = getSetup("COMPOUNDER_ACCUMULATION", { COMPOUNDER_ACCUMULATION: { minAtr: 2 } })!;
     expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 95, atr: 3 })).toContain("needs it at least 2 ATR away");
   });
+  // Expert review 1.5: the compounder's floor sits at most 15% under the buy, on a floor the run names too.
+  // Past it the 15% give-back off the high always sells first. Other playbooks' caps stay trade-only.
+  it("holds a named compounder floor to 15% under the buy; a breakout on the compounder horizon keeps no cap", () => {
+    const compounder = getSetup("COMPOUNDER_ACCUMULATION", { COMPOUNDER_ACCUMULATION: { minAtr: 2 } })!;
+    expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 88, atr: 3 })).toBeNull();
+    expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 80, atr: 3 })).toBe(
+      "the sale $80.00 is 20.0% from the buy; Compounder accumulation caps it at 15%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it",
+    );
+    expect(saleRuleProblem({ setup: getSetup("BASE_BREAKOUT")!, horizon: "COMPOUNDER", entry: 100, stop: 80, atr: 3 })).toBeNull();
+  });
 });
