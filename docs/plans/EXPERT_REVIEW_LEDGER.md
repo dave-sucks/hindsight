@@ -7,7 +7,7 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 - Only the lead edits it. When a unit finishes, the lead updates the unit's row (status, PR), adds anything later units must know to "Changed shared things", and marks the next unit **Next**.
 - A unit that finds something wrong outside its own scope reports it to the lead, who writes one line under "Structure questions" or "Found, not yet assigned". Nobody fixes it outside its unit.
 - Status values: **Next**, Building, In review (PR open), Done, Bulk (reviewed inside a bulk unit), Deleted.
-- Depth comes from unit 0's counts (`docs/plans/EXPERT_REVIEW_USAGE.md`): **own** (a unit of its own), **bulk** (reviewed with others in one unit), **delete** (the unit's job is the deletion).
+- Depth comes from unit 0's counts (`docs/plans/EXPERT_REVIEW_USAGE.md`): **own** (a unit of its own), **bulk** (reviewed with others in one unit), **delete?** (unused: the unit asks whether a trader in that style needs it; a deletion needs a trader's reason, never the count alone).
 
 ---
 
@@ -31,7 +31,7 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 | 1.6 | Playbook: Drift after earnings (PEAD) | own: 8 picks, 1 trade | | |
 | 1.7 | Playbook: Episodic pivot | bulk, inside 1.9: 1 pick, no trade | | |
 | 1.8 | Playbook: Before an event (PRE_CATALYST) | own: 24 picks, 4 trades closed in 12 weeks | | |
-| 1.9 | The other playbooks in `playbook-templates.ts`: momentum flag, insider cluster, estimate revision, sector rotation, near the 52-week high (`RS_52W_HIGH`), oversold bounce (`RSI2_BOUNCE`), plus episodic pivot in bulk | delete six: no Writer pick, no stock, no position. Also takes their names off the archetypes. Sector rotation and `RS_52W_HIGH` come off Quality Leaders' list first, which is the owner's change. | | |
+| 1.9 | The other playbooks in `playbook-templates.ts`: momentum flag, insider cluster, estimate revision, sector rotation, near the 52-week high (`RS_52W_HIGH`), oversold bounce (`RSI2_BOUNCE`), plus episodic pivot in bulk | delete? (bulk): no Writer pick, no stock, no position in 12 weeks. Keep, merge or delete each one by what a trader in that style does, never by the count. A deletion also takes its name off the archetypes, and sector rotation and `RS_52W_HIGH` are on Quality Leaders' list, so taking them off is the owner's change. | | |
 | 1.10 | The book and the market: position count, size in one stock and one sector, cash, and what the market is doing (sizing in `lib/agent/position-sizing.ts`, the Portfolio Manager) | own: every buy | | |
 
 For each playbook unit, review all of it: what the watch waits for, the buy, the add, the trim, the floor, the sale rules, the review clock, the stop-watching line, and its sizing, against how traders in that style do it, with counts on the book.
@@ -51,11 +51,12 @@ For each playbook unit, review all of it: what the watch waits for, the buy, the
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
 | 3.1 | How a skill is written and attached (the design is the owner's first: roadmap E.8) | own | | |
-| 3.2 | A sale or trim (`PROTECTIVE_SALE`) | own: 35 rows, 86 trigger runs | | |
-| 3.3 | A buy (`BUY_ARRIVES`) | own: 7 rows, 14 runs | | |
-| 3.4 | An add (`ADD_OR_WINNER`) | own: 6 rows, 9 runs | | |
-| 3.5 | A review (`REVIEW_DUE`) | own: 109 rows, 16 runs | | |
-| 3.6 | A note to answer, a floor to fix, just sold, promoted to live | bulk: 26, 1, 2 and 0 rows. Promoted stays, since two analysts are still on paper. | | |
+| 3.2 | A trigger written in advance fired: a sale or trim, a buy, an add (today `PROTECTIVE_SALE`, `BUY_ARRIVES`, `ADD_OR_WINNER`) | own: 109 trigger runs in 30 days (86 sales, 14 buys, 9 adds) | | |
+| 3.3 | Something happened: a report, a filing, news or an unusual day | own: the filing and report rules fired 27 times; news and a big day have no rule yet (1.1) | | |
+| 3.4 | Time to look again (today `REVIEW_DUE`) | own: 109 rows, 16 runs | | |
+| 3.5 | What code finds with no trigger: a floor to fix, just sold, promoted to live | bulk: 1, 2 and 0 rows. Promoted stays, since two analysts are still on paper. | | |
+
+Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situation, one short skill each, with a holding part and a watch part. "A note to answer" is deleted in that design, so it has no unit. The units review the skills once E.8 builds them.
 
 ## Layer 4: actions
 
@@ -64,7 +65,7 @@ For each playbook unit, review all of it: what the watch waits for, the buy, the
 | 4.1 | The trade tools: `place_trade`, `add`, `sell` | own: 49 sales, 12 buys, 3 adds | | |
 | 4.2 | `edit_triggers` | own: about 200 trigger edits | | |
 | 4.3 | The note and status tools: `write_note`, `set_conviction`, `set_catalyst_date`, `stop_watching`, `watch_again`, `pass_on_stock`, `watch_stock` | own for `write_note` (about 215 calls); the other six in bulk inside it | | |
-| 4.4 | The read tools (roadmap E.10): bulk or delete by usage | bulk, with deletions: the five registered tools on no list, `read_database`, `manage_position` (file and test), and `list_runs`, `read_run`, `read_accuracy_reports`, `read_trade_results` off the chat's list | | |
+| 4.4 | The read tools (roadmap E.10): bulk or delete by usage | bulk, delete? for the unused: the five registered tools on no list, `read_database`, `manage_position` (file and test), and `list_runs`, `read_run`, `read_accuracy_reports`, `read_trade_results` off the chat's list | | |
 | 4.5 | The bookkeeping tools: `complete_run`, `record_run_summary`, `submit_thesis`, `dispatch_thesis_research`, `wait_for_thesis_refresh` (added by the owner, Nov 19) | own: `complete_run` 232 calls, 21 refusals; `submit_thesis` 122 | | |
 
 ## Layer 5: jobs
