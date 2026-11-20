@@ -272,8 +272,8 @@ or an analyst wrote it (`writtenNote`, `lib/agent/triggers/note.ts`).
 portfolio/watchlist monitor, domain monitor, the signal router, their cleanup
 cron and the newsletter extraction — were deleted 2026-09-15. The tables and
 rows are **kept**: `Signal`, `Monitor`, `AnalystSignalRoute`, `SignalBatch`,
-`Artifact` are readable on `/intelligence` (read-only) and via `read_database`,
-but nothing adds to them. The `read_signals` / `read_artifact` tools that read
+`Artifact` are readable on `/intelligence` (read-only), but nothing adds to
+them. The `read_signals` / `read_artifact` tools that read
 them were deleted 2026-10-23. Outside facts reach an agent through a
 measure the five-minute check can evaluate, or a data field the agent
 pulls mid-run — see `docs/plans/LANES.md` §2.
@@ -492,7 +492,7 @@ trading workflow — see `lib/podcast/` and `docs/PODCAST_PLAN.md`.
 ### Intelligence Tools (read pre-gathered data)
 1–2. read_signals / read_artifact — DELETED 2026-10-23 (on no mode's list
    since the router that filled the inbox went, 2026-09-15). The signal history
-   is on /intelligence and through `read_database`.
+   is on /intelligence.
 3. get_theses — read the analyst's durable thesis library (default HOLDING+WATCHING; include_history=true for the activity log)
 4. get_portfolio_context — open positions, exposure, available buying power, recent fills
 5. web_search — live Perplexity Sonar search (budget-limited)

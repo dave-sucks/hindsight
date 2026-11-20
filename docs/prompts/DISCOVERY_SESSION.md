@@ -104,7 +104,7 @@ a discovery session should start:
 | `dispatch_thesis_research` | Sends a stock to the thesis writer (`mint` new, `refresh` existing), with what the chat found and, for someone's thesis, the post itself | 5 per chat session |
 | `wait_for_thesis_refresh` | Waits for a writer and returns what saved | **Works on `mint` runs too**, despite its description; on a failure it gives no reason |
 | `get_theses`, `update_thesis`, `record_thesis` | Read and edit the watchlist | — |
-| `read_trade_results`, `list_proposals`, `read_analyst_config`, `read_database` | Past trades, pending buys, settings, anything | — |
+| `read_trade_results`, `list_proposals`, `read_analyst_config` | Past trades, pending buys, settings | — |
 
 **Outside the app** (Dave pastes results into the analyst's chat):
 Finviz screener (market-wide leaders: above the 50- and 200-day, within 10% of the
