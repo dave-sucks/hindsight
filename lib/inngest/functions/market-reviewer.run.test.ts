@@ -252,8 +252,8 @@ describe("the 7:30 Market Reviewer", () => {
     ]);
     const sent = (from: number, to: number) => view.categories.slice(from, to).map((c) => c.sections[0].text).join("\n\n");
     expect(sent(0, 1)).toBe(body.input[0].content);
-    expect(sent(1, 6)).toBe(firstMessage);
-    expect(view.categories[6].sections.map((s) => s.label)).toEqual(["web_search"]);
+    expect(sent(1, 7)).toBe(firstMessage);
+    expect(view.categories[7].sections.map((s) => s.label)).toEqual(["web_search"]);
 
     // The run page: the day, then what it searched and the tokens, the digest, and each note under a title.
     expect(thread).toContain("Searched the web 2 times: “why stocks rose Nov 11 2026” · “economic calendar November 2026 CPI PPI”. Tokens: 41,230 in, 3,118 out.");
