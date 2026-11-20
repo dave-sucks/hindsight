@@ -124,7 +124,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 **Examples:**
 
-- "Review if at least 2× normal volume". Twice the normal volume means someone knows something. Look before it moves.
+- "Review if above 2× normal volume". Twice the normal volume means someone knows something. Look before it moves.
 
   ```json
   {"action":"REVIEW","predicate":{"watch":"volume","value":2}}
@@ -158,7 +158,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 **Examples:**
 
-- "Review if at least 5 points ahead of the S&P". Leading the market by 5 points over three months: a leader worth a closer look.
+- "Review if above 5 points ahead of the S&P". Leading the market by 5 points over three months: a leader worth a closer look.
 
   ```json
   {"action":"REVIEW","predicate":{"watch":"strength","value":5,"settings":{"window":"3M"}}}
@@ -170,7 +170,7 @@ The chart's own numbers: volume, RSI, strength against the S&P, gaps. Read from 
 
 **Examples:**
 
-- "Buy if at least 8% gap up". An 8% gap up at the open: an episodic pivot.
+- "Buy if above 8% gap up". An 8% gap up at the open: an episodic pivot.
 
   ```json
   {"action":"ENTER","predicate":{"watch":"gap","value":8}}

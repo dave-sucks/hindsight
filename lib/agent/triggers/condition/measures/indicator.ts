@@ -5,8 +5,6 @@ import type { MeasureDef } from "../measure";
 import type { Condition } from "../types";
 
 const window = (c: Condition) => (typeof c.settings?.window === "string" ? c.settings.window : "3M");
-/** The form says "Above", like every other; a sentence says what the check does, the number or more. */
-const atLeast = (_c: Condition, words: string) => `at least ${words}`;
 
 export const volume: MeasureDef = {
   id: "volume",
@@ -14,7 +12,6 @@ export const volume: MeasureDef = {
   type: "indicator",
   label: "Volume",
   word: "Above",
-  says: atLeast,
   value: { suffix: "× normal volume", placeholder: "2", range: { what: "Volume", unit: "×", over: 0, max: 50 } },
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
@@ -55,7 +52,6 @@ export const strength: MeasureDef = {
   type: "indicator",
   label: "vs. S&P",
   word: "Above",
-  says: atLeast,
   // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
   value: { suffix: "points ahead of the S&P", placeholder: "0", range: { what: "Strength vs the S&P", unit: " points", min: -100, max: 500 } },
   settings: [
@@ -84,7 +80,6 @@ export const gap: MeasureDef = {
   type: "indicator",
   label: "Gap up",
   word: "Above",
-  says: atLeast,
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
   rises: () => true,
   fresh: () => ({ watch: "gap" }),

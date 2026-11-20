@@ -86,7 +86,7 @@ describe("what people read: the form's words, direction · value", () => {
     ["REVIEW", { watch: "surprise", is: "beat", value: 0 }, "Review if earnings beat any amount"],
     ["REVIEW", { watch: "surprise", is: "miss", value: 3 }, "Review if earnings miss 3% or more"],
     ["REVIEW", { watch: "filing", variable: "tier:MATERIAL" }, "Review if it files something material with the SEC"],
-    ["REVIEW", { watch: "strength", value: 0, settings: { window: "6M" } }, "Review if at least 0 points ahead of the S&P · over 6 months"],
+    ["REVIEW", { watch: "strength", value: 0, settings: { window: "6M" } }, "Review if above 0 points ahead of the S&P · over 6 months"],
     ["REVIEW", { watch: "rsi", is: "below", value: 30 }, "Review if below RSI 30"],
   ] as [TriggerAction, When, string][])("%s %j", (action, w, expected) => {
     expect(triggerText(action, w)).toBe(expected);
@@ -117,14 +117,15 @@ describe("what people read: the form's words, direction · value", () => {
     expect(pillParts(date, true)).toEqual(pillParts(date));
   });
 
-  it("volume, strength and a gap say \"above\" on the form and the pill, like every other; their sentence is unchanged", () => {
+  it("volume, strength and a gap say \"above\", like every other more-than check: the form, the pill and the sentence", () => {
     expect(pillParts({ watch: "volume", value: 2 })).toEqual([{ label: "above", value: "2× normal volume" }]);
     expect(pillParts({ watch: "gap", value: 4 })).toEqual([{ label: "above", value: "4% gap up" }]);
     expect(pillParts({ watch: "strength", value: 5 })).toEqual([{ label: "above", value: "5 points ahead of the S&P" }]);
-    expect(triggerText("REVIEW", { watch: "volume", value: 2 })).toBe("Review if at least 2× normal volume");
-    expect(triggerText("REVIEW", { watch: "gap", value: 4 })).toBe("Review if at least 4% gap up");
+    expect(triggerText("REVIEW", { watch: "volume", value: 2 })).toBe("Review if above 2× normal volume");
+    expect(triggerText("REVIEW", { watch: "gap", value: 4 })).toBe("Review if above 4% gap up");
     // A head count stays "at least": "above 3 insiders" would read as four.
     expect(pillParts({ watch: "insiders", value: 3 })).toEqual([{ label: "at least", value: "3 insiders buying" }]);
+    expect(triggerText("REVIEW", { watch: "insiders", value: 3 })).toBe("Review if at least 3 insiders buying");
   });
 });
 

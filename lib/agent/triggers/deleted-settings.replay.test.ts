@@ -96,7 +96,7 @@ describe("a stored trigger still carrying a deleted key", () => {
       { is: "before", value: 5, watch: "report" },
       { watch: "gap", value: 8 },
     ]);
-    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if within 5 days before earnings", "Review if at least 8% gap up"]);
+    expect(triggers.map((t) => sentenceOf(t))).toEqual(["Review if within 5 days before earnings", "Review if above 8% gap up"]);
   });
 
   it("reads without it, and says only its number", () => {

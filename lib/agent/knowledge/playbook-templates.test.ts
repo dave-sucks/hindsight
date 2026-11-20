@@ -83,7 +83,7 @@ describe("the seed is the spec's tables, row for row", () => {
 
   it("reads the way the pill does: a chart level by its name", () => {
     expect(PLAYBOOK_TEMPLATES.BASE_BREAKOUT.map((t) => sentenceOf(t as unknown as Trigger))).toEqual([
-      "Buy if above {pivot} · only on the close and at least 1.5× normal volume and below {pivotChase}",
+      "Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase}",
       "Review every 7 days",
       "Review every 7 days",
       "Stop watching if below {baseLow} · only on the close",
