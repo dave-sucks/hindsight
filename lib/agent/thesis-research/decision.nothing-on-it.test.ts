@@ -13,6 +13,7 @@
  */
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { validateThesisDecision, type ThesisDecisionInput } from "./decision";
+import { ratedNow } from "@/lib/replay/rated";
 import { tailorMessage } from "@/lib/agent/run-thesis-writer";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -59,7 +60,7 @@ const saved = (triggers: Trigger[]) =>
 
 describe("LUXE 2026-09-18 — LONG with nothing on it", () => {
   it("the decision is accepted: its triggers come after the save", () => {
-    expect(validateThesisDecision(LUXE_SUBMIT, { mode: "mint", currentPrice: 9.48 }).ok).toBe(true);
+    expect(validateThesisDecision(ratedNow(LUXE_SUBMIT), { mode: "mint", currentPrice: 9.48 }).ok).toBe(true);
   });
 
   it("saved with no trigger, the writer is told it can never come back, with the two reviews that bring it back and no price of the code's", () => {

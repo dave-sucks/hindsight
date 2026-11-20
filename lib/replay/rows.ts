@@ -65,6 +65,9 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
     researchData: null,
     triggers: [],
     triggerState: {},
+    // A thesis with a view has been rated (a row with none says so itself: outlook: null).
+    outlook: "BULLISH",
+    outlookReason: "rated",
     conviction: "MEDIUM",
     convictionRationale: "reasonable",
     variantView: null,

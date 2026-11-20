@@ -248,6 +248,8 @@ export default async function StockDetailPage({ params }: Props) {
               status={thesis.status}
               agentWatchDays={agentWatchDays(thesis.triggers)}
               retiredReason={thesis.retiredReason}
+              outlook={thesis.outlook}
+              outlookReason={thesis.outlookReason}
               analystId={thesis.researchRun?.agentConfigId ?? null}
               thesisId={thesis.id}
               extraActions={<WatchlistDropdown symbol={upperSymbol} analysts={watchlistStatus} />}

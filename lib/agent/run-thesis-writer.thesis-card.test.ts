@@ -53,6 +53,7 @@ jest.mock("@/lib/agent/tools/record-thesis", () => ({
 jest.mock("@/lib/agent/tools/update-thesis", () => ({ updateThesis: () => ({ execute: async () => ({ ok: false, error: "not this run's save" }) }) }));
 
 import raw from "@/lib/agent/__fixtures__/writer-as-2026-11-18.json";
+import { ratedNow } from "@/lib/replay/rated";
 import type { ModelMessage } from "ai";
 import { convertPersistedToUIMessages } from "@/lib/agent/convert-messages";
 import { validateThesisDecision, type ThesisDecisionInput } from "@/lib/agent/thesis-research/decision";
@@ -70,7 +71,7 @@ const pullOutput = {
 } as unknown as WriterPullPhaseOutput;
 
 function research(): WriterResearchPhaseOutput {
-  const v = validateThesisDecision(submitted, { mode: "mint", existingStatus: null, currentPrice: PRICE });
+  const v = validateThesisDecision(ratedNow(submitted), { mode: "mint", existingStatus: null, currentPrice: PRICE });
   if (!v.ok || !v.decision) throw new Error(`the recorded decision doesn't validate: ${v.errors.join("; ")}`);
   return { ok: true, noteText, decision: v.decision, threadMessages: fx.messages, userPrompt: "(the brief, left out of the fixture)", stepCount: 1, toolCallCount: 6, submitAttempts: 1, sectionCount: 3 };
 }

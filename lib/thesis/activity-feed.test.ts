@@ -1,11 +1,11 @@
 /**
- * activity-feed.test.ts — one list, the newest 8 of it, read the same way by
+ * activity-feed.test.ts — one list, read the same way by
  * the Overview and the agent. From GEV's real rows, 2026-10-27 to 10-29
  * (Secular Compounder): three sale proposals, three trigger-run notes, four
  * fires and the expiry job's lines, as stored. Text cut to its opening.
  */
-import { activityFeed, hasWrittenParagraph, notedItems, proposalSteps, recentItems, serializeFeedItem, NOTED_ITEMS, RECENT_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
-import { saidBlock } from "@/lib/agent/stock-context";
+import { activityFeed, hasWrittenParagraph, notedItems, proposalSteps, serializeFeedItem, NOTED_ITEMS, type ProposalOrder, type StoredLine } from "./activity-feed";
+import { activityRead } from "@/lib/agent/stock-context";
 import { isPlainReview, reviewTitle, titleSegments, toRow, withPriceChanges, type TimelineUpdate } from "@/components/agent/sheets/thesis-timeline-utils";
 
 const at = (iso: string) => new Date(iso);
@@ -83,12 +83,7 @@ describe("one list: the saved lines and each proposal's steps, newest first", ()
   });
 });
 
-describe("the newest 8: what the next run reads", () => {
-  it("GEV on the night of 10-29: the 15% review, today's note and sale, yesterday's lapse, the 200-day review, yesterday's two notes and sale", () => {
-    expect(recentItems(feed).map((i) => i.id)).toEqual(feed.slice(0, RECENT_ITEMS).map((i) => i.id));
-    expect(recentItems(feed)).toHaveLength(8);
-  });
-
+describe("the Overview's cut, and the agent's read of the same feed", () => {
   it("the Overview's Agent insights are the newest 5 with a written paragraph: notes and proposals, never a fire's figures", () => {
     const noted = notedItems(feed);
     expect(noted.length).toBeLessThanOrEqual(NOTED_ITEMS);
@@ -104,29 +99,21 @@ describe("the newest 8: what the next run reads", () => {
     expect(hasWrittenParagraph({ type: "PROPOSAL_DECLINED", rationale: null, fieldChanges: { proposal: { to: { userMessage: "Not at this price." } } } })).toBe(true);
   });
 
-  it("the agent's block is those 8 lines as the owner sees them, titles and paragraphs whole, newest first", () => {
-    const text = saidBlock("GEV", feed)!;
+  it("the agent reads the same feed as one list: the last 3 reviews, newest first; no fire, no proposal step", () => {
+    const text = activityRead({ ticker: "GEV", feed })!;
     const lines = text.split("\n");
-    expect(lines[0]).toBe("WHAT'S BEEN SAID ON $GEV — its newest 8 Activity lines, newest first, as the owner sees them:");
-    expect(lines).toHaveLength(10);
-    expect(lines[1]).toMatch(/^ {2}10-29 09:55 · \$889\.0[56] · Trigger: Review if below 15% from the high since we bought \[id cmvtlv8fv000z07jtgj1pt6hg\]$/);
-    expect(lines[2]).toBe('  10-29 09:45 · $881.14 · Review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" [id cmvtljbyt000u07jtwe1op938]');
-    // An order's own step has no saved line to answer, so no id.
-    expect(lines[3]).toBe('  10-29 09:45 · Proposed sell 9 shares — awaiting your review — "GE Vernova is trading around $883 on Oct. 29 after third-quarter results beat expectations"');
-    expect(lines[4]).toBe("  10-29 09:45 · $882.71 · Trigger: Sell if below 6% from the high since we bought [id cmvtlitlc000308l5t8msme4t]");
-    expect(lines[5]).toBe("  10-29 09:40 · Expired sell 9 shares — no decision");
-    expect(lines[6]).toBe('  10-28 14:15 · $884.83 · Trigger: Review if below the 200-day average — "200-day $941.20; price $884.83 (−6.0% from it)" [id cmvsfpzci000208l10mo0s5jr]');
-    expect(lines[9]).toBe('Full history: get_theses(tickers: ["GEV"], include_history: true)');
-    // Nothing older than the 8 and nothing the expiry job stitched.
-    expect(text).not.toContain("Oct. 27");
+    expect(lines[0]).toBe("Activity on $GEV in the last 45 days, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
+    expect(lines[1]).toBe("  Review by its analyst, Oct 29, 9:45 AM at $881.14: GE Vernova is around $883 on Oct. 29 after reporting a strong quarter [id cmvtljbyt000u07jtwe1op938]");
+    expect(lines.slice(1, -1).every((l) => l.startsWith("  Review by "))).toBe(true);
+    expect(lines.at(-1)).toBe('Full history: get_theses(tickers: ["GEV"], include_history: true)');
+    expect(text).not.toContain("Trigger");
+    expect(text).not.toContain("Proposed");
+    expect(text).not.toContain("Expired");
     expect(text).not.toContain("expired without an answer");
   });
 
-  it("an empty feed is no block; one line is the header, the line and the way to the rest", () => {
-    expect(saidBlock("X", [])).toBeNull();
-    const one = activityFeed({ updates: [UPDATES[2]], orders: [] });
-    expect(saidBlock("GEV", one)!.split("\n")).toHaveLength(3);
-    expect(saidBlock("GEV", one)).toContain("its newest 1 Activity lines");
+  it("an empty feed is no block", () => {
+    expect(activityRead({ ticker: "X", feed: [] })).toBeNull();
   });
 });
 
@@ -138,9 +125,9 @@ describe("one paragraph per trade: a run's note on a proposal and the proposal a
     expect(merged.some((i) => i.id === "cmvtljbyt000u07jtwe1op938")).toBe(false);
     const proposed = merged.find((i) => i.id === "order:cmvtlj7h8000o07jtr5hif67i:proposed")!;
     expect(proposed).toMatchObject({ type: "PROPOSAL_PROPOSED", runId: "cmvtlisse000k07jtcm2d5e72", runMode: "INTRADAY_TACTICAL", triggerId: TRAIL, priceAtTime: 881.14, rationale: "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" });
-    const line = saidBlock("GEV", merged)!.split("\n")[2];
+    const line = activityRead({ ticker: "GEV", feed: merged })!.split("\n")[1];
     // It answers as the note it carries.
-    expect(line).toBe('  10-29 09:45 · $881.14 · Proposed sell 9 shares — awaiting your review — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" [id cmvtljbyt000u07jtwe1op938]');
+    expect(line).toBe("  Review by its analyst, Oct 29, 9:45 AM at $881.14: GE Vernova is around $883 on Oct. 29 after reporting a strong quarter [id cmvtljbyt000u07jtwe1op938]");
   });
 });
 
@@ -189,11 +176,9 @@ describe("a declined or expired proposal shows the price then", () => {
     expect(step(activityFeed({ updates: [{ ...lapse, fieldChanges: copy(ASML, "EXPIRED") }], orders: [asml] }), "PROPOSAL_REJECTED").priceAtTime).toBeNull();
   });
 
-  it("the agent reads the price on the line", () => {
-    const lines = saidBlock("PLTR", activityFeed({ updates: [lapse, ...pltrDay], orders: [pltr] }))!.split("\n");
-    expect(lines[1]).toBe("  10-30 10:15 · $187.07 · Expired sell 38 shares — no decision");
-    const declined = saidBlock("ASML", activityFeed({ updates: [decline], orders: [asml] }))!.split("\n");
-    expect(declined[1]).toBe('  10-08 12:59 · $1782.07 · Declined sell 5 shares — "(your comment)"');
+  it("the agent reads the price on a decline it is sent; a lapse with no words is not sent", () => {
+    expect(activityRead({ ticker: "PLTR", feed: activityFeed({ updates: [lapse, ...pltrDay], orders: [pltr] }) }) ?? "").not.toContain("Expired");
+    expect(activityRead({ ticker: "ASML", feed: activityFeed({ updates: [decline], orders: [asml] }) })!.split("\n")[1]).toBe("  Declined sell 5 shares by you, Oct 8, 12:59 PM at $1782.07: (your comment)");
   });
 
   it("the timeline draws the move from the previous priced row: $195.22 → $187.07", () => {
@@ -213,12 +198,10 @@ describe("a review's verdict and the line it answers: one title on the page, the
   );
   const verdictFeed = activityFeed({ updates: withVerdict, orders: ORDERS });
 
-  it("the agent's line: the title names the trigger the review answered, then the word, the paragraph, the verdict's line, the line it answers by date, and its own id", () => {
-    expect(saidBlock("GEV", verdictFeed, TRIGGERS)!.split("\n")[2]).toBe(
-      `  10-29 09:45 · $881.14 · Sale review below 6% from the high since we bought · weaker — "GE Vernova is around $883 on Oct. 29 after reporting a strong quarter" — verdict: "${LINE}" — answers the 10-28 09:41 line [id cmvtljbyt000u07jtwe1op938]`,
+  it("the agent's line: who, when, the price, the verdict's word, the note and its own id", () => {
+    expect(activityRead({ ticker: "GEV", feed: verdictFeed })!.split("\n")[1]).toBe(
+      "  Review by its analyst, Oct 29, 9:45 AM at $881.14: weaker. GE Vernova is around $883 on Oct. 29 after reporting a strong quarter [id cmvtljbyt000u07jtwe1op938]",
     );
-    // Without the thesis's list the trigger is unknown and the title is the bare word.
-    expect(saidBlock("GEV", verdictFeed)!.split("\n")[2]).toContain("· Review · weaker — ");
   });
 
   it("the page's title is the same: Sale review below 6% from the high since we bought · weaker", () => {
@@ -259,6 +242,7 @@ describe("a trigger's proposal the close pass took down (lib/proposals/trigger-p
     expect([withdrawn.type, withdrawn.summary, withdrawn.timestamp, withdrawn.rationale]).toEqual(["PROPOSAL_WITHDRAWN", "Withdrawn: closed back above $196 at $196.75", at("2026-10-23T20:20:05Z"), null]);
     expect(proposed.type).toBe("PROPOSAL_PROPOSED");
     expect(titleSegments(withdrawn as unknown as TimelineUpdate)).toMatchObject({ primary: "Withdrawn", secondary: "sell 38 shares — closed back above $196 at $196.75" });
-    expect(saidBlock("PLTR", [withdrawn, proposed])).toContain("10-23 16:20 · Withdrawn sell 38 shares — closed back above $196 at $196.75");
+    // A withdrawal carries no words, so the agent's list leaves it out; the withdrawn card is off the row's `proposal_waiting`.
+    expect(activityRead({ ticker: "PLTR", feed: [withdrawn, proposed] })).toBeNull();
   });
 });

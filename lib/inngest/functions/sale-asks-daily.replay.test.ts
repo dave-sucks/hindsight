@@ -35,7 +35,8 @@ function book(ticker: "ASML" | "NVDA", orderStatus = "AWAITING_APPROVAL"): Prism
   const asml = ticker === "ASML";
   const analyst = asml ? SECULAR : PEAD;
   return prismaDouble({
-    account: [accountRow({ id: ACCOUNT, requireApprovalSellsLive: true, requireApprovalBuysLive: true })],
+    // Seeded, with no rule of its own: this case is the floor alone, not the account's trail.
+    account: [accountRow({ id: ACCOUNT, requireApprovalSellsLive: true, requireApprovalBuysLive: true, triggersSeededAt: new Date("2026-09-18T12:00:33Z") })],
     agentConfig: [agentConfigRow({ id: analyst, accountId: ACCOUNT, userId: ACCOUNT, name: asml ? "Secular Compounder" : "PEAD Specialist", tradingEnvironment: "LIVE" })],
     thesis: [
       thesisRow({

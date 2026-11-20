@@ -22,7 +22,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { writeNoteTool } from "./write-note";
 import { editTriggers } from "./edit-triggers";
 
-const NOTE_DOOR = ["answers_update_id", "note", "verdict", "verdict_line"];
+const NOTE_DOOR = ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "verdict", "verdict_line"];
 const EDIT_DOOR = ["add", "edit", "remove"];
 const runStock = { ticker: "NVDA", thesisId: "thesis_run", triggerId: "trig_fired" };
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, ...(runMode === "INTRADAY_TACTICAL" ? { runStock } : {}) }) as never;
@@ -33,7 +33,7 @@ const asNote = (call: Record<string, unknown>): Record<string, unknown> => ({ ..
 const CALLS = (["ASML", "NVDA", "CEG", "MU"] as const).map((t) => [t, asNote(fixture[t].call as Record<string, unknown>)] as const);
 
 describe("the trigger run's save", () => {
-  it("offers its note's four fields and its trigger edits' three: no change_status, and no thesis or trigger id", () => {
+  it("offers its note's eight fields and its trigger edits' three: no change_status, and no thesis or trigger id", () => {
     expect(Object.keys(noteSchema("INTRADAY_TACTICAL").shape).sort()).toEqual(NOTE_DOOR);
     expect(Object.keys(editSchema("INTRADAY_TACTICAL").shape).sort()).toEqual(EDIT_DOOR);
     for (const s of [noteSchema("INTRADAY_TACTICAL"), editSchema("INTRADAY_TACTICAL")]) {

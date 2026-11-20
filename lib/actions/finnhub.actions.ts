@@ -3,6 +3,7 @@
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { getLiveQuote } from '@/lib/market-data/live-quote';
 import { MARKET_DATA_FEED } from '@/lib/alpaca';
+import { fetchAllBarPages } from '@/lib/market-data/alpaca-bar-pages';
 import { INTRADAY_WINDOW_ET, etDateOf, etInstant, etMinutesOf } from '@/lib/market-data/intraday-window';
 import { isTradingDay } from '@/lib/market-hours';
 import { cache } from 'react';
@@ -399,23 +400,14 @@ export async function getStockCandles(
     // dividend payers stay pixel-identical to those same sources.
     const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
-    const res = await fetch(url, {
-      headers: {
-        'APCA-API-KEY-ID': apiKey,
-        'APCA-API-SECRET-KEY': apiSecret,
-      },
-      next: { revalidate: 300 },
-    });
+    const pages = await fetchAllBarPages(
+      url,
+      { headers: { 'APCA-API-KEY-ID': apiKey, 'APCA-API-SECRET-KEY': apiSecret }, next: { revalidate: 300 } },
+      'getStockCandles',
+    );
+    if (!pages?.list.length) return [];
 
-    if (!res.ok) {
-      console.warn('[getStockCandles] Alpaca error', res.status, await res.text().catch(() => ''));
-      return [];
-    }
-
-    const data = await res.json() as { bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[] };
-    if (!data.bars?.length) return [];
-
-    return data.bars.map((bar) => ({
+    return pages.list.map((bar) => ({
       date: bar.t.slice(0, 10),
       close: bar.c,
       open: bar.o,
@@ -436,10 +428,8 @@ export async function getStockCandles(
  * (`/v2/stocks/bars?symbols=…`), the sibling of the single-symbol endpoint
  * `getStockCandles` uses. Returns a map keyed by uppercased symbol; symbols
  * Alpaca returns no bars for are simply absent (caller degrades to the gauge).
- *
- * No pagination: the card window is short (≤~1 month) so even ~20 symbols
- * stay well under the 1000-bar page cap. The single-symbol path (sheet /
- * trade page, up to 1Y) keeps using `getStockCandles`.
+ * Every page is read (fetchAllBarPages): 8 stocks over a year is over the
+ * 1,000-bar page, and the later stocks came back short.
  */
 export async function getStockCandlesBatch(
   symbols: string[],
@@ -461,26 +451,15 @@ export async function getStockCandlesBatch(
     // chart matches Finnhub/Perplexity and a split doesn't show as a cliff.
     const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${encodeURIComponent(unique.join(','))}&timeframe=1Day&start=${start}&end=${end}&limit=1000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
-    const res = await fetch(url, {
-      headers: {
-        'APCA-API-KEY-ID': apiKey,
-        'APCA-API-SECRET-KEY': apiSecret,
-      },
-      next: { revalidate: 300 },
-    });
-
-    if (!res.ok) {
-      console.warn('[getStockCandlesBatch] Alpaca error', res.status, await res.text().catch(() => ''));
-      return {};
-    }
-
-    const data = (await res.json()) as {
-      bars?: Record<string, { c: number; o: number; h: number; l: number; v: number; t: string }[]>;
-    };
-    if (!data.bars) return {};
+    const pages = await fetchAllBarPages(
+      url,
+      { headers: { 'APCA-API-KEY-ID': apiKey, 'APCA-API-SECRET-KEY': apiSecret }, next: { revalidate: 300 } },
+      'getStockCandlesBatch',
+    );
+    if (!pages) return {};
 
     const out: Record<string, StockCandle[]> = {};
-    for (const [sym, bars] of Object.entries(data.bars)) {
+    for (const [sym, bars] of Object.entries(pages.bySymbol)) {
       out[sym] = bars.map((bar) => ({
         date: bar.t.slice(0, 10),
         close: bar.c,
@@ -740,23 +719,12 @@ export async function getHourlyCandles(
     const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const url = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol.toUpperCase())}/bars?timeframe=${timeframe}&start=${start}&end=${end}&limit=10000&adjustment=split&feed=${MARKET_DATA_FEED}`;
 
-    const res = await fetch(url, {
-      headers: {
-        'APCA-API-KEY-ID': apiKey,
-        'APCA-API-SECRET-KEY': apiSecret,
-      },
-      next: { revalidate: 300 },
-    });
-
-    if (!res.ok) {
-      console.warn('[getHourlyCandles] Alpaca error', res.status, await res.text().catch(() => ''));
-      return [];
-    }
-
-    const data = (await res.json()) as {
-      bars?: { c: number; o: number; h: number; l: number; v: number; t: string }[];
-    };
-    if (!data.bars?.length) return [];
+    const pages = await fetchAllBarPages(
+      url,
+      { headers: { 'APCA-API-KEY-ID': apiKey, 'APCA-API-SECRET-KEY': apiSecret }, next: { revalidate: 300 } },
+      'getHourlyCandles',
+    );
+    if (!pages?.list.length) return [];
 
     // Regular-hours bars only (9:00–16:00 ET = minutes 540–960); the loose
     // lower bound keeps the opening bar whatever the hour alignment.
@@ -766,7 +734,7 @@ export async function getHourlyCandles(
       hour: '2-digit',
       minute: '2-digit',
     });
-    return data.bars
+    return pages.list
       .filter((bar) => {
         const [hh, mm] = timeFmt.format(new Date(bar.t)).split(':').map(Number);
         const etMinutes = hh * 60 + mm;

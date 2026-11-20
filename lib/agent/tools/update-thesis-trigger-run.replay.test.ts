@@ -45,7 +45,8 @@ const seedFor = (ticker: "ASML" | "NVDA" | "CEG" | "MU") => {
 describe("sent verbatim, a real call lands on the first try", () => {
   it("NVDA: its change_status WATCHING is not a field of the note, so the call lands once with the note", async () => {
     const fx = fixture.NVDA;
-    const verbatim = asNote(fx.call as Record<string, unknown>);
+    // Saved before a look needed its verdict (2026-11-19): sent with UNCHANGED.
+    const verbatim = { verdict: "UNCHANGED", ...asNote(fx.call as Record<string, unknown>) };
     const usage = { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } };
     const call = (n: number, input: unknown) => ({ content: [{ type: "tool-call", toolCallId: `c${n}`, toolName: "write_note", input: JSON.stringify(input) }], finishReason: { unified: "tool-calls", raw: undefined }, usage, warnings: [] });
     let turn = 0;
@@ -84,7 +85,7 @@ describe("the four failed runs' first calls, through the trigger run's note", ()
     it(`${ticker}: the note lands and nothing is refused`, async () => {
       const r = await replayTool("write-note", "writeNoteTool", {
         seed: seedFor(ticker),
-        args: await asTheSdkHandsIt(fx.call as Record<string, unknown>),
+        args: { verdict: "UNCHANGED", ...(await asTheSdkHandsIt(fx.call as Record<string, unknown>)) },
         ctx: tactical(fx.call.thesis_id, fx.call.trigger_id, ticker),
         quotes: { [ticker]: fx.price },
       });

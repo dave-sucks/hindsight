@@ -34,7 +34,6 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { pickProposalOrder } from "@/lib/trade-status";
 import type { ThesisPendingProposal } from "@/lib/types/thesis-sheet";
 import { notedItems, serializeFeedItem } from "@/lib/thesis/activity-feed";
-import { newestEightForRuns } from "@/lib/agent/shared-notes";
 import { fillFacts } from "@/lib/stocks/stock-history";
 import { getCurrentEnvironment } from "@/lib/actions/environment.actions";
 
@@ -103,6 +102,8 @@ export async function GET(
       sourceSignalIds: true,
       parentThesisId: true,
       // Conviction Expression v4 — writer-side fields.
+      outlook: true,
+      outlookReason: true,
       conviction: true,
       convictionRationale: true,
       variantView: true,
@@ -161,15 +162,13 @@ export async function GET(
     pendingProposal: ThesisPendingProposal | null;
   };
 
-  // The stock's Activity, newest first: `recent` is the newest 8, the same 8
-  // every run is handed (the Activity tab marks where they end); `noted` is
-  // the newest 5 with a written paragraph, what the Overview shows as Agent
-  // insights (lib/thesis/activity-feed.ts).
+  // The stock's Activity, newest first: `noted` is the newest 5 with a
+  // written paragraph, what the Overview shows as Agent insights
+  // (lib/thesis/activity-feed.ts).
   const feed = await loadActivityFeed(
     { id: thesis.id, ticker: thesis.ticker, createdAt: thesis.createdAt, closedAt: thesis.closedAt, invalidatedAt: thesis.invalidatedAt, analystId: thesis.researchRun?.agentConfigId ?? null },
     FEED_WINDOW,
   ).catch(() => []);
-  const recent = newestEightForRuns(feed, new Date());
   const noted = notedItems(feed);
 
 
@@ -371,7 +370,6 @@ export async function GET(
     // DAV-304, never sent to the sheet — so "is this being reviewed?" was
     // only answerable by querying the database.
     lastReviewedAt: thesis.lastReviewedAt,
-    recent: recent.map(serializeFeedItem),
     noted: noted.map(serializeFeedItem),
     // Derived at read time from the last actual look + the cadence on the
     // resolved ladder (DAV-221). Null = no scheduled review.
@@ -412,6 +410,8 @@ export async function GET(
     sourceRationale: thesis.sourceRationale,
     sourceSignalIds: thesis.sourceSignalIds,
     parentThesisId: thesis.parentThesisId,
+    outlook: thesis.outlook,
+    outlookReason: thesis.outlookReason,
     conviction: thesis.conviction,
     convictionRationale: thesis.convictionRationale,
     variantView: thesis.variantView,

@@ -3,7 +3,7 @@
  *
  *   Smallest trade   (AgentConfig.minPositionSize)  — a buy is never less.
  *   Largest trade    (AgentConfig.maxPositionSize)  — a buy is never more;
- *                                                     STRONG/HIGH conviction
+ *                                                     HIGH conviction
  *                                                     buys exactly this.
  *   Most in one stock (AgentConfig.maxPositionTotal) — adding to a winner
  *                                                     stops here.
@@ -112,7 +112,7 @@ export function positionTotalCap(opts: {
 /**
  * How much a new position is, in dollars: the analyst's own band, placed by
  * conviction. A normal thesis buys the smallest trade the analyst allows;
- * a STRONG or HIGH conviction thesis buys the largest.
+ * a HIGH conviction thesis buys the largest.
  *
  * This replaces `Thesis.targetSizePct` (DAV-237, 2026-09-08): a percent of
  * portfolio the AGENT wrote on every thesis, which nothing but two refusal
@@ -128,7 +128,7 @@ export function entrySizeForConviction(opts: {
   const { floor, ceiling } = opts.band;
   const largest = ceiling ?? (floor > 0 ? floor : DEFAULT_POSITION_CAP);
   const smallest = floor > 0 ? floor : largest;
-  return opts.conviction === "STRONG" || opts.conviction === "HIGH" ? largest : smallest;
+  return opts.conviction === "HIGH" ? largest : smallest;
 }
 
 // ─── Entry size from risk (DAV-251) ─────────────────────────────────────────
@@ -147,7 +147,6 @@ export const CONVICTION_RISK_MULTIPLIER: Record<string, number> = {
   LOW: 0.5,
   MEDIUM: 0.75,
   HIGH: 1,
-  STRONG: 1.25,
 };
 
 /** In a CAUTION market new entries are half size (playbook Part C). */

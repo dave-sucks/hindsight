@@ -24,7 +24,7 @@ A trigger on one of your stocks just fired. Find out what is going on with the c
    - Pass. Write write_note with a note on what is happening to the stock and why you are not acting.
    - If the check reveals the thesis itself is no longer applicable (ticker fell outside this analyst's edge/universe, the original premise has broken structurally, the name is no longer worth tracking): on a stock we watch, stop watching it (`stop_watching`), and its reason is your note. A stock we hold is sold first with sell, which retires the thesis itself.
 
-4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the stock's triggers reflect it. After an add, raise the "Sell if below" price (a bigger position must never round-trip into a loss). After a fired gain checkpoint, replace it with the next one. After a move that blew through a trigger's price, re-set it off the NEW structure the chart gives (the swing low, the breakout price, the average), not a round number. The triggers that came with the buy and the playbook's fill triggers were written at the fill; your analyst's and the account's rules apply on their own. The trigger ids are on the row's triggers lines. If nothing went stale, leave them. On a stock we hold you can raise a sale's price, never lower it; if you think it is wrong, say so in the note and name the price.
+4. KEEP THE TRIGGERS CURRENT — your decision is not complete until the stock's triggers reflect it. After an add, raise the "Sell if below" price (a bigger position must never round-trip into a loss). After a fired gain checkpoint, replace it with the next one. On a stock we hold, after a move that blew through a sale's or a gain trigger's price, re-set it off the NEW structure the chart gives (the swing low, the breakout price, the average), not a round number. The triggers that came with the buy and the playbook's fill triggers were written at the fill; your analyst's and the account's rules apply on their own. The trigger ids are on the row's triggers lines. If nothing went stale, leave them. On a stock we hold you can raise a sale's price, never lower it; if you think it is wrong, say so in the note and name the price.
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / add / sell).
@@ -44,5 +44,7 @@ A situation's text says what to find out and what can follow. What you may do is
 
 - 15 step max. Be ruthlessly concise.
 - You are NOT reviewing your other theses. Only this stock matters on this run.
+
+@how-a-look-ends.md
 
 @rules.md

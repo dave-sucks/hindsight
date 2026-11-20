@@ -6,10 +6,6 @@
  *   • Coherence: patching `conviction` requires `conviction_rationale`
  *   • Coherence: patching to STRONG/HIGH requires variantView (in patch
  *     OR already on the row)
- *   • Consistency: Gate A (STRONG composite < 7) — both when conviction
- *     is being patched AND when scoring is being patched on an existing
- *     STRONG row
- *   • Consistency: Gate B (STRONG/HIGH entryQuality < 2)
  *   • PENDING → LONG/SHORT promotion requires conviction + rationale +
  *     variantView (for STRONG/HIGH)
  *
@@ -170,62 +166,6 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
     });
   });
 
-  describe("conviction-composite independence (gates removed 2026-05-31)", () => {
-    // Gates A + B were dropped — conviction is the writer's view, not
-    // a derived field. These tests prove the gates are gone.
-
-    it("ALLOWS patching to STRONG with existing composite < 7", async () => {
-      mockThesisFindUnique.mockResolvedValueOnce(
-        makeExistingRow({
-          scoring: { composite: 6, entryQuality: { score: 2 } },
-          variantView: "Existing edge.",
-        }),
-      );
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute({
-        thesis_id: "thesis_existing_1",
-        rationale: "Upgrading on the strength of the variant view.",
-        conviction: "STRONG",
-        conviction_rationale: "Urgent buy. Variant view is sharp and composite undersells what's coming.",
-      });
-
-      // Pre-fix: Gate A would have rejected. Now allowed.
-      expect(result.data?.error).not.toBe("gate_a_strong_requires_composite_7");
-    });
-
-    it("ALLOWS lowering scoring on an existing STRONG thesis (writer's call, no auto-reject)", async () => {
-      mockThesisFindUnique.mockResolvedValueOnce(
-        makeExistingRow({
-          conviction: "STRONG",
-          convictionRationale: "Was top-tier.",
-          variantView: "Existing edge.",
-          scoring: { composite: 8, entryQuality: { score: 2 } },
-        }),
-      );
-      const ctx = makeCtx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-      const result = await tool.execute({
-        thesis_id: "thesis_existing_1",
-        rationale: "Scoring drift — trend weakened.",
-        scoring: {
-          trendStrength: { score: 1, note: "weakened" },
-          relativeStrength: { score: 2, note: "ok" },
-          entryQuality: { score: 2, note: "ok" },
-          catalystFreshness: { score: 1, note: "ok" },
-          // patched composite would be 6; existing conviction STRONG stays
-        },
-      });
-
-      // Pre-fix: Gate A would have rejected. Now allowed — the writer
-      // can lower scoring and keep STRONG if their variant view still
-      // supports it. The composite and the conviction are independent.
-      expect(result.data?.error).not.toBe("gate_a_strong_requires_composite_7");
-    });
-  });
-
   describe("PENDING promotion gates", () => {
     it("rejects PENDING → LONG promotion missing conviction", async () => {
       mockThesisFindUnique.mockResolvedValueOnce(
@@ -264,7 +204,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
       expect(result.data.error).toBe("pending_promotion_missing_fields");
       expect(result.data.missing).toEqual(
         expect.arrayContaining([
-          expect.stringMatching(/conviction \(STRONG/),
+          expect.stringMatching(/conviction \(HIGH/),
           "conviction_rationale",
         ]),
       );

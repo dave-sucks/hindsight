@@ -45,9 +45,9 @@ describe("field descriptions agree with the save", () => {
     expect(d).not.toMatch(/PROMOTED → WATCHING only/);
   });
 
-  it("a top tier without a variant view is stored as MEDIUM, not refused (said once, on variant_view)", () => {
+  it("conviction needs no view that differs from Wall Street: neither field says so", () => {
     for (const tool of ["update_thesis", "record_thesis"]) {
-      expect(describe_(tool, "variant_view")).toMatch(/stored as MEDIUM/);
+      expect(describe_(tool, "variant_view")).not.toMatch(/MEDIUM|STRONG/);
       expect(describe_(tool, "conviction")).not.toMatch(/require/i);
     }
   });

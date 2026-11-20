@@ -64,7 +64,7 @@ A note is evidence for the stock's analyst: the Market Reviewer gives the first 
 
 Each note is saved once, as a shared note to the stocks it names (`SharedNote`, see [Theses](../concepts/theses.md)), with its run and its two fields:
 - **High** starts a look only through a trigger you saved: "Review if the Market Reviewer writes a high note on it" (Settings → Triggers, the News tab), with On fire set to Send to Agent. With that rule saved, the trigger check runs as soon as the notes are saved, and each stock a high note names gets one [trigger run](trigger-runs.md) with the news [skill](../concepts/situations.md), handed the note as what woke it. Without the rule, a high note starts no run. No note is pinned.
-- **Every note,** high, medium or low, is a line in each stock's Activity, read by the next look as one of the stock's newest 8. A medium or low note starts nothing.
+- **Every note,** high, medium or low, is a line in each stock's Activity, and the newest 3 of medium or high impact are in the list every look at the stock reads; a low note is on the Activity tab only. A medium or low note starts nothing.
 
 In each stock's Activity the note is one line: "Agent note to NVDA, AMD", then its two fields as one signal, the conviction chip's flame only on a high-impact note and Bullish, Bearish or Neutral for stronger, weaker or neutral (`components/domain/note-signal.tsx`). A run reads the same line with the words ("· high impact · weaker"). The line carries that stock's price when the note was saved (kept per stock in `SharedNote.prices`; at 7:30 that is the last close). The paragraph under it is the model's own text, its sources drawn as the citation pill. A note that fails to save never costs the digest.
 

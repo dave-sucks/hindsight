@@ -301,7 +301,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
 
 1. Discovery in chat: a screen or the movers list surfaces $NVDA.
 2. Research: `get_stock_data`, `get_market_context`, optional `web_search`.
-3. Scores on the 4-dim composite → 6.5. Setup is clean.
+3. The setup is clean.
 4. `record_thesis({ ticker: 'NVDA', direction: 'LONG', status: 'WATCHING', triggers: [the buy at 195, the floor at 180, ...], core_belief, key_assumptions, invalidation_conditions })` — a stock has triggers and nothing else (2026-11-16).
 5. Thesis row created. `ThesisUpdate(type='CREATED')` written. **Now on the watchlist.**
 6. Run summary bucket: **Added to watchlist**.
@@ -324,7 +324,7 @@ These are the canonical flows. If your code path doesn't fit one of these, it's 
    - Writes `ThesisUpdate(type='CREATED')`.
 3. Sidebar row shows `$TSLA — Awaiting review`.
 4. Next morning's 8am daily run: `get_theses` returns the PENDING thesis with `needsAction = { kind: 'REVIEW_DUE', daysOverdue: 0, pendingFirstReview: true }`.
-5. Agent researches: `get_stock_data`, scoring, etc.
+5. Agent researches: `get_stock_data`, etc.
 6. Calls `update_thesis(thesis_id, ...)` with one of three outcomes:
    - `direction: 'LONG', add_triggers (a buy and a floor), core_belief, …` — promotes PENDING → LONG WATCHING. Stays on watchlist.
    - `direction: 'SHORT', …` — same, bearish.

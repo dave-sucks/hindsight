@@ -30,7 +30,7 @@ const fx = raw as unknown as { analyst: { name: string; setupIds: string[]; maxO
 /** What only the full row carries: the trigger run's row has none of it. */
 const FULL_ONLY = ["history", "recentCatalysts", "fundamentals", "latestEarnings", "catalystsAndEvents", "analystConsensus", "insiderTechnical", "researchData"];
 /** The row's standing keys, on every fire; the cases, the conviction reason and the snapshot ride only on the review clock (ROW_FIELDS, 2026-11-06). */
-const STANDING_KEYS = ["stock", "id", "situations", "said", "triggers", "playbook_checks", "research"];
+const STANDING_KEYS = ["stock", "id", "situations", "triggers", "playbook_checks", "research"];
 // The keys only the review clock sends: the cases and the company line. The snapshot, the conviction reason and the variant view ride with a situation that reads them (a plan problem, a buy).
 const REVIEW_ONLY = ["bull_case", "bear_case", "company"];
 const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>, withIt: string[], without: string[]) => {
@@ -43,10 +43,10 @@ const shortRow = (row: Record<string, unknown>, saved: Record<string, unknown>, 
   expect(full).toHaveProperty("snapshot");
 };
 const DELETED = ["THESIS (id:", "THE SETUP THIS PLAN WAS WRITTEN ON", "DEEP-RESEARCH EXCERPT", "CURRENT TRIGGER LADDER", "POSITION:\n"];
-/** What's been said arrives once, as the row's `said`, not as a block of its own. */
+/** The stock's Activity is the row's `said` and nothing else; these two stocks had only fires and edits, which no agent's list carries, so the row has none. */
 const saidOnce = (prompt: string, ticker: string) => {
-  expect(prompt.split("WHAT'S BEEN SAID ON $").length - 1).toBe(1);
-  expect(prompt).toContain(`"said": "WHAT'S BEEN SAID ON $${ticker}`);
+  expect(prompt).not.toContain(`Activity on $${ticker}`);
+  expect(prompt).not.toContain('"said"');
 };
 
 async function triggerRun(c: Fire) {

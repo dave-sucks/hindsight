@@ -793,7 +793,7 @@ export function useThesisSheetData(
 // Everything under the header, the same on the sheet and the trade page: the
 // price with the chart's selected move, then three tabs. Overview is the
 // timeline (the trade banner, the chart, the plan, the flag line, the newest
-// 8 Activity lines); Research is the analyst's view (ResearchView); Activity
+// 5 Activity lines with a note); Research is the analyst's view (ResearchView); Activity
 // is the whole list.
 //   surface "sheet": the trade banner shows for a held or closed position and
 //                    the stock cards (the levels, Wall Street) close the Overview.
@@ -923,8 +923,6 @@ export function ThesisBody({
   // The page's two columns: the chart and the tabs on the left, the cards on
   // the right. The price row sits above both, with the header, so the chart
   // and the first card start level (the owner, 2026-11-05).
-  // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
-  const recent = state.recent ?? [];
   const noted = state.noted ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
@@ -933,7 +931,7 @@ export function ThesisBody({
   const website = quote?.website ?? null;
   const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
-  const conviction = (state.conviction ?? null) as "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  const conviction = (state.conviction ?? null) as "HIGH" | "MEDIUM" | "LOW" | null;
   const factChips =
     conviction || facts.length > 0 || host ? (
       <div className="flex flex-wrap items-center gap-1.5">
@@ -1005,7 +1003,6 @@ export function ThesisBody({
       {thesis_id ? (
         <ThesisTimelineSection
           thesisId={thesis_id}
-          recentIds={recent.map((r) => r.id)}
           triggers={state.triggers}
           provenance={state.sourceKind ? { sourceKind: state.sourceKind, rationale: state.sourceRationale ?? null } : null}
         />
@@ -1157,6 +1154,8 @@ export function ThesisSheetBody({ thesis_id, ticker }: ThesisSheetBodyProps) {
           status={state.status}
           agentWatchDays={agentWatchDays(state.triggers)}
           retiredReason={state.retiredReason ?? null}
+          outlook={state.outlook ?? null}
+          outlookReason={state.outlookReason ?? null}
           analystId={state.analystId}
           thesisId={thesis_id}
           onSent={data.refresh}

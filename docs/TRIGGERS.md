@@ -171,19 +171,22 @@ The motivating failure for sell rules at all is still IONS: bought $73.83,
 day-one floor at $65, ran +17%, three rubber-stamp reviews, then crashed and
 fired the day-one floor for a LOSS.
 
-As stored on 2026-09-27, read from the rows of the account that trades
+As stored on 2026-11-19, read from the rows of the account that trades
 (`Account.triggers` and `AgentConfig.triggers`, filtered to the account the
 enabled analysts belong to — the database holds a second, empty account whose
-rows are not these):
+rows are not these). The account's rules were reviewed in expert review unit
+1.1 (`docs/plans/EXPERT_REVIEW_1_1.md`), which also proposes two more to the
+owner: a look on a big day up and on a big day down (7% from yesterday's close
+on twice the normal volume, Send to Agent). A new account starts with those
+two and the rest of this list (`accountSeedTriggers`, `seed-account.ts`).
 
 | Level | Rule | Does |
 |---|---|---|
-| Account | 6% off the high since we bought | EXIT — asks the analyst |
-| Account | up 7% in a day | ADD |
-| Account | every 7 days | REVIEW |
-| Account | reports earnings within 3 days | REVIEW |
-| Account | within 1 day after earnings | REVIEW — asks the analyst; a stock's own after-earnings review replaces it |
-| Account | a material filing | REVIEW |
+| Account | 6% off the high since we bought | EXIT — Send to Agent |
+| Account | every 7 days | REVIEW — the clock of a stock with none of its own |
+| Account | reports earnings within 5 days | REVIEW — Flag for Review |
+| Account | within 1 day after earnings | REVIEW — Send to Agent; a stock's own after-earnings review replaces it |
+| Account | a material filing | REVIEW — Flag for Review; a red filing on a holding is looked at the same day |
 | PEAD Specialist | up 10% from entry · down 12% from entry | REVIEW |
 | Catalyst Event PM | 10 days before the event date | REVIEW |
 | Catalyst Event PM | 30 days after the event date | REVIEW |
@@ -195,10 +198,12 @@ rows are not these):
 
 Two things the table used to say that the rows do not:
 
-- Nothing adds on a down day. The Secular Compounder's "down 7% in a day →
-  add" and the analysts' own sales (PEAD's 12% and the Compounder's 25% off
-  the high) were removed from the starter rules on 2026-10-27; the account's
-  6% off the high governs every holding.
+- Nothing adds on a down day, and nothing adds on an up day either: the
+  account's "up 7% in a day → add" is gone from the account and from a new
+  account's rules. The Secular Compounder's "down 7% in a day → add" and the
+  analysts' own sales (PEAD's 12% and the Compounder's 25% off the high) were
+  removed from the starter rules on 2026-10-27; the account's 6% off the high
+  governs every holding.
 - The Catalyst Event PM has no "down 10% → review". Its reviews are tied to the
   event date; the thesis carries the stop.
 

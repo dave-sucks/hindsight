@@ -12,12 +12,6 @@
  * to choose a value is not here: when a value is wrong, the tool's reply says
  * why (thesis-belief.ts for the belief fields, record_thesis and
  * update_thesis for conviction, the trigger ops for a refused trigger edit).
- *
- * `writer` is the writer's form: its score parts carry no number range in the
- * schema, as the writer's fields never did. The range is in the words, and the
- * writer's decision check refuses a score outside it (thesis-research/
- * decision.ts). The writer's tool is not sent in Anthropic's strict mode, on
- * purpose (run-thesis-writer.ts says why).
  */
 import { z } from "zod";
 import { NO_SETUP_FITS, SETUP_IDS } from "@/lib/agent/knowledge/setups";
@@ -51,8 +45,15 @@ export const TRIGGER_EDITS = {
 export const VERDICTS = ["STRONGER", "UNCHANGED", "WEAKER", "BROKEN"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-export function thesisFields(opts: { writer?: boolean } = {}) {
-  const score = (max: number) => (opts.writer ? z.number() : z.number().min(0).max(max));
+/** What we expect of the stock from here. */
+export const OUTLOOKS = ["BULLISH", "NEUTRAL", "BEARISH"] as const;
+export type Outlook = (typeof OUTLOOKS)[number];
+
+/** How confident we are in the outlook and its reasons, lowest first. */
+export const CONVICTIONS = ["LOW", "MEDIUM", "HIGH"] as const;
+export type Conviction = (typeof CONVICTIONS)[number];
+
+export function thesisFields() {
   // The four notes went 2026-11-03: nothing read them. A sent note is kept; none is asked for.
   return {
     direction: z
@@ -97,15 +98,20 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
         "Specific things you could observe in the business that would prove the thesis wrong, each a reading and where it is read (a guidance cut at the next report, gross margin under 70% in the 10-Q, the largest customer leaving), two or more on LONG or SHORT. " +
           "Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price. Exits are graded against them; on a PASS they are what would change your mind.",
       ),
-    conviction: z
-      .enum(["STRONG", "HIGH", "MEDIUM", "LOW"])
+    outlook: z
+      .enum(OUTLOOKS)
       .describe(
-        "Your own view, apart from the score: STRONG a top call to buy in size now, HIGH a clear edge you want in size, MEDIUM probably works, LOW tracking without enthusiasm. Comes with conviction_rationale.",
+        "What you expect of the stock from here: BULLISH, NEUTRAL or BEARISH. It can change with no news about the company: a rally that uses up the upside turns BULLISH into NEUTRAL. Comes with outlook_reason.",
       ),
-    conviction_rationale: z.string().describe("Why you feel this strongly about the company and the stock, in a few plain sentences: the business and the price, not the chart restated."),
-    variant_view: z
-      .string()
-      .describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. A STRONG or HIGH call without one is stored as MEDIUM."),
+    outlook_reason: z.string().describe("Why this outlook, in a sentence: what you expect of the stock from here and why."),
+    conviction: z
+      .enum(["HIGH", "MEDIUM", "LOW"])
+      .describe(
+        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. " +
+          "It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale.",
+      ),
+    conviction_rationale: z.string().describe("Why you are this confident, in a few plain sentences: the evidence for the belief. A move in the price or the chart is not evidence; what the price already reflects can be part of the belief."),
+    variant_view: z.string().describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. Leave it out when you don't."),
     live_price: z
       .number()
       .describe(
@@ -116,8 +122,13 @@ export function thesisFields(opts: { writer?: boolean } = {}) {
       .describe("One line on how this buy differs from this analyst's sale of the stock in the last 14 days. Needed only when the buy is at or above that sale's price."),
 
     // A review's verdict, and the earlier line a note answers (update_thesis only; a string, so a wrong word comes back by name).
-    verdict: z.string().describe("Your verdict on the thesis after this review: STRONGER, UNCHANGED, WEAKER or BROKEN. Comes with verdict_line."),
-    verdict_line: z.string().describe("One sentence: which assumption or which 'would prove it wrong' line moved the verdict, with the number."),
+    verdict: z
+      .string()
+      .describe(
+        "What the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is STRONGER. STRONGER: it supports the belief more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the belief, not fatally. " +
+          "BROKEN: something written under 'would prove it wrong' has happened, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line.",
+      ),
+    verdict_line: z.string().describe("One sentence: what happened and which assumption or 'would prove it wrong' line it touched, when there is one."),
     answers_update_id: z
       .string()
       .describe("The id of the earlier Activity line this note answers, when it answers one (the pre-report note, after the report): the [id …] at the end of that line."),

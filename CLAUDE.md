@@ -181,9 +181,18 @@ PROPOSAL_* rows are never trusted), and the fill of an order never proposed.
 The homepage Activity is the same lists cut to trades and watch status by
 stored fields alone (`lib/thesis/account-activity.ts`), beside the attempts
 that never became a proposal (`lib/portfolio/attempt-outcomes.ts`). The Activity tab shows the whole list,
-and the next run on the stock reads the newest 8 (`RECENT_ITEMS`) exactly as
-they read in the feed (`saidBlock` in `lib/agent/stock-context.ts`); the
-Activity tab marks where those 8 end. The Overview's "Agent insights" is a
+and every agent reads it as one list, newest first, one sentence per line
+(`activityRead` in `lib/agent/stock-context.ts`, the one builder of every
+agent's read). The rule is a filter and nothing else, over the last 45 days (`READ_DAYS`): the last 3 reviews (a
+run's line with a note; one per run), the newest 3 news notes (the Market
+Reviewer's, medium or high impact), the owner's newest 3 notes, and the owner's last decline that
+carries words (every kind has a number, `READ`);
+trigger edits, trigger fires, proposal steps with no words and low-impact
+news are left out.
+Each sentence is what it is, who wrote it, when, the price then, the
+verdict's word and the note. The Portfolio Manager's rows carry the same list. A trigger the owner
+set says when and what it was on its own line (`ownerSets`, read off the same
+lines). The Overview's "Agent insights" is a
 different cut (the owner's call, 2026-11-04): the newest 5 lines with a
 written paragraph (`notedItems`, `NOTED_ITEMS`), a trigger fire's figures
 not counting as one. A waiting proposal is pinned
@@ -383,7 +392,7 @@ plus `get_stock_data`.
   and Settings all save through `normalizeAnalystPatch` there.
   **Position sizing is three plain settings:**
   `minPositionSize` (smallest trade — a normal buy), `maxPositionSize`
-  (largest trade — a STRONG/HIGH conviction buy), `maxPositionTotal` (most
+  (largest trade — a HIGH conviction buy), `maxPositionTotal` (most
   in one stock — where adding to a winner stops; 0 = twice the largest
   trade). The agent does not size trades: inside a run, `place_trade` and
   `add` have no size field at all (the schema

@@ -9,17 +9,21 @@
 
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { accountSeedTriggers } from "./seed-account";
+import { accountSeedTriggers, unseededAccountFallback } from "./seed-account";
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
 import { triggerSlot } from "./condition/slot";
 
 describe("accountSeedTriggers", () => {
-  it("carries the up-7% add prompt and no sell rule — the down-7% add and the sell rules live on each analyst (DAV-279)", () => {
+  it("carries the trail as its one sale and no add — an add is a playbook's line on the stock (expert review 1.1)", () => {
     const seed = accountSeedTriggers();
-    expect(seed.filter((t) => t.action === "ADD").map((t) => t.predicate)).toEqual([
-      { watch: "move", is: "above", value: 7, variable: "prev_close" },
-    ]);
-    expect(seed.filter((t) => t.action === "EXIT")).toEqual([]);
+    expect(seed.filter((t) => t.action === "ADD")).toEqual([]);
+    expect(seed.filter((t) => t.action === "EXIT").map((t) => t.predicate)).toEqual([{ watch: "move", is: "below", value: 6, variable: "peak" }]);
+  });
+
+  it("looks before a report in time for a morning run, and the day after at once", () => {
+    const seed = accountSeedTriggers();
+    expect(seed.find((t) => shapeName(t.predicate) === "report:before")).toMatchObject({ predicate: { value: 5 }, fireMode: "NEXT_MORNING" });
+    expect(seed.find((t) => shapeName(t.predicate) === "report:after")).toMatchObject({ predicate: { value: 1 }, fireMode: "ASK_NOW" });
   });
 
   it("carries the earnings rules — a look before the report and a look on it", () => {
@@ -53,5 +57,11 @@ describe("accountSeedTriggers", () => {
   it("emits one rung per bucket so it resolves without self-collision", () => {
     const seed = accountSeedTriggers();
     expect(new Set(seed.map(triggerSlot)).size).toBe(seed.length);
+  });
+
+  it("the unseeded fallback keeps the same ids on every read, so a trail that fired doesn't fire on every check", () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    expect(unseededAccountFallback("a").map((t) => t.id)).toEqual(unseededAccountFallback("a").map((t) => t.id));
+    warn.mockRestore();
   });
 });

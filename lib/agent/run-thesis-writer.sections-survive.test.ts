@@ -50,6 +50,7 @@ jest.mock("@/lib/agent/watchlist-symbols", () => ({ getWatchlistSymbols: jest.fn
 jest.mock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: jest.fn().mockResolvedValue(null) }));
 
 import rawFixtures from "@/lib/agent/__fixtures__/writer-save-refusals-2026-09-15.json";
+import { ratedNow } from "@/lib/replay/rated";
 import { prisma } from "@/lib/prisma";
 import { validateThesisDecision, type ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import { setupsForAnalyst } from "@/lib/agent/knowledge/setups";
@@ -105,7 +106,7 @@ const storedRow = {
 
 
 function research(): WriterResearchPhaseOutput {
-  const v = validateThesisDecision(fx.submit, {
+  const v = validateThesisDecision(ratedNow(fx.submit), {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,

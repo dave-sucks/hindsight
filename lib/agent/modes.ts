@@ -151,7 +151,6 @@ export const MODES: Record<AgentMode, ModeConfig> = {
       // Write — manage existing book ONLY, one job a tool (2026-11-18)
       "write_note",
       "edit_triggers",
-      "set_conviction",
       "set_catalyst_date",
       "stop_watching",
       "watch_again",

@@ -34,7 +34,19 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["Then write the note with `write_note(thesis_id, text)`", "Then write the note with `write_note(thesis_id, note)`"],
   ["   \u2022 Not worth one AND you would not want the name back \u2192 `record_thesis(direction:\"PASS\", reasoning_summary:\"...\", invalidation_conditions:[...])`. Terminal:", "   \u2022 Not worth one AND you would not want the name back \u2192 `pass_on_stock(ticker, reason)`: the way to record \"we looked, and we pass\". Terminal:"],
   ["(\"close my $NVDA position right now\" \u2192 just call close_position)", "(\"close my $NVDA position right now\" \u2192 just call sell)"],
-  ["For read-only and small edits (watchlist add, update_thesis with new target), just do it.", "For read-only and small edits (watchlist add, a trigger edit), just do it."],
+  ["For read-only and small edits (watchlist add, update_thesis with new target), just do it.", "For read-only and small edits (watchlist add, a trigger edit), just do it."],  // How a look ends (2026-11-20): the chat's line on its tool, the write-up's note, and the Portfolio Manager reading an analyst's rating.
+  [
+    "acts for the stock's own analyst, under its rules and the approval screen.",
+    "acts for the stock's own analyst, under its rules and the approval screen. `set_conviction` changes a stock's conviction or its outlook at the owner's word, each with its reason.",
+  ],
+  [
+    "and whether you agree, and if not, what you would do instead.",
+    "and whether you agree, and if not, what you would do instead. Your note is the reason on a trade already made, so it carries no verdict and changes no conviction or outlook: the analyst's next look does that.",
+  ],
+  [
+    "What we paid is not part of the answer.",
+    "What we paid is not part of the answer. Each stock's outlook and conviction are its analyst's rating, with the reason beside each. A holding its own analyst rates neutral or bearish is the first place to look for a sale or a trim. Where you disagree with a rating, send the stock to research and say why.",
+  ],
 ];
 
 /** The same renames in the situation texts (lib/agent/situations.ts), the trigger run's lines among them. */
@@ -97,14 +109,19 @@ export const WHAT_YOU_CAN_DO: ReadonlyArray<readonly [string, string]> = [
   [SALE_FIRED_BEFORE, situationText("PROTECTIVE_SALE", true)],
 ];
 
+/** A fired buy is left as it is once proposed (2026-11-20): the trigger run's re-set after a blown-through price is a holding's sale and gain triggers'. */
+export const PASSED_BUY_TEXT: ReadonlyArray<readonly [string, string]> = [
+  ["After a move that blew through a trigger's price, re-set it", "On a stock we hold, after a move that blew through a sale's or a gain trigger's price, re-set it"],
+];
+
 /** An old instruction or situation text with the tool renames applied, then T1's text (./t1-text.ts); a trigger run's promoted stock is answered by its note. */
 export function withNewToolNames(text: string, runMode?: string): string {
-  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduce((t, [was, is]) => t.split(was).join(is), text);
+  const out = [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO, ...PASSED_BUY_TEXT].reduce((t, [was, is]) => t.split(was).join(is), text);
   return runMode === "INTRADAY_TACTICAL" ? out.split("Answered: place_trade, or that watch_again.").join("Answered: place_trade, or that write_note.") : out;
 }
 
 /** The other way: today's text with T1's text and the renames undone, to hash against what main sent before them. */
 export function withOldToolNames(text: string): string {
   const back = text.split("Answered: place_trade, or that write_note.").join("Answered: place_trade, or that update_thesis.");
-  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO].reduceRight((t, [was, is]) => t.split(is).join(was), back);
+  return [...TOOL_RENAMES, ...SITUATION_RENAMES, ...T1_TEXT, ...CHAT_PASS_TEXT, ...LOOK_AGAIN_TEXT, ...WHAT_YOU_CAN_DO, ...PASSED_BUY_TEXT].reduceRight((t, [was, is]) => t.split(is).join(was), back);
 }

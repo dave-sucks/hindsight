@@ -70,11 +70,11 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
       expect(docu).toBeDefined();
       // The owner's note and the resized approval are no situation: nothing asks a run to answer them.
       expect(docu!.situations).toEqual([]);
-      expect(docu!.context.startsWith("WHAT'S BEEN SAID ON $DOCU — its newest ")).toBe(true);
-      expect(docu!.context).toContain('09-30 13:05 · $67.90 · Your note — "Bought a starter');
+      expect(docu!.context.startsWith("Activity on $DOCU in the last 45 days, newest first")).toBe(true);
+      expect(docu!.context).toContain("Note by you, Sep 30, 1:05 PM at $67.90: Bought a starter");
       expect(docu!.context).toContain("IAM stalls under 17% of ARR");
-      // The resized approval, as the Activity tab titles it.
-      expect(docu!.context).toContain("Bought 120 shares");
+      // The resized approval carries no words, so it is on the Activity tab and not in the agent's list.
+      expect(docu!.context).not.toContain("Bought 120 shares");
     } finally {
       jest.useRealTimers();
     }

@@ -38,7 +38,7 @@ import { agentWatchTooltip } from "@/lib/agent/triggers/agent-watch";
 import { getThesisStatusDisplay, type ThesisStatus } from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
 
-export type Conviction = "STRONG" | "HIGH" | "MEDIUM" | "LOW";
+export type Conviction = "HIGH" | "MEDIUM" | "LOW";
 
 // ── StatusPill ──
 // Single Badge with status dot + label. A watched name the agent revisits on
@@ -82,6 +82,30 @@ export function StatusPill({
   );
 }
 
+// ── OutlookPill ──
+// What we expect of the stock from here, beside the status pill: Bullish,
+// Neutral or Bearish, with its reason on hover; "Not rated" until a look or
+// the Writer has judged it. The badge is used as it is, with no class of ours.
+const OUTLOOK_DOT: Record<string, string> = { BULLISH: "bg-positive", NEUTRAL: "bg-muted-foreground", BEARISH: "bg-negative" };
+
+export function OutlookPill({ outlook, reason = null }: { outlook: string | null | undefined; reason?: string | null }) {
+  const rated = outlook && OUTLOOK_DOT[outlook] ? outlook : null;
+  const pill = (
+    <Badge variant="secondary">
+      {rated ? <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", OUTLOOK_DOT[rated])} /> : null}
+      {rated ? `${rated.charAt(0)}${rated.slice(1).toLowerCase()}` : "Not rated"}
+    </Badge>
+  );
+  const why = rated ? reason?.trim() : "No look at this stock has set its outlook yet.";
+  if (!why) return pill;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={pill} />
+      <TooltipContent side="bottom">{why}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 // ── ConvictionChip ──
 // The writer's conviction as one chip — "🔥 High conviction" (the owner,
 // 2026-11-03: the tier with the flame, nothing else). The flame marks the top
@@ -91,7 +115,7 @@ export function StatusPill({
 export function ConvictionChip({ conviction }: { conviction: Conviction | null }) {
   if (!conviction) return null;
   const label = `${conviction.charAt(0)}${conviction.slice(1).toLowerCase()} conviction`;
-  const hot = conviction === "STRONG" || conviction === "HIGH";
+  const hot = conviction === "HIGH";
   return (
     <Badge variant="fact" shape="square">
       {hot ? <FlameIcon className="size-3" /> : null}
@@ -106,6 +130,9 @@ export interface ThesisHeaderProps {
   agentWatchDays: number | null;
   /** How a retired thesis ended, for the pill (Sold, Dropped). */
   retiredReason?: string | null;
+  /** What we expect of the stock from here, and why. */
+  outlook?: string | null;
+  outlookReason?: string | null;
   /** The owning analyst; with `thesisId`, the menu offers Send to agent. */
   analystId: string | null;
   thesisId?: string;
@@ -168,6 +195,8 @@ export function ThesisHeader({
   status,
   agentWatchDays,
   retiredReason,
+  outlook,
+  outlookReason,
   analystId,
   thesisId,
   onSent,
@@ -191,6 +220,7 @@ export function ThesisHeader({
           </Button>
         ) : null}
         <StatusPill status={status} agentWatchDays={agentWatchDays} retiredReason={retiredReason} />
+        {status === "HOLDING" || status === "WATCHING" ? <OutlookPill outlook={outlook} reason={outlookReason} /> : null}
         <div className="ml-auto flex items-center gap-0.5">
           <PinButton ticker={ticker} />
           <ThesisActionsMenu ticker={ticker} analystId={analystId} thesisId={thesisId} onSent={onSent} closeTrade={closeTrade} />

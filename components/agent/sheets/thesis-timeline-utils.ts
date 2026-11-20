@@ -296,8 +296,8 @@ const REVIEW_KINDS: Partial<Record<Watch, (c: Condition) => string>> = {
  * (2026-11-03 on), so the title holds after the rule is edited or removed;
  * an older line looks its rule up by id in the live list, and one since
  * removed is "Review". The verdict's word follows ("Pre-earnings review ·
- * weaker"). The agent's copy of the line carries the same title (saidLine in
- * lib/agent/stock-context.ts).
+ * weaker"). The agent's own list names every one of them "Review"
+ * (lib/agent/stock-context.ts).
  */
 export function reviewTitle(u: TimelineUpdate, triggers?: ReadonlyArray<TitleTrigger>): TitleSegments {
   const kept = u.triggerAction && u.triggerCondition != null ? { action: u.triggerAction, predicate: u.triggerCondition } : null;
@@ -606,12 +606,18 @@ const SCALAR_LINES: Array<{
   { key: "targetPrice", label: "Upside", fmt: fmtLevel },
   { key: "stopLoss", label: "Floor", fmt: fmtLevel },
   { key: "entryPrice", label: "Buy", fmt: fmtLevel },
+  { key: "outlook", label: "Outlook", fmt: fmtOutlook },
   { key: "conviction", label: "Conviction", fmt: fmtPlain },
   { key: "horizon", label: "Horizon", fmt: fmtPlain },
 ];
 
 function fmtLevel(v: unknown): string {
   return typeof v === "number" ? `$${v.toFixed(2)}` : "—";
+}
+
+/** "Bullish"; a stock with no outlook yet reads "not rated". */
+function fmtOutlook(v: unknown): string {
+  return typeof v === "string" && v ? `${v.charAt(0)}${v.slice(1).toLowerCase()}` : "not rated";
 }
 
 function fmtPlain(v: unknown): string {

@@ -140,11 +140,10 @@ migration applied while the field is still in the schema (2026-09-08).
 ## 12. Analyst settings are what the principal thinks they are
 
 ```sql
-SELECT name, "minConfidence", "minPositionSize", "maxPositionSize", "maxPositionTotal", "runDaysOfWeek", "tradingEnvironment"
+SELECT name, "minPositionSize", "maxPositionSize", "maxPositionTotal", "runDaysOfWeek", "tradingEnvironment"
 FROM "AgentConfig" WHERE enabled ORDER BY name;
 ```
-Bad: a minimum confidence no watch plan can clear (compare against `scoring->>'composite' * 10`
-on the analyst's WATCHING rows); smallest = largest trade when a conviction band was intended.
+Bad: smallest = largest trade when a conviction band was intended.
 
 ---
 

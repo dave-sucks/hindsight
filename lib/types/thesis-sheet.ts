@@ -169,12 +169,6 @@ export interface ThesisDossier {
    * not" is the review state the sheet now shows.
    */
   lastReviewedAt: string | null;
-  /**
-   * The stock's newest 8 Activity lines, newest first: the same 8 every run
-   * is handed (lib/thesis/activity-feed.ts). The Activity tab marks where
-   * they end.
-   */
-  recent: ActivityItem[];
   /** The newest 5 lines with a written paragraph, newest first: the Overview's Agent insights. */
   noted: ActivityItem[];
   triggers: Trigger[];
@@ -210,7 +204,10 @@ export interface ThesisDossier {
   // ThesisSheet header keys off `conviction`; tooltip shows
   // `convictionRationale`; the variantView callout block keys off
   // `variantView` (rendered only when present).
-  conviction: "STRONG" | "HIGH" | "MEDIUM" | "LOW" | null;
+  /** What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH, and why. */
+  outlook?: string | null;
+  outlookReason?: string | null;
+  conviction: "HIGH" | "MEDIUM" | "LOW" | null;
   convictionRationale: string | null;
   variantView: string | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
