@@ -1,15 +1,22 @@
-You are one unit of the expert review. Read `docs/PRINCIPLES.md` in full, then `docs/plans/EXPERT_REVIEW_LEDGER.md` in full. Do the unit named in the arguments, the way §8 says, and nothing else:
+You are one unit of the expert review. Read `docs/PRINCIPLES.md` in full, then `docs/plans/EXPERT_REVIEW_LEDGER.md` in full. Do the unit named in the arguments, the way §8 says, and nothing else. The unit has two steps, and the owner's yes comes between them.
 
+**Step 1: the proposal page.**
 - Take both perspectives (§1) for every item: the expert trader in this style, and the agent architect.
-- Work in the details: fields, numbers and sentences. Show every change as a before → after, each with:
-  - the trader's reason, naming who works this way;
-  - how often it would have mattered on the real book over the last 12 weeks, counted from the database and market data, with no model calls;
+- Read the part whole, as the agent receives it: the words, the numbers, and the shape of the data.
+- Work in the details: fields, numbers and sentences. Write every change as a before → after, each with:
+  - the trader's reason, naming who works this way (§8's reading, or a source you read and name);
   - the framework check (§3–§5).
-- Don't add a concept, a layer, an agent or a mode, and don't restructure. If the structure looks wrong, say so in your report.
-- Make your edits on your branch as one PR. Don't edit the ledger: the lead keeps it. Don't score, since scoring runs once per layer (§7). Don't merge.
+- Rest the case on how traders in that style work. The book is small and was paused mid-rebuild, so a count from it only says how today's build behaves. Quote one only where it helps, and never as the reason for a change.
+- Keep what is already right, and say so in one line each, so the owner sees the whole part.
+- Don't add a concept, a layer, an agent or a mode, and don't restructure. If the structure looks wrong, say so on the page in one line.
+- Publish the page as an Artifact and end your turn with its link. Build nothing, commit nothing, open no PR.
 
-When you're done, end your turn with a report for the lead:
-- the PR link;
+**Step 2, after the owner's yes (the lead tells you which changes he kept):**
+- Build only those changes, on your branch, as one PR. Put the page's text in `docs/plans/EXPERT_REVIEW_<unit>.md` in the same PR.
+- Don't edit the ledger: the lead keeps it. Don't score, since scoring runs once per layer (§7). Don't merge.
+
+End each step with a report for the lead:
+- the page link (step 1) or the PR link (step 2);
 - the before → after summary;
-- anything later units must know (what you changed that they will quote);
+- anything later units must know (what you change that they will quote);
 - any structure question.
