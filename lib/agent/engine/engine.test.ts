@@ -165,18 +165,18 @@ describe("the portfolio digest", () => {
 });
 
 describe("the Market Reviewer", () => {
-  it("is sent its old instructions; its context is the market numbers, the portfolio, the book and its last output", async () => {
+  it("is sent its old instructions; its context is the market numbers, the portfolio, the book, what each thesis rests on and its last output", async () => {
     const built = composeAgentRequest(MARKET_REVIEWER, { now: NOW, environment: "LIVE" }, {
       pieces: [
         { id: "market_numbers", text: "### Market numbers (as of 9:30 AM ET)\nn" },
         { id: "portfolio_snapshot", text: "### Portfolio snapshot\ns" },
       ],
-      context: { the_book: "## The book\nb", last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
+      context: { the_book: "## The book\nb", the_cases: "## What each thesis rests on\nc", last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
     });
     expect(built.instructions).toBe(REVIEWER_GOLDEN.system);
-    expect(built.parts.map((p) => p.title)).toEqual(["Its instructions (market-reviewer.md)", "The date and account", "Market numbers", "The portfolio", "The book", "Its last output"]);
+    expect(built.parts.map((p) => p.title)).toEqual(["Its instructions (market-reviewer.md)", "The date and account", "Market numbers", "The portfolio", "The book", "What each thesis rests on", "Its last output"]);
     expect(built.message.startsWith(`${dateLine(NOW, "LIVE")}\n\n## Market and portfolio\n\n### Market numbers (as of`)).toBe(true);
-    expect(built.message.endsWith("\n\n## The book\nb\n\n## Your notes in the last 5 days\n- none\n\n## Your last digest\nd")).toBe(true);
+    expect(built.message.endsWith("\n\n## The book\nb\n\n## What each thesis rests on\nc\n\n## Your notes in the last 5 days\n- none\n\n## Your last digest\nd")).toBe(true);
     expect(MARKET_REVIEWER.providerTools).toEqual(["web_search"]);
     expect(providerToolNames(MARKET_REVIEWER)).toEqual(["OpenAI's web search"]);
   });

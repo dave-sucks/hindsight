@@ -4,7 +4,8 @@
  * lib/inngest/functions/market-reviewer.ts). One call with OpenAI's own web
  * search; its reply is the digest and its notes on our stocks. Its
  * instructions are its own text, the same on every run. Its context: the
- * market numbers, the portfolio, the book, and its own last digest and notes.
+ * market numbers, the portfolio, the book, what each thesis rests on, and its
+ * own last digest and notes.
  * The schedule writes it no message: the date line is its start.
  */
 import { MODES } from "@/lib/agent/modes";
@@ -56,7 +57,7 @@ export const MARKET_REVIEWER: RunnableRecord = {
   maxOutputTokens: 20_000,
   reply: { name: "market_review", schema: (input) => replySchema(input.stocks ?? []) },
   instructions: ["market-reviewer.md"],
-  context: ["market_numbers", "portfolio", "the_book", "last_output", "message"],
+  context: ["market_numbers", "portfolio", "the_book", "the_cases", "last_output", "message"],
   tools: [],
   providerTools: ["web_search"],
   output: "One reply (JSON): the digest, saved for the day, and its notes (tickers: one of the stocks in this run's book), each saved on the stocks it names. A high note starts a look on a stock only through a trigger the owner saved for it (Review on a high note).",
