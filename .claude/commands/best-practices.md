@@ -1,9 +1,7 @@
-Read `docs/PRINCIPLES.md` in full.
+Read `docs/PRINCIPLES.md` in full. It is the standard for every agent change in this codebase, from the architecture down to the words in a sentence.
 
-This is the load-bearing design rule for every agent fix and feature in this codebase. Before writing any code, confirm which layer the change belongs in:
+Before writing anything, settle two things:
+- Which home the change belongs in (§3, §4), and, for a failure, which layer the fix goes in (§6): a refusal in a tool, a fact, or the instructions.
+- Whether it survives both perspectives (§1): would an expert trader in this style do exactly this, and is it written the way §5 says?
 
-- Layer 1 (tool gate) — refuses the bad call server-side
-- Layer 2 (tool result shape) — pre-digests state so the agent doesn't have to compute it
-- Layer 3 (prompt) — identity, goals, judgment only — never procedures
-
-If you're about to add text to a prompt to fix an agent failure, stop and ask whether a tool gate or result shape would be the right fix instead.
+If you're about to add text to an agent's instructions to fix a failure, stop and ask whether a refusal or a fact is the right fix instead.

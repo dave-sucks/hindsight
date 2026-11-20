@@ -1,21 +1,61 @@
-# Hindsight — Agent Design Principles
+# How we build agents
 
-> **Evergreen doctrine.** This doc describes how to build and debug agent behavior in Hindsight.
-> It is not scoped to any single PR or feature — it's the architectural backbone that every
-> implementation decision should be checked against.
+> The standard for every agent in Hindsight, from the architecture down to the words in a sentence. Read it before you change an agent, a playbook, a rule, a context item, a skill or a tool.
+>
+> It is a living document. When we learn something that should hold for every future change, it goes here, in the same PR. It holds rules, not history: the history is in git and the PRs.
 
 ---
 
-## An agent is five things (2026-11-19)
+## 1. Two perspectives, always both
 
-Every agent in Hindsight is built from five parts, each with exactly one home in the code. This is the shape Anthropic publishes for agents ([context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents), [writing tools](https://www.anthropic.com/engineering/writing-tools-for-agents)). If what you are building doesn't fit one of the five, the design is wrong.
+Every change is judged twice.
+
+**The expert trader** has run money for twenty years in the style the change touches: breakouts, pullbacks, earnings drift, compounders, biotech events. They ask three things:
+- What exactly would I look at here?
+- What number would make me act?
+- What would I do?
+
+Every field, rule and sentence has to survive those questions in the details: the exact column, the exact percentage, the exact verb. "Review if below the 200-day average" and "Stop watching if below the 200-day average on the close" are different decisions. The trader knows which one their style means, and why.
+
+**The agent architect** builds agents for a living and keeps up with how the best ones are built. They ask three things too:
+- Is this in its one right home?
+- Will a model read it the way we mean it?
+- Can we show the change made the agent better?
+
+When the two disagree, the trader decides what the firm does. The architect decides where it lives and how it is written.
+
+---
+
+## 2. How a trading firm works, and where each part lives here
+
+A disciplined trader approaches every stock through the same few layers, and each layer has one home here.
+
+| What the trader has | What it means on a real desk | Home in Hindsight | Today |
+|---|---|---|---|
+| A strategy for each kind of stock | Stocks like this are always approached the same way: buy the breakout from a base on volume; buy the pullback to a rising average; buy after an earnings gap that holds; run up into an event and get out before it. Each strategy comes with its own sell rules. | Playbooks (`lib/agent/knowledge/playbook-templates.ts`, Settings → Playbook). The Writer names a stock's playbook, and code writes its triggers from the chart. | Built. The rules themselves are not yet reviewed (§8). |
+| A plan for one stock | After studying one company: these are my levels, this is what would make me buy, add, trim or leave, and this is when I look again. | The stock's own triggers (`edit_triggers`), each with its reason. | Built |
+| Rules for everything, by the numbers | Any stock that moves 7% in a day on heavy volume gets a look. Every stock gets a look the day after it reports. These apply whatever the playbook. | Account rules (Settings → Triggers) and analyst rules (the analyst's Triggers tab), inherited by every stock. | Partly. The earnings rule is set; a big-day rule is not. |
+| News that matters whatever the price does | A CEO resigns, a drug is rejected, a deal is announced. The chart can be flat while the decision changes. | The Market Reviewer's notes, each marked by impact. | Partly. "High" is over-used, and it wakes only the next morning run. |
+| The book and the market | Before any buy: how many positions, how much in one sector, how much cash, and what the market is doing. This can overrule a buy on one stock. | Position sizing (`lib/agent/position-sizing.ts`) and the Portfolio Manager. | Partly. Concentration and market conditions have no written rules. |
+| A scan for new names | Every night the whole market is screened for stocks that fit a strategy. A rule that finds new stocks is a scan, not a trigger: triggers only watch stocks we already follow. | Discovery and its screens (`run_screen`). | Built, and switched off |
+| Looking back | Every closed trade is graded: did the plan work, and did we follow it? | The trade evaluator, the weekly accuracy report, Performance. | Partly |
+
+Two rules hold across the layers.
+- **Which rule wins.** A stock's own trigger beats every rule it inherits from its analyst or the account. When two triggers on one stock disagree, for example a playbook's "Stop watching below the 200-day" and an account rule that buys below it, that is a bug in the rules. Fix it in the rules; don't leave an agent to settle it run by run.
+- **What may trade by itself.** An account or analyst rule can wake an agent, or sell by itself (Auto-sell). Only the owner can make a buy, add or trim Auto, and only on one stock (`lib/agent/triggers/fire-mode.ts`). Every other fire wakes an agent, and the agent decides.
+
+---
+
+## 3. An agent is five things
+
+Every agent is built from five parts, each with exactly one home in the code. This is the shape Anthropic publishes for agents ([context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents), [writing tools](https://www.anthropic.com/engineering/writing-tools-for-agents)). If what you are building doesn't fit one of the five, the design is wrong.
 
 | Part | Home | What it is |
 |---|---|---|
-| Instructions | `lib/agent/engine/agents/<agent>.md` | The agent's job, the same on every run. Shared text only by import: `@rules.md` (house rules, how you write), `@research-rules.md` (the Writer, the Holding refresh). No code writes instruction text. |
+| Instructions | `lib/agent/engine/agents/<agent>.md` | The agent's job, the same on every run. Shared text comes in only by import: `@rules.md` (house rules, how you write) and `@research-rules.md` (the Writer, the Holding refresh). No code writes instruction text. |
 | Context | `lib/agent/context/`, ticked on `lib/agent/engine/agents/<agent>.ts` | Facts loaded up front, one loader per fact, chosen by what the run is about (a stock, an analyst, the account, the chat). Any agent can reuse any fact. Data, never rules. |
-| Tools | `lib/agent/tools/`, listed on the record | One job each, only the fields the action needs. Code fills what it knows (`fromRun`, `schemaFor`). A rule is a refusal in the tool's code that says what to do instead. |
-| Message | Whoever starts the run | You, another agent's brief, a trigger fire, a fill, the schedule. |
+| Tools | `lib/agent/tools/`, listed on the record | One job each, with only the fields the action needs. Code fills what it knows (`fromRun`, `schemaFor`). A rule is a refusal in the tool's code that says what to do instead. |
+| Message | Whoever starts the run | You, another agent's brief, a trigger fire, a fill, or the schedule. |
 | When it runs | `SCHEDULE` in `lib/agent/engine/schedule.ts`, or an event | Plus one automatic date line on every run. |
 
 The run page's Context panel and the Agents page (`/how-it-works/agents`) show all five for every agent, read from the same records.
@@ -27,166 +67,141 @@ The run page's Context panel and the Agents page (`/how-it-works/agents`) show a
 | An agent to know more | Write a loader for the fact (or reuse one) and tick it on the agent's record | Paste the fact into its `.md`, or build it in a run-only code path |
 | An agent to do something new | A tool with one job and few fields; code fills the rest | A new mode or field on an existing tool |
 | An agent to stop doing something | A refusal in the tool that says what to do instead | A "never do X" sentence |
-| Different handling in one situation | For now the `SITUATIONS` table; later a short skill file attached from a fact | An if-else that changes the prompt |
-| A new agent | A record, an `.md`, its context ticks and tools, a `SCHEDULE` line or an event | Its own cron, route or prompt builder |
+| Different handling in one situation | For now the `SITUATIONS` table (`lib/agent/situations.ts`); later a short skill file attached from a fact | An if-else that changes the prompt |
+| A new agent | A record, an `.md`, its context ticks and tools, and a `SCHEDULE` line or an event | Its own cron, route or prompt builder |
 | A trigger on a stock | `edit_triggers`: a playbook trigger by reference, or the agent's own with a reason and a chart key for any price | Code that stamps triggers, or trigger fields on other tools |
 
 ### Never
-- Choose instruction text in code by a stock's state, the day or a setting. Situations are the one existing case and are becoming short skills; add nothing to them without the owner.
-- Patch a failure with a prompt sentence. Find the layer first (the three layers below), then measure.
-- Put fields, variables or calculations in an agent's text. A number an agent needs is a fact or a key code fills.
+- Choose instruction text in code by a stock's state, the day or a setting. Situations are the one existing case, and they are becoming short skills; add nothing to them without the owner.
+- Patch a failure with a prompt sentence. Find the layer first (§6), then measure.
+- Put fields, variables or calculations in an agent's text. A number an agent needs is a fact, or a key code fills.
 - Build agent-specific plumbing: a special loader path, a prompt builder, a flag only one run reads. Everything goes through the one engine (`buildAgentRequest`, `runAgent`).
 - Copy a shared rule into one agent. Change the shared file, or that agent's own `.md`.
-- Merge a change to what an agent is sent before the yardstick scores it.
-
-### How a change is checked
-Real cases replayed from recorded runs (`scripts/hero-case.ts`), cut faithful to their moment: nothing dated after the run. Build every case's request first with `--inputs-only` (free), rescore only the cases whose request changed, 4 runs each, and reuse the baseline's saved results. One heavy job at a time on the build machine.
+- Merge a change to what an agent is sent before the yardstick scores it (§7).
 
 ---
 
-## How to use this when fixing a bug
+## 4. Which home a sentence belongs in, and whose voice it is
 
-Before adding prompt text to fix an agent failure, ask which layer the fix belongs in:
+Each kind of text is written by a different person on the desk. Write it in that voice, and only that.
 
-- **"The agent did the wrong thing even though the prompt said not to"**
-  → Layer 1 (tool gate). Refuse the bad call.
-- **"The agent didn't know what to do"**
-  → Layer 2 (result shape). Pre-digest the state.
-- **"The agent needed judgment we couldn't pre-compute"**
-  → Layer 3 (prompt). Identity + goals only, never procedures.
-
-> Most past failures were fixed by adding Layer 3 prompt text when the right answer was
-> Layer 1 or Layer 2. The maze prompt was the cost.
-
----
-
-## The three-layer principle
-
-Every well-built agent system (Cursor, Claude Code, Perplexity, Devin) splits logic across
-three layers and is religious about putting each rule in the RIGHT layer. Hindsight targets
-the same split.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Layer 1 — Tool gates (server-side validation)               │
-│ "What must NEVER happen, regardless of what the agent       │
-│ thinks." Refuses bad calls. Returns the rejection reason    │
-│ as a tool result. The agent reads the rejection and         │
-│ corrects its call. NOT enforced by prose in the prompt.     │
-└─────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────────────────────────────────────────┐
-│ Layer 2 — Tool result shape (computed context)              │
-│ "What the agent shouldn't have to compute itself."          │
-│ Pre-digested state in tool responses. The agent CONSUMES    │
-│ this info; the math/cross-referencing happens server-side.  │
-│ Examples: needsAction per thesis, daysToEarnings, signals   │
-│ already filtered to today's portfolio + watchlist.          │
-└─────────────────────────────────────────────────────────────┘
-                          │
-┌─────────────────────────────────────────────────────────────┐
-│ Layer 3 — Prompt (judgment + identity + intent)             │
-│ "What requires interpretation." The mandate, the goals, the │
-│ analyst's role and edge. SHORT. Describes WHAT and WHY,     │
-│ not HOW. The mechanical HOW lives in tools.                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Mapping every rule to its correct layer:**
-
-| Rule | Layer | Destination |
-|---|---|---|
-| 6 procedural stages (Step 1 / Step 2 / …) | — | **Deleted.** Procedures don't belong anywhere. The agent needs goals ("act on needsAction items"), not pseudocode. |
-| 4 horizons with full default-cadence explanations | 2 + 3 | Cadence math → tool-internal (Layer 2: `get_theses` uses horizon to compute `REVIEW_DUE`). 5-line glossary → prompt (Layer 3: explains what each horizon MEANS for exit policy). The agent SEES horizons, doesn't COMPUTE cadence. |
-| 5 priority blocks (Priority Reviews, Fired Triggers, Matching Now, Live Theses, Watchlist) | 2 | **`get_theses.needsAction`** — one annotation per thesis row. The 5-way cross-reference happens server-side. |
-| Tool-call discipline + forbidden-phrase list | 3 | One sentence in the user prompt: "You are running unattended. No human will respond. Every turn must call a tool. End with complete_run." |
-| Closeout contract ("every Live Theses row produces one tool call") | — | **Deleted.** It existed because the agent didn't know which rows mattered. With `needsAction`, it does — null rows don't need touching. |
-| Promotion check (prompt narration) | 1 | **Deleted from prompt.** Already a tool gate in `record_run_summary` (PR #235). Don't duplicate. |
-| Goalpost-moving prohibition (prompt narration) | 1 | **Deleted from prompt.** Already a tool gate in `update_thesis` (PR #232 + #220). Don't duplicate. |
-| 9 hard-reject gates listed as prose rules | 1 | **Already in tools, kept there. Prose duplicates deleted.** The agent learns from rejection messages, not from prompt warnings. |
-| `record_thesis` 30-line tool description | — | Tool description, not prompt. Stays — it's the right place for the schema-level guidance. |
-| Tool catalog re-listed in prompt | — | Already injected by AI SDK as schemas; the prompt doesn't repeat it. |
-| Identity + mandate (analystPrompt) | 3 | **Kept.** This IS the judgment that makes Tech Momentum different from Catalyst Event Raider. |
-| Universe & rules (sectors, watchlist, sizing) | 3 | Kept. |
-| Yesterday's briefing standup | 3 | Kept (continuity between runs). |
-| Workflow goals (5 bullets, not 6 stages) | 3 | Kept. ~5 lines. |
-| Per-`needsAction`-kind action map (TRIGGER_FIRED → execute action; TRIGGER_MATCHING_NOW → same; REVIEW_DUE → update_thesis) | 3 | Kept. ~5 bullets. |
-| Horizon glossary (CATALYST/TRADE/TARGET/COMPOUNDER meaning) | 3 | Kept. ~5 lines. |
-
-**Why this works:** the agent's attention budget goes to JUDGMENT (analyst-specific edge, what
-makes a good trade), not to tracking 9 rules across 5 priority blocks across 6 procedural stages.
-The model gets the context it needs through tool results (Layer 2) and gets stopped from doing
-the wrong thing by tool gates (Layer 1). The prompt is short because it doesn't have to teach
-mechanics.
+| Text | Who is speaking | What it holds | What it never holds | Size |
+|---|---|---|---|---|
+| Instructions (`<agent>.md`) | The head of the desk giving a new hire their job | Who they are, what they're for, what a good result looks like, how to weigh what needs judgment, and why | Steps, numbers, field names, situations, tool mechanics, anything code checks | As short as the job allows |
+| A context item (a fact) | The trading screen | Data: the columns a trader would pin, named and formatted for scanning. One stock per line, the same units everywhere, sorted the way a trader sorts. | Advice, rules, "you should" | Only the fields a decision uses. Bulky or optional data is a tool. |
+| A skill (today, a situation) | The desk's card for one moment | When this happens: what an expert checks, the choices, and what each choice needs | General rules (those are instructions) and data (that is context) | A few short paragraphs, attached only when the moment applies |
+| A tool's description and fields | The label on an order ticket | When to use it, what each field means in the app's words, what it refuses and what to do instead | Strategy, persuasion, cases | One or two sentences per field |
+| A refusal message | The risk manager | The rule in one sentence, and the next legal move | Blame, or a bare "no" | One or two sentences |
+| A trigger's reason | The trader writing on their own plan | What this level protects or waits for, in plain words | The level restated, or the rule's name | One sentence |
+| A note, a trade's reason, a summary line | The analyst talking to the owner | Everything in `rules.md`, "How you write" | Shorthand, bookkeeping | One paragraph |
 
 ---
 
-## A refusal is never the end (2026-09-25)
+## 5. How to write a sentence for an agent
 
-Layer 1 says no. What happens next is the part every agent product gets right and Hindsight
-did not: PLTR's buy was refused on 2026-09-25, the tactical run closed out, ended COMPLETE, and
-nothing anywhere said the buy never happened. DYN, IBRX and BBIO's theses died the same way in
-the writer. A refusal that nobody acts on is work that vanished.
-
-The rule, in four parts, all mechanical:
-
-1. **The model cannot produce the wrong shape.** Strict tool schemas (OpenAI `strictJsonSchema`,
-   Anthropic `strict`), enums over free text, and no field the model can guess wrong — the buy
-   tool inside a run has no size field at all. A refusal over shape is a bug in the schema.
-2. **A refusal is an input.** The reason goes back to the model with the two legal answers:
-   correct the call, or make the call that records why it stands. Every run (daily, tactical,
-   discovery) checks its refusal ledger before it may end, and gives the model one more turn
-   for anything still open (`refusalNudge`).
-3. **Nothing is dropped.** Every refusal is a row in `GateRejection`, open until the same tool
-   lands on the same stock or thesis for that analyst — `resolveGateRejections`, from the
-   `defineTool` wrapper. No phrase, no flag closes it. An open row is written on the run
-   (`action_blocked`), told to the next daily run ("Blocked last time — resolve today"), and
-   shown on the Activity feed as "Buy blocked" / "Sale blocked" / "Thesis edit blocked".
-4. **The refusal message says what to do instead.** A gate that returns "no" without the next
-   legal move is half a gate.
-
-What this is not: a new gate. It adds no refusal. It makes every existing refusal cost the run
-one more turn instead of costing the principal the trade.
-
-**How Cursor handles "you must read a file before editing it":**
-
-- Layer 1 (tool gate): `edit_file` refuses if the file hasn't been read this session. Returns "Read the file first."
-- Layer 2 (tool result): `read_file` returns the file with line numbers. Agent sees structure, doesn't compute it.
-- Layer 3 (prompt): "Be careful with destructive operations." One sentence. Judgment, not procedure.
-
-**Mapped to Hindsight:**
-
-- Layer 1 (tool gate): `place_trade` refuses if confidence < threshold or target ≤ entry. Returns the specific reason.
-- Layer 2 (tool result): `get_theses` returns each thesis with `needsAction`. Agent sees what needs work.
-- Layer 3 (prompt): "Manage your book. Act where needsAction says to act. End with complete_run." Goals, not procedures.
+1. **Use the app's words, and the same word for the same thing everywhere:** playbook (not setup), trigger, buy price, floor, the owner. "Target" means Wall Street's number only.
+2. **Name things exactly as the agent sees them.** If the row says "Next report", the instruction says "next report", not "earnings date".
+3. **Give every number its unit and what it is measured from:** "7% from yesterday's close", "2× the 50-day average volume", "21 days before the event date". Never a bare number.
+4. **One idea per sentence.** A sentence that joins two rules with "and" is two sentences.
+5. **Say what to do, not what to avoid.** "Write the condition you mean" teaches; "don't write backwards triggers" doesn't.
+6. **Give the reason for anything that needs judgment.** A reason lets the model handle the case the sentence didn't name. A bare rule gets applied too widely or too narrowly.
+7. **No shouting:** no capitals, "IMPORTANT", "NEVER", "ALWAYS" or "you MUST". Current models follow plain text, and they over-apply emphasis.
+8. **Examples become templates.** Use one only when you want its shape copied, and use an invented company so its numbers can't leak into real work.
+9. **No conditions the model has to check against data.** "If the stock is held, …" belongs to code: a skill attached, a field shown, a tool refusal.
+10. **Delete before adding.** A new sentence must name the failure it fixes and the run that showed it. If a refusal or a field could fix it, use that instead.
+11. **Read the whole request the agent gets, not the diff.** A sentence that reads well alone can contradict one 3,000 characters earlier.
 
 ---
 
-## Every field the model can pass has a contract (2026-09-25)
+## 6. Where a rule goes when something breaks
 
-The question behind PLTR's lost buy and the writer's four lost theses was the same: for
-this field, who decides — the code or the model — and if the model, from what list, under
-which rule, stated where? `lib/agent/tools/field-contract.ts` answers it for every field
-on every write tool, one row each, and `field-contract.test.ts` holds the code to it:
+Find the layer before writing anything.
 
-| Kind | Who decides | What the test checks |
-|---|---|---|
-| **COMPUTED** | The app. | The field is absent from the schema a run sees. The principal's chat may keep it. |
-| **CHOSEN** | The model, from a closed list. | The wire schema is an enum, const or boolean — never a free string. |
-| **JUDGED** | The model, under a rule the tools enforce. | The rule is named, and every prompt of a mode that offers the tool states it (a marker string). |
-| **IDENTITY** | A reference to something that exists. | Documented: a wrong one is refused by name. |
-| **TEXT** | The model's prose. | No length cap. |
-| **CARRIED** | The writer's research, copied through. | Documented. |
+| What happened | Where the fix goes |
+|---|---|
+| The agent did something it must never do | A refusal in the tool, with the next legal move |
+| The agent didn't know something | A fact, or a better field in one |
+| The agent needed judgment | The instructions or a skill, as a reason rather than a procedure |
 
-A new field fails the suite until it has a row. That is the whole framework: nothing the
-model can type is unclassified, nothing the app should compute is typed by the model,
-nothing chosen is free text, and no rule is enforced that the prompt did not state. What
-happens after a refusal is the section above.
+Most past failures were fixed with instruction text when the right fix was a refusal or a fact. The long prompts were the cost.
+
+**A refusal is an input, never an ending.** The refused call goes back with what to do instead. It stays open until the same tool lands on the same stock (`lib/agent/gate-rejections.ts`), and the next run for that analyst is told (`refused_calls`).
+
+**Every field a model can pass has a contract** (`lib/agent/tools/field-contract.ts`). Each field is one of these:
+- computed by the app, so it's absent from the schema a run sees;
+- chosen from a closed list (an enum);
+- judged under a rule a tool enforces;
+- an identity that must exist;
+- free text.
+
+A new field fails the test suite until it has a row.
+
+---
+
+## 7. How a change is checked
+
+- **The cases.** Real runs replayed from their recordings (`scripts/hero-case.ts`), each cut faithful to its moment, with nothing dated after the run.
+- **When to score.** Once per set of agent work (the changes that will merge together), never per PR or per fix. First build every case's request with `--inputs-only`, which is free.
+- **What to score.** Only the cases whose request changed, 2 runs each, reusing the baseline's saved results. A case that drops gets 4 runs, and only if the runner can show the outcome. Today a chat case is scored on its first step only.
+- **The cost.** Say the run count and a rough cost before scoring. More than about 40 GPT runs needs the owner's OK.
+- **The machine.** One heavy job at a time on the build machine.
+- **Merging.** Nothing merges without the owner's click.
+
+---
+
+## 8. Reviewing a part, in the details
+
+The rules, screens, skills, tools and instructions are reviewed one part at a time, by sessions that take both perspectives (§1). One lead session runs the review (`/expert-review`). For each unit it starts a fresh session (`/expert-review-unit <unit>`), checks that session's PR against this standard, keeps the ledger (`docs/plans/EXPERT_REVIEW_LEDGER.md`), and brings each PR to the owner. The owner starts the lead once, then reads and merges.
+
+**The order** follows how a trader thinks, so every edit flows one way:
+1. **The rulebook, or what we trade on:** the rules for everything, each playbook, and the book and market rules.
+2. **The screen, or what we look at:** the watchlist row, the holding row, the market block, one stock in full, and the rest of the context catalog.
+3. **Reactions:** each skill (today's situations).
+4. **Actions:** each tool's fields, descriptions and refusals.
+5. **Jobs:** the shared files (`rules.md`, `research-rules.md`), then each agent's instructions, the chat first.
+
+A later layer quotes an earlier one; it never re-edits it. A unit that finds an earlier layer wrong writes that in the ledger for the lead.
+
+**Usage decides depth.** Before the first unit, count what production actually used over the last 30 days:
+- calls per tool;
+- how often each context item is sent, and how big it is;
+- how often each situation and each playbook occurs;
+- how often each rule fires.
+
+Anything unused is a candidate to delete. Anything rare is reviewed in bulk, in one unit. Anything used daily, or anything that reaches a trade, gets its own unit.
+
+**For every item in a unit** (a field, a rule, a sentence), answer three questions:
+1. What exactly would an expert in this style look at or do here? Name who works this way.
+2. Do our words, fields and numbers say exactly that?
+3. Is it in its one right home (§3, §4), written the way §5 says?
+
+**What a unit produces.** A before → after for every item it changes, field by field and sentence by sentence. Each change carries:
+- the trader's reason;
+- how often it would have fired or mattered on the real book over the last 12 weeks, counted from market data and the database, with no model calls;
+- the framework check.
+
+That is one PR per unit, scored with its layer (§7).
+
+**What a unit never does:** add a concept, a layer, an agent or a mode; restructure; or drift into a plan. If the structure looks wrong, the unit says so in one line in the ledger and finishes its own work.
+
+**Reading.**
+- **Trading:**
+  - William O'Neil, *How to Make Money in Stocks* (bases, buy points, cutting a loss at 7–8%).
+  - Mark Minervini, *Trade Like a Stock Market Wizard* (the trend template, the volatility contraction).
+  - Stan Weinstein, *Secrets for Profiting in Bull and Bear Markets* (stages, the 30-week average).
+  - Bernard and Thomas (1989) on the drift after earnings.
+  - Kristjan Kullamägi on episodic pivots and breakouts.
+  - How event-driven biotech traders handle a decision date.
+- **The screen:** the columns traders pin on professional platforms (Robinhood Legend, thinkorswim, TradingView watchlists).
+- **Agents:**
+  - Anthropic's [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents).
+  - [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents).
+  - [Writing tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents).
+  - [Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills).
 
 ---
 
 ## See also
-
-- [`THESIS_ARCHITECTURE.md`](./THESIS_ARCHITECTURE.md) — how the thesis lifecycle implements Layer 1 gates
-- [`plans/MORNING_RUN_V2_DESIGN.md`](git history) — the V2 prompt rewrite that applied this principle to the daily run
-- Linear (team Davesucks) — open items, many of which are Layer violations still to fix
+- `CLAUDE.md`, "Agents: how they're built": the short form of §3.
+- `docs/guide/concepts/agents.md`: how an agent is built, for readers of `/docs`.
+- `docs/TRIGGERS.md` and `docs/THESIS_ARCHITECTURE.md`: triggers and the thesis lifecycle.
