@@ -275,7 +275,7 @@ function TimelineList({
  * and drawn exactly as the Activity tab draws them. The heading carries the
  * first period ("Agent insights · Today") in place of the list's first rail
  * label, and says on hover what the agents read instead: the stock's
- * Activity in four parts (lib/agent/stock-context.ts).
+ * last 3 reviews, the news and the owner's notes and declines (lib/agent/stock-context.ts).
  */
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; /** Opens the Activity tab; absent where the surface has none (the stock page). */ onViewAll?: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -307,7 +307,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
               </span>
             }
           />
-          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read where the stock stands, the last look&apos;s note, what happened since, and what is open.</TooltipContent>
+          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the last 3 reviews, 3 news notes, 3 of your notes and your last decline.</TooltipContent>
         </Tooltip>
       </SectionLabel>
       <TimelineList

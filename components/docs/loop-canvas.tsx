@@ -287,7 +287,7 @@ function ThesisCard({ ref, onOpen }: { ref: (el: HTMLElement | null) => void; on
             </li>
           ))}
         </ol>
-        <p className="text-xs text-muted-foreground">The next run on CRWD reads where it stands, the last look&apos;s note and what happened since.</p>
+        <p className="text-xs text-muted-foreground">The next run on CRWD reads its last 3 reviews, the news and your notes first.</p>
       </div>
     </div>
   );
