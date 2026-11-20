@@ -28,6 +28,8 @@ export interface FactsRow {
   status: string;
   direction: string | null;
   triggers: unknown;
+  /** Said with where the stock stands, when the caller's row carries it. */
+  conviction?: string | null;
   catalystDate: Date | null;
   createdAt: Date;
   /** The stock's analyst. */
@@ -135,6 +137,7 @@ export async function loadStockFacts(theses: FactsRow[], ctx: FactsContext): Pro
         orders: load.proposalHistory.get(t.id) ?? [],
         // The resolved list, inherited rules included: a review's title names the trigger it answered.
         triggers: input.thesis.triggers,
+        conviction: t.conviction,
         notes,
         shares,
         now: notesAt,

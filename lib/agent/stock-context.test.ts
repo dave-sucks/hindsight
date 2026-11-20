@@ -1,8 +1,8 @@
 /**
  * stock-context.test.ts — the rules behind what a run reads on a stock: what
  * counts as an agent's answer, which fires are still open, which of the
- * principal's lines ask for an answer, and the block itself: the newest 8
- * Activity lines as they read, whole. Rows are CEG's and DOCU's, as stored.
+ * principal's lines ask for an answer, and the block itself: the stock's
+ * Activity in four parts. Rows are CEG's and DOCU's, as stored.
  */
 import raw from "@/lib/agent/__fixtures__/ceg-what-was-said-2026-09.json";
 import {
@@ -13,7 +13,7 @@ import {
   saidLine,
   type ActivityRow,
 } from "@/lib/agent/stock-context";
-import { activityFeed, recentItems, RECENT_ITEMS, toFeedItem } from "@/lib/thesis/activity-feed";
+import { activityFeed, toFeedItem } from "@/lib/thesis/activity-feed";
 import { computeNeedsAction } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -79,37 +79,40 @@ describe("open fires on CEG", () => {
   });
 });
 
-describe("the block: the newest 8 lines of the feed, as the owner sees them, whole", () => {
-  it("09-30 morning read: the 8 newest, newest first, each as the Activity tab titles it", () => {
+describe("the block: the stock's Activity in four parts", () => {
+  it("09-30 morning read: the last look titled as the Activity tab titles it, then what happened since", () => {
     const feed = feedBefore("2026-09-30T12:04:25Z");
     // The resolved list the run is handed: the 09-28 morning review answered the analyst's 200-day rule, and its title says so.
     const triggers = [
       { id: BELOW_200_DAY, action: "REVIEW", predicate: { watch: "price", is: "below", variable: "sma200" } },
       { id: FIFTEEN_OFF_HIGH, action: "REVIEW", predicate: { watch: "move", is: "below", value: 15, variable: "peak" } },
     ];
-    const { text } = buildStockContext({ ticker: "CEG", feed, triggers });
+    const { text } = buildStockContext({ ticker: "CEG", feed, triggers, conviction: "MEDIUM" });
     const lines = text!.split("\n");
-    expect(lines[0]).toBe("WHAT'S BEEN SAID ON $CEG — its newest 8 Activity lines, newest first, as the owner sees them:");
-    expect(lines).toHaveLength(RECENT_ITEMS + 2);
-    // The same 8 the Overview shows, in the same order.
-    expect(lines.slice(1, 9).map((l) => l.slice(2, 13))).toEqual(recentItems(feed).map((i) => saidLine(i).slice(2, 13)));
-    // The 09-28 morning note, whole, titled by the trigger it answered; the 15% review that fired after it, as the tab titles it.
-    expect(text).toContain('09-28 08:04 · $261.23 · Review below the 200-day average — "CEG\'s repeated 200-day review');
+    expect(lines[0]).toBe("ACTIVITY ON $CEG — where it stands, the last look, what happened since, and what is open:");
+    // No look on CEG carried a verdict in September, so only conviction is said.
+    expect(lines[1]).toBe("Where it stands: conviction MEDIUM");
+    expect(lines[2]).toBe("The last look:");
+    // The 09-28 morning note, whole, titled by the trigger it answered.
+    expect(lines[3]).toContain('09-28 08:04 · $261.23 · Review below the 200-day average — "CEG\'s repeated 200-day review');
     // Handed no list, the trigger is unknown and the title is the bare word.
     expect(buildStockContext({ ticker: "CEG", feed }).text).toContain('09-28 08:04 · $261.23 · Review — "CEG\'s repeated 200-day review');
-    expect(text).toContain("09-28 11:20 · $257.63 · Trigger: Trailing 15% from high — review");
-    // Older than the 8: the 09-14 decline and the 09-15 removal are not here; the full history is one call away.
-    expect(text).not.toContain(DECLINE_ENDS);
+    // The 15% review that fired after it is counted, with its newest price.
+    expect(text).toContain("  Triggers fired 1 time: Trailing 15% from high — review ×1 (last 09-28 11:20 at $257.63)");
+    // The owner's 09-14 decline is open, whole; the 09-15 removal is behind the last look. The full history is one call away.
+    expect(text!.slice(text!.indexOf("\nOpen:"))).toContain(DECLINE_ENDS);
     expect(text).not.toContain("Trailing 8% from high");
-    expect(lines[9]).toBe('Full history: get_theses(tickers: ["CEG"], include_history: true)');
+    expect(lines[lines.length - 1]).toBe('Full history: get_theses(tickers: ["CEG"], include_history: true)');
   });
 
-  it("09-14 15:30 trigger run: the principal's decline is in the 8, every one of its 709 characters", () => {
-    const { text } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
+  it("09-14 15:30 trigger run: the principal's decline is open, every one of its 709 characters", () => {
+    const { text, brief } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-14T19:30:20Z") });
     const whole = ((byId(DECLINE).fieldChanges as { proposal: { to: { userMessage: string } } }).proposal.to.userMessage).replace(/\s+/g, " ").trim();
     expect(whole.length).toBeGreaterThan(600);
     expect(text).toContain(`Declined sell 30 shares — "${whole}"`);
     expect(text).toContain(DECLINE_ENDS);
+    // A stock compared across the account reads it too.
+    expect(brief).toContain(DECLINE_ENDS);
   });
 
   it("a line reads the same whoever wrote it: a fire with its figures, a hand edit with its change, a note in full", () => {
