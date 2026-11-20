@@ -28,7 +28,7 @@ Analysts: only three seats carry rules (Secular Compounder, PEAD Specialist, Cat
 
 **Before.** `{ watch: "move", is: "below", value: 6, variable: "peak" }`, sale, Send to Agent, on the account. Note: "below 6% from the high since we bought — standing rule set by the principal." (code's words, so no agent is shown it).
 
-**After.** The value stays at 6%. Two owner questions (below): the fire mode, and the approval switch for sales. In this PR, a new account starts with the same rule (`accountStandingRules`, `lib/agent/triggers/defaults.ts`), Send to Agent as the owner has it, with the note "Protects the gain off the high since we bought."
+**After.** The value stays at 6%. The review's call (below): its On fire becomes Auto-sell. In this PR, a new account starts with the same rule (`accountStandingRules`, `lib/agent/triggers/defaults.ts`), Send to Agent as the owner has it, with the note "Protects the gain off the high since we bought."
 
 **The trader.** A trailing sale is decided before it is needed, and it is carried out when hit. Minervini trails a stop up under a winner and never lets a good gain turn into a loss. O'Neil cuts every loss at 7–8% from the buy, with no exceptions, because the losses you hold are the ones that sink the account. Neither leaves the stop to a vote on the day it is hit. A compounder investor holds through 6% dips, but our "compounder" book is MU, NVDA, PLTR, GEV and CEG: high-beta names that fell 20–35% in five weeks.
 
@@ -51,7 +51,7 @@ The 12 weeks were one market: a sharp drop from late October (the S&P 500 down 4
 
 That is about $2,400 in three days against selling when it fired. On CEG and GEV the analysts were reading the Secular Compounder's own rule, "Down 15% from its high. A question, not a sale". At 6% the account sells; at 15% the analyst asks. §2 of the standard calls two triggers on one stock that disagree a bug in the rules. Unit 1.5 owns the compounder's rule.
 
-**The sale proposals.** 135 of 181 sale proposals in 12 weeks expired unanswered (80 of 91 in 30 days). Since Nov 17 a trigger's proposal waits while its trigger holds instead of expiring, but it still waits for a click. Four are waiting tonight: IOT, MU, NVDA and PLTR. Six of the seven holdings closed Nov 19 under their own "Sell if below" price, $9,637 under it in all:
+**The sale proposals.** 135 of 181 sale proposals in 12 weeks expired unanswered (80 of 91 in 30 days). Since Nov 17 a trigger's proposal waits while its trigger holds instead of expiring. Four are waiting tonight: IOT, MU, NVDA and PLTR. Six of the seven holdings closed Nov 19 under their own "Sell if below" price, $9,637 under it in all:
 
 | Holding | Its sale price | Nov 19 close | Under it |
 |---|---|---|---|
@@ -62,13 +62,11 @@ That is about $2,400 in three days against selling when it fired. On CEG and GEV
 | MU | $804.00 (Auto-sell) | $690.44 | $1,249 on 11 |
 | PLTR | $170.00 (Auto-sell) | $153.68 | $620 on 38 |
 
-Auto-sell doesn't get past the approval switch: with it on, an Auto-sell is a proposal like any other (`doItCall` goes through the tool an agent would call). Measured from the first sale proposal of each holding's current slide to Nov 19, every one of the six kept falling: NVDA −36.7%, MU −26.1%, PLTR −21.9%, CEG −11.6%, IOT −10.7%, GEV −8.6%.
+With approvals on (the owner keeps them on, on purpose), an Auto-sell is a proposal like any other (`doItCall` goes through the tool an agent would call): the sale is proposed at the fire, with no agent deciding first. Measured from the first sale proposal of each holding's current slide to Nov 19, every one of the six kept falling: NVDA −36.7%, MU −26.1%, PLTR −21.9%, CEG −11.6%, IOT −10.7%, GEV −8.6%.
 
 **Framework check.** The rule is in its one home (account rules, §2). An account rule may sell by itself (§2, "What may trade by itself"); only a buy, an add or a trim is the owner's alone. Its note is code's words, so no agent reads it (`writtenNote`). The owner's own reason, typed in Settings, would reach the agent at the fire. No instruction text changes.
 
-**Owner questions.**
-1. The trail's On fire: Send to Agent → Auto-sell? The trader's answer is yes: the sale was decided when the rule was written.
-2. The approval switch for sales on Live: on → off? With it on, neither an Auto-sell nor the floor protects anything while no one answers. If it stays on, the six holdings above are the cost.
+**The review's call.** The trail's On fire: Send to Agent → Auto-sell. A trailing sale is set when the rule is written and carried out when it is hit; the analyst doesn't reopen it on the day (Minervini, O'Neil). Since Nov 17 the analysts held CEG and GEV against it. With Auto-sell, the sale is proposed the moment the trail is crossed, and the owner approves it as he does every trade. It is made in Settings → Triggers on the owner's account, and the owner can say no.
 
 ---
 
@@ -76,7 +74,7 @@ Auto-sell doesn't get past the approval switch: with it on, an Auto-sell is a pr
 
 **Before.** None.
 
-**After** (a new account's rules in this PR; for the owner's account, a question):
+**After** (a new account's rules in this PR; on the owner's account, the review's call: add both in Settings → Triggers, and the owner can say no):
 - "Review if above 7% from yesterday's close and at least 2× normal volume": `{ match: "all", conditions: [{ watch: "move", is: "above", value: 7, variable: "prev_close" }, { watch: "volume", value: 2 }] }`, Send to Agent. Note: "A big day up on heavy volume: something happened."
 - The same with `is: "below"`. Note: "A big day down on heavy volume: something happened." What to check on such a day (the company's own news, or the whole market) is judgment for the skill for "something happened" (unit 3.3), not the trigger's reason.
 
@@ -162,7 +160,7 @@ A stock with no playbook gets its sale only from its own floor and the account's
 
 **Where it would live.** A refusal in `place_trade` (unit 4.1), with the next legal move: "This stock has no playbook. Send it to the Writer to name one, then buy." Not a rule and not instruction text.
 
-**Owner question.** 3. Should a stock be bought with no playbook at all? The trader's answer is no, including from the chat: your idea gets a playbook before the order, because the playbook supplies its sale rules.
+**Owner question.** Should a stock be bought with no playbook at all? It is his call, since it changes what his own chat can do. The trader's answer is no, including from the chat: the owner's own idea gets a playbook before the order, because the playbook supplies its sale rules.
 
 ---
 
@@ -186,7 +184,7 @@ The ledger says MSFT left the watchlist on an old "Stop watching if below $504.9
 
 Each new note says only what its trigger protects or waits for, in the voice of a trader writing on their own plan (§4). What to do when it fires is the fire mode's job, or a skill's (unit 3.x), never the note's.
 
-Nothing changes on the owner's account. Nothing an agent is sent changes, so there is nothing to score. Every change to the owner's rules is a question above, for Settings → Triggers.
+Nothing changes on the owner's account. Nothing an agent is sent changes, so there is nothing to score. The review's two calls on the owner's account (the trail's Auto-sell, the two big-day looks) are made in Settings → Triggers, and the owner can say no. The one question left for him is a buy with no playbook.
 
 ## For later units
 
