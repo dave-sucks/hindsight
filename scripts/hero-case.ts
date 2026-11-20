@@ -435,7 +435,11 @@ function bookReadOf(c: HeroCase): string | null {
   const call = parts(c.messages[at]).find((p) => p.type === "tool-call" && p.toolName === "get_theses")!;
   const result = c.messages.slice(at + 1).flatMap(parts).find((p) => p.type === "tool-result" && p.toolCallId === call.toolCallId);
   c.messages = c.messages.map((m) => (Array.isArray(m.content) ? ({ ...m, content: parts(m).filter((p) => p.toolCallId !== call.toolCallId) } as ModelMessage) : m));
-  return bookReadText((result?.output?.value as { summary?: string; data?: unknown } | undefined) ?? null);
+  const raw = result?.output?.value;
+  if (!raw) return bookReadText(null);
+  // As a live run's first message has it (lib/agent/context/the-book.ts): the read in the model's shape, built by today's get_theses.
+  const shape = (describedTools(c).get_theses as { toModelOutput?: (o: { toolCallId: string; input: unknown; output: unknown }) => { value?: unknown } } | undefined)?.toModelOutput;
+  return bookReadText(((shape ? shape({ toolCallId: String(call.toolCallId), input: {}, output: raw }).value : raw) as { summary?: string; data?: unknown }) ?? null);
 }
 
 /** A morning case's request, built by today's code from its inputs. */
