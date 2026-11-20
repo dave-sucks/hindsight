@@ -1,35 +1,12 @@
 /**
- * A pass kept on watch can carry the event date (2026-09-25).
+ * A stock kept on watch with no view can take the event date (2026-09-25).
  *
  * The discovery review said the SMMT and COGT rows "can't hold the FDA
  * date" — the pre-decision review could never fire on them. The rows have
- * no date because the chat never passed one; the tool stores it when
+ * no date because the chat never passed one; the save stores it when
  * given. Pinned here so the claim has an answer, through the real tool.
  */
-import { replayTool, agentConfigRow, accountRow, thesisRow, REPLAY_ANALYST_ID } from "@/lib/replay";
-
-describe("record_thesis(direction: PASS, status: WATCHING) and the event date", () => {
-  it("COGT: a pass kept on watch stores catalyst_date when it is given", async () => {
-    const { refused, refusal, db } = await replayTool("record-thesis", "recordThesis", {
-      seed: { agentConfig: [agentConfigRow({})], account: [accountRow()] },
-      ctx: { runMode: "PRINCIPAL_CHAT", analystId: REPLAY_ANALYST_ID },
-      args: {
-        ticker: "COGT", direction: "PASS", status: "WATCHING",
-        reasoning_summary: "Single-asset first approval (bezuclastinib + sunitinib in GIST, Nov 30 PDUFA); separate NonAdvSM PDUFA. Watching for a safety signal or a pullback.",
-        catalyst_date: "2026-11-30T00:00:00.000Z",
-        source_kind: "WEB_SEARCH", source_rationale: "From the discovery paste: Nov 30 PDUFA, transaminase signal.",
-        triggers: [{ predicate: { watch: "price", is: "below", value: 27 }, action: "REVIEW", rationale: "Pullback — look again." }],
-      },
-      quotes: { COGT: 31.43 },
-    });
-    expect(refusal).toBeNull();
-    expect(refused).toBe(false);
-    const row = db.store.thesis.find((t) => t.ticker === "COGT");
-    expect(row?.status).toBe("WATCHING");
-    expect(row?.direction).toBeNull();
-    expect(new Date(row?.catalystDate as Date).toISOString()).toBe("2026-11-30T00:00:00.000Z");
-  });
-});
+import { replayTool, thesisRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
 describe("update_thesis(catalyst_date) on a pass kept on watch", () => {
   it("COGT as saved on 09-24 — a wake, no date — takes the date from one edit", async () => {

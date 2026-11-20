@@ -1,8 +1,8 @@
 /**
  * writer-only-fields.test.ts — step 5 of docs/plans/AGENT_ARCHITECTURE.md,
  * part 1: the research sections only the writer's save fills are on no
- * agent's thesis tool (record_thesis and, since 2026-11-18, the one-job tools
- * that replaced update_thesis for agents), and the writer keeps them.
+ * agent's thesis tool (since 2026-11-18, the one-job tools; no agent has
+ * record_thesis or update_thesis), and the writer keeps them.
  *
  * The writer saves by running its arguments through the tool's own schema
  * (run-thesis-writer.ts, executeThroughSchema), and a schema without a field
@@ -30,9 +30,8 @@ function fields(runMode: string, tool: string): string[] {
 
 describe("writer-only research fields", () => {
   for (const runMode of ["MORNING_PLAN", "INTRADAY_TACTICAL", "PRINCIPAL_CHAT", "DISCOVERY"]) {
-    it(`${runMode}: the agent thesis tools and record_thesis carry none of them`, () => {
+    it(`${runMode}: the agent thesis tools carry none of them`, () => {
       for (const t of AGENT_THESIS_TOOLS) expect(fields(runMode, t).filter((f) => SECTIONS.includes(f))).toEqual([]);
-      expect(fields(runMode, "record_thesis").filter((f) => [...SECTIONS, "snapshot", "thesis_bullets", "risk_flags"].includes(f))).toEqual([]);
     });
   }
 
@@ -43,8 +42,6 @@ describe("writer-only research fields", () => {
       // The claim is the writer's (2026-11-18: the chat's last use was one seed commit, 2026-10-02).
       for (const t of AGENT_THESIS_TOOLS) for (const f of ["core_belief", "direction", "snapshot", "scoring", "variant_view", "price_at_time", "horizon"]) expect(fields(mode, t)).not.toContain(f);
     }
-    const r = fields("PRINCIPAL_CHAT", "record_thesis");
-    for (const f of ["ticker", "direction", "reasoning_summary", "triggers", "stock_fundamentals", "core_belief"]) expect(r).toContain(f);
   });
 
   it("the writer's save keeps a research section; an agent's schema would drop it", () => {

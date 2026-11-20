@@ -562,7 +562,6 @@ async function fanOutPromotionRewrites(input: {
             existingThesisId: t.thesisId,
             reason,
             parentRunId: null,
-            forceWatchingMint: false,
             promotionContext: {
               paperTenureDays: t.paperTenureDays,
               paperRealizedPnl: t.paperRealizedPnl,

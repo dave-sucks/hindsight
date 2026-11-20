@@ -324,7 +324,7 @@ describe("the chat's discovery path, check-only", () => {
     expect(d.result.summary).toMatch(/^Dispatched thesis-writer for \$HTFL \(mint\)/);
     const writer = d.db.store.researchRun.find((r) => r.mode === "THESIS_WRITER")!;
     expect(writer).toMatchObject({ agentConfigId: REPLAY_ANALYST_ID, parentRunId: chatRun.id });
-    expect(sent).toEqual([expect.objectContaining({ name: "app/thesis.write.requested", data: expect.objectContaining({ childRunId: writer.id, ticker: T, mode: "mint", forceWatchingMint: true }) })]);
+    expect(sent).toEqual([expect.objectContaining({ name: "app/thesis.write.requested", data: expect.objectContaining({ childRunId: writer.id, ticker: T, mode: "mint" }) })]);
 
     const { build, read, schema } = await writerSave();
     const call = build(sent[0].data as never, { currentPrice: fx.run.price, priceStructure: null } as never, htflDecision().decision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
@@ -332,7 +332,7 @@ describe("the chat's discovery path, check-only", () => {
     const r = await replayTool("record-thesis", "recordThesis", {
       seed: d.db.store,
       args: schema.parse(call.toolArgs) as Record<string, unknown>,
-      ctx: { runId: writer.id, runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID, forceWatchingMint: true, dryRun: true },
+      ctx: { runId: writer.id, runMode: "THESIS_WRITER", analystId: REPLAY_ANALYST_ID, dryRun: true },
       quotes: { [T]: fx.run.price },
     });
     expect(read("record_thesis", r.result as never)).toMatchObject({ wouldSave: true, error: null });

@@ -89,8 +89,6 @@ export async function startWriterRun(args: {
       existingThesisId: args.existingThesisId,
       reason: args.reason,
       parentRunId: null,
-      // A name sent this way is coverage to study, never an auto-trade.
-      forceWatchingMint: args.mode === "mint",
       promotionContext: null,
       reviewCadenceDays: args.reviewCadenceDays,
       keepLevels: args.keepLevels === true,

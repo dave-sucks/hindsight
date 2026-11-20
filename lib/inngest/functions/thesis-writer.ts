@@ -48,13 +48,6 @@ interface ThesisWriteRequestedPayload {
   /** The stock's last thesis, passed or retired, when a refresh was sent as new research on it. */
   parentThesisId?: string | null;
   /**
-   * Layer-1 clamp: when true, record_thesis downgrades any
-   * LONG/SHORT/ACTIVE mint request to LONG/SHORT/WATCHING. Set by
-   * dispatch_thesis_research for chat-dispatched mints so chat
-   * exploration doesn't accidentally produce trade-eligible coverage.
-   */
-  forceWatchingMint?: boolean;
-  /**
    * PAPER→LIVE promotion framing. Auto-populated by
    * dispatch_thesis_research when refreshing a PROMOTED thesis. Frames
    * the research prompt's decision block around RE-ENTER / DEFER / KILL.
@@ -110,7 +103,6 @@ export const thesisWriter = inngest.createFunction(
       ideaSource: payload.ideaSource ?? null,
       parentRunId: payload.parentRunId ?? null,
       parentThesisId: payload.parentThesisId ?? null,
-      forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,
       reviewCadenceDays: payload.reviewCadenceDays ?? null,
       keepLevels: payload.keepLevels === true,

@@ -170,12 +170,6 @@ export interface RunThesisWriterArgs {
   /** Keep the thesis's levels and fill only the empty ones, as a chat-started refresh does (a buy placed by hand). */
   keepLevels?: boolean;
   /**
-   * Layer-1 clamp passthrough: forwarded into the persist ctx so
-   * record_thesis downgrades any LONG/SHORT/ACTIVE mint to WATCHING.
-   * Set by chat-dispatched mints; defaults to false otherwise.
-   */
-  forceWatchingMint?: boolean;
-  /**
    * PAPER→LIVE promotion context. Pre-populated by dispatch_thesis_research
    * for refreshes on PROMOTED theses. When set, the research prompt frames
    * the decision around RE-ENTER / DOWNGRADE / INVALIDATE — but the writer
@@ -344,7 +338,6 @@ async function buildWriterToolCtx(
     maxPositionSize: Number(analyst.maxPositionSize),
     maxPositionTotal: Number(analyst.maxPositionTotal),
     alpacaCreds,
-    forceWatchingMint: args.forceWatchingMint === true,
     groupId: (phase: string) => phase,
     calledTickers: new Map([[T, new Set(["get_stock_data"])]]),
   };
@@ -1083,9 +1076,6 @@ export function buildWriterSaveCall(
         company_name: pull?.companyName ?? undefined,
         exchange: pull?.exchange ?? undefined,
         direction: d.direction,
-        // Writer mints are always entry-gated coverage; PASS derives its
-        // own terminal state inside record_thesis.
-        status: d.direction === "PASS" ? undefined : "WATCHING",
         reasoning_summary: rationale,
         setup_id: d.direction === "PASS" ? undefined : d.setup_id,
         // The price the research was done at; record_thesis reads it when its own quote fails.

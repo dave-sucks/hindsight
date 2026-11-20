@@ -552,7 +552,7 @@ ARCHIVED transitions write `type='STATUS_CHANGED'` (not a dedicated ARCHIVED typ
 
 ### `record_thesis` — mints new theses
 
-Required: ticker, direction, confidence_score, reasoning_summary, thesis_bullets, risk_flags, signal_types. Plus per-direction:
+No agent has it: it is the Writer's save on a new stock, and `pass_on_stock`'s. Required: ticker, direction, reasoning_summary, and where the idea came from (source_kind or source_rationale). Plus per-direction:
 - **LONG/SHORT**: horizon, entry/target/stop satisfying shape, **core_belief**, **≥2 key_assumptions**, **≥2 invalidation_conditions**, provenance
 - **PASS**: reasoning_summary + ≥1 invalidation_condition (the flip-criteria for a future encounter). Triggers[] rejected at write.
 

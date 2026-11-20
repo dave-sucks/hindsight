@@ -80,18 +80,6 @@ export interface ToolContext {
   maxOpenPositions?: number;
 
   /**
-   * Chat-dispatched thesis-writer mints clamp to WATCHING. P1-24: a
-   * record_thesis mint is always WATCHING regardless of this flag (a mint
-   * never has a position; HOLDING is execution-owned). This flag survives as
-   * the chat-dispatch marker that also suppresses the would-be ACTIVE-request
-   * warning. Set by dispatch_thesis_research for the Principal Chat flow so
-   * exploratory chat dispatches don't produce trade-eligible coverage that
-   * would later fire orphan tactical EXIT runs. Phase-3 daily-run refresh
-   * dispatches and Phase-4 tactical inline calls leave this unset.
-   */
-  forceWatchingMint?: boolean;
-
-  /**
    * Returns a stable group key for the given phase string.
    * Consecutive tool calls returning the same groupId collapse into one UI group.
    * Tools in the "research" phase all return "research", so they group together.

@@ -138,7 +138,7 @@ describe("the live book on 2026-10-14 — the morning sends every Agent Watch to
       const event = m.sent.find((e) => e.data.ticker === ticker)!;
       expect(event).toMatchObject({
         name: "app/thesis.write.requested",
-        data: { childRunId: run.id, analystId: w.agentConfigId, mode: "refresh", existingThesisId: w.id, forceWatchingMint: false },
+        data: { childRunId: run.id, analystId: w.agentConfigId, mode: "refresh", existingThesisId: w.id },
       });
     }
   });
