@@ -183,11 +183,12 @@ stored fields alone (`lib/thesis/account-activity.ts`), beside the attempts
 that never became a proposal (`lib/portfolio/attempt-outcomes.ts`). The Activity tab shows the whole list,
 and every agent reads it as one list, newest first, one sentence per line
 (`activityRead` in `lib/agent/stock-context.ts`, the one builder of every
-agent's read). The rule is a filter and nothing else: the last 3 reviews (a
+agent's read). The rule is a filter and nothing else, over the last 45 days (`READ_DAYS`): the last 3 reviews (a
 run's line with a note; one per run), the newest 3 news notes (the Market
-Reviewer's), the owner's newest 3 notes, and the owner's last decline that
+Reviewer's, medium or high impact), the owner's newest 3 notes, and the owner's last decline that
 carries words (every kind has a number, `READ`);
-trigger edits, trigger fires and proposal steps with no words are left out.
+trigger edits, trigger fires, proposal steps with no words and low-impact
+news are left out.
 Each sentence is what it is, who wrote it, when, the price then, the
 verdict's word and the note. The Portfolio Manager's rows carry the same list. A trigger the owner
 set says when and what it was on its own line (`ownerSets`, read off the same

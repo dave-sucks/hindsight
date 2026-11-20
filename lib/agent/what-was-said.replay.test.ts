@@ -54,7 +54,7 @@ const fl = floorRaw as unknown as {
 const DECLINE = "cmu1ex281000104jq0w42txms";
 const DECLINE_ENDS = "Hard reject. If anything, today is a setup for the Secular Compounder to add, not exit.";
 const RAISE_THE_FLOOR = "hold and raise the floor under real structure (the 20-day low, the breakout level)";
-const HEADER = "Activity on $CEG, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.";
+const HEADER = "Activity on $CEG in the last 45 days, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.";
 
 /** CEG's Activity lines before `at`, stored the way the database holds them (the run joined inline). */
 function linesBefore(at: string) {
@@ -203,7 +203,7 @@ describe("the 09-14 trigger runs", () => {
 
   it("15:30, the first run after the decline: the whole decline, titled as the tab titles it, and the rule to answer what it asks", () => {
     const { prompt, context } = promptAt(fx.runs.trigger0914_1530.loadedAt, 264.6);
-    expect(prompt).toContain("Activity on $CEG, newest first");
+    expect(prompt).toContain("Activity on $CEG in the last 45 days, newest first");
     expect(context.split("\n")[1].startsWith("  Declined sell 30 shares by you, Sep 14, 11:43 AM: ")).toBe(true);
     expect(prompt).toContain(DECLINE_ENDS);
     expect(prompt).toContain("The principal's words outrank everything else about a stock.");

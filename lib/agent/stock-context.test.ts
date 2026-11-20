@@ -83,7 +83,7 @@ describe("the block: the stock's Activity as one list", () => {
 
   it("09-30 morning read: the last 3 reviews and the owner's decline, newest first", () => {
     const { text } = buildStockContext({ ticker: "CEG", feed: feedBefore("2026-09-30T12:04:25Z") });
-    expect(text!.split("\n")[0]).toBe("Activity on $CEG, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
+    expect(text!.split("\n")[0]).toBe("Activity on $CEG in the last 45 days, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
     expect(body(text).map((l) => l.slice(0, l.indexOf(": ")))).toEqual([
       "  Review by its analyst, Sep 28, 8:04 AM at $261.23",
       "  Review by its analyst, Sep 25, 8:02 AM at $261.62",

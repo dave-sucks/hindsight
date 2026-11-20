@@ -341,7 +341,8 @@ describe("the 7:30 Market Reviewer", () => {
     // Both notes are among MU's newest lines; nothing is pinned above them.
     expect(mu.context).not.toContain("PINNED");
     expect(mu.context).toContain("News by the Market Reviewer, Nov 11, 7:30 AM at $650.00: high impact, weaker. New export rules");
-    expect(mu.context).toContain("News by the Market Reviewer, Nov 11, 7:30 AM at $650.00: low impact, neutral. A peer said");
+    // The low note is background: on the Activity tab, not in what a look reads.
+    expect(mu.context).not.toContain("A peer said");
   });
 
   it("a note that doesn't save leaves the digest saved and the run COMPLETE", async () => {

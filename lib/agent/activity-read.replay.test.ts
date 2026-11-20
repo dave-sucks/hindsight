@@ -1,14 +1,15 @@
 /**
  * What every agent reads of a stock's Activity: one list, newest first, one
  * sentence per line, chosen by a filter (lib/agent/stock-context.ts): the last
- * 3 reviews, up to 3 news notes, the owner's notes and declines; no trigger
+ * 3 reviews, 3 news notes of medium or high impact, 3 of the owner's notes and
+ * the last decline, from the last 45 days; no trigger
  * edits, no fires, no proposal steps without words. And a trigger the owner
  * set says when and what it was. Rows are IOT's and MU's as stored on
  * 2026-11-19 (__fixtures__/activity-read-iot-mu-2026-11-19.json says what was cut).
  */
 import raw from "@/lib/agent/__fixtures__/activity-read-iot-mu-2026-11-19.json";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
-import { ownerSets, READ } from "@/lib/agent/stock-context";
+import { ownerSets, READ, READ_DAYS } from "@/lib/agent/stock-context";
 import { activityFeed, toFeedItem, type ProposalOrder, type StoredLine } from "@/lib/thesis/activity-feed";
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
@@ -32,7 +33,7 @@ describe("IOT's Activity as every agent reads it", () => {
   const list = body(text);
 
   it("is one list between a line that says the rule and the way to the rest", () => {
-    expect(text.split("\n")[0]).toBe("Activity on $IOT, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
+    expect(text.split("\n")[0]).toBe("Activity on $IOT in the last 45 days, newest first: the last 3 reviews, 3 news notes and 3 of your notes, and your last decline.");
     expect(text.split("\n").at(-1)).toBe('Full history: get_theses(tickers: ["IOT"], include_history: true)');
   });
 
@@ -86,6 +87,16 @@ describe("the filter, on lines added to IOT's", () => {
       "  News by the Market Reviewer, Nov 19, 7:33 AM at $38.90: high impact, weaker. News n3.",
       "  News by the Market Reviewer, Nov 19, 7:32 AM at $38.90: high impact, weaker. News n2.",
     ]);
+  });
+
+  it("a low-impact news note is not read, and nothing older than 45 days is", () => {
+    const low = iot([noteLine(news("low1", "2026-11-19T12:40:00Z", { impact: "low", effect: "neutral", body: "Background on the industry." }), "IOT")]);
+    expect(low).not.toContain("Background on the industry.");
+    expect(READ_DAYS).toBe(45);
+    // Read on Jan 2, IOT's Nov 18 review is the 45th day back and the rest are older.
+    const later = stockContextFor({ ticker: "IOT", rows: lines(fx.iot.updates), orders, now: new Date("2027-01-02T12:00:00Z") }).text!;
+    expect(body(later).map((l) => l.slice(0, l.indexOf(": ")))).toEqual(["  Review by its analyst, Nov 18, 8:01 AM at $39.27"]);
+    expect(stockContextFor({ ticker: "IOT", rows: lines(fx.iot.updates), orders, now: new Date("2027-01-03T12:00:00Z") }).text).toBeNull();
   });
 
   it("the owner's note is a line; a trigger edit, by the owner or an agent, and a fire are not", () => {

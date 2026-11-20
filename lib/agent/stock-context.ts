@@ -4,10 +4,12 @@
  * first, one sentence per line (`activityRead`). The rule is a filter and
  * nothing else:
  *
- *   in  — the newest 3 reviews (a run's line with a note; one per run), the
- *         newest 3 news notes (the Market Reviewer's), the owner's newest 3
- *         notes, and the owner's last decline that carries words (`READ`);
- *   out — trigger edits, trigger fires, and proposal steps with no words.
+ *   in  — from the last 45 days (`READ_DAYS`): the newest 3 reviews (a run's
+ *         line with a note; one per run), the newest 3 news notes (the Market
+ *         Reviewer's, medium or high impact), the owner's newest 3 notes, and
+ *         the owner's last decline that carries words (`READ`);
+ *   out — trigger edits, trigger fires, proposal steps with no words, and
+ *         low-impact news.
  *
  * Every sentence has the same parts: what it is, who wrote it, when, the
  * price then, the verdict when it has one, and the note. Every agent reads
@@ -143,6 +145,10 @@ export function asTimelineUpdate(item: FeedItem): TimelineUpdate {
 /** How many of each kind of line an agent reads, the newest of each. Every kind has a number. */
 export const READ = { review: 3, news: 3, note: 3, decline: 1 } as const;
 type Kind = keyof typeof READ;
+/** How far back an agent reads: nothing older than this many days. */
+export const READ_DAYS = 45;
+/** The Market Reviewer's news an agent reads: a low note is background, left on the Activity tab. */
+const NEWS_IMPACTS: ReadonlySet<string> = new Set(["medium", "high"]);
 
 const WHEN = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 /** Who wrote a run's line, by the run's kind. */
@@ -173,6 +179,7 @@ function readOf(i: FeedItem): Read | null {
   if (i.type === "SHARED_NOTE") {
     const n = ((i.fieldChanges as { sharedNote?: { to?: SharedNote } } | null)?.sharedNote?.to ?? {}) as SharedNote;
     if (n.author !== "MARKET_REVIEWER") return { kind: "note", what: "Note", who: "you", verdict: null, note };
+    if (!NEWS_IMPACTS.has(n.impact ?? "")) return null;
     return { kind: "news", what: "News", who: "the Market Reviewer", verdict: [n.impact ? `${n.impact} impact` : null, n.effect].filter(Boolean).join(", ") || null, note };
   }
   if (i.type === "NOTE") return { kind: "note", what: "Note", who: "you", verdict: null, note };
@@ -189,11 +196,13 @@ function sentence(i: FeedItem, r: Read): string {
 }
 
 /** The stock's Activity as every agent reads it (see the top of the file). */
-export function activityRead(args: { ticker: string; feed: FeedItem[] }): string | null {
+export function activityRead(args: { ticker: string; feed: FeedItem[]; now?: Date }): string | null {
+  const oldest = args.now ? args.now.getTime() - READ_DAYS * 86_400_000 : -Infinity;
   const runs = new Set<string>();
   const read: Record<Kind, number> = { review: 0, news: 0, note: 0, decline: 0 };
   const lines: string[] = [];
   for (const i of args.feed) {
+    if (i.timestamp.getTime() < oldest) continue;
     const r = readOf(i);
     if (!r || read[r.kind] === READ[r.kind]) continue;
     // A run that saved its note on two lines is one review.
@@ -205,7 +214,7 @@ export function activityRead(args: { ticker: string; feed: FeedItem[] }): string
   if (lines.length === 0) return null;
   const T = args.ticker.toUpperCase();
   return [
-    `Activity on $${T}, newest first: the last ${READ.review} reviews, ${READ.news} news notes and ${READ.note} of your notes, and your last decline.`,
+    `Activity on $${T} in the last ${READ_DAYS} days, newest first: the last ${READ.review} reviews, ${READ.news} news notes and ${READ.note} of your notes, and your last decline.`,
     ...lines,
     `Full history: get_theses(tickers: ["${T}"], include_history: true)`,
   ].join("\n");
@@ -237,6 +246,6 @@ export function ownerSets(feed: FeedItem[]): Map<string, OwnerSet> {
 }
 
 /** What a run is handed on a stock, and the fires no run has answered, read off the whole feed. */
-export function buildStockContext(args: { ticker: string; feed: FeedItem[] }): StockContext {
+export function buildStockContext(args: { ticker: string; feed: FeedItem[]; now?: Date }): StockContext {
   return { text: activityRead(args), openFires: openFires(args.feed), ownerSets: ownerSets(args.feed) };
 }

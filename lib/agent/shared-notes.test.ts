@@ -67,7 +67,7 @@ describe("a pinned note on the five, the morning before the vote", () => {
   });
 
   it("once it ends it is an ordinary Activity line, and never a run's answer", () => {
-    const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note()], now: new Date("2026-11-06T13:00:00Z") });
+    const after = stockContextFor({ ticker: "MU", rows: MU_ROWS, notes: [note({ impact: "high", effect: "weaker" })], now: new Date("2026-11-06T13:00:00Z") });
     expect(after.text).not.toContain("PINNED");
     expect(after.text).toContain("News by the Market Reviewer, ");
     expect(after.text).toContain("Tomorrow's vote puts data-center opposition on the ballot.");
