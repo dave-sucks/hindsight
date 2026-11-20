@@ -28,7 +28,7 @@ Analysts: only three seats carry rules (Secular Compounder, PEAD Specialist, Cat
 
 **Before.** `{ watch: "move", is: "below", value: 6, variable: "peak" }`, sale, Send to Agent, on the account. Note: "below 6% from the high since we bought — standing rule set by the principal." (code's words, so no agent is shown it).
 
-**After.** The value stays at 6%. Two owner questions (below): the fire mode, and the approval switch for sales. In this PR, a new account starts with the same rule (`accountStandingRules`, `lib/agent/triggers/defaults.ts`), Send to Agent as the owner has it, with the note "Protects the gain. The sale was decided when we bought, so a good story doesn't overrule it."
+**After.** The value stays at 6%. Two owner questions (below): the fire mode, and the approval switch for sales. In this PR, a new account starts with the same rule (`accountStandingRules`, `lib/agent/triggers/defaults.ts`), Send to Agent as the owner has it, with the note "Protects the gain off the high since we bought."
 
 **The trader.** A trailing sale is decided before it is needed, and it is carried out when hit. Minervini trails a stop up under a winner and never lets a good gain turn into a loss. O'Neil cuts every loss at 7–8% from the buy, with no exceptions, because the losses you hold are the ones that sink the account. Neither leaves the stop to a vote on the day it is hit. A compounder investor holds through 6% dips, but our "compounder" book is MU, NVDA, PLTR, GEV and CEG: high-beta names that fell 20–35% in five weeks.
 
@@ -77,8 +77,8 @@ Auto-sell doesn't get past the approval switch: with it on, an Auto-sell is a pr
 **Before.** None.
 
 **After** (a new account's rules in this PR; for the owner's account, a question):
-- "Review if above 7% from yesterday's close and at least 2× normal volume": `{ match: "all", conditions: [{ watch: "move", is: "above", value: 7, variable: "prev_close" }, { watch: "volume", value: 2 }] }`, Send to Agent. Note: "A big day up on heavy volume: something happened. Find the news before deciding anything."
-- The same with `is: "below"`. Note: "A big day down on heavy volume: find out why. A drop on the company's own news asks whether the reason we own or watch it still holds; a market-wide drop may not."
+- "Review if above 7% from yesterday's close and at least 2× normal volume": `{ match: "all", conditions: [{ watch: "move", is: "above", value: 7, variable: "prev_close" }, { watch: "volume", value: 2 }] }`, Send to Agent. Note: "A big day up on heavy volume: something happened."
+- The same with `is: "below"`. Note: "A big day down on heavy volume: something happened." What to check on such a day (the company's own news, or the whole market) is judgment for the skill for "something happened" (unit 3.3), not the trigger's reason.
 
 "Either one" is two triggers, so up and down are two rules.
 
@@ -122,7 +122,7 @@ Send to Agent, not Flag for Review: a big day down on a holding can't wait for t
 
 **Before.** Value 5 on the owner's row, note "Reports within 3 days — decide before the print…". The seed for a new account: 3 days.
 
-**After.** The seed says 5 days, with the note "Decide before the report: hold through it, trim, or wait. Size for the gap." On the owner's row, only the note is wrong. Owner: fix it in Settings, or leave it, since no agent reads it.
+**After.** The seed says 5 days, with the note "A look before the report, while there is still time to size for the gap." On the owner's row, only the note is wrong. Owner: fix it in Settings, or leave it, since no agent reads it.
 
 **The trader.** The decision before a report (hold through, cut to a size that can take the gap, or wait to buy until after) is made in the week before it. 5 days, not 3, because a Flag for Review waits for the next morning run: on a Monday, Wednesday and Friday schedule, a report on a Tuesday morning is seen at 3 days only after the fact.
 
@@ -134,7 +134,7 @@ Send to Agent, not Flag for Review: a big day down on a holding can't wait for t
 
 **Before.** The owner's row: Send to Agent. The seed: Flag for Review (unset), with the note "Reported — re-underwrite…".
 
-**After.** The seed is set to Send to Agent, with the note "It reported: look again today. A beat the stock fell on means the market wanted more; a miss asks whether the reason we own or watch it is wrong or only early." This matches the owner's row.
+**After.** The seed is set to Send to Agent, with the note "A look the day after the report, while the market is still deciding what it means." This matches the owner's row.
 
 **The trader.** The drift after a report (Bernard and Thomas, 1989) is decided in its first days: a gap that holds on the first day is the PEAD buy, and a beat the stock sells on is the first warning. Waiting for the next morning run can cost two of those days.
 
@@ -183,6 +183,8 @@ The ledger says MSFT left the watchlist on an old "Stop watching if below $504.9
 | `lib/inngest/functions/sale-asks-daily.replay.test.ts` | Its account is seeded with no rules, so the case stays about the floor alone. |
 | tests | `defaults.test.ts`, `seed-account.test.ts`, `load-levels.test.ts` say the new set. |
 | `docs/guide/concepts/triggers.md`, `docs/TRIGGERS.md` | The account's rules as they are, and a new account's. |
+
+Each new note says only what its trigger protects or waits for, in the voice of a trader writing on their own plan (§4). What to do when it fires is the fire mode's job, or a skill's (unit 3.x), never the note's.
 
 Nothing changes on the owner's account. Nothing an agent is sent changes, so there is nothing to score. Every change to the owner's rules is a question above, for Settings → Triggers.
 

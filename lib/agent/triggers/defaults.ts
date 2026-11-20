@@ -108,8 +108,8 @@ function bigDayTrigger(is: "above" | "below"): Trigger {
     fireMode: "ASK_NOW",
     rationale:
       is === "above"
-        ? "A big day up on heavy volume: something happened. Find the news before deciding anything."
-        : "A big day down on heavy volume: find out why. A drop on the company's own news asks whether the reason we own or watch it still holds; a market-wide drop may not.",
+        ? "A big day up on heavy volume: something happened."
+        : "A big day down on heavy volume: something happened.",
   };
 }
 
@@ -120,7 +120,7 @@ export function accountStandingRules(): Trigger[] {
     predicate: { watch: "move", is: "below", value: ACCOUNT_TRAIL_PCT, variable: "peak" },
     action: "EXIT",
     fireMode: "ASK_NOW",
-    rationale: "Protects the gain. The sale was decided when we bought, so a good story doesn't overrule it.",
+    rationale: "Protects the gain off the high since we bought.",
   };
   return [trail, bigDayTrigger("above"), bigDayTrigger("below")].map((t) => ({ ...t, source: "DEFAULT" as const }));
 }

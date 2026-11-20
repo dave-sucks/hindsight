@@ -45,7 +45,7 @@ export function earningsStandingTriggers(): Trigger[] {
       id: "seed:earnings-within",
       predicate: { watch: "report", is: "before", value: 5 },
       action: "REVIEW",
-      rationale: "Decide before the report: hold through it, trim, or wait. Size for the gap.",
+      rationale: "A look before the report, while there is still time to size for the gap.",
       source: "DEFAULT",
     },
     // One look on every report, beat or miss: a stock's own after-report review shares its slot and replaces it.
@@ -55,7 +55,7 @@ export function earningsStandingTriggers(): Trigger[] {
       action: "REVIEW",
       fireMode: "ASK_NOW",
       rationale:
-        "It reported: look again today. A beat the stock fell on means the market wanted more; a miss asks whether the reason we own or watch it is wrong or only early.",
+        "A look the day after the report, while the market is still deciding what it means.",
       source: "DEFAULT",
     },
   ];
