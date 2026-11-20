@@ -23,7 +23,7 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
-| 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | **Next** | |
+| 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. Also the stocks with no playbook (9 of 17 positions in 12 weeks; the owner, Nov 19): their rules are these rules, and should a stock be bought with no playbook at all? Also the trail's fire mode, since 80 of 91 sale proposals expired. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | **Next** | |
 | 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone) | | |
 | 1.3 | Playbook: Base breakout | own, short: 3 picks, 1 trade in 12 weeks | | |
 | 1.4 | Playbook: Pullback to a rising average (MA_PULLBACK) | own: the Writer's first choice (34 in 30 days) | | |
@@ -65,12 +65,14 @@ For each playbook unit, review all of it: what the watch waits for, the buy, the
 | 4.2 | `edit_triggers` | own: about 200 trigger edits | | |
 | 4.3 | The note and status tools: `write_note`, `set_conviction`, `set_catalyst_date`, `stop_watching`, `watch_again`, `pass_on_stock`, `watch_stock` | own for `write_note` (about 215 calls); the other six in bulk inside it | | |
 | 4.4 | The read tools (roadmap E.10): bulk or delete by usage | bulk, with deletions: the five registered tools on no list, `read_database`, `manage_position` (file and test), and `list_runs`, `read_run`, `read_accuracy_reports`, `read_trade_results` off the chat's list | | |
+| 4.5 | The bookkeeping tools: `complete_run`, `record_run_summary`, `submit_thesis`, `dispatch_thesis_research`, `wait_for_thesis_refresh` (added by the owner, Nov 19) | own: `complete_run` 232 calls, 21 refusals; `submit_thesis` 122 | | |
 
 ## Layer 5: jobs
 
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
 | 5.1 | `rules.md` and `research-rules.md` (shared) | own: `rules.md` rides on seven agents | | |
+| 5.1b | Each analyst's strategy text (`analystPrompt`, the `the_analyst` context item; added by the owner, Nov 19) | own: about 280 sends at about 4,000 characters, as often as `rules.md` | | |
 | 5.2 | The chat | own: 57 owner messages; the largest instructions (33.9k characters) | | |
 | 5.3 | The morning run | own: 50 runs, 573k input tokens a run | | |
 | 5.4 | The trigger run | own: 125 runs, the most of any agent | | |
@@ -92,9 +94,9 @@ What a finished unit changed that later units quote. Newest first.
 
 Things a unit thought were wrong in the structure, for the lead and the owner. One line each, with the unit that found it.
 
-- **Unit 0: stocks with no playbook.** 9 of the 17 positions opened in 12 weeks had none, and 23 live stocks have none; they get their sell rules only from the analyst and the account. No unit reviews them. Waiting on the owner.
-- **Unit 0: the analyst's strategy text has no unit.** `the_analyst` (`analystPrompt`) is sent on about 280 runs at about 4,000 characters, as often as `rules.md`. Waiting on the owner.
-- **Unit 0: the bookkeeping tools have no unit.** `complete_run` (232 calls, 21 refusals), `submit_thesis` (122), `record_run_summary` (65), `dispatch_thesis_research` (25), `wait_for_thesis_refresh` (17). Waiting on the owner.
+- **Unit 0: stocks with no playbook.** 9 of the 17 positions opened in 12 weeks had none, and 23 live stocks have none; they get their sell rules only from the analyst and the account. The owner (Nov 19): reviewed inside 1.1.
+- **Unit 0: the analyst's strategy text has no unit.** `the_analyst` (`analystPrompt`) is sent on about 280 runs at about 4,000 characters, as often as `rules.md`. The owner (Nov 19): a new unit, 5.1b.
+- **Unit 0: the bookkeeping tools have no unit.** `complete_run` (232 calls, 21 refusals), `submit_thesis` (122), `record_run_summary` (65), `dispatch_thesis_research` (25), `wait_for_thesis_refresh` (17). The owner (Nov 19): a new unit, 4.5.
 - **Unit 0: sale proposals mostly expire.** 80 of 91 in 30 days (135 of 181 in 12 weeks). That is the approval switch and the owner's attention, not an agent's text. It goes to 1.1, with the trail's fire mode.
 
 ## Found, not yet assigned
