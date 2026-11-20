@@ -7,6 +7,7 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 - Only the lead edits it. When a unit finishes, the lead updates the unit's row (status, PR), adds anything later units must know to "Changed shared things", and marks the next unit **Next**.
 - A unit that finds something wrong outside its own scope reports it to the lead, who writes one line under "Structure questions" or "Found, not yet assigned". Nobody fixes it outside its unit.
 - Status values: **Next**, Building, In review (PR open), Done, Bulk (reviewed inside a bulk unit), Deleted.
+- **Since Nov 20 each unit has two steps** (§8): a proposal page of before → after changes, resting on how traders in that style work, then, after the owner's yes, one PR with the changes he kept. Our book is small and was paused mid-rebuild, so its counts never make the case for a change. The owner picks the order: the compounder playbook first, then a situation's skill, then the trigger run's instructions.
 - Depth comes from unit 0's counts (`docs/plans/EXPERT_REVIEW_USAGE.md`): **own** (a unit of its own), **bulk** (reviewed with others in one unit), **delete?** (unused: the unit asks whether a trader in that style needs it; a deletion needs a trader's reason, never the count alone).
 
 ---
@@ -24,10 +25,10 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
 | 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. Also the stocks with no playbook (9 of 17 positions in 12 weeks; the owner, Nov 19): their rules are these rules, and should a stock be bought with no playbook at all? Also the trail's fire mode, since 80 of 91 sale proposals expired. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | In review | [#1073](https://github.com/dave-sucks/hindsight/pull/1073) |
-| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone). From 1.1: a trail measured in the stock's own average true range, and volume read against the same time of day (today it is volume so far over 20 whole days, so a 2× test reads low until late in the session). | **Next** | |
+| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone). From 1.1: a trail measured in the stock's own average true range, and volume read against the same time of day (today it is volume so far over 20 whole days, so a 2× test reads low until late in the session). | Paused (Nov 20: the owner took 1.5 first) | |
 | 1.3 | Playbook: Base breakout | own, short: 3 picks, 1 trade in 12 weeks | | |
 | 1.4 | Playbook: Pullback to a rising average (MA_PULLBACK) | own: the Writer's first choice (34 in 30 days) | | |
-| 1.5 | Playbook: Compounder accumulation | own: 4 of 7 holdings; its 200-day rule fired 153 times in 12 weeks | | |
+| 1.5 | Playbook: Compounder accumulation. Also: is a 200-day break the right end of a compounder watch, and the account's 6% trail against the compounder analyst's "down 15% from its high, a question, not a sale" (both below) | own: 4 of 7 holdings | **Next** | |
 | 1.6 | Playbook: Drift after earnings (PEAD) | own: 8 picks, 1 trade | | |
 | 1.7 | Playbook: Episodic pivot | bulk, inside 1.9: 1 pick, no trade | | |
 | 1.8 | Playbook: Before an event (PRE_CATALYST) | own: 24 picks, 4 trades closed in 12 weeks | | |
@@ -56,7 +57,7 @@ For each playbook unit, review all of it: what the watch waits for, the buy, the
 | 3.4 | Time to look again (today `REVIEW_DUE`) | own: 109 rows, 16 runs | | |
 | 3.5 | What code finds with no trigger: a floor to fix, just sold, promoted to live | bulk: 1, 2 and 0 rows. Promoted stays, since two analysts are still on paper. | | |
 
-Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situation, one short skill each, with a holding part and a watch part. "A note to answer" is deleted in that design, so it has no unit. The units review the skills once E.8 builds them.
+Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situation, one short skill each, with a holding part and a watch part. "A note to answer" is deleted in that design, so it has no unit. The nine skills shipped Nov 19 (#1074, `lib/agent/engine/skills/`), so the units review those files.
 
 ## Layer 4: actions
 
