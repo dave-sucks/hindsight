@@ -15,7 +15,7 @@
  *   record_thesis (when direction or core belief shifts so significantly
  *   the agent wants a clean break).
  * - Status transitions go through a separate `change_status` field. We
- *   don't allow agents to silently flip ACTIVE → INVALIDATED via this tool;
+ *   don't allow agents to silently retire a thesis via this tool;
  *   that's a deliberate transition with its own ThesisUpdate type.
  * - Triggers change one at a time (DAV-242): `add_triggers`, `edit_triggers`
  *   by id, `remove_trigger_ids`, and the entry / target / stop arguments are
@@ -86,7 +86,6 @@ const F = thesisFields();
 
 /** What change_status does, worded once. */
 const STATUS_RETIRE =
-  "INVALIDATED = the belief broke on evidence; the thesis retires (reason INVALIDATED). " +
   "ARCHIVED = drop the stock for good; it retires (reason DROPPED). To stop paying for a stock and keep watching it, keep it WATCHING and remove its buy and its Stop watching line by id instead, when it has them. ";
 const STATUS_WATCH = "WATCHING = put a stock you sold back on watch (or opt out of re-entering a promoted one). ";
 const STATUS_OWNED = "Holding and sold are not set here: place_trade and sell flip them when the order fills.";
@@ -133,14 +132,12 @@ const updateSchema = z.object({
   change_status: z
     // P1-24 contract: the tool-owned account facts (HOLDING on a buy fill,
     // RETIRED-SOLD on a sell fill) are no longer accepted here — they were
-    // the legacy ACTIVE/CLOSED verbs, removed from this enum. The agent still
-    // speaks INVALIDATED / ARCHIVED as its intent verbs; the handler
-    // translates them to the stored status=RETIRED + a retiredReason
-    // (INVALIDATED → reason INVALIDATED, ARCHIVED → reason DROPPED).
-    .enum(["INVALIDATED", "ARCHIVED", "WATCHING"])
+    // the legacy ACTIVE/CLOSED verbs, removed from this enum. stop_watching
+    // sends ARCHIVED (stored status=RETIRED, reason DROPPED) and watch_again
+    // sends WATCHING.
+    .enum(["ARCHIVED", "WATCHING"])
     .optional()
     .describe(`${STATUS_RETIRE}${STATUS_WATCH}${STATUS_OWNED} A researched decline is direction: "PASS".`),
-  research_data: F.research_data.optional(),
 
   // ── The review's verdict, and the line it answers: on the audit row only ──
   verdict: F.verdict.optional(),
@@ -179,15 +176,9 @@ type UpdatePatch = Partial<{
   triggers: object;
   status: string;
   retiredReason: string | null;
-  invalidatedAt: Date;
-  invalidReason: string;
   closedAt: Date | null;
   closeReason: string | null;
   promotedAt: Date | null;
-  // THESIS_RESEARCH_V2 Phase 1 — refresh path persistence.
-  // PR-9: researchSections blob dropped; researchUpdatedAt is declared
-  // higher up in this same type (stamped when any V2 section lands).
-  researchData: string;
 }>;
 
 /**
@@ -316,7 +307,7 @@ const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
   ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],
   ["invalidation_conditions", "invalidationConds"], ["outlook", "outlook"], ["outlook_reason", "outlookReason"], ["conviction", "conviction"],
   ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
-  ["bull_case", "bullCase"], ["bear_case", "bearCase"], ["research_data", "researchData"],
+  ["bull_case", "bullCase"], ["bear_case", "bearCase"],
 ];
 /** Every field a hand edit can have set, with its column (the fields compared above). */
 const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"]];
@@ -409,7 +400,6 @@ export const updateThesis = defineTool({
   gateLog: "update_thesis",
 
   progressLabel: (args) => {
-    if (args.change_status === "INVALIDATED") return `Invalidating thesis ${args.thesis_id.slice(-8)}`;
     if (args.change_status === "ARCHIVED") return `Archiving thesis ${args.thesis_id.slice(-8)}`;
     return `Updating thesis ${args.thesis_id.slice(-8)}`;
   },
@@ -441,9 +431,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       // Diffed by the fieldChanges builder — a terminal transition writes
       // retiredReason, and the audit row should carry the from/to.
       retiredReason: true,
-      // Diffed (compacted) so a degraded research_data-only refresh still
-      // records that the research payload changed.
-      researchData: true,
       // direction is read by the shape gate below.
       direction: true,
       researchRun: { select: { agentConfigId: true } },
@@ -651,7 +638,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       refuseField(
         "change_status",
         String(violation.data.message ?? violation.summary),
-        violation.data.error === "thesis_writer_cannot_change_promoted_status" ? "the writer doesn't change status" : "a promoted stock goes back to watching first",
+        "a promoted stock goes back to watching first",
       );
       transitionInput = { ...transitionInput, changeStatus: undefined };
       violation = checkStatusTransition(transitionInput);
@@ -689,9 +676,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   //   - 2026-05-14 Earnings Drift / TSM → INVALIDATED without close
   //   - 2026-05-14 Catalyst Event Raider / AMZN → ARCHIVED without close (F2 gap)
   //
-  // Both INVALIDATED and ARCHIVED on a HOLDING-with-position are the same
-  // zombie pattern. Refuse either unless a close_position fired on the
-  // same ticker in this run.
+  // ARCHIVED (stop_watching) on a HOLDING-with-position is the same zombie
+  // pattern. Refused unless a sale closed it on the same ticker in this run.
   //
   // Carve-outs:
   //   - WATCHING thesis being terminated (no position by definition) — pass.
@@ -886,7 +872,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // A terminal flip clears the triggers, so the price-shape rules below don't
   // apply to it. (PASS on a seed is terminal too — it lands PASSED.)
   const isTerminalTransition =
-    args.change_status === "INVALIDATED" ||
     args.change_status === "ARCHIVED" ||
     args.direction === "PASS";
 
@@ -1015,24 +1000,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // account -> analyst -> thesis like every other level. An agent that
   // wants this name looked at more often edits that trigger; it does not
   // type a date. Every surface derives the due date at read time (DAV-221).
-  // THESIS_RESEARCH_V2 refresh-path research persistence. PR-9: the
-  // `research_sections` blob is gone — parsed sections land on the 9
-  // first-class JSONB columns above (which also stamp researchUpdatedAt
-  // via the V2-section-supplied check). `research_data` (the raw markdown
-  // structured-data block) is still passthrough-persisted here for the
-  // card's data tab + audit.
-  if (
-    typeof args.research_data === "string" &&
-    args.research_data.length > 0
-  ) {
-    patch.researchData = args.research_data;
-    // researchUpdatedAt was already stamped above when any V2 section
-    // arrived; stamp here too as a fallback when only research_data lands
-    // without sections (degraded synthesis path).
-    if (patch.researchUpdatedAt === undefined) {
-      patch.researchUpdatedAt = new Date();
-    }
-  }
   // ── Apply the trigger ops ────────────────────────────────────────────
   // Rules run per op on the resulting list (one trigger per bucket, the
   // ratchet on a held stock, a rationale on an agent's level change); a
@@ -1160,17 +1127,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
 
   // Status transitions get extra paperwork.
   let updateType: ThesisUpdateType = "UPDATED";
-  if (args.change_status === "INVALIDATED") {
-    // P1-24 B3: terminal collapse → RETIRED + retiredReason. The agent
-    // verb (change_status:"INVALIDATED") is unchanged; the stored status
-    // is RETIRED and the reason records why. invalidatedAt/invalidReason
-    // still carry the narrative; updateType stays the audit event kind.
-    patch.status = "RETIRED";
-    patch.retiredReason = "INVALIDATED";
-    patch.invalidatedAt = new Date();
-    patch.invalidReason = args.rationale?.slice(0, 500) ?? "";
-    updateType = "INVALIDATED";
-  } else if (args.change_status === "ARCHIVED") {
+  if (args.change_status === "ARCHIVED") {
     // Terminal-without-trade-or-invalidation. Used for agent/user walking
     // away from coverage (user UI remove; editor remove). NOT for a
     // researched-and-declined PASS — that's direction:"PASS" → status=PASSED
@@ -1265,7 +1222,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   //
   // Solution: classify a non-empty patch that touches only narrative
   // keys as REVIEWED, same as the empty-patch path below. Status
-  // transitions (already set above as INVALIDATED/CLOSED/STATUS_CHANGED)
+  // transitions (already set above as STATUS_CHANGED)
   // stay as-is — narrative reclassification only applies to the default
   // UPDATED bucket.
   //
@@ -1381,7 +1338,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     "snapshot",
     "bullCase",
     "bearCase",
-    "researchData",
     // Belief
     "coreBelief",
     "keyAssumptions",
@@ -1406,7 +1362,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     "snapshot",
     "bullCase",
     "bearCase",
-    "researchData",
   ] as const;
   const prevSnapshot = Object.fromEntries(
     diffFields.map((f) => [f, (existing as Record<string, unknown>)[f]]),
@@ -1442,59 +1397,10 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   if (ctx.dryRun) return dryRunPassed(existing.ticker, opResults, refusedFields);
 
   // Apply.
-  try {
-    await prisma.thesis.update({
-      where: { id: existing.id },
-      data: patch as object,
-    });
-  } catch (updErr: unknown) {
-    // THESIS_RESEARCH_V2 fallback — mirrors record_thesis.ts. If the
-    // Prisma client is out of sync with the schema (e.g. the V2 columns
-    // haven't been regenerated locally), retry the update without those
-    // fields so the rest of the patch lands. Loud log so we notice if
-    // this fires in production — the schema migration shipped in
-    // PR #278 + PR-9 so it should never trigger, but the strip mirrors
-    // record_thesis's defense-in-depth.
-    const errMsg = updErr instanceof Error ? updErr.message : String(updErr);
-    const isUnknownArgError =
-      errMsg.includes("Unknown arg") ||
-      errMsg.includes("Unknown argument") ||
-      (errMsg.includes("researchData") && errMsg.includes("does not exist")) ||
-      (errMsg.includes("researchUpdatedAt") && errMsg.includes("does not exist")) ||
-      (errMsg.includes("snapshot") && errMsg.includes("does not exist")) ||
-      (errMsg.includes("bullCase") && errMsg.includes("does not exist")) ||
-      (errMsg.includes("bearCase") && errMsg.includes("does not exist"));
-    const hasV2Field =
-      "researchData" in patch ||
-      "researchUpdatedAt" in patch ||
-      "snapshot" in patch ||
-      "bullCase" in patch ||
-      "bearCase" in patch;
-    if (isUnknownArgError && hasV2Field) {
-      console.error(
-        `[tool] update_thesis V2 FALLBACK for ${existing.ticker}: stripping V2 research columns. Prisma client appears out of sync. Full error: ${errMsg}`,
-      );
-      const {
-        researchData: _rdata,
-        researchUpdatedAt: _rupdated,
-        snapshot: _snap,
-        bullCase: _bcase,
-        bearCase: _xcase,
-        ...fallbackPatch
-      } = patch;
-      void _rdata;
-      void _rupdated;
-      void _snap;
-      void _bcase;
-      void _xcase;
-      await prisma.thesis.update({
-        where: { id: existing.id },
-        data: fallbackPatch as object,
-      });
-    } else {
-      throw updErr;
-    }
-  }
+  await prisma.thesis.update({
+    where: { id: existing.id },
+    data: patch as object,
+  });
 
   // Watchlist-collapse: Thesis is now the single store. WATCHING →
   // terminal transitions automatically remove the thesis from the
@@ -1519,11 +1425,6 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     fieldChanges.keyAssumptions
   ) {
     summaryParts.push("rationale updated");
-  }
-  if (
-    fieldChanges.researchData
-  ) {
-    summaryParts.push("research refreshed");
   }
   const verb = updateType === "REVIEWED" ? "Reviewed" : "Updated";
   const summary =

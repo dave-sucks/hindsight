@@ -31,13 +31,10 @@ describe("DAV-308 — a sold stock can answer its own review", () => {
 });
 
 describe("DAV-308 — and nothing else opens", () => {
-  it.each(["INVALIDATED", "ARCHIVED"] as const)(
-    "still refuses %s on a sold row — that is editing history",
-    (verb) => {
-      const v = checkStatusTransition({ ...SMMT, changeStatus: verb });
-      expect(v?.data.error).toBe("terminal_status");
-    },
-  );
+  it("still refuses ARCHIVED on a sold row — that is editing history", () => {
+    const v = checkStatusTransition({ ...SMMT, changeStatus: "ARCHIVED" });
+    expect(v?.data.error).toBe("terminal_status");
+  });
 
   it.each(["DROPPED", "INVALIDATED", "REPLACED"] as const)(
     "still refuses a rationale-only write on a RETIRED/%s row",
@@ -80,7 +77,7 @@ describe("isSoldReviewWrite", () => {
   it("is the two answers and only those two", () => {
     expect(isSoldReviewWrite({ ...SMMT, changeStatus: undefined })).toBe(true);
     expect(isSoldReviewWrite({ ...SMMT, changeStatus: "WATCHING" })).toBe(true);
-    expect(isSoldReviewWrite({ ...SMMT, changeStatus: "INVALIDATED" })).toBe(false);
+    expect(isSoldReviewWrite({ ...SMMT, changeStatus: "ARCHIVED" })).toBe(false);
     expect(isSoldReviewWrite({ ...SMMT, retiredReason: "DROPPED", changeStatus: undefined })).toBe(false);
     expect(isSoldReviewWrite({ ...SMMT, currentStatus: "HOLDING", changeStatus: undefined })).toBe(false);
   });

@@ -184,7 +184,6 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY", { note: "A wrong id is refused by id; the rest of the call lands." }),
     f("change_status", "CHOSEN"),
-    f("research_data", "CARRIED"),
     ...RESEARCH_BLOCKS,
     f("verdict", "JUDGED", { note: "STRONGER / UNCHANGED / WEAKER / BROKEN, a string on the wire: a wrong word comes back by name and the rest of the call lands." }),
     f("verdict_line", "TEXT"),

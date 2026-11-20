@@ -176,8 +176,8 @@ describe("update_thesis — recording that we looked", () => {
     mockThesisFindUnique.mockResolvedValueOnce(makeRow({ lastReviewedAt: OVERDUE }));
     await makeTool().execute({
       thesis_id: "thesis_clock_1",
-      rationale: "Bear case confirmed by the guidance cut; killing the watch.",
-      change_status: "INVALIDATED",
+      rationale: "Bear case confirmed by the guidance cut; dropping the watch.",
+      change_status: "ARCHIVED",
     });
 
     expect(updatedData().lastReviewedAt).toBeUndefined();

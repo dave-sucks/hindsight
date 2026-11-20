@@ -1,12 +1,9 @@
 /**
- * update-thesis-promoted-writer.test.ts — Layer-1 backstop for the
- * thesis-writer role's research-only boundary (GAPS P0-4).
+ * update-thesis-promoted-writer.test.ts — the save on a PROMOTED thesis.
  *
- * When `ctx.runMode === "THESIS_WRITER"` and the existing thesis is
- * PROMOTED, ANY `change_status` arg is refused. Belt-and-suspenders on
- * top of the prompt-side PROMOTED branch in run-thesis-writer.ts so
- * even a model that ignores the FORBIDDEN clause can't flip status
- * from the writer. See docs/THESIS_ARCHITECTURE.md §0 (the role split).
+ * The Writer's refresh sends no status verb and lands on a PROMOTED row
+ * (research only; see docs/THESIS_ARCHITECTURE.md §0, the role split). An
+ * orchestrator's note leaves it promoted, and watch_again resolves it.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -98,46 +95,9 @@ const promotedThesisRow = {
   ],
 };
 
-describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows", () => {
+describe("update_thesis on a PROMOTED thesis", () => {
   beforeEach(() => {
     mockThesisFindUnique.mockReset();
-  });
-
-  it("refuses change_status: WATCHING from runMode=THESIS_WRITER on PROMOTED thesis, by itself", async () => {
-    mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
-    const ctx = makeCtx({ runMode: "THESIS_WRITER" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-
-    const result = await tool.execute({
-      thesis_id: "thesis_promoted_1",
-      rationale: "Refreshing research after promotion",
-      change_status: "WATCHING",
-    });
-
-    // The verb is refused by name; the rest of the refresh lands and the row stays PROMOTED.
-    expect(result.data.ok).toBe(true);
-    expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "change_status", reason: expect.stringMatching(/research refresh only/i) })]);
-    expect("status" in (mockThesisUpdate.mock.calls.at(-1)?.[0].data ?? {})).toBe(false);
-  });
-
-  it("refuses any change_status from runMode=THESIS_WRITER on PROMOTED thesis", async () => {
-    // The writer is research-only — it can't change PROMOTED status at all.
-    // Only the orchestrator decides re-entry (place_trade) or defer (WATCHING).
-    mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
-    const ctx = makeCtx({ runMode: "THESIS_WRITER" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-
-    const result = await tool.execute({
-      thesis_id: "thesis_promoted_1",
-      rationale: "Refresh says the view broke",
-      change_status: "INVALIDATED",
-    });
-
-    expect(result.data.ok).toBe(true);
-    expect(result.data.refused_fields).toEqual([expect.objectContaining({ field: "change_status" })]);
-    expect("status" in (mockThesisUpdate.mock.calls.at(-1)?.[0].data ?? {})).toBe(false);
   });
 
   // P1-24 contract: the tool-owned ACTIVE/CLOSED change_status verbs were
@@ -166,10 +126,7 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       invalidation_conditions: ["i1 refreshed", "i2 refreshed"],
     });
 
-    // Neither PROMOTED gate fires — the refresh persists.
-    expect(result.data.error).not.toBe(
-      "thesis_writer_cannot_change_promoted_status",
-    );
+    // The resolution gate doesn't fire on the Writer — the refresh persists.
     expect(result.data.error).not.toBe("promoted_thesis_requires_resolution");
     expect(result.data.ok).not.toBe(false);
     expect(mockThesisUpdate).toHaveBeenCalled();
@@ -203,7 +160,7 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
 
   it("allows change_status: WATCHING from runMode=DAILY (orchestrator) on PROMOTED thesis", async () => {
     // Orchestrators (daily / tactical) are allowed to flip PROMOTED →
-    // WATCHING. The Layer-1 writer gate must NOT fire for them.
+    // WATCHING (watch_again).
     mockThesisFindUnique.mockResolvedValueOnce(promotedThesisRow);
     const ctx = makeCtx({ runMode: "MORNING_PLAN" });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -215,32 +172,7 @@ describe("update_thesis Layer-1 backstop — THESIS_WRITER role on PROMOTED rows
       change_status: "WATCHING",
     });
 
-    // The writer-role gate did not fire — downstream logic took over.
-    expect(result.data.error).not.toBe(
-      "thesis_writer_cannot_change_promoted_status",
-    );
-  });
-
-  it("does not fire the writer gate on non-PROMOTED theses", async () => {
-    // Sanity: a writer refreshing a WATCHING thesis still has change_status
-    // available (e.g. PASS-like terminal flows are handled by other gates).
-    mockThesisFindUnique.mockResolvedValueOnce({
-      ...promotedThesisRow,
-      status: "WATCHING",
-    });
-    const ctx = makeCtx({ runMode: "THESIS_WRITER" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tool = updateThesis(ctx) as unknown as { execute: (args: any) => Promise<any> };
-
-    const result = await tool.execute({
-      thesis_id: "thesis_promoted_1",
-      rationale: "Archive — name fell out of theme",
-      change_status: "ARCHIVED",
-    });
-
-    // The writer-role gate is PROMOTED-scoped; on WATCHING it doesn't fire.
-    expect(result.data.error).not.toBe(
-      "thesis_writer_cannot_change_promoted_status",
-    );
+    expect(result.data.ok).toBe(true);
+    expect(mockThesisUpdate.mock.calls.at(-1)?.[0].data.status).toBe("WATCHING");
   });
 });
