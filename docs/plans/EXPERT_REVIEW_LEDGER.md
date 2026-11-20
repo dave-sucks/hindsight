@@ -23,8 +23,8 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
-| 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. Also the stocks with no playbook (9 of 17 positions in 12 weeks; the owner, Nov 19): their rules are these rules, and should a stock be bought with no playbook at all? Also the trail's fire mode, since 80 of 91 sale proposals expired. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | **Next** | |
-| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone) | | |
+| 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. Also the stocks with no playbook (9 of 17 positions in 12 weeks; the owner, Nov 19): their rules are these rules, and should a stock be bought with no playbook at all? Also the trail's fire mode, since 80 of 91 sale proposals expired. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | In review | [#1073](https://github.com/dave-sucks/hindsight/pull/1073) |
+| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone). From 1.1: a trail measured in the stock's own average true range, and volume read against the same time of day (today it is volume so far over 20 whole days, so a 2× test reads low until late in the session). | **Next** | |
 | 1.3 | Playbook: Base breakout | own, short: 3 picks, 1 trade in 12 weeks | | |
 | 1.4 | Playbook: Pullback to a rising average (MA_PULLBACK) | own: the Writer's first choice (34 in 30 days) | | |
 | 1.5 | Playbook: Compounder accumulation | own: 4 of 7 holdings; its 200-day rule fired 153 times in 12 weeks | | |
@@ -89,6 +89,8 @@ Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situatio
 
 What a finished unit changed that later units quote. Newest first.
 
+- **Unit 1.1 (#1073):** a new account's rules are the reviewed set (`accountSeedTriggers`): the 6% trail off the high (Send to Agent), a look on a big day up and on a big day down (7% from yesterday's close on at least 2× the 20-day average volume, Send to Agent), a look in the 5 days before a report (Flag for Review) and the day after (Send to Agent), the material-filing look and the 7-day clock. The up-7% add is gone from the seed: an add is a playbook's trigger on the stock. The owner's account is unchanged by the PR. A trigger's reason says only what it protects or waits for, never what to do when it fires. That is the fire mode's job or a skill's (3.x). Write-up: `docs/plans/EXPERT_REVIEW_1_1.md`.
+- **Unit 1.1, the review's calls on the owner's account,** made in Settings → Triggers and his to refuse: the trail's On fire becomes Auto-sell (approvals stay on, so it is a proposal at the fire with no agent deciding first), and the two big-day looks are added. Not yet applied.
 - **Unit 0 (#1070):** `docs/plans/EXPERT_REVIEW_USAGE.md` holds the 30-day counts for every tool, context item, situation, playbook and inherited rule, with each item's size. Quote it for any "how often" before counting again. Most of those 30 days ran on the old build, so any unit that measures a rule's effect counts again from Nov 17 (triggers work like orders) or Nov 19 (the one-job tools). Fire counts before Nov 17 include the old re-fires: 12 to 14 sale fires a day, 1 a day since.
 
 ## Structure questions
@@ -98,7 +100,9 @@ Things a unit thought were wrong in the structure, for the lead and the owner. O
 - **Unit 0: stocks with no playbook.** 9 of the 17 positions opened in 12 weeks had none, and 23 live stocks have none; they get their sell rules only from the analyst and the account. The owner (Nov 19): reviewed inside 1.1.
 - **Unit 0: the analyst's strategy text has no unit.** `the_analyst` (`analystPrompt`) is sent on about 280 runs at about 4,000 characters, as often as `rules.md`. The owner (Nov 19): a new unit, 5.1b.
 - **Unit 0: the bookkeeping tools have no unit.** `complete_run` (232 calls, 21 refusals), `submit_thesis` (122), `record_run_summary` (65), `dispatch_thesis_research` (25), `wait_for_thesis_refresh` (17). The owner (Nov 19): a new unit, 4.5.
-- **Unit 0: sale proposals mostly expire.** 80 of 91 in 30 days (135 of 181 in 12 weeks). That is the approval switch and the owner's attention, not an agent's text. It goes to 1.1, with the trail's fire mode.
+- **Unit 1.1: a buy with no playbook.** Should `place_trade` refuse it, the chat included, with "send it to the Writer to name one, then buy"? The owner's question (it changes what his chat can do). If yes, unit 4.1 builds the refusal.
+- **Unit 1.1: two inherited rules disagree on a compounder.** The account sells at 6% off the high, and the Secular Compounder's rule says "Down 15% from its high. A question, not a sale". The analysts held CEG and GEV on that rule on Nov 17. §2 calls this a bug in the rules; unit 1.5 owns it.
+- **Unit 0: sale proposals mostly expire.** 80 of 91 in 30 days (135 of 181 in 12 weeks). That is the approval switch and the owner's attention, not an agent's text. It went to 1.1, which kept approvals on (the owner's choice) and made the trail's Auto-sell its call.
 
 ## Found, not yet assigned
 
@@ -106,7 +110,9 @@ Found before the review started, from the watch rewrite of Nov 19. Each belongs 
 
 - **1.8, before an event:** the playbook ends the watch 21 days before the event date, while the Writer wanted a look after the decision (CORT, Nov 19).
 - **1.5, compounder accumulation:** "Stop watching if below the 200-day average" was true on BWXT, ETN and NOW. The Writer took it off on BWXT and ETN because the business was strong. Is a 200-day break the right end of a compounder watch?
-- **1.1 and 1.3, price stops written long ago:** MSFT left the watchlist on an old "Stop watching if below $504.95" written months before. Should a price stop on a watch be re-priced from the chart at each review?
+- ~~**1.1 and 1.3, price stops written long ago:**~~ Answered by 1.1: MSFT's line was written Nov 13, six days before it fired correctly on the close. A stop-watching line is not re-priced at each review, or it never fires. What MSFT lacked was a playbook (1.1's no-playbook question).
+- **4.2 and 5.6, After the buy wrote a true add:** on Nov 19 it put "Add if below $406.88 · only on the close" on PANW at $361, already true when written. The owner removed it. (Found by 1.1.)
+- **3.3, something happened:** what to check on a big day (the company's own news or the whole market) belongs in that skill, not in the big-day trigger's reason. (From 1.1.)
 - **2.4, one stock in full:** a refresh rewrites the claim but not the research sections. MA's catalysts still listed October's report as upcoming after its Nov 19 refresh.
 - **9.3 on the roadmap, a passed buy chased up:** WST's buy was moved up four days in a row after passes.
 - **Yardstick (roadmap E.11):** a chat case is scored on its first step only, so a chat that reads a date first and would then write the plan counts as a miss.

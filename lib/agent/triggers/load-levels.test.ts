@@ -148,12 +148,12 @@ describe("resolveThesisLadder", () => {
     );
 
     // The account's seeded rules arrive from the ACCOUNT level — seeded
-    // rows, not a code layer. Sell rules are the analyst's, not here.
+    // rows, not a code layer. Its one sale is the trail off the high.
     expect(ladder.length).toBeGreaterThan(0);
     expect(ladder.every((t) => t.inherited)).toBe(true);
     expect(ladder.every((t) => t.level === "ACCOUNT")).toBe(true);
-    expect(ladder.some((t) => t.action === "ADD")).toBe(true);
-    expect(ladder.some((t) => t.action === "EXIT")).toBe(false);
+    expect(ladder.some((t) => t.action === "ADD")).toBe(false);
+    expect(ladder.filter((t) => t.action === "EXIT").map((t) => t.predicate)).toEqual([{ watch: "move", is: "below", value: 6, variable: "peak" }]);
   });
 
   it("resolves an account rule, and lets an analyst rule override the account", () => {

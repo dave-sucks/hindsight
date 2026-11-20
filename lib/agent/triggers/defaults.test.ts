@@ -20,13 +20,16 @@ import { triggersArraySchema } from "./schema";
 import { triggerSlot } from "./condition/slot";
 import type { Trigger } from "./types";
 
-describe("accountStandingRules — the account carries adds, never sell rules", () => {
-  it("is the +7% add prompt and nothing else — the −7% add is the Compounder's own (DAV-279)", () => {
+describe("accountStandingRules — the trail on every holding and a look on a big day (expert review 1.1)", () => {
+  it("is the 6% trail off the high, sent to the agent, and the big day up and down on twice the normal volume", () => {
     const rules = accountStandingRules();
-    expect(rules.map((t) => [t.action, t.predicate])).toEqual([
-      ["ADD", { watch: "move", is: "above", value: 7, variable: "prev_close" }],
+    expect(rules.map((t) => [t.action, t.fireMode, t.predicate])).toEqual([
+      ["EXIT", "ASK_NOW", { watch: "move", is: "below", value: 6, variable: "peak" }],
+      ["REVIEW", "ASK_NOW", { match: "all", conditions: [{ watch: "move", is: "above", value: 7, variable: "prev_close" }, { watch: "volume", value: 2 }] }],
+      ["REVIEW", "ASK_NOW", { match: "all", conditions: [{ watch: "move", is: "below", value: 7, variable: "prev_close" }, { watch: "volume", value: 2 }] }],
     ]);
-    expect(rules.some((t) => t.action === "EXIT")).toBe(false);
+    // No add on a one-day spike: an add is a playbook's line on the stock.
+    expect(rules.some((t) => t.action === "ADD")).toBe(false);
     expect(scaleInOnPullbackTrigger().predicate).toEqual({ watch: "move", is: "below", value: 7, variable: "prev_close" });
   });
 
