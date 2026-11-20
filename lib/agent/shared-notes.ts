@@ -15,20 +15,22 @@
  * - ACCOUNT: every run reads it once, at the top, while it lasts.
  *
  * The owner's note to stocks can be pinned until a date at most two weeks out.
- * Pinned, it reads in its own block above the stock's Activity. The Market Reviewer's notes are never
+ * Pinned, it reads in its own block above the stock's newest 8 Activity lines
+ * and doesn't count against them. The Market Reviewer's notes are never
  * pinned. A note to the account or an
  * analyst always has an end date (a week unless it says otherwise): a market
  * note with no end goes stale.
  *
  * On the Activity tab every note is a line on each stock it reaches, including
- * a note to the account or an analyst (`inStockActivity`).
+ * a note to the account or an analyst (`inStockActivity`); the tab's "newest
+ * 8" mark skips the ones a run reads elsewhere (`newestEightForRuns`).
  *
  * Nothing matches by tag: the author picks the audience (docs/plans/LANES.md §2).
  *
  * Pure: stock-context-for.ts imports it. The loader, the shares and the
  * save are in shared-notes.server.ts.
  */
-import type { StoredLine } from "@/lib/thesis/activity-feed";
+import { RECENT_ITEMS, type StoredLine } from "@/lib/thesis/activity-feed";
 import { etStamp, isAgentAnswer, type ActivityRow } from "@/lib/agent/stock-context";
 
 export type NoteAudience = "ACCOUNT" | "ANALYST" | "STOCKS";
@@ -87,6 +89,30 @@ export function inStockActivity(
   if (n.audience === "ACCOUNT") return live;
   if (n.audience === "ANALYST") return live && !!n.analystId && n.analystId === stock.analystId;
   return false;
+}
+
+/**
+ * The stock's newest 8 as its next run reads them, from the Activity tab's
+ * list. A run reads a note to the account or an analyst once at the top, and
+ * the stock's two newest pinned notes in their own block, so none of those
+ * counts toward the 8.
+ */
+export function newestEightForRuns<T extends { type: string; fieldChanges?: unknown }>(feed: readonly T[], now: Date): T[] {
+  let pinnedLeft = PINNED_PER_STOCK;
+  const read: T[] = [];
+  for (const item of feed) {
+    if (item.type === "SHARED_NOTE") {
+      const to = (item.fieldChanges as { sharedNote?: { to?: { audience?: string; pinnedUntil?: string | null } } } | null)?.sharedNote?.to;
+      if (to?.audience === "ACCOUNT" || to?.audience === "ANALYST") continue;
+      if (pinnedLeft > 0 && to?.pinnedUntil && new Date(to.pinnedUntil).getTime() > now.getTime()) {
+        pinnedLeft--;
+        continue;
+      }
+    }
+    read.push(item);
+    if (read.length === RECENT_ITEMS) break;
+  }
+  return read;
 }
 
 /** The notes read once at the top of a run: the account's and the analyst's, while they last. An account-wide read gets every analyst's. */

@@ -316,7 +316,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
 
   // The activity: one capped scan (40 lines a stock covers a month), and the
   // newest line alone for a stock the scan truncated away. The agent reads
-  // it in four parts (stock-context.ts); the situations read the whole scan.
+  // the newest 8 of the feed; the situations read the whole scan.
   const liveIds = live.map((t) => t.id);
   const latest = new Map(
     (

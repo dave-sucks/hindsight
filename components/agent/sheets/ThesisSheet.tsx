@@ -793,7 +793,7 @@ export function useThesisSheetData(
 // Everything under the header, the same on the sheet and the trade page: the
 // price with the chart's selected move, then three tabs. Overview is the
 // timeline (the trade banner, the chart, the plan, the flag line, the newest
-// 5 Activity lines with a note); Research is the analyst's view (ResearchView); Activity
+// 8 Activity lines); Research is the analyst's view (ResearchView); Activity
 // is the whole list.
 //   surface "sheet": the trade banner shows for a held or closed position and
 //                    the stock cards (the levels, Wall Street) close the Overview.
@@ -923,6 +923,8 @@ export function ThesisBody({
   // The page's two columns: the chart and the tabs on the left, the cards on
   // the right. The price row sits above both, with the header, so the chart
   // and the first card start level (the owner, 2026-11-05).
+  // The stock's newest 8 Activity lines: what the agents are handed, as Activity rows.
+  const recent = state.recent ?? [];
   const noted = state.noted ?? [];
 
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
@@ -1003,6 +1005,7 @@ export function ThesisBody({
       {thesis_id ? (
         <ThesisTimelineSection
           thesisId={thesis_id}
+          recentIds={recent.map((r) => r.id)}
           triggers={state.triggers}
           provenance={state.sourceKind ? { sourceKind: state.sourceKind, rationale: state.sourceRationale ?? null } : null}
         />

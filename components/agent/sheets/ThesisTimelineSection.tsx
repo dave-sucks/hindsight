@@ -3,8 +3,9 @@
 /**
  * ThesisTimelineSection — the thesis audit log, rendered inside the
  * ThesisSheet Activity tab (P1-33 slice 1). `RecentActivity` below is the
- * Overview's list: the stock's newest 5 lines with a note, in the same row
- * design, and a View all that opens the tab.
+ * Overview's list: the stock's newest 8 Activity lines, the same 8 the
+ * agents are handed, in the same row design, and a View all that opens the
+ * tab. The tab marks where those 8 end.
  *
  * Lazy-fetches /api/theses/:id/updates: the stock's feed, the saved lines
  * plus each proposal's steps from its order (lib/thesis/activity-feed.ts).
@@ -33,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiEditingIcon } from "@hugeicons/core-free-icons";
-import { NOTED_ITEMS } from "@/lib/thesis/activity-feed";
+import { NOTED_ITEMS, RECENT_ITEMS } from "@/lib/thesis/activity-feed";
 import { PriceChange } from "@/components/ui/price-change";
 import { SourceCitation } from "@/components/ai-elements/inline-citation";
 import { NoteSignal } from "@/components/domain/note-signal";
@@ -51,6 +52,7 @@ import {
   type LadderChange,
   type DotKind,
   type TimelineFilter,
+  type TimelineItem,
   type TimelineRow,
   type TimelineUpdate,
   type TitleTrigger,
@@ -177,8 +179,16 @@ interface Props {
   /** Where this thesis came from. Folded into the Created row rather than
    * rendered as its own differently-styled footer (principal, 2026-08-21). */
   provenance?: { sourceKind: string; rationale: string | null } | null;
+  /** The ids of the newest 8 lines, the ones on the Overview: the tab marks where they end. */
+  recentIds?: string[];
   /** The thesis's triggers, inherited rules included: a review's title names the one it answered. */
   triggers?: ReadonlyArray<TitleTrigger>;
+}
+
+/** Every Activity line an item covers, so a row can be matched against the Overview's 8. */
+function itemIds(item: TimelineItem): string[] {
+  if (item.kind === "event") return [item.row.id];
+  return item.items.flatMap(itemIds);
 }
 
 /**
@@ -210,12 +220,13 @@ function assembleRows(updates: TimelineUpdate[], filter: TimelineFilter, open: S
     const item = items[i];
     return item.kind === "event" && isPlainReview(item.row) ? { ...r, title: reviewTitle(item.row, triggers) } : r;
   });
-  return { rows: titled, spans: proposalSpanSegments(items), labels };
+  const ids = items.map(itemIds);
+  return { rows: titled, spans: proposalSpanSegments(items), labels, ids };
 }
 
 /**
- * A period's label inside the rail, so the line runs through it from the row
- * above to the row below.
+ * A label inside the rail (a period, or where the newest 8 end), so the
+ * line runs through it from the row above to the row below.
  */
 function RailLabel({ text, connected, span, pad }: { text: string; connected: boolean; span: boolean; pad: string }) {
   return (
@@ -234,11 +245,12 @@ function RailLabel({ text, connected, span, pad }: { text: string; connected: bo
   );
 }
 
-/** The list, drawn one way for the tab and the Overview: the period labels sit inside the rail. */
+/** The list, drawn one way for the tab and the Overview: the period labels and the newest-8 mark sit inside the rail. */
 function TimelineList({
   rows,
   spans,
   labels,
+  recentEnd = -1,
   currentRunId,
   open,
   onToggle,
@@ -246,6 +258,7 @@ function TimelineList({
   rows: TimelineRow[];
   spans: Set<number>;
   labels: (string | null)[];
+  recentEnd?: number;
   currentRunId: string | null;
   open: Set<string>;
   onToggle: (key: string) => void;
@@ -263,6 +276,7 @@ function TimelineList({
             open={open.has(row.key)}
             onToggle={() => onToggle(row.key)}
           />
+          {idx === recentEnd && idx < rows.length - 1 ? <RailLabel text={RECENT_END_LABEL} connected span={spans.has(idx)} pad="pb-4" /> : null}
         </Fragment>
       ))}
     </div>
@@ -274,8 +288,8 @@ function TimelineList({
  * written paragraph (`notedItems`, lib/thesis/activity-feed.ts), assembled
  * and drawn exactly as the Activity tab draws them. The heading carries the
  * first period ("Agent insights · Today") in place of the list's first rail
- * label, and says on hover what the agents read instead: the stock's
- * Activity in four parts (lib/agent/stock-context.ts).
+ * label, and says on hover what the agents read instead: the newest 8
+ * lines, note or not, the ones the Activity tab marks.
  */
 export function RecentActivity({ items, triggers, onViewAll }: { items: TimelineUpdate[]; triggers?: ReadonlyArray<TitleTrigger>; /** Opens the Activity tab; absent where the surface has none (the stock page). */ onViewAll?: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -307,7 +321,7 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
               </span>
             }
           />
-          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read where the stock stands, the last look&apos;s note, what happened since, and what is open.</TooltipContent>
+          <TooltipContent>The newest {NOTED_ITEMS} lines with a note. The agents read the newest {RECENT_ITEMS} lines, note or not, as the Activity tab marks them.</TooltipContent>
         </Tooltip>
       </SectionLabel>
       <TimelineList
@@ -329,7 +343,10 @@ export function RecentActivity({ items, triggers, onViewAll }: { items: Timeline
   );
 }
 
-export function ThesisTimelineSection({ thesisId, provenance, triggers }: Props) {
+/** The line the tab draws under the newest 8, where the agent's read ends. */
+export const RECENT_END_LABEL = "The newest 8 end here: the agent's read.";
+
+export function ThesisTimelineSection({ thesisId, provenance, recentIds, triggers }: Props) {
   const [updates, setUpdates] = useState<TimelineUpdate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<TimelineFilter>("all");
@@ -360,11 +377,18 @@ export function ThesisTimelineSection({ thesisId, provenance, triggers }: Props)
       return next;
     });
 
-  // Assemble → unfold anything the principal opened → map to row shapes.
-  const { rows, spans, labels } = useMemo(() => {
-    if (!updates) return { rows: [], spans: new Set<number>(), labels: [] as (string | null)[] };
-    return assembleRows(updates, filter, open, provenance, triggers);
-  }, [updates, filter, open, provenance, triggers]);
+  // Assemble → unfold anything the principal opened → map to row shapes,
+  // and find the last row that carries one of the Overview's 8.
+  const { rows, spans, labels, recentEnd } = useMemo(() => {
+    if (!updates) return { rows: [], spans: new Set<number>(), labels: [] as (string | null)[], recentEnd: -1 };
+    const { rows, spans, labels, ids } = assembleRows(updates, filter, open, provenance, triggers);
+    const recent = new Set(recentIds ?? []);
+    let recentEnd = -1;
+    ids.forEach((list, i) => {
+      if (list.some((id) => recent.has(id))) recentEnd = i;
+    });
+    return { rows, spans, labels, recentEnd };
+  }, [updates, filter, open, provenance, recentIds, triggers]);
 
   return (
     <div className="space-y-3">
@@ -392,7 +416,7 @@ export function ThesisTimelineSection({ thesisId, provenance, triggers }: Props)
       ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">No activity yet.</p>
       ) : (
-        <TimelineList rows={rows} spans={spans} labels={labels} currentRunId={currentRunId} open={open} onToggle={toggle} />
+        <TimelineList rows={rows} spans={spans} labels={labels} recentEnd={recentEnd} currentRunId={currentRunId} open={open} onToggle={toggle} />
       )}
     </div>
   );

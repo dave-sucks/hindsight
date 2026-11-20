@@ -1,7 +1,7 @@
 /**
  * activity-feed.server.ts — loads one stock's feed (activity-feed.ts) from the
  * database, for the two routes the sheet reads: the Activity tab (every
- * line) and the dossier (the newest 5 with a note). The agents' read loads the same
+ * line) and the dossier (the newest 8). The agents' read loads the same
  * inputs in bulk in lib/agent/work-inputs.ts.
  *
  * Order → thesis: `Order.thesisId` when set (every order since 2026-08-18),
@@ -66,7 +66,8 @@ export async function loadActivityFeed(thesis: FeedThesis, limit: number): Promi
 
   // The shared notes that reach the stock (lib/agent/shared-notes.ts): a note
   // naming it, and a note to the account or its analyst written
-  // while it was on the book. Each is one line.
+  // while it was on the book. Each is one line; the "newest 8" mark skips
+  // the ones a run reads elsewhere (newestEightForRuns).
   let notes: ReturnType<typeof noteLine>[] = [];
   try {
     const owner = await prisma.thesis.findUnique({ where: { id: thesis.id }, select: { userId: true } });

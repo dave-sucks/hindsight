@@ -1,10 +1,9 @@
 /**
- * activity-feed.ts — a stock's one Activity list.
+ * activity-feed.ts — a stock's one Activity list, and the newest 8 of it.
  *
  * The rule: the Activity tab shows the whole list, the Overview shows the
- * newest 5 lines with a note, and an agent reads the list in four parts
- * (lib/agent/stock-context.ts). One function builds the list, so no two
- * surfaces can disagree:
+ * newest 8, and the next run on the stock reads the same 8 as they read in
+ * the feed. One function builds the list, so no two surfaces can disagree:
  * the stock's saved Activity lines (`ThesisUpdate`) plus its orders' steps:
  * a proposal's Proposed / Approved / Declined / Expired, built from its order
  * (the Order table is the source of truth; its ThesisUpdate copies were
@@ -21,6 +20,8 @@
  * lib/agent/work-inputs.ts (the agents' read).
  */
 
+/** How many of a stock's newest Activity lines the next run reads (the Activity tab marks where they end). */
+export const RECENT_ITEMS = 8;
 /** How many of a stock's newest written-up lines the Overview shows as Agent insights. */
 export const NOTED_ITEMS = 5;
 
@@ -229,6 +230,11 @@ export function activityFeed(args: { updates: StoredLine[]; orders: ProposalOrde
   return args.limit != null ? merged.slice(0, args.limit) : merged;
 }
 
+/** The newest 8 of a feed: what the next run reads. */
+export function recentItems(feed: FeedItem[]): FeedItem[] {
+  return feed.slice(0, RECENT_ITEMS);
+}
+
 /**
  * Whether a line carries a paragraph someone wrote: an analyst's note, the
  * owner's note, or the owner's words on a proposal. A trigger fire's
@@ -245,7 +251,7 @@ export function hasWrittenParagraph(item: Pick<FeedItem, "type" | "rationale" | 
 /**
  * The Overview's Agent insights: the newest 5 lines with a written paragraph
  * (the owner's choice, 2026-11-04: the view shows the helpful notes, not every
- * line). The agents' read is `activityRead` (lib/agent/stock-context.ts), untouched by this.
+ * line). The agents' read is `recentItems`, untouched by this.
  */
 export function notedItems(feed: FeedItem[]): FeedItem[] {
   return feed.filter(hasWrittenParagraph).slice(0, NOTED_ITEMS);

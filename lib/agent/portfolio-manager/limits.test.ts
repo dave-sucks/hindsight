@@ -28,12 +28,12 @@ describe("the Portfolio Manager's get_theses", () => {
       ticker: "NVDA", id: "th1", coreBelief: "Demand outruns supply.", invalidationConds: ["Orders fall"], keyAssumptions: ["Supply stays short"], convictionRationale: "Backlog is signed.",
       bullCase: { bullets: [{ text: "bull" }] }, bearCase: { bullets: [{ text: "bear" }] }, variantView: "The Street is late.", snapshot: "A long snapshot.",
       triggers: [{ id: "t1", says: "Sell if below $150" }], latestEarnings: { bullets: [{ text: "Beat." }, { text: "Raised." }, { text: "A third bullet." }] },
-      context: "all four parts", contextBrief: "Where it stands: weaker since 11-06",
+      context: "eight lines", insights: ["a", "b", "c", "d"],
     };
     const held = rowForModel({ ...row, status: "HOLDING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
     const watch = rowForModel({ ...row, status: "WATCHING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
     expect(Object.keys(held)).toEqual(Object.keys(watch));
-    expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: "Where it stands: weaker since 11-06" });
+    expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: ["a", "b", "c"] });
     for (const k of Object.keys(held)) expect(COMPARING_FIELDS).toContain(k);
     for (const k of ["bull_case", "bear_case", "variant_view", "snapshot", "latestEarnings", "situations"]) expect(held[k]).toBeUndefined();
   });

@@ -169,6 +169,12 @@ export interface ThesisDossier {
    * not" is the review state the sheet now shows.
    */
   lastReviewedAt: string | null;
+  /**
+   * The stock's newest 8 Activity lines, newest first: the same 8 every run
+   * is handed (lib/thesis/activity-feed.ts). The Activity tab marks where
+   * they end.
+   */
+  recent: ActivityItem[];
   /** The newest 5 lines with a written paragraph, newest first: the Overview's Agent insights. */
   noted: ActivityItem[];
   triggers: Trigger[];

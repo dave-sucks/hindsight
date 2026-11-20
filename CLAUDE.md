@@ -181,15 +181,9 @@ PROPOSAL_* rows are never trusted), and the fill of an order never proposed.
 The homepage Activity is the same lists cut to trades and watch status by
 stored fields alone (`lib/thesis/account-activity.ts`), beside the attempts
 that never became a proposal (`lib/portfolio/attempt-outcomes.ts`). The Activity tab shows the whole list,
-and the next look at the stock reads it in four parts, cut by kind
-(`activityRead` in `lib/agent/stock-context.ts`, the one builder of every
-agent's read): where it stands (the last verdict that wasn't "unchanged",
-since when and why, and conviction), the last look's note in full, every line
-since that look (price fires as one count), and what is open (a waiting
-proposal, the owner's last decline with its words). No note reads twice; the
-Portfolio Manager's rows get the first and last parts. A trigger the owner
-set says when and what it was on its own line (`ownerSets`, read off the same
-lines). The Overview's "Agent insights" is a
+and the next run on the stock reads the newest 8 (`RECENT_ITEMS`) exactly as
+they read in the feed (`saidBlock` in `lib/agent/stock-context.ts`); the
+Activity tab marks where those 8 end. The Overview's "Agent insights" is a
 different cut (the owner's call, 2026-11-04): the newest 5 lines with a
 written paragraph (`notedItems`, `NOTED_ITEMS`), a trigger fire's figures
 not counting as one. A waiting proposal is pinned

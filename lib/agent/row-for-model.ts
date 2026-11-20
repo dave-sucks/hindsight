@@ -91,14 +91,15 @@ export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
  * The fields a stock is sent with when it is being compared with other stocks
  * as a use of the account's money (the Portfolio Manager's get_theses): the
  * same for a holding and a watch, each with the names of the situations it is
- * in. `said` is where its Activity says it stands and what is open (the
- * first and last of the four parts); a watch carries `playbook_checks`
+ * in. `said` is its newest INSIGHTS_COMPARED
+ * Activity lines with a written paragraph; a watch carries `playbook_checks`
  * (the triggers that come with the buy) where a holding carries `setup`.
  */
 export const COMPARING_FIELDS: readonly string[] = [
   "stock", "id", "analyst", "situations", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale",
   "triggers", "said", "street", "catalyst", "chart", "setup", "playbook_checks", "research",
 ];
+export const INSIGHTS_COMPARED = 3;
 
 /** The situation that reads the whole case. */
 export const REVIEW_SITUATION: SituationCode = "REVIEW_DUE";
@@ -238,13 +239,11 @@ function line(row: Row): string {
 
 // ── The short row and the full row ─────────────────────────────────────────
 
-type TriggerLine = { id?: string; says?: string; rationale?: string; lastFiredAt?: string; setBy?: string; level?: string; ownerSetAt?: string; was?: string };
+type TriggerLine = { id?: string; says?: string; rationale?: string; lastFiredAt?: string; setBy?: string; level?: string };
 
-/** Who set the trigger. The owner's says when and what it was before ("set by you Nov 12, was $850"), where the stock's Activity still shows the change. */
-function whoSet(t: TriggerLine): string | null {
-  const at = date(t.ownerSetAt);
-  switch (t.setBy) {
-    case "PRINCIPAL": return at ? `set by you ${at.toLocaleDateString("en-US", { ...ET, month: "short", day: "numeric" })}${t.was ? `, was ${t.was}` : ""}` : "set by hand";
+function whoSet(setBy: string | undefined): string | null {
+  switch (setBy) {
+    case "PRINCIPAL": return "set by hand";
     case "AGENT": return "set by the agent";
     case "DEFAULT": return "a default rule";
     default: return null;
@@ -268,7 +267,7 @@ function triggerLines(row: Row): string[] {
   };
   const own = list<TriggerLine>(row.triggers).map((t) => {
     const fired = date(t.lastFiredAt);
-    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t), note(t)]
+    return [t.says ?? "", fired ? `fired ${etStamp(fired)}` : null, whoSet(t.setBy), note(t)]
       .filter(Boolean)
       .join(" · ") + ` [id ${t.id}]`;
   });
@@ -380,7 +379,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
   // An account-wide read names each stock's analyst.
   put("analyst", str(row.analyst));
   put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
-  put("said", str(comparing ? row.contextBrief : row.context));
+  put("said", comparing ? strings(row.insights).slice(0, INSIGHTS_COMPARED) : str(row.context));
   put("position", positionLine(row, price));
   put("proposal_waiting", proposalLine(row));
   put("price", priceLine(row));

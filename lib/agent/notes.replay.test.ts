@@ -70,7 +70,7 @@ describe("DOCU: the principal's note, from an unscoped chat to the next morning 
       expect(docu).toBeDefined();
       // The owner's note and the resized approval are no situation: nothing asks a run to answer them.
       expect(docu!.situations).toEqual([]);
-      expect(docu!.context.startsWith("ACTIVITY ON $DOCU — ")).toBe(true);
+      expect(docu!.context.startsWith("WHAT'S BEEN SAID ON $DOCU — its newest ")).toBe(true);
       expect(docu!.context).toContain('09-30 13:05 · $67.90 · Your note — "Bought a starter');
       expect(docu!.context).toContain("IAM stalls under 17% of ARR");
       // The resized approval, as the Activity tab titles it.
