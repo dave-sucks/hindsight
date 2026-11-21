@@ -74,28 +74,6 @@ describe("the size a row gets", () => {
   });
 });
 
-describe("the one line", () => {
-  it("is the stock and its stance, the price, the next review and the id; it names no trigger (the full row has them)", () => {
-    expect(rowForModel(quiet(), { named: false, size: "line" })).toBe(
-      "DOCU · watch · LONG · PEAD · $70.03 · review 10-20 · id t_docu",
-    );
-  });
-  it("on a holding, what we paid", () => {
-    expect(rowForModel({ ...quiet(), status: "HOLDING", buy: null, paid: 68.12 }, { named: false, size: "line" })).toContain("· paid $68.12 ·");
-  });
-  it("leaves out what a stock lacks, says no view and no write-up yet on a seed, and names the horizon when no setup is named", () => {
-    expect(rowForModel({ id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "CATALYST", catalystDate: "2026-11-02T00:00:00.000Z" }, { named: false, size: "line" })).toBe(
-      "XYZ · watch · no view · no write-up yet · CATALYST · catalyst 2026-11-02 · id t_x",
-    );
-  });
-  it("a seed whose newest write-up failed says so with the date; a watch with a claim but no view does not say no write-up", () => {
-    const seed = { id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "COMPOUNDER" };
-    expect(rowForModel({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } }, { named: false, size: "line" })).toBe("XYZ · watch · no view · write-up failed 10-05 · COMPOUNDER · id t_x");
-    expect(rowForModel({ ...seed, writerRun: { status: "COMPLETE", startedAt: "2026-10-05T12:01:07.188Z" } }, { named: false, size: "line" })).toBe("XYZ · watch · no view · no write-up yet · COMPOUNDER · id t_x");
-    expect(rowForModel({ ...seed, coreBelief: "A claim the chat wrote." }, { named: false, size: "line" })).toBe("XYZ · watch · no view · COMPOUNDER · id t_x");
-  });
-});
-
 describe("the research line's write-up facts (step 12, part 1)", () => {
   const seed = { id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "COMPOUNDER", situations: ["FIRST_RESEARCH"] };
   const research = (row: Row, size: "short" | "full" = "full") => (rowForModel(row, { named: size === "full", size }) as Row).research;

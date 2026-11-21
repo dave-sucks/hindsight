@@ -79,6 +79,8 @@ export interface WorkLoad {
   priceAsOf: Record<string, string>;
   /** The day's change in %, per ticker, from the quote; absent when the quote had no prior close. */
   dayChange: Record<string, number>;
+  /** The volume of the session the price belongs to, where the quote carries it. */
+  dayVolume: Record<string, number>;
   priceFetchFailed: boolean;
   /** The 06:30 chart snapshot per upper-case ticker, the one the trigger check reads. */
   indicators: Map<string, IndicatorSnapshot>;
@@ -117,7 +119,7 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
   const analystIds = Array.from(new Set(theses.map(analystOfRow).filter((id): id is string => !!id)));
   const live = theses.filter((t) => LIVE.has(t.status));
   const load: WorkLoad = {
-    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, priceFetchFailed: false,
+    inputs: new Map(), ladders: new Map(), livePrice: {}, priceAsOf: {}, dayChange: {}, dayVolume: {}, priceFetchFailed: false,
     indicators: new Map(), positions: new Map(), proposals: new Map(), unapprovedExitCount: new Map(), declines: new Map(), recentLow: new Map(),
     lastLadderEditAt: new Map(), equity: null, activityFailed: false, proposalHistory: new Map(),
   };
@@ -136,6 +138,8 @@ export async function loadWorkInputs(thesisIds: string[], ctx: WorkContext, now:
         load.livePrice[ticker] = quote.c;
         if (quote.t > 0) load.priceAsOf[ticker] = new Date(quote.t * 1000).toISOString();
         if (typeof quote.dp === "number" && Number.isFinite(quote.dp)) dayChange[ticker] = quote.dp;
+        const volume = (quote as { v?: number | null }).v;
+        if (typeof volume === "number" && volume > 0) load.dayVolume[ticker] = volume;
       }
     } catch (err) {
       // getLiveQuotes does not throw; if it ever does, the caller shows the book in full.

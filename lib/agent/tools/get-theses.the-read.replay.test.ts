@@ -113,10 +113,12 @@ describe("get_theses — the read", () => {
     const { model } = await read({ include_history: true });
     // The quiet split stays on: the held stock with nothing due is one line, not a row.
     const full = (model.theses as Array<{ stock: string }>).map((t) => t.stock.split(" · ")[0]);
-    const quiet = (model.quiet_theses as string[]).map((line) => line.split(" · ")[0]);
+    // Every stock is a line of the stock table, held first; the quiet one is nowhere else.
+    const lines = (model.stocks as string[]).slice(2);
     expect(full).toEqual(["SYK"]);
-    expect(quiet).toEqual(["CEG"]);
-    expect(model.quiet_theses).toEqual([expect.stringMatching(/^CEG · held · LONG · COMPOUNDER_ACCUMULATION · \$280\.00 · paid \$270\.00 · review \d\d-\d\d · id t_ceg$/)]);
+    expect(lines.map((l) => l.split(" | ")[0]).sort()).toEqual(["CEG", "SYK"]);
+    expect(lines.find((l) => l.startsWith("CEG"))).toMatch(/^CEG \| held \| — \| \$280\.00 \| /);
+    expect(model.quiet_theses).toBeUndefined();
   });
 
   it("a read of a named stock is the full row: the history and the cases", async () => {

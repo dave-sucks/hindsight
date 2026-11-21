@@ -12,6 +12,7 @@
  * A record with no sample here is still drawn from its record, unsized.
  */
 
+import { stockTableText } from "@/lib/agent/context/stock-table";
 import { STANDIN_MARKET_NUMBERS } from "@/lib/agent/__fixtures__/market-numbers-standin";
 import { STANDIN_SNAPSHOT } from "@/lib/agent/__fixtures__/portfolio-snapshot-standin";
 import { CHAT_CASES } from "@/lib/agent/engine/__fixtures__/chat-cases";
@@ -54,6 +55,16 @@ const BOOK = bookText([
   { ticker: "CCC", status: "WATCHING", analyst: "Case Analyst", belief: "A strong quarter, and the base held.", buyIf: ["Buy if above $120"] },
 ]);
 
+/** The stand-in stock table: the same three stocks, as the Portfolio Manager is given them. */
+const STOCKS = stockTableText({
+  asOf: "2026-11-11T21:00:00.000Z",
+  rows: [
+    { ticker: "AAA", status: "held", analyst: "Case Analyst", situations: ["sale signal"], price: 98.4, dayPct: -3.1, volume: 1.4, move5dPct: -6.2, move20dPct: -9.8, vsSpy1M: -7.5, vs50dPct: -8.1, offHighPct: -19.4, sinceBuyPct: -8.9, conviction: "MEDIUM", nextReport: null, waiting: null },
+    { ticker: "BBB", status: "held", analyst: "Case Analyst", situations: [], price: 51.2, dayPct: 0.6, volume: 0.9, move5dPct: 1.8, move20dPct: 4.4, vsSpy1M: 3.1, vs50dPct: 2.7, offHighPct: -4.0, sinceBuyPct: 6.3, conviction: "HIGH", nextReport: "2026-11-19", waiting: null },
+    { ticker: "CCC", status: "watch", analyst: "Case Analyst", situations: [], price: 118.9, dayPct: 1.2, volume: 1.1, move5dPct: 2.9, move20dPct: 7.6, vsSpy1M: 5.0, vs50dPct: 4.3, offHighPct: -2.2, sinceBuyPct: null, conviction: "MEDIUM", nextReport: null, waiting: null },
+  ],
+});
+
 export interface AgentSample {
   /** The case it is built on, in a few words. */
   from: string;
@@ -69,7 +80,7 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     build: (record) => ({
       request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER" }, {
         pieces: PIECES,
-        context: { the_book: BOOK, last_output: "## Your last write-up\nWritten Tue, Nov 10:\n\n### Where the money is\nTwo stocks, one bet." },
+        context: { stock_table: STOCKS, last_output: "## Your last write-up\nWritten Tue, Nov 10:\n\n### Where the money is\nTwo stocks, one bet." },
       }),
     }),
   },

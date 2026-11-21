@@ -96,16 +96,16 @@ export interface FrameworkData {
   read: FrameworkRead;
 }
 
-export type RowSize = "line" | "short" | "full";
+export type RowSize = "short" | "full";
 
-/** The one line's parts (row-for-model.ts `line()`), by the sheet field they come from. */
-export const LINE_KEYS = ["stock", "id", "analyst", "price", "proposal_waiting", "research", "catalyst"] as const;
+/** What a stock's line of the stock table carries (lib/agent/stock-table.ts), by the sheet field it comes from. */
+export const LINE_KEYS = ["stock", "analyst", "price", "proposal_waiting"] as const;
 /** What the Writer's prompt carries of the existing thesis (lib/agent/run-thesis-writer.ts). */
 export const WRITER_KEYS = ["stock", "belief", "triggers", "company"] as const;
 
-/** The quiet line for the page's CRWD row, as rowForModel builds it (pinned to the builder by lib/docs/read-cases.test.ts). */
+/** The page's CRWD row as its line of the stock table, under the column names (pinned to the builder by lib/docs/read-cases.test.ts). */
 export const EXAMPLE_LINE =
-  "CRWD · held · LONG · PEAD · paid $404.10 · proposal waiting: sell 14 sh, placed 10-16 09:31 ET, expires 10-17 09:31 ET · review 10-14 · catalyst 2026-12-02 · id th_8f2c";
+  "Stock | Status | Situation | Price | Day | Volume | 5-day | 20-day | vs S&P 1M | vs 50-day | Off 52w high | Since buy | Conviction | Next report | Waiting for you\nCRWD | held | — | $418.20 | +6.8% | 1.8x | +3.1% | +7.9% | +4.0% | +7.8% | -0.7% | +3.5% | medium | — | sell 14";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -168,7 +168,7 @@ export interface ReadCase {
   /** The scenario in one sentence, under the heading. */
   body: string;
   /** The row size this read sends, or the writer's own block. */
-  size: RowSize | "writer";
+  size: RowSize | "line" | "writer";
   /** What is sent and why, two or three short lines. */
   points: readonly string[];
 }
@@ -181,8 +181,8 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     body: "No trigger fired, no review is due, no report is near. Most of the book, most mornings.",
     size: "line",
     points: [
-      "One line: the stock, its status, the price, the buy it waits on, a proposal if one is waiting, the next review, the catalyst date, its id.",
-      "No target and no floor: the levels are the triggers, and a quiet stock's are not read.",
+      "One line of the stock table, the same columns for every stock: its situation, the price, the day's move and volume, the 5- and 20-day moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, conviction, the next report and a proposal if one is waiting.",
+      "The Portfolio Manager gets the same table for the whole account, and the run page draws the same rows.",
       "Thirty quiet stocks stay thirty lines, so the ones that need a decision stand out.",
     ],
   },

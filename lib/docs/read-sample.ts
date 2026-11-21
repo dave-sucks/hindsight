@@ -8,6 +8,7 @@
  */
 
 import { rowForModel } from "@/lib/agent/row-for-model";
+import { stockTableLines, type StockTableRow } from "@/lib/agent/stock-table";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 type Row = Record<string, unknown>;
@@ -77,6 +78,12 @@ export const CRWD_ROW: Row = {
   ],
 };
 
+/** The same stock as its line of the stock table. */
+const CRWD_LINE: StockTableRow = {
+  ticker: "CRWD", status: "held", analyst: null, situations: [], price: 418.2, dayPct: 6.8, volume: 1.8, move5dPct: 3.1, move20dPct: 7.9,
+  vsSpy1M: 4, vs50dPct: 7.8, offHighPct: -0.7, sinceBuyPct: 3.5, conviction: "MEDIUM", nextReport: null, waiting: "sell 14",
+};
+
 /** One read as the model gets it, as text: the one line as is; a row as `key: value` lines, a list's items joined. */
 function asText(read: string | Row): string {
   if (typeof read === "string") return read;
@@ -90,7 +97,8 @@ export function buildReadSamples(): { line: string; review: string; named: strin
   const bySituation: Record<string, string> = {};
   for (const code of Object.keys(SITUATIONS) as SituationCode[]) bySituation[code] = asText(rowForModel({ ...CRWD_ROW, situations: [code] }, { named: false, size: "short" }));
   return {
-    line: asText(rowForModel(CRWD_ROW, { named: false, size: "line" })),
+    // The stock's line of the stock table, under the table's column names.
+    line: stockTableLines({ asOf: null, rows: [CRWD_LINE] }).slice(1).join("\n"),
     review: asText(rowForModel({ ...CRWD_ROW, situations: ["REVIEW_DUE"] }, { named: false, size: "short" })),
     named: asText(rowForModel(CRWD_ROW, { named: true, size: "full" })),
     bySituation,

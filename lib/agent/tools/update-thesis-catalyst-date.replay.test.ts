@@ -53,7 +53,6 @@ describe("COGT's decision with its event date taken out, through the chat's save
     const line = "COGT: the catalyst date is missing, so the pre-catalyst check cannot schedule around the event. Set catalyst_date to the date the company announced.";
     expect(save.result.data?.what_this_means).toEqual(expect.arrayContaining([line]));
     expect(save.result.summary).toContain("the catalyst date is missing");
-    expect(rowForModel({ ...row }, { named: false, size: "line" })).toContain("catalyst date missing");
     expect((rowForModel({ ...row, situations: [] }, { named: false, size: "short" }) as Record<string, unknown>).catalyst).toBe("date missing");
   });
 

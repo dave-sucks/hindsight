@@ -117,9 +117,10 @@ describe("get_theses — the facts on the saved row", () => {
     expect(triggers[2]).toBe("Review every 7 days · inherited");
   });
 
-  it("a quiet row goes through the builder as one line", async () => {
+  it("a quiet stock is a line of the stock table and no row", async () => {
     const { model, screen } = await read();
     expect((screen.quiet_theses as Array<{ ticker: string }>).map((q) => q.ticker)).toEqual(["BBB"]);
-    expect(model.quiet_theses).toEqual(["BBB · watch · LONG · BASE_BREAKOUT · $33.00 · id t_bbb"]);
+    expect((model.stocks as string[]).find((l) => l.startsWith("BBB"))).toMatch(/^BBB \| watch \| — \| \$33\.00 \| /);
+    expect(model.quiet_theses).toBeUndefined();
   });
 });

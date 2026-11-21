@@ -24,6 +24,8 @@ import { useMessage } from "@assistant-ui/react";
 import type { ToolResult } from "@/lib/agent/tool-result";
 import { ThesisCarousel } from "@/components/domain/thesis-carousel";
 import { ReadThesesTable } from "@/components/domain/read-theses-table";
+import { StockTable } from "@/components/domain/stock-table";
+import type { StockTable as StockTableData } from "@/lib/agent/stock-table";
 import { WritingThesesTable } from "@/components/domain/writing-theses-table";
 import { collectDispatched } from "@/lib/chat/dispatched-writers";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
@@ -85,17 +87,30 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
       return <ReadThesesTableSkeleton />;
     }
     const theses = collectReadTheses(readParts);
-    if (theses.length === 0) return null;
+    // A read of the whole list carries the stock table: the rows the agent was given, column for column.
+    const stocks = collectStockTable(readParts);
+    if (theses.length === 0 && !stocks) return null;
     const noun = theses.length === 1 ? "thesis" : "theses";
     return (
       <>
-        <div className="my-3 space-y-1">
-          <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-            <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
-            <span>{`Reading ${theses.length} ${noun}`}</span>
+        {stocks ? (
+          <div className="my-3 space-y-1">
+            <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+              <span>{`Reading ${stocks.rows.length} ${stocks.rows.length === 1 ? "stock" : "stocks"}`}</span>
+            </div>
+            <StockTable table={stocks} />
           </div>
-          <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
-        </div>
+        ) : null}
+        {theses.length > 0 ? (
+          <div className="my-3 space-y-1">
+            <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+              <span>{stocks ? `${theses.length} in a situation` : `Reading ${theses.length} ${noun}`}</span>
+            </div>
+            <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
+          </div>
+        ) : null}
         {openThesis ? (
           <ThesisSheet
             open={openThesis !== null}
@@ -205,6 +220,16 @@ function ThesisCarouselSkeleton({ count }: { count: number }) {
  * (ThesisCardData[] in render shape). Use cards when present, fall back
  * to a minimal mapping from theses for older results.
  */
+/** The stock table of the first read of the whole list in this message, when one carries it. */
+function collectStockTable(parts: Record<string, unknown>[]): StockTableData | null {
+  for (const p of parts) {
+    const r = (p.result ?? p.output) as Record<string, unknown> | undefined;
+    const data = (r?.ok === true && r.data ? r.data : r) as { stocks?: StockTableData } | undefined;
+    if (data?.stocks && Array.isArray(data.stocks.rows)) return data.stocks;
+  }
+  return null;
+}
+
 function collectReadTheses(
   parts: Record<string, unknown>[],
 ): ThesisCardData[] {

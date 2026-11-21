@@ -84,6 +84,11 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "Every stock we hold and every stock we watch, a line each with its belief; a watch also with its buy triggers.",
     source: "lib/agent/book.ts",
   },
+  stock_table: {
+    title: "The stock table",
+    about: "Every stock the account holds and watches, one line each with the same columns: its analyst, its situation, price, the day's move and volume, the 5- and 20-day moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, conviction and the next report.",
+    source: "lib/agent/stock-table.ts",
+  },
   the_cases: {
     title: "What each thesis rests on",
     about: "For every stock we hold or watch: its assumptions and what would prove it wrong, as its thesis has them.",

@@ -55,7 +55,8 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
     expect(screen.find((t) => t.id === MA_ID)).toBeUndefined();
     expect(model.guidance).toBeUndefined();
     expect(model.theses).toEqual([]);
-    expect(String((model as { quiet_theses?: string[] }).quiet_theses?.[0])).toContain("MA · watch · no view");
+    // In no situation: its line of the stock table carries none.
+    expect(String((model as { stocks?: string[] }).stocks?.[2])).toMatch(/^MA \| watch \| — \| /);
   });
 
   it("the same fire on a stock with a view (MA's row with a LONG view, a variant) is a review: the morning run's list carries the skill's part for a watch", async () => {

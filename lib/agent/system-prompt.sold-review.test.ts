@@ -57,7 +57,7 @@ describe("the built prompt names the sold-stock review; the answers arrive as gu
   // The paragraph it sits in still has to say what it said before.
   it("leaves the rest of the book paragraph intact", () => {
     const p = prompt();
-    expect(p).toContain("the one-line entries in `quiet_theses` are not today's work");
+    expect(p).toContain("the `stocks` table lists every stock you cover, a line each, and a line is not today's work");
     expect(p).toContain("`guidance`");
   });
 });

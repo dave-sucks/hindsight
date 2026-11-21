@@ -17,9 +17,9 @@ Saves: a write-up, notes on stocks, trigger edits, proposals, research requests
 <!-- asset: context portfolio_manager -->
 
 - **Its instructions:** one document, `portfolio-manager.md`: its job, then the rules it imports (the house rules and how it writes).
-- **Its context**, in its first message after the date line: the market numbers, the 7:30 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the book (every stock you hold and watch, a line each with its belief, a watch with its buy triggers); and its own last write-up, so it remembers what it was weighing.
+- **Its context**, in its first message after the date line: the market numbers, the 7:30 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the stock table (every stock you hold and watch, a line each with the same columns: its analyst, its situation, price, the day's move and volume, the 5- and 20-day moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, conviction and the next report); and its own last write-up, so it remembers what it was weighing.
 
-It is given nothing in a format of its own. Your holdings are the snapshot's holdings and the book's; your watches are the book's.
+It is given nothing in a format of its own. The stock table is the one an analyst's morning run gets for its own stocks, here for the whole account, and the run page shows the same rows.
 
 ## What it asks for
 

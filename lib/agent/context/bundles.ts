@@ -41,8 +41,8 @@ export const BUNDLES: Record<SubjectKind, readonly ContextId[]> = {
   thesis: ["the_stock", "stock_data", "the_analyst", "playbook_record", "the_playbook", "holding_triggers", "playbooks", "situations", "market_numbers"],
   /** An analyst: the analyst, its playbooks, its book, the market and the portfolio, this week's earnings and filings, the calls refused, and the earnings calendar outside its book. */
   analyst: ["the_analyst", "playbooks", "the_book", "market_numbers", "market_digest", "portfolio", "portfolio_digest", "earnings_this_week", "filings_this_week", "refused_calls", "earnings_calendar"],
-  /** The account: the market, the portfolio and the book, what each thesis rests on, and what the agent wrote on its last run. */
-  account: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "the_cases", "last_output"],
+  /** The account: the market, the portfolio, the book and the stock table, what each thesis rests on, and what the agent wrote on its last run. */
+  account: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "stock_table", "the_cases", "last_output"],
   /** The chat: the market and the portfolio, the book and each analyst's room; pinned, the analyst. */
   chat: ["the_analyst", "market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "the_analysts"],
 };

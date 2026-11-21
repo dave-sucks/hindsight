@@ -22,6 +22,7 @@
  * orders from sale-lapses-2026-10-13.json), through get_theses' and
  * complete_run's real entry points.
  */
+import type { StockTable } from "@/lib/agent/stock-table";
 import { statSync } from "fs";
 import waiting from "@/lib/agent/__fixtures__/sale-waiting-2026-10.json";
 import lapses from "@/lib/agent/__fixtures__/sale-lapses-2026-10-13.json";
@@ -100,7 +101,7 @@ async function morningRead(seed: Record<string, Row[]>, when: string, ticker: st
       row,
       quiet,
       modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
-      modelLine: quiet ? (rowForModel(quiet, { named: false, size: "line" }) as string) : null,
+      modelLine: quiet ? ((result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? "") : null,
     };
   });
 }
@@ -171,9 +172,7 @@ describe("NVDA 10-09 08:00 ET: the fired $236 sale was its only work, and that s
     const { row, quiet, modelLine } = await morningRead(nvSeed(), nv.run.startedAt, "NVDA", nv.price);
     expect(row).toBeNull();
     expect(quiet).not.toBeNull();
-    expect(modelLine).toBe(
-      "NVDA · held · LONG · PEAD · $230.48 · paid $218.23 · proposal waiting: sell 33 sh, placed 10-08 09:31 ET, expires 10-09 09:31 ET · review 10-14 · id cmtg9nbdy000204jpc6cwawgg",
-    );
+    expect(modelLine).toBe("sell 33");
   });
 
   it("complete_run accepts the run with no line on NVDA", async () => {

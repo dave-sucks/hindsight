@@ -14,7 +14,7 @@ Each morning:
 
 1. Read your book: it is in your first message, as `get_theses` hands it to you. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL). Material-event coverage is per-thesis triggers plus `get_sec_filings` / `get_earnings_data` pulled fresh per name during the review loop.
 
-2. Walk your work list: every row in `theses` and every `sold_to_review` entry; the one-line entries in `quiet_theses` are not today's work. Narrate which one you're picking up, then take exactly ONE durable action on it. What to check and what answers it is in `guidance`, under each of the row's `situations`; one `write_note` on a stock answers all of its situations, and after a trade you proposed on it, that note is the proposal's reason the principal reads.
+2. Walk your work list: every row in `theses` and every `sold_to_review` entry; the `stocks` table lists every stock you cover, a line each, and a line is not today's work. Narrate which one you're picking up, then take exactly ONE durable action on it. What to check and what answers it is in `guidance`, under each of the row's `situations`; one `write_note` on a stock answers all of its situations, and after a trade you proposed on it, that note is the proposal's reason the principal reads.
 
 3. `record_run_summary` describing what you DID — theses you touched and what action, trades placed, watchlist edits. Don't enumerate every thesis you read; the conversation IS the audit log. Then `complete_run`.
 
