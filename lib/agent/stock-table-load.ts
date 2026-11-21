@@ -13,7 +13,7 @@ import { EARNINGS_LOOKAHEAD_DAYS, fetchEarningsWindow } from "@/lib/agent/trigge
 import { sortStockRows, type StockTable, type StockTableRow } from "@/lib/agent/stock-table";
 
 /** The thesis columns a table row reads beyond the facts' own. */
-export type TableThesis = FactsRow & { conviction?: string | null; researchRun: { agentConfigId?: string | null; agentConfig?: { name: string | null } | null } | null };
+export type TableThesis = FactsRow & { conviction?: string | null; outlook?: string | null; researchRun: { agentConfigId?: string | null; agentConfig?: { name: string | null } | null } | null };
 
 const pct = (now: number | null | undefined, then: number | null | undefined): number | null =>
   now != null && then != null && then > 0 ? ((now - then) / then) * 100 : null;
@@ -47,6 +47,7 @@ export function stockTableFromFacts(
     const paid = t.status === "HOLDING" ? (load.positions.get(t.id)?.avgCost ?? null) : null;
     const sources = facts.sources.get(t.id);
     return {
+      id: t.id,
       ticker: t.ticker.toUpperCase(),
       status: STATUS[t.status] ?? t.status.toLowerCase(),
       analyst: opts.nameAnalyst ? (t.researchRun?.agentConfig?.name ?? null) : null,
@@ -60,6 +61,7 @@ export function stockTableFromFacts(
       vs50dPct: pct(price, snap?.sma?.[50]),
       offHighPct: pct(price, snap?.high52w),
       sinceBuyPct: pct(price, paid),
+      outlook: t.outlook ?? (t.direction === "LONG" || t.direction === "SHORT" ? "not rated" : null),
       conviction: t.conviction ?? null,
       nextReport: opts.reports?.get(t.ticker.toUpperCase()) ?? null,
       waiting: waitingLine(load.proposals.get(t.id) ?? []),
@@ -93,6 +95,7 @@ export async function loadStockTable(args: {
         triggers: true,
         catalystDate: true,
         createdAt: true,
+        outlook: true,
         conviction: true,
         researchRun: { select: { agentConfigId: true, agentConfig: { select: { name: true } } } },
       },

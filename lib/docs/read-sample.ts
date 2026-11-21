@@ -81,7 +81,7 @@ export const CRWD_ROW: Row = {
 /** The same stock as its line of the stock table. */
 const CRWD_LINE: StockTableRow = {
   ticker: "CRWD", status: "held", analyst: null, situations: [], price: 418.2, dayPct: 6.8, volume: 1.8, move5dPct: 3.1, move20dPct: 7.9,
-  vsSpy1M: 4, vs50dPct: 7.8, offHighPct: -0.7, sinceBuyPct: 3.5, conviction: "MEDIUM", nextReport: null, waiting: "sell 14",
+  vsSpy1M: 4, vs50dPct: 7.8, offHighPct: -0.7, sinceBuyPct: 3.5, outlook: "BULLISH", conviction: "MEDIUM", nextReport: null, waiting: "sell 14",
 };
 
 /** One read as the model gets it, as text: the one line as is; a row as `key: value` lines, a list's items joined. */

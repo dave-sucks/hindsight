@@ -105,7 +105,7 @@ export const WRITER_KEYS = ["stock", "belief", "triggers", "company"] as const;
 
 /** The page's CRWD row as its line of the stock table, under the column names (pinned to the builder by lib/docs/read-cases.test.ts). */
 export const EXAMPLE_LINE =
-  "Stock | Status | Situation | Price | Day | Volume | 5-day | 20-day | vs S&P 1M | vs 50-day | Off 52w high | Since buy | Conviction | Next report | Waiting for you\nCRWD | held | — | $418.20 | +6.8% | 1.8x | +3.1% | +7.9% | +4.0% | +7.8% | -0.7% | +3.5% | medium | — | sell 14";
+  "Stock | Status | Situation | Price | Day | Volume | 5-day | 1-month | vs S&P, 1-month | vs 50-day | Off 52w high | Since buy | Outlook | Conviction | Next report | Waiting for you\nCRWD | held | — | $418.20 | +6.8% | 1.8x | +3.1% | +7.9% | +4.0% | +7.8% | -0.7% | +3.5% | bullish | medium | — | sell 14";
 
 /**
  * A thesis as the sheet shows it, field by field, in the sheet's order. Each
@@ -181,7 +181,7 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     body: "No trigger fired, no review is due, no report is near. Most of the book, most mornings.",
     size: "line",
     points: [
-      "One line of the stock table, the same columns for every stock: its situation, the price, the day's move and volume, the 5- and 20-day moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, conviction, the next report and a proposal if one is waiting.",
+      "One line of the stock table, the same columns for every stock: its situation, the price, the day's move and volume, the 5-day and 1-month moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, outlook, conviction, the next report and a proposal if one is waiting.",
       "The Portfolio Manager gets the same table for the whole account, and the run page draws the same rows.",
       "Thirty quiet stocks stay thirty lines, so the ones that need a decision stand out.",
     ],

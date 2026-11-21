@@ -7,6 +7,8 @@
  */
 
 export interface StockTableRow {
+  /** The thesis, so the screen can open the stock; not a column. */
+  id?: string;
   ticker: string;
   /** held, watch or promoted. */
   status: string;
@@ -29,6 +31,8 @@ export interface StockTableRow {
   offHighPct: number | null;
   /** A holding's price against what we paid, in %. */
   sinceBuyPct: number | null;
+  /** The analyst's outlook: bullish, neutral or bearish; "not rated" on a stock with a view and no outlook yet. */
+  outlook: string | null;
   conviction: string | null;
   /** The next earnings report, YYYY-MM-DD, when it is within the calendar's reach. */
   nextReport: string | null;
@@ -60,11 +64,12 @@ export const STOCK_TABLE_COLUMNS: readonly StockColumn[] = [
   { key: "dayPct", label: "Day", kind: "pct" },
   { key: "volume", label: "Volume", kind: "times" },
   { key: "move5dPct", label: "5-day", kind: "pct" },
-  { key: "move20dPct", label: "20-day", kind: "pct" },
-  { key: "vsSpy1M", label: "vs S&P 1M", kind: "pct" },
+  { key: "move20dPct", label: "1-month", kind: "pct" },
+  { key: "vsSpy1M", label: "vs S&P, 1-month", kind: "pct" },
   { key: "vs50dPct", label: "vs 50-day", kind: "pct" },
   { key: "offHighPct", label: "Off 52w high", kind: "pct" },
   { key: "sinceBuyPct", label: "Since buy", kind: "pct" },
+  { key: "outlook", label: "Outlook", kind: "text" },
   { key: "conviction", label: "Conviction", kind: "text" },
   { key: "nextReport", label: "Next report", kind: "text" },
   { key: "waiting", label: "Waiting for you", kind: "text" },
@@ -83,7 +88,7 @@ export function stockCell(row: StockTableRow, col: StockColumn): string {
   const v = row[col.key];
   if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return NONE;
   if (Array.isArray(v)) return v.join(", ");
-  if (typeof v === "string") return col.key === "conviction" ? v.toLowerCase() : v;
+  if (typeof v === "string") return col.key === "conviction" || col.key === "outlook" ? v.toLowerCase() : v;
   switch (col.kind) {
     case "money":
       return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
