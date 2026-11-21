@@ -3,7 +3,8 @@
  * step 8, docs/plans/AGENT_ARCHITECTURE.md §11.5; the owner's grid,
  * 2026-11-06).
  *
- * A quiet stock is one line. A stock in a situation is the row, and the
+ * Every stock is a line of the stock table (lib/agent/stock-table.ts). A
+ * stock in a situation is also a row here, and the
  * situation decides which of its fields are sent (ROW_FIELDS): the standing
  * fields on every row (the chart numbers among them), the fields a
  * situation's decision reads with that situation (the Street on a buy, what
@@ -24,7 +25,7 @@ import { stripCitationTags } from "@/lib/thesis/clean-text";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import { streetLine } from "@/lib/market-data/street-consensus";
 
-export type RowSize = "line" | "short" | "full";
+export type RowSize = "short" | "full";
 
 /** The facts a full row has carried since step 8's first pull request; the builder reads them, the model never sees them raw. */
 export const ROW_FACTS = ["position", "proposals", "price", "chart", "inheritedTriggers"] as const;
@@ -208,34 +209,6 @@ function researchLine(row: Row, size: RowSize): string {
   }
   if (failedOn && !noClaim) line += ` The newest write-up failed ${isoDay(failedOn)}.`;
   return size === "full" ? line : `${line} Full row: get_theses(tickers: ["${String(row.ticker)}"]).`;
-}
-
-// ── The one line ───────────────────────────────────────────────────────────
-
-/** A quiet stock: the stock and its stance, the price, what we paid on a holding, the next review, the id. Its triggers are on its full row. */
-function line(row: Row): string {
-  const held = row.status === "HOLDING";
-  const price = num(row.currentPrice);
-  const paid = held ? (num(row.paid) ?? num(obj(row.position)?.avgCost)) : null;
-  const review = date(row.reviewDueAt);
-  const catalyst = date(row.catalystDate);
-  const { noClaim, failedOn } = writeUp(row);
-  return [
-    String(row.ticker),
-    stance(row.status),
-    str(row.direction) ?? "no view",
-    noClaim ? (failedOn ? `write-up failed ${etDay(failedOn)}` : "no write-up yet") : null,
-    str(row.setupId) ?? str(row.horizon),
-    price != null ? money(price) : null,
-    paid != null ? `paid ${money(paid)}` : null,
-    // A trade waiting for the principal is off the work list, so its stock is often quiet: the line says it waits.
-    proposalLine(row) ? `proposal waiting: ${proposalLine(row)}` : null,
-    review ? `review ${etDay(review)}` : null,
-    catalyst ? `catalyst ${isoDay(catalyst)}` : catalystDateMissing(row) ? "catalyst date missing" : null,
-    `id ${String(row.id)}`,
-    // An account-wide read names each stock's analyst, last.
-    str(row.analyst),
-  ].filter((x): x is string => x != null).join(" · ");
 }
 
 // ── The short row and the full row ─────────────────────────────────────────
@@ -426,7 +399,7 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
 }
 
 /**
- * One row as the model reads it. A quiet row builds the one line; a listed
+ * One row as the model reads it. A listed
  * row builds the row with the fields its situations call for (ROW_FIELDS),
  * or the full row for a named read (`sizeFor`). The screen and a saved run
  * keep the whole row.
@@ -438,6 +411,6 @@ function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookC
  *
  * `comparing` sends COMPARING_FIELDS, whatever situation the stock is in.
  */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; comparing?: boolean }): string | Row {
-  return opts.size === "line" ? line(row) : shortOrFull(row, opts.size, opts.named, opts.comparing ? row.status !== "HOLDING" : opts.playbookChecks, opts.comparing);
+export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; comparing?: boolean }): Row {
+  return shortOrFull(row, opts.size, opts.named, opts.comparing ? row.status !== "HOLDING" : opts.playbookChecks, opts.comparing);
 }

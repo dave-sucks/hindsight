@@ -12,7 +12,7 @@
 import { replayTool, thesisRow, REPLAY_ANALYST_ID, type Row } from "@/lib/replay";
 
 /** get-theses's pure row builder, loaded without a database. */
-async function rowForModel(row: Record<string, unknown>, size: "line" | "short" | "full"): Promise<string | Record<string, unknown>> {
+async function rowForModel(row: Record<string, unknown>, size: "short" | "full"): Promise<string | Record<string, unknown>> {
   let out: string | Record<string, unknown> = "";
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
@@ -73,7 +73,6 @@ describe("the newest writer run on a stock, on its row", () => {
     const { row, listed } = await read(50, failedNewer());
     expect(listed).toBe(false);
     expect(row.writerRun).toEqual({ status: "FAILED", startedAt: ago(2).toISOString() });
-    expect(await rowForModel(row, "line")).toContain("MA · watch · no view · write-up failed 10-07 · COMPOUNDER");
     const full = (await rowForModel(row, "full")) as Record<string, unknown>;
     expect(full.stock).toBe("MA · watch · no view · COMPOUNDER");
     expect(full.research).toBe("No write-up yet; the last write-up failed 2026-10-07.");
@@ -83,13 +82,11 @@ describe("the newest writer run on a stock, on its row", () => {
     const { row, listed } = await read(5, failedNewer());
     expect(listed).toBe(false);
     expect(row.writerRun).toEqual({ status: "FAILED", startedAt: ago(2).toISOString() });
-    expect(await rowForModel(row, "line")).toBe("MA · watch · no view · write-up failed 10-07 · COMPOUNDER · $560.00 · review 11-18 · id cmum2tf9m000d04jfv0szuiap");
   });
 
   it("no writer run at all: no write-up yet, on the line and on the row", async () => {
     const quiet = await read(5, []);
     expect(quiet.row.writerRun).toBeNull();
-    expect(await rowForModel(quiet.row, "line")).toContain("no view · no write-up yet");
     const due = await read(50, []);
     expect(((await rowForModel(due.row, "full")) as Record<string, unknown>).research).toBe("No write-up yet.");
   });
@@ -100,6 +97,5 @@ describe("the newest writer run on a stock, on its row", () => {
       writerRun("w_ok", "COMPLETE", ago(1), { existingThesisId: SEED_ID, thesisId: SEED_ID, ticker: "MA", mode: "refresh" }),
     ]);
     expect(row.writerRun).toEqual({ status: "COMPLETE", startedAt: ago(1).toISOString() });
-    expect(await rowForModel(row, "line")).toContain("no view · no write-up yet");
   });
 });

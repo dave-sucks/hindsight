@@ -39,8 +39,8 @@ describe("the framework's read section follows row-for-model.ts", () => {
     for (const c of READ_CASES) expect(c.id).toBeDefined();
   });
   it("the page's example line and its samples are what the builder makes of the CRWD row, never hand-written", () => {
-    expect(buildRow(CRWD_ROW, { named: false, size: "line" })).toBe(EXAMPLE_LINE);
     const { keys, samples } = buildFrameworkRead();
+    expect(samples.line).toBe(EXAMPLE_LINE);
     const printed = (sample: string) => sample.split("\n").map((l) => l.match(/^([a-zA-Z_]+): /)?.[1]).filter((k): k is string => !!k && puts.has(k));
     // Every key a sample prints is one the read says it sends.
     for (const k of printed(samples.review)) expect(["review", k, keys.review.includes(k)]).toEqual(["review", k, true]);

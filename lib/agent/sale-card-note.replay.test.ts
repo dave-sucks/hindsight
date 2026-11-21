@@ -20,6 +20,7 @@
  * points, with every price and count replaced by a round stand-in and no text
  * kept (lib/agent/__fixtures__/sale-card-pinned-note-2026-11-16.json).
  */
+import type { StockTable } from "@/lib/agent/stock-table";
 import { statSync } from "fs";
 import fx from "@/lib/agent/__fixtures__/sale-card-pinned-note-2026-11-16.json";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow, agentConfigRow, REPLAY_ACCOUNT_ID, REPLAY_USER_ID, type Row } from "@/lib/replay";
@@ -98,18 +99,20 @@ async function morningRead(rows: Record<string, Row[]>, c: Case) {
   return {
     row,
     quiet,
+    // The stock's line of the stock table: what the model reads of a quiet stock.
+    waiting: (result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? null,
     modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
   };
 }
 
 describe.each(CASES)("%s at the 11-16 morning read: a sale card waits, and a high note is on the stock", (ticker, c) => {
   it("is one quiet line that says the sale card waits: the note puts it on no list, and the card is the owner's", async () => {
-    const { row, quiet } = await morningRead(seed(c), c);
+    const { row, quiet, waiting } = await morningRead(seed(c), c);
 
     expect(row).toBeNull();
     expect(quiet).not.toBeNull();
     // The sell tool refuses a second sale while it waits (below).
-    expect(String(rowForModel(quiet!, { named: false, size: "line" }))).toMatch(/proposal waiting: sell 10 sh, placed 11-13 09:\d\d ET/);
+    expect(waiting).toBe("sell 10");
   });
 
   it("the sale itself is not asked again: no situation and no lead", async () => {

@@ -201,7 +201,8 @@ describe("get_theses detail split — MORNING_PLAN unfiltered read", () => {
     expect(res.data.cards).toHaveLength(1);
     // Counts span the whole book.
     expect(res.data.count).toBe(2);
-    expect(res.data.note).toContain("one line each");
+    // Every stock is a line of the stock table, the quiet one too.
+    expect((res.data.stocks as { rows: Array<{ ticker: string }> }).rows).toHaveLength(2);
   });
 
   it("still holds a year from now — the fixture is not a time bomb", async () => {

@@ -42,6 +42,8 @@ export interface LiveQuote {
   o: number | null;
   h: number | null;
   l: number | null;
+  /** The volume of the session `c` belongs to: so far while the market is open, the whole session after it. */
+  v?: number | null;
   source: "alpaca" | "finnhub";
 }
 
@@ -67,6 +69,7 @@ function priced(c: number, at: Date, session: DatedBar | undefined, prior: Dated
     o: positive(session?.o),
     h: positive(session?.h),
     l: positive(session?.l),
+    v: positive(session?.v),
   };
 }
 

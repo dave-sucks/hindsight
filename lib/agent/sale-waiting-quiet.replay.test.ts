@@ -12,6 +12,7 @@
  * The morning reads' own rows (sale-waiting-quiet-2026-10-15.json), through
  * get_theses' real entry point at the moment each run began.
  */
+import type { StockTable } from "@/lib/agent/stock-table";
 import { statSync } from "fs";
 import fx from "@/lib/agent/__fixtures__/sale-waiting-quiet-2026-10-15.json";
 import { replayTool, thesisRow, positionRow, thesisUpdateRow, agentConfigRow, REPLAY_ACCOUNT_ID, REPLAY_USER_ID, type Row } from "@/lib/replay";
@@ -51,7 +52,8 @@ async function morningRead(c: Case, ticker: string) {
     const row = screen.theses?.find((r) => r.ticker === ticker) ?? null;
     return {
       row,
-      line: quiet ? (rowForModel(quiet, { named: false, size: "line" }) as string) : null,
+      // A quiet stock's line of the stock table says what waits for the owner.
+      line: quiet ? ((result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? "") : null,
       waits: row ? ((rowForModel(row, { named: false, size: "short" }) as Row).proposal_waiting as string | undefined) : undefined,
     };
   } finally {
@@ -75,7 +77,8 @@ describe("NVDA at the 10-15 morning run, its sale waiting", () => {
   it("is a quiet line: stale research is no situation now, and the sale is the card's; the line says the sale waits", async () => {
     const { row, line } = await morningRead(c, "NVDA");
     expect(row).toBeNull();
-    expect(line).toContain(`proposal waiting: ${SALE_WAITS.NVDA}`);
+    expect(line).toMatch(/^sell \d+$/);
+    expect(SALE_WAITS.NVDA.startsWith(`${line} sh`)).toBe(true);
   });
 });
 
