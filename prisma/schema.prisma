@@ -69,8 +69,9 @@ model Account {
   // the S&P is down 2% on the day" (lib/agent/triggers/market.ts). The same
   // `Trigger[]` shape, with each trigger's fire state on it. No stock inherits
   // these: a stock's ladder reads `triggers` above, never this column. Every
-  // account starts with the one rule; an empty array means it was removed.
-  marketTriggers Json @default("[{\"id\":\"market-fall\",\"predicate\":{\"watch\":\"market\",\"is\":\"below\",\"value\":2},\"action\":\"RUN_PORTFOLIO_MANAGER\",\"rationale\":\"A broad fall moves every holding at once, so the whole account gets a look the same day.\",\"source\":\"DEFAULT\"}]")
+  // account starts with two rules, a 2% fall and a 2% rise; an empty array
+  // means they were removed.
+  marketTriggers Json @default("[{\"id\":\"market-fall\",\"predicate\":{\"watch\":\"market\",\"is\":\"below\",\"value\":2},\"action\":\"RUN_PORTFOLIO_MANAGER\",\"rationale\":\"A broad fall moves every holding at once, so the whole account gets a look the same day.\",\"source\":\"DEFAULT\"},{\"id\":\"market-rise\",\"predicate\":{\"watch\":\"market\",\"is\":\"above\",\"value\":2},\"action\":\"RUN_PORTFOLIO_MANAGER\",\"rationale\":\"A broad rise sets off buys on several stocks at once, so the whole account gets a look the same day.\",\"source\":\"DEFAULT\"}]")
   // Stop when buying: a new holding's floor this % under its buy price
   // (lib/trading/auto-stop.ts). An analyst may override both.
   autoStopOnBuy Boolean @default(false)

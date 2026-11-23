@@ -6,8 +6,9 @@
  *
  *   Mon 11-16  prior close 754.37 · 14:35 739.43 (-1.98%) · 14:40 739.20 (-2.01%) · 14:45 738.59 · close 739.95 (-1.91%)
  *   Fri 11-20  prior close 715.87 · 12:00 704.23 (-1.63%) · 12:05 700.89 (-2.09%) · close 689.81 (-3.64%)
+ *   Mon 11-23  prior close 689.81 · 9:35 718.55 (+4.17%)
  *
- * The rule is the one the migration writes on every account, read out of the
+ * The rules are the two the migration writes on every account, read out of the
  * migration itself, so what fires here is what is saved.
  */
 import { readFileSync } from "node:fs";
@@ -103,7 +104,7 @@ const et = (ymd: string, hm: string) => new Date(`${ymd}T${hm}:00-05:00`);
 
 describe("the account's market trigger, as saved", () => {
   it("reads as one sentence and parses as a trigger", () => {
-    expect(SAVED.map((t) => sentenceOf(t as never))).toEqual(["Run the Portfolio Manager if the S&P is down 2% on the day"]);
+    expect(SAVED.map((t) => sentenceOf(t as never))).toEqual(["Run the Portfolio Manager if the S&P is down 2% on the day", "Run the Portfolio Manager if the S&P is up 2% on the day"]);
     expect(triggersArraySchema.safeParse(SAVED).success).toBe(true);
   });
 
@@ -168,6 +169,18 @@ describe("Mon 2026-11-16: the S&P reads down 2.01% at the 2:40 PM check", () => 
     await pass(db, et("2026-11-20", "12:05"), 700.89, 715.87);
     await pass(db, et("2026-11-20", "16:20"), 689.81, 715.87, et("2026-11-20", "16:00"));
     expect(marketRule(db).falseAtCloseAt).toBeUndefined();
+  });
+
+  it("Monday 11-23 opens up 4.17%: the rise fires at 9:35 AM, though Friday's close left the fall still fired", async () => {
+    const db = book();
+    await pass(db, et("2026-11-20", "12:05"), 700.89, 715.87);
+    await pass(db, et("2026-11-20", "16:20"), 689.81, 715.87, et("2026-11-20", "16:00"));
+    const monday = await pass(db, et("2026-11-23", "09:35"), 718.55, 689.81);
+    expect(monday.filter((e) => e.name === STOCK_FIRED)).toEqual([]);
+    expect(monday.map((e) => [e.data.triggerId, e.data.message])).toEqual([
+      ["market-rise", `The S&P is up 4.2% today, which fired the account's trigger "Run the Portfolio Manager if the S&P is up 2% on the day".`],
+    ]);
+    expect(await pass(db, et("2026-11-23", "09:40"), 715.63, 689.81)).toEqual([]);
   });
 
   it("a quote 20 minutes old is not read: nothing fires, and the next check with a fresh one does", async () => {

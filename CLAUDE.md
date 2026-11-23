@@ -72,12 +72,14 @@ count before the event is a window (`window` on its catalog entry): the
 pre-catalyst buys fire only within 70 days before the event. A trigger on our
 position (a move from our buy price or the high since we bought, days since the
 buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). **The account has
-one trigger of its own, on the market (2026-11-23):** "Run the Portfolio
-Manager if the S&P is down 2% on the day", stored on `Account.marketTriggers`
-in the trigger shape and shown read-only in Settings → Triggers. No stock
-inherits it (a stock's ladder reads `Account.triggers` only); its measure
+two triggers of its own, on the market (2026-11-23):** "Run the Portfolio
+Manager if the S&P is down 2% on the day" and the same for up 2% (two
+triggers, so a rise the day after a fall still fires), stored on
+`Account.marketTriggers` in the trigger shape and shown read-only in Settings →
+Triggers. No stock inherits them (a stock's ladder reads `Account.triggers`
+only); their measure
 (`market`) and action (`RUN_PORTFOLIO_MANAGER`) are on no dialog and no agent's
-tool. The trigger check reads it on each pass against SPY's live quote, never
+tool. The trigger check reads them on each pass against SPY's live quote, never
 a stale one, and a fire starts one Portfolio Manager run per traded book of the
 account, told the move in its first message (`lib/agent/triggers/market.ts`).
 The three

@@ -39,7 +39,7 @@ A stock answers to three layers of triggers, and the closest one wins:
    - A look in the 5 days before a report (Flag for Review), and one the day after it (Send to Agent).
    - A look when the company files something material with the SEC (Flag for Review).
 
-**The account's own trigger, on the market.** One trigger belongs to the account and to no stock: "Run the Portfolio Manager if the S&P is down 2% on the day", shown in its own section in Settings → Triggers. No stock inherits it. When it fires, the [Portfolio Manager](../agents/portfolio-manager.md) runs once for the account. It fires like every trigger: when it becomes true, and not again until a close finds it false.
+**The account's own triggers, on the market.** Two triggers belong to the account and to no stock: "Run the Portfolio Manager if the S&P is down 2% on the day", and the same for up 2%, shown in their own section in Settings → Triggers. No stock inherits them. When one fires, the [Portfolio Manager](../agents/portfolio-manager.md) runs once for the account. Each fires like every trigger: when it becomes true, and not again until a close finds it false.
 
 An inherited rule is never copied onto the thesis, so changing an analyst's style changes every holding at once. Every edit, from any layer, is one line in the stock's Activity.
 
@@ -133,7 +133,7 @@ One entry per measure in `lib/agent/triggers/condition/measures/`, grouped into 
 #### The account's rules
 Stored on `Account.triggers` (Settings → Triggers). A new account's are `accountSeedTriggers` in `lib/agent/triggers/seed-account.ts`: the review clock, `accountStandingRules` in `lib/agent/triggers/defaults.ts` (the trail and the two big-day looks), and the earnings and filing wakes. An account never seeded reads `unseededAccountFallback`, with the same ids on every read.
 
-#### The market trigger
+#### The market triggers
 Stored on `Account.marketTriggers`, a column no stock's ladder reads, and checked by `checkMarketTriggers` (`lib/agent/triggers/market.ts`) on the trigger check's passes. Its measure (`market`) is marked `account` on the catalog, which keeps it out of the Add trigger menu and the agents' schema. See [Portfolio Manager](../agents/portfolio-manager.md).
 
 #### Stop watching

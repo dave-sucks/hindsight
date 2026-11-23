@@ -63,14 +63,14 @@ export default async function TriggerSettingsPage() {
             <TriggerGroups triggers={marketTriggers} editable={false} held level="ACCOUNT" endpointBase="" />
           ) : (
             <p className="text-xs text-muted-foreground">
-              No market trigger. The Portfolio Manager runs only on its schedule.
+              No market triggers. The Portfolio Manager runs only on its schedule.
             </p>
           )}
           <p className="text-xs text-muted-foreground">
             The S&amp;P is read by SPY against yesterday&rsquo;s close, on the same
-            5-minute check as every trigger. It fires once, and not again until
-            a 4:20 PM close finds it false, so it starts at most one run a day.
-            You can read it here; it can&rsquo;t be changed here yet.
+            5-minute check as every trigger. Each fires once, and not again
+            until a 4:20 PM close finds it false. You can read them here; they
+            can&rsquo;t be changed here yet.
           </p>
         </div>
       </SettingsSection>

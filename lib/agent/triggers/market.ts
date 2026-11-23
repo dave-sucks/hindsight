@@ -1,6 +1,6 @@
 /**
  * The account's own triggers, on the market: "Run the Portfolio Manager if
- * the S&P is down 2% on the day." They are stored on the account
+ * the S&P is down 2% on the day", and the same for up 2%. They are stored on the account
  * (Account.marketTriggers), in the same shape as every trigger, and no stock
  * inherits them: a stock's ladder reads Account.triggers only. Each one that
  * fires starts one Portfolio Manager run for the account
