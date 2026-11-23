@@ -5,6 +5,7 @@
  * and the app draws the same rows column for column
  * (components/domain/stock-table.tsx). Pure: no database, safe in the browser.
  */
+import { minutesIntoSession, sessionProgress } from "@/lib/market-hours";
 
 export interface StockTableRow {
   /** The thesis, so the screen can open the stock; not a column. */
@@ -19,7 +20,7 @@ export interface StockTableRow {
   price: number | null;
   /** The price against the close of the session before it, in %. */
   dayPct: number | null;
-  /** That session's volume ÷ its 20-session average. */
+  /** That session's volume ÷ a full day's 20-session average: during the session, part of a day against a whole one (the note says how far in). */
   volume: number | null;
   move5dPct: number | null;
   move20dPct: number | null;
@@ -119,12 +120,20 @@ export function sessionStamp(asOf: string | null): string | null {
   return `${d.toLocaleDateString("en-US", { ...ET, weekday: "short", month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { ...ET, hour: "numeric", minute: "2-digit" })} ET`;
 }
 
-/** What the columns are, said once above the rows. */
+/**
+ * What the columns are, said once above the rows. While the session the prices are of is still open,
+ * Volume is a count so far against a FULL day's average, and the note says how far in, in the words
+ * get_stock_data uses (`todayVolumeRead`): 0.1x at 10:00 is 30 minutes of trading, not a quiet day.
+ */
 export function stockTableNote(table: StockTable): string {
   const at = sessionStamp(table.asOf);
+  const progress = table.asOf && at ? sessionProgress(new Date(table.asOf)) : null;
+  const soFar = progress && progress.minutes < progress.total ? progress : null;
   return [
     `Every stock we hold and watch, one row each: held stocks first, each group by the day's move.`,
-    `Prices${at ? ` as of ${at}` : ""}; Day and Volume are that session's, Volume against its 20-day normal.`,
+    soFar
+      ? `Prices as of ${at}, ${minutesIntoSession(soFar)}; Day and Volume are so far today, Volume against a full day's 20-day average.`
+      : `Prices${at ? ` as of ${at}` : ""}; Day and Volume are that session's, Volume against its 20-day normal.`,
     `Situation: why the stock is in front of its analyst now; ${NONE} is a quiet stock.`,
   ].join(" ");
 }

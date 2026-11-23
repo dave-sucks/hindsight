@@ -1,4 +1,5 @@
-import { columnsOf, sortStockRows, stockCell, stockTableLines, STOCK_TABLE_COLUMNS, type StockTableRow } from "./stock-table";
+import { columnsOf, sortStockRows, stockCell, stockTableLines, stockTableNote, STOCK_TABLE_COLUMNS, type StockTableRow } from "./stock-table";
+import { minutesIntoSession, sessionProgress } from "@/lib/market-hours";
 
 const row = (over: Partial<StockTableRow>): StockTableRow => ({
   ticker: "AAA", status: "watch", analyst: null, situations: [], price: 10.5, dayPct: 0, volume: 1, move5dPct: null, move20dPct: null,
@@ -36,5 +37,17 @@ describe("the stock table", () => {
     const day = STOCK_TABLE_COLUMNS.find((c) => c.key === "dayPct")!;
     expect(stockCell(row({ dayPct: null }), day)).toBe("—");
     expect(stockCell(row({ dayPct: 0 }), day)).toBe("+0.0%");
+  });
+  // Mon 2026-11-23 on the live account: PRAX had traded 0.08x a full day's average by 10:00 and 0.70x by 3:25 (0.88x at the bell).
+  // The 10:00 table printed "0.1x" under a note that called it the session's volume against its normal.
+  it("says how far into the session its volume is, in the words get_stock_data uses, and only while the session is open", () => {
+    const prax = (volume: number) => [row({ ticker: "PRAX", status: "held", price: 309.57, dayPct: 3.0, volume })];
+    const at10 = "2026-11-23T15:00:00.000Z";
+    const note10 = stockTableNote({ asOf: at10, rows: prax(0.08) });
+    expect(note10).toContain("Prices as of Mon, Nov 23, 10:00 AM ET, 30 minutes into the 390-minute session; Day and Volume are so far today, Volume against a full day's 20-day average.");
+    expect(note10).toContain(minutesIntoSession(sessionProgress(new Date(at10))!));
+    expect(stockTableNote({ asOf: "2026-11-23T20:25:00.000Z", rows: prax(0.7) })).toContain("355 minutes into the 390-minute session");
+    expect(stockTableNote({ asOf: "2026-11-23T21:00:00.000Z", rows: prax(0.88) })).toContain("Prices as of Mon, Nov 23, 4:00 PM ET; Day and Volume are that session's, Volume against its 20-day normal.");
+    expect(stockTableLines({ asOf: at10, rows: prax(0.08) })[2]).toContain("| +3.0% | 0.1x |");
   });
 });
