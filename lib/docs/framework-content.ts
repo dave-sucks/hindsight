@@ -73,21 +73,10 @@ export interface FrameworkSituation {
   origin: SituationOrigin;
 }
 
-/** When a sheet field is sent on a row in a situation (lib/agent/row-for-model.ts ROW_FIELDS, read on the server by lib/docs/read-grid.ts). */
-export type ReadWhen = "always" | "situations" | "review" | "named";
-
-export interface ReadGridRow {
-  fieldId: string;
-  when: ReadWhen;
-  /** For "situations": the situations that send it, in rank order, each with what puts a stock in it. */
-  situations: Array<{ code: string; name: string; origin: SituationOrigin }>;
-}
-
-/** The read section, built on the server from the one builder: which keys each read sends, each read as the model gets it, and the grid. */
+/** The read section, built on the server from the one builder: which keys each read sends, and each read as the model gets it. */
 export interface FrameworkRead {
-  keys: { line: string[]; review: string[]; named: string[]; writer: string[]; bySituation: Record<string, string[]> };
-  samples: { line: string; review: string; named: string; bySituation: Record<string, string> };
-  grid: ReadGridRow[];
+  keys: { line: string[]; row: string[]; full: string[]; writer: string[] };
+  samples: { line: string; row: string; full: string };
 }
 
 export interface FrameworkData {
@@ -95,8 +84,6 @@ export interface FrameworkData {
   situations: FrameworkSituation[];
   read: FrameworkRead;
 }
-
-export type RowSize = "short" | "full";
 
 /** What a stock's line of the stock table carries (lib/agent/stock-table.ts), by the sheet field it comes from. */
 export const LINE_KEYS = ["stock", "analyst", "price", "proposal_waiting"] as const;
@@ -160,15 +147,13 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
  * is not one.
  */
 export interface ReadCase {
-  id: "line" | "situation" | "review" | "named" | "writer";
+  id: "line" | "row" | "full" | "writer";
   /** The chip: one or two words. */
   chip: string;
   /** The scenario, as a heading. */
   title: string;
   /** The scenario in one sentence, under the heading. */
   body: string;
-  /** The row size this read sends, or the writer's own block. */
-  size: RowSize | "line" | "writer";
   /** What is sent and why, two or three short lines. */
   points: readonly string[];
 }
@@ -179,7 +164,6 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     chip: "Nothing new",
     title: "Nothing is happening on this stock",
     body: "No trigger fired, no review is due, no report is near. Most of the book, most mornings.",
-    size: "line",
     points: [
       "One line of the stock table, the same columns for every stock: its situation, the price, the day's move and volume, the 5-day and 1-month moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, outlook, conviction, the next report and a proposal if one is waiting.",
       "The Portfolio Manager gets the same table for the whole account, and the run page draws the same rows.",
@@ -187,38 +171,25 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     ],
   },
   {
-    id: "situation",
+    id: "row",
     chip: "In a situation",
-    title: "Something is going on with this stock",
-    body: "A trigger fired or a flag is up: the floor broke, the price reached the buy, a report is close, a winner should be pressed.",
-    size: "short",
+    title: "Something is going on with this stock, or an agent opened it",
+    body: "A trigger fired or a clock came due: the floor broke, the price reached the buy, a report is close, a review is due. Or an agent asked for the stock by its ticker.",
     points: [
-      "A blue field with no badge goes on every stock in a situation.",
-      "A blue field with badges goes only when one of those situations is on the stock. Two situations, both sets.",
-      "A field's content never changes with the situation; only whether it goes. The situation's own instructions are attached once per read.",
+      "The same row every time, whatever the situation and whoever reads: an analyst's run, a trigger run, the Portfolio Manager, your chat.",
+      "A field is there always, or when the stock has it: the position on a holding, a proposal when one waits, the paper record on a promoted stock.",
+      "The situation changes one thing: which instructions are attached, once per read.",
     ],
   },
   {
-    id: "review",
-    chip: "Review due",
-    title: "The review clock came due",
-    body: "The stock's own review trigger fired. The one situation that reads the whole case.",
-    size: "short",
+    id: "full",
+    chip: "With the research",
+    title: "An agent asks for the long research",
+    body: "get_theses with a ticker and include_research: a look that re-reads the case itself.",
     points: [
-      "Everything on the sheet except the history.",
-      "The bull and bear cases are read here and nowhere else in a run.",
-      "A review is about the case itself, not one level, so the case has to be in front of it.",
-    ],
-  },
-  {
-    id: "named",
-    chip: "Asked by name",
-    title: "An agent asks for one stock by name",
-    body: "get_theses with a ticker: your chat when you ask about a stock, a run right before a buy.",
-    size: "full",
-    points: [
-      "The full row: everything the review clock reads, and every Activity line ever written, each with its id.",
-      "One stock's history fits in a prompt where thirty stocks' would not.",
+      "The row, plus the bull case, the bear case and the research summary.",
+      "With include_history, every Activity line ever written on the stock, each with its id.",
+      "It is the longest read, so it comes only when asked for.",
     ],
   },
   {
@@ -226,7 +197,6 @@ export const READ_CASES: ReadonlyArray<ReadCase> = [
     chip: "Being rewritten",
     title: "The Writer rewrites the thesis",
     body: "A rewrite was ordered: from your chat, because the write-up went stale, or the one-time rewrite of the old theses.",
-    size: "writer",
     points: [
       "The Writer gets the old claim, every trigger by id and the company line, in its own prompt. Nothing else from the sheet.",
       "Not the old cases, assumptions or conviction reason: those are what it is writing. It pulls the quote, the financials, the news and the Street fresh.",

@@ -77,7 +77,7 @@ describe("parseStreet", () => {
 describe("the words", () => {
   it("the row builder prints the Street line from a row with street set", () => {
     const street = parseStreet("MSFT", msft, "2026-11-02");
-    const out = rowForModel({ id: "t_msft", ticker: "MSFT", status: "WATCHING", direction: "LONG", street }, { named: false, size: "short" }) as Record<string, unknown>;
+    const out = rowForModel({ id: "t_msft", ticker: "MSFT", status: "WATCHING", direction: "LONG", street }) as Record<string, unknown>;
     expect(out.street).toBe("35 buy / 3 hold / 0 sell · targets $440–$750, avg $634 (as of 11-02) · next-quarter EPS $4.85, 6 up / 3 down in 4 weeks");
     expect(streetLine({ street: parseStreet("SMMT", smmt, "2026-11-02") })).toBe(
       "8 buy / 5 hold / 0 sell · targets $11.90–$43.00, avg $27.49 (as of 11-02) · next-quarter EPS -$0.28, 0 up / 0 down in 4 weeks",

@@ -137,7 +137,8 @@ describe("a trigger fire: the trigger run and the post-trade write-up", () => {
       // A run about a thesis reads the market numbers alone of the Market and portfolio reads: the write-up too.
       const notRead = a.autoTrade && ["market_digest", "portfolio", "portfolio_digest"].includes(is);
       // The stock's line says its outlook since 2026-11-20; these cases' stocks have none yet.
-      const before = is === "the_stock" && old[`message:${was}`] !== undefined ? notRatedYet(old[`message:${was}`]) : old[`message:${was}`];
+      // And its research line no longer says how to get the full row: every opened stock is the one row (2026-11-23).
+      const before = is === "the_stock" && old[`message:${was}`] !== undefined ? notRatedYet(old[`message:${was}`]).replace(/ Full row: get_theses\(tickers: \[\\"[A-Z]+\\"\]\)\./, "") : old[`message:${was}`];
       expect([is, now[`message:${is}`]]).toEqual([is, notRead ? undefined : before]);
     }
     // The message: the trigger and its price once, what else the check knows, then the old ask.

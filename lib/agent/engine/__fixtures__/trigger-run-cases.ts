@@ -35,7 +35,7 @@ const saved = (status: string, t: Trigger, extra: Record<string, unknown> = {}) 
   triggers: [{ id: t.id, says: sentenceOf(t), rationale: t.rationale }],
   ...extra,
 });
-const row = (status: string, t: Trigger, extra: Record<string, unknown> = {}) => rowForModel(saved(status, t, extra), { named: true, size: "short", playbookChecks: true }) as Record<string, unknown>;
+const row = (status: string, t: Trigger, extra: Record<string, unknown> = {}) => rowForModel(saved(status, t, extra)) as Record<string, unknown>;
 
 /** The Market and portfolio block's text the old builder was given, and its parts the engine is given. */
 export const TRIGGER_PIECES = [

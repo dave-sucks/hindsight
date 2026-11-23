@@ -1,6 +1,6 @@
 /**
- * The short row carries the whole view (the bull and bear cases, the conviction rationale, the variant view) on every
- * stock an agent decides on. Fixture: CEG's held row from scripts/hero-cases/ceg-plan-stands, cut short, with every field set.
+ * The row carries the view (the assumptions, the conviction rationale, the variant view) on every
+ * stock an agent decides on; the bull and bear cases and the research summary come when the read asks. Fixture: CEG's held row from scripts/hero-cases/ceg-plan-stands, cut short, with every field set.
  */
 import fixture from "@/lib/agent/__fixtures__/short-row-ceg-2026-09-25.json";
 import { rowForModel } from "@/lib/agent/row-for-model";
@@ -8,33 +8,32 @@ import { rowForModel } from "@/lib/agent/row-for-model";
 type Row = Record<string, unknown>;
 const saved = (): Row => ({ ...fixture }) as Row;
 
-it("the short row prints these keys, in this order", () => {
-  const row = rowForModel(saved(), { named: false, size: "short" }) as Row;
+it("the row prints these keys, in this order", () => {
+  const row = rowForModel(saved()) as Row;
   expect(Object.keys(row)).toEqual([
     "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price",
     "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
-    "bull_case", "bear_case", "conviction_rationale", "variant_view",
-    "setup", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "snapshot", "chart",
+    "conviction_rationale", "variant_view",
+    "playbook_checks", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "chart",
     "research", "catalyst", "repeat",
   ]);
 });
 
-it("the full row is the short row plus the history", () => {
-  // The trigger run's short row, so both carry the setup's lines (the full row always does).
-  const short = Object.keys(rowForModel(saved(), { named: true, size: "short", playbookChecks: true }) as Row);
-  const full = Object.keys(rowForModel(saved(), { named: true, size: "full" }) as Row);
+it("a read that asks for the research and the history adds those four fields and nothing else", () => {
+  const short = Object.keys(rowForModel(saved()) as Row);
+  const full = Object.keys(rowForModel(saved(), { research: true, history: true }) as Row);
   // The seven research sections the Writer stopped writing on 2026-11-03 are on the saved row and never sent.
-  expect([...full].sort()).toEqual([...short, "history"].sort());
+  expect([...full].sort()).toEqual([...short, "bull_case", "bear_case", "snapshot", "history"].sort());
   expect(full.filter((k) => short.includes(k))).toEqual(short);
 });
 
 it("the company line sits right under the stock line, on the short row and the full one (2026-11-03)", () => {
   const company = "Sells widgets; revenue is subscription.";
   for (const size of ["short", "full"] as const) {
-    const row = rowForModel({ ...saved(), company }, { named: size === "full", size }) as Row;
+    const row = rowForModel({ ...saved(), company }, size === "full" ? { research: true, history: true } : {}) as Row;
     expect(Object.keys(row).slice(0, 2)).toEqual(["stock", "company"]);
     expect(row.company).toBe(company);
   }
   // A stock written up before the Writer wrote company lines has none, and no empty key.
-  expect(Object.keys(rowForModel(saved(), { named: false, size: "short" }) as Row)).not.toContain("company");
+  expect(Object.keys(rowForModel(saved()) as Row)).not.toContain("company");
 });

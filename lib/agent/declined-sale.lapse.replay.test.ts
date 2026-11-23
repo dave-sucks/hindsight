@@ -184,7 +184,7 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     expect(row.needsAction).toMatchObject({ kind: "SALE_DECLINED", declineCount: 0, lapseCount: 2, floorPrice: 1005 });
     expect(row.heldThroughFloor).toMatchObject({ floorPrice: 1005, declined: 0, lapsed: 2 });
     // What the model reads of the row.
-    expect((rowForModel(row, { named: true, size: "full" }) as Row).heldThroughFloor).toMatchObject({ declined: 0, lapsed: 2 });
+    expect((rowForModel(row, { research: true, history: true }) as Row).heldThroughFloor).toMatchObject({ declined: 0, lapsed: 2 });
 
     expect(needsActionFlag(row.needsAction!)).toEqual({ name: "Sale lapsed", detail: "2×, last 2026-10-09" });
   });

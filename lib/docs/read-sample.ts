@@ -9,7 +9,6 @@
 
 import { rowForModel } from "@/lib/agent/row-for-model";
 import { stockTableLines, type StockTableRow } from "@/lib/agent/stock-table";
-import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 type Row = Record<string, unknown>;
 
@@ -92,15 +91,12 @@ function asText(read: string | Row): string {
     .join("\n");
 }
 
-/** Each read as the model gets it, built through rowForModel from the one CRWD row: the line, the review clock's row, the row by name, and one row per situation. The Writer's case is its own prompt block and is not built here. */
-export function buildReadSamples(): { line: string; review: string; named: string; bySituation: Record<string, string> } {
-  const bySituation: Record<string, string> = {};
-  for (const code of Object.keys(SITUATIONS) as SituationCode[]) bySituation[code] = asText(rowForModel({ ...CRWD_ROW, situations: [code] }, { named: false, size: "short" }));
+/** Each read as the model gets it, built from the one CRWD row: its line of the stock table, its row, and its row with the research and the history. The Writer's case is its own prompt block and is not built here. */
+export function buildReadSamples(): { line: string; row: string; full: string } {
   return {
     // The stock's line of the stock table, under the table's column names.
     line: stockTableLines({ asOf: null, rows: [CRWD_LINE] }).slice(1).join("\n"),
-    review: asText(rowForModel({ ...CRWD_ROW, situations: ["REVIEW_DUE"] }, { named: false, size: "short" })),
-    named: asText(rowForModel(CRWD_ROW, { named: true, size: "full" })),
-    bySituation,
+    row: asText(rowForModel(CRWD_ROW)),
+    full: asText(rowForModel(CRWD_ROW, { research: true, history: true })),
   };
 }

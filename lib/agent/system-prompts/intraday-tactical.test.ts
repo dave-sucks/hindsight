@@ -39,7 +39,7 @@ function savedRow(overrides: Record<string, unknown> = {}): Record<string, unkno
     ...overrides,
   };
 }
-const row = (overrides: Record<string, unknown> = {}) => rowForModel(savedRow(overrides), { named: true, size: "short", playbookChecks: true }) as Record<string, unknown>;
+const row = (overrides: Record<string, unknown> = {}) => rowForModel(savedRow(overrides)) as Record<string, unknown>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeArgs(overrides: Record<string, any> = {}): any {

@@ -86,7 +86,7 @@ export function stockFromRead(
   // The notes every run reads once at the top (the account's and the
   // analyst's, lib/agent/shared-notes.ts) ride on the one row this run prints.
   const notes = (read?.data as { notes?: string[] } | undefined)?.notes;
-  const short = rowForModel(row, { named: true, size: "short", playbookChecks: true }) as Record<string, unknown>;
+  const short = rowForModel(row);
   return {
     row: notes?.length ? { ...short, notes_to_the_account: notes } : short,
     // The list names every situation; the guidance leaves out the ones only the morning run can answer.

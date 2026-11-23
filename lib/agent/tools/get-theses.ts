@@ -30,7 +30,7 @@ import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { chartFacts } from "@/lib/market-data/indicator-snapshot";
-import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
+import { ROW_FACTS, rowForModel } from "@/lib/agent/row-for-model";
 import { stockTableLines, type StockTable } from "@/lib/agent/stock-table";
 import { nextReports, stockTableFromFacts } from "@/lib/agent/stock-table-load";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
@@ -86,6 +86,10 @@ const schema = z.object({
     .array(z.enum(HORIZONS))
     .optional()
     .describe("Restrict to these horizon kinds."),
+  include_research: z
+    .boolean()
+    .optional()
+    .describe("Also return each row's bull case, bear case and research summary. Ask when you are re-reading the case itself."),
   include_history: z
     .boolean()
     .optional()
@@ -110,13 +114,13 @@ const schema = z.object({
     .enum(["actionable", "book"])
     .optional()
     .describe(
-      "\"actionable\" (the default): every stock is a line of the `stocks` table, and a stock in a situation is also a row in `theses`. \"book\": every stock as a row. A read by ticker or id is always the full row.",
+      "\"actionable\" (the default): every stock is a line of the `stocks` table, and a stock in a situation is also a row in `theses`. \"book\": every stock as a row.",
     ),
 });
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its Activity, newest first (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. `stocks` is every stock as one line of a table; its first two lines say what the columns are. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
+    "Read the stocks held and watched. `stocks` is every stock as one line of a table; its first two lines say what the columns are. A stock in a situation, and any stock asked for by ticker or id, is also a row in `theses`, the same row whatever its situation: its situations by name, its Activity, newest first (`said`), the position and any proposal waiting, the price, every trigger with its id, the belief, the assumptions, what would prove it wrong, the reasons for its conviction and outlook, where we differ from Wall Street, the playbook's checks, the chart numbers, Wall Street's view (`street`) and when the research was written. The morning run's own list carries `guidance`, what each situation asks, once. The bull and bear cases and the research summary come only with include_research, and the raw activity log with include_history on a read by ticker or id. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -128,28 +132,25 @@ export const getTheses = defineTool({
   //
   // The raw history comes back only on a read of named stocks: 29% of the
   // morning read on 2026-10-02, and the row's `context` already sums it up.
-  // The writer's research text stays on every full row: a run left to ask
-  // for it never did (now-needs-research, 0/12 with and without a line
-  // saying how). Each row also says when its research was written and at
-  // what price.
+  // The bull and bear cases and the research summary come with
+  // include_research. A run left to ask for more rarely does
+  // (now-needs-research, 0/12), so what a look needs is on the row itself.
   forModel: (result, input, ctx) => {
     if (!result.ok) return result;
     const data = result.data as Record<string, unknown> | undefined;
     if (!data) return result;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { cards, ...rest } = data;
-    if (isManagerRun(ctx)) {
-      // The same rows by the comparing rule (COMPARING_FIELDS), a holding and a watch alike, each situation by its name: the stock's analyst answers it.
-      const rows = Array.isArray(rest.theses) ? (rest.theses as Array<Record<string, unknown>>) : [];
-      const note = (rest.manager as { note?: string } | undefined)?.note;
-      return { ...result, data: { theses: rows.map((r) => rowForModel(r, { named: false, size: "short", comparing: true })), ...(note ? { note } : {}) } };
-    }
     const named = !!((input?.tickers?.length ?? 0) > 0 || (input?.ids?.length ?? 0) > 0);
     if (!Array.isArray(rest.theses)) return { ...result, data: rest };
-    // The one builder (lib/agent/row-for-model.ts): each listed row with the
-    // fields its situations call for, each quiet row as one line.
+    // The one builder (lib/agent/row-for-model.ts): the same row for every stock and every reader; the long research and the raw history only when asked for.
     const rows = rest.theses as Array<Record<string, unknown>>;
-    const theses = rows.map((row) => rowForModel(row, { named, size: sizeFor(row, named) }));
+    const theses = rows.map((row) => rowForModel(row, { research: !!input?.include_research, history: named && !!input?.include_history }));
+    if (isManagerRun(ctx)) {
+      // The Portfolio Manager asks by ticker: the rows, and which of its watches were left out.
+      const note = (rest.manager as { note?: string } | undefined)?.note;
+      return { ...result, data: { theses, ...(note ? { note } : {}) } };
+    }
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
     // What each situation asks goes to the run that answers the list, the
     // morning run on its own read; a read by ticker and every other reader
@@ -879,4 +880,4 @@ function rowFacts(
   };
 }
 
-export { ROW_FACTS, rowForModel, type RowSize };
+export { ROW_FACTS, rowForModel };

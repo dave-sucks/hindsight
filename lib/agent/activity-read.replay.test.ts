@@ -126,9 +126,7 @@ describe("every kind has a number", () => {
 describe("one list for every agent", () => {
   it("the Portfolio Manager's row carries the same `said` as an analyst's", () => {
     const row = { id: "t1", ticker: "IOT", status: "HOLDING", direction: "LONG", conviction: "LOW", context: iot(), triggers: [] };
-    const compared = (rowForModel(row, { named: true, size: "short", comparing: true }) as { said: string }).said;
-    expect(compared).toBe(iot());
-    expect((rowForModel(row, { named: false, size: "short" }) as { said: string }).said).toBe(compared);
+    expect((rowForModel(row) as { said: string }).said).toBe(iot());
   });
 
   it("a stock with nothing the filter keeps has no `said`", () => {
@@ -148,7 +146,7 @@ describe("a trigger the owner set says when, and what it was", () => {
       return { ...triggerForAgent(t), ...(set ? { ownerSetAt: set.at.toISOString(), ...(set.was ? { was: set.was } : {}) } : {}) };
     }),
   });
-  const triggerLines = (withSets: boolean) => (rowForModel(row(withSets), { named: false, size: "short" }) as { triggers: string[] }).triggers;
+  const triggerLines = (withSets: boolean) => (rowForModel(row(withSets)) as { triggers: string[] }).triggers;
 
   it("MU's floor: the owner's newest change, its day in New York, and the price it replaced", () => {
     expect(sets.get(FLOOR)).toEqual({ at: new Date("2026-11-12T02:29:50Z"), was: "$930.60" });

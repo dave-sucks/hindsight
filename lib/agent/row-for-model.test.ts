@@ -5,7 +5,7 @@
  * a line with nothing to say is left out. Built from one saved-row fixture
  * shaped like a real held row, written inline (no fixture file).
  */
-import { rowForModel, sizeFor, stripSourceTags } from "@/lib/agent/row-for-model";
+import { rowForModel, stripSourceTags } from "@/lib/agent/row-for-model";
 
 type Row = Record<string, unknown>;
 
@@ -66,21 +66,13 @@ const quiet = (): Row => ({
   reviewDueAt: "2026-10-20T12:00:00.000Z", catalystDate: null, triggerCount: 6, researchAge: { daysOld: 9 }, resolvedActionability: "WAIT_FOR_TRIGGER", needsAction: null, situations: [],
 });
 
-describe("the size a row gets", () => {
-  it("is the full row for a named read, the row otherwise; no situation sends the full row by rule any more (2026-11-06)", () => {
-    expect(sizeFor(held(), true)).toBe("full");
-    expect(sizeFor(held(), false)).toBe("short");
-    expect(sizeFor({ ...held(), situations: ["REVIEW_DUE", "QUIET_WATCH_WOKE"] }, false)).toBe("short");
-  });
-});
-
 describe("the research line's write-up facts (step 12, part 1)", () => {
   const seed = { id: "t_x", ticker: "XYZ", status: "WATCHING", direction: null, horizon: "COMPOUNDER", situations: ["FIRST_RESEARCH"] };
-  const research = (row: Row, size: "short" | "full" = "full") => (rowForModel(row, { named: size === "full", size }) as Row).research;
+  const research = (row: Row, size: "short" | "full" = "full") => (rowForModel(row, size === "full" ? { research: true, history: true } : {}) as Row).research;
   it("a seed with no claim: no write-up yet, and the date when the last one failed", () => {
     expect(research(seed)).toBe("No write-up yet.");
     expect(research({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } })).toBe("No write-up yet; the last write-up failed 2026-10-05.");
-    expect(research({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } }, "short")).toBe('No write-up yet; the last write-up failed 2026-10-05. Full row: get_theses(tickers: ["XYZ"]).');
+    expect(research({ ...seed, writerRun: { status: "FAILED", startedAt: "2026-10-05T12:01:07.188Z" } }, "short")).toBe("No write-up yet; the last write-up failed 2026-10-05.");
     expect(research({ ...seed, writerRun: { status: "COMPLETE", startedAt: "2026-10-05T12:01:07.188Z" } })).toBe("No write-up yet.");
   });
   it("a stock with research whose newest write-up failed says both", () => {
@@ -90,13 +82,13 @@ describe("the research line's write-up facts (step 12, part 1)", () => {
 });
 
 describe("the short row", () => {
-  const row = rowForModel(held(), { named: false, size: "short" }) as Row;
+  const row = rowForModel(held()) as Row;
 
   it("has the keys in reading order and nothing that is empty", () => {
     expect(Object.keys(row)).toEqual([
       "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "triggers",
-      "belief", "assumptions", "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view",
-      "setup", "snapshot", "chart", "research", "catalyst", "repeat",
+      "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale", "variant_view",
+      "setup", "chart", "research", "catalyst", "repeat",
     ]);
   });
 
@@ -119,13 +111,11 @@ describe("the short row", () => {
     expect(row.belief).toBe("IOT drifts to $47 within 60 days.");
     expect(row.assumptions).toEqual(["ARR customers grow 38%", "Revisions continue up"]);
     expect(row.would_prove_it_wrong).toEqual(["A close below $36.50 on volume", "Q3 ARR under $120M"]);
-    expect(row.bull_case).toEqual(["Clean beat: EPS +25%", "Upgrades"]);
-    expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
     expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
     expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow.");
     expect(row.chart).toBe("as of the 2026-10-07 close: 20d $39.70 · 50d $39.47 · 200d $33.68 · RSI 56 (14-day, from the closes and the live price) · 20d range $36.40–$44.21 · 52w high $47.47 · ATR $1.99 · vs the S&P 1M -0.6% / 3M +6.1% · 20d avg volume 5.7M · 5d +2.1% · 20d +6.4%");
-    expect(row.research).toBe('Written 2026-10-05 at $39.55, 2 days ago. Full row: get_theses(tickers: ["IOT"]).');
+    expect(row.research).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
     expect(row.catalyst).toBe("2026-10-29");
     expect(row.repeat).toBe("This sale has fired 3 days running.");
   });
@@ -139,14 +129,8 @@ describe("the short row", () => {
     for (const own of lines.filter((l) => !l.includes("· inherited"))) expect(own).toMatch(/\[id t_\w+\]$/);
   });
 
-  it("keeps the snapshot to whole sentences under 300 characters, tags and bold stripped", () => {
-    const snap = String(row.snapshot);
-    expect(snap).toBe("First sentence of the picture. Second sentence says more.");
-    expect(snap.length).toBeLessThanOrEqual(300);
-  });
-
   it("carries no score notes, no raw facts, no bookkeeping and no source tags", () => {
-    for (const k of ["bullCase", "bearCase", "convictionRationale", "variantView", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
+    for (const k of ["bull_case", "bear_case", "snapshot", "bullCase", "bearCase", "convictionRationale", "variantView", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
       expect(row).not.toHaveProperty(k);
     }
     expect(JSON.stringify(row)).not.toMatch(/\[(STRUCTURED|WEB)/);
@@ -155,14 +139,13 @@ describe("the short row", () => {
 
   it("notes the paper record on a promoted stock and a floor risk when they exist; no rule from code on a LOW holding; no plan checks", () => {
     // A rule lives in a trigger, a playbook or a situation the owner can read, never in a line the read adds.
-    const low = rowForModel({ ...held(), conviction: "LOW" }, { named: false, size: "short" }) as Row;
+    const low = rowForModel({ ...held(), conviction: "LOW" }) as Row;
     expect(low).not.toHaveProperty("note");
-    const promoted = rowForModel({ ...held(), status: "PROMOTED", paperTenureDays: 41, paperRealizedPnl: 812.5, paperReviewCount: 3, position: null }, { named: false, size: "short" }) as Row;
+    const promoted = rowForModel({ ...held(), status: "PROMOTED", paperTenureDays: 41, paperRealizedPnl: 812.5, paperReviewCount: 3, position: null }) as Row;
     expect(promoted.paper_record).toBe("held 41 days on paper, realized $812.50, 3 reviews");
     expect(promoted).not.toHaveProperty("position");
     const checked = rowForModel(
       { ...held(), status: "WATCHING", position: null, resolved: { ...(held().resolved as Row), planSanity: [{ kind: "ENTRY_STALE", text: "The buy level $39.55 was set 30 days ago and hasn't filled." }], floorRisk: { line: "At the $40.80 floor, 300 shares lose $1,200 — 1.8% of the account." } } },
-      { named: false, size: "short" },
     ) as Row;
     // A row saved before plan checks were deleted (2026-11-13) still carries them; the model never reads one.
     expect(checked).not.toHaveProperty("plan_checks");
@@ -173,8 +156,8 @@ describe("the short row", () => {
 });
 
 describe("the full row", () => {
-  it("is the short row plus the whole snapshot and, on a named read, the history", () => {
-    const row = rowForModel(held(), { named: true, size: "full" }) as Row;
+  it("is the row plus the bull and bear cases and the whole research summary when the read asks for the research, and the history when it asks for that", () => {
+    const row = rowForModel(held(), { research: true, history: true }) as Row;
     expect(row.bull_case).toEqual(["Clean beat: EPS +25%", "Upgrades"]);
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
@@ -185,7 +168,7 @@ describe("the full row", () => {
     expect(Object.keys(row).indexOf("bull_case")).toBeLessThan(Object.keys(row).indexOf("chart"));
   });
   it("without a named read, carries no history", () => {
-    const row = rowForModel({ ...held(), situations: ["REVIEW_DUE"] }, { named: false, size: "full" }) as Row;
+    const row = rowForModel({ ...held(), situations: ["REVIEW_DUE"] }, { research: true }) as Row;
     expect(row).not.toHaveProperty("history");
     expect(row.bull_case).toBeDefined();
   });
@@ -205,30 +188,25 @@ const FROZEN = Object.keys(research);
 
 describe("what nothing rewrites any more", () => {
   it("no row carries the research sections, named or not, review or not", () => {
-    for (const [codes, opts] of [[[], { named: true, size: "full" }], [["REVIEW_DUE"], { named: false, size: "short" }], [["REVIEW_DUE"], { named: false, size: "full" }]] as const) {
+    for (const [codes, opts] of [[[], { research: true, history: true }], [["REVIEW_DUE"]], [["REVIEW_DUE"], { research: true }]] as const) {
       const row = rowForModel({ ...held(), ...research, situations: [...codes] }, opts) as Row;
       for (const k of FROZEN) expect([k, row[k]]).toEqual([k, undefined]);
     }
   });
 });
 
-describe("the trigger run's door (step 10): the short row with the setup's lines", () => {
+describe("the playbook on a row", () => {
   const withLines = () => ({ ...held(), ...research, setup: { ...(held().setup as Row), lines: ["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."] } });
-  it("carries playbook_checks in place of the compact setup line, the whole view, and nothing else of the full row", () => {
-    const row = rowForModel(withLines(), { named: true, size: "short", playbookChecks: true }) as Row;
+  it("is its checks when it has them, in place of its one line, for every reader", () => {
+    const row = rowForModel(withLines()) as Row;
     expect(row.playbook_checks).toEqual(["PEAD — Post-earnings drift: a summary.", "Needs: a beat.", "Manage: After +10%: 3 ATR under the high."]);
     expect(row).not.toHaveProperty("setup");
-    expect(row.bear_case).toEqual(["FCF margin guided lower"]);
-    for (const k of ["history", ...FROZEN]) expect([k, k in row]).toEqual([k, false]);
-    expect(row.research).toMatch(/Full row: get_theses\(tickers: \["IOT"\]\)\.$/);
+    for (const k of ["history", "bear_case", ...FROZEN]) expect([k, k in row]).toEqual([k, false]);
   });
-  it("every other short row is unchanged: the compact setup line, no playbook_checks", () => {
-    const row = rowForModel(withLines(), { named: false, size: "short" }) as Row;
-    expect(row.setup).toBe((rowForModel(held(), { named: false, size: "short" }) as Row).setup);
+  it("is its one line when it has no checks to list", () => {
+    const row = rowForModel(held()) as Row;
+    expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow.");
     expect(row).not.toHaveProperty("playbook_checks");
-  });
-  it("the full row always carries them", () => {
-    expect((rowForModel(withLines(), { named: true, size: "full" }) as Row).playbook_checks).toHaveLength(3);
   });
 });
 

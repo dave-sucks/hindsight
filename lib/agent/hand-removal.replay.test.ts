@@ -24,7 +24,7 @@ import type { ActivityRow } from "@/lib/agent/stock-context";
 import { stockContextFor } from "@/lib/agent/stock-context-for";
 import { toFeedItem } from "@/lib/thesis/activity-feed";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { rowForModel, sizeFor } from "@/lib/agent/row-for-model";
+import { rowForModel } from "@/lib/agent/row-for-model";
 import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -129,7 +129,7 @@ describe("the 10-08 08:00 read of ABT, through get_theses", () => {
   it("the row's `said` is the last reviews; the owner's 10-07 add and removal and the fire between them are not in it", async () => {
     const full = await morningRead();
     expect(full).not.toBeNull();
-    const said = (rowForModel(full!, { named: false, size: sizeFor(full!, false) }) as Record<string, unknown>).said as string;
+    const said = (rowForModel(full!) as Record<string, unknown>).said as string;
     expect(said.startsWith(HEADER)).toBe(true);
     expect(said.split("\n").slice(1, -1).map((l) => l.slice(0, l.indexOf(": ")))).toEqual([
       "  Review by its analyst, Oct 7, 8:05 AM at $98.16",

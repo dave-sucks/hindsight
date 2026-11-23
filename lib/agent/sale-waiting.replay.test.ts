@@ -100,7 +100,7 @@ async function morningRead(seed: Record<string, Row[]>, when: string, ticker: st
     return {
       row,
       quiet,
-      modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
+      modelRow: row ? (rowForModel(row) as Row) : null,
       modelLine: quiet ? ((result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? "") : null,
     };
   });

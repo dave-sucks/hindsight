@@ -1,12 +1,12 @@
 /**
  * The Situations Library (docs/guide/reference/situations-library.md), built
- * from SITUATIONS and the skill files so the reference can't drift from what
- * agents are sent.
+ * from SITUATIONS, the skill files and the row's field table (ROW_FIELDS) so
+ * the reference can't drift from what agents are sent.
  * guide.test.ts fails when the file is out of date; regenerate it with
  * `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { ROW_FIELDS, rowKeysFor } from "@/lib/agent/row-for-model";
+import { ROW_FIELDS } from "@/lib/agent/row-for-model";
 import { SITUATIONS, guidanceCodes, type SituationCode } from "@/lib/agent/situations";
 import { situationText } from "@/lib/agent/situation-skills";
 
@@ -26,31 +26,55 @@ const PLAIN: Record<SituationCode, string> = {
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** A text has a part for a stock we hold and one for a stock we watch when the two reads differ. */
+const parts = (code: SituationCode) => (situationText(code, true) === situationText(code, false) ? "one text for every stock" : "a part for a stock we hold, a part for a stock we watch");
+
 export function situationsLibraryMarkdown(): string {
   const codes = Object.keys(SITUATIONS) as SituationCode[];
   const out: string[] = [
     "# Situations library",
     "",
-    `**Every situation, and exactly what the agent is sent.** The ${codes.length} codes in rank order, each with what it means and the text an agent reads.`,
+    `**Every situation, and exactly what the agent is sent.** The ${codes.length} codes in rank order, each with when it is true, where its text goes and the text itself. Then, once, what every stock in a situation carries.`,
     "",
-    "This file is built from `SITUATIONS` in `lib/agent/situations.ts` and the skill files in `lib/agent/engine/skills/`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).",
+    "This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill files in `lib/agent/engine/skills/` and `ROW_FIELDS` in `lib/agent/row-for-model.ts`; don't edit it by hand. What situations are and where they come from is [Situations](../concepts/situations.md).",
     "",
-    "## How a situation reaches an agent",
+    "## How a situation works",
     "",
-    "- **On the row.** Every stock in a read lists its situations by code and name, the most urgent first. Every reader gets that: the chat, the Portfolio Manager, a read of one stock by ticker.",
-    "- **The text goes to the run that answers.** The morning run's own list carries one `guidance` entry per code on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.",
-    "- **A skill has a part for a stock we hold and a part for a stock we watch.** A run is sent the part that fits its stock, whole and as written; a list with both kinds gets both. No code writes or changes a word of a skill.",
-    "- **A just-sold stock** is never a trigger run's, so that skill goes only to the morning run.",
-    "- **The row's fields.** Every stock in a situation sends the row's standing fields (the stock, its situations, the price, the position, a proposal waiting, every trigger with its id, the belief, the newest Activity lines, when the research was written, the chart numbers). A situation adds the fields its decision reads, listed under each one below; the review reads the whole case; the history comes only when the stock is asked for by name (`ROW_FIELDS` in `lib/agent/row-for-model.ts`).",
+    "1. A trigger fires or a clock comes due. Code works out the stock's situations from that (`situationsFor`); nothing is stored.",
+    "2. The stock shows its situations by name on its line of the stock table and on its row, the most urgent first. Every reader gets that.",
+    "3. The situation does one thing: it picks the text below. The text goes to the run that answers. The morning run's list carries one `guidance` entry per situation on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.",
+    "4. A text can have a part for a stock we hold and a part for a stock we watch. A run is sent the part that fits its stock, whole and as written. No code writes or changes a word of it.",
+    "",
+    "## What every stock in a situation carries",
+    "",
+    "The same row, whatever the situation and whoever reads it. A stock an agent opens by its ticker gets the same row. A field is included always, or when the stock has it, or when the read asks for it. A field with nothing to say is left off. To stop sending a field, delete its line in `ROW_FIELDS`.",
+    "",
+    "| Field | What it is | When it is included |",
+    "|---|---|---|",
+    ...ROW_FIELDS.map((f) => `| \`${f.key}\` | ${f.what} | ${f.when} |`),
     "",
   ];
   codes.forEach((code, i) => {
     const s = SITUATIONS[code];
     const notTrigger = guidanceCodes("WATCHING", [code], "INTRADAY_TACTICAL").length === 0;
-    const standing = new Set(Object.keys(ROW_FIELDS).filter((k) => ROW_FIELDS[k] === "always"));
-    const adds = [...rowKeysFor([code], { size: "short", named: false })].filter((k) => !standing.has(k));
-    const facts = [`\`${code}\``, `rank ${i + 1} of ${codes.length}`, s.skill ? `\`${s.skill}\`` : "its text is in the table", adds.length ? `the row adds ${adds.map((k) => `\`${k}\``).join(", ")}` : "the standing fields only", notTrigger ? "not sent to a trigger run" : "sent to the run that answers"];
-    out.push(`## ${cap(s.name)}`, "", facts.join(" · "), "", PLAIN[code], "", "```text", situationText(code, null), "```", "");
+    out.push(
+      `## ${cap(s.name)}`,
+      "",
+      [`\`${code}\``, `rank ${i + 1} of ${codes.length}`, s.skill ? `\`${s.skill}\`` : "its text is in `SITUATIONS`"].join(" · "),
+      "",
+      `**True when:** ${PLAIN[code]}`,
+      "",
+      "**How it is named, in each place it shows:**",
+      "",
+      `<!-- asset: situation-named ${code} -->`,
+      "",
+      `**Its text goes to:** ${notTrigger ? "the morning run's list only" : "the morning run's list, or the trigger run with the fire"}; ${s.skill ? parts(code) : "one text for every stock"}.`,
+      "",
+      "```text",
+      situationText(code, null),
+      "```",
+      "",
+    );
   });
   return out.join("\n");
 }

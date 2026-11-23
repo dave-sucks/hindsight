@@ -1,129 +1,35 @@
 /**
- * row-for-model.ts — one row of get_theses as the model reads it (Roadmap
- * step 8, docs/plans/AGENT_ARCHITECTURE.md §11.5; the owner's grid,
- * 2026-11-06).
+ * row-for-model.ts — one stock's row as an agent reads it.
  *
  * Every stock is a line of the stock table (lib/agent/stock-table.ts). A
- * stock in a situation is also a row here, and the
- * situation decides which of its fields are sent (ROW_FIELDS): the standing
- * fields on every row (the chart numbers among them), the fields a
- * situation's decision reads with that situation (the Street on a buy, what
- * would prove us wrong on a sale signal), the whole case only when the review clock came
- * due, and the old research sections and the history only when the stock is
- * asked for by name. A row asked for with no situation named carries every
- * field (the "book" read). Code decides from the row's situations; nothing
- * depends on the model asking.
+ * stock in a situation, and any stock an agent opens by ticker, is also a
+ * row: the same row whatever the situation and whoever reads it. ROW_FIELDS
+ * is the whole of it, one line per field: its name, what it is, when it is
+ * included, and how its value is read off the saved row. A field with
+ * nothing to say is left off. To stop sending a field, delete its line.
  *
- * The tool saves the whole row for the screen and the run; this builder
- * writes what the model reads, and each line explains itself, so no prompt
- * carries a glossary of the row. The screen's source citations
- * (`[STRUCTURED:…]`, `[WEB:…]`) are stripped from every text here. Pure: a
- * saved row or a recorded one (scripts/hero-cases) builds the same way.
+ * A field is included always, or when the stock has it (a fact about the
+ * stock, never its situation), or only when the read asks for it (the long
+ * research, the raw history). The situations page prints this table
+ * (lib/docs/situations-library.ts), so the page and the code can't differ.
+ *
+ * The screen's source citations (`[STRUCTURED:…]`, `[WEB:…]`) are stripped
+ * from every text here. Pure: a saved row or a recorded one builds the same way.
  */
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 import { stripCitationTags } from "@/lib/thesis/clean-text";
 import { writtenNote } from "@/lib/agent/triggers/note";
 import { streetLine } from "@/lib/market-data/street-consensus";
 
-export type RowSize = "short" | "full";
-
-/** The facts a full row has carried since step 8's first pull request; the builder reads them, the model never sees them raw. */
+/** The facts a row carries beside the thesis's own columns; the builder reads them, the model never sees them raw. */
 export const ROW_FACTS = ["position", "proposals", "price", "chart", "inheritedTriggers"] as const;
 
 type Row = Record<string, unknown>;
 
-/** Which size a listed row gets: the full row for a named read, the row otherwise; its situations pick the row's fields. */
-export function sizeFor(_row: Row, named: boolean): RowSize {
-  return named ? "full" : "short";
-}
-
-/**
- * When a row key is sent (the owner's grid, 2026-11-06):
- *   "always" — on every row in a situation;
- *   a list of situations — only when the stock is in one of them (the fields
- *   that situation's decision reads);
- *   "review" — only when the review clock came due (REVIEW_DUE), which reads
- *   the whole case;
- *   "named" — only when the stock is asked for by name.
- * The review clock and a named read carry everything above them too.
- */
-export type RowKeyRule = "always" | "review" | "named" | readonly SituationCode[];
-
-export const ROW_FIELDS: Readonly<Record<string, RowKeyRule>> = {
-  stock: "always",
-  id: "always",
-  analyst: "always",
-  situations: "always",
-  repeat: "always",
-  said: "always",
-  position: "always",
-  proposal_waiting: "always",
-  price: "always",
-  triggers: "always",
-  belief: "always",
-  research: "always",
-  // This morning's averages, range, RSI and strength: every decision reads a level off them.
-  chart: "always",
-  // The facts a situation's text refers to, by name: each with its situation.
-  floor_risk: ["PROTECTIVE_SALE", "ADD_OR_WINNER", "PROTECTION"],
-  buyBlockedByFull: ["BUY_ARRIVES"],
-  heldThroughFloor: ["PROTECTIVE_SALE"],
-  supersededBy: "review",
-  // A report and news are where an outlook is judged again, against where the Street stands.
-  street: ["BUY_ARRIVES", "ADD_OR_WINNER", "REPORT", "NEWS"],
-  setup: ["BUY_ARRIVES"],
-  playbook_checks: ["BUY_ARRIVES"],
-  // Something happened: the question is which line of the case it touches.
-  assumptions: ["REPORT", "FILING", "NEWS"],
-  would_prove_it_wrong: ["PROTECTIVE_SALE", "REPORT", "FILING", "NEWS"],
-  catalyst: ["BUY_ARRIVES", "ADD_OR_WINNER"],
-  paper_record: ["PROMOTED_AWAITING"],
-  // The whole case: the review clock, and a named read.
-  company: "review",
-  bull_case: "review",
-  bear_case: "review",
-  conviction_rationale: "review",
-  // Why the outlook is what it is: what a look that re-reads the case has to check against today.
-  outlook_reason: "review",
-  variant_view: ["BUY_ARRIVES"],
-  snapshot: "review",
-  // Only when asked for by name.
-  history: "named",
-};
-
-/**
- * The fields a stock is sent with when it is being compared with other stocks
- * as a use of the account's money (the Portfolio Manager's get_theses): the
- * same for a holding and a watch, each with the names of the situations it is
- * in. `said` is the same Activity list every agent reads; a watch carries `playbook_checks`
- * (the triggers that come with the buy) where a holding carries `setup`.
- */
-export const COMPARING_FIELDS: readonly string[] = [
-  "stock", "id", "analyst", "situations", "position", "proposal_waiting", "price", "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale", "outlook_reason",
-  "triggers", "said", "street", "catalyst", "chart", "setup", "playbook_checks", "research",
-];
-
-/** The situation that reads the whole case. */
-export const REVIEW_SITUATION: SituationCode = "REVIEW_DUE";
-
-/**
- * The keys a row sends: every key on a full row (the history only when
- * named); on the row, the keys the stock's situations call for, or every
- * short key when no situation is named (the "book" read, and a row built
- * with no situations).
- */
-export function rowKeysFor(codes: readonly SituationCode[], opts: { size: "short" | "full"; named: boolean }): Set<string> {
-  const keys = Object.keys(ROW_FIELDS);
-  if (opts.size === "full") return new Set(keys.filter((k) => ROW_FIELDS[k] !== "named" || opts.named || k !== "history"));
-  const short = keys.filter((k) => ROW_FIELDS[k] !== "named");
-  if (codes.length === 0) return new Set(short);
-  const review = codes.includes(REVIEW_SITUATION);
-  return new Set(short.filter((k) => {
-    const rule = ROW_FIELDS[k];
-    if (rule === "always") return true;
-    if (rule === "review") return review;
-    return review || (rule as readonly SituationCode[]).some((c) => codes.includes(c));
-  }));
+/** What a read may ask for beyond the row: the long research, and the raw Activity log. */
+export interface RowAsk {
+  research?: boolean;
+  history?: boolean;
 }
 
 /** The screen's citations and markdown bold, off a text the model reads. */
@@ -163,19 +69,6 @@ function stance(status: unknown): string {
   }
 }
 
-/** The text's sentences up to `max` characters, never a cut word. */
-function firstParagraph(text: string, max: number): string {
-  const clean = stripSourceTags(text);
-  if (clean.length <= max) return clean;
-  let out = "";
-  for (const sentence of clean.split(/(?<=[.!?])\s+/)) {
-    const next = out ? `${out} ${sentence}` : sentence;
-    if (next.length > max) break;
-    out = next;
-  }
-  return out || clean.slice(0, max).replace(/\s+\S*$/, "");
-}
-
 /**
  * The stock's write-up, read off the `writerRun` fact (get_theses: the newest
  * THESIS_WRITER run on the stock): a seed with no claim has none yet, and a
@@ -188,7 +81,7 @@ function writeUp(row: Row): { noClaim: boolean; failedOn: Date | null } {
 }
 
 /** When the research was written and at what price; how to get the whole thing. */
-function researchLine(row: Row, size: RowSize): string {
+function researchLine(row: Row): string {
   const ago = (n: number) => `${n} day${n === 1 ? "" : "s"} ago`;
   const updatedAt = date(row.researchUpdatedAt);
   const updated = updatedAt ? isoDay(updatedAt) : null;
@@ -208,7 +101,7 @@ function researchLine(row: Row, size: RowSize): string {
     line = "No research written yet.";
   }
   if (failedOn && !noClaim) line += ` The newest write-up failed ${isoDay(failedOn)}.`;
-  return size === "full" ? line : `${line} Full row: get_theses(tickers: ["${String(row.ticker)}"]).`;
+  return line;
 }
 
 // ── The short row and the full row ─────────────────────────────────────────
@@ -345,72 +238,68 @@ function paperRecord(row: Row): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
-/** The short row, and the full row when `size` is "full". Keys in reading order; a line with nothing to say is left out. */
-function shortOrFull(row: Row, size: "short" | "full", named: boolean, playbookChecksOn = false, comparing = false): Row {
-  const price = num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
-  const resolved = obj(row.resolved);
-  const codes = list<SituationCode>(row.situations);
-  const snapshot = str(obj(row.snapshot)?.text) ?? str(row.snapshot);
-  const out: Row = {};
-  const sent = comparing ? new Set(COMPARING_FIELDS) : rowKeysFor(codes, { size, named });
-  const put = (k: string, v: unknown) => { if (sent.has(k) && v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) out[k] = v; };
-
-  put("stock", [String(row.ticker), stance(row.status), str(row.direction) ?? "no view", str(row.setupId) ?? str(row.horizon), outlookWord(row), str(row.conviction) ? `conviction ${row.conviction}` : null].filter(Boolean).join(" · "));
-  // What the company does and how it makes money, in two sentences: the Writer's, on every stock written up from 2026-11-03.
-  put("company", str(row.company) ? stripSourceTags(row.company as string) : null);
-  put("id", row.id);
-  // An account-wide read names each stock's analyst.
-  put("analyst", str(row.analyst));
-  put("situations", codes.map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`));
-  put("said", str(row.context));
-  put("position", positionLine(row, price));
-  put("proposal_waiting", proposalLine(row));
-  put("price", priceLine(row));
-  // The levels are the triggers (`triggers`, each with its id): no plan line and no protection line restate them.
-  put("floor_risk", str(obj(resolved?.floorRisk)?.line));
-  put("triggers", triggerLines(row));
-  put("belief", str(row.coreBelief) ? stripSourceTags(row.coreBelief as string) : null);
-  put("assumptions", strings(row.keyAssumptions));
-  put("would_prove_it_wrong", strings(row.invalidationConds));
-  // The whole view, on every row an agent decides from (short and full).
-  put("bull_case", strings(list<{ text?: unknown }>(obj(row.bullCase)?.bullets).map((b) => b?.text)));
-  put("bear_case", strings(list<{ text?: unknown }>(obj(row.bearCase)?.bullets).map((b) => b?.text)));
-  put("conviction_rationale", str(row.convictionRationale) ? stripSourceTags(row.convictionRationale as string) : null);
-  put("outlook_reason", str(row.outlookReason) ? stripSourceTags(row.outlookReason as string) : null);
-  put("variant_view", str(row.variantView) ? stripSourceTags(row.variantView as string) : null);
-  // What a fire checks, and on a watch the triggers that come with the buy (playbook_checks), in place of the compact line: on the full row, and on the trigger run's row (whatever its situation).
-  const lines = size === "full" || playbookChecksOn ? strings(obj(row.setup)?.lines) : [];
-  if (lines.length) { if (playbookChecksOn) sent.add("playbook_checks"); put("playbook_checks", lines); }
-  else put("setup", setupLine(row));
-  // The facts a situation's text refers to, by the names it uses.
-  put("buyBlockedByFull", row.buyBlockedByFull);
-  put("heldThroughFloor", row.heldThroughFloor);
-  put("supersededBy", resolved?.supersededBy);
-  put("snapshot", snapshot ? (size === "full" ? stripSourceTags(snapshot) : firstParagraph(snapshot, 300)) : null);
-  put("chart", chartLine(row));
-  put("street", streetLine(row));
-  put("research", researchLine(row, comparing ? "full" : size));
-  const catalyst = date(row.catalystDate);
-  put("catalyst", catalyst ? isoDay(catalyst) : catalystDateMissing(row) ? "date missing" : null);
-  put("repeat", str(obj(row.needsAction)?.repeatLine));
-  put("paper_record", paperRecord(row));
-  if (size === "full" && named) put("history", list(row.history));
-  return out;
+export interface RowField {
+  key: string;
+  /** What the field is, in plain words. */
+  what: string;
+  /** When it is included: always, a fact about the stock, or what the read asked for. */
+  when: string;
+  /** Set on a field that comes only when the read asks for it. */
+  ask?: keyof RowAsk;
+  read: (row: Row) => unknown;
 }
 
-/**
- * One row as the model reads it. A listed
- * row builds the row with the fields its situations call for (ROW_FIELDS),
- * or the full row for a named read (`sizeFor`). The screen and a saved run
- * keep the whole row.
- *
- * `playbookChecks` is the trigger run's door (step 10): its stock is the short
- * row with what a fire checks and, on a watch, the triggers that come with the
- * buy (`playbook_checks`) in place of the compact setup line. Every other
- * short row is unchanged; the full row always carries them.
- *
- * `comparing` sends COMPARING_FIELDS, whatever situation the stock is in.
- */
-export function rowForModel(row: Row, opts: { named: boolean; size: RowSize; playbookChecks?: boolean; comparing?: boolean }): Row {
-  return shortOrFull(row, opts.size, opts.named, opts.comparing ? row.status !== "HOLDING" : opts.playbookChecks, opts.comparing);
+const ALWAYS = "always";
+const text = (v: unknown) => (str(v) ? stripSourceTags(v as string) : null);
+const livePrice = (row: Row) => num(obj(row.price)?.current) ?? num(obj(row.resolved)?.currentPrice);
+const bullets = (v: unknown) => strings(list<{ text?: unknown }>(obj(v)?.bullets).map((b) => b?.text));
+const playbookLines = (row: Row) => strings(obj(row.setup)?.lines);
+
+/** The row, field by field, in reading order. */
+export const ROW_FIELDS: readonly RowField[] = [
+  { key: "stock", what: "The ticker, held or watch, the direction, the playbook, the outlook and conviction", when: ALWAYS, read: (r) => [String(r.ticker), stance(r.status), str(r.direction) ?? "no view", str(r.setupId) ?? str(r.horizon), outlookWord(r), str(r.conviction) ? `conviction ${r.conviction}` : null].filter(Boolean).join(" · ") },
+  { key: "company", what: "What the company does, in two sentences", when: ALWAYS, read: (r) => text(r.company) },
+  { key: "id", what: "The thesis id a note or a trade names", when: ALWAYS, read: (r) => r.id },
+  { key: "analyst", what: "The analyst that covers it", when: "the read covers more than one analyst", read: (r) => str(r.analyst) },
+  { key: "situations", what: "Each situation it is in, by name", when: "it is in one", read: (r) => list<SituationCode>(r.situations).map((c) => `${c}${SITUATIONS[c] ? ` (${SITUATIONS[c].name})` : ""}`) },
+  { key: "said", what: "Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days", when: ALWAYS, read: (r) => str(r.context) },
+  { key: "position", what: "The shares, what we paid, the gain, when it was bought and the high since", when: "it is held", read: (r) => positionLine(r, livePrice(r)) },
+  { key: "proposal_waiting", what: "A trade on it that waits for the owner", when: "one waits", read: (r) => proposalLine(r) },
+  { key: "price", what: "The price, the day's move and when it printed", when: ALWAYS, read: (r) => priceLine(r) },
+  { key: "floor_risk", what: "How far the floor lags the gain, or how much of the account it would lose", when: "it is held and its floor is out of line with its gain", read: (r) => str(obj(obj(r.resolved)?.floorRisk)?.line) },
+  { key: "triggers", what: "Every trigger as its sentence, the stock's own with their ids, then the ones it inherits", when: ALWAYS, read: (r) => triggerLines(r) },
+  { key: "belief", what: "The belief", when: ALWAYS, read: (r) => text(r.coreBelief) },
+  { key: "assumptions", what: "What must stay true", when: ALWAYS, read: (r) => strings(r.keyAssumptions) },
+  { key: "would_prove_it_wrong", what: "What would prove the case wrong", when: ALWAYS, read: (r) => strings(r.invalidationConds) },
+  { key: "bull_case", what: "The bull case", when: "the read asks for the research", ask: "research", read: (r) => bullets(r.bullCase) },
+  { key: "bear_case", what: "The bear case", when: "the read asks for the research", ask: "research", read: (r) => bullets(r.bearCase) },
+  { key: "conviction_rationale", what: "Why the conviction is what it is", when: ALWAYS, read: (r) => text(r.convictionRationale) },
+  { key: "outlook_reason", what: "Why the outlook is what it is", when: ALWAYS, read: (r) => text(r.outlookReason) },
+  { key: "variant_view", what: "Where we differ from Wall Street", when: ALWAYS, read: (r) => text(r.variantView) },
+  { key: "playbook_checks", what: "What its playbook checks, and on a watch the triggers that come with the buy", when: "its playbook is named", read: (r) => playbookLines(r) },
+  { key: "setup", what: "Its playbook's name and failure signs, in one line", when: "its playbook has no checks to list", read: (r) => (playbookLines(r).length ? null : setupLine(r)) },
+  { key: "buyBlockedByFull", what: "Its buy can't go through: its analyst holds its limit of stocks", when: "it is watched, its buy fired and its analyst is full", read: (r) => r.buyBlockedByFull },
+  { key: "heldThroughFloor", what: "The owner declined its sale or let it lapse: how often, their words, the low since", when: "it is held, that happened in the last 7 days and the price is still past the floor", read: (r) => r.heldThroughFloor },
+  { key: "supersededBy", what: "The newer thesis that replaced it", when: "one did", read: (r) => obj(r.resolved)?.supersededBy },
+  { key: "snapshot", what: "The research summary", when: "the read asks for the research", ask: "research", read: (r) => text(obj(r.snapshot)?.text ?? r.snapshot) },
+  { key: "chart", what: "This morning's averages, range, RSI, strength against the S&P and volume", when: ALWAYS, read: (r) => chartLine(r) },
+  { key: "street", what: "Wall Street's ratings, target range and EPS consensus", when: ALWAYS, read: (r) => streetLine(r) },
+  { key: "research", what: "When the research was written and at what price", when: ALWAYS, read: (r) => researchLine(r) },
+  { key: "catalyst", what: "Its event date", when: "its thesis has one, or its playbook needs one and it is missing", read: (r) => { const d = date(r.catalystDate); return d ? isoDay(d) : catalystDateMissing(r) ? "date missing" : null; } },
+  { key: "repeat", what: "That the same trigger has fired again with nothing changed since", when: "it has", read: (r) => str(obj(r.needsAction)?.repeatLine) },
+  { key: "paper_record", what: "Its record on paper: days held, the gain, the reviews", when: "it was promoted to live", read: (r) => paperRecord(r) },
+  { key: "history", what: "The raw Activity log", when: "the read asks for the history", ask: "history", read: (r) => list(r.history) },
+];
+
+const empty = (v: unknown) => v == null || v === "" || (Array.isArray(v) && v.length === 0);
+
+/** One stock's row as the model reads it: every field of ROW_FIELDS that has something to say. */
+export function rowForModel(row: Row, ask: RowAsk = {}): Row {
+  const out: Row = {};
+  for (const f of ROW_FIELDS) {
+    if (f.ask && !ask[f.ask]) continue;
+    const v = f.read(row);
+    if (!empty(v)) out[f.key] = v;
+  }
+  return out;
 }
