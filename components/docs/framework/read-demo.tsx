@@ -2,18 +2,14 @@
 
 /**
  * The read, zoomed in: a thesis on the left, the explanation on the right.
- * Chips pick one of the five ways an agent reads a thesis; the fields that
- * read carries light up on the sheet and the rest fade. On a stock in a
- * situation, a lit field that goes only with certain situations wears one
- * badge per situation (a bolt for one a trigger firing starts, a bubble for
- * one read off the facts). Which field rides in which read is the one
- * builder's field map (lib/agent/row-for-model.ts ROW_FIELDS), read on the
- * server (lib/docs/read-grid.ts) and handed down; nothing here is
- * hand-written.
+ * Chips pick one of the ways an agent reads a thesis; the fields that read
+ * carries light up on the sheet and the rest fade. Which field rides in
+ * which read is the one builder's field table (lib/agent/row-for-model.ts
+ * ROW_FIELDS), read on the server (lib/docs/read-grid.ts) and handed down;
+ * nothing here is hand-written.
  */
 
 import { useState } from "react";
-import { Zap } from "lucide-react";
 import { AnalystCards } from "@/components/domain/analyst-consensus";
 import { ConvictionChip, StatusPill } from "@/components/domain/thesis-header";
 import { StatGrid } from "@/components/stocks/StatGrid";
@@ -21,7 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { ChipTabs } from "@/components/ui/chip-tabs";
 import { PnlBadge } from "@/components/ui/pnl-badge";
 import { PriceChange } from "@/components/ui/price-change";
-import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import {
   EXAMPLE_LINE,
   LINE_KEYS,
@@ -31,9 +26,7 @@ import {
   fieldsLit,
   type FrameworkData,
   type ReadCase,
-  type ReadGridRow,
   type SheetField,
-  type SituationOrigin,
 } from "@/lib/docs/framework-content";
 import { cn } from "@/lib/utils";
 import { useFrameworkData } from "../tool-catalog";
@@ -134,67 +127,20 @@ function FieldBody({ f }: { f: SheetField }) {
   }
 }
 
-/** The icon on a situation's badge: a filled bolt for one a trigger firing starts, the filled bubble for one read off the facts; both the badge's text color. */
-function OriginIcon({ origin }: { origin: SituationOrigin }) {
-  return origin === "trigger" ? <Zap className="size-3" fill="currentColor" /> : <FlagNotificationIcon className="size-3" dot="current" />;
-}
-
-/**
- * On a field that is sent in this read but only with certain situations: one
- * badge per situation, as the fact chips under the stock page's company
- * line. A field every stock in the read gets has no badge; a field the read
- * does not send is faded and has none either.
- */
-function WhenRow({ row }: { row: ReadGridRow }) {
-  return (
-    <div className="flex flex-wrap gap-1">
-      {row.situations.map((sit) => (
-        <Badge key={sit.code} variant="fact" shape="square">
-          <OriginIcon origin={sit.origin} />
-          {sit.name}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 export function ReadDemo({ data }: { data?: FrameworkData }) {
   const fromContext = useFrameworkData();
   const d = data ?? fromContext;
   const [caseId, setCaseId] = useState<ReadCase["id"]>(READ_CASES[0].id);
   const c = READ_CASES.find((x) => x.id === caseId) ?? READ_CASES[0];
   const read = d?.read;
-  const grid = read?.grid ?? [];
-  const gridRow = (fieldId: string) => grid.find((g) => g.fieldId === fieldId);
   const example = (d?.situations ?? []).find((s) => s.code === EXAMPLE_SITUATION);
 
-  // The fields this read lights. In a situation: every field with no badge
-  // and every field with a situation badge (each goes when its badge's
-  // situation is on the stock). The rest from the server's key lists.
-  const lit: Set<string> =
-    c.id === "line" ? fieldsLit(LINE_KEYS)
-    : c.id === "writer" ? fieldsLit(WRITER_KEYS)
-    : c.id === "situation" ? new Set(grid.filter((g) => g.when === "always" || g.when === "situations").map((g) => g.fieldId))
-    : c.id === "review" ? fieldsLit(read?.keys.review ?? [])
-    : fieldsLit(read?.keys.named ?? []);
-  const always = grid.filter((g) => g.when === "always").length;
-  const bySituation = grid.filter((g) => g.when === "situations").length;
-  const count =
-    c.id === "situation"
-      ? `${always} always · ${bySituation} by situation`
-      : `${SHEET_FIELDS.filter((f) => lit.has(f.id)).length} of ${SHEET_FIELDS.length} fields sent`;
-
-  const sample =
-    c.id === "line" ? (read?.samples.line ?? EXAMPLE_LINE)
-    : c.id === "situation" ? read?.samples.bySituation[EXAMPLE_SITUATION]
-    : c.id === "review" ? read?.samples.review
-    : c.id === "named" ? read?.samples.named
-    : undefined;
-  // The example's own fields, by label, so the sample's caption says what joined the standing ones.
-  const exampleExtra = grid
-    .filter((g) => g.when === "situations" && g.situations.some((s) => s.code === EXAMPLE_SITUATION))
-    .map((g) => SHEET_FIELDS.find((f) => f.id === g.fieldId)?.label.toLowerCase() ?? g.fieldId);
-  const instructions = c.id === "situation" ? example : c.id === "review" ? (d?.situations ?? []).find((s) => s.code === "REVIEW_DUE") : undefined;
+  // The fields this read lights, from the server's key lists.
+  const lit: Set<string> = fieldsLit(c.id === "line" ? LINE_KEYS : c.id === "writer" ? WRITER_KEYS : c.id === "row" ? (read?.keys.row ?? []) : (read?.keys.full ?? []));
+  const count = `${SHEET_FIELDS.filter((f) => lit.has(f.id)).length} of ${SHEET_FIELDS.length} fields sent`;
+  const sample = c.id === "line" ? (read?.samples.line ?? EXAMPLE_LINE) : c.id === "row" ? read?.samples.row : c.id === "full" ? read?.samples.full : undefined;
+  // A stock in a situation gets that situation's instructions, once per read.
+  const instructions = c.id === "row" ? example : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -227,9 +173,6 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
               <div className="flex flex-col gap-1">
                 {SHEET_FIELDS.map((f) => {
                   const on = lit.has(f.id);
-                  const row = gridRow(f.id);
-                  // Conditional inside this read: only on a stock in a situation, only the fields a situation brings.
-                  const conditional = on && c.id === "situation" && row?.when === "situations" ? row : undefined;
                   return (
                     <div
                       key={f.id}
@@ -241,7 +184,6 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
                     >
                       <span className="text-xs text-muted-foreground">{f.label}</span>
                       <FieldBody f={f} />
-                      {conditional ? <WhenRow row={conditional} /> : null}
                     </div>
                   );
                 })}
@@ -269,9 +211,6 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               As the model reads it
-              {c.id === "situation" && example ? (
-                <span className="normal-case tracking-normal"> · for example, {example.name.toLowerCase()}: the unbadged fields plus {exampleExtra.join(", ")}</span>
-              ) : null}
             </span>
             {/* Built from the row the sheet shows, through the one builder (lib/docs/read-sample.ts); the Writer's case is its own prompt block. */}
             {c.id === "line" ? (
@@ -296,11 +235,7 @@ export function ReadDemo({ data }: { data?: FrameworkData }) {
         </div>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Blue is what this read sends. On a stock in a situation, a field with badges goes only when one of those situations is on the stock:{" "}
-        <Zap className="inline size-3" fill="currentColor" aria-label="a bolt" /> one a trigger firing starts,{" "}
-        <FlagNotificationIcon className="inline size-3" dot="current" /> one read off the stock&apos;s facts.
-      </p>
+      <p className="text-sm text-muted-foreground">Blue is what this read sends. A stock in a situation and a stock an agent opens get the same row.</p>
     </div>
   );
 }

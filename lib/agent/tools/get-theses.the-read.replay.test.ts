@@ -95,16 +95,14 @@ async function read(args: Record<string, unknown>) {
 }
 
 describe("get_theses — the read", () => {
-  it("the opening read with include_history: the short row with the whole view, no history, and a dated research line", async () => {
+  it("the opening read with include_history: the row, no history, no long research, and a dated research line", async () => {
     const { model, modelRow } = await read({ include_history: true });
     expect(modelRow).toBeDefined();
     expect(modelRow.history).toBeUndefined();
     expect(modelRow.stock).toBe("SYK · watch · LONG · BASE_BREAKOUT · outlook bullish · conviction MEDIUM");
-    // The short row carries the snapshot's first paragraph and the cases.
-    expect(modelRow.snapshot).toBe(snapshot.text);
-    expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);
-    expect(modelRow).toHaveProperty("bear_case");
-    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\. Full row: get_theses\(tickers: \["SYK"\]\)\.$/);
+    // The bull and bear cases and the research summary come only when the read asks for the research.
+    for (const k of ["snapshot", "bull_case", "bear_case"]) expect([k, k in modelRow]).toEqual([k, false]);
+    expect(String(modelRow.research)).toMatch(/^Written \d{4}-\d{2}-\d{2} at \$348\.00, 51 days ago\.$/);
     expect(modelRow).not.toHaveProperty("triggerState");
     expect(String(model.historyNote)).toMatch(/named stocks/);
   });
@@ -121,8 +119,8 @@ describe("get_theses — the read", () => {
     expect(model.quiet_theses).toBeUndefined();
   });
 
-  it("a read of a named stock is the full row: the history and the cases", async () => {
-    const { modelRow } = await read({ tickers: ["SYK"], include_history: true });
+  it("a read of a named stock that asks for the research and the history gets both", async () => {
+    const { modelRow } = await read({ tickers: ["SYK"], include_history: true, include_research: true });
     expect(Array.isArray(modelRow.history) && (modelRow.history as unknown[]).length).toBeGreaterThan(0);
     expect(modelRow.snapshot).toBe(snapshot.text);
     expect(modelRow.bull_case).toEqual(["Hyperscaler power deals reprice the fleet."]);

@@ -14,7 +14,7 @@ async function rowForModel(row: Record<string, unknown>, named: boolean): Promis
   let out: Record<string, unknown> = {};
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
-    out = (await import("./get-theses")).rowForModel(row, { named, size: "full" }) as Record<string, unknown>;
+    out = (await import("./get-theses")).rowForModel(row, { research: true, history: named }) as Record<string, unknown>;
   });
   return out;
 }

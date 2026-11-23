@@ -23,16 +23,9 @@ It is given nothing in a format of its own. The stock table is the one an analys
 
 ## What it asks for
 
-It asks `get_theses` for stocks by ticker, the tool every agent uses. One field rule, for comparing stocks, decides what comes back, the same for a holding and a watch:
+It asks `get_theses` for stocks by ticker, the tool every agent uses, and gets the row every agent gets, the same for a holding and a watch: its situations by name, its Activity, the position and any proposal waiting, the price, every trigger with its id, the belief, the assumptions, what would prove it wrong, the reasons for its conviction and outlook, where we differ from the Street, the playbook's checks, the chart numbers and Wall Street's view. The fields are listed in the [Situations library](../reference/situations-library.md).
 
-- the [situations](../concepts/situations.md) the stock is in, by name: its analyst answers them, and the Portfolio Manager sees that something is up
-- the belief, its key assumptions, what would prove it wrong, and the reason for its conviction
-- its triggers
-- its Activity, the same list an analyst reads: from the last 45 days, the last 3 reviews, 3 news notes of medium or high impact, 3 of your notes and your last decline
-- Wall Street's view and the catalyst date
-- the chart numbers, the playbook (on a watch, the triggers that come with the buy), the position and any proposal waiting
-
-It does not get the bull and bear cases; those go to the analyst on the stock's review.
+It does not get the bull and bear cases: its read takes tickers and nothing else.
 
 It may ask about any stock you own, and 8 watched stocks a run. It has no web search: the Market Reviewer reads the news each morning, and a thesis that looks out of date goes to research.
 
@@ -87,7 +80,7 @@ Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`): 10:30 AM 
 `runPortfolioManager` (`lib/agent/portfolio-manager/run.ts`) runs its record, `PORTFOLIO_MANAGER` (`lib/agent/engine/agents/portfolio-manager.ts`), through the agent runner (`runAgent`, `lib/agent/engine/run.ts`, `docs/plans/AGENT_ENGINE.md`), which builds its request with the agent engine (`buildAgentRequest`, `lib/agent/engine/build.ts`) and makes the call with the record's model, step limit (40) and time limit (770 seconds). The record holds its job text, the context blocks it is given (the house rules, how you write, the market numbers, the market digest, the portfolio snapshot and the Watching block, with no portfolio digest), and its tools: `get_theses`, `get_stock_data`, `write_note`, `edit_triggers`, `place_trade`, `add`, `sell`, `dispatch_thesis_research`. Its run keeps which part of the request is which, and the run page's Context panel shows one row per part. Its job runs it as a saved run (`runAgentAsRun`, the same file): the runner opens the run, runs it, and saves its thread (it has no message, so the run page opens with its reply; its reads, the last write-up among them, are in the Context panel), its token use, its notes on its proposals, its write-up (`keepWriteup`, kept by `PORTFOLIO_MANAGER_RUN`) and its status, COMPLETE or FAILED only while the run is still RUNNING. The Agents page (`/how-it-works/agents`) shows the record.
 
 #### Its theses, its limits and its save
-`get_theses` on its run takes tickers; each row is built by `rowForModel` with `comparing` (`COMPARING_FIELDS`, `lib/agent/row-for-model.ts`). The limits are `lib/agent/portfolio-manager/limits.ts`: `managerPick` counts the watches asked about, and `withRunLimits` wraps the run's tools with the proposal count and the note rule. `isManagerRun` at each trade tool's approval check makes its trade a proposal (`always`, `lib/proposals/maybe-await-approval.ts`). `write_note` on its run has two fields, the thesis and the note; `edit_triggers` has no playbook field.
+`get_theses` on its run takes tickers; each row is the one row every agent gets (`ROW_FIELDS`, `lib/agent/row-for-model.ts`). The limits are `lib/agent/portfolio-manager/limits.ts`: `managerPick` counts the watches asked about, and `withRunLimits` wraps the run's tools with the proposal count and the note rule. `isManagerRun` at each trade tool's approval check makes its trade a proposal (`always`, `lib/proposals/maybe-await-approval.ts`). `write_note` on its run has two fields, the thesis and the note; `edit_triggers` has no playbook field.
 
 #### Acting for the stock's analyst
 It has no analyst of its own. Each write acts for the stock's own analyst, under that analyst's sizes and limits, the way the unpinned chat does (`accountWide`, `lib/agent/analyst-scope.ts`). Unlike the chat it has none of the owner's powers: no size field, no reason field, no lowering a floor.

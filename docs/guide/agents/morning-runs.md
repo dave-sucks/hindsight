@@ -46,9 +46,9 @@ Its first message opens with the date line, then its context. The Market and por
 
 The run's first read is `get_portfolio_context`: positions, cash, the account's open risk and the market's mood. The book gives each stock at the size today needs:
 
-- **A quiet stock** is one line: the price, the buy it waits on, the next review.
-- **A stock in a situation** gets a row with the fields that situation's decision reads (the position, every trigger, the belief, the chart numbers and the newest Activity lines on every row; the Street and an event-driven stock's event date on a buy, what would prove us wrong on a sale signal) and that situation's instructions, once.
-- **A stock whose review clock came due** gets the whole case: the bull and bear cases, the conviction reason, the playbook, the snapshot.
+- **Every stock** is one line of the stock table: its situation, the price, the day's move and volume and the rest of the columns.
+- **A stock in a situation** is also a row, the same row whatever the situation (its situations by name, its Activity, the position and any proposal waiting, the price, every trigger with its id, the belief, the assumptions, what would prove it wrong, the reasons for its conviction and outlook, where we differ from the Street, the playbook's checks, the chart numbers and Wall Street's view), with that situation's instructions, once. The fields are listed in the [Situations library](../reference/situations-library.md).
+- **The bull and bear cases and the research summary** come only when a run asks for them (`include_research`).
 
 <!-- asset: read-demo -->
 

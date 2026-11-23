@@ -54,7 +54,7 @@ async function morningRead(c: Case, ticker: string) {
       row,
       // A quiet stock's line of the stock table says what waits for the owner.
       line: quiet ? ((result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? "") : null,
-      waits: row ? ((rowForModel(row, { named: false, size: "short" }) as Row).proposal_waiting as string | undefined) : undefined,
+      waits: row ? ((rowForModel(row) as Row).proposal_waiting as string | undefined) : undefined,
     };
   } finally {
     jest.useRealTimers();

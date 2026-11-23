@@ -1,7 +1,7 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import type { ToolSet } from "ai";
 import { PROPOSALS_A_RUN, WATCHES_A_RUN, managerPick, withRunLimits } from "./limits";
-import { COMPARING_FIELDS, rowForModel } from "@/lib/agent/row-for-model";
+import { rowForModel } from "@/lib/agent/row-for-model";
 import { buildSnapshot, snapshotText, firstSentence } from "@/lib/portfolio/snapshot";
 import { bookText } from "@/lib/agent/book";
 
@@ -23,19 +23,19 @@ describe("the Portfolio Manager's get_theses", () => {
     expect(managerPick(ctx, { tickers: ["t0", "V"] }, HELD).tickers).toEqual(["T0", "V"]);
   });
 
-  it("gets a holding and a watch with the same fields, and none of the review's", () => {
+  it("gets a holding and a watch with the same fields, the row every agent gets, without the long research", () => {
     const row = {
       ticker: "NVDA", id: "th1", coreBelief: "Demand outruns supply.", invalidationConds: ["Orders fall"], keyAssumptions: ["Supply stays short"], convictionRationale: "Backlog is signed.",
       bullCase: { bullets: [{ text: "bull" }] }, bearCase: { bullets: [{ text: "bear" }] }, variantView: "The Street is late.", snapshot: "A long snapshot.",
       triggers: [{ id: "t1", says: "Sell if below $150" }], latestEarnings: { bullets: [{ text: "Beat." }, { text: "Raised." }, { text: "A third bullet." }] },
       context: "the one list",
     };
-    const held = rowForModel({ ...row, status: "HOLDING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
-    const watch = rowForModel({ ...row, status: "WATCHING" }, { named: false, size: "short", comparing: true }) as Record<string, unknown>;
+    const held = rowForModel({ ...row, status: "HOLDING" }) as Record<string, unknown>;
+    const watch = rowForModel({ ...row, status: "WATCHING" }) as Record<string, unknown>;
     expect(Object.keys(held)).toEqual(Object.keys(watch));
     expect(held).toMatchObject({ would_prove_it_wrong: ["Orders fall"], assumptions: ["Supply stays short"], conviction_rationale: "Backlog is signed.", said: "the one list" });
-    for (const k of Object.keys(held)) expect(COMPARING_FIELDS).toContain(k);
-    for (const k of ["bull_case", "bear_case", "variant_view", "snapshot", "latestEarnings", "situations"]) expect(held[k]).toBeUndefined();
+    expect(held.variant_view).toBe("The Street is late.");
+    for (const k of ["bull_case", "bear_case", "snapshot", "latestEarnings", "situations"]) expect(held[k]).toBeUndefined();
   });
 });
 

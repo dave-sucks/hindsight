@@ -14,20 +14,20 @@ const rows: Array<[string, Row]> = [["V", v as Row], ["MU", mu as Row]];
 
 describe("the read says each level once (V and MU, 2026-11-04)", () => {
   it.each(rows)("%s: the short row has no plan line and no protection line", (_t, row) => {
-    const short = rowForModel(row, { named: false, size: "short" }) as Row;
+    const short = rowForModel(row) as Row;
     expect(short).not.toHaveProperty("plan");
     expect(short).not.toHaveProperty("protection");
   });
 
   it("V: the levels are the trigger sentences, with their ids", () => {
-    const short = rowForModel(v as Row, { named: false, size: "short" }) as Row;
+    const short = rowForModel(v as Row) as Row;
     const triggers = short.triggers as string[];
     expect(triggers.some((t) => t.startsWith("Sell if below $401.91"))).toBe(true);
     expect(triggers.some((t) => t.startsWith("Review if above $434"))).toBe(true);
   });
 
   it("MU: the floor that fired is its trigger sentence, said once", () => {
-    const short = rowForModel(mu as Row, { named: false, size: "short" }) as Row;
+    const short = rowForModel(mu as Row) as Row;
     const text = JSON.stringify(short);
     expect((short.triggers as string[]).some((t) => t.startsWith("Sell if below $930.60 · fired"))).toBe(true);
     // The number appears in the trigger sentence and nowhere else on the row.
@@ -35,10 +35,10 @@ describe("the read says each level once (V and MU, 2026-11-04)", () => {
   });
 
   it("V: the short row's keys, in order, with the two lines gone and nothing else", () => {
-    const short = rowForModel(v as Row, { named: false, size: "short" }) as Row;
+    const short = rowForModel(v as Row) as Row;
     expect(Object.keys(short)).toEqual([
       "stock", "id", "situations", "said", "position", "price", "floor_risk", "triggers", "belief", "assumptions",
-      "would_prove_it_wrong", "bull_case", "bear_case", "conviction_rationale", "variant_view", "setup", "snapshot",
+      "would_prove_it_wrong", "conviction_rationale", "outlook_reason", "variant_view", "playbook_checks", "setup",
       "chart", "street", "research", "catalyst",
     ].filter((k) => k in short));
     expect(Object.keys(short)).not.toContain("plan");

@@ -29,7 +29,7 @@ describe("the plan the 2:1 rule was written for (PLTR as stored, 183 / 190 / 110
 
 describe("the Street line on the real rows is Wall Street's numbers alone (the room ratio went 2026-11-16)", () => {
   it.each([["ETN", etn], ["PLTR", pltr]])("%s: no ratio against a floor of ours", (_t, row) => {
-    const short = rowForModel(row as Row, { named: false, size: "short" }) as Row;
+    const short = rowForModel(row as Row) as Row;
     expect(String(short.street)).toMatch(/avg \$/);
     expect(String(short.street)).not.toMatch(/room|floor|\d:1/);
   });

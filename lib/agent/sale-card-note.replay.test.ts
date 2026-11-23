@@ -101,7 +101,7 @@ async function morningRead(rows: Record<string, Row[]>, c: Case) {
     quiet,
     // The stock's line of the stock table: what the model reads of a quiet stock.
     waiting: (result.data as { stocks?: StockTable }).stocks?.rows.find((r) => r.ticker === ticker)?.waiting ?? null,
-    modelRow: row ? (rowForModel(row, { named: false, size: "short" }) as Row) : null,
+    modelRow: row ? (rowForModel(row) as Row) : null,
   };
 }
 
