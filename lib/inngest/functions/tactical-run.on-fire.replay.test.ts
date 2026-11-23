@@ -20,6 +20,10 @@ const IOT_TARGET = { id: "56e86f78-7e31-43e0-b9c3-7445cc016c69", action: "REVIEW
 const V_FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395. You set this."};
 const TRV_BUY = { id: "6e111cb3-34f8-4d89-a2f5-f7ceff7f8f4b", action: "ENTER", fireMode: "DO_IT", predicate: { watch: "price", is: "above", value: 398.7, settings: { close: true } }, rationale: "I buy when it breaks above $398.70."};
 
+// CEG, Nov 17: its "Sell if below $280" fired at $276.51, the analyst held, and no card ever opened.
+const CEG_FLOOR = { id: "ceg-floor-280", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 280 }, rationale: "The floor." };
+const CEG_HOLD = "Constellation is still under $280 this morning at about $276, and I'm holding. What changed since yesterday is the stock, not the company.";
+
 const IOT_LINE = 'Your "Sell if below $41.42" came true. It\'s set to Auto-sell.';
 const NOTE = "Samsara fell 4% on Oct 22 with software stocks after a weak guide from a peer; nothing in its own news. You own 300 shares at $42.70. Your Auto-sell at $41.42 was hit, so the sale is waiting for you; I'd hold, since nothing that would break the case has happened.";
 
@@ -28,10 +32,12 @@ const stocks = (target: Record<string, unknown> = IOT_TARGET) => ({
     thesisRow({ id: "iot", ticker: "IOT", status: "HOLDING", direction: "LONG", analystId: PEAD, triggers: [IOT_FLOOR, target] }),
     thesisRow({ id: "v", ticker: "V", status: "HOLDING", direction: "LONG", analystId: SECULAR, triggers: [V_FLOOR] }),
     thesisRow({ id: "trv", ticker: "TRV", status: "WATCHING", direction: "LONG", analystId: SECULAR, triggers: [TRV_BUY] }),
+    thesisRow({ id: "ceg", ticker: "CEG", status: "HOLDING", direction: "LONG", analystId: SECULAR, triggers: [CEG_FLOOR] }),
   ],
   position: [
     positionRow({ id: "pos_iot", symbol: "IOT", analystId: PEAD, environment: "LIVE", quantity: 300, avgCost: 42.695 }),
     positionRow({ id: "pos_v", symbol: "V", analystId: SECULAR, environment: "LIVE", quantity: 27, avgCost: 369.25 }),
+    positionRow({ id: "pos_ceg", symbol: "CEG", analystId: SECULAR, environment: "LIVE", quantity: 51, avgCost: 282.01 }),
   ],
   agentConfig: [
     agentConfigRow({ id: PEAD, name: "PEAD Specialist", tradingEnvironment: "LIVE", maxOpenPositions: 6 }),
@@ -43,7 +49,7 @@ const stocks = (target: Record<string, unknown> = IOT_TARGET) => ({
 type Asked = { system: string; prompt: string; tools: string[] };
 
 /** One fire through the handler: what the model was asked, the sale and trade calls, and the rows left behind. */
-async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number }, seed = stocks()) {
+async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number }, seed = stocks(), model: { note?: string | null; verdict?: string; proposes?: boolean } = {}) {
   const db = prismaDouble(seed);
   const create = (m: string, data: Record<string, unknown>) => (db as unknown as Record<string, { create: (a: unknown) => Promise<unknown> }>)[m].create({ data });
   const asked: Asked[] = [];
@@ -65,7 +71,8 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       generateText: jest.fn(async (a: { system: string; prompt: string; tools: Record<string, unknown> }) => {
         asked.push({ system: a.system, prompt: a.prompt, tools: Object.keys(a.tools ?? {}) });
         const run = (db.store.researchRun as Array<{ id: string }>)[0];
-        await create("thesisUpdate", { thesisId: data.thesisId, type: "REVIEWED", summary: "Reviewed", rationale: NOTE, runId: run.id, timestamp: new Date() });
+        if (model.proposes && !(db.store.order as unknown[] | undefined)?.length) await create("order", { id: "ord_own", positionId: `pos_${data.thesisId}`, symbol: data.ticker, thesisId: data.thesisId, intent: "CLOSE", status: "AWAITING_APPROVAL", expiresAt: null, createdAt: new Date() });
+        if (model.note !== null) await create("thesisUpdate", { thesisId: data.thesisId, type: "REVIEWED", summary: "Reviewed", rationale: model.note ?? NOTE, verdict: model.verdict ?? null, runId: run.id, timestamp: new Date() });
         return { steps: [], response: { messages: [] }, text: "" };
       }),
       stepCountIs: () => () => false,
@@ -162,9 +169,8 @@ describe("the trigger run, by fire mode", () => {
     expect(fireRow?.rationale ?? null).toBeNull();
   });
 
-  it("V's floor (Send to Agent) asks the analyst, with the trade tools and no write-up", async () => {
+  it("V's floor (Send to Agent) asks the analyst first, with the trade tools and no write-up", async () => {
     const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 });
-    expect(r.closes).toHaveLength(0);
     expect(r.asked).toHaveLength(1);
     expect(r.asked[0].tools).toEqual(expect.arrayContaining(["sell"]));
     expect(r.asked[0].system).toContain("## Decision framework");
@@ -173,10 +179,47 @@ describe("the trigger run, by fire mode", () => {
     expect(r.asked[0].prompt).not.toContain("You set this.");
   });
 
-  it("a review set to Send to Agent starts a trigger run", async () => {
+  describe("a sale set to Send to Agent always reaches the owner", () => {
+    const ceg = { thesisId: "ceg", triggerId: CEG_FLOOR.id, analystId: SECULAR, ticker: "CEG", action: "EXIT", firedPrice: 276.51 };
+
+    it("CEG's hold on Nov 17: the card opens anyway, as a proposal, with the analyst's note as its reason", async () => {
+      const r = await fire(ceg, stocks(), { note: CEG_HOLD, verdict: "UNCHANGED" });
+      expect(r.asked[0].tools).toEqual(expect.arrayContaining(["sell"]));
+      expect(r.closes).toEqual([["pos_ceg", "STOP", undefined, "price_monitor", CEG_HOLD, r.runs[0].id, true, { propose: true, triggerIds: [CEG_FLOOR.id], proposedPrice: 276.51 }]]);
+      expect(r.updates.find((u) => u.rationale === CEG_HOLD)?.tradeId).toBe("ord_iot");
+      expect(r.sent).toContainEqual({ name: "app/proposal.note.written", data: { orderId: "ord_iot" } });
+    });
+
+    it("a note that calls the belief broken means a sale doesn't put the stock back on watch", async () => {
+      const r = await fire(ceg, stocks(), { note: CEG_HOLD, verdict: "BROKEN" });
+      expect(r.closes[0][6]).toBe(false);
+    });
+
+    it("a run that fails with no note still opens the card, with the trigger's sentence", async () => {
+      const r = await fire(ceg, stocks(), { note: null });
+      expect(r.runs[0].status).toBe("FAILED");
+      expect(r.closes).toHaveLength(1);
+      expect(r.closes[0][4]).toBe('Your "Sell if below $280" came true.');
+      expect(r.closes[0][6]).toBeNull();
+    });
+
+    it("a run that proposed the sale itself gets no second card", async () => {
+      const r = await fire(ceg, stocks(), { note: CEG_HOLD, verdict: "WEAKER", proposes: true });
+      expect(r.closes).toHaveLength(0);
+    });
+
+    it("with the approval switch off nothing is sold: the analyst's hold stands", async () => {
+      const seed = { ...stocks(), account: [accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: false })] };
+      const r = await fire(ceg, seed, { note: CEG_HOLD, verdict: "UNCHANGED" });
+      expect(r.closes).toHaveLength(0);
+    });
+  });
+
+  it("a review set to Send to Agent starts a trigger run, and opens no sale card", async () => {
     const asked = { ...IOT_TARGET, fireMode: "ASK_NOW" };
     const r = await fire({ thesisId: "iot", triggerId: asked.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.4 }, stocks(asked));
     expect(r.asked).toHaveLength(1);
+    expect(r.closes).toHaveLength(0);
     // The row wasn't read on this pass, so the message says the trigger's note (it is otherwise on the row, beside its id).
     expect(r.asked[0].prompt).toContain('Its note: "Using $52 as the objective."');
   });

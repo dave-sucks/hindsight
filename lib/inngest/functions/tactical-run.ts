@@ -46,6 +46,7 @@ import { autoTradeLine, doItCall } from "@/lib/agent/triggers/do-it";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 import { PAUSED_SALE_NOTE } from "@/lib/agent/triggers/paused";
 import { saleUnderWay } from "@/lib/proposals/position-lock";
+import { cardForFiredSale } from "@/lib/proposals/fired-sale-card";
 import { sendNoViewWatch } from "@/lib/agent/thesis-writer-dispatch";
 import { answers, firedTrigger } from "@/lib/proposals/staged";
 import { recordGateRejection } from "@/lib/agent/gate-rejections";
@@ -1007,6 +1008,24 @@ export const tacticalRun = inngest.createFunction(
       }
     });
 
+    // ── A sale that fired reaches the owner ───────────────────────────
+    // The run may hold; its note then goes on the card (fired-sale-card.ts).
+    let saleCard: string | null = null;
+    if (!auto && trigger.action === "EXIT" && position) {
+      saleCard = await step.run("sale-card", () =>
+        cardForFiredSale({
+          positionId: position.id,
+          thesisId: thesis.id,
+          runId: run.id,
+          sentence: sentenceOf(trigger as Trigger),
+          reason: directExitReason(trigger as Trigger, thesis.direction),
+          triggerIds: answers(triggerTrade, thesis.ticker, "SELL") ?? [trigger.id],
+          firedPrice: fired.firedPrice ?? null,
+        }),
+      );
+      if (saleCard) await step.run(`note-written-${saleCard}`, () => sendNoteWritten(saleCard!));
+    }
+
     // ── The approval email stops waiting ──────────────────────────────
     // The note went on each proposal inside the run (or the run ended without one).
     for (const orderId of (outcome as { noted?: string[] }).noted ?? (auto?.orderId ? [auto.orderId] : [])) {
@@ -1020,6 +1039,7 @@ export const tacticalRun = inngest.createFunction(
       ticker: thesis.ticker,
       action: trigger.action,
       ...(auto ? { fireMode: "DO_IT" as const, auto } : {}),
+      ...(saleCard ? { saleCard } : {}),
       ...outcome,
     };
   },
