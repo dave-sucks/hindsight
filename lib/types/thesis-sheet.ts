@@ -296,7 +296,7 @@ export interface QuoteResponse {
    */
   needsAction?: NeedsAction | null;
   /** Every situation the stock is in, lead first (lib/agent/situations.ts `situationLabels`). */
-  situations?: Array<{ code: string; name: string; lead: boolean }>;
+  situations?: Array<{ code: string; name: string; text: string; lead: boolean }>;
 }
 
 // `sourcesUsed` column is Json — agents write `[{provider, title, url}]`

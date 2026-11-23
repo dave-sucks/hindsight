@@ -103,7 +103,7 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     const { stock, prompt, saved } = await triggerRun(fx.docu);
     expect(stock).not.toBeNull();
     const row = stock!.row;
-    expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy price reached)");
+    expect((row.situations as string[])[0]).toBe("BUY_ARRIVES (buy price reached: Buy if below $67)");
     expect(stock!.situations.codes[0]).toBe("BUY_ARRIVES");
     // A watch: what a fire checks, then the playbook's "Sell if below", the one trigger that comes with the buy the run names.
     const sale = PLAYBOOK_TEMPLATES.MA_PULLBACK.filter((t) => t.writtenOn === "PROPOSAL" && t.action === "EXIT");
@@ -125,7 +125,7 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     const { stock, prompt, saved } = await triggerRun(fx.nvda);
     expect(stock).not.toBeNull();
     const row = stock!.row;
-    expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal)");
+    expect((row.situations as string[])[0]).toBe("PROTECTIVE_SALE (sale signal: Sell if below $236)");
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
     // A holding: its triggers are on the stock, so only what a fire checks.
     expect(row.playbook_checks).toEqual(playbookChecks(getSetup("PEAD")!, "decision"));

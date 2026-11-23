@@ -25,6 +25,7 @@ What an analyst may do is the same every time (propose a sale, a trim, a buy or 
 The note is the write-up of what the situation sent the agent to find out. Every note has the same shape, set once in the house rules: what is going on and why, what it means for why we own it, then one sentence on what the analyst did.
 
 - **The text goes to the run that answers.** A [morning run](../agents/morning-runs.md) gets the skills for the situations on its own list, once per read however many stocks share one; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for.
+- **One wording everywhere.** A situation on a stock reads as its name and then what raised it, such as “sale signal: Sell if below $804” or “review due: 10 days overdue”: in the stock table, on the stock's page and on the row an agent reads (`situationLabels`, `lib/agent/situations.ts`).
 - **Every other reader gets the name.** A read of one stock by ticker, the [Portfolio Manager](../agents/portfolio-manager.md)'s rows and [chat](../agents/chat.md) see each situation by name on the stock's row. The skills are listed in the knowledge library, so chat reads one when you ask it to act. You see the names on the thesis sheet.
 - One note on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to the Writer.
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.

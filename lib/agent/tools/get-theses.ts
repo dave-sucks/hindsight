@@ -35,7 +35,7 @@ import { stockTableLines, type StockTable } from "@/lib/agent/stock-table";
 import { nextReports, stockTableFromFacts } from "@/lib/agent/stock-table-load";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { guidanceCodes, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
+import { guidanceCodes, listsTheStock, situationLabels, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
 import { guidanceFor } from "@/lib/agent/situation-skills";
 import { runNoteLine } from "@/lib/agent/shared-notes";
 import { loadStockFacts, type StockFacts } from "@/lib/agent/stock-facts";
@@ -475,6 +475,11 @@ export const getTheses = defineTool({
       const src = facts.sources.get(id);
       return src ? situationsFor(src) : [];
     };
+    /** Each situation as its one wording, by code: what the table, the stock's page and the row all print. */
+    const situationTextOf = (id: string): Record<string, string> => {
+      const src = facts.sources.get(id);
+      return src ? Object.fromEntries(situationLabels(src).map((x) => [x.code, x.text])) : {};
+    };
 
     // Actionable-detail split: full rows for the work list, one-line index
     // entries for the quiet rest; "book" mode, and prices that failed to
@@ -571,6 +576,7 @@ export const getTheses = defineTool({
         needsAction: needsActionByThesisId.get(t.id) ?? null,
         // Every situation the stock is in, the lead's first.
         situations: situationsOf(t.id),
+        situationText: situationTextOf(t.id),
         // Conviction Expression v4 — read-time resolved envelope. The
         // agent reads `resolved.actionability` first to filter actionable
         // rows; `triggerDetail` shows trigger state vs current price;
@@ -667,6 +673,8 @@ export const getTheses = defineTool({
         // ThesisCardRenderer / read-theses-table can show an alert chip
         // on rows that need work today.
         needs_action: t.needsAction ?? null,
+        // Each situation the stock is in, as its one wording.
+        situations: Object.values(t.situationText),
         // Phase 1 read-side fix: research-age annotation for prompt
         // rendering + future Phase-2 staleness gate. Snake-case on the
         // card surface to match other agent-facing fields.
