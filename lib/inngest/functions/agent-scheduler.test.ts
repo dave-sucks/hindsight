@@ -100,11 +100,11 @@ it("on a market holiday, runs only the agents that run when the market is closed
 });
 
 describe("the schedule", () => {
-  it("has the Portfolio Manager on, Tue and Thu at 10:00 AM, per book, on market days", () => {
+  it("has the Portfolio Manager on, Tue and Thu at 10:30 AM, per book, on market days", () => {
     const { SCHEDULE } = jest.requireActual("@/lib/agent/engine/schedule") as typeof import("@/lib/agent/engine/schedule");
     expect(SCHEDULE).toContainEqual({
       agent: "portfolio_manager",
-      cron: "0 10 * * 2,4",
+      cron: "30 10 * * 2,4",
       per: "book",
       marketDaysOnly: true,
       on: true,
@@ -121,7 +121,7 @@ describe("the schedule", () => {
     const { whenItRuns, cronInWords } = jest.requireActual("@/lib/agent/engine/schedule") as typeof import("@/lib/agent/engine/schedule");
     const { PORTFOLIO_MANAGER } = jest.requireActual("@/lib/agent/engine/agents/portfolio-manager") as typeof import("@/lib/agent/engine/agents/portfolio-manager");
     expect(PORTFOLIO_MANAGER.runsWhen).toBeUndefined();
-    expect(whenItRuns(PORTFOLIO_MANAGER)).toBe("Tuesday and Thursday at 10:00 AM ET, one run per traded book.");
+    expect(whenItRuns(PORTFOLIO_MANAGER)).toBe("Tuesday and Thursday at 10:30 AM ET, one run per traded book.");
     expect(whenItRuns({ id: "morning_run" }, [OFF])).toBe("Sunday at 9:30 AM ET, one run per analyst. Off until you turn it on.");
     expect(whenItRuns({ id: "chat", runsWhen: "When you write to it." })).toBe("When you write to it.");
     expect(cronInWords("30 7 * * 1-5")).toBe("Weekdays at 7:30 AM ET");

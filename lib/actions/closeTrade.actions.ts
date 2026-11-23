@@ -584,7 +584,7 @@ export async function closeOpenPosition(
   //       come with a duplicate event delivery.
   //
   // Suppression: if the close happened inside a MORNING_PLAN run during
-  // the morning-cron window (Mon-Fri 7-10 AM ET), the 10 AM digest
+  // the morning-cron window (Mon-Fri 7-11 AM ET), the 11 AM digest
   // covers it — skip the immediate email. Off-cycle closes (price-
   // monitor, user-UI, EOD-flatten, tactical-run agent closes) email
   // immediately. Gated on AgentConfig.emailAlerts for trade-closed too

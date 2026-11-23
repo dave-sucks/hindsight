@@ -132,7 +132,7 @@ export function parseDoc(source: string): ParsedDoc {
   return { title, lead, rest, description, parts };
 }
 
-/** A doc's facts strip as label → value ("Starts" → "Weekdays · 7:30 AM ET"); empty when it has none. */
+/** A doc's facts strip as label → value ("Starts" → "Weekdays · 9:00 AM ET"); empty when it has none. */
 export function factsOf(doc: ParsedDoc): Record<string, string> {
   const strip = doc.parts.flatMap((p) => (p.kind === "section" ? p.blocks : [])).find((b) => b.kind === "facts");
   return strip?.kind === "facts" ? Object.fromEntries(strip.facts) : {};

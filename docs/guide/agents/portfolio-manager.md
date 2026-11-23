@@ -6,7 +6,7 @@ Every trade it proposes waits for your approval, like any run's. It never rewrit
 
 ```facts
 Model: gpt-5.4
-Starts: Tue and Thu · 10:00 AM ET
+Starts: Tue and Thu · 10:30 AM ET
 Steps: up to 40
 Tools: theses by ticker, stock data, a note, trigger edits, the trades, a research request
 Saves: a write-up, notes on stocks, trigger edits, proposals, research requests
@@ -17,7 +17,7 @@ Saves: a write-up, notes on stocks, trigger edits, proposals, research requests
 <!-- asset: context portfolio_manager -->
 
 - **Its instructions:** one document, `portfolio-manager.md`: its job, then the rules it imports (the house rules and how it writes).
-- **Its context**, in its first message after the date line: the market numbers, the 7:30 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the stock table (every stock you hold and watch, a line each with the same columns: its analyst, its situation, price, the day's move and volume, the 5-day and 1-month moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, outlook, conviction and the next report); and its own last write-up, so it remembers what it was weighing.
+- **Its context**, in its first message after the date line: the market numbers, the 9:00 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the stock table (every stock you hold and watch, a line each with the same columns: its analyst, its situation, price, the day's move and volume, the 5-day and 1-month moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, outlook, conviction and the next report); and its own last write-up, so it remembers what it was weighing.
 
 It is given nothing in a format of its own. The stock table is the one an analyst's morning run gets for its own stocks, here for the whole account, and the run page shows the same rows.
 
@@ -81,7 +81,7 @@ Its last reply, kept on the run: where the money is, the ranking, what it did, o
 <summary>Technical details</summary>
 
 #### Runs as
-Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`): 10:00 AM ET, Tue and Thu, one run per traded book, not on a market holiday. The one scheduler (`agent-scheduler`, `lib/inngest/functions/agent-scheduler.ts`) runs it through the runner, mode `PORTFOLIO_MANAGER`. The run takes no messages afterwards (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`).
+Its line in the schedule (`SCHEDULE`, `lib/agent/engine/schedule.ts`): 10:30 AM ET, Tue and Thu, one run per traded book, not on a market holiday. The one scheduler (`agent-scheduler`, `lib/inngest/functions/agent-scheduler.ts`) runs it through the runner, mode `PORTFOLIO_MANAGER`. The run takes no messages afterwards (`READ_ONLY_RUN_MODES`, `lib/runs/modes.ts`).
 
 #### The run
 `runPortfolioManager` (`lib/agent/portfolio-manager/run.ts`) runs its record, `PORTFOLIO_MANAGER` (`lib/agent/engine/agents/portfolio-manager.ts`), through the agent runner (`runAgent`, `lib/agent/engine/run.ts`, `docs/plans/AGENT_ENGINE.md`), which builds its request with the agent engine (`buildAgentRequest`, `lib/agent/engine/build.ts`) and makes the call with the record's model, step limit (40) and time limit (770 seconds). The record holds its job text, the context blocks it is given (the house rules, how you write, the market numbers, the market digest, the portfolio snapshot and the Watching block, with no portfolio digest), and its tools: `get_theses`, `get_stock_data`, `write_note`, `edit_triggers`, `place_trade`, `add`, `sell`, `dispatch_thesis_research`. Its run keeps which part of the request is which, and the run page's Context panel shows one row per part. Its job runs it as a saved run (`runAgentAsRun`, the same file): the runner opens the run, runs it, and saves its thread (it has no message, so the run page opens with its reply; its reads, the last write-up among them, are in the Context panel), its token use, its notes on its proposals, its write-up (`keepWriteup`, kept by `PORTFOLIO_MANAGER_RUN`) and its status, COMPLETE or FAILED only while the run is still RUNNING. The Agents page (`/how-it-works/agents`) shows the record.

@@ -664,7 +664,7 @@ function DigestPreviewCard({
   const active = isMarket ? marketDigest : digest;
   const stamp = active ? formatDigestStamp(active) : null;
   const emptyLine = isMarket
-    ? 'No market digest yet — written at 7:30 AM on weekdays.'
+    ? 'No market digest yet — written at 9:00 AM on weekdays.'
     : 'No digest yet — generates after close.';
   // Slice generously so the narrative fills the taller desktop card; the
   // line-clamp + bottom fade handle the visual cutoff at either size.
@@ -747,7 +747,7 @@ interface DashboardClientProps {
    * the digest card.
    */
   digest?: LatestDigest | null;
-  /** The Market Reviewer's 7:30 AM digest, on the card's Market tab. */
+  /** The Market Reviewer's 9:00 AM digest, on the card's Market tab. */
   marketDigest?: LatestDigest | null;
   /**
    * Coverage Table data (Feature B — docs/plans/PORTFOLIO_DIGEST.md). When

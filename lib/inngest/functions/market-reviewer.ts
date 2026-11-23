@@ -1,5 +1,5 @@
 /**
- * market-reviewer — 7:30 AM ET every weekday: the Market Reviewer's run for
+ * market-reviewer — 9:00 AM ET every weekday: the Market Reviewer's run for
  * each traded book (an account and environment with an enabled analyst
  * trading in it, or a stock held in it), through the agent runner
  * (runAgentAsRun). One model call with web search writes the market digest
@@ -33,8 +33,8 @@ export async function tradedBooks(): Promise<Array<{ accountId: string; environm
 }
 
 export const marketReviewer = inngest.createFunction(
-  { id: "market-reviewer", name: "Market Reviewer (7:30 AM market digest)", retries: 1, concurrency: { limit: 1 } },
-  { cron: "TZ=America/New_York 30 7 * * 1-5" },
+  { id: "market-reviewer", name: "Market Reviewer (9:00 AM market digest)", retries: 1, concurrency: { limit: 1 } },
+  { cron: "TZ=America/New_York 0 9 * * 1-5" },
   async ({ step }) => {
     if (!isTradingDay(new Date())) return { skipped: "market holiday" };
     const books = await step.run("books", tradedBooks);

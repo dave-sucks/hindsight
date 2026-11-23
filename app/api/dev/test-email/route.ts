@@ -4,7 +4,7 @@
  * Fires a sample of each email template to the calling user's auth email.
  * Used to verify Resend wiring end-to-end (FROM address verified, API key
  * set, recipient lookup works) without waiting for a real trade or the
- * 10 AM digest cron.
+ * 11 AM digest cron.
  *
  * Auth-gated: requires a logged-in Supabase session. The send goes to that
  * user's own auth email — no recipient parameter, so it can't be abused as

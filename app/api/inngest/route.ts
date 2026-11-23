@@ -63,7 +63,7 @@ export const { GET, POST, PUT } = serve({
     evaluateTrade,
     morningResearch,
     eodEvaluation,
-    // 10 AM ET Mon-Fri — per-owner digest of every analyst's morning activity
+    // 11 AM ET Mon-Fri — per-owner digest of every analyst's morning activity
     // (new positions, closed positions, material thesis changes). Trade-opened
     // and trade-closed alerts fire immediately per-trade; this is the daily
     // roll-up scan-at-a-glance.
@@ -114,10 +114,10 @@ export const { GET, POST, PUT } = serve({
     proposalExpiry,
     // Daily Portfolio Digest — EOD account-level brief (Feature A backend).
     portfolioDigest,
-    // 7:30 AM ET: the Market Reviewer researches the market and saves the market digest.
+    // 9:00 AM ET: the Market Reviewer researches the market and saves the market digest.
     marketReviewer,
     // Every agent on the schedule (lib/agent/engine/schedule.ts) at its time:
-    // the Portfolio Manager (Tue and Thu 10:00 AM ET, each traded book).
+    // the Portfolio Manager (Tue and Thu 10:30 AM ET, each traded book).
     agentScheduler,
     proposalPendingEmail,
   ],

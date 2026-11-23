@@ -87,7 +87,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-19: −51, #1060: a pass no longer needs the chat pinned (not recorded then; main measured 34,173).
   // 2026-11-19: +26, watch_stock's look-again is the price, the next report or the event's date.
   // 2026-11-20: +104, set_conviction changes the outlook too.
-  chat: 34_303,
+  // 2026-11-23: +1, the Daily Run is at 10 AM.
+  chat: 34_304,
 };
 
 /**

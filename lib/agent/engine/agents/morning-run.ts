@@ -1,6 +1,6 @@
 /**
  * The morning run's record (docs/plans/AGENT_ENGINE.md): one analyst's book,
- * walked at 8 AM on its run days (lib/inngest/functions/morning-research.ts)
+ * walked at 10 AM on its run days (lib/inngest/functions/morning-research.ts)
  * or from the Run button (app/api/agent/[mode]/route.ts).
  *
  * Its instructions: morning-run.md, the same on every run (the regime's
@@ -30,7 +30,7 @@ export const MORNING_RUN: AgentRecord = {
   id: "morning_run",
   name: "Morning run",
   does: "Walks one analyst's book and answers each stock on its work list: a trade (it waits for you), a trigger moved, or a note; then the run summary.",
-  runsWhen: "8:00 AM ET on each analyst's run days, or when you press Run.",
+  runsWhen: "10:00 AM ET on each analyst's run days, or when you press Run.",
   messageFrom: "The schedule's kickoff (lib/inngest/functions/morning-research.ts, or the Run button): the start of the day, and the watched stocks at their buy price.",
   subject: "analyst",
   model: MODES["research-run"].model,

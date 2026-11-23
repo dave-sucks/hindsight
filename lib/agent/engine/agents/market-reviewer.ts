@@ -1,6 +1,6 @@
 /**
  * The Market Reviewer's record (docs/plans/AGENT_ENGINE.md): one run per
- * traded book at 7:30 AM ET (lib/agent/market-reviewer/run.ts,
+ * traded book at 9:00 AM ET (lib/agent/market-reviewer/run.ts,
  * lib/inngest/functions/market-reviewer.ts). One call with OpenAI's own web
  * search; its reply is the digest and its notes on our stocks. Its
  * instructions are its own text, the same on every run. Its context: the
@@ -46,7 +46,7 @@ export const MARKET_REVIEWER: RunnableRecord = {
   id: "market_reviewer",
   name: "Market Reviewer",
   does: "Researches the market's day and writes the morning digest, and notes on our stocks its research touches.",
-  runsWhen: "7:30 AM ET on market days, one run per traded book.",
+  runsWhen: "9:00 AM ET on market days, one run per traded book.",
   messageFrom: "The schedule (lib/inngest/functions/market-reviewer.ts), which writes it no message: the date line is its start.",
   subject: "account",
   // The morning runs' model.

@@ -289,7 +289,7 @@ pulls mid-run — see `docs/plans/LANES.md` §2.
   places trades via Alpaca
 - Tools render via ToolCallGroup → ToolCallRow dispatching on result.ui
 - All research persisted to DB via tool execute functions
-- Morning cron (8 AM ET) runs same agent via generateText
+- Morning cron (10 AM ET) runs same agent via generateText
 
 ## Universe (the analyst's discovery fence)
 The "Universe" is the set of fields on AgentConfig that define what the
@@ -333,7 +333,9 @@ plus `get_stock_data`.
   book name; emails when a source is empty or erroring.
 - **06:30 ET — indicator snapshot.** The chart numbers every trigger reads,
   into `TickerIndicators`.
-- **08:00 ET — the Daily Run**, per analyst. It reads durable state directly
+- **09:00 ET — the Market Reviewer.** After most pre-market reports, before the
+  open.
+- **10:00 ET — the Daily Run**, per analyst, on live prices. It reads durable state directly
   via `get_theses(include_history: true)`; there is no inbox.
 - The **trigger evaluator** is the other clock: every 5 min during regular US
   market hours (gated on `isMarketOpen()`) plus a close pass at 16:20 ET; it
@@ -611,18 +613,18 @@ a list here goes stale.
   spawns a focused single-thesis agent (~15 steps), or makes an Auto
   trigger's trade and then writes it up with no trade tools
 ### Agent + Trading
-- morning-research.ts — 8 AM ET Mon-Fri, per-analyst Daily Run
-- agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10 AM; Discovery, off
+- morning-research.ts — 10 AM ET Mon-Fri, per-analyst Daily Run
+- agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10:30 AM; Discovery, off
 - after-buy-run.ts — consumes `app/buy.filled`: the After the buy agent on every buy and add fill
-- market-reviewer.ts — 7:30 AM ET market days, the Market Reviewer. No note
+- market-reviewer.ts — 9:00 AM ET market days, the Market Reviewer. No note
   is pinned. A saved high note sends `app/market-notes.saved`, and the trigger
   check then reads only the triggers that watch notes (the `note` measure):
   "Review if the Market Reviewer writes a high note on it" is a rule the owner
   saves; without it a high note starts no run.
 - trade-evaluator.ts — GPT-4o post-trade evaluation (on close)
 - eod-evaluation.ts — end-of-day price snapshots
-- daily-run-digest.ts — 10 AM ET Mon–Fri, one email per owner on what
-  the 8 AM morning runs did
+- daily-run-digest.ts — 11 AM ET Mon–Fri, one email per owner on what
+  the 10 AM morning runs did
 - portfolio-digest.ts — 8 PM ET Mon–Fri, the Daily Portfolio Digest, saved
   as a read-only run (mode PORTFOLIO_DIGEST) whose page shows the request
   its model call sent (`lib/agent/run-requests.ts`, RunMessage role "request")

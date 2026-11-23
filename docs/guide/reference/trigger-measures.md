@@ -295,7 +295,7 @@ What the company tells the SEC, and what its insiders buy. Read live from SEC ED
 
 ## News
 
-A high note from the Market Reviewer on the stock. Read right after the Market Reviewer saves its 7:30 AM notes, and on every pass in market hours. Only a note it marked high counts; a medium or low note starts nothing. One fire per stock per note: a note holds only if it was written after the trigger last fired, and within the last day.
+A high note from the Market Reviewer on the stock. Read right after the Market Reviewer saves its 9:00 AM notes, and on every pass in market hours. Only a note it marked high counts; a medium or low note starts nothing. One fire per stock per note: a note holds only if it was written after the trigger last fired, and within the last day.
 
 ### News note
 

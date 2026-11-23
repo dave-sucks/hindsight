@@ -39,12 +39,12 @@ Eastern time, on trading days unless it says otherwise.
 
 - **6:25 AM:** Every market-data source is probed; an email goes out if one is empty or erroring.
 - **6:30 AM:** The chart numbers for every stock on the book: averages, highs, RSI, strength, gaps, insider buys. Then Wall Street's price targets and EPS consensus for the same stocks.
-- **7:30 AM:** The [Market Reviewer](agents/market-reviewer.md), one run per book being traded: it researches the market itself and saves the market digest, and a note on each stock its research touched (a high-impact one starts a look on the stock when you have saved the rule for it).
-- **8:00 AM:** Morning runs, on each analyst's run days.
+- **9:00 AM:** The [Market Reviewer](agents/market-reviewer.md), one run per book being traded: it researches the market itself and saves the market digest, and a note on each stock its research touched (a high-impact one starts a look on the stock when you have saved the rule for it).
 - **9:30 AM – 4:00 PM (1 PM on half days):** The trigger check, every five minutes. Each check first brings every holding's high since the buy up to date for the trails. No order waits at the broker, so a floor broken overnight is acted on at the first check after the open. A buy or an add waits for a price from the last 15 minutes; a sale or a review doesn't.
 - **4:00 AM – 8:00 PM:** Orders are matched to the broker's fills every five minutes, and proposals past their 24 hours lapse every thirty (a proposal a trigger made has none: the 4:20 PM trigger pass withdraws it on a close back past its line, or once its trigger is off the stock).
-- **10:00 AM:** The morning digest: what the runs did, in one email.
-- **10:00 AM, Tue and Thu:** The [Portfolio Manager](agents/portfolio-manager.md): reads the whole account in a line a stock and may propose up to three trades, each waiting for you.
+- **10:00 AM:** Morning runs, on each analyst's run days, on live prices half an hour after the open.
+- **10:30 AM, Tue and Thu:** The [Portfolio Manager](agents/portfolio-manager.md): reads the whole account in a line a stock and may propose up to three trades, each waiting for you.
+- **11:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
 - **8:00 PM:** The [Portfolio Digest](agents/portfolio-digest.md): your account's day, written from one snapshot of your portfolio (value, cash, every holding and its move, the day's buys and sells, the proposals waiting for you) and nothing else. On the home page, and in every agent's Market and portfolio block with the snapshot itself. It is a run you can open on /runs, and its Context button shows exactly what the model was sent.
@@ -77,12 +77,12 @@ Each agent's own page opens with its model, steps and tools. What sets them apar
 |---|---|---|---|---|
 | [Discovery](agents/discovery.md) | When you ask in chat | The tickers its analyst already covers, to skip them | A pass or a watch; new stocks go to the Writer | Never |
 | [The Writer](agents/writer.md) | When an agent or you ask | Its own pull of one stock's data, and the web | The whole thesis; its playbook's watch triggers, then tailors them | Never |
-| [Morning run](agents/morning-runs.md) | 8:00 AM ET on run days | Its whole book, each stock at the size today needs | Its triggers, conviction, catalyst date, whether we watch, its verdict and a note | Proposes |
+| [Morning run](agents/morning-runs.md) | 10:00 AM ET on run days | Its whole book, each stock at the size today needs | Its triggers, conviction, catalyst date, whether we watch, its verdict and a note | Proposes |
 | [Trigger run](agents/trigger-runs.md) | Minutes after a trigger fires; right after an Auto trade, to write it up | The one stock it woke for, with the fire | Its triggers and a note; an Auto trade's reason | Proposes (an Auto trade is made before it reads) |
 | [After the buy](agents/after-the-buy.md) | Right after a buy or an add fills | The stock, its chart and its playbook's holding triggers | The holding's triggers (never the floor); the trade's note if none | Never |
 | [Chat](agents/chat.md) | When you type | Stocks by name, when the conversation needs them | The triggers, conviction, catalyst date, whether we watch, notes; the belief goes through the Writer | Proposes, at your word |
-| [Portfolio Manager](agents/portfolio-manager.md) | 10:00 AM ET, Tuesday and Thursday | The whole account, a line a stock | Notes and triggers | Proposes up to three |
-| [Market Reviewer](agents/market-reviewer.md) | 7:30 AM ET on market days | The market, on the web | The market digest and notes on stocks | Never |
+| [Portfolio Manager](agents/portfolio-manager.md) | 10:30 AM ET, Tuesday and Thursday | The whole account, a line a stock | Notes and triggers | Proposes up to three |
+| [Market Reviewer](agents/market-reviewer.md) | 9:00 AM ET on market days | The market, on the web | The market digest and notes on stocks | Never |
 | [Analyst builder](agents/analyst-builder.md) | When you build or edit one | Your answers, the playbook, today's market | A whole analyst, on your yes | Never |
 
 ## What an agent is told
