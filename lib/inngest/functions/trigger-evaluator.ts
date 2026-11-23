@@ -480,7 +480,7 @@ export const triggerEvaluator = inngest.createFunction(
     // cron checks every 5 or every 15 min. Cost: one Alpaca call per hundred
     // tickers per pass.
     { cron: "TZ=America/New_York */5 9-16 * * 1-5" },
-    // The Market Reviewer saved a high note (7:30 AM, before the session): the triggers that watch its notes are checked now.
+    // The Market Reviewer saved a high note (9:00 AM, before the session): the triggers that watch its notes are checked now.
     { event: NOTES_SAVED },
   ],
   async ({ event, step }) => {

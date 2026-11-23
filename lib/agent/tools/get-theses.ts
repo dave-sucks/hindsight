@@ -287,10 +287,14 @@ export const getTheses = defineTool({
         : {}),
     };
 
-    const theses = await prisma.thesis.findMany({
+    // The default read can't cut a stock in a situation: the close-out owes every one it lists, and a cut by last
+    // save, made before anyone knows which are work, lost three on a 28-stock book. It takes the book to the hard
+    // cap, and `limit` then trims the quiet stocks only.
+    const take = detailMode === "actionable" ? 50 : limit;
+    let theses = await prisma.thesis.findMany({
       where,
       orderBy: { updatedAt: "desc" },
-      take: limit,
+      take,
       select: {
         id: true,
         ticker: true,
@@ -347,7 +351,7 @@ export const getTheses = defineTool({
     });
 
     // A read that reached its cap says how many stocks it left out; one count, only then.
-    const leftOut = theses.length === limit ? Math.max(0, (await prisma.thesis.count({ where })) - theses.length) : 0;
+    const matched = theses.length === take ? await prisma.thesis.count({ where }) : theses.length;
 
     // History: one batched query, grouped per thesis on return. Avoids the
     // N+1 we'd get from a per-thesis findMany, even at limit=50.
@@ -428,15 +432,6 @@ export const getTheses = defineTool({
       }
     }
 
-    // The live stocks (held, watched, promoted): the ones whose missing or
-    // old price the result says in words.
-    const liveTheses = theses.filter(
-      (t) =>
-        t.status === "HOLDING" ||
-        t.status === "WATCHING" ||
-        t.status === "PROMOTED",
-    );
-
     // ── A stock's facts, loaded once (lib/agent/stock-facts.ts) ─────────
     // The live price and the work-flag list (work-inputs.ts), what's been
     // said on each stock, the resolved envelope, a buy into a full analyst
@@ -491,6 +486,12 @@ export const getTheses = defineTool({
       if (listsTheStock(sources)) listedIds.add(t.id);
       situationsTap.record?.({ thesisId: t.id, ticker: t.ticker, needsInput: load.inputs.get(t.id) ?? null, sources });
     }
+    // Over the limit, the quiet stocks go, newest-saved kept first; the work never does.
+    if (detailMode === "actionable" && theses.length > limit) {
+      let room = Math.max(0, limit - listedIds.size);
+      theses = theses.filter((t) => listedIds.has(t.id) || room-- > 0);
+    }
+    const leftOut = Math.max(0, matched - theses.length);
     const isFullDetail = (t: (typeof theses)[number]): boolean =>
       detailMode === "book" || priceFetchFailed || listedIds.has(t.id);
 
@@ -809,6 +810,8 @@ export const getTheses = defineTool({
           }.`;
     // A price that is missing or old is said in words (lib/market-data/
     // quote-age) — it used to come back as a blank or as if it were live.
+    // The live stocks it shows (held, watched, promoted): the ones whose missing or old price it says in words.
+    const liveTheses = theses.filter((t) => t.status === "HOLDING" || t.status === "WATCHING" || t.status === "PROMOTED");
     const priceWarnings = Array.from(new Set(liveTheses.map((t) => t.ticker)))
       .map((ticker) => {
         const price = resolverPriceMap[ticker];

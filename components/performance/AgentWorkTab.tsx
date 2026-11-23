@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ThesisSheet } from "@/components/agent/sheets/ThesisSheet";
 import type { AgentWork } from "@/lib/performance/agent-work";
-import { OUTCOMES, OUTCOME_LABEL, RANGES, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
+import { OUTCOMES, OUTCOME_LABEL, PROPOSAL_ENDS, RANGES, type Outcome, type RangeDays } from "@/lib/performance/agent-work-terms";
 
 const COLOR: Record<Outcome | "pending", string> = {
   trade: "var(--chart-3)", refused: "var(--chart-1)", plan: "var(--positive)", research: "var(--foreground)",
@@ -220,8 +220,8 @@ function Body({ w, stock }: { w: AgentWork; stock: (thesisId: string, ticker: st
 
       <h2 className="text-lg font-medium">Proposals and stocks</h2>
       <Section title="Proposals by stock" description="Each stock's proposals and how they ended.">
-        <SimpleTable head={["Stock", ["Proposals", "num"], ["Expired", "num"], ["Filled", "num"], ["Declined", "num"], ["Waiting", "num"]]} empty="No proposals in this range."
-          rows={w.proposals.map((p) => [stock(p.thesisId, p.ticker), p.total, p.status.EXPIRED ?? 0, p.status.FILLED ?? 0, p.status.REJECTED ?? 0, p.status.AWAITING_APPROVAL ?? 0])} />
+        <SimpleTable head={["Stock", ["Proposals", "num"], ...PROPOSAL_ENDS.map(([label]) => [label, "num"] as [string, "num"])]} empty="No proposals in this range."
+          rows={w.proposals.map((p) => [stock(p.thesisId, p.ticker), p.total, ...PROPOSAL_ENDS.map(([, status]) => p.status[status] ?? 0)])} />
       </Section>
       <Section title="Per stock" description="Reviews are REVIEWED and UPDATED lines. Runs: morning runs that listed it, trigger runs on it, and any run that wrote on it. Active stocks with nothing are at the bottom.">
         <SimpleTable head={["Stock", "Analyst", "Status", ["Reviews", "num"], ["Fires", "num"], ["Runs", "num"], ["Listed", "num"], ["Trigger runs", "num"], ["Proposals", "num"], ["Expired", "num"]]} empty="No stocks in this range."
