@@ -1,5 +1,6 @@
 /**
- * The digest's model is given the portfolio snapshot and nothing else: no run
+ * The digest's model is given the portfolio snapshot (and, on a day the
+ * Portfolio Manager ran, its write-up: digest-writer.evening.test.ts): no run
  * logs, no ids, no borrowing money. On Nov 11 it was given every run's id and
  * "status COMPLETE", every quiet review, two buy proposals listed as trades,
  * and the margin buying power, and it urged "more aggressive deployment".
@@ -39,12 +40,13 @@ describe("what the digest's model is given", () => {
     expect(sent[0].messages[1].content).toBe(`Wed, Nov 11, 2026, 8:00 PM ET, the PAPER account.\n\n## Market and portfolio\n\n### Portfolio snapshot\n${snapshotText(STANDIN_SNAPSHOT)}`);
   });
 
-  it("the instructions ask for the day, the trades and a view on each proposal, and never for deploying cash", async () => {
+  it("the instructions ask for the day, the trades and each proposal's reason with no view of its own, and never for deploying cash", async () => {
     await writeDigestNarrative(STANDIN_SNAPSHOT);
     const system = sent[0].messages[0].content;
     expect(system).toContain("A proposal is not a trade until the owner approves it.");
     expect(system).toContain("Never name a new price level for a stock.");
-    expect(system).toContain("would you approve it or not, and why");
+    expect(system).toContain("Add no view of your own on whether to approve it.");
+    expect(system).not.toContain("would you approve");
     expect(system).toContain("never suggest what to do with it");
     expect(system).not.toMatch(/buying power|idle cash|deploy|slots|thesis:|analyst:|run:/i);
   });

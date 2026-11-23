@@ -34,14 +34,23 @@ const day = (d: Date) => d.toLocaleDateString("en-US", { weekday: "short", month
 
 /** Its last write-up: the second part of its first message, after the day, under its heading (the record's). */
 export async function lastWriteup(book: Pick<ManagerBook, "accountId" | "environment">): Promise<string> {
-  const last = await prisma.runEvent
+  const last = await newestWriteup(book);
+  return last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first.";
+}
+
+const newestWriteup = (book: Pick<ManagerBook, "accountId" | "environment">) =>
+  prisma.runEvent
     .findFirst({
       where: { type: WRITEUP_EVENT, run: { accountId: book.accountId, environment: book.environment, mode: MANAGER_RUN_MODE } },
       orderBy: { createdAt: "desc" },
       select: { message: true, createdAt: true },
     })
     .catch(() => null);
-  return last?.message ? `Written ${day(last.createdAt)}:\n\n${last.message}` : "None yet: this is your first.";
+
+/** Its write-up written on `now`'s New York day, for the evening summary; null on a day it didn't run. */
+export async function writeupOn(book: Pick<ManagerBook, "accountId" | "environment">, now: Date): Promise<string | null> {
+  const last = await newestWriteup(book);
+  return last?.message && day(last.createdAt) === day(now) && last.createdAt <= now ? last.message : null;
 }
 
 export interface ManagerResult {

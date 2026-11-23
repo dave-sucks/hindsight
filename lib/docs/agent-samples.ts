@@ -98,8 +98,13 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     }),
   },
   portfolio_digest: {
-    from: "the stand-in book's day",
-    build: (record) => ({ request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER" }, { pieces: PIECES }) }),
+    from: "the stand-in book's day, one the Portfolio Manager ran on",
+    build: (record) => ({
+      request: composeAgentRequest(record, { now: SAMPLE_NOW, environment: "PAPER" }, {
+        pieces: PIECES,
+        context: { manager_writeup: "## The Portfolio Manager's write-up today\n### The ranking\nAAA first, BBB last.\n\n### What I did\nNothing." },
+      }),
+    }),
   },
   writer: {
     from: "a refresh of a watched stock, sent from a chat",

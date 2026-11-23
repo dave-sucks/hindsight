@@ -69,6 +69,7 @@ const CHANGED: Record<string, string> = {
   "chat.pinned_bare": HOW_A_LOOK_ENDS,
   "sample.chat": HOW_A_LOOK_ENDS,
   "sample.portfolio_manager": HOW_A_LOOK_ENDS,
+  "sample.portfolio_digest": "the evening summary reports each proposal's reason with no view of its own, is given the Portfolio Manager's write-up, and may search the web (2026-11-23)",
 };
 
 /** Agents main never had, so nothing of theirs was hashed. */

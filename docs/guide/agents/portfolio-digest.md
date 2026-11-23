@@ -1,14 +1,14 @@
 # The Portfolio Digest
 
-**Your account's day, written at 8 PM from one snapshot of your portfolio.** It is given its instructions and, after the date line, the portfolio snapshot, and nothing else.
+**Your account's day, written at 8 PM from one snapshot of your portfolio.** It is given its instructions and, after the date line, the portfolio snapshot and, on a day the Portfolio Manager ran, that day's write-up. It may search the web for what happened to a holding that moved.
 
 It never trades. It is a run you can open on /runs, and its Context button shows exactly what the model was sent.
 
 ```facts
 Model: gpt-5.4
 Starts: Weekdays · 8:00 PM ET
-Steps: 1 call
-Tools: None
+Steps: up to 6
+Tools: web search
 Saves: The digest, and the snapshot it read
 ```
 
@@ -16,8 +16,13 @@ Saves: The digest, and the snapshot it read
 
 <!-- asset: context portfolio_digest -->
 
-1. **Its instructions:** write 3 to 5 short paragraphs on how the account did that day and which holdings moved it, what was bought or sold, a view on each proposal waiting for you, and what stands out about the account as a whole. Every number comes from the snapshot. A proposal is not a trade until you approve it. It never names a new price level.
-2. **The portfolio snapshot,** written by code. Nothing else: no run logs, no ids, no buying power.
+1. **Its instructions:** write 3 to 6 short paragraphs on how the account did that day and which holdings moved it, what was bought or sold, each proposal waiting for you with the reason it was proposed, what stands out about the account as a whole and, when it has the write-up, what the Portfolio Manager did and the top of its ranking. It gives no view of its own on whether to approve a proposal: it has read no thesis, and the reason on the proposal is the view of the agent that has. Every number comes from the snapshot. A proposal is not a trade until you approve it. It never names a new price level.
+2. **The portfolio snapshot,** written by code: no run logs, no ids, no buying power.
+3. **The Portfolio Manager's write-up from that day,** on a day it ran (Tuesday, Thursday, or a day the market's 2% trigger fired), so what it did reaches the home page. On any other day the item is left out and the digest says nothing of the Portfolio Manager: an older write-up is never shown as today's.
+
+## Web search
+
+When a holding's number moved that day and nothing it was given says why, it looks up what happened and says so in a few words. Its searches are on the budget every run has: five a run, and one more per stock for that stock's news.
 
 ## The portfolio snapshot
 
@@ -61,7 +66,10 @@ Where each number comes from:
 `portfolio-digest` at 8:00 PM ET, Mon–Fri, one read-only run per traded book (`lib/inngest/functions/portfolio-digest.ts`), opened and kept by the agent runner (`runAgentAsRun`, `lib/agent/engine/run.ts`).
 
 #### Model
-`gpt-5.4` on OpenAI's Chat Completions API, one call with a 6,000-token budget and 120 seconds (`lib/agent/digest-writer.ts`). When the run writes nothing, the digest is the snapshot's own lines (`narrativeOf`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash. Its instructions (its own text, the same on every run) and its context (the portfolio, after the date line) are its record, `PORTFOLIO_DIGEST` in `lib/agent/engine/agents/portfolio-digest.ts`, which the agent engine (`lib/agent/engine/build.ts`) builds the request from, naming each part for the run's Context panel. Its run is about the account, and it is handed the snapshot its job saves with the digest (`digestArgs`), so the digest and the saved snapshot are one read.
+`gpt-5.4` on OpenAI's Chat Completions API, up to 6 steps (its searches, then its reply) with a 6,000-token budget a step and 300 seconds (`lib/agent/digest-writer.ts`). When the run writes nothing, the digest is the snapshot's own lines (`narrativeOf`). On the same snapshot, gpt-4o skipped a waiting proposal and told the owner what to do with the cash. Its instructions (its own text, the same on every run) and its context (the portfolio, then `manager_writeup`, after the date line) and its one tool (`web_search`) are its record, `PORTFOLIO_DIGEST` in `lib/agent/engine/agents/portfolio-digest.ts`, which the agent engine (`lib/agent/engine/build.ts`) builds the request from, naming each part for the run's Context panel. Its run is about the account, and it is handed the snapshot its job saves with the digest (`digestArgs`), so the digest and the saved snapshot are one read.
+
+#### The Portfolio Manager's write-up
+`manager_writeup` (`lib/agent/context/manager-writeup.ts`) reads the book's newest write-up the way the Portfolio Manager's own next run does (`lib/agent/portfolio-manager/run.ts`) and keeps it only when it was written on the run's New York day and before the run (`writeupOn`). The run's book is the one the job runs it for: the date line and the write-up are that book's.
 
 #### The snapshot
 `loadPortfolioSnapshot` (`lib/portfolio/load-snapshot.ts`) reads the broker, the quotes and the orders; `buildSnapshot`, `snapshotText` and `portfolioPieceText` (`lib/portfolio/snapshot.ts`) make the numbers and the text. A holding's 5- and 20-day moves are the trigger check's own measure off the 06:30 chart numbers, and its conviction is its thesis's. The digest row's `facts` column keeps the snapshot.

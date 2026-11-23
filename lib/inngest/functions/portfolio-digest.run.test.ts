@@ -22,7 +22,7 @@ const says = (text: string) => async () =>
     headers: { "content-type": "application/json" },
   });
 
-async function runTheJob(reply: () => Promise<Response>, digests: Digest[] = []) {
+async function runTheJob(reply: () => Promise<Response>, digests: Digest[] = [], writeup: { message: string; createdAt: Date } | null = null) {
   const sent: unknown[] = [];
   const rows: Row[] = [];
   const runCreate = jest.fn(async (_a: unknown) => ({ id: "run_digest" }));
@@ -39,8 +39,10 @@ async function runTheJob(reply: () => Promise<Response>, digests: Digest[] = [])
   const realFetch = globalThis.fetch;
   process.env.OPENAI_API_KEY = "sk-test";
   globalThis.fetch = (async (_url: string, init?: RequestInit) => (sent.push(JSON.parse(String(init?.body))), reply())) as typeof fetch;
+  // The run's tools import lazily while the job runs, after the isolation below has ended: start each run from an empty registry.
+  jest.resetModules();
   await jest.isolateModulesAsync(async () => {
-    jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (_c: unknown, _t: unknown, h: Handler) => ((handler = h), {}) } }));
+    jest.doMock("@/lib/inngest/client", () => ({ inngest: { createFunction: (c: { id: string }, _t: unknown, h: Handler) => (c.id === "portfolio-digest" && (handler = h), {}), send: async () => undefined } }));
     jest.doMock("@/lib/prisma", () => ({
       prisma: {
         researchRun: {
@@ -54,6 +56,8 @@ async function runTheJob(reply: () => Promise<Response>, digests: Digest[] = [])
         order: { findMany: async () => [] },
         agentConfig: { findMany: async () => [{ accountId: "account_live", tradingEnvironment: "LIVE" }] },
         portfolioDigest: { upsert },
+        // The Portfolio Manager's newest write-up in this book.
+        runEvent: { findFirst: async () => writeup },
         runMessage: {
           create: async ({ data }: { data: Row }) => (rows.push(data), data),
           // As the database would: the thread's save replaces the rows its where matches.
@@ -113,17 +117,19 @@ describe("the 8 PM Portfolio Digest's run", () => {
   it("shows in its Context panel part by part, in the order sent, adding up to what was sent", async () => {
     const { sent, view } = await runTheJob(says(DIGEST));
     const body = sent[0] as { messages: Array<{ content: string }> };
-    // One row per part the agent engine built: its own text, then its context: the date line and the portfolio.
+    // One row per part the agent engine built: its own text, then its context: the date line and the portfolio. Then its tools.
     expect(view.categories.map((c) => [c.group, c.name, c.part])).toEqual([
       ["Instructions", "Its instructions (portfolio-digest.md)", "job"],
       ["Context", "The date and account", "read"],
       ["Context", "The portfolio", "portfolio"],
+      ["Tools", "Tool menu", "tools"],
     ]);
     expect(view.categories[0].sections[0].text).toBe(body.messages[0].content);
     expect(`${view.categories[1].sections[0].text}\n\n${view.categories[2].sections[0].text}`).toBe(body.messages[1].content);
-    // The blank line between the two reads is sent and isn't a part.
-    expect(view.categories.reduce((n, c) => n + c.chars, 0) + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
-    expect(view.chars + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    // The blank line between the two reads is sent and isn't a part. The tool menu is its own row, beside the text.
+    const text = view.categories.filter((c) => c.part !== "tools");
+    expect(text.reduce((n, c) => n + c.chars, 0) + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
+    expect(view.chars - view.categories[3].chars + 2).toBe(body.messages[0].content.length + body.messages[1].content.length);
     expect(view.raw).toEqual(body);
     expect(view.rawChars).toBe(JSON.stringify(body).length);
   });

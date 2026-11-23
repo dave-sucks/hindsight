@@ -46,6 +46,7 @@ export type ContextId =
   | "filings_this_week"
   | "refused_calls"
   | "last_output"
+  | "manager_writeup"
   | "earnings_calendar";
 
 export type AgentId = "portfolio_manager" | "writer" | "holding_refresh" | "trigger_run" | "post_trade_writeup" | "after_buy" | "morning_run" | "chat" | "market_reviewer" | "portfolio_digest" | "discovery";

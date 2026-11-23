@@ -14,6 +14,7 @@ import { earningsCalendarFact } from "./earnings-calendar";
 import { earningsThisWeek } from "./earnings-this-week";
 import { filingsThisWeek } from "./filings-this-week";
 import { lastOutput } from "./last-output";
+import { managerWriteup } from "./manager-writeup";
 import { playbookRecord } from "./playbook-record";
 import { holdingTriggers, playbooks, thePlaybook } from "./playbooks";
 import { refusedCalls } from "./refused-calls";
@@ -51,6 +52,7 @@ export const FACTS: Record<Exclude<ContextId, "market_numbers" | "market_digest"
   refused_calls: refusedCalls,
   earnings_calendar: earningsCalendarFact,
   last_output: lastOutput,
+  manager_writeup: managerWriteup,
 };
 
 /** The facts a record reads that its subject's bundle doesn't have. */
