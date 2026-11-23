@@ -4,8 +4,8 @@
  * and tightens its trail with edit_triggers; the case's rules read
  * close_position and an update_thesis with edit_triggers, and pass on both.
  */
-import { explainOldShape, inOldShape } from "./old-shape";
-import { score } from "./action";
+import { explainOldShape, inOldShape, waitsForNote } from "./old-shape";
+import { score, type Call } from "./action";
 import nvda from "../../../scripts/hero-cases/nvda-declined-sale.json";
 
 describe("today's calls, graded in the cases' shape", () => {
@@ -79,5 +79,31 @@ describe("today's calls, graded in the cases' shape", () => {
     expect(inOldShape([{ toolName: "sell", input: { ticker: "NVDA" } }], run)).toEqual([{ toolName: "manage_position", input: { symbol: "NVDA", action: "partial_close", close_pct: 30 } }]);
     expect(inOldShape([{ toolName: "sell", input: { ticker: "NVDA", percent: 100 } }], run)).toEqual([{ toolName: "close_position", input: { ticker: "NVDA" } }]);
     expect(inOldShape([{ toolName: "sell", input: { ticker: "MU" } }], run)).toEqual([{ toolName: "close_position", input: { ticker: "MU" } }]);
+  });
+});
+
+describe("a thesis edit that still waits for its note", () => {
+  // local-prax-review, 2026-11-23: the run's first call removed a trigger, the replay stopped there and graded it "no note" (2 of 3 runs).
+  const edit: Call = { toolName: "edit_triggers", input: { thesis_id: "cmwfbxbuq000008kr9jw3zcv4", add: [], edit: [], remove: [{ id: "a05c58e2-ca04-4f8f-afac-bdd527d0f832", reason: "It fired and was answered." }] } };
+  const note: Call = { toolName: "write_note", input: { thesis_id: "cmwfbxbuq000008kr9jw3zcv4", note: "Praxis filed its investor-day 8-K, and I'm keeping the watch.", verdict: "UNCHANGED" } };
+
+  it("waits after the edit alone, and no longer once the note is written", () => {
+    expect(waitsForNote([edit])).toBe(true);
+    expect(waitsForNote([edit, note])).toBe(false);
+    expect(waitsForNote([note])).toBe(false);
+    expect(waitsForNote([])).toBe(false);
+  });
+
+  it("the two calls grade as the one update_thesis the case was written against", () => {
+    const graded = inOldShape([edit, note]);
+    expect(graded).toHaveLength(1);
+    expect(graded[0]).toMatchObject({ toolName: "update_thesis", input: { thesis_id: "cmwfbxbuq000008kr9jw3zcv4", remove_trigger_ids: ["a05c58e2-ca04-4f8f-afac-bdd527d0f832"] } });
+    expect((graded[0].input as { noteless?: boolean }).noteless).toBeUndefined();
+  });
+
+  it("a note on another stock doesn't answer this one, a trade is not an edit, and the chat's edits stand alone", () => {
+    expect(waitsForNote([edit, { toolName: "write_note", input: { thesis_id: "other", note: "A note." } }])).toBe(true);
+    expect(waitsForNote([{ toolName: "place_trade", input: { ticker: "WST" } }])).toBe(false);
+    expect(waitsForNote([edit], { isChat: true })).toBe(false);
   });
 });
