@@ -12,6 +12,7 @@
  * save's tool are stood in for.
  */
 const threads: string[] = [];
+const lines: Array<Record<string, unknown>> = [];
 let saved: unknown = null;
 
 jest.mock("@/lib/prisma", () => ({
@@ -33,7 +34,7 @@ jest.mock("@/lib/prisma", () => ({
       }),
     },
     thesis: { findFirst: async () => null, findUnique: async () => null },
-    thesisUpdate: { findFirst: async () => null, create: async () => ({}) },
+    thesisUpdate: { findFirst: async () => null, create: async ({ data }: { data: Record<string, unknown> }) => (lines.push(data), { id: "line" }) },
     researchRun: { findUnique: async () => ({ parameters: {}, mode: "PRINCIPAL_CHAT" }), updateMany: async () => ({ count: 1 }), update: async () => ({}) },
     runEvent: { create: async () => ({}) },
     runMessage: {
@@ -83,6 +84,7 @@ const pageParts = () => convertPersistedToUIMessages(JSON.parse(threads.at(-1)!)
 
 beforeEach(() => {
   threads.length = 0;
+  lines.length = 0;
   jest.spyOn(console, "log").mockImplementation(() => {});
   jest.spyOn(console, "warn").mockImplementation(() => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -111,4 +113,20 @@ it("a save that didn't land puts no card on the page", async () => {
   const out = await writerPersistPhase(args, pullOutput, research(), Date.now());
   expect(out.thesisId).toBeNull();
   expect(pageParts().some((p) => p.type === "tool-record_thesis")).toBe(false);
+});
+
+it("a stock the Portfolio Manager sent that nobody covered: its brief is the new thesis's first Activity line, under its run", async () => {
+  saved = { ok: true, ui: "thesis-card", summary: "Thesis recorded: LONG AS (watching)", data: { thesis_id: fx.thesisId, status: "WATCHING" }, sources: [] };
+  const brief = "Amer Sports: the account holds no consumer brands, and its report beat on every line.";
+  const started = Date.now() - 240_000;
+  await writerPersistPhase({ ...args, reason: brief, sentBrief: brief, parentRunId: "pm_run" }, pullOutput, research(), started);
+  expect(lines.filter((l) => l.runId === "pm_run")).toEqual([
+    expect.objectContaining({ thesisId: fx.thesisId, type: "UPDATED", summary: "Sent $AS to research", rationale: brief, runId: "pm_run", timestamp: new Date(started) }),
+  ]);
+});
+
+it("any other send writes no such line", async () => {
+  saved = { ok: true, ui: "thesis-card", summary: "Thesis recorded: LONG AS (watching)", data: { thesis_id: fx.thesisId, status: "WATCHING" }, sources: [] };
+  await writerPersistPhase({ ...args, parentRunId: "chat_run" }, pullOutput, research(), Date.now());
+  expect(lines.filter((l) => String(l.summary).startsWith("Sent "))).toEqual([]);
 });

@@ -67,6 +67,8 @@ interface WriteThesisUpdateInput {
   triggerId?: string;
   signalIds?: string[];
   runId?: string | null;
+  /** When it happened, for a line written later than that. Now when absent. */
+  timestamp?: Date;
   tradeId?: string;
   /**
    * Current price for this ticker. If omitted, the helper attempts to
@@ -163,6 +165,7 @@ export async function writeThesisUpdate(
         triggerId: input.triggerId ?? null,
         signalIds: input.signalIds ?? [],
         runId: input.runId ?? null,
+        ...(input.timestamp ? { timestamp: input.timestamp } : {}),
         tradeId: input.tradeId ?? null,
         verdict: input.verdict ?? null,
         verdictLine: input.verdictLine ?? null,

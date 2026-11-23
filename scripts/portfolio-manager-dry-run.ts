@@ -3,9 +3,9 @@
  *
  *   npx tsx --env-file=.env.local scripts/portfolio-manager-dry-run.ts [LIVE|PAPER] [--inputs-only]
  *
- * Its reads are real. Every other tool (a note, a trade, a trigger edit, a
+ * Its reads are real, its web searches and filing reads among them. Every other tool (a note, a trade, a trigger edit, a
  * research request) is recorded and printed instead of made, and no run row
- * is created. `--inputs-only` prints its first message and calls no model.
+ * is created. `--inputs-only` prints its instructions, first message and tools, and calls no model.
  */
 import type { ToolSet } from "ai";
 import { getOwnerUserId } from "@/lib/auth/account";
@@ -15,7 +15,7 @@ import { buildAgentRequest } from "@/lib/agent/engine/build";
 import { PORTFOLIO_MANAGER } from "@/lib/agent/engine/agents/portfolio-manager";
 
 /** The tools that only read. Every other tool the run has is stood in for, so a tool added to its record later is never run for real here. */
-const READS = ["get_theses", "get_stock_data"];
+const READS = ["get_theses", "get_stock_data", "web_search", "get_sec_filings"];
 const isWrite = (name: string) => !READS.includes(name);
 
 async function main() {
@@ -40,6 +40,8 @@ async function main() {
     const request = await buildAgentRequest(PORTFOLIO_MANAGER, args.input, { subject: args.subject, now: args.input.now, agent: PORTFOLIO_MANAGER.id, toolset: args.toolset });
     console.log("===== INSTRUCTIONS =====\n" + request.instructions);
     console.log("\n===== FIRST MESSAGE =====\n" + request.message);
+    console.log("\n===== TOOLS =====");
+    for (const name of request.tools) console.log(`- ${name}${isWrite(name) ? " (stood in for on a dry run)" : ""}: ${(args.toolset[name] as { description?: string } | undefined)?.description ?? "NOT IN THE TOOLSET"}`);
     console.log(`\nInstructions ${request.instructions.length.toLocaleString()} characters, first message ${request.message.length.toLocaleString()} characters. No model was called.`);
     return;
   }

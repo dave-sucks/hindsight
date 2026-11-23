@@ -21,7 +21,7 @@ import type { ToolContext } from "@/lib/agent/tool-context";
 import { prisma } from "@/lib/prisma";
 import { inngest } from "@/lib/inngest/client";
 import { findInFlightWriter } from "@/lib/agent/thesis-writer-dispatch";
-import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
+import { isManagerRun, newStockRefusal } from "@/lib/agent/portfolio-manager/limits";
 
 
 /** The longest screen row the writer's prompt carries. */
@@ -54,13 +54,13 @@ export const dispatchThesisResearch = defineTool({
     source_link: z.string().optional().describe("The link to the post or article the idea came from, when there is one."),
   }),
   // Only the chat with no analyst pinned names one; any other run writes for its own (ETN 10-15: a made-up slug).
-  // The Portfolio Manager names one only when two analysts hold or watch the stock (CRWD 11-19).
+  // The Portfolio Manager names one when two analysts hold or watch the stock (CRWD 11-19), or none does: a new watch.
   // A trigger run sends its own stock (fromRun).
   schemaFor: (ctx, schema) => {
     const mine = namesAnalyst(ctx)
       ? schema
       : isManagerRun(ctx)
-        ? schema.extend({ analyst_id: z.string().optional().describe("Only when more than one analyst holds or watches the stock: the analyst whose thesis to refresh, by its id.") })
+        ? schema.extend({ analyst_id: z.string().optional().describe("The analyst, by its name in the stock table. Only for a stock no analyst holds or watches (the analyst it is for), or one more than one does (whose thesis to refresh).") })
         : schema.omit({ analyst_id: true });
     return ctx.runMode === "INTRADAY_TACTICAL" ? mine.omit({ ticker: true }) : mine;
   },
@@ -81,6 +81,8 @@ export const dispatchThesisResearch = defineTool({
     // The Portfolio Manager has no analyst: the stock goes to the analyst whose live thesis it is, in this account.
     // With two (CRWD 11-19: watched by the PEAD Specialist and the Secular Compounder), it names one or is refused.
     let analystId: string | undefined = namesAnalyst(ctx) ? args.analyst_id : ctx.analystId;
+    // The Portfolio Manager's brief on a stock nobody covers: the new watch's first Activity line.
+    let newWatchBrief: string | null = null;
     if (isManagerRun(ctx)) {
       const live = await prisma.thesis.findMany({
         where: { ticker: T, accountId: ctx.accountId, status: { in: ["HOLDING", "WATCHING", "PROMOTED"] } },
@@ -91,17 +93,29 @@ export const dispatchThesisResearch = defineTool({
       const found = ids.length ? await prisma.agentConfig.findMany({ where: { id: { in: ids }, accountId: ctx.accountId }, select: { id: true, name: true } }) : [];
       // Newest thesis first.
       const owners = ids.flatMap((id) => found.filter((o) => o.id === id));
-      const named = args.analyst_id ? owners.find((o) => o.id === args.analyst_id) : owners.length === 1 ? owners[0] : undefined;
-      if (!named) {
+      // No analyst holds or watches it: a new watch, for the analyst it names among this book's that are on.
+      const startsWatch = owners.length === 0;
+      const choices = startsWatch
+        ? await prisma.agentConfig.findMany({ where: { accountId: ctx.accountId, enabled: true, tradingEnvironment: ctx.runEnvironment }, orderBy: { createdAt: "asc" }, select: { id: true, name: true } })
+        : owners;
+      const asked = args.analyst_id?.trim().toLowerCase();
+      const named = asked ? choices.find((o) => o.id.toLowerCase() === asked || o.name.toLowerCase() === asked) : owners.length === 1 ? owners[0] : undefined;
+      // The new stocks this run has sent: its Writers that had no thesis to refresh.
+      const sent = startsWatch && ctx.runId ? await prisma.researchRun.findMany({ where: { parentRunId: ctx.runId, mode: "THESIS_WRITER" }, select: { parameters: true } }) : [];
+      const sentNew = sent.map((r) => r.parameters as { mode?: string; ticker?: string } | null).flatMap((p) => (p?.mode === "mint" && p.ticker ? [p.ticker] : []));
+      const full = startsWatch ? newStockRefusal(sentNew, T) : null;
+      if (!named || full) {
         const list = owners.map((o) => `${o.name} (${o.id})`).join(", ");
         const note =
-          owners.length === 0
-            ? `No analyst holds or watches $${T}, so there is no thesis to refresh.`
+          full ??
+          (startsWatch
+            ? `No analyst holds or watches $${T}. To start a watch on it, send it again with the analyst it is for in analyst_id: ${choices.map((o) => o.name).join(", ")}.`
             : args.analyst_id
               ? `${args.analyst_id} doesn't hold or watch $${T}. The analysts who do: ${list}. Send it again with one of their ids in analyst_id.`
-              : `$${T} is held or watched by ${owners.length} analysts: ${list}. Send it again with the one whose thesis to refresh in analyst_id.`;
+              : `$${T} is held or watched by ${owners.length} analysts: ${list}. Send it again with the one whose thesis to refresh in analyst_id.`);
         return { summary: `Dispatch refused for $${T}: ${note}`, data: { childRunId: null, status: "FAILED" as const, note }, sources: [] };
       }
+      newWatchBrief = startsWatch ? args.brief : null;
       analystId = named.id;
     }
     const analyst = await prisma.agentConfig.findFirst({
@@ -385,6 +399,7 @@ export const dispatchThesisResearch = defineTool({
         parentRunId: resolvedParentRunId ?? null,
         forceWatchingMint: mode === "mint",
         promotionContext: effectivePromotionContext ?? null,
+        ...(newWatchBrief ? { sentBrief: newWatchBrief } : {}),
       },
     });
 
