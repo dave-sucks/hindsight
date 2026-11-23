@@ -11,6 +11,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { StockLogo } from "@/components/StockLogo";
 import { Mono } from "../primitives";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
+import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 const INPUTS: readonly { title: string; sub: string }[] = [
   { title: "Its triggers", sub: "One fired, or one is true now" },
@@ -138,5 +142,69 @@ export function SituationFlow() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * How one situation is named in each place it shows, above its text on the
+ * Situations library page (`situation-named CODE`). The table badge and the
+ * agent's row use the situation's own name (SITUATIONS); the stock's page
+ * words the flag that raised it (needsActionFlag), which is a different
+ * vocabulary today.
+ */
+const ON_THE_PAGE: Record<SituationCode, string | null> = {
+  PROMOTED_AWAITING: "Promoted to live money",
+  PROTECTIVE_SALE: "Trigger fired: Sell if below $804",
+  BUY_ARRIVES: "Trigger fired: Buy if above $52.25 · only on the close",
+  ADD_OR_WINNER: "Trigger fired: Add if above 10% from yesterday's close",
+  REPORT: "Trigger fired: Review if within 5 days before earnings",
+  FILING: "Trigger fired: Review if it files something material with the SEC",
+  NEWS: "Trigger fired: Review if the Market Reviewer writes a high note on it",
+  PROTECTION: "Floor too far: 2.1% of the account below here",
+  REVIEW_DUE: "Review due: 2 days overdue",
+  SOLD_ONE_REVIEW: null,
+};
+
+function NamedRow({ where, children }: { where: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-baseline sm:gap-4">
+      <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:w-56">{where}</span>
+      <span className="min-w-0 text-sm text-foreground">{children}</span>
+    </div>
+  );
+}
+
+export function SituationNamed({ arg }: { arg?: string }) {
+  const code = arg as SituationCode;
+  const s = SITUATIONS[code];
+  if (!s) return null;
+  const page = ON_THE_PAGE[code];
+  const morningOnly = code === "SOLD_ONE_REVIEW";
+  return (
+    <Card>
+      <CardContent>
+        <div className="flex flex-col divide-y">
+          <NamedRow where="In the stock table">
+            {morningOnly ? <span className="text-muted-foreground">Not in it: a sold stock is neither held nor watched.</span> : <Badge variant="secondary">{s.name}</Badge>}
+          </NamedRow>
+          <NamedRow where="On the stock's page">
+            {page ? (
+              <span className="flex items-center gap-1.5">
+                <FlagNotificationIcon className="size-4 shrink-0" />
+                <span>Flagged for review — {page}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Nothing: the stock is sold, so it has no flag line.</span>
+            )}
+          </NamedRow>
+          <NamedRow where="On the stock's row, as an agent reads it">
+            <Mono>{morningOnly ? `sold_to_review: [{ ticker, sold_on, ask, situations: ["${code}"] }]` : `situations: ["${code} (${s.name})"]`}</Mono>
+          </NamedRow>
+          <NamedRow where="Its instructions arrive as">
+            <Mono>{`guidance.${code}`}</Mono> in the morning run&apos;s list{morningOnly ? "" : ", or with the fire in a trigger run"}
+          </NamedRow>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -56,6 +56,10 @@ The same row, whatever the situation and whoever reads it. A stock an agent open
 
 **True when:** A stock just moved from paper to live money and needs a decision this run.
 
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named PROMOTED_AWAITING -->
+
 **Its text goes to:** the morning run's list, or the trigger run with the fire; one text for every stock.
 
 ```text
@@ -83,6 +87,10 @@ Mistakes:
 
 **True when:** A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.
 
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named PROTECTIVE_SALE -->
+
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
 ```text
@@ -103,6 +111,10 @@ Done: one note that says why the stock fell and whether that changes why we own 
 `BUY_ARRIVES` · rank 3 of 10 · `buy-fired.md`
 
 **True when:** A buy trigger fired on a watched stock.
+
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named BUY_ARRIVES -->
 
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
@@ -126,6 +138,10 @@ Done: one note that says what is going on with the company and why now is the ti
 
 **True when:** An add trigger fired on a holding.
 
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named ADD_OR_WINNER -->
+
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
 ```text
@@ -146,6 +162,10 @@ Done: one note that says why the stock moved and whether that confirms why we ow
 `REPORT` · rank 5 of 10 · `report.md`
 
 **True when:** A trigger on the company's earnings report fired: the report is coming, or it just landed.
+
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named REPORT -->
 
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
@@ -175,6 +195,10 @@ A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Befo
 
 **True when:** A trigger on the company's SEC filings fired.
 
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named FILING -->
+
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
 ```text
@@ -196,6 +220,10 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 `NEWS` · rank 7 of 10 · `news.md`
 
 **True when:** Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.
+
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named NEWS -->
 
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
@@ -219,6 +247,10 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 **True when:** A gain with too little floor under it, or a floor that would lose too much of the account.
 
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named PROTECTION -->
+
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
 ```text
@@ -238,6 +270,10 @@ Done: one note that says how the stock got here and what is driving it now, with
 `REVIEW_DUE` · rank 9 of 10 · `review.md`
 
 **True when:** The review clock came round, or the price reached a level the analyst asked to look at again.
+
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named REVIEW_DUE -->
 
 **Its text goes to:** the morning run's list, or the trigger run with the fire; a part for a stock we hold, a part for a stock we watch.
 
@@ -261,6 +297,10 @@ Change how often you look only with a reason: slower for a quiet stock, sooner b
 `SOLD_ONE_REVIEW` · rank 10 of 10 · `just-sold.md`
 
 **True when:** A stock sold in the last two weeks is owed one look back.
+
+**How it is named, in each place it shows:**
+
+<!-- asset: situation-named SOLD_ONE_REVIEW -->
 
 **Its text goes to:** the morning run's list only; one text for every stock.
 

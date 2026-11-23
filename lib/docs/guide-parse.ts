@@ -19,6 +19,7 @@ export const GUIDE_ASSETS = [
   "system-layers",
   "request-grid",
   "situation-flow",
+  "situation-named",
   "fire-loop",
   "context",
 ] as const;
