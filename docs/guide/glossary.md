@@ -71,7 +71,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## What an agent reads
 
-- **The read:** an agent's view of its book from `get_theses`. Each stock is sent at the size today needs: a **line** for a quiet stock, a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
+- **The read:** an agent's view of its book from `get_theses`. Every stock is a **line** of the stock table, the same columns for each (its situation, price, the day's move and volume, the 5-day and 1-month moves and so on), and the Portfolio Manager gets the same table for the whole account. A stock in a situation is also sent at the size today needs: a **row** carrying the fields its situation's decision reads for a stock in one, the **whole case** when its review clock came due, and the **full row** with the history when an agent asks for it by name.
 - **Situation:** why a stock is in front of its analyst today, worked out fresh on every read and never stored. Three kinds: a trigger written in advance fired (a sale or trim, a buy, an add), something happened (a report, a filing, news), or it is time to look again (a review, a floor to fix, a stock just sold). Each has one short skill. See [Situations](concepts/situations.md).
 - **Guidance:** a situation's instructions, sent once per read for each situation on the day's list.
 - **Analyst brief:** the analyst's name, strategy, rule numbers, free slots and playbooks, written once and given to every agent.

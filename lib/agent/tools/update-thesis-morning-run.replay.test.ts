@@ -154,13 +154,6 @@ describe("DOCU 10-07: back on watch with its plan (step 12, part 3; the ratio is
     const row = save.db.store.thesis[0];
     expect(row).toMatchObject({ status: "WATCHING" });
     expect(triggerSentences(row).join(" | ")).toMatch(/Buy if (above|below) \$74\.10/);
-    let line = "";
-    await jest.isolateModulesAsync(async () => {
-      jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
-      line = (await import("@/lib/agent/row-for-model")).rowForModel({ ...row }, { named: false, size: "line" }) as string;
-    });
-    expect(line).not.toContain("no plan");
-    expect(line).not.toContain("$67.73");
   });
 
   it("a save whose plan lands says nothing of the kind (ABT 10-07)", async () => {

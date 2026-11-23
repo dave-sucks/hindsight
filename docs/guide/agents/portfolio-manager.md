@@ -1,6 +1,6 @@
 # Portfolio Manager
 
-**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it goes through every stock you hold and watch, gets the thesis on the few it is weighing a trade on, and leaves a write-up plus, at most, three proposals for you.
+**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it reads the table of every stock you hold and watch (the stocks in a situation first, then the top and the bottom by the day's move), gets the thesis on the few it is weighing a trade on, and leaves a write-up plus, at most, three proposals for you.
 
 Every trade it proposes waits for your approval, like any run's. It never rewrites a stock's case or its conviction, and it never sizes a trade: code does.
 
@@ -17,9 +17,9 @@ Saves: a write-up, notes on stocks, trigger edits, proposals, research requests
 <!-- asset: context portfolio_manager -->
 
 - **Its instructions:** one document, `portfolio-manager.md`: its job, then the rules it imports (the house rules and how it writes).
-- **Its context**, in its first message after the date line: the market numbers, the 7:30 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the book (every stock you hold and watch, a line each with its belief, a watch with its buy triggers); and its own last write-up, so it remembers what it was weighing.
+- **Its context**, in its first message after the date line: the market numbers, the 7:30 market digest and the [portfolio snapshot](portfolio-digest.md#the-portfolio-snapshot) (not the 8 PM portfolio digest, so its view of the proposals waiting for you is its own); the stock table (every stock you hold and watch, a line each with the same columns: its analyst, its situation, price, the day's move and volume, the 5-day and 1-month moves, where it sits against the S&P, its 50-day average and its 52-week high, the gain since the buy, outlook, conviction and the next report); and its own last write-up, so it remembers what it was weighing.
 
-It is given nothing in a format of its own. Your holdings are the snapshot's holdings and the book's; your watches are the book's.
+It is given nothing in a format of its own. The stock table is the one an analyst's morning run gets for its own stocks, here for the whole account, and the run page shows the same rows.
 
 ## What it asks for
 
@@ -38,7 +38,7 @@ It may ask about any stock you own, and 8 watched stocks a run. It has no web se
 
 ## The question it asks
 
-For every stock: would we buy it today, at today's price, knowing what we know now? What we paid is not part of the answer.
+For each stock it weighs: would we buy it today, at today's price, knowing what we know now? What we paid is not part of the answer. A stock's outlook and conviction are its analyst's rating; only a holding's outlook comes with its reason in the first message, and the rest come with the thesis.
 
 ## What it may propose
 

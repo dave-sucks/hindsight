@@ -92,13 +92,15 @@ describe("get_theses with no analyst: each stock with its own analyst", () => {
     expect(superseded("t_nvda_pead")).toBeNull();
   });
 
-  it("names each stock's analyst: last on the one line, an `analyst` key on the row", async () => {
+  it("names each stock's analyst: a column of the stock table, an `analyst` key on the row", async () => {
     const { model } = await read({});
-    const lines = (model.quiet_theses as string[]) ?? [];
+    // The table's note, its column names, then a line a stock.
+    const [, columns, ...lines] = (model.stocks as string[]) ?? [];
     const rows = (model.theses as Array<Record<string, unknown>>) ?? [];
-    for (const l of lines) expect(l).toMatch(/ · (PEAD Specialist|Secular Compounder)$/);
+    expect(columns.split(" | ")[2]).toBe("Analyst");
+    for (const l of lines) expect(["PEAD Specialist", "Secular Compounder"]).toContain(l.split(" | ")[2]);
     for (const r of rows) expect(["PEAD Specialist", "Secular Compounder"]).toContain(r.analyst);
-    expect(lines.length + rows.length).toBe(3);
+    expect(lines.length).toBe(3);
   });
 
   it("a read that reaches its cap says how many it left out, as its last line", async () => {

@@ -1,3 +1,12 @@
+jest.mock("@/lib/agent/stock-table-load", () => ({
+  loadStockTable: async () => ({
+    asOf: "2026-11-11T21:00:00.000Z",
+    rows: [
+      { ticker: "AAA", status: "held", analyst: "Case Analyst", situations: ["sale signal"], price: 98.4, dayPct: -3.1, volume: 1.4, move5dPct: -6.2, move20dPct: -9.8, vsSpy1M: -7.5, vs50dPct: -8.1, offHighPct: -19.4, sinceBuyPct: -8.9, outlook: "BULLISH", conviction: "MEDIUM", nextReport: null, waiting: "sell 40" },
+      { ticker: "CCC", status: "watch", analyst: "Case Analyst", situations: [], price: 118.9, dayPct: 1.2, volume: 1.1, move5dPct: 2.9, move20dPct: 7.6, vsSpy1M: 5, vs50dPct: 4.3, offHighPct: -2.2, sinceBuyPct: null, outlook: "BULLISH", conviction: "MEDIUM", nextReport: "2026-11-19", waiting: null },
+    ],
+  }),
+}));
 /**
  * The Portfolio Manager's model call as it goes over the wire: the HTTP body
  * its run sends, and what the run keeps about the call, from fixed inputs

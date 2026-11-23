@@ -108,10 +108,16 @@ describe("the Portfolio Manager", () => {
     // Its own text now names where the holdings and watches are (the one sentence that moved with them).
     const ownJob = job.replace(
       "The Portfolio snapshot above lists every stock we own and the Watching block every stock we watch.",
-      "The Portfolio snapshot and the book in your first message list every stock we own and every stock we watch.",
-    );
+      "The Portfolio snapshot and the stock table in your first message list every stock we own and every stock we watch.",
+    )
+      // It reads the table the way it is laid out.
+      .replace(
+        "Go through all of them, the quiet ones as much as the ones that moved. For each ask one question:",
+        "Read the stocks in a situation first, then the top and the bottom of the table by the day's move. For each stock you weigh, ask one question:",
+      );
     expect(built.instructions).toBe(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`);
-    const theBook = "## The book\nHolding (1):\n- AAA · Case Analyst · The company sells a product people keep buying.\nWatching (1):\n- CCC · Case Analyst · A strong quarter, and the base held.";
+    // The stock table takes the book's place; this fixture's database has no stocks to read (its text is pinned in stock-table.test.ts and run.wire.test.ts).
+    const theBook = "## The stock table\nThe stocks couldn't be read this run.";
     const marketWithoutWatching = market.slice(0, market.indexOf("\n\n### Watching"));
     expect(built.message).toBe(`${dateLine(NOW, "LIVE")}\n\n${marketWithoutWatching}\n\n${theBook}\n\n${GOLDEN.message.replace("Thu, Nov 12, the LIVE account.\n\n", "")}`);
   });
@@ -130,7 +136,7 @@ describe("the Portfolio Manager", () => {
       "message:Market numbers",
       "message:Market digest",
       "message:The portfolio",
-      "message:The book",
+      "message:The stock table",
       "message:Its last output",
     ]);
     const cut = (where: "instructions" | "message", text: string) => byParts(built.parts.filter((p) => p.where === where), text)!;
@@ -148,9 +154,9 @@ describe("the Portfolio Manager", () => {
   it("a Market and portfolio read that can't be read prints its one line under the heading, as before", async () => {
     const built = composeAgentRequest(PORTFOLIO_MANAGER, { now: NOW, environment: "LIVE" }, {
       pieces: [{ id: "unreadable", text: "The portfolio snapshot and the digest couldn't be read for this request." }],
-      context: { the_book: "## The book\nb", last_output: "## Your last write-up\nw" },
+      context: { stock_table: "## The stock table\nb", last_output: "## Your last write-up\nw" },
     });
-    expect(built.message).toContain("\n\n## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request.\n\n## The book\n");
+    expect(built.message).toContain("\n\n## Market and portfolio\n\nThe portfolio snapshot and the digest couldn't be read for this request.\n\n## The stock table\n");
   });
 });
 

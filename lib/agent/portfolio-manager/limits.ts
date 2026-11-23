@@ -29,7 +29,7 @@ export function managerPick(ctx: object, input: { tickers?: string[] }, held: Re
   const seen = asked.get(ctx) ?? new Set<string>();
   asked.set(ctx, seen);
   const want = [...new Set((input.tickers ?? []).map((t) => t.trim().toUpperCase()).filter(Boolean))];
-  if (want.length === 0) return { tickers: [], refused: "Name the stocks by ticker. Every holding is in the Portfolio snapshot and every watched stock in the Watching block above." };
+  if (want.length === 0) return { tickers: [], refused: "Name the stocks by ticker. Every stock we hold and watch is in the stock table above." };
   const tickers = want.filter((t) => held.has(t) || seen.has(t) || (seen.size < WATCHES_A_RUN && seen.add(t)));
   const left = want.filter((t) => !tickers.includes(t));
   if (tickers.length === 0) return { tickers, refused: `Not returned: ${left.join(", ")}. You have asked about your ${WATCHES_A_RUN} watched stocks for this run. Decide from what you have.` };

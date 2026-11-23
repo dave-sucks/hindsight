@@ -92,7 +92,9 @@ describe("the morning run", () => {
     const steps = old["instructions:instructions"].replace(
       "1. Read your book. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL) and `get_theses`.",
       "1. Read your book: it is in your first message, as `get_theses` hands it to you. Open with a brief sentence on what you're about to look at. Then call `get_portfolio_context` (live positions + PnL).",
-    );
+    )
+      // Every stock is a line of the stock table (lib/agent/stock-table.ts).
+      .replace("the one-line entries in `quiet_theses` are not today's work", "the `stocks` table lists every stock you cover, a line each, and a line is not today's work");
     expect(now["instructions:own"]).toBe(withNewToolNames(`${steps}\n\n${regime}`));
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);

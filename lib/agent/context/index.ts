@@ -22,6 +22,7 @@ import { stockData } from "./stock-data";
 import { theAnalyst } from "./the-analyst";
 import { theAnalysts } from "./the-analysts";
 import { theBook } from "./the-book";
+import { stockTable } from "./stock-table";
 import { theCases } from "./the-cases";
 import { theStock } from "./the-stock";
 
@@ -42,6 +43,7 @@ export const FACTS: Record<Exclude<ContextId, "market_numbers" | "market_digest"
   stock_data: stockData,
   playbook_record: playbookRecord,
   the_book: theBook,
+  stock_table: stockTable,
   the_cases: theCases,
   the_analysts: theAnalysts,
   earnings_this_week: earningsThisWeek,

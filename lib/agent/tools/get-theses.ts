@@ -31,6 +31,8 @@ import { prisma } from "@/lib/prisma";
 import { readPrice } from "@/lib/market-data/quote-age";
 import { chartFacts } from "@/lib/market-data/indicator-snapshot";
 import { ROW_FACTS, rowForModel, sizeFor, type RowSize } from "@/lib/agent/row-for-model";
+import { stockTableLines, type StockTable } from "@/lib/agent/stock-table";
+import { nextReports, stockTableFromFacts } from "@/lib/agent/stock-table-load";
 import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { guidanceCodes, listsTheStock, situationsFor, situationsTap, type SituationCode } from "@/lib/agent/situations";
@@ -108,13 +110,13 @@ const schema = z.object({
     .enum(["actionable", "book"])
     .optional()
     .describe(
-      "\"actionable\" (the default): a stock in a situation is a row in `theses`, a quiet stock one line in `quiet_theses`. \"book\": every stock as a row. A read by ticker or id is always the full row.",
+      "\"actionable\" (the default): every stock is a line of the `stocks` table, and a stock in a situation is also a row in `theses`. \"book\": every stock as a row. A read by ticker or id is always the full row.",
     ),
 });
 
 export const getTheses = defineTool({
   description:
-    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its Activity, newest first (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. A quiet stock is one line in `quiet_theses`. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
+    "Read this analyst's thesis library: HOLDING + WATCHING + PROMOTED by default. A stock in a situation comes back as a row in `theses` with the fields its situations call for: on every row its situations, its Activity, newest first (`said`), the position and any proposal waiting, the price, every trigger with its id (the plan is the triggers), the belief and when the research was written; with the situation, the fields its decision reads (the chart numbers and Wall Street's ratings, target range and EPS consensus (`street`) on a buy or an add, what would prove us wrong on a sale signal, the assumptions before a report); on the review clock the whole case (the company line, the bull and bear cases, the conviction rationale, the variant view, the setup, the snapshot's first paragraph). The morning run's own list carries `guidance`, what each situation asks, once; every other read names the situation on the row. `stocks` is every stock as one line of a table; its first two lines say what the columns are. A read by ticker or id returns the full row: everything, the whole snapshot, and with include_history the raw activity log. `sold_to_review` lists stocks sold in the last two weeks that no run has answered for. Filter by ticker/id/status/horizon as needed.",
   schema,
   // The Portfolio Manager asks by ticker, a limited number of stocks a run (portfolio-manager/limits.ts).
   schemaFor: (ctx, base) => (isManagerRun(ctx) ? managerReadSchema : base),
@@ -148,7 +150,6 @@ export const getTheses = defineTool({
     // fields its situations call for, each quiet row as one line.
     const rows = rest.theses as Array<Record<string, unknown>>;
     const theses = rows.map((row) => rowForModel(row, { named, size: sizeFor(row, named) }));
-    const quiet = Array.isArray(rest.quiet_theses) ? (rest.quiet_theses as Array<Record<string, unknown>>).map((row) => rowForModel(row, { named, size: "line" })) : rest.quiet_theses;
     const sold = Array.isArray(rest.sold_to_review) ? (rest.sold_to_review as Array<{ situations?: SituationCode[] }>) : [];
     // What each situation asks goes to the run that answers the list, the
     // morning run on its own read; a read by ticker and every other reader
@@ -163,14 +164,16 @@ export const getTheses = defineTool({
             ...sold.flatMap((x) => x.situations ?? []).map((code) => ({ code, held: false })),
           ])
         : {};
-    const { left_out: leftOut, ...restOfRead } = rest;
+    // The model reads every stock in the table; the quiet rows stay with the screen and the saved run.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { left_out: leftOut, quiet_theses: _quiet, note: _note, stocks, ...restOfRead } = rest;
     return {
       ...result,
       data: {
         ...restOfRead,
         ...(Object.keys(guidance).length > 0 ? { guidance } : {}),
         theses,
-        ...(Array.isArray(quiet) ? { quiet_theses: quiet } : {}),
+        ...(stocks ? { stocks: stockTableLines(stocks as StockTable) } : {}),
         ...(!named && input?.include_history
           ? { historyNote: "The raw activity log comes back on a read of named stocks: get_theses(tickers: [\"X\"], include_history: true). Each row's `said` already carries the last 3 reviews, the news and the owner's notes and declines." }
           : {}),
@@ -484,6 +487,10 @@ export const getTheses = defineTool({
     }
     const isFullDetail = (t: (typeof theses)[number]): boolean =>
       detailMode === "book" || priceFetchFailed || listedIds.has(t.id);
+
+    // Every stock as one line of the table, on a read of the whole list (lib/agent/stock-table.ts).
+    const stocks: StockTable | null =
+      detailMode === "actionable" ? stockTableFromFacts(theses, facts, { nameAnalyst: !ctx.analystId, reports: await nextReports(resolverNow) }) : null;
 
     const fullTheses = theses.filter((t) => isFullDetail(t));
     const quietTheses = theses.filter((t) => !isFullDetail(t));
@@ -828,11 +835,7 @@ export const getTheses = defineTool({
         // empty array under "book"). Drill down on any of them with
         // get_theses(tickers: ["X"]).
         quiet_theses: quietRows,
-        ...(quietRows.length > 0
-          ? {
-              note: `${quietRows.length} quiet stock${quietRows.length === 1 ? "" : "s"}, one line each, not today's work; the full row by ticker: get_theses(tickers: ["<TICKER>"]).`,
-            }
-          : {}),
+        ...(stocks ? { stocks } : {}),
         // Stocks sold in the last two weeks that no run has answered for
         // yet (DAV-240). One look each, then they clear.
         ...(soldToReview.length > 0 ? { sold_to_review: soldToReview } : {}),
