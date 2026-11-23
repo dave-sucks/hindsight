@@ -193,7 +193,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 - Buy if within 2% of the 50-day average. The average the stock's pullbacks held (or the 20-day), only while it is rising.
 - Review every 7 days. Re-checks that the average is still rising.
-- Stop watching if below the 50-day average and above 1.5× normal volume. A close below the 50-day on volume ends the pullback. It reads during the day.
+- Stop watching if below the 50-day average · only on the close and above 1.5× normal volume. A close below the 50-day on volume ends the pullback.
 
 **Triggers with the buy:**
 
@@ -203,7 +203,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 **Triggers at the fill:**
 
 - Review every 7 days. The watch's clock, kept on the holding.
-- Sell if below the 50-day average and above 1.5× normal volume. The pullback is over.
+- Sell if below the 50-day average · only on the close and above 1.5× normal volume. A close below the 50-day on volume: the pullback is over.
 - Review 14 days after the buy. 10 sessions to reclaim the prior high.
 
 **When it's failing:**

@@ -193,6 +193,15 @@ describe("a playbook's buy reads during the day", () => {
     expect(buys.filter((t) => closeOnly(t.predicate))).toEqual([]);
     expect(buys.filter((t) => /\ba close\b/i.test(t.rationale))).toEqual([]);
   });
+  it("a sale or a Stop watching with a volume test reads on the close", () => {
+    const reads = (p: unknown, watch: string): boolean => {
+      const c = p as { watch?: string; conditions?: unknown[] };
+      return c.watch === watch || (c.conditions ?? []).some((x) => reads(x, watch));
+    };
+    const ends = Object.values(PLAYBOOK_TEMPLATES).flat().filter((t) => (t.action === "EXIT" || t.action === "STOP_WATCHING") && reads(t.predicate, "volume"));
+    expect(ends.length).toBeGreaterThan(0);
+    expect(ends.filter((t) => !closeOnly(t.predicate))).toEqual([]);
+  });
   it("the breakout keeps its chase limit, and the watch's Stop watching still waits for the close", () => {
     const list = PLAYBOOK_TEMPLATES.BASE_BREAKOUT;
     expect(JSON.stringify(list.find((t) => t.action === "ENTER")!.predicate)).toContain("{pivotChase}");

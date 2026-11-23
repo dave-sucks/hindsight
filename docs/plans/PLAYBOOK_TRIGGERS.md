@@ -86,12 +86,12 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 |---|---|
 | Buy if within 2% of the 50-day average (or the 20-day) | The average the stock's pullbacks held, only while it is rising |
 | Review every 7 days | Re-checks that the average is still rising |
-| Stop watching if below the 50-day average and above 1.5× normal volume | "A close below the 50-day on volume ends the setup." It reads during the day: "only on the close" exists only for a typed price |
+| Stop watching if below the 50-day average on the close and above 1.5× normal volume | A close below the 50-day on volume ends the setup |
 
 | On a holding | How the level is picked | From |
 |---|---|---|
 | Sell if below $S | S: the pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy | Proposal |
-| Sell if below the 50-day average and above 1.5× normal volume | The setup is over | Template |
+| Sell if below the 50-day average on the close and above 1.5× normal volume | A close below the 50-day on volume: the setup is over | Template |
 | Trim 50% if above $H | H: the prior high the pullback came from (decided 1) | Proposal |
 | Review 10 sessions after the buy | Ten sessions to reclaim the prior high | Template |
 | Review every 7 days | | Kept |

@@ -33,7 +33,8 @@ export interface Template {
 // A buy reads during the day: only a Stop watching or a review waits for the close.
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
 const near50: TemplatePredicate = { watch: "move", is: "near", value: 2, variable: "sma50" };
-const under50OnVolume: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma50" }, { watch: "volume", value: 1.5 }] };
+// Volume so far is paced during the day, so a sale or a Stop watching that reads it waits for the close.
+const under50OnVolume: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma50", settings: { close: true } }, { watch: "volume", value: 1.5 }] };
 const above = (value: `{${string}}`): TemplatePredicate => ({ watch: "price", is: "above", value });
 const onClose = (is: "above" | "below", value: `{${string}}`): TemplatePredicate => ({ watch: "price", is, value, settings: { close: true } });
 const every = (days: number): TemplatePredicate => ({ watch: "repeat", value: days });
@@ -74,9 +75,9 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   MA_PULLBACK: [
     { action: "ENTER", predicate: near50, rationale: "The average the stock's pullbacks held (or the 20-day), only while it is rising.", writtenOn: "WATCH" },
     ...clock(7, "Re-checks that the average is still rising."),
-    { action: "STOP_WATCHING", predicate: under50OnVolume, rationale: "A close below the 50-day on volume ends the pullback. It reads during the day.", writtenOn: "WATCH" },
+    { action: "STOP_WATCHING", predicate: under50OnVolume, rationale: "A close below the 50-day on volume ends the pullback.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The pullback's swing low, or 1 ATR under the average bought if that is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
-    { action: "EXIT", predicate: under50OnVolume, rationale: "The pullback is over.", writtenOn: "FILL" },
+    { action: "EXIT", predicate: under50OnVolume, rationale: "A close below the 50-day on volume: the pullback is over.", writtenOn: "FILL" },
     trimAtHigh("The prior high the pullback came from."),
     { action: "REVIEW", predicate: afterBuy(14), rationale: "10 sessions to reclaim the prior high.", writtenOn: "FILL" },
   ],
