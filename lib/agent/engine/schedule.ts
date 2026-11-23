@@ -66,9 +66,9 @@ export function cronInWords(cron: string): string {
   return `${days} at ${time}`;
 }
 
-/** When an agent runs: a scheduled agent's line in words, else its record's own (an agent an event starts). */
+/** When an agent runs: a scheduled agent's line in words, then its record's own (the event that starts it, or also starts it). */
 export function whenItRuns(record: Pick<AgentRecord, "id" | "runsWhen">, schedule: readonly ScheduledAgent[] = SCHEDULE): string {
   const line = schedule.find((s) => s.agent === record.id);
   if (!line) return record.runsWhen ?? "";
-  return `${cronInWords(line.cron)}, one run per ${line.per === "book" ? "traded book" : "analyst"}.${line.on ? "" : " Off until you turn it on."}`;
+  return `${cronInWords(line.cron)}, one run per ${line.per === "book" ? "traded book" : "analyst"}.${line.on ? "" : " Off until you turn it on."}${record.runsWhen ? ` ${record.runsWhen}` : ""}`;
 }

@@ -121,6 +121,14 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
     },
   },
 
+  market: {
+    holds: (c, ctx) => {
+      const move = ctx.market?.changePct;
+      if (move == null || c.value == null) return false;
+      return c.is === "above" ? move >= c.value : move <= -c.value;
+    },
+  },
+
   volume: {
     holds: (c, ctx) => {
       const ratio = ctx.indicators ? volumeRatio(ctx.indicators, ctx.today?.volume) : null;

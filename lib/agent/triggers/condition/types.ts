@@ -18,6 +18,7 @@ export type TriggerType = "price" | "indicator" | "earnings" | "filing" | "news"
 export type Watch =
   | "price"
   | "move"
+  | "market"
   | "volume"
   | "rsi"
   | "strength"

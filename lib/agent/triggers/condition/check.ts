@@ -16,6 +16,7 @@ import { variableDef, type VariableDef } from "./variables";
 import { capitalise } from "./words";
 import { isLevel, isWindowIn } from "./rules";
 import { conditionRefusal } from "./range";
+import { MARKET_IS_THE_ACCOUNTS } from "./actions";
 
 export type { CheckContext } from "./measure";
 
@@ -88,6 +89,7 @@ function levelProblem(w: When, ctx: CheckContext): string | null {
  * can't hold a typed price. (The form's own checks above are the dialog's.)
  */
 export function addProblem(w: When, level: CheckContext["level"]): string | null {
+  if (conditionsOf(w).some((c) => measureOf(c).account)) return MARKET_IS_THE_ACCOUNTS;
   if (isGroup(w)) {
     if (w.conditions.length !== 2) return "A trigger built by hand takes two conditions.";
     if (w.conditions.some(isGroup)) return "A condition can't itself be two conditions.";

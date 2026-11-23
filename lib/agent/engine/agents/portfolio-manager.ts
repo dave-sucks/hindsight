@@ -1,10 +1,12 @@
 /**
  * The Portfolio Manager's record (docs/plans/AGENT_ENGINE.md): the one agent
  * that looks at the whole account at once. Twice a week, one run per traded
- * book (run by lib/agent/portfolio-manager/run.ts). Its instructions: portfolio-manager.md,
- * which imports the rules. Its context: the market and the portfolio,
- * the stock table, and its own last write-up. The schedule writes it no message: the
- * date line is its start.
+ * book (run by lib/agent/portfolio-manager/run.ts), and once more when the
+ * account's market trigger fires (lib/agent/triggers/market.ts). Its
+ * instructions: portfolio-manager.md, which imports the rules. Its context:
+ * the market and the portfolio, the stock table, and its own last write-up.
+ * The schedule writes it no message: the date line is its start. A market
+ * trigger writes it one line: the S&P's move and the trigger it fired.
  */
 import { MODES } from "@/lib/agent/modes";
 import type { RunnableRecord } from "../types";
@@ -13,7 +15,8 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
   id: "portfolio_manager",
   name: "Portfolio Manager",
   does: "Looks across the whole account and may propose up to three trades, each waiting for you.",
-  messageFrom: "The schedule, which writes it no message: the date line is its start.",
+  runsWhen: "Also when the account's market trigger fires (Settings → Triggers).",
+  messageFrom: "The schedule, which writes it no message: the date line is its start. The account's market trigger, when it fires: one line with the S&P's move today and the trigger.",
   subject: "account",
   // The morning runs' model.
   model: MODES["research-run"].model,

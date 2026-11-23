@@ -7,7 +7,7 @@
  * Pure and client-safe.
  */
 
-import { MEASURES } from "./catalog";
+import { MEASURES, STOCK_MEASURES } from "./catalog";
 import { conditionRefusal } from "./range";
 import type { Condition, When } from "./types";
 import { isGroup } from "./types";
@@ -54,7 +54,7 @@ export function refusalOf(w: unknown): string | null {
  * included: the measures it can be.
  */
 export function notACondition(w: unknown): string {
-  const measures = Object.keys(MEASURES).join(", ");
+  const measures = STOCK_MEASURES.map((m) => m.id).join(", ");
   const kind = w && typeof w === "object" && typeof (w as { kind?: unknown }).kind === "string" ? (w as { kind: string }).kind : null;
   const lead = kind ? `"kind: ${kind}" is an old trigger kind, retired. ` : "Not a condition this app can check. ";
   return `${lead}A condition is { watch, is, value, variable, settings } with watch one of: ${measures}; or { match: "all", conditions } for two or more that must all hold. "Either one" is two triggers.`;

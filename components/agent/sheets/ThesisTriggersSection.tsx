@@ -40,7 +40,8 @@ type Level = "THESIS" | "ANALYST" | "ACCOUNT";
 
 // One row per action — Buy if / Add if / Review if / Trim if / Sell if / Stop watching if.
 // Rows with no triggers don't render.
-const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "TRIM", "EXIT", "STOP_WATCHING"];
+// The last is the account's own, on the market (Settings → Triggers): no stock carries it.
+const TRIGGER_ACTION_ORDER: ReadonlyArray<string> = ["ENTER", "ADD", "REVIEW", "TRIM", "EXIT", "STOP_WATCHING", "RUN_PORTFOLIO_MANAGER"];
 
 /** The pill rows. A pill opens its trigger in a popover. */
 export function TriggerGroups({

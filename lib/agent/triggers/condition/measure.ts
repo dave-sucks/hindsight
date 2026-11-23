@@ -89,6 +89,12 @@ export interface MeasureDef {
   value: ValueDef;
   variables?: VariablesDef;
   settings?: readonly SettingDef[];
+  /**
+   * About the market, not one stock: only the account's own triggers carry it
+   * (Account.marketTriggers, lib/agent/triggers/market.ts). No stock's dialog
+   * and no agent's tool offers it, and a save of it on a stock is refused.
+   */
+  account?: boolean;
   /** The actions it can take. All five unless listed. */
   actions?: readonly TriggerAction[];
   /** A clock, not a condition: "Review every 30 days." It stands alone, unless it is a window. */

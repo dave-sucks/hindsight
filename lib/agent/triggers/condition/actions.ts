@@ -24,7 +24,11 @@ export const STOP_WATCHING_IS_THE_STOCKS = "Stop watching is a stock's own line:
  * Why this action can't be on this trigger, or null. A sale needs a position to sell; ending a watch needs a
  * watch, on the stock itself. `standing`: an analyst or account rule.
  */
+export const PORTFOLIO_MANAGER_IS_THE_ACCOUNTS = "Running the Portfolio Manager is the account's own trigger, on the market (Settings → Triggers). A stock's trigger and a rule every stock inherits can't take it.";
+export const MARKET_IS_THE_ACCOUNTS = "The S&P's move is the account's own trigger: it runs the Portfolio Manager (Settings → Triggers). A stock's trigger and a rule every stock inherits can't watch it.";
+
 export function actionProblem(action: string, ctx: { held: boolean; standing?: boolean }): string | null {
+  if (action === "RUN_PORTFOLIO_MANAGER") return PORTFOLIO_MANAGER_IS_THE_ACCOUNTS;
   if (action === "STOP_WATCHING") return ctx.standing ? STOP_WATCHING_IS_THE_STOCKS : ctx.held ? STOP_WATCHING_ON_A_HOLDING : null;
   return action === "EXIT" && !ctx.held && !ctx.standing ? SELL_ON_A_WATCH : null;
 }

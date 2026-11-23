@@ -59,9 +59,9 @@ const PM: ScheduledAgent = { agent: "portfolio_manager", cron: "0 10 * * 2,4", p
 const SCOUT: ScheduledAgent = { agent: "morning_run", cron: "0 10 * * 2,4", per: "analyst", marketDaysOnly: false, on: true };
 const OFF: ScheduledAgent = { agent: "morning_run", cron: "30 9 * * 0", per: "analyst", marketDaysOnly: false, on: false };
 
-it("is triggered at each time an agent that is on runs, once, in New York", async () => {
+it("is triggered at each time an agent that is on runs, once, in New York, and by an account's market trigger", async () => {
   const { triggers } = await load([PM, SCOUT, OFF]);
-  expect(triggers).toEqual([{ cron: "TZ=America/New_York 0 10 * * 2,4" }]);
+  expect(triggers).toEqual([{ cron: "TZ=America/New_York 0 10 * * 2,4" }, { event: "app/market.trigger.fired" }]);
 });
 
 it("runs each agent due once per traded book with an owner, or per enabled analyst in its own book", async () => {
@@ -117,11 +117,11 @@ describe("the schedule", () => {
     for (const line of SCHEDULE) expect([line.agent, Boolean(scheduled[line.agent])]).toEqual([line.agent, true]);
   });
 
-  it("says when each agent runs, from its line: the record keeps no second copy", () => {
+  it("says when each agent runs, from its line: the record keeps no second copy of the time, only the event that also starts it", () => {
     const { whenItRuns, cronInWords } = jest.requireActual("@/lib/agent/engine/schedule") as typeof import("@/lib/agent/engine/schedule");
     const { PORTFOLIO_MANAGER } = jest.requireActual("@/lib/agent/engine/agents/portfolio-manager") as typeof import("@/lib/agent/engine/agents/portfolio-manager");
-    expect(PORTFOLIO_MANAGER.runsWhen).toBeUndefined();
-    expect(whenItRuns(PORTFOLIO_MANAGER)).toBe("Tuesday and Thursday at 10:30 AM ET, one run per traded book.");
+    expect(PORTFOLIO_MANAGER.runsWhen).toBe("Also when the account's market trigger fires (Settings → Triggers).");
+    expect(whenItRuns(PORTFOLIO_MANAGER)).toBe("Tuesday and Thursday at 10:30 AM ET, one run per traded book. Also when the account's market trigger fires (Settings → Triggers).");
     expect(whenItRuns({ id: "morning_run" }, [OFF])).toBe("Sunday at 9:30 AM ET, one run per analyst. Off until you turn it on.");
     expect(whenItRuns({ id: "chat", runsWhen: "When you write to it." })).toBe("When you write to it.");
     expect(cronInWords("30 7 * * 1-5")).toBe("Weekdays at 7:30 AM ET");

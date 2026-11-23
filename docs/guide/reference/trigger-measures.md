@@ -349,3 +349,21 @@ Clocks, not conditions: look again, or leave on time. A clock counts calendar da
   ```json
   {"action":"REVIEW","predicate":{"watch":"from_date","is":"before","value":10,"variable":"event"}}
   ```
+
+## The account's own
+
+A trigger on the market belongs to the account (`Account.marketTriggers`, `lib/agent/triggers/market.ts`), not to a stock: no stock inherits it, and no Add trigger menu or agent's tool offers it. Its one action is `RUN_PORTFOLIO_MANAGER`: when it fires it starts one Portfolio Manager run for the account. Checked every 5 minutes in market hours, never on a quote older than 15 minutes.
+
+### S&P move
+
+`watch: "market"` · is: `below` / `above` · value: more than 0% and up to 20% · actions: run the Portfolio Manager · reads: the live quote
+
+`is`: below fires once the S&P 500 is down that % or more from yesterday's close; above fires once the S&P 500 is up that % or more from yesterday's close.
+
+**Example:**
+
+- "Run the Portfolio Manager if the S&P is down 2% on the day".
+
+  ```json
+  {"action":"RUN_PORTFOLIO_MANAGER","predicate":{"watch":"market","is":"below","value":2}}
+  ```
