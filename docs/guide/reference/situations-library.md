@@ -7,7 +7,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill fil
 ## How a situation works
 
 1. A trigger fires or a clock comes due. Code works out the stock's situations from that (`situationsFor`); nothing is stored.
-2. The stock shows its situations by name on its line of the stock table and on its row, the most urgent first. Every reader gets that.
+2. The stock shows each situation in one wording, its name and then what raised it ("sale signal: Sell if below $804"), the most urgent first: on its line of the stock table, on its page and on its row. Every reader gets that. An agent's row adds the situation's code in front.
 3. The situation does one thing: it picks the text below. The text goes to the run that answers. The morning run's list carries one `guidance` entry per situation on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.
 4. A text can have a part for a stock we hold and a part for a stock we watch. A run is sent the part that fits its stock, whole and as written. No code writes or changes a word of it.
 
@@ -21,7 +21,7 @@ The same row, whatever the situation and whoever reads it. A stock an agent open
 | `company` | What the company does, in two sentences | always |
 | `id` | The thesis id a note or a trade names | always |
 | `analyst` | The analyst that covers it | the read covers more than one analyst |
-| `situations` | Each situation it is in, by name | it is in one |
+| `situations` | Each situation it is in: its code, then its name and what raised it | it is in one |
 | `said` | Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days | always |
 | `position` | The shares, what we paid, the gain, when it was bought and the high since | it is held |
 | `proposal_waiting` | A trade on it that waits for the owner | one waits |
@@ -56,7 +56,7 @@ The same row, whatever the situation and whoever reads it. A stock an agent open
 
 **True when:** A stock just moved from paper to live money and needs a decision this run.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named PROMOTED_AWAITING -->
 
@@ -87,7 +87,7 @@ Mistakes:
 
 **True when:** A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named PROTECTIVE_SALE -->
 
@@ -112,7 +112,7 @@ Done: one note that says why the stock fell and whether that changes why we own 
 
 **True when:** A buy trigger fired on a watched stock.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named BUY_ARRIVES -->
 
@@ -138,7 +138,7 @@ Done: one note that says what is going on with the company and why now is the ti
 
 **True when:** An add trigger fired on a holding.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named ADD_OR_WINNER -->
 
@@ -163,7 +163,7 @@ Done: one note that says why the stock moved and whether that confirms why we ow
 
 **True when:** A trigger on the company's earnings report fired: the report is coming, or it just landed.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named REPORT -->
 
@@ -195,7 +195,7 @@ A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Befo
 
 **True when:** A trigger on the company's SEC filings fired.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named FILING -->
 
@@ -221,7 +221,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 **True when:** Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named NEWS -->
 
@@ -247,7 +247,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 **True when:** A gain with too little floor under it, or a floor that would lose too much of the account.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named PROTECTION -->
 
@@ -271,7 +271,7 @@ Done: one note that says how the stock got here and what is driving it now, with
 
 **True when:** The review clock came round, or the price reached a level the analyst asked to look at again.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named REVIEW_DUE -->
 
@@ -298,7 +298,7 @@ Change how often you look only with a reason: slower for a quiet stock, sooner b
 
 **True when:** A stock sold in the last two weeks is owed one look back.
 
-**How it is named, in each place it shows:**
+**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
 
 <!-- asset: situation-named SOLD_ONE_REVIEW -->
 

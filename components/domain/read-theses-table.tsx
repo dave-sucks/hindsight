@@ -45,7 +45,9 @@ function ThesisReadRow({
   const summary = thesis.reasoning_summary?.trim() || "—";
   const needsAction = thesis.needs_action ?? null;
   const flag = needsAction ? needsActionFlag(needsAction) : null;
-  const needsActionLabel = flag ? `${flag.name}${flag.detail ? `: ${flag.detail}` : ""}` : null;
+  // The situations in their one wording; a run saved before they rode on the card falls back to the flag.
+  const said = thesis.situations ?? [];
+  const needsActionLabel = said.length > 0 ? said.join(" · ") : flag ? `${flag.name}${flag.detail ? `: ${flag.detail}` : ""}` : null;
 
   return (
     <HoverCard>

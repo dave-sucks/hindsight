@@ -7,7 +7,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AlpacaCredentials } from "@/lib/alpaca";
 import { loadStockFacts, type FactsRow, type StockFacts } from "@/lib/agent/stock-facts";
-import { SITUATIONS, situationsFor } from "@/lib/agent/situations";
+import { situationLabels } from "@/lib/agent/situations";
 import { movePctOverSessions, volumeRatio } from "@/lib/market-data/indicator-snapshot";
 import { EARNINGS_LOOKAHEAD_DAYS, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import { sortStockRows, type StockTable, type StockTableRow } from "@/lib/agent/stock-table";
@@ -51,7 +51,7 @@ export function stockTableFromFacts(
       ticker: t.ticker.toUpperCase(),
       status: STATUS[t.status] ?? t.status.toLowerCase(),
       analyst: opts.nameAnalyst ? (t.researchRun?.agentConfig?.name ?? null) : null,
-      situations: sources ? situationsFor(sources).map((code) => SITUATIONS[code].name) : [],
+      situations: sources ? situationLabels(sources).map((x) => x.text) : [],
       price,
       dayPct: load.dayChange[t.ticker] ?? null,
       volume: snap ? volumeRatio(snap, load.dayVolume[t.ticker]) : null,

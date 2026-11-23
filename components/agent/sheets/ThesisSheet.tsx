@@ -117,6 +117,8 @@ export type ThesisCardData = {
    * null/undefined means no work needed.
    */
   needs_action?: NeedsAction | null;
+  /** Each situation the stock is in, as its one wording (lib/agent/situations.ts `situationLabels`). */
+  situations?: string[];
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -168,19 +170,20 @@ function WorkFlagLine({
   status: string;
   needsAction: NeedsAction | null;
   /** Every situation the stock is in, lead first; the ones the lead didn't put it in follow the flag. */
-  situations: Array<{ name: string; lead: boolean }>;
+  situations: Array<{ name: string; text?: string; lead: boolean }>;
   quoteLoading: boolean;
   /** The live layer came back empty — we do not KNOW whether anything is flagged. */
   quoteFailed: boolean;
 }) {
 
   // ONE flag line.
+  // Each situation in the one wording the stock table and an agent's row print (situationLabels); the flag alone when a read carries no situations.
   const flag = needsAction ? needsActionFlag(needsAction) : null;
-  const also = situations.filter((x) => !x.lead).map((x) => x.name);
+  const said = situations.map((x) => x.text ?? x.name);
   const view = latestNoteView({
     status,
     hasNote: false,
-    hasReasons: flag != null || also.length > 0,
+    hasReasons: flag != null || said.length > 0,
     quoteLoading,
     quoteFailed,
   });
@@ -198,9 +201,7 @@ function WorkFlagLine({
         <p className="flex items-center gap-1.5 text-sm text-foreground">
           <FlagNotificationIcon className="size-4 shrink-0" />
           <span>
-            Flagged for review — {flag ? flag.name : also.join(", ")}
-            {flag?.detail ? <>: {flag.detail}</> : null}
-            {flag && also.length > 0 ? <span className="text-muted-foreground"> · also: {also.join(", ")}</span> : null}
+            Flagged for review — {said.length > 0 ? said.join(" · ") : flag ? `${flag.name}${flag.detail ? `: ${flag.detail}` : ""}` : null}
           </span>
         </p>
       ) : view.flags === "unchecked" ? (

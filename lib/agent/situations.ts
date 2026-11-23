@@ -7,6 +7,8 @@
 import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { isGroup, measureOf, shapeOf, type MeasureDef, type When } from "@/lib/agent/triggers/condition";
+import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import { needsActionFlag } from "@/lib/agent/needs-action-line";
 
 /**
  * Why a stock is in front of its analyst now. A trigger written in advance
@@ -136,10 +138,49 @@ export function guidanceCodes(status: string, codes: readonly SituationCode[], r
   return runMode === "INTRADAY_TACTICAL" ? codes.filter((c) => !NOT_FOR_THE_TRIGGER_RUN.has(c)) : [...codes];
 }
 
-/** The situations for a person, lead first: each code, its name, and whether the lead flag is what put the stock in it. */
-export function situationLabels(s: SituationSources): Array<{ code: SituationCode; name: string; lead: boolean }> {
+/** A situation on one stock, in the one wording every place uses: its name, then what raised it. */
+export interface SituationLabel {
+  code: SituationCode;
+  name: string;
+  /** What raised it on this stock: the trigger's own sentence, or the one fact a code check has. Null when there is nothing to add. */
+  detail: string | null;
+  /** The name and the detail as one line: "sale signal: Sell if below $804". */
+  text: string;
+  /** Whether today's lead flag is what put the stock in it. */
+  lead: boolean;
+}
+
+/** What raised a flag, in a few words: a trigger's own sentence as saved, or the one fact a code check carries. */
+function flagDetail(s: SituationSources, f: NeedsAction): Array<{ codes: SituationCode[]; detail: string | null }> {
+  const sentence = (id: string, fallback: string) => {
+    const t = s.triggers.find((x) => x.id === id);
+    return t ? sentenceOf(t) : fallback;
+  };
+  switch (f.kind) {
+    case "TRIGGER_FIRED":
+      return [f, ...(f.alsoFired ?? [])].map((x) => ({ codes: fireCodes(s, x.triggerId, x.action), detail: sentence(x.triggerId, x.summary) }));
+    case "TRIGGER_MATCHING_NOW":
+      return [{ codes: fireCodes(s, f.triggerId, f.action), detail: sentence(f.triggerId, f.predicateSummary) }];
+    case "SALE_DECLINED": {
+      const flag = needsActionFlag(f);
+      return [{ codes: flagCodes(s, f), detail: `${flag.name.toLowerCase()}${flag.detail ? `, ${flag.detail}` : ""}` }];
+    }
+    default:
+      return [{ codes: flagCodes(s, f), detail: needsActionFlag(f).detail }];
+  }
+}
+
+/** Every situation the stock is in, lead first, each in the one wording the stock table, the stock's page and an agent's row all print. */
+export function situationLabels(s: SituationSources): SituationLabel[] {
   const lead = new Set(s.needs[0] ? flagCodes(s, s.needs[0]) : []);
-  return situationsFor(s).map((code) => ({ code, name: SITUATIONS[code].name, lead: lead.has(code) }));
+  const details = new Map<SituationCode, string>();
+  for (const f of s.needs) for (const d of flagDetail(s, f)) for (const code of d.codes) if (d.detail && !details.has(code)) details.set(code, d.detail);
+  if (s.buyBlockedByFull && !details.has("BUY_ARRIVES")) details.set("BUY_ARRIVES", "its analyst holds its limit of stocks");
+  return situationsFor(s).map((code) => {
+    const name = SITUATIONS[code].name;
+    const detail = details.get(code) ?? null;
+    return { code, name, detail, text: detail ? `${name}: ${detail}` : name, lead: lead.has(code) };
+  });
 }
 
 const LABELS_THAT_LIST = new Set(["ENTER_NOW", "PROMOTED_DECIDE_TODAY"]);
