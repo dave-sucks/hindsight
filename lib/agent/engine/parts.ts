@@ -63,7 +63,7 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
   },
   market_digest: {
     title: "Market digest",
-    about: "The 7:30 AM Market Reviewer's write-up of the market's day, if it is from the last 4 days.",
+    about: "The 9:00 AM Market Reviewer's write-up of the market's day, if it is from the last 4 days.",
     source: "lib/agent/market-reviewer (the MarketDigest row)",
     group: "market_and_portfolio",
   },

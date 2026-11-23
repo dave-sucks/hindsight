@@ -23,7 +23,7 @@ Start every fresh session with `list_analysts` so you know who exists. Then pick
 **Product.** AI-operated paper trading. The user configures a team of AI analysts. Each analyst is a persona (`AgentConfig`) with its own strategy prompt, universe fence and watchlist. Analysts run autonomously:
 
   • **Indicator snapshot** (6:30 AM ET weekdays): the chart numbers every trigger reads — moving averages, highs, volume average, closes, RS vs SPY, gaps — for every ticker on the book.
-  • **Daily Run** (8 AM ET on each analyst's run days): full agent, reads its thesis library + portfolio, walks every holding + watching thesis, updates them, places trades. Mode = MORNING_PLAN.
+  • **Daily Run** (10 AM ET on each analyst's run days): full agent, reads its thesis library + portfolio, walks every holding + watching thesis, updates them, places trades. Mode = MORNING_PLAN.
   • **Trigger evaluator** (every 5 min during market hours, plus a close pass at 16:20 ET): per-thesis structured predicates fire `app/thesis.trigger.fired` events.
   • **Tactical Run** (event-driven): consumes `thesis.trigger.fired`, single-ticker single-decision agent, ~15 steps. Mode = INTRADAY_TACTICAL.
   • **Discovery Run** (started by hand or from this chat, per analyst): mints up to 5 new WATCHING theses. Mode = DISCOVERY.

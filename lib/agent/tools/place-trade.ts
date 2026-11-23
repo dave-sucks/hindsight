@@ -953,8 +953,8 @@ export const placeTrade = defineTool({
       // Trade-opened alert — fire-and-forget. Only emails when the order
       // actually filled (avgCost is meaningful then). Two gates:
       //   1. AgentConfig.emailAlerts — owner opt-out per analyst.
-      //   2. isInsideMorningBatch — suppress for trades inside the 8 AM
-      //      morning cron's MORNING_PLAN runs; the 10 AM daily digest
+      //   2. isInsideMorningBatch — suppress for trades inside the 10 AM
+      //      morning cron's MORNING_PLAN runs; the 11 AM daily digest
       //      will consolidate them. Off-cycle trades (tactical, discovery,
       //      manual user clicks outside the morning window) still fire
       //      immediate emails per call.

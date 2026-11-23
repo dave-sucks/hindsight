@@ -1,5 +1,5 @@
 /**
- * A live run's page starts the agent only when the page drives it. The 8 AM
+ * A live run's page starts the agent only when the page drives it. The 10 AM
  * cron runs its morning run on the server and saves no thread until it ends,
  * so its page used to send "Run" and start a second agent on the same run.
  */

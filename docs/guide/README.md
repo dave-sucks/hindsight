@@ -46,7 +46,7 @@ The agents that work on a stock have the same five sections, in the same order: 
 - **[Trigger runs](agents/trigger-runs.md):** a trigger fires and the analyst looks at that one stock within minutes.
 - **[After the buy](agents/after-the-buy.md):** minutes after a buy or an add fills, puts the playbook's holding triggers on the stock, fitted to the thesis.
 - **[Chat](agents/chat.md):** talk to one analyst, or to the whole account.
-- **[Market Reviewer](agents/market-reviewer.md):** every weekday at 7:30, researches the market itself and writes the market digest and notes on the stocks it touches.
+- **[Market Reviewer](agents/market-reviewer.md):** every weekday at 9:00, researches the market itself and writes the market digest and notes on the stocks it touches.
 - **[The Portfolio Digest](agents/portfolio-digest.md):** at 8 PM, your account's day, written from one snapshot of your portfolio.
 - **[Portfolio Manager](agents/portfolio-manager.md):** twice a week, reads the whole account and decides where the money belongs.
 - **[The analyst builder](agents/analyst-builder.md):** interviews you and proposes a whole analyst, checked against today's market. It sets up the analysts the other agents work for.

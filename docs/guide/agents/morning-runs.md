@@ -1,12 +1,12 @@
 # Morning runs
 
-**Your analysts, at 8 AM.** Every run day, each analyst reads its whole book and answers the stocks that need it.
+**Your analysts, at 10 AM.** Every run day, each analyst reads its whole book and answers the stocks that need it.
 
 It acts on what changed and leaves the quiet stocks alone. Every trade it wants goes through your approval gate.
 
 ```facts
 Model: gpt-5.4
-Starts: Run days · 8:00 AM ET
+Starts: Run days · 10:00 AM ET
 Steps: Up to 65
 Tools: 19
 Saves: a note on each stock, trigger edits, conviction, catalyst date, watch status, proposals, a run summary
@@ -36,7 +36,7 @@ Its buys, sales, adds and trims are [proposals](../concepts/approvals.md). On th
 
 ## When it runs
 
-At 8 AM Eastern on the analyst's run days, Monday to Friday by default. Market holidays are skipped. The Run button on an analyst's page starts one on any day, and you can watch it stream in.
+At 10 AM Eastern on the analyst's run days, Monday to Friday by default: half an hour after the open, so a run reads live prices and the market's first reaction to the morning's news. Market holidays are skipped. The Run button on an analyst's page starts one on any day, and you can watch it stream in.
 
 ## What it reads
 

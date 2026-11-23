@@ -471,7 +471,7 @@ function SettingsTab({
             <>
               <RowLabel
                 label="Daily run days"
-                tooltip="ISO weekdays the 8 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
+                tooltip="ISO weekdays the 10 AM ET morning run executes for this analyst. Fewer days = lower cost. Intraday triggers are unaffected."
               />
               {/* Wrapped for the same base-ui hidden-input reason as Direction. */}
               <div className="justify-self-end">

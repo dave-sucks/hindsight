@@ -87,14 +87,14 @@ export const morningResearch = inngest.createFunction(
     retries: 1,
   },
   [
-    { cron: "TZ=America/New_York 0 8 * * 1-5" }, // 8:00 AM ET Mon–Fri (auto-adjusts for EDT/EST)
+    { cron: "TZ=America/New_York 0 10 * * 1-5" }, // 10:00 AM ET Mon–Fri, half an hour after the open, so a run reads live prices (auto-adjusts for EDT/EST)
     { event: "app/research.run.manual" },
   ],
   async ({ event, step }) => {
     // Optional: if triggered manually for a specific analyst, only run that one
     const targetConfigId = (event as { data?: { agentConfigId?: string } })
       ?.data?.agentConfigId ?? null;
-    // A manual start names its account and runs only that account's analysts; the 8 AM schedule names none.
+    // A manual start names its account and runs only that account's analysts; the 10 AM schedule names none.
     const startedFor = (event as { data?: { accountId?: string } })?.data?.accountId ?? null;
 
     // ── Step 1: Load enabled AgentConfigs (all, or filtered to one) ──────────
@@ -192,7 +192,7 @@ export const morningResearch = inngest.createFunction(
         // the last 12 hours and is RUNNING or COMPLETE, skip with a log.
         // FAILED runs are not counted — a failure should be retryable within
         // the same day. 12-hour lookback is timezone-agnostic and covers
-        // both the 8 AM ET cron + any pre-market manual events; the next
+        // both the 10 AM ET cron + any earlier manual events; the next
         // legitimate cron fires ~24h later so there's no collision.
         const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
         const lookbackStart = new Date(Date.now() - TWELVE_HOURS_MS);

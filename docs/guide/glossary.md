@@ -55,7 +55,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 ## The agents
 
-- **Morning run:** each analyst's review of its whole book, every run day at 8 AM. See [Morning runs](agents/morning-runs.md).
+- **Morning run:** each analyst's review of its whole book, every run day at 10 AM. See [Morning runs](agents/morning-runs.md).
 - **Trigger run:** an analyst's short look at one stock, started by a trigger that fired. See [Trigger runs](agents/trigger-runs.md).
 - **Chat:** the agent you talk to, on one analyst or the whole account. See [Chat](agents/chat.md).
 - **Discovery:** finding new stocks for an analyst. It's done in chat, which carries the tools and rules for it; a scheduled Discovery agent per analyst exists and is off. See [Discovery](agents/discovery.md).
@@ -63,7 +63,7 @@ When the code, a prompt or a doc uses one of these words, it means this.
 - **After the buy:** the run on a stock right after a buy or an add fills. See [After the buy](agents/after-the-buy.md).
 - **Post-trade write-up:** the agent that writes the note on a trade an Auto trigger made, with no trade tools. See [Trigger runs](agents/trigger-runs.md).
 - **Portfolio Manager:** the agent that looks at the whole account twice a week and may propose up to three trades. See [Portfolio Manager](agents/portfolio-manager.md).
-- **Market Reviewer:** the 7:30 AM agent that researches the market and writes the market digest and notes on stocks. See [Market Reviewer](agents/market-reviewer.md).
+- **Market Reviewer:** the 9:00 AM agent that researches the market and writes the market digest and notes on stocks. See [Market Reviewer](agents/market-reviewer.md).
 - **Agent:** its instructions, its context, its tools, its message and the moment it runs. See [How an agent is built](concepts/agents.md).
 - **Record:** one agent's definition in code: its model, steps, the facts it reads and the tools it may call (`lib/agent/engine/agents/`).
 - **Door:** the tools and fields one agent is offered on a thesis. No agent is offered a field its job doesn't need.

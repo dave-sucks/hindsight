@@ -1,9 +1,9 @@
 /**
- * daily-run-digest — one email per owner at 10 AM ET, summarising what
- * their analysts did this morning during the 8 AM MORNING_PLAN cron.
+ * daily-run-digest — one email per owner at 11 AM ET, summarising what
+ * their analysts did this morning during the 10 AM MORNING_PLAN cron.
  *
  * Includes ONLY actions taken inside MORNING_PLAN runs that started in
- * the morning window today (Mon-Fri 7-10 AM ET):
+ * the morning window today (Mon-Fri 7-11 AM ET):
  *
  *   - Bought / Shorted  — TradeDecision.decision = INITIATE
  *   - Sold   / Covered  — TradeDecision.decision = EXIT
@@ -62,11 +62,11 @@ export const dailyRunDigest = inngest.createFunction(
     concurrency: { limit: 1 },
     retries: 1,
   },
-  // 10:00 AM ET Mon–Fri. Cron auto-adjusts for EDT/EST.
-  { cron: "TZ=America/New_York 0 10 * * 1-5" },
+  // 11:00 AM ET Mon–Fri. Cron auto-adjusts for EDT/EST.
+  { cron: "TZ=America/New_York 0 11 * * 1-5" },
   async ({ step }) => {
-    // Look back 6h from the 10 AM ET fire time — comfortably covers the
-    // 8 AM morning cron, no DST math required.
+    // Look back 6h from the 11 AM ET fire time — comfortably covers the
+    // 10 AM morning cron, no DST math required.
     const morningStart = new Date(Date.now() - 6 * 60 * 60 * 1000);
     const dateLabel = formatEtDate();
 

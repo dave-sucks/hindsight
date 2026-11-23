@@ -32,7 +32,7 @@ const TRIGGERS: readonly { id: NodeId; says: string; onFire: string; to: NodeId 
 const AGENTS: readonly { id: NodeId; title: string; sub: string; icon: LucideIcon; doc: DocSlug; situations: string[]; wire: string; row: string }[] = [
   { id: "trigger", title: "Trigger run", sub: "Reads the stock and decides: sell, trim, buy, hold or move a level.", icon: Zap, doc: "trigger-runs", situations: ["sale signal"], wire: "decides", row: "lg:row-start-1" },
   { id: "writeup", title: "Trigger run, write-up", sub: "The Auto trade is made the moment it fires. Then the analyst reads the stock, writes it up, and says if it would have done otherwise.", icon: PenLine, doc: "trigger-runs", situations: [], wire: "writes up", row: "lg:row-start-2" },
-  { id: "morning", title: "Morning run", sub: "At 8 AM it answers what was flagged and every review that came due.", icon: Sun, doc: "morning-runs", situations: ["review due"], wire: "answers", row: "lg:row-start-3" },
+  { id: "morning", title: "Morning run", sub: "At 10 AM it answers what was flagged and every review that came due.", icon: Sun, doc: "morning-runs", situations: ["review due"], wire: "answers", row: "lg:row-start-3" },
   { id: "chat", title: "Chat", sub: "When you ask about the stock, change its plan or call for a trade.", icon: MessageCircle, doc: "chat", situations: [], wire: "your word", row: "lg:row-start-4" },
 ];
 

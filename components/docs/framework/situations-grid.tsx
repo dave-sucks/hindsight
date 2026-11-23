@@ -16,10 +16,10 @@ const BOOK = 48;
 
 /** Example reads: which stocks (by seat on the grid) are in which situations. */
 const READS: ReadonlyArray<{ when: string; flagged: Record<number, string[]> }> = [
-  { when: "Monday, 8:00 AM", flagged: { 3: ["REVIEW_DUE"], 17: ["REVIEW_DUE", "PROTECTION"], 30: ["REVIEW_DUE"] } },
-  { when: "Tuesday, 8:00 AM", flagged: { 17: ["PROTECTIVE_SALE"] } },
-  { when: "Wednesday, 8:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["REPORT"] } },
-  { when: "Thursday, 8:00 AM", flagged: { 35: ["REVIEW_DUE"] } },
+  { when: "Monday, 10:00 AM", flagged: { 3: ["REVIEW_DUE"], 17: ["REVIEW_DUE", "PROTECTION"], 30: ["REVIEW_DUE"] } },
+  { when: "Tuesday, 10:00 AM", flagged: { 17: ["PROTECTIVE_SALE"] } },
+  { when: "Wednesday, 10:00 AM", flagged: { 8: ["BUY_ARRIVES"], 21: ["ADD_OR_WINNER"], 26: ["REVIEW_DUE"], 41: ["REPORT"] } },
+  { when: "Thursday, 10:00 AM", flagged: { 35: ["REVIEW_DUE"] } },
 ];
 
 export function SituationsGrid({ situations }: { situations: readonly FrameworkSituation[] }) {

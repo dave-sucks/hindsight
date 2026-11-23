@@ -130,7 +130,7 @@ export function AuthPreview() {
             WebkitMaskImage: "linear-gradient(to bottom, transparent, black 25%)",
           }}
         >
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Morning run · 8:00 AM</p>
+          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Morning run · 10:00 AM</p>
           <ChatMock title="Morning run" steps={SCRIPT} play bare stepMs={1300} />
         </div>
       </div>

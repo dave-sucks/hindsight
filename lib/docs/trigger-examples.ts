@@ -85,7 +85,7 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
     type: "news",
     blurb: "A high note from the Market Reviewer on the stock.",
     checked:
-      "Read right after the Market Reviewer saves its 7:30 AM notes, and on every pass in market hours. Only a note it marked high counts; a medium or low note starts nothing. One fire per stock per note: a note holds only if it was written after the trigger last fired, and within the last day.",
+      "Read right after the Market Reviewer saves its 9:00 AM notes, and on every pass in market hours. Only a note it marked high counts; a medium or low note starts nothing. One fire per stock per note: a note holds only if it was written after the trigger last fired, and within the last day.",
     examples: [
       { action: "REVIEW", when: { watch: "note" }, why: "Something happened to the company that could change what we do today." },
     ],

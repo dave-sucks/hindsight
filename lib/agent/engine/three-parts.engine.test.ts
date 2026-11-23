@@ -206,7 +206,7 @@ describe("the chat", () => {
       withNewToolNames(old["instructions:instructions"]).replace(
         "When these instructions end with an analyst's blocks (its scope, its brief, its money and its book), this chat is pinned to one analyst.",
         "When these instructions end with an analyst (its strategy, its rules and its playbooks), this chat is pinned to one analyst, and its book rides on each of your messages.",
-      ),
+      ).replace("**Daily Run** (8 AM ET", "**Daily Run** (10 AM ET"),
     );
     expect(now["instructions:house_rules"]).toBe(house(old));
     expect(now["instructions:how_you_write"]).toBe(old["instructions:how_you_write"]);
