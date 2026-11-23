@@ -144,4 +144,9 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "What the agent wrote on its last run: the Portfolio Manager's write-up; the Market Reviewer's digest and its notes of the last 5 days.",
     source: "lib/agent/portfolio-manager/run.ts, lib/agent/market-reviewer/run.ts",
   },
+  manager_writeup: {
+    title: "The Portfolio Manager's write-up today",
+    about: "What the Portfolio Manager wrote that day: where the money is, its ranking, what it did. Left out on a day it didn't run.",
+    source: "lib/agent/portfolio-manager/run.ts (writeupOn)",
+  },
 };

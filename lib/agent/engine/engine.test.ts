@@ -82,7 +82,7 @@ describe("every agent is instructions, context and tools", () => {
   });
 
   it("prints the message last, and the run page's opening is the message alone", () => {
-    const built = composeAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER", message: "Write today's." }, { pieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nS" }] });
+    const built = composeAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER", message: "Write today's." }, { pieces: [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nS" }], context: { manager_writeup: null } });
     expect(built.message).toBe(`${dateLine(NOW, "PAPER")}\n\n## Market and portfolio\n\n### Portfolio snapshot\nS\n\nWrite today's.`);
     expect(built.parts.map((p) => `${p.kind}:${p.id}`)).toEqual(["own:portfolio-digest.md", "line:line", "context:portfolio", "message:message"]);
     expect(openingOf(built)).toBe("Write today's.");
@@ -161,12 +161,28 @@ describe("the Portfolio Manager", () => {
 });
 
 describe("the portfolio digest", () => {
-  it("is its old request with only the documented moves: the date line, and the snapshot under its heading", async () => {
+  it("is its old request with only the documented moves: the date line, the snapshot under its heading, and its text's corrections", async () => {
     const built = await buildAgentRequest(PORTFOLIO_DIGEST, { now: NOW, environment: "PAPER" }, { ...accountRun("portfolio_digest"), given: { snapshot: STANDIN_SNAPSHOT } });
     expect(portfolioPieceText(STANDIN_SNAPSHOT)).toBe(`### Portfolio snapshot\n${DIGEST_GOLDEN.message}`);
-    expect(built.instructions).toBe(DIGEST_GOLDEN.system);
+    const ownText = DIGEST_GOLDEN.system
+      // It is given the Portfolio Manager's write-up on a day it ran, and may search the web.
+      .replace(
+        "Never invent a number, a reason or a stock.\n\nWrite 3 to 5 short paragraphs",
+        "Never invent a number, a reason or a stock. On a day the Portfolio Manager ran, you are also given its write-up.\n\nYou can search the web: when a holding's number moved that day and nothing you were given says why, look up what happened to it and say so in a few words.\n\nWrite 3 to 6 short paragraphs",
+      )
+      // It reports each proposal's reason and gives no view of its own.
+      .replace(
+        "For each: what it would do, then your own view, in plain words: would you approve it or not, and why, from what the snapshot shows (the stock's move, how long it has been proposed, its reason). Don't just repeat the reason.",
+        "For each: what it would do, and the reason it was proposed, as the snapshot gives it. Add no view of your own on whether to approve it.",
+      )
+      .replace(
+        "never suggest what to do with it.\n",
+        "never suggest what to do with it.\n5. When you are given the Portfolio Manager's write-up: what it did that day and the top of its ranking, in a sentence or two. Without one, say nothing of the Portfolio Manager.\n",
+      );
+    expect(built.instructions).toBe(ownText);
+    // No Portfolio Manager run that day in this fixture: the write-up is left out.
     expect(built.message).toBe(`${dateLine(NOW, "PAPER")}\n\n## Market and portfolio\n\n### Portfolio snapshot\n${DIGEST_GOLDEN.message}`);
-    expect(built.tools).toEqual([]);
+    expect(built.tools).toEqual(["web_search"]);
   });
 });
 

@@ -47,7 +47,7 @@ Eastern time, on trading days unless it says otherwise.
 - **11:00 AM:** The morning digest: what the runs did, in one email.
 - **4:20 PM:** The close pass: triggers that read "only on the close", checked once on the day's closing price.
 - **5:00 PM:** End-of-day snapshots of every position, and the post-trade review of any position closed that day that hasn't had one.
-- **8:00 PM:** The [Portfolio Digest](agents/portfolio-digest.md): your account's day, written from one snapshot of your portfolio (value, cash, every holding and its move, the day's buys and sells, the proposals waiting for you) and nothing else. On the home page, and in every agent's Market and portfolio block with the snapshot itself. It is a run you can open on /runs, and its Context button shows exactly what the model was sent.
+- **8:00 PM:** The [Portfolio Digest](agents/portfolio-digest.md): your account's day, written from one snapshot of your portfolio (value, cash, every holding and its move, the day's buys and sells, the proposals waiting for you, each with the reason it was proposed) and, on a day the Portfolio Manager ran, its write-up; it can search the web for what happened to a holding that moved. On the home page, and in every agent's Market and portfolio block with the snapshot itself. It is a run you can open on /runs, and its Context button shows exactly what the model was sent.
 - **Sundays 10:00 AM:** Weekly scorecards: win rate, and how well conviction matched outcomes, once an analyst has three closed trades.
 - **When a buy or an add fills:** [After the buy](agents/after-the-buy.md), minutes later.
 - **Discovery** is done in chat, when you ask. Its scheduled agent (Tuesday and Thursday, 9:00 AM) is off until you turn it on.
