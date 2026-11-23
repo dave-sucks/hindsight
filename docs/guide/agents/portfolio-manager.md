@@ -1,6 +1,6 @@
 # Portfolio Manager
 
-**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it goes through every stock you hold and watch, gets the thesis on the few it is weighing a trade on, and leaves a write-up plus, at most, three proposals for you.
+**The one agent that looks at the whole account at once.** Each stock has its own analyst, who decides whether it is worth owning. The Portfolio Manager decides whether it is the best use of the account's money. Twice a week it reads the table of every stock you hold and watch (the stocks in a situation first, then the top and the bottom by the day's move), gets the thesis on the few it is weighing a trade on, and leaves a write-up plus, at most, three proposals for you.
 
 Every trade it proposes waits for your approval, like any run's. It never rewrites a stock's case or its conviction, and it never sizes a trade: code does.
 
@@ -38,7 +38,7 @@ It may ask about any stock you own, and 8 watched stocks a run. It has no web se
 
 ## The question it asks
 
-For every stock: would we buy it today, at today's price, knowing what we know now? What we paid is not part of the answer.
+For each stock it weighs: would we buy it today, at today's price, knowing what we know now? What we paid is not part of the answer. A stock's outlook and conviction are its analyst's rating; only a holding's outlook comes with its reason in the first message, and the rest come with the thesis.
 
 ## What it may propose
 

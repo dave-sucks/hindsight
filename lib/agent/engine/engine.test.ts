@@ -109,7 +109,12 @@ describe("the Portfolio Manager", () => {
     const ownJob = job.replace(
       "The Portfolio snapshot above lists every stock we own and the Watching block every stock we watch.",
       "The Portfolio snapshot and the stock table in your first message list every stock we own and every stock we watch.",
-    );
+    )
+      // It reads the table the way it is laid out.
+      .replace(
+        "Go through all of them, the quiet ones as much as the ones that moved. For each ask one question:",
+        "Read the stocks in a situation first, then the top and the bottom of the table by the day's move. For each stock you weigh, ask one question:",
+      );
     expect(built.instructions).toBe(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`);
     // The stock table takes the book's place; this fixture's database has no stocks to read (its text is pinned in stock-table.test.ts and run.wire.test.ts).
     const theBook = "## The stock table\nThe stocks couldn't be read this run.";

@@ -45,7 +45,7 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     "What we paid is not part of the answer.",
-    "What we paid is not part of the answer. Each stock's outlook and conviction are its analyst's rating, with the reason beside each. A holding its own analyst rates neutral or bearish is the first place to look for a sale or a trim. Where you disagree with a rating, send the stock to research and say why.",
+    "What we paid is not part of the answer. Each stock's outlook and conviction are its analyst's rating. A holding its own analyst rates neutral or bearish is the first place to look for a sale or a trim. Where you disagree with a rating, send the stock to research and say why.",
   ],
 ];
 
