@@ -299,6 +299,11 @@ export function sessionProgress(now: Date = new Date()): { minutes: number; tota
   return { minutes: Math.min(total, Math.max(0, Math.floor((now.getTime() - open) / 60_000))), total };
 }
 
+/** How far in, in words: "30 minutes into the 390-minute session". One wording for get_stock_data and the stock table. */
+export function minutesIntoSession(progress: { minutes: number; total: number }): string {
+  return `${progress.minutes} minutes into the ${progress.total}-minute session`;
+}
+
 export function isMarketOpen(now: Date = new Date()): boolean {
   // Convert to Eastern Time
   const etFormatter = new Intl.DateTimeFormat("en-US", {

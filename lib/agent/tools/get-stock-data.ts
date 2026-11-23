@@ -30,7 +30,7 @@ import {
   formatTickerHistory,
   formatTickerHistoryShort,
 } from "@/lib/agent/context-bundle";
-import { lastSessionsFrom, sessionProgress } from "@/lib/market-hours";
+import { lastSessionsFrom, minutesIntoSession, sessionProgress } from "@/lib/market-hours";
 
 /** News from the last three sessions, at most six items, each with its whole summary. */
 const NEWS_SESSIONS = 3;
@@ -52,7 +52,7 @@ export function todayVolumeRead(
     progress && progress.minutes >= progress.total
       ? `today's full session ${ratio}× its 20-day average`
       : progress && progress.minutes > 0
-        ? `so far today, ${progress.minutes} minutes into the ${progress.total}-minute session: ${ratio}× a full day's 20-day average`
+        ? `so far today, ${minutesIntoSession(progress)}: ${ratio}× a full day's 20-day average`
         : progress
           ? `so far today, before the open: ${ratio}× a full day's 20-day average`
           : `today ${ratio}× its 20-day average`;
