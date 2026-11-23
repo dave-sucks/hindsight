@@ -114,6 +114,18 @@ describe("the Portfolio Manager", () => {
       .replace(
         "Go through all of them, the quiet ones as much as the ones that moved. For each ask one question:",
         "Read the stocks in a situation first, then the top and the bottom of the table by the day's move. For each stock you weigh, ask one question:",
+      )
+      // The row carries no earnings field.
+      .replace("Wall Street's view, the latest earnings, the chart numbers", "Wall Street's view, the chart numbers")
+      // It has web search and filings.
+      .replace(
+        "Use get_stock_data only on a stock you are about to trade. You have no web search: if a stock's thesis looks out of date, send it to research.",
+        "On a stock you are weighing a trade on, or one whose news the digest doesn't cover, check its news and filings yourself. Use get_stock_data only on a stock you are about to trade.",
+      )
+      // It may start a watch on a stock nobody covers.
+      .replace(
+        "\n\n## Rules",
+        "\n\nYou may also start a watch on a stock no analyst holds or watches. When you judge one a really good opportunity, or the account lacks its sector or its kind of stock, look it up, then send it to research for the analyst it fits and say why in the brief; the Writer may still pass on it. One new stock a run: the rest of what is missing goes under What the account needs.\n\n## Rules",
       );
     expect(built.instructions).toBe(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`);
     // The stock table takes the book's place; this fixture's database has no stocks to read (its text is pinned in stock-table.test.ts and run.wire.test.ts).
@@ -147,8 +159,8 @@ describe("the Portfolio Manager", () => {
     expect(built.message.match(/^## Market and portfolio$/gm)).toHaveLength(1);
   });
 
-  it("has the tools its old run listed, in the same order", () => {
-    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "write_note", "edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"]);
+  it("has the tools its old run listed, in the same order, with web search and filings after its reads", () => {
+    expect(PORTFOLIO_MANAGER.tools).toEqual(["get_theses", "get_stock_data", "web_search", "get_sec_filings", "write_note", "edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"]);
   });
 
   it("a Market and portfolio read that can't be read prints its one line under the heading, as before", async () => {

@@ -26,6 +26,6 @@ export const PORTFOLIO_MANAGER: RunnableRecord = {
   instructions: ["portfolio-manager.md"],
   context: ["market_numbers", "market_digest", "portfolio", "stock_table", "last_output", "message"],
   // get_theses by ticker, a limited number of stocks a run (lib/agent/portfolio-manager/limits.ts); a note goes with its trade, research request or trigger edit.
-  tools: ["get_theses", "get_stock_data", "write_note", "edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"],
+  tools: ["get_theses", "get_stock_data", "web_search", "get_sec_filings", "write_note","edit_triggers", "place_trade", "add", "sell", "dispatch_thesis_research"],
   output: "Its write-up: where the money is, its ranking, what it did, its open questions and what the account needs. Its next run reads it first.",
 };

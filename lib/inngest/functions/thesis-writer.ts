@@ -54,6 +54,8 @@ interface ThesisWriteRequestedPayload {
    * exploration doesn't accidentally produce trade-eligible coverage.
    */
   forceWatchingMint?: boolean;
+  /** The Portfolio Manager's brief on a stock nobody covered: the new watch's first Activity line. */
+  sentBrief?: string | null;
   /**
    * PAPER→LIVE promotion framing. Auto-populated by
    * dispatch_thesis_research when refreshing a PROMOTED thesis. Frames
@@ -112,6 +114,7 @@ export const thesisWriter = inngest.createFunction(
       parentThesisId: payload.parentThesisId ?? null,
       forceWatchingMint: payload.forceWatchingMint === true,
       promotionContext: payload.promotionContext ?? null,
+      sentBrief: payload.sentBrief ?? null,
       reviewCadenceDays: payload.reviewCadenceDays ?? null,
       keepLevels: payload.keepLevels === true,
     };

@@ -50,6 +50,7 @@ import { HOLDING_REFRESH } from "@/lib/agent/engine/agents/holding-refresh";
 import type { AgentId, AgentRecord, BuiltRequest, RunnableRecord, SentPartManifest } from "@/lib/agent/engine/types";
 import { runAgent } from "@/lib/agent/engine/run";
 import { createResearchTools } from "@/lib/agent/tools";
+import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import type { Setup } from "@/lib/agent/knowledge/setups";
 import { playbooksBlock } from "@/lib/agent/knowledge/playbooks";
 import { loadPlaybooks } from "@/lib/agent/knowledge/load-playbook";
@@ -175,6 +176,8 @@ export interface RunThesisWriterArgs {
    * Set by chat-dispatched mints; defaults to false otherwise.
    */
   forceWatchingMint?: boolean;
+  /** The brief of the run that sent a stock nobody covered (the Portfolio Manager's): the new thesis's first Activity line, under that run. */
+  sentBrief?: string | null;
   /**
    * PAPER→LIVE promotion context. Pre-populated by dispatch_thesis_research
    * for refreshes on PROMOTED theses. When set, the research prompt frames
@@ -1802,6 +1805,10 @@ export async function writerPersistPhase(
           }
         }
         thesisId = outcome.thesisId;
+        // Who sent a stock nobody covered, and why, in their words: dated when the Writer started, so it reads first.
+        if (thesisId && args.mode === "mint" && args.sentBrief) {
+          await writeThesisUpdate({ thesisId, type: "UPDATED", summary: `Sent $${T} to research`, rationale: args.sentBrief, runId: args.parentRunId, timestamp: new Date(t0) });
+        }
         persistError = outcome.thesisId ? null : outcome.error ?? "unknown";
         notApplied = outcome.notApplied ?? null;
         const without = [...(d.dropped ?? []), ...notWritten];
