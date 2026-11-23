@@ -133,9 +133,9 @@ describe("the catalog", () => {
   /** A sample number for each measure, the way a person would fill it in. */
   const SAMPLE: Record<string, number> = { price: 248, move: 7, volume: 1.5, rsi: 30, strength: 0, gap: 4, report: 3, surprise: 0, insiders: 3, repeat: 30, from_date: 60 };
 
-  it("has one entry per measure, each in one type of the Add trigger menu", () => {
+  it("has one entry per measure, each in one type of the Add trigger menu, but the account's own (the market)", () => {
     const listed = TRIGGER_TYPES.flatMap((t) => t.measures.map((m) => m.id));
-    expect([...listed].sort()).toEqual(Object.keys(MEASURES).sort());
+    expect([...listed, "market"].sort()).toEqual(Object.keys(MEASURES).sort());
     for (const [id, m] of Object.entries(MEASURES)) {
       expect(m.id).toBe(id);
       expect(m.fresh().watch).toBe(id);

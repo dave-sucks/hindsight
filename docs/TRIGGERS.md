@@ -82,6 +82,7 @@ evaluation, so the gate rejects it up front, with the list of measures.
 |---|---|---|
 | `price` | The price against a typed level ("buy above $183"), or against a line from the chart: a moving average, the 20-day or 52-week high or low, a recent close, our entry, the high since we bought, or (from below only, since 2026-11-04) Wall Street's average, high or low 12-month target off the newest `StreetConsensus` row within 14 days — never a floor against the Street, and no row reads false. `settings.close` = the day must **close** past it (a typed price or an average: "Stop watching if below the 200-day average · only on the close") — the 5-minute passes skip it and the close pass (16:20–16:34 ET) reads the day's consolidated close. A typed level is the only **plan level** (buy, floor, target). Below or above a moving average is a state (§6). | `value` ($) **or** `variable`; `settings.close` |
 | `move` | A % distance from something. From yesterday's close (`prev_close`): today's move off the quote. From the close 5 or 20 sessions back: off the snapshot. **From our entry** (`entry`): the cumulative % vs the open position's `avgCost` — not the day's move; LONG `(price−avg)/avg`, SHORT inverts. **From the high since we bought** (`peak`): the give-back off `Position.peakPrice` (high-water for LONG, low-water for SHORT, kept by the five-minute check from the live price and, for a position held since before the open, the session's high) — the trail. **Near** (`is: "near"`) an average or the 52-week high: within that %. Entry and peak are **HOLDING-only**: no open position in context ⇒ false. | `value` (%), `variable` required |
+| `market` | The S&P 500's move on the day: SPY against its prior close, off the live quote. **The account's own**, never a stock's: stored on `Account.marketTriggers`, action `RUN_PORTFOLIO_MANAGER`, one Portfolio Manager run for the account when it fires (`triggers/market.ts`). No Add trigger menu and no agent's tool offers it. Not read on a quote older than 15 minutes. | `value` (%), `is` below (down) or above (up) |
 | `volume` | Today's volume so far ÷ the 20-session average. No projection — true only once the volume is really there; read at the close it is the day's ratio. | `value` (×) |
 | `rsi` | RSI over the snapshot's closes with the live price as today's. | `value`; `settings.period` 14 or 2 |
 | `strength` | Return over the window minus the S&P's, percentage points, as of the last close. A state (§6). | `value`; `settings.window` 1M / 3M / 6M |
@@ -508,6 +509,11 @@ but the price path only **evaluates during the regular session**:
   2026-09-29: opened under its line, back above it that morning). The pill
   and the dialog show the setting saved; nothing changes it at check time.
   One saved intraday fires intraday, because that is what it says.
+- **The account's market trigger** is read on the same passes, after the
+  stocks, against one SPY quote (`checkMarketTriggers`,
+  `lib/agent/triggers/market.ts`): the 5-minute passes fire it, and the close
+  pass marks it ready when the day closed with it false. A pass with no SPY
+  quote, or one older than 15 minutes, reads nothing.
 - **Cap:** 200 unique tickers per tick.
 
 ## 8. Editing surfaces

@@ -65,6 +65,12 @@ model Account {
   // deleted every rule" — without it, emptying your account rules would
   // silently resurrect the defaults on the next read.
   triggersSeededAt DateTime?
+  // The account's own triggers, on the market: "Run the Portfolio Manager if
+  // the S&P is down 2% on the day" (lib/agent/triggers/market.ts). The same
+  // `Trigger[]` shape, with each trigger's fire state on it. No stock inherits
+  // these: a stock's ladder reads `triggers` above, never this column. Every
+  // account starts with the one rule; an empty array means it was removed.
+  marketTriggers Json @default("[{\"id\":\"market-fall\",\"predicate\":{\"watch\":\"market\",\"is\":\"below\",\"value\":2},\"action\":\"RUN_PORTFOLIO_MANAGER\",\"rationale\":\"A broad fall moves every holding at once, so the whole account gets a look the same day.\",\"source\":\"DEFAULT\"}]")
   // Stop when buying: a new holding's floor this % under its buy price
   // (lib/trading/auto-stop.ts). An analyst may override both.
   autoStopOnBuy Boolean @default(false)

@@ -36,6 +36,10 @@
 // up to date from its quote (lib/trading/water-mark), so the trails read it;
 // the close pass does it from the finished day's bar, so a last-minute high counts.
 //
+// The account's own triggers, on the market ("Run the Portfolio Manager if the
+// S&P is down 2% on the day"), are checked on the same passes, after the
+// stocks (lib/agent/triggers/market.ts). No stock inherits them.
+//
 // - The fire state (`lastFiredAt`, `falseAtCloseAt`) lives on the trigger in Thesis.triggers JSONB.
 //   No schema change in PR 2. A separate TriggerFiring table is a
 //   follow-up if hot-write contention shows up.
@@ -88,6 +92,7 @@ import {
 } from "@/lib/market-data/sec-events";
 import type { When } from "@/lib/agent/triggers/condition";
 import { etStamp } from "@/lib/agent/stock-context";
+import { checkMarketTriggers, MARKET_TRIGGER_FIRED } from "@/lib/agent/triggers/market";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -994,6 +999,12 @@ export const triggerEvaluator = inngest.createFunction(
         name: "app/thesis.trigger.fired",
         data: f,
       });
+    }
+
+    // The account's own triggers, on the market: a fire starts one Portfolio Manager run for the account (lib/agent/triggers/market.ts).
+    if (session !== "NOTES") {
+      const marketFires = await step.run("check-market-triggers", () => checkMarketTriggers(session, now));
+      for (const f of marketFires) await step.sendEvent(`market-fired-${f.accountId}-${f.triggerId}`, { name: MARKET_TRIGGER_FIRED, data: f });
     }
 
     return {

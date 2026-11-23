@@ -71,7 +71,16 @@ two conditions together are "and" only, one level deep. Inside an "and", a date
 count before the event is a window (`window` on its catalog entry): the
 pre-catalyst buys fire only within 70 days before the event. A trigger on our
 position (a move from our buy price or the high since we bought, days since the
-buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). The three
+buy) is refused at the save on a stock we only watch (`POSITION_ON_A_WATCH`). **The account has
+one trigger of its own, on the market (2026-11-23):** "Run the Portfolio
+Manager if the S&P is down 2% on the day", stored on `Account.marketTriggers`
+in the trigger shape and shown read-only in Settings → Triggers. No stock
+inherits it (a stock's ladder reads `Account.triggers` only); its measure
+(`market`) and action (`RUN_PORTFOLIO_MANAGER`) are on no dialog and no agent's
+tool. The trigger check reads it on each pass against SPY's live quote, never
+a stale one, and a fire starts one Portfolio Manager run per traded book of the
+account, told the move in its first message (`lib/agent/triggers/market.ts`).
+The three
 docs: `docs/plans/TRIGGER_MODEL.md` (conceptual shape),
 `docs/plans/TRIGGER_LIFECYCLE.md` (authority/visibility contract),
 `docs/plans/THESIS_GAME_PLAN.md` (the blueprint + IONS motivating failure).
@@ -614,7 +623,7 @@ a list here goes stale.
   trigger's trade and then writes it up with no trade tools
 ### Agent + Trading
 - morning-research.ts — 10 AM ET Mon-Fri, per-analyst Daily Run
-- agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10:30 AM; Discovery, off
+- agent-scheduler.ts — every agent on the schedule (`lib/agent/engine/schedule.ts`): the Portfolio Manager Tue/Thu 10:30 AM; Discovery, off. It also runs the Portfolio Manager when the account's market trigger fires (`app/market.trigger.fired`)
 - after-buy-run.ts — consumes `app/buy.filled`: the After the buy agent on every buy and add fill
 - market-reviewer.ts — 9:00 AM ET market days, the Market Reviewer. No note
   is pinned. A saved high note sends `app/market-notes.saved`, and the trigger

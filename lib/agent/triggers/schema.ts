@@ -11,7 +11,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { Condition, Direction, SettingDef, VariableId, Watch, When } from "./condition/types";
 import { directionWords, type MeasureDef } from "./condition/measure";
-import { MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
+import { MEASURES, STOCK_MEASURES, declaredOnly, settingDefs } from "./condition/catalog";
 import { notACondition, refusalOf } from "./condition/valid";
 import { settingRefusal } from "./condition/range";
 import { FIRE_MODES, isFireMode } from "./fire-mode";
@@ -67,7 +67,7 @@ function keysAsOne(w: unknown): unknown {
 }
 
 function buildPredicateInputSchema(keys: boolean, noTypedPrices = false) {
-  const byWatch = Object.fromEntries(Object.values(MEASURES).map((m) => [m.id, measureBranch(m, keys, noTypedPrices)])) as Record<Watch, z.ZodObject>;
+  const byWatch = Object.fromEntries(STOCK_MEASURES.map((m) => [m.id, measureBranch(m, keys, noTypedPrices)])) as Record<Watch, z.ZodObject>;
   // A refusal says what's wrong: the field a measure is missing, or, for no measure at all, the list of them.
   const explain = (input: unknown): string => {
     const w = input && typeof input === "object" ? (input as { watch?: unknown }).watch : undefined;
@@ -181,7 +181,10 @@ function toStored({ value, variable, settings, ...base }: AgentCondition): Condi
   return { ...rest, ...(value != null ? { value } : {}), ...(mode === "from" && variable != null ? { variable } : {}) } as Condition;
 }
 
+/** The actions a stock's trigger can take: what an agent's tool is shown. */
 export const triggerActionSchema = z.enum(["REVIEW", "EXIT", "ENTER", "ADD", "TRIM", "STOP_WATCHING"]);
+/** Every stored action: a stock's, and the account's own on a market trigger (./market). */
+const storedActionSchema = z.enum([...triggerActionSchema.options, "RUN_PORTFOLIO_MANAGER"]);
 
 export const triggerSchema = z.object({
   // Stable id, REQUIRED at evaluation time — the trigger-evaluator drops
@@ -198,7 +201,7 @@ export const triggerSchema = z.object({
     .default(() => randomUUID())
     .describe("Stable id; auto-generated when the writer omits it."),
   predicate: triggerPredicateSchema,
-  action: triggerActionSchema,
+  action: storedActionSchema,
   rationale: z
     .string()
     .min(1)

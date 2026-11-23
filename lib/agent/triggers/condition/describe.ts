@@ -22,7 +22,7 @@ import { money } from "./words";
 
 export { money } from "./words";
 
-const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if", STOP_WATCHING: "Stop watching if" };
+const ACTION_LABEL: Readonly<Record<string, string>> = { ENTER: "Buy if", ADD: "Add if", TRIM: "Trim if", EXIT: "Sell if", STOP_WATCHING: "Stop watching if", RUN_PORTFOLIO_MANAGER: "Run the Portfolio Manager if" };
 
 /** "Sell if", "Stop watching if", "Review if": the action's own words, whatever the stock's state. */
 export function actionLabel(action: string): string {
@@ -68,7 +68,9 @@ export function triggerLabel(t: { action: string; trimPct?: number | null }): st
 /** The two halves: "below" and "$868". `short` is the pill's own, with the measure's usual variable left off. */
 export function conditionParts(c: Condition, short = false): PillPart {
   const m = measureOf(c);
-  const label = (m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "").toLowerCase();
+  // The button's label mid-sentence: its first letter down, a name inside it ("the S&P") kept.
+  const said = m.buttons?.find((b) => b.is === c.is)?.label ?? m.word ?? "";
+  const label = said.charAt(0).toLowerCase() + said.slice(1);
   return { label, value: valueText(c, "chip", short) };
 }
 

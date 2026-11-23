@@ -5,13 +5,13 @@
  * regenerate with `UPDATE_GUIDE=1 npx jest lib/docs/guide`.
  */
 
-import { DIALOG_ACTIONS, TRIGGER_TYPES, directionWords, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
+import { DIALOG_ACTIONS, MEASURES, TRIGGER_TYPES, directionWords, sentenceOf, type Condition, type MeasureDef } from "@/lib/agent/triggers/condition";
 import { rangeWords, valueRange } from "@/lib/agent/triggers/condition/range";
 import type { Trigger, TriggerAction } from "@/lib/agent/triggers/types";
 import { SETUPS, type Setup } from "@/lib/agent/knowledge/setups";
 import { TRIGGER_TYPE_DOCS } from "./trigger-examples";
 
-const ACTION_WORD: Record<TriggerAction, string> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", STOP_WATCHING: "stop watching", REVIEW: "review" };
+const ACTION_WORD: Record<TriggerAction, string> = { ENTER: "buy", ADD: "add", TRIM: "trim", EXIT: "sell", STOP_WATCHING: "stop watching", REVIEW: "review", RUN_PORTFOLIO_MANAGER: "run the Portfolio Manager" };
 
 const days = (n: number) => (n === 0 ? "none" : n === 1 ? "1 day" : `${n} days`);
 
@@ -77,6 +77,17 @@ export function triggerMeasuresMarkdown(): string {
     out.push(`## ${t.label}`, "");
     if (doc) out.push(`${doc.blurb} ${doc.checked}`, "");
     for (const m of t.measures) out.push(...measureSection(m));
+  }
+  // The measures no stock carries: the account's own triggers, on the market.
+  out.push(
+    "## The account's own",
+    "",
+    "A trigger on the market belongs to the account (`Account.marketTriggers`, `lib/agent/triggers/market.ts`), not to a stock: no stock inherits it, and no Add trigger menu or agent's tool offers it. Its one action is `RUN_PORTFOLIO_MANAGER`: when it fires it starts one Portfolio Manager run for the account. Checked every 5 minutes in market hours, never on a quote older than 15 minutes.",
+    "",
+  );
+  for (const m of Object.values(MEASURES).filter((x) => x.account)) {
+    const example = { action: "RUN_PORTFOLIO_MANAGER", predicate: { ...m.fresh(), value: 2 } };
+    out.push(...measureSection(m), "**Example:**", "", `- "${sentenceOf(example)}".`, "", "  ```json", `  ${JSON.stringify(example)}`, "  ```", "");
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }

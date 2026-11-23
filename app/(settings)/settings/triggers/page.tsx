@@ -7,6 +7,9 @@ import {
 } from "@/components/settings/SettingsSection";
 import { LevelTriggersSection } from "@/components/settings/LevelTriggersSection";
 import { AutoStopSetting } from "@/components/settings/AutoStopSetting";
+import { TriggerGroups } from "@/components/agent/sheets/ThesisTriggersSection";
+import { prisma } from "@/lib/prisma";
+import { parseLevelTriggers } from "@/lib/agent/triggers/load-levels";
 
 /**
  * /settings/triggers — the ACCOUNT level of the trigger cascade, the
@@ -25,6 +28,10 @@ export default async function TriggerSettingsPage() {
 
   const role = await getUserRole(user.id, accountId);
   if (!role) redirect("/settings");
+
+  // The account's own triggers, on the market (lib/agent/triggers/market.ts). Read-only here.
+  const account = await prisma.account.findUnique({ where: { id: accountId }, select: { marketTriggers: true } });
+  const marketTriggers = parseLevelTriggers(account?.marketTriggers, `market account=${accountId}`).map((t) => ({ ...t, level: "ACCOUNT" as const }));
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
@@ -45,6 +52,27 @@ export default async function TriggerSettingsPage() {
         description="Rules for every analyst on this account."
       >
         <LevelTriggersSection level="account" ownerId={accountId} />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Market"
+        description="A trigger on the market belongs to the account, not to a stock. When it fires it starts one Portfolio Manager run for the account, without waiting for Tuesday or Thursday."
+      >
+        <div className="space-y-2">
+          {marketTriggers.length > 0 ? (
+            <TriggerGroups triggers={marketTriggers} editable={false} held level="ACCOUNT" endpointBase="" />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No market trigger. The Portfolio Manager runs only on its schedule.
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            The S&amp;P is read by SPY against yesterday&rsquo;s close, on the same
+            5-minute check as every trigger. It fires once, and not again until
+            a 4:20 PM close finds it false, so it starts at most one run a day.
+            You can read it here; it can&rsquo;t be changed here yet.
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection

@@ -40,6 +40,13 @@ export interface EvaluationContext {
   };
 
   /**
+   * The S&P 500's move on the day, in %: SPY against its prior close. Read by
+   * a market trigger, the account's own (./market). Absent on a stock's check
+   * → false.
+   */
+  market?: { changePct: number } | null;
+
+  /**
    * This ticker's most recently reported quarter, when it reported inside
    * the evaluator's lookback window. Read by earnings beat / miss.
    *

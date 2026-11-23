@@ -15,6 +15,7 @@ import type { MeasureDef } from "./measure";
 import { gap, rsi, strength, volume } from "./measures/indicator";
 import { report, surprise } from "./measures/earnings";
 import { filing, insiders } from "./measures/filing";
+import { market } from "./measures/market";
 import { note } from "./measures/news";
 import { move, price } from "./measures/price";
 import { fromDate, repeat } from "./measures/schedule";
@@ -24,6 +25,7 @@ import { isGroup } from "./types";
 export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   price,
   move,
+  market,
   volume,
   rsi,
   strength,
@@ -36,6 +38,9 @@ export const MEASURES: Readonly<Record<Watch, MeasureDef>> = {
   repeat,
   from_date: fromDate,
 };
+
+/** The measures a stock's trigger can use: every one but the account's own. */
+export const STOCK_MEASURES: readonly MeasureDef[] = Object.values(MEASURES).filter((m) => !m.account);
 
 export interface TypeDef {
   id: TriggerType;
@@ -56,7 +61,7 @@ const TYPES: readonly Omit<TypeDef, "measures">[] = [
 
 export const TRIGGER_TYPES: readonly TypeDef[] = TYPES.map((t) => ({
   ...t,
-  measures: Object.values(MEASURES).filter((m) => m.type === t.id),
+  measures: STOCK_MEASURES.filter((m) => m.type === t.id),
 }));
 
 export function typeDef(type: TriggerType): TypeDef {

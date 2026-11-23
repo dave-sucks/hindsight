@@ -95,5 +95,6 @@ export function approvalLine(
 /** What it does when it fires, as the pill and Activity say it: "Auto-sell", "Auto-trim", "Send to Agent". A trim's size is in its sentence. */
 export function fireModeWords(t: { action: string; fireMode?: FireMode | null }): string {
   if (t.action === "STOP_WATCHING") return "Stops watching when it fires";
+  if (t.action === "RUN_PORTFOLIO_MANAGER") return "Starts one Portfolio Manager run for the account";
   return fireModeLabel(fireModeOf(t), t.action);
 }

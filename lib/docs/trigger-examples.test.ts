@@ -1,4 +1,4 @@
-import { MEASURES, TRIGGER_TYPES, conditionsOf, measureOf, triggerText } from "@/lib/agent/triggers/condition";
+import { STOCK_MEASURES, TRIGGER_TYPES, conditionsOf, measureOf, triggerText } from "@/lib/agent/triggers/condition";
 import { triggerSchema } from "@/lib/agent/triggers/schema";
 import { TRIGGER_TYPE_DOCS } from "./trigger-examples";
 
@@ -9,9 +9,9 @@ describe("the Triggers page examples", () => {
     expect(TRIGGER_TYPE_DOCS.map((t) => t.type)).toEqual(TRIGGER_TYPES.map((t) => t.id));
   });
 
-  it("shows every measure in the catalog at least once", () => {
+  it("shows every measure a stock's trigger can use at least once", () => {
     const shown = new Set(all.flatMap((e) => conditionsOf(e.when).map((c) => c.watch)));
-    expect([...Object.keys(MEASURES)].filter((m) => !shown.has(m as keyof typeof MEASURES))).toEqual([]);
+    expect(STOCK_MEASURES.map((m) => m.id).filter((m) => !shown.has(m))).toEqual([]);
   });
 
   it("puts each example under its own type's tab", () => {

@@ -60,7 +60,9 @@ export type TriggerAction =
   | "ENTER"
   | "ADD"
   | "TRIM"
-  | "STOP_WATCHING";
+  | "STOP_WATCHING"
+  /** The account's own, on a market trigger (./market): one Portfolio Manager run for the account. Never on a stock. */
+  | "RUN_PORTFOLIO_MANAGER";
 
 export type Trigger = {
   /** Stable cuid — same id across thesis updates so its fire history can be tracked. */

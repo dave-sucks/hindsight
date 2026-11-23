@@ -6,6 +6,11 @@
  * the run and keeps its books. An agent that skips market holidays runs
  * nothing on one. A change to the schedule's times needs an Inngest sync
  * after the deploy.
+ *
+ * It also starts the Portfolio Manager when an account's market trigger fires
+ * (lib/agent/triggers/market.ts): one run per traded book of that account,
+ * told the move that fired it. Here, so it never overlaps a scheduled run:
+ * the function runs one at a time.
  */
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
@@ -17,6 +22,7 @@ import { dueAt, scheduleTriggers, type ScheduledAgent } from "@/lib/agent/engine
 import type { AgentId } from "@/lib/agent/engine/types";
 import { PORTFOLIO_MANAGER_RUN } from "@/lib/agent/portfolio-manager/run";
 import { DISCOVERY_RUN } from "@/lib/agent/discovery/run";
+import { MARKET_TRIGGER_FIRED, type MarketFire } from "@/lib/agent/triggers/market";
 
 /** How each scheduled agent runs on its own: its record, its run's mode, its reads and tools, its own save. */
 export const SCHEDULED_RUNS: Partial<Record<AgentId, AgentToRun>> = {
@@ -40,8 +46,24 @@ export async function targetsFor(per: ScheduledAgent["per"]): Promise<RunFor[]> 
 
 export const agentScheduler = inngest.createFunction(
   { id: "agent-scheduler", name: "Agent scheduler", retries: 0, concurrency: { limit: 1 } },
-  scheduleTriggers(),
+  [...scheduleTriggers(), { event: MARKET_TRIGGER_FIRED }],
   async ({ event, step }) => {
+    if (event.name === MARKET_TRIGGER_FIRED) {
+      const fire = event.data as MarketFire;
+      const books = (await step.run("targets-market-trigger", () => targetsFor("book"))).filter((t) => t.accountId === fire.accountId);
+      const done: Array<{ agent: string; for: string; run: string; status: string }> = [];
+      for (const t of books) {
+        const key = `${t.accountId}-${t.environment}`;
+        // One step a run, as below: a retry would start a second run.
+        const out = await step.run(`portfolio_manager-${key}`, async () => {
+          const run = await runAgentAsRun(PORTFOLIO_MANAGER_RUN, t, fire.message);
+          return { runId: run.runId, status: run.status };
+        });
+        done.push({ agent: "portfolio_manager", for: key, run: out.runId, status: out.status });
+      }
+      console.log(`[agent-scheduler] market trigger ${fire.triggerId}: ${done.map((d) => `${d.for} ${d.status}`).join("; ") || "no book is traded"}`);
+      return { done };
+    }
     const due = dueAt(String((event.data as { cron?: string })?.cron ?? ""));
     const done: Array<{ agent: string; for: string; run: string; status: string }> = [];
     for (const s of due) {
