@@ -18,6 +18,8 @@
  * tool change shows up here. The model gets ONE turn, several times, because
  * one run of a model proves nothing. The tools are described to it and never
  * run: nothing is executed, nothing touches the database or the account.
+ * A run whose turn only edited the stock's triggers gets one more turn for its
+ * note: a look ends with its note, and the two are separate calls.
  *
  * A case may name read-only tools that run for real (`execute`): they read
  * the account as it is today, through the tool's own code, so a case can
@@ -61,7 +63,7 @@ import { prisma } from "@/lib/prisma";
 import { isMarketOpen } from "@/lib/market-hours";
 import { grade, saleLoosened, salePricesShown } from "@/lib/agent/yardstick/grade";
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
-import { explainOldShape } from "@/lib/agent/yardstick/old-shape";
+import { explainOldShape, waitsForNote } from "@/lib/agent/yardstick/old-shape";
 import { chartFromText } from "@/lib/agent/yardstick/chart-text";
 import { afterTailoring, savedByWriter, withKeysPriced, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "@/lib/agent/yardstick/writer-replay";
 import { nothingCanFire, tailorMessage } from "@/lib/agent/run-thesis-writer";
@@ -643,11 +645,15 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       text += (text ? "\n" : "") + result.text;
       // Done when the model answers without a call, or (with scoreOn) decides on the stock.
       // A Writer is done once it calls its save, as its run ends there.
+      // A thesis edit with no note yet is not the end of a look: the run takes its next turn, and is graded on both.
+      const noteOwed =
+        (c.mode === "tactical" || c.mode === "research-run") &&
+        waitsForNote(c.scoreOn ? calls.filter((t) => isOn(t, c.scoreOn!)) : calls, { firedTrim: firedTrimOf(c) });
       const decided =
         turnCalls.length === 0 ||
         (c.mode === "thesis-writer" && turnCalls.some((t) => t.toolName === "submit_thesis")) ||
-        (c.mode !== "after-buy" && (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live));
-      if (refusals.size === 0 && handBacks.size === 0 && (decided || turn >= (goesOn ? maxTurns : 1))) break;
+        (c.mode !== "after-buy" && !noteOwed && (c.scoreOn ? turnCalls.some((t) => DECIDING.has(t.toolName) && isOn(t, c.scoreOn!)) : !live));
+      if (refusals.size === 0 && handBacks.size === 0 && (decided || turn >= (goesOn || noteOwed ? maxTurns : 1))) break;
       // Not there yet: answer every call and let the model go on. A read the
       // case runs for real gets its real reply, as the model would read it;
       // every other call gets a stub and nothing is run. Ending the run is

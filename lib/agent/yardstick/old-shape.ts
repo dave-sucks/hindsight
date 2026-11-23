@@ -110,3 +110,14 @@ function translate(calls: Call[], run: OldShapeRun): Call[] {
   }
   return out;
 }
+
+/**
+ * Whether a run's thesis edits so far still wait for their note: a look ends
+ * with its note, and since 2026-11-18 the note and a trigger edit are two
+ * calls where update_thesis was one. A replay that stopped at the edit graded
+ * a run that was about to write its note as one that never did.
+ */
+export function waitsForNote(calls: Call[], run: OldShapeRun = {}): boolean {
+  if (run.isChat) return false;
+  return translate(calls, run).some((c) => c.toolName === "update_thesis" && (c.input as { noteless?: boolean }).noteless === true);
+}

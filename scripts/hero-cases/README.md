@@ -14,6 +14,8 @@ npx tsx --env-file=.env.local scripts/hero-case.ts docu-trigger --runs 6
 
 Each run gives the model one turn at the recorded decision point, with the
 system prompt built by today's code and the tools described but never run.
+A run whose turn only edited the stock's triggers gets one more turn for its
+note, since a look ends with its note and the two are separate calls.
 Nothing is executed and nothing touches the database or the account, except
 the reads a case names to run (below), which only read. Six
 runs per case, because one run of a model proves nothing. The script prints
