@@ -30,9 +30,11 @@ export interface Template {
   trimPct?: number;
 }
 
-const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
+// A buy reads during the day: only a Stop watching or a review waits for the close.
+const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
 const near50: TemplatePredicate = { watch: "move", is: "near", value: 2, variable: "sma50" };
 const under50OnVolume: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma50" }, { watch: "volume", value: 1.5 }] };
+const above = (value: `{${string}}`): TemplatePredicate => ({ watch: "price", is: "above", value });
 const onClose = (is: "above" | "below", value: `{${string}}`): TemplatePredicate => ({ watch: "price", is, value, settings: { close: true } });
 const every = (days: number): TemplatePredicate => ({ watch: "repeat", value: days });
 const afterBuy = (days: number): TemplatePredicate => ({ watch: "from_date", is: "after", value: days, variable: "buy" });
@@ -52,7 +54,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   PRE_CATALYST: [
     { action: "ENTER", predicate: beforeTheEvent(breakout), rationale: "The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: beforeTheEvent(near50), rationale: "Only while the 50-day is rising and the stock's pullbacks held it.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: beforeTheEvent(onClose("above", "{high20}")), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: beforeTheEvent(above("{high20}")), rationale: "The 20-day high, above today's price (the reclaim).", writtenOn: "WATCH" },
     ...clock(7, "Moves the reclaim to the latest 20-day high."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{swingLow}"), rationale: "The last swing low.", writtenOn: "WATCH" },
     { action: "STOP_WATCHING", predicate: { watch: "from_date", is: "before", value: 21, variable: "event" }, rationale: "The window closed with no buy.", writtenOn: "WATCH" },
@@ -79,7 +81,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(14), rationale: "10 sessions to reclaim the prior high.", writtenOn: "FILL" },
   ],
   PEAD: [
-    { action: "ENTER", predicate: onClose("above", "{gapDayMid}"), rationale: "The gap held: a close above the gap day's middle.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: above("{gapDayMid}"), rationale: "The gap held: above the gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "The first one after day 3 re-writes the stock on the pullback playbook or lets it go."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The gap day's low or 8% under the buy, whichever is higher; at least 1 ATR under the buy.", writtenOn: "PROPOSAL" },
@@ -88,7 +90,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
   ],
   EPISODIC_PIVOT: [
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: { match: "all", conditions: [{ watch: "gap", value: 8 }, { watch: "volume", value: 3 }] }, rationale: "The run reads the news and writes the triggers below.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: onClose("above", "{gapDayHigh}"), rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: above("{gapDayHigh}"), rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price.", writtenOn: "WATCH" },
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle.", writtenOn: "WATCH" },
     ...clock(7, "Moves the levels to the finished gap day."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{gapDayLow}"), rationale: "The gap day's low.", writtenOn: "WATCH" },
@@ -98,7 +100,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
   COMPOUNDER_ACCUMULATION: [
-    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, rationale: "The base's pivot, on volume.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }] }, rationale: "The base's pivot, on volume.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising.", writtenOn: "WATCH" },
     { action: "ENTER", predicate: { watch: "price", is: "above", variable: "sma50" }, rationale: "The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.", writtenOn: "WATCH" },
     ...clock(30, "The compounder's own clock."),
@@ -108,7 +110,7 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "ADD", predicate: { watch: "move", is: "above", value: 7, variable: "entry" }, rationale: "The second half.", writtenOn: "FILL" },
   ],
   MOMENTUM_FLAG: [
-    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{flagHigh}", settings: { close: true } }, { watch: "volume", value: 1.5 }] }, rationale: "The flag's high.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{flagHigh}" }, { watch: "volume", value: 1.5 }] }, rationale: "The flag's high.", writtenOn: "WATCH" },
     ...clock(7, "Re-checks the flag."),
     { action: "STOP_WATCHING", predicate: onClose("below", "{flagLow}"), rationale: "The flag's low.", writtenOn: "WATCH" },
     { action: "EXIT", predicate: sell, rationale: "The buy day's low, at most one ADR under the buy.", writtenOn: "PROPOSAL" },

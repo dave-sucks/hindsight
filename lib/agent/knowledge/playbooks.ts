@@ -69,7 +69,7 @@ export function playbookRefs(templates: Template[]): Array<{ ref: string; templa
   return [...watch, ...held.map((template, i) => ({ ref: `H${i + 1}`, template }))];
 }
 
-/** A template's trigger as one sentence, each key followed by its name ("Buy if above {pivot} (the base's high) · only on the close"). */
+/** A template's trigger as one sentence, each key followed by its name ("Buy if above {pivot} (the base's high)"). */
 export function templateSentence(t: Template): string {
   return sentenceOf(t as unknown as Trigger).replace(/\{[A-Za-z0-9]+\}/g, (m) => (PLACEHOLDER_NAMES[m as Placeholder] ? `${m} (${PLACEHOLDER_NAMES[m as Placeholder]})` : m));
 }

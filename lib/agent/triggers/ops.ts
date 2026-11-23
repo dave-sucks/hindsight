@@ -55,11 +55,13 @@ import {
   waitsForClose,
   POSITION_ON_A_WATCH,
   readsThePosition,
+  refusalOf,
   reviewClockDays,
   sentenceOf,
   shapeOf,
   type Condition,
 } from "./condition";
+import { valueRange } from "./condition/range";
 import { applyTriggerDefaults } from "./defaults";
 import { defaultNote } from "./note";
 import { validateEnterTriggerRequired } from "./enter-guard";
@@ -324,6 +326,12 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
       }
       if (!(wanted.value > 0) || !Number.isFinite(wanted.value)) {
         return refuse("edit", op.id, `Edit ${name}`, "The number must be positive.");
+      }
+      // The catalog's range holds on an edit as on an add (AXGN 2026-11-23: a $51.22 price sent into a 2% "within").
+      const outOfRange = moves ? refusalOf({ ...subject!, value: wanted.value }) : null;
+      if (outOfRange) {
+        const fix = subject!.variable && valueRange(subject!)?.unit === "%" ? " This number is a %, not a price, and the line it reads moves by itself. To act at a price, remove this trigger and add one on the price." : "";
+        return refuse("edit", op.id, `${name} ${fmtValue(wanted.field, current.value)} → ${fmtValue(wanted.field, wanted.value)}`, `${outOfRange}${fix}`, { to: wanted.value });
       }
       if (actor === "AGENT" && !op.rationale?.trim() && wanted.value !== current.value) {
         return refuse(

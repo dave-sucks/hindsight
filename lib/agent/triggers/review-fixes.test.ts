@@ -153,9 +153,12 @@ describe("a chart fire carries its numbers", () => {
         { match: "all", conditions: [{ watch: "price", is: "above", value: 517.88, settings: { close: true } }, { watch: "volume", value: 1.5 }] },
         snap,
         520,
-        { volume: 35_000_000 },
+        { volume: 35_000_000, now: new Date("2026-11-23T21:20:00Z") },
       ),
-    ).toBe("volume so far 35.00M = 1.59× the 20-day average");
+    ).toBe("volume 35.00M = 1.59× the 20-day average");
+  });
+  it("in the session says the volume against this time of day", () => {
+    expect(describeChartFire({ watch: "volume", value: 1.5 }, snap, 520, { volume: 11_000_000, now: new Date("2026-11-23T17:00:00Z") })).toMatch(/^volume so far 11\.00M = 1\.\d\d× normal by this time of day$/);
   });
   it("says nothing without a snapshot", () => {
     expect(describeChartFire({ watch: "price", is: "above", variable: "sma50" }, null, 455)).toBeNull();

@@ -54,7 +54,8 @@ export function stockTableFromFacts(
       situations: sources ? situationLabels(sources).map((x) => x.text) : [],
       price,
       dayPct: load.dayChange[t.ticker] ?? null,
-      volume: snap ? volumeRatio(snap, load.dayVolume[t.ticker]) : null,
+      // Read at the price's own time: a stock with no print yet today still carries yesterday's whole day.
+      volume: snap ? volumeRatio(snap, load.dayVolume[t.ticker], load.priceAsOf[t.ticker] ? new Date(load.priceAsOf[t.ticker]) : undefined) : null,
       move5dPct: snap && price != null ? movePctOverSessions(snap, price, 5) : null,
       move20dPct: snap && price != null ? movePctOverSessions(snap, price, 20) : null,
       vsSpy1M: snap?.rsVsSpy?.["1M"] ?? null,

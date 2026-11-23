@@ -69,21 +69,19 @@ async function check(db: PrismaDouble, at: Date, ticker: string, price: number, 
   return sent;
 }
 
-describe("1. PEAD: the buy is the gap holding, and it fires at the next close", () => {
+describe("1. PEAD: the buy is the gap holding, and it fires at the next check", () => {
   const triggers = watchTriggers("PEAD", { "{gapDayMid}": 54.74, "{gapDayLow}": 51.53 });
   const buy = triggers.find((t) => t.action === "ENTER")!;
   // Written on the gap day (day 1), so the 7-day clock isn't due.
   const aaoi = () => book({ id: AAOI, ticker: "AAOI", status: "WATCHING", direction: "LONG", createdAt: new Date("2026-11-11T16:00:00Z"), lastReviewedAt: new Date("2026-11-11T16:00:00Z") }, PEAD_ANALYST, triggers);
 
   it("reads as the gap held", () => {
-    expect(sentenceOf(buy)).toBe("Buy if above $54.74 · only on the close");
-    expect(buy.rationale).toBe("The gap held: a close above the gap day's middle.");
+    expect(sentenceOf(buy)).toBe("Buy if above $54.74");
+    expect(buy.rationale).toBe("The gap held: above the gap day's middle.");
   });
 
-  it("already true at $56.20 at 11:30 ET: no five-minute pass fires it; the 16:20 close at $55.86 does", async () => {
-    const db = aaoi();
-    expect(await check(db, new Date("2026-11-11T16:30:00Z"), "AAOI", 56.2, 48.32)).toEqual([]);
-    expect(await check(db, new Date("2026-11-11T21:20:05Z"), "AAOI", 55.86, 48.32)).toEqual([expect.objectContaining({ triggerId: buy.id, action: "ENTER", firedPrice: 55.86 })]);
+  it("already true at $56.20 at 11:30 ET: the five-minute check fires it", async () => {
+    expect(await check(aaoi(), new Date("2026-11-11T16:30:00Z"), "AAOI", 56.2, 48.32)).toEqual([expect.objectContaining({ triggerId: buy.id, action: "ENTER", firedPrice: 56.2 })]);
   });
 
   it("a close under the gap's middle ($52.85 on 11-12) is the gap not holding: nothing fires", async () => {

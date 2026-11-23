@@ -131,7 +131,7 @@ export const READERS: Readonly<Record<Watch, Reader>> = {
 
   volume: {
     holds: (c, ctx) => {
-      const ratio = ctx.indicators ? volumeRatio(ctx.indicators, ctx.today?.volume) : null;
+      const ratio = ctx.indicators ? volumeRatio(ctx.indicators, ctx.today?.volume, ctx.now) : null;
       return ratio != null && c.value != null && ratio >= c.value;
     },
   },

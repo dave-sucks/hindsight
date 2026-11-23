@@ -113,7 +113,7 @@ function cases(): Case[] {
       add("the trail line", { watch: "move", is: "below", value: pct, variable: "peak" }, line, true);
       add("the trail line, deleted keys stored", { watch: "move", is: "below", value: pct, variable: "peak", settings: { startOnceUpPct: 200, widenAtr: 10 } }, line, true);
     }
-    const ratio = volumeRatio(snap, ctx.today!.volume)!;
+    const ratio = volumeRatio(snap, ctx.today!.volume, ctx.now)!;
     add("the volume ratio", { watch: "volume", value: ratio }, ctx, true);
     for (const period of [14, 2]) {
       const rsi = liveRsi(snap, price, period)!;

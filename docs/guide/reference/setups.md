@@ -22,13 +22,13 @@ A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clea
 
 **A buy is confirmed by:**
 
-- A close above the pivot, not an intraday poke (intraday crosses fail about half the time)
+- Above the pivot and holding, not a poke that slips back
 - Volume ≥ 1.5× average on the breakout day
 - No more than 5% past the pivot
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it.
+- Buy if above {pivot} and above 1.5× normal volume and below {pivotChase}. The base's pivot plus 0.1–0.3%, and at most 5% past it.
 - Review every 7 days. The base can extend and its pivot move.
 - Stop watching if below {baseLow} · only on the close. The base's low.
 
@@ -70,7 +70,7 @@ A leader that already ran pulls back in an orderly way and surfs its rising shor
 
 **Triggers on a watch:**
 
-- Buy if above {flagHigh} · only on the close and above 1.5× normal volume. The flag's high.
+- Buy if above {flagHigh} and above 1.5× normal volume. The flag's high.
 - Review every 7 days. Re-checks the flag.
 - Stop watching if below {flagLow} · only on the close. The flag's low.
 
@@ -103,13 +103,13 @@ A neglected stock reprices on unexpected news with volume many times average; in
 
 **A buy is confirmed by:**
 
-- The gap holds (day 2 closes above the gap-day midpoint)
+- The gap holds (on day 2, above the gap-day midpoint)
 - Volume stays heavy
 
 **Triggers on a watch:**
 
 - Review if above 8% gap up and above 3× normal volume. The run reads the news and writes the triggers below.
-- Buy if above {gapDayHigh} · only on the close. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
+- Buy if above {gapDayHigh}. The gap day's high; on a day-2 hold above the gap day's middle, today's price.
 - Review if below {gapDayMid} · only on the close. The gap day's middle.
 - Review every 7 days. Moves the levels to the finished gap day.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
@@ -152,7 +152,7 @@ A clean beat-and-raise the market under-reacts to drifts for weeks. This is the 
 
 **Triggers on a watch:**
 
-- Buy if above {gapDayMid} · only on the close. The gap held: a close above the gap day's middle.
+- Buy if above {gapDayMid}. The gap held: above the gap day's middle.
 - Review every 7 days. The first one after day 3 re-writes the stock on the pullback playbook or lets it go.
 - Stop watching if below {gapDayLow} · only on the close. The gap day's low.
 
@@ -292,9 +292,9 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
+- Buy if above {pivot} and above 1.5× normal volume and below {pivotChase} and within 70 days before the event date. The base's pivot plus 0.1–0.3%, and at most 5% past it. Only when the stock passes the breakout's checks.
 - Buy if within 2% of the 50-day average and within 70 days before the event date. Only while the 50-day is rising and the stock's pullbacks held it.
-- Buy if above {high20} · only on the close and within 70 days before the event date. The 20-day high, above today's price (the reclaim).
+- Buy if above {high20} and within 70 days before the event date. The 20-day high, above today's price (the reclaim).
 - Review every 7 days. Moves the reclaim to the latest 20-day high.
 - Stop watching if below {swingLow} · only on the close. The last swing low.
 - Stop watching 21 days before the event date. The window closed with no buy.
@@ -376,7 +376,7 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} · only on the close and above 1.5× normal volume. The base's pivot, on volume.
+- Buy if above {pivot} and above 1.5× normal volume. The base's pivot, on volume.
 - Buy if within 2% of the 50-day average. Only while the 50-day is rising.
 - Buy if above the 50-day average. The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.
 - Review every 30 days. The compounder's own clock.

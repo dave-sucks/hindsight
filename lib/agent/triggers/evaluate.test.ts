@@ -15,6 +15,7 @@ import type { When } from "@/lib/agent/triggers/condition";
 
 const NOW = new Date("2026-04-29T14:30:00Z");
 const THESIS_CREATED = new Date("2026-04-01T00:00:00Z"); // 28 days before NOW
+const AT_THE_CLOSE_PASS = new Date("2026-04-29T20:20:00Z"); // 16:20 ET
 
 function makeCtx(partial: Partial<EvaluationContext> = {}): EvaluationContext {
   return {
@@ -299,9 +300,14 @@ describe("evaluateTrigger", () => {
 
   describe("volume", () => {
     const p: When = { watch: "volume", value: 1.5 };
-    it("fires on today's volume ÷ the 20-day average", () => {
-      expect(evaluateTrigger(p, at(150, { today: { volume: 1_600_000 } }))).toBe(true);
-      expect(evaluateTrigger(p, at(150, { today: { volume: 1_400_000 } }))).toBe(false);
+    it("after the close, fires on the day's volume ÷ the 20-day average", () => {
+      expect(evaluateTrigger(p, at(150, { today: { volume: 1_600_000 }, now: AT_THE_CLOSE_PASS }))).toBe(true);
+      expect(evaluateTrigger(p, at(150, { today: { volume: 1_400_000 }, now: AT_THE_CLOSE_PASS }))).toBe(false);
+    });
+    it("in the session, reads it against the normal volume by this time of day", () => {
+      // 10:30 ET, minute 60: 15.23% of a normal day has traded, so 1.5× is 228,450 shares of a 1M average.
+      expect(evaluateTrigger(p, at(150, { today: { volume: 240_000 } }))).toBe(true);
+      expect(evaluateTrigger(p, at(150, { today: { volume: 220_000 } }))).toBe(false);
     });
     it("is false with no volume for today", () => {
       expect(evaluateTrigger(p, at(150))).toBe(false);
@@ -404,8 +410,8 @@ describe("evaluateTrigger", () => {
     it("the D1 breakout fires at the close on volume, not on the intraday cross", () => {
       const heavy = { today: { volume: 2_000_000 } };
       expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "INTRADAY" }))).toBe(false);
-      expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "CLOSE" }))).toBe(true);
-      expect(evaluateTrigger(breakout, at(165, { today: { volume: 900_000 }, session: "CLOSE" }))).toBe(false);
+      expect(evaluateTrigger(breakout, at(165, { ...heavy, session: "CLOSE", now: AT_THE_CLOSE_PASS }))).toBe(true);
+      expect(evaluateTrigger(breakout, at(165, { today: { volume: 900_000 }, session: "CLOSE", now: AT_THE_CLOSE_PASS }))).toBe(false);
     });
   });
 

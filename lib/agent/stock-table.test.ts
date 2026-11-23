@@ -44,7 +44,7 @@ describe("the stock table", () => {
     const prax = (volume: number) => [row({ ticker: "PRAX", status: "held", price: 309.57, dayPct: 3.0, volume })];
     const at10 = "2026-11-23T15:00:00.000Z";
     const note10 = stockTableNote({ asOf: at10, rows: prax(0.08) });
-    expect(note10).toContain("Prices as of Mon, Nov 23, 10:00 AM ET, 30 minutes into the 390-minute session; Day and Volume are so far today, Volume against a full day's 20-day average.");
+    expect(note10).toContain("Prices as of Mon, Nov 23, 10:00 AM ET, 30 minutes into the 390-minute session; Day and Volume are so far today, Volume against the normal volume by this time of day.");
     expect(note10).toContain(minutesIntoSession(sessionProgress(new Date(at10))!));
     expect(stockTableNote({ asOf: "2026-11-23T20:25:00.000Z", rows: prax(0.7) })).toContain("355 minutes into the 390-minute session");
     expect(stockTableNote({ asOf: "2026-11-23T21:00:00.000Z", rows: prax(0.88) })).toContain("Prices as of Mon, Nov 23, 4:00 PM ET; Day and Volume are that session's, Volume against its 20-day normal.");

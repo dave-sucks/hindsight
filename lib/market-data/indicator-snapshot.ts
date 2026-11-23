@@ -20,6 +20,7 @@ import {
   type DailyBar,
   type PriceStructure,
 } from "@/lib/market-data/price-structure";
+import { isMarketOpen, sessionProgress } from "@/lib/market-hours";
 
 /** Closes kept for the move windows and RSI warm-up. */
 export const SNAPSHOT_CLOSES = 60;
@@ -169,8 +170,39 @@ export function chartFacts(snap: IndicatorSnapshot, price: number | null): Chart
   };
 }
 
-/** Today's volume so far ÷ the 20-session average. */
-export function volumeRatio(snap: IndicatorSnapshot, todayVolume: number | null | undefined): number | null {
+/**
+ * The share of a normal day's volume traded by each minute of the session.
+ * Measured 2026-11-23 from Alpaca's SIP 1-minute bars: the median, over 995
+ * stock-days (the book's 50 tickers, the 20 sessions Oct 26–Nov 20), of the
+ * pre-market plus session volume so far ÷ that day's whole 1Day bar, the two
+ * numbers the check divides. It ends near 76% because the 4 PM closing auction
+ * lands in the day bar after the last minute. It starts at minute 30: the first
+ * minutes swing too much to pace (at 9:35, 31% of stock-days read 1.5×).
+ */
+const NORMAL_VOLUME_BY_MINUTE: ReadonlyArray<readonly [number, number]> = [
+  [30, 0.0872], [45, 0.1214], [60, 0.1523], [90, 0.212], [120, 0.2636], [150, 0.3095], [180, 0.3545],
+  [210, 0.392], [240, 0.4277], [270, 0.4662], [300, 0.5121], [330, 0.5558], [360, 0.6177], [375, 0.6618],
+  [385, 0.7097], [389, 0.763],
+];
+
+/** How much of a normal day's volume has traded by `now`; 1 outside the session, where the day's volume is the whole day's. */
+export function normalVolumeShare(now: Date | undefined): number {
+  if (!now || !isMarketOpen(now)) return 1;
+  const progress = sessionProgress(now);
+  if (!progress) return 1;
+  // A half day runs the same shape in fewer minutes.
+  const minute = (progress.minutes / progress.total) * 390;
+  const curve = NORMAL_VOLUME_BY_MINUTE;
+  if (minute <= curve[0][0]) return curve[0][1];
+  const next = curve.findIndex(([m]) => m >= minute);
+  if (next < 0) return curve[curve.length - 1][1];
+  const [m0, s0] = curve[next - 1];
+  const [m1, s1] = curve[next];
+  return s0 + ((s1 - s0) * (minute - m0)) / (m1 - m0);
+}
+
+/** Today's volume so far ÷ the normal volume by this time of day; after the close, the day's ÷ the 20-session average. */
+export function volumeRatio(snap: IndicatorSnapshot, todayVolume: number | null | undefined, now: Date | undefined): number | null {
   if (todayVolume == null || !snap.volumeAvg20) return null;
-  return todayVolume / snap.volumeAvg20;
+  return todayVolume / (snap.volumeAvg20 * normalVolumeShare(now));
 }
