@@ -207,6 +207,10 @@ describe("a trigger's proposal over 2026-10-14 → 11-13", () => {
   it("PLTR: a proposal per break, withdrawn on each close back above, the last open on the trail (main: 16 proposals, 23 trigger runs)", async () => {
     const r = await month("PLTR");
     expect(r.proposals).toEqual([
+      // Send to Agent at $196 until 10-23: the analyst held each break, and the card opened anyway (2026-11-23).
+      { at: "2026-10-15T13:31", status: "WITHDRAWN", triggerIds: [FLOOR.PLTR], expiresAt: null, withdrawnReason: "closed back above $196 at $200.50", proposedPrice: 193.925 },
+      { at: "2026-10-16T13:50", status: "WITHDRAWN", triggerIds: [FLOOR.PLTR], expiresAt: null, withdrawnReason: "closed back above $196 at $201.72", proposedPrice: 195.435 },
+      { at: "2026-10-22T18:35", status: "WITHDRAWN", triggerIds: [FLOOR.PLTR], expiresAt: null, withdrawnReason: "closed back above $196 at $196.19", proposedPrice: 195.88 },
       // Auto-sell at $196 (set 10-23); PLTR closed $196.75.
       { at: "2026-10-23T18:40", status: "WITHDRAWN", triggerIds: [FLOOR.PLTR], expiresAt: null, withdrawnReason: "closed back above $196 at $196.75", proposedPrice: 195.84 },
       // The account's 6% trail ($197.64 off the $210.25 high): closed $198.84, then $198.73.
@@ -216,8 +220,8 @@ describe("a trigger's proposal over 2026-10-14 → 11-13", () => {
       { at: "2026-10-28T14:10", status: "AWAITING_APPROVAL", triggerIds: [FLOOR.PLTR, TRAIL], expiresAt: null, withdrawnReason: null, proposedPrice: 194.485 },
     ]);
     // The floor fired 10-15 and the close ($200.50) went back above $196; it fired 10-16 and stayed below through 10-20;
-    // the 10-21 close ($201.72) made it ready, and it fired 10-22. Three runs held without a sale (production: six,
-    // one a day while below); then one per proposal.
+    // the 10-21 close ($201.72) made it ready, and it fired 10-22. Three runs held, each with its card open (production:
+    // six, one a day while below, and no card); then one per proposal.
     expect(r.runs).toBe(7);
   });
 });

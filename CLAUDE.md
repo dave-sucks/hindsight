@@ -48,7 +48,8 @@ and its note is the trade's reason (`lib/proposals/auto-writeup.ts`; the agent
 is `lib/agent/engine/agents/post-trade-writeup.ts`; an Auto buy or add sent at
 once, with approval off, is written up after its fill by After the buy instead);
 Auto-sell / Auto-trim / Auto-buy / Auto-add, never a review), Send to Agent
-(`ASK_NOW`: a trigger run now) or Flag for Review (`NEXT_MORNING`: the morning
+(`ASK_NOW`: a trigger run now; on a sale with approval on, a run that holds still
+opens the card with its note as the reason, `lib/proposals/fired-sale-card.ts`) or Flag for Review (`NEXT_MORNING`: the morning
 run answers it; never a sell or trim, since a sale can't wait for the morning).
 Unset, a review is Flag for Review and everything else Send to
 Agent; every stored trigger names one. Auto on a buy, add or trim is the

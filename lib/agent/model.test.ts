@@ -140,7 +140,7 @@ describe("a trigger run", () => {
       jest.doMock("@/lib/prisma", () => ({ prisma: db }));
       jest.doMock("@/lib/inngest/client", () => inngest((h) => (handler = h)));
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
-      jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn() }));
+      jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn(async () => ({ kind: "proposed", proposal: { orderId: "ord_v" } })) }));
       jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
       jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
       // The close-out writes its row, as write_note would.
