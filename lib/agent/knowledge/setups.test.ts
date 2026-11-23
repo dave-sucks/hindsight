@@ -162,7 +162,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
 
 describe("the pullback and the drift (HPE 2026-09-15)", () => {
   it("the reversal is the tactical run's confirmation", () => {
-    expect(getSetup("MA_PULLBACK")!.entry.confirmation.some((c) => c.includes("close above the prior day's high"))).toBe(true);
+    expect(getSetup("MA_PULLBACK")!.entry.confirmation.some((c) => c.includes("back above the prior day's high"))).toBe(true);
   });
 
   it("PEAD carries its window as data, and only PEAD does", () => {

@@ -96,7 +96,7 @@ The buy is half the normal risk, and a 50% gap may cost at most 0.5% of the acco
 | Review 10 sessions after the buy | Ten sessions to reclaim the prior high | Template |
 | Review every 7 days | | Kept |
 
-*Can't be written:* the reversal (a close above the prior day's high), which the run answering the buy checks, and below-average volume on the pullback.
+*Can't be written:* the reversal (back above the prior day's high), which the run answering the buy checks, and below-average volume on the pullback.
 
 ### Post-earnings drift (`PEAD`): PEAD Specialist
 

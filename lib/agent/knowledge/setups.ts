@@ -427,7 +427,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     ],
     entry: {
       confirmation: [
-        "The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire",
+        "The reversal: back above the prior day's high after touching the average — the tactical run checks this on the fire",
         "The pullback came on below-average volume",
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,

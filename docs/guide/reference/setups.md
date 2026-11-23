@@ -186,7 +186,7 @@ Buying a confirmed uptrend at a discount with a natural stop — the moving aver
 
 **A buy is confirmed by:**
 
-- The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire
+- The reversal: back above the prior day's high after touching the average — the tactical run checks this on the fire
 - The pullback came on below-average volume
 
 **Triggers on a watch:**
