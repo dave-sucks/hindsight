@@ -86,7 +86,7 @@ describe("GEV 10-28 09:40 ET: the hold note after two lapsed sales", () => {
     const text = JSON.stringify(result);
     // Production named the lapsed sale in its own words; the refusal now names the situation.
     expect(fx.refusedWith).toMatch(/left to lapse/);
-    expect(text).toMatch(/GEV \([a-z0-9]+\): possible sale/);
+    expect(text).toMatch(/GEV \([a-z0-9]+\): possible sell/);
     expect(text).toContain("Answer each with write_note");
     expect(text).not.toContain("does not answer it");
   });

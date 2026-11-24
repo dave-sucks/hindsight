@@ -53,7 +53,7 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
 export const SITUATION_RENAMES: ReadonlyArray<readonly [string, string]> = [
   // 2026-11-24: a situation is named for the decision on the table.
   ["BUY_ARRIVES — buy price reached", "BUY_ARRIVES — possible buy"],
-  ["PROTECTIVE_SALE — sale signal", "PROTECTIVE_SALE — possible sale"],
+  ["PROTECTIVE_SALE — sale signal", "PROTECTIVE_SALE — possible sell"],
   ["- Defer: update_thesis with change_status \"WATCHING\". The next run looks at it again.", "- Defer: watch_again. The next run looks at it again."],
   ["Answered: place_trade, or that update_thesis.", "Answered: place_trade, or that watch_again."],
   ["- Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis.", "- Sell: sell, answering belief_survived as its description says, or trim with sell and a percent; then one write_note."],

@@ -15,7 +15,7 @@ export const RAISED_BY: Record<SituationCode, { by: "trigger" | "code"; what: st
   PROTECTIVE_SALE: { by: "trigger", what: "A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger." },
   BUY_ARRIVES: { by: "trigger", what: "A Buy trigger fired on a watch, or is true when the morning run reads the stock." },
   ADD_OR_WINNER: { by: "trigger", what: "An Add trigger fired on a holding." },
-  REPORT: { by: "trigger", what: "A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale." },
+  REPORT: { by: "trigger", what: "A trigger that watches the company's earnings report fired, before the report or after it." },
   FILING: { by: "trigger", what: "A trigger that watches the company's SEC filings fired." },
   NEWS: { by: "trigger", what: "A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock." },
   REVIEW_DUE: { by: "trigger", what: "A “Review every N days” trigger came due, or a Review trigger on a price or a move fired." },

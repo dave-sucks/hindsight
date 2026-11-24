@@ -30,12 +30,12 @@ What an analyst may do is the same every time (propose a sale, a trim, a buy or 
 The note is the write-up of what the situation sent the agent to find out. Every note has the same shape, set once in the house rules: what is going on and why, what it means for why we own it, then one sentence on what the analyst did.
 
 - **The text goes to the run that answers.** A [morning run](../agents/morning-runs.md) gets the skills for the situations on its own list, once per read however many stocks share one; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for.
-- **One tag everywhere.** A stock in a situation shows the decision on the table, then why. A trigger's action is the decision and its condition is the why: “Possible sell · below $804”, “Possible buy · above $210”, “Review · every 30 days, 10 days overdue”. A review names no direction, because the look decides it. A check in the code shows its name and its fact, such as “Floor to fix · 2.1% of the account below here”. The tag is the same in the stock table, on the stock's page and on the row an agent reads, where the situation's code comes first (`situationLabels`, `lib/agent/situations.ts`).
-- **The decision and the event are two things.** A trigger that watches earnings, a filing or a news note adds that event's instructions to whatever its action is. “Sell if it misses earnings” is a possible sale that also carries the earnings report's instructions.
+- **One tag everywhere.** A stock in a situation shows the decision on the table, then why. A trigger's action is the decision and what it watches is the why: “Possible sell · below $804”, “Possible trim 30% · above $150”, “Possible add · up 7% on the day”, “Review · every 30 days, 10 days overdue”. A review names no direction, because the look decides it. A check in the code shows its name and its fact, such as “Floor to fix · 2.1% of the account below here”. The tag is the same in the stock table, on the stock's page and on the row an agent reads, where the situation's code comes first (`situationLabels`, `lib/agent/situations.ts`). The trigger's own sentence, in Settings and on the stock, is unchanged (“Add if above 7% from yesterday's close”).
+- **Earnings, a filing and a news note are reviews.** A trigger that watches one of them can only be a Review today, and the review is sent that event's instructions.
 - **Every other reader gets the name.** A read of one stock by ticker, the [Portfolio Manager](../agents/portfolio-manager.md)'s rows and [chat](../agents/chat.md) see each situation by name on the stock's row. The skills are listed in the knowledge library, so chat reads one when you ask it to act. You see the names on the thesis sheet.
 - One note on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to the Writer.
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
-- **A card waiting for you silences only that trade.** While a sale or trim waits for your approval, no possible sale is raised on the stock (not the fire, not the price still past the line, not a sale you declined before): the card is yours to answer. Every other situation still lists the stock, and its row says the sale is waiting. A second sale is refused by the sell tool, which says the card is yours. A stock with only the card is a quiet line.
+- **A card waiting for you silences only that trade.** While a sale or trim waits for your approval, no possible sell is raised on the stock (not the fire, not the price still past the line, not a sale you declined before): the card is yours to answer. Every other situation still lists the stock, and its row says the sale is waiting. A second sale is refused by the sell tool, which says the card is yours. A stock with only the card is a quiet line.
 - How often each one comes up, and what the runs did with it, is on Performance, under Agent work.
 
 ## The situations
@@ -44,7 +44,7 @@ A situation is why a stock is in front of its analyst now. Each is raised by a t
 
 | Situation | Raised by | When |
 |---|---|---|
-| **Possible sale** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
+| **Possible sell** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
 | **Possible buy** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
 | **Possible add** | A trigger | An Add trigger fired on a holding. |
 | **Earnings report** | A trigger | A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale. |
@@ -55,11 +55,11 @@ A situation is why a stock is in front of its analyst now. Each is raised by a t
 | **Just sold** | A check in the code | The stock was sold in the last two weeks and no run has looked at it since. |
 | **Promoted to live** | A check in the code | A paper analyst was promoted to live money, and its holdings need a decision. |
 
-A possible sale is not raised while a sale card for the stock waits for you. News needs the rule "Review if the Market Reviewer writes a high note on it", which is yours to save.
+A possible sell is not raised while a sale card for the stock waits for you. News needs the rule "Review if the Market Reviewer writes a high note on it", which is yours to save.
 
 On a watch, a review, a report and news can each end in a buy: when the case is stronger and the playbook's buy is true today, the analyst proposes it.
 
-Some things are deliberately not situations. A buy into a full analyst is refused by the buy tool, which says to name the holding the stock would replace. A sale that already waits for you is refused by the sell tool. A watch with no view yet has no case to review: when its review clock or one of its triggers comes due, code sends it to the Writer, and no run is asked to. Your own words are not a situation either: a note you write, a trigger you edit, a floor you move, an approval you resize and a decline with a comment all stay in the stock's Activity, where every look reads them, and put no stock on a list. A sale you declined is still carried by the possible sale while the price is past it.
+Some things are deliberately not situations. A buy into a full analyst is refused by the buy tool, which says to name the holding the stock would replace. A sale that already waits for you is refused by the sell tool. A watch with no view yet has no case to review: when its review clock or one of its triggers comes due, code sends it to the Writer, and no run is asked to. Your own words are not a situation either: a note you write, a trigger you edit, a floor you move, an approval you resize and a decline with a comment all stay in the stock's Activity, where every look reads them, and put no stock on a list. A sale you declined is still carried by the possible sell while the price is past it.
 
 A trade a trigger set to Auto made is written up by its own agent, the post-trade write-up (or, for a buy or an add sent at once, [After the buy](../agents/after-the-buy.md)), from its own instructions; it is not a situation.
 

@@ -15,10 +15,10 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill fil
 
 | Situation | Raised by | When |
 |---|---|---|
-| **Possible sale** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
+| **Possible sell** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
 | **Possible buy** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
 | **Possible add** | A trigger | An Add trigger fired on a holding. |
-| **Earnings report** | A trigger | A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale. |
+| **Earnings report** | A trigger | A trigger that watches the company's earnings report fired, before the report or after it. |
 | **SEC filing** | A trigger | A trigger that watches the company's SEC filings fired. |
 | **News** | A trigger | A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock. |
 | **Review** | A trigger | A “Review every N days” trigger came due, or a Review trigger on a price or a move fired. |
@@ -108,7 +108,7 @@ Mistakes:
 - A note in place of the decision: the stock stays promoted and is asked again on the next run.
 ```
 
-## Possible sale
+## Possible sell
 
 `PROTECTIVE_SALE` · rank 2 of 10 · `sale-fired.md`
 
@@ -188,7 +188,7 @@ Done: one note that says why the stock moved and whether that confirms why we ow
 
 `REPORT` · rank 5 of 10 · `report.md`
 
-**Raised by:** a trigger. A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale.
+**Raised by:** a trigger. A trigger that watches the company's earnings report fired, before the report or after it.
 
 **How it reads, in each place it shows:**
 

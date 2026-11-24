@@ -7,7 +7,7 @@
 import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { isGroup, measureOf, reviewClockDays, shapeOf, type MeasureDef, type When } from "@/lib/agent/triggers/condition";
-import { actionLabel, conditionSentence } from "@/lib/agent/triggers/condition/describe";
+import { actionLabel, conditionWhy, trimPctOf } from "@/lib/agent/triggers/condition/describe";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 
 /**
@@ -117,7 +117,7 @@ The note: what the company and the stock have done since the paper buy, and whet
 Mistakes:
 - A note in place of the decision: the stock stays promoted and is asked again on the next run.`,
   },
-  PROTECTIVE_SALE: { name: "possible sale", skill: "sale-fired.md" },
+  PROTECTIVE_SALE: { name: "possible sell", skill: "sale-fired.md" },
   BUY_ARRIVES: { name: "possible buy", skill: "buy-fired.md" },
   ADD_OR_WINNER: { name: "possible add", skill: "add-fired.md" },
   REPORT: { name: "earnings report", skill: "report.md" },
@@ -156,7 +156,13 @@ export interface SituationLabel {
 
 /** The decision a trigger puts on the table, by its action. A review names no direction: the look decides. */
 const DECISION: Record<string, string> = { EXIT: "Possible sell", TRIM: "Possible trim", ENTER: "Possible buy", ADD: "Possible add", REVIEW: "Review" };
-const decisionOf = (action: string) => DECISION[action] ?? actionLabel(action);
+/** A trim says its size: "Possible trim 30%". */
+const decisionOf = (action: string, t?: { trimPct?: number | null }) => (action === "TRIM" && t ? `${DECISION.TRIM} ${trimPctOf(t)}%` : (DECISION[action] ?? actionLabel(action)));
+
+/** A trigger as a flagged stock's tag: its action as the decision, then what it watches. "Possible sell · below $804". */
+export function triggerTag(t: { action: string; predicate: unknown; trimPct?: number | null }): string {
+  return tag(decisionOf(t.action, t), conditionWhy(t.predicate));
+}
 const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
 const tag = (decision: string, why: string | null) => (why ? `${decision} · ${why}` : decision);
 
@@ -164,15 +170,16 @@ type Raised = { codes: SituationCode[]; detail: string | null; decision?: string
 
 /** What raised a flag: a trigger (its action is the decision, its condition the why), or the one fact a code check carries. */
 function flagDetail(s: SituationSources, f: NeedsAction): Raised[] {
-  const why = (id: string, fallback: string) => {
+  // The fired trigger as saved; one no longer on the stock falls back to the fire's own words.
+  const fired = (id: string, action: string, fallback: string): Raised => {
     const t = s.triggers.find((x) => x.id === id);
-    return t ? conditionSentence(t.predicate) : fallback;
+    return { codes: fireCodes(s, id, action), detail: t ? conditionWhy(t.predicate) : fallback, decision: decisionOf(action, t) };
   };
   switch (f.kind) {
     case "TRIGGER_FIRED":
-      return [f, ...(f.alsoFired ?? [])].map((x) => ({ codes: fireCodes(s, x.triggerId, x.action), detail: why(x.triggerId, x.summary), decision: decisionOf(x.action) }));
+      return [f, ...(f.alsoFired ?? [])].map((x) => fired(x.triggerId, x.action, x.summary));
     case "TRIGGER_MATCHING_NOW":
-      return [{ codes: fireCodes(s, f.triggerId, f.action), detail: why(f.triggerId, f.predicateSummary), decision: decisionOf(f.action) }];
+      return [fired(f.triggerId, f.action, f.predicateSummary)];
     case "SALE_DECLINED": {
       const flag = needsActionFlag(f);
       return [{ codes: flagCodes(s, f), detail: `${flag.name.toLowerCase()}${flag.detail ? `, ${flag.detail}` : ""}`, decision: DECISION.EXIT }];
@@ -181,7 +188,7 @@ function flagDetail(s: SituationSources, f: NeedsAction): Raised[] {
       // The review clock is a trigger ("Review every 30 days"): the first one on the stock, as reviewDue reads it.
       const clock = s.triggers.find((t) => { const w = shapeOf(t.predicate); return w != null && reviewClockDays(w) != null; });
       const late = needsActionFlag(f).detail;
-      return [{ codes: flagCodes(s, f), detail: clock ? `${conditionSentence(clock.predicate)}${late ? `, ${late}` : ""}` : late, decision: DECISION.REVIEW }];
+      return [{ codes: flagCodes(s, f), detail: clock ? `${conditionWhy(clock.predicate)}${late ? `, ${late}` : ""}` : late, decision: DECISION.REVIEW }];
     }
     default:
       return [{ codes: flagCodes(s, f), detail: needsActionFlag(f).detail }];

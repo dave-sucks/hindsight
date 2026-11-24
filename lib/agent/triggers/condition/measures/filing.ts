@@ -20,6 +20,7 @@ export const filing: MeasureDef = {
   variables: { mode: "replace", options: FILING_VARIABLES, title: "Choose a filing", required: "Choose a filing." },
   actions: ["REVIEW"],
   says: (_c, words) => `it files ${words}`,
+  why: (_c, words) => `filed ${words}`,
   fresh: () => ({ watch: "filing", variable: "tier:MATERIAL" }),
   fits: (c) => event(c.variable) != null,
   shape: "Choose a filing: a tier, an 8-K item or a form.",
@@ -51,6 +52,7 @@ export const insiders: MeasureDef = {
   type: "filing",
   label: "Insider buying",
   word: "At least",
+  why: (_c, words) => `at least ${words.replace(" · in ", " in ")}`,
   value: { suffix: "insiders buying", placeholder: "3", range: { what: "Insider buying", unit: " insiders", integer: true, min: 1, max: 10 } },
   settings: [
     {

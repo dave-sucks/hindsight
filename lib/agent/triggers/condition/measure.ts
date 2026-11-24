@@ -107,6 +107,12 @@ export interface MeasureDef {
   window?: (c: Condition) => boolean;
   /** Counts from the buy: like a move from our buy price, it reads our position and means nothing on a watch. */
   fromTheBuy?: (c: Condition) => boolean;
+  /**
+   * On a flagged stock's tag, after the decision ("Possible add · up 7% on the day"): the condition as a person
+   * would say what it watches, where the sentence's own words read as a rule ("above 7% from yesterday's close").
+   * `words` is the value half in words. Absent: the sentence's words.
+   */
+  why?: (c: Condition, words: string) => string;
   /** In a sentence, where the two halves don't read as English: "30 days after the buy". `words` is the value half in words. */
   says?: (c: Condition, words: string) => string;
   /**

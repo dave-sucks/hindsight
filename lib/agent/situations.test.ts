@@ -345,13 +345,19 @@ describe("one tag for a situation on a stock: the decision on the table, then wh
     const s: SituationSources = { needs: [{ kind: "REVIEW_DUE", daysOverdue: 3 }], triggers: [clock], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
     expect(situationLabels(s).map((x) => x.text)).toEqual(["Review · every 30 days, 3 days overdue"]);
   });
-  // A trigger can raise two situations: a sale that watches earnings is a possible sale and an earnings report. The stock shows one tag.
+  // A review that watches earnings and a filing together is an earnings report and a filing. The stock shows one tag.
   it("one trigger that raises two situations shows one tag, and both codes get it", () => {
-    const i = input({ status: "HOLDING", triggers: [trig("miss", "EXIT", { watch: "surprise", is: "below", value: 0 })] }, { activity: [fire("miss")] });
-    const labels = situationLabels(sources(i));
-    expect(labels.map((x) => x.code)).toEqual(["PROTECTIVE_SALE", "REPORT"]);
-    expect(situationTags(sources(i))).toHaveLength(1);
-    expect(situationTags(sources(i))[0]).toMatch(/^Possible sell · /);
+    const both = { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "filing", variable: "tier:MATERIAL" }] };
+    const i = input({ status: "HOLDING", triggers: [trig("both", "REVIEW", both)] }, { activity: [fire("both")] });
+    expect(situationLabels(sources(i)).map((x) => x.code)).toEqual(["REPORT", "FILING"]);
+    expect(situationTags(sources(i))).toEqual(["Review · an earnings miss and filed something material with the SEC"]);
+  });
+  // MSFT-style add rule and a 30% trim: the tag says the move as a person would, and a trim keeps its size.
+  it("says a move on the day in plain words, and a trim with its size", () => {
+    const add = input({ status: "HOLDING", triggers: [trig("add", "ADD", { watch: "move", is: "above", value: 7, variable: "prev_close" })] }, { activity: [fire("add")] });
+    expect(situationTags(sources(add))).toEqual(["Possible add · up 7% on the day"]);
+    const trim = input({ status: "HOLDING", triggers: [{ ...trig("trim", "TRIM", { watch: "price", is: "above", value: 150 }), trimPct: 30 }] }, { activity: [fire("trim")] });
+    expect(situationTags(sources(trim))).toEqual(["Possible trim 30% · above $150"]);
   });
   it("a code check keeps its name, then its fact", () => {
     const s: SituationSources = { needs: [{ kind: "FLOOR_TOO_FAR", pctOfAccount: 2.1 } as never], triggers: [], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
