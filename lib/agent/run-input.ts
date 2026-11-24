@@ -28,7 +28,6 @@ import { derivedNextReviewAt } from "@/lib/agent/triggers/defaults";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { FilingsOnBook } from "@/lib/agent/filings-on-book";
 import type { EarningsWeek } from "@/lib/agent/context/earnings-this-week";
-import type { OpenRefusal } from "@/lib/agent/gate-rejections";
 import {
   loadLevelSources,
   resolveThesisLadder,
@@ -139,12 +138,11 @@ export interface RunInput {
     rationale: string;
     matchDetail: string;
   }>;
-  // A recorded run's earnings, filings and refused calls, for a replay. A
-  // live run's are read for the analyst (lib/agent/context/: earnings this
-  // week, filings this week, refused calls).
+  // A recorded run's earnings and filings, for a replay. A live run's are
+  // read for the analyst (lib/agent/context/: earnings this week, filings
+  // this week).
   earnings?: EarningsWeek;
   filings?: FilingsOnBook;
-  openRefusals?: OpenRefusal[];
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────

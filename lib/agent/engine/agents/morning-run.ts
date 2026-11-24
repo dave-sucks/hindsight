@@ -6,8 +6,7 @@
  * Its instructions: morning-run.md, the same on every run (the regime's
  * rules in it; it imports the rules); the analyst it works for is sent
  * before it. Its context, read for the analyst: the market and the
- * portfolio, its book, the book's earnings and filings this week, and the
- * calls refused last time that no run has redone. Its message
+ * portfolio, its book, and the book's earnings and filings this week. Its message
  * is the schedule's kickoff, with the watched stocks at their buy price.
  */
 import { MODES } from "@/lib/agent/modes";
@@ -37,7 +36,7 @@ export const MORNING_RUN: AgentRecord = {
   maxSteps: MODES["research-run"].maxSteps,
   // The analyst opens the instructions: in the first message, MU's review stopped lowering its conviction (3 of 3 runs to 0 of 3).
   instructions: ["the_analyst", "morning-run.md"],
-  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "earnings_this_week", "filings_this_week", "refused_calls", "message"],
+  context: ["market_numbers", "market_digest", "portfolio", "portfolio_digest", "the_book", "earnings_this_week", "filings_this_week", "message"],
   tools: MODES["research-run"].toolAllowlist ?? [],
   output: "A note or a trade proposal on each stock on its work list, then record_run_summary and complete_run.",
 };

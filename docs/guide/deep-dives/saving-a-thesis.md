@@ -47,7 +47,7 @@ On a stock we hold, no agent can lower or widen a protective level, remove it, o
 
 ## When a save is refused
 
-Every refusal is recorded. Anything still open when a run ends goes back to the run to fix, appears in Activity, and opens the next [morning run](../agents/morning-runs.md) as "Blocked last time". It closes when the same tool lands on the same stock. A refusal of a single field isn't carried over, since the rest of that call landed.
+Every refusal is recorded. The agent reads it once, as the tool's answer with what to do instead; no later run is reminded of it. The homepage Activity shows refused trades for 30 days, and other refusals still open for 14 days, until the same tool lands on the same stock. A refusal of a single field isn't shown, since the rest of that call landed. A passed stock, or one no longer watched, takes no notes or edits, and its refusal says nothing more is owed. A sold stock still takes its one review: its refusal names the note that lets it go and `watch_again`.
 
 An agent that sends the same refused call again gets a nudge on the second refusal. On the third, the run stops and closes as failed with the reason named. Morning and [trigger](../agents/trigger-runs.md) runs share this guard.
 
@@ -72,7 +72,7 @@ Status changes follow one table. An agent can drop a stock it watches (`stop_wat
 `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`, run by `ops.ts` when the actor is an agent and the status is `HOLDING`. An agent's save always sends `actor: "AGENT"`; the sheet sends `PRINCIPAL`.
 
 #### Refusals
-`GateRejection` in `prisma/schema.prisma`, written by `recordGateRejection` and closed by `resolveGateRejections` (`lib/agent/gate-rejections.ts`). Carried forward by `lib/agent/refusal-carryover.ts`. The repeat guard is `lib/agent/repeat-refusal.ts` (nudge at 2, stop at 3), wired into `morning-research.ts` and `tactical-run.ts`.
+`GateRejection` in `prisma/schema.prisma`, written by `recordGateRejection` and closed by `resolveGateRejections` (`lib/agent/gate-rejections.ts`). Shown by `loadAttempts` in `lib/thesis/account-activity.server.ts`; recorded on the run by `recordOpenRefusalsEvent` (an `action_blocked` event no screen shows yet); a closed stock's refusal is `terminal_status` in `lib/agent/thesis-transitions.ts`. The repeat guard is `lib/agent/repeat-refusal.ts` (nudge at 2, stop at 3), wired into `morning-research.ts` and `tactical-run.ts`.
 
 #### Status table
 `lib/agent/thesis-transitions.ts`: `checkStatusTransition`, `checkTerminateWithoutClose`, `checkWatchingOptOut`.

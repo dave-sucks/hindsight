@@ -109,7 +109,11 @@ const EARLY_RULES: TransitionRule[] = [
       }
       if (isSoldReviewWrite(i)) return null;
       return {
-        summary: `Thesis ${i.thesisId} is ${i.currentStatus}; can't update a terminal thesis.`,
+        // A sold row still takes its review: the note lets it go, watch_again watches it again.
+        summary:
+          i.currentStatus === "RETIRED" && i.retiredReason === "SOLD"
+            ? `$${i.ticker} was sold and is already closed: write_note lets it go, and watch_again watches it again.`
+            : `$${i.ticker} is closed (${i.currentStatus}): it takes no notes or edits, and nothing more is owed on it.`,
         data: { error: "terminal_status", current_status: i.currentStatus },
       };
     },

@@ -39,6 +39,20 @@ describe("DAV-308 — and nothing else opens", () => {
     },
   );
 
+  it("a refused call on a sold row names the two answers that land: the note, or watch again", () => {
+    const v = checkStatusTransition({ ...SMMT, changeStatus: "ARCHIVED" });
+    expect(v?.summary).toBe("$SMMT was sold and is already closed: write_note lets it go, and watch_again watches it again.");
+  });
+
+  it("a passed or dropped row says nothing more is owed", () => {
+    expect(checkStatusTransition({ ...SMMT, currentStatus: "PASSED", retiredReason: null, changeStatus: undefined })?.summary).toBe(
+      "$SMMT is closed (PASSED): it takes no notes or edits, and nothing more is owed on it.",
+    );
+    expect(checkStatusTransition({ ...SMMT, retiredReason: "DROPPED", changeStatus: undefined })?.summary).toBe(
+      "$SMMT is closed (RETIRED): it takes no notes or edits, and nothing more is owed on it.",
+    );
+  });
+
   it.each(["DROPPED", "INVALIDATED", "REPLACED"] as const)(
     "still refuses a rationale-only write on a RETIRED/%s row",
     (reason) => {

@@ -51,7 +51,6 @@ jest.mock("@/lib/agent/triggers/earnings", () => ({
   fetchEarningsWindow: async () => ({ reported: new Map(), upcoming: new Map() }),
 }));
 jest.mock("@/lib/agent/filings-on-book", () => ({ filingsOnBook: async () => [] }));
-jest.mock("@/lib/agent/gate-rejections", () => ({ listOpenRefusalsForAnalyst: async () => [] }));
 const blockArgs: unknown[] = [];
 jest.mock("@/lib/agent/portfolio-block", () => ({ loadPortfolioPieces: async (a: unknown) => (blockArgs.push(a), [{ id: "portfolio_snapshot", text: "### Portfolio snapshot\nSTAND-IN" }]) }));
 

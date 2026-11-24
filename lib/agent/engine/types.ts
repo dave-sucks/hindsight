@@ -44,7 +44,6 @@ export type ContextId =
   | "playbook_record"
   | "earnings_this_week"
   | "filings_this_week"
-  | "refused_calls"
   | "last_output"
   | "manager_writeup"
   | "earnings_calendar";

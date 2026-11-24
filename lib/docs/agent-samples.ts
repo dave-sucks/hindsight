@@ -141,7 +141,7 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     },
   },
   morning_run: {
-    from: "a full morning: reports, a filing, a buy price reached, a refused call",
+    from: "a full morning: reports, a filing, a buy price reached",
     build: () => {
       const c = MORNING_CASES.full;
       return { request: dailyRunRequest(c.analyst as never, { ...asRunInput(c.runInput), portfolioPieces: PIECES }, SAMPLE_NOW) };

@@ -13,7 +13,6 @@
 
 import type { RunInput } from "./run-input";
 import { analystBrief, type BriefAnalyst } from "@/lib/agent/analyst-brief";
-import { blockedLastTimeSection } from "@/lib/agent/refusal-carryover";
 import { composeAgentRequest } from "@/lib/agent/engine/engine";
 import { buildAgentRequest } from "@/lib/agent/engine/build";
 import type { PortfolioPiece } from "@/lib/agent/portfolio-block";
@@ -45,7 +44,7 @@ export function morningMessage(runInput: Pick<RunInput, "triggersMatchingNow" | 
  * The morning run's request: its record (lib/agent/engine/agents/morning-run.ts),
  * its facts read for the analyst by the engine (lib/agent/context/: the
  * analyst, the market and the portfolio, its book, the week's earnings and
- * filings, the calls refused last time), and the schedule's kickoff. The
+ * filings), and the schedule's kickoff. The
  * cron and the Run button send the same request.
  */
 export async function morningRunRequest(run: ContextRun<SubjectOf<"analyst">>, runInput: Pick<RunInput, "triggersMatchingNow" | "portfolio">): Promise<BuiltRequest> {
@@ -57,7 +56,7 @@ export async function morningRunRequest(run: ContextRun<SubjectOf<"analyst">>, r
  * The morning run's request from what a replay or a test has in hand,
  * written as the loaders write it (lib/agent/context/): the analyst with
  * its room, the recorded Market and portfolio reads, its book (the
- * get_theses read a recorded run made first), the week and the refused calls.
+ * get_theses read a recorded run made first), and the week.
  */
 export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: string | null }, runInput: RunInput, now: Date = new Date(), book: string | null = null): BuiltRequest {
   // How full this analyst is (DAV-292), counted the way place_trade counts: held positions plus buys awaiting approval.
@@ -75,7 +74,6 @@ export function dailyRunRequest(analyst: BriefAnalyst & { tradingEnvironment?: s
       the_book: book,
       earnings_this_week: earningsWeekText(runInput.earnings),
       filings_this_week: filingsWeekText(runInput.filings),
-      refused_calls: blockedLastTimeSection(runInput.openRefusals ?? []) || null,
     },
   });
 }

@@ -38,16 +38,16 @@
  * out and ended COMPLETE, and nothing anywhere said the buy never happened.
  * Every row is now open until the same tool lands on the same stock (or
  * thesis) for the same analyst — `resolveGateRejections`, called from the
- * wrapper on every non-refused result. An open row is (1) put back to the
- * model before its run ends (the refusal retry in morning-research
- * and tactical-run), (2) written into the next daily run's
- * prompt as "Blocked last time", and (3) shown on the Activity feed. The
- * deletion-pass use above still stands.
+ * wrapper on every non-refused result. An open row is recorded on its run
+ * when the run ends and shown on the homepage Activity; it is never sent to a model
+ * again (2026-11-24: carried to later runs, it resolved 2 in 30 days and sent
+ * runs to write on stocks that were closed). The deletion-pass use above
+ * still stands.
  */
 
 import { prisma } from "@/lib/prisma";
 import type { ToolContext } from "./tool-context";
-import { describeRefusalTool, owedRefusals, type OpenRefusal } from "./refusal-carryover";
+import { describeRefusalTool, owedRefusals, type OpenRefusal } from "./refusals";
 
 export { describeRefusalTool, type OpenRefusal };
 
@@ -231,27 +231,6 @@ export async function listOpenRefusalsForRun(runId: string): Promise<OpenRefusal
     );
   } catch (err) {
     console.warn("[gate-rejections] listOpenRefusalsForRun failed:", err instanceof Error ? err.message : err);
-    return [];
-  }
-}
-
-/** The analyst's open refusals from the last `days` — what the next run is told. */
-export async function listOpenRefusalsForAnalyst(analystId: string, days = 7): Promise<OpenRefusal[]> {
-  try {
-    return owedRefusals(
-      await prisma.gateRejection.findMany({
-        where: {
-          analystId,
-          resolvedAt: null,
-          tool: { not: "complete_run" },
-          createdAt: { gte: new Date(Date.now() - days * 86_400_000) },
-        },
-        orderBy: { createdAt: "asc" },
-        select: OPEN_SELECT,
-      }),
-    );
-  } catch (err) {
-    console.warn("[gate-rejections] listOpenRefusalsForAnalyst failed:", err instanceof Error ? err.message : err);
     return [];
   }
 }

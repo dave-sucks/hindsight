@@ -39,8 +39,7 @@ import { openingOf } from "@/lib/agent/engine/engine";
 import { conditionSentence, sentenceOf } from "@/lib/agent/triggers/condition";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage } from "@/lib/agent/token-usage";
-import { listOpenRefusalsForAnalyst, listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
-import { refusalLinesFor, refusalNudge } from "@/lib/agent/refusal-carryover";
+import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { autoSellCloseReason, protectiveExitCloseReason } from "@/lib/agent/triggers/types";
 import type { Trigger } from "@/lib/agent/triggers/types";
@@ -693,15 +692,8 @@ export const tacticalRun = inngest.createFunction(
       // never a gate; the proposal carries the same line.
       const windowLine = triggerTyped.action === "ENTER" ? preCatalystWindowLine(thesis) : null;
       const windowSuffix = windowLine ? ` ${windowLine}` : "";
-      // A refused call on this stock from a recent run that was never redone
-      // rides the kickoff, so the wake that fires today also settles it.
-      const openOnStock = refusalLinesFor(
-        await listOpenRefusalsForAnalyst(agentConfig.id, 7),
-        thesis.id,
-        (thesis as { ticker: string }).ticker,
-      );
       // What the check knows beyond the trigger and its price: the message says the trigger once, then these.
-      const more = auto ? `${contextSuffix}${coFiredSuffix}` : `${contextSuffix}${windowSuffix}${coFiredSuffix}${openOnStock}`;
+      const more = auto ? `${contextSuffix}${coFiredSuffix}` : `${contextSuffix}${windowSuffix}${coFiredSuffix}`;
       const message = fireMessage(
         {
           stock: { ticker: thesis.ticker, direction: thesis.direction, row: read?.row ?? null },
@@ -874,61 +866,7 @@ export const tacticalRun = inngest.createFunction(
           }
         }
 
-        // ── Refusal retry (2026-09-25) ─────────────────────────────────────
-        // PLTR, 09-25 09:40: place_trade refused the buy, the agent closed
-        // out and the run ended COMPLETE — the buy vanished. A refused call
-        // the run never redid goes back to the model once, with its reason.
-        // What is still open afterwards is written on the run and carried
-        // to the next run on this stock.
-        const openRefusals = await listOpenRefusalsForRun(run.id);
-        if (!auto && !stopped && openRefusals.length > 0 && responseMessages && responseMessages.length > 0) {
-          console.warn(
-            `[tactical-run] thesis=${thesis.id} ${openRefusals.length} refused call(s) never redone — attempting refusal retry`,
-          );
-          try {
-            const refusalResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Refusal retry", source: "tactical-run", parts: request.parts, agent: request.agent }),
-              system: systemPrompt,
-              messages: [
-                { role: "user", content: [{ type: "text", text: userPrompt }] },
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(responseMessages as any[]),
-                { role: "user", content: refusalNudge(openRefusals) },
-              ],
-              tools,
-              providerOptions: { openai: openaiOptions },
-              stopWhen: stepCountIs(5),
-              abortSignal: AbortSignal.timeout(60_000),
-            });
-            addTokenUsage(tokenUsage, refusalResp.totalUsage, refusalResp.steps.length);
-            const refusalToolCalls = refusalResp.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
-            toolCalls += refusalToolCalls;
-            elapsed = Date.now() - t0;
-            let refusalMessages = refusalResp.response?.messages;
-            if (!refusalMessages || !Array.isArray(refusalMessages) || refusalMessages.length === 0) {
-              refusalMessages = refusalResp.steps.flatMap((s) => {
-                const stepMsgs = (s as unknown as { response?: { messages?: unknown[] } }).response?.messages;
-                return Array.isArray(stepMsgs) ? stepMsgs : [];
-              }) as typeof refusalMessages;
-            }
-            if (refusalMessages && refusalMessages.length > 0) {
-              threadSteps.push(...refusalResp.steps);
-              responseMessages = [
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(responseMessages as any[]),
-                { role: "user", content: `(refusal retry: ${openRefusals.length} refused call(s) were never redone)` },
-                ...refusalMessages,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ] as any[];
-            }
-            console.log(`[tactical-run] thesis=${thesis.id} refusal retry: ${refusalToolCalls} tool calls`);
-          } catch (refusalErr) {
-            console.error(
-              `[tactical-run] refusal retry failed for thesis=${thesis.id}:`,
-              refusalErr instanceof Error ? refusalErr.message : refusalErr,
-            );
-          }
-        }
+        // A refusal reached the model as the tool's result; what is still open is recorded on the run.
         await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
         // ── Persist conversation messages ──────────────────────────────────
