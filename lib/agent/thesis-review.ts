@@ -11,9 +11,12 @@
  * 4. a new conviction with no reason, or a new outlook with no rewritten opinion;
  * 5. a stock with a view and no outlook yet, when the note sets none (once a
  *    stock: after that it has one);
- * 6. a verdict other than UNCHANGED with no rewritten opinion: the opinion is
- *    the stock's current view, and a look that changed the case must say so
- *    there, because the next run starts from it.
+ * 6. a BROKEN verdict with no rewritten opinion: the opinion is the stock's
+ *    current view, the next run starts from it, and a broken case always
+ *    changes it. On STRONGER or WEAKER the opinion is rewritten when the look
+ *    changed what the analyst thinks or would do; that is the analyst's
+ *    judgment (how-a-look-ends.md), never refused, so a small piece of news
+ *    neither forces a rewrite nor gets called UNCHANGED to dodge one.
  *
  * Outlook is otherwise a soft value: nothing here ties it to a verdict or to
  * a trade, and no tool reads it to allow or refuse anything. What a broken
@@ -63,9 +66,9 @@ export function reviewProblem(r: Review): string | null {
     return "This stock has no outlook yet: send outlook (BULLISH, NEUTRAL or BEARISH) with your opinion, your full view of the stock at today's price.";
   }
   if (outlookMoves && !r.outlookReason?.trim()) return `Send your rewritten opinion with outlook ${r.outlookTo}: the new outlook changes your view of the stock at today's price.`;
-  // The opinion is the stock's current view and the next run starts from it, so a look that changed the case rewrites it.
-  if (r.hasView && verdict !== "UNCHANGED" && !r.outlookReason?.trim()) {
-    return `Send your rewritten opinion with ${verdict}: what this look found changes your view of the stock, and the next run starts from it.`;
+  // A broken case always changes the view, and the next run starts from the opinion.
+  if (r.hasView && verdict === "BROKEN" && !r.outlookReason?.trim()) {
+    return "Send your rewritten opinion with BROKEN: a broken case changes your view of the stock, and the next run starts from it.";
   }
   const from = rank(r.convictionFrom);
   const to = rank(r.convictionTo);

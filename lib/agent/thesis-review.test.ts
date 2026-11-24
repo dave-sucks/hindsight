@@ -57,6 +57,12 @@ describe("how a review of a thesis ends", () => {
     ok({ outlookTo: "BULLISH", outlookReason: undefined });
   });
 
+  it("a broken case always comes with the rewritten opinion; a stronger or weaker one only when the analyst's call changed, which is not refused", () => {
+    refused({ verdict: "BROKEN", verdictLine: "The drug was rejected.", outlookReason: undefined }, "Send your rewritten opinion with BROKEN");
+    ok({ verdict: "WEAKER", verdictLine: "Orders slipped a little.", outlookReason: undefined });
+    ok({ verdict: "STRONGER", verdictLine: "A new customer signed.", outlookReason: undefined });
+  });
+
   it("outlook is a soft value: a broken verdict may leave it as it is, and no sale is asked for", () => {
     ok({ verdict: "BROKEN", verdictLine: "The drug was rejected." });
     ok({ verdict: "BROKEN", verdictLine: "The drug was rejected.", convictionTo: "LOW", outlookTo: "BEARISH" });

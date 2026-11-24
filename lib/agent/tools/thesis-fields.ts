@@ -108,7 +108,7 @@ export function thesisFields() {
     conviction: z
       .enum(["HIGH", "MEDIUM", "LOW"])
       .describe(
-        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. " +
+        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. " +
           "It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale.",
       ),
     conviction_rationale: z.string().describe("Why you are this confident, in a few plain sentences: the evidence for the belief. A move in the price or the chart is not evidence; what the price already reflects can be part of the belief."),
@@ -126,7 +126,7 @@ export function thesisFields() {
       .string()
       .describe(
         "What the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is STRONGER. STRONGER: it supports the belief more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the belief, not fatally. " +
-          "BROKEN: a KPI broke, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line and the rewritten opinion.",
+          "BROKEN: a KPI broke, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line; BROKEN comes with the rewritten opinion too.",
       ),
     verdict_line: z.string().describe("One sentence: what happened and which KPI it touched, when there is one."),
     answers_update_id: z

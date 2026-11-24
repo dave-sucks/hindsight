@@ -26,7 +26,7 @@ The row's `belief` is why we own or watch the company, and its `opinion` is your
 
 5. Output discipline:
    - At most ONE trade tool call (place_trade / add / sell).
-   - Always EXACTLY one write_note call documenting what you did and why; after a trade you proposed, that note is the proposal's reason the principal reads. When this look changed the verdict or the outlook, or you proposed a trade, the same call carries the rewritten opinion.
+   - Always EXACTLY one write_note call documenting what you did and why; after a trade you proposed, that note is the proposal's reason the principal reads. When this look changed what you think of the stock or what you would do (a new outlook, a broken case, a trade you proposed), the same call carries the rewritten opinion.
    - When you sell or trim, make that call first; your note comes after it and becomes its reason.
    - When the row's `said` lists the principal's decisions or other triggers fired since the last answer, your note answers what each asks (an earnings date coming, a gain to reassess, a drop to explain) inside the story of the stock, not as a list of the triggers.
    - Then complete_run.

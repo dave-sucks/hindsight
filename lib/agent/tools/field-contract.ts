@@ -228,7 +228,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("conviction", "CHOSEN", { note: "Rises only on STRONGER, falls only on WEAKER or BROKEN." }),
     f("conviction_rationale", "TEXT"),
     f("outlook", "CHOSEN", { note: "May change on any verdict; BROKEN can't leave it BULLISH." }),
-    f("opinion", "TEXT", { note: "The rewritten opinion. Required with any verdict but UNCHANGED and with a changed outlook (lib/agent/thesis-review.ts)." }),
+    f("opinion", "TEXT", { note: "The rewritten opinion. Required with a BROKEN verdict and with a changed outlook (lib/agent/thesis-review.ts); otherwise sent when the look changed the analyst's call." }),
     f("answers_update_id", "IDENTITY", { note: "A line on this stock; a wrong id comes back by name and the note lands." }),
     f("trigger_id", "IDENTITY"),
     f("tickers", "IDENTITY"),

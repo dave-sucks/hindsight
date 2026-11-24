@@ -136,7 +136,7 @@
            "MEDIUM",
            "LOW"
           ],
-          "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
+          "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
          },
          "conviction_rationale": {
           "type": "string",
@@ -413,7 +413,7 @@
             "MEDIUM",
             "LOW"
            ],
-           "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
+           "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
           },
           "conviction_rationale": {
            "type": "string",
@@ -754,7 +754,7 @@
            "MEDIUM",
            "LOW"
           ],
-          "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
+          "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
          },
          "conviction_rationale": {
           "type": "string",
@@ -1013,7 +1013,7 @@
             "MEDIUM",
             "LOW"
            ],
-           "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
+           "description": "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale."
           },
           "conviction_rationale": {
            "type": "string",
