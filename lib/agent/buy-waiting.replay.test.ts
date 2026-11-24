@@ -7,6 +7,7 @@
  * the trigger run's real handler, the model captured, never called.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, planTriggers, REPLAY_ACCOUNT_ID } from "@/lib/replay";
+import { endedFailed } from "@/lib/replay/ended-failed";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const THESIS = "cmv9nm3xo000o06l3om8r7ath";
@@ -43,7 +44,7 @@ async function fire(orderStatus: string) {
     returned = await handler!({
       event: { data: { thesisId: THESIS, triggerId: BUY, analystId: SECULAR, ticker: "MU", action: "ENTER", predicateKind: "price", firedPrice: 909.51 } },
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
-    });
+    }).catch(endedFailed);
   });
   for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { returned, modelCalls, runs: (db.store.researchRun ?? []).length };

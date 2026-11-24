@@ -13,6 +13,8 @@ import { levelSlotOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import { autoTradeLine } from "@/lib/agent/triggers/do-it";
 import type { Trigger } from "@/lib/agent/triggers/types";
+import { sendRunLostEmail } from "@/lib/emails/run-lost";
+import type { Left } from "@/lib/inngest/retry-then-tell";
 
 /** Sent once a buy or an add has filled. */
 export const BUY_FILLED = "app/buy.filled";
@@ -24,6 +26,36 @@ export async function sendBuyFilled(orderId: string): Promise<void> {
   } catch (err) {
     console.warn(`[after-buy] could not send ${BUY_FILLED} for ${orderId}:`, err instanceof Error ? err.message : err);
   }
+}
+
+/** The run on this fill whose work is done: one that finished, or one that wrote on the stock before it failed. Null when none. */
+export async function afterBuyDoneBy(orderId: string): Promise<string | null> {
+  const runs = await prisma.researchRun.findMany({ where: { mode: "AFTER_BUY", parameters: { path: ["orderId"], equals: orderId } }, select: { id: true, status: true } });
+  const finished = runs.find((r) => r.status === "COMPLETE");
+  if (finished) return finished.id;
+  if (runs.length === 0) return null;
+  const wrote = await prisma.thesisUpdate.findFirst({ where: { runId: { in: runs.map((r) => r.id) } }, select: { runId: true } });
+  return wrote?.runId ?? null;
+}
+
+/** What a failed After the buy leaves to do (lib/inngest/retry-then-tell.ts). */
+export async function buyLeft(data: { orderId: string }): Promise<Left> {
+  if (!(await loadAfterBuyFacts(data.orderId))) return "done";
+  return (await afterBuyDoneBy(data.orderId)) ? "done" : "retry";
+}
+
+export async function tellBuy(data: { orderId: string }): Promise<void> {
+  const facts = await loadAfterBuyFacts(data.orderId);
+  if (!facts) return;
+  const sent = await sendRunLostEmail({
+    accountId: facts.accountId,
+    userId: facts.userId,
+    ticker: facts.ticker,
+    subject: `${facts.ticker}: After the buy didn't run`,
+    body: `${facts.ticker} filled at $${facts.fillPrice.toFixed(2)}, but After the buy didn't finish, so its holding triggers aren't on. ${facts.floor ? `It still has "${facts.floor.sentence}".` : "It has no floor."}`,
+  });
+  // Unsent, the step fails and is tried again.
+  if (!sent) throw new Error(`the email about ${facts.ticker}'s After the buy didn't send`);
 }
 
 /** The trade the run is sent: what filled, the floor, what led to it, and its note. */

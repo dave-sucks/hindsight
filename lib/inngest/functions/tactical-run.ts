@@ -17,7 +17,10 @@
 // theses; if the belief breaks on a holding the agent sells with
 // belief_survived false, which retires the thesis.
 
+import { NonRetriableError } from "inngest";
 import { isNotelessEdit } from "@/lib/agent/no-note";
+import { fireLeft, tellFire, type FailedFire } from "@/lib/agent/triggers/lost-fire";
+import { retryThenTell } from "@/lib/inngest/retry-then-tell";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -78,6 +81,9 @@ interface FiredPayload {
   firedContext?: string | null;
   /** Other protective triggers that fired with this one on the same pass (DAV-254). */
   coFired?: Array<{ triggerId: string; sentence: string }>;
+  /** A failed fire tried again (lib/inngest/retry-then-tell.ts). */
+  recoveryTry?: number;
+  firstTriedAt?: string;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -116,6 +122,9 @@ export const tacticalRun = inngest.createFunction(
     // book entry (e.g. EXIT trigger + ADD trigger firing back-to-back).
     concurrency: { limit: 4, key: "event.data.thesisId" },
     retries: 1,
+    // The trigger is already marked fired, so a failed run would lose the fire: it is tried again, then the owner is told.
+    onFailure: async ({ event, step }) =>
+      retryThenTell(event.data.event as unknown as { name: string; data: FailedFire; ts?: number }, step as unknown as Parameters<typeof retryThenTell>[1], { left: fireLeft, tell: tellFire }),
   },
   { event: "app/thesis.trigger.fired" },
   async ({ event, step }) => {
@@ -128,7 +137,8 @@ export const tacticalRun = inngest.createFunction(
     ) {
       return { skipped: "missing-payload" };
     }
-    const fired = payload as FiredPayload;
+    // A fire tried again reads the price now: the one it fired at is minutes old.
+    const fired = (payload.recoveryTry ? { ...payload, firedPrice: null } : payload) as FiredPayload;
 
     // ── Load thesis + trigger + position ──────────────────────────────
     // Note on step.run: Inngest JSON-serializes the return value, so Dates
@@ -379,6 +389,14 @@ export const tacticalRun = inngest.createFunction(
     // responded." Without this, RunInput.triggersFiredSinceLastRun
     // returns empty even when triggers genuinely fired.
     await step.run("write-trigger-fired", async () => {
+      // A fire tried again keeps its one line, now on this run.
+      if (fired.recoveryTry && fired.firstTriedAt) {
+        const moved = await prisma.thesisUpdate.updateMany({
+          where: { thesisId: thesis.id, type: "TRIGGER_FIRED", triggerId: trigger.id, timestamp: { gte: new Date(fired.firstTriedAt) } },
+          data: { runId: run.id },
+        });
+        if (moved.count > 0) return;
+      }
       // Persist a human-readable sentence — same format the sheet's
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: price-below (price/time)").
@@ -508,6 +526,7 @@ export const tacticalRun = inngest.createFunction(
             });
           }
         });
+        if (failed) throw new NonRetriableError(`trigger run ${run.id}: the Auto-sell failed`);
         return {
           runId: run.id,
           thesisId: thesis.id,
@@ -584,7 +603,7 @@ export const tacticalRun = inngest.createFunction(
             },
           });
         });
-        return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
+        throw new NonRetriableError(`trigger run ${run.id}: the Auto trade failed: ${done.error}`);
       }
       // A buy or an add that was sent, not proposed, is written up by the run after its fill (lib/proposals/after-buy.ts).
       const sentOrder = done.orderId && doIt !== "TRIM" ? await step.run("sent-or-proposed", () => prisma.order.findUnique({ where: { id: done.orderId! }, select: { status: true } })) : null;
@@ -1031,6 +1050,10 @@ export const tacticalRun = inngest.createFunction(
     for (const orderId of (outcome as { noted?: string[] }).noted ?? (auto?.orderId ? [auto.orderId] : [])) {
       await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
+
+    // A run that ended failed hasn't answered the fire: the failure handler tries it again, then tells the owner.
+    const ended = await step.run("run-ended", () => prisma.researchRun.findUnique({ where: { id: run.id }, select: { status: true } }));
+    if (ended?.status === "FAILED") throw new NonRetriableError(`trigger run ${run.id} failed`);
 
     return {
       runId: run.id,

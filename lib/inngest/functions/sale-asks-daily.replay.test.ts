@@ -16,6 +16,7 @@
  * Real handlers, rows and tape; doubled: the database, Alpaca, the model, the clock.
  */
 import { prismaDouble, replayTool, thesisRow, agentConfigRow, accountRow, positionRow, type PrismaDouble } from "@/lib/replay";
+import { endedFailed } from "@/lib/replay/ended-failed";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
@@ -107,7 +108,7 @@ async function trigger(db: PrismaDouble, at: string, data: Sent["data"]) {
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
       jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: { execute: async () => ({ ok: false }) } }) }));
       await import("@/lib/inngest/functions/tactical-run");
-      returned = await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } });
+      returned = await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } }).catch(endedFailed);
     });
   } finally {
     jest.useRealTimers();

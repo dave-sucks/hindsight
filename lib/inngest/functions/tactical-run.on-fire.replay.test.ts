@@ -49,7 +49,9 @@ const stocks = (target: Record<string, unknown> = IOT_TARGET) => ({
 type Asked = { system: string; prompt: string; tools: string[] };
 
 /** One fire through the handler: what the model was asked, the sale and trade calls, and the rows left behind. */
-async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number }, seed = stocks(), model: { note?: string | null; verdict?: string; proposes?: boolean } = {}) {
+async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number; recoveryTry?: number; firstTriedAt?: string }, seed: ReturnType<typeof stocks> & { thesisUpdate?: Array<Record<string, unknown>> } = stocks(), model: { note?: string | null; verdict?: string; proposes?: boolean; fails?: boolean; closeFails?: boolean } = {}) {
+  let thrown: unknown = null;
+  let onFailure: unknown = null;
   const db = prismaDouble(seed);
   const create = (m: string, data: Record<string, unknown>) => (db as unknown as Record<string, { create: (a: unknown) => Promise<unknown> }>)[m].create({ data });
   const asked: Asked[] = [];
@@ -64,12 +66,13 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
     jest.doMock("@/lib/prisma", () => ({ prisma: db }));
     jest.doMock("@/lib/inngest/client", () => ({
-      inngest: { createFunction: (_c: unknown, _t: unknown, fn: typeof handler) => ((handler = fn), {}), send: jest.fn(async (e: { name: string; data: unknown }) => sent.push(e)) },
+      inngest: { createFunction: (c: { onFailure?: unknown }, _t: unknown, fn: typeof handler) => ((onFailure = c.onFailure), (handler = fn), {}), send: jest.fn(async (e: { name: string; data: unknown }) => sent.push(e)) },
     }));
     // The model writes its note the way write_note would: one row on the stock for this run.
     jest.doMock("ai", () => ({
       generateText: jest.fn(async (a: { system: string; prompt: string; tools: Record<string, unknown> }) => {
         asked.push({ system: a.system, prompt: a.prompt, tools: Object.keys(a.tools ?? {}) });
+        if (model.fails) throw new Error("the model call failed");
         const run = (db.store.researchRun as Array<{ id: string }>)[0];
         if (model.proposes && !(db.store.order as unknown[] | undefined)?.length) await create("order", { id: "ord_own", positionId: `pos_${data.thesisId}`, symbol: data.ticker, thesisId: data.thesisId, intent: "CLOSE", status: "AWAITING_APPROVAL", expiresAt: null, createdAt: new Date() });
         if (model.note !== null) await create("thesisUpdate", { thesisId: data.thesisId, type: "REVIEWED", summary: "Reviewed", rationale: model.note ?? NOTE, verdict: model.verdict ?? null, runId: run.id, timestamp: new Date() });
@@ -82,6 +85,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({
       closeOpenPosition: jest.fn(async (...a: unknown[]) => {
         closes.push(a);
+        if (model.closeFails) throw new Error("the broker refused the order");
         await create("order", { id: "ord_iot", positionId: a[0], symbol: "IOT", thesisId: data.thesisId, rationale: a[4], status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: data.analystId, symbol: "IOT" } });
         return { kind: "proposed", proposal: { orderId: "ord_iot" } };
       }),
@@ -111,15 +115,49 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     await handler!({
       event: { data },
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
-    });
+    }).catch((err: unknown) => void (thrown = err));
   });
+  // A run that ends failed fails the function (for a retry); anything else is a real error.
+  if (thrown && (thrown as Error).name !== "NonRetriableError") throw thrown;
   for (const m of ["@/lib/agent/portfolio-block", "ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
   // The run page opens with the saved thread's first message (run-thread.ts).
   const thread = rows("runMessage").find((m) => m.role === "thread");
   const opening = thread ? (JSON.parse(String(thread.content))[0] as { content: Array<{ text: string }> }).content.map((p) => p.text).join("") : null;
-  return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate"), opening };
+  return { asked, closes, sent, toolCalls, blockArgs, runs: rows("researchRun"), orders: rows("order"), updates: rows("thesisUpdate"), opening, thrown, onFailure };
 }
+
+describe("a trigger run that fails", () => {
+  const REVIEW = { ...IOT_TARGET, fireMode: "ASK_NOW" };
+
+  it("ends failed, so the failure handler can try the fire again", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: REVIEW.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.1 }, stocks(REVIEW), { fails: true });
+    expect(r.runs[0]).toMatchObject({ status: "FAILED" });
+    expect((r.thrown as Error).name).toBe("NonRetriableError");
+    expect(r.onFailure).toEqual(expect.any(Function));
+  });
+
+  it("IOT's Auto-sell whose sale errors ends failed, so it is tried again", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 }, stocks(), { closeFails: true });
+    expect(r.runs[0]).toMatchObject({ status: "FAILED" });
+    expect((r.thrown as Error).message).toContain("the Auto-sell failed");
+  });
+
+  it("a sale still opens its card when the analyst's run fails", async () => {
+    const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 }, stocks(), { fails: true });
+    expect(r.closes).toHaveLength(1);
+    expect((r.thrown as Error).name).toBe("NonRetriableError");
+  });
+
+  it("a fire tried again keeps its one Activity line, now on the new run", async () => {
+    const firstTriedAt = "2026-11-24T15:05:00.000Z";
+    const line = { id: "line_1", thesisId: "iot", type: "TRIGGER_FIRED", triggerId: REVIEW.id, runId: "run_failed", summary: "Review if above $52", timestamp: new Date("2026-11-24T15:05:10Z") };
+    const r = await fire({ thesisId: "iot", triggerId: REVIEW.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.1, recoveryTry: 1, firstTriedAt }, { ...stocks(REVIEW), thesisUpdate: [line] });
+    const lines = r.updates.filter((u) => u.type === "TRIGGER_FIRED");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].runId).toBe(r.runs[0].id);
+  });
+});
 
 const IOT_TRIM = { id: "7a1c2b3d-0000-4000-8000-000000000001", action: "TRIM", fireMode: "DO_IT", trimPct: 30, predicate: { watch: "price", is: "above", value: 48 }, rationale: "Take some off into strength."};
 
