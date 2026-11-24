@@ -4,12 +4,12 @@
  * ASML (2026-10-07) and NVDA (2026-10-08) sent the same refused
  * update_thesis eleven times each, until their runs ran out of steps. The
  * cause is fixed in the tool (a save is a patch); this is the net under
- * every tool. A call identical to one refused earlier in the run gets, from
- * its second refusal on, one line telling the model not to send it again.
- * A third identical refusal ends the loop, and the run closes FAILED with
- * the reason named. The morning run and the trigger run share it.
+ * every tool, a cap on what a run can spend. The model reads each refusal as
+ * the tool's result; nothing more is said to it. A third identical refusal
+ * ends the loop, and the run closes FAILED with the reason named. The morning
+ * run, the trigger run and every agent the runner starts (lib/agent/engine/run.ts)
+ * have it; the chat route does not.
  */
-import type { ModelMessage } from "ai";
 import { detectGateRejection, detailFromData } from "@/lib/agent/gate-rejections";
 
 type Step = { toolResults?: ReadonlyArray<{ toolName: string; input?: unknown; output?: unknown }> };
@@ -39,14 +39,8 @@ export function repeatedRefusal(steps: ReadonlyArray<Step>): { count: number; to
   return worst;
 }
 
-/** The two hooks a run's generateText takes: the nudge before each step, and the stop. */
+/** The stop a run's generateText takes: the same refused call a third time ends the loop. */
 export const repeatRefusalGuard = {
-  prepareStep: ({ steps, messages }: { steps: ReadonlyArray<Step>; messages: ModelMessage[] }) => {
-    const r = repeatedRefusal(steps);
-    if (!r || r.count < 2) return undefined;
-    const nudge = `That ${r.tool} call was refused twice with the same reason. Do not send it again; write your note without the refused field.`;
-    return { messages: [...messages, { role: "user" as const, content: nudge }] };
-  },
   stopWhen: ({ steps }: { steps: ReadonlyArray<Step> }) => (repeatedRefusal(steps)?.count ?? 0) >= 3,
 };
 

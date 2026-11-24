@@ -9,16 +9,11 @@
 
 import { isNotelessEdit } from "@/lib/agent/no-note";
 import { z } from "zod";
-import { isProtectiveLine, shapeOf } from "@/lib/agent/triggers/condition";
 import { loadStockFacts, type FactsContext } from "@/lib/agent/stock-facts";
 import { listsTheStock, situationsFor, SITUATIONS } from "@/lib/agent/situations";
 import { defineTool } from "@/lib/agent/define-tool";
 import { prisma } from "@/lib/prisma";
 import { updateSegmentBriefing } from "@/lib/podcast/update-segment-briefing";
-import {
-  loadLevelSources,
-  resolveThesisLadder,
-} from "@/lib/agent/triggers/load-levels";
 import {
   CREDITED_RUN_EVENT_TYPES,
   findUnbackedActions,
@@ -39,7 +34,7 @@ export const completeRun = defineTool({
     // DAV-332. The catch below used to mark the run COMPLETE whatever went
     // wrong — including a throw inside the preflight, which meant every
     // obligation it was about to check (unaddressed work, the declared-
-    // action check, the ladder warn-gate) was skipped in silence and the
+    // action check) was skipped in silence and the
     // run was recorded as clean. The gate with the largest blast radius in
     // the system failed OPEN. This flag is how the catch tells "the checks
     // ran and passed" from "the checks did not run".
@@ -234,87 +229,8 @@ export const completeRun = defineTool({
         console.error(`[tool] complete_run: failed to write briefing_generated event:`, evtErr);
       }
 
-      // ── Ladder warn-gate (Game Plan PR-C — WARN-MODE, never blocks) ──────
-      // Structural invariant from docs/plans/THESIS_GAME_PLAN.md §4: no
-      // HOLDING should leave a run without a forward ladder — at minimum a
-      // protective EXIT rung (fixed floor or trail). This is deliberately
-      // warn-only for the first live cycle; the price-dependent
-      // UNPROTECTED_GAIN check runs every morning via get_theses/needsAction
-      // (which has live quotes), so this close-out gate only checks the
-      // quote-free structural failures. Escalate to a hard refusal once a
-      // week of warn telemetry shows no false positives.
-      const ladderWarnings: string[] = [];
-      if (ctx.analystId) {
-        try {
-          const holdings = await prisma.thesis.findMany({
-            where: {
-              researchRun: { agentConfigId: ctx.analystId },
-              status: "HOLDING",
-            },
-            select: {
-              ticker: true,
-              triggers: true,
-              // Cascade inputs — this gate must judge the RESOLVED ladder.
-              // Reading the stored column alone reports a holding whose
-              // floor is inherited as having "no floor, no trail", so the
-              // warn-gate would nag every run about a ladder that is
-              // already correct — and the agent would "fix" it by
-              // materializing a duplicate.
-              triggerState: true,
-              horizon: true,
-              status: true,
-            },
-          });
-          const levelSources = ctx.analystId
-            ? (await loadLevelSources([ctx.analystId])).get(ctx.analystId)
-            : undefined;
-          for (const h of holdings) {
-            const ladder = resolveThesisLadder(h, levelSources, `ticker=${h.ticker}`);
-            if (ladder.length === 0) {
-              ladderWarnings.push(
-                `$${h.ticker}: HOLDING with zero triggers — no ladder at all`,
-              );
-              continue;
-            }
-            const hasProtectiveExit = ladder.some((t) => {
-              const w = shapeOf(t.predicate);
-              return t.action === "EXIT" && w != null && isProtectiveLine(w);
-            });
-            if (!hasProtectiveExit) {
-              ladderWarnings.push(
-                `$${h.ticker}: HOLDING with no protective EXIT rung (no floor, no trail)`,
-              );
-            }
-          }
-          if (ladderWarnings.length > 0) {
-            await prisma.runEvent.create({
-              data: {
-                runId: ctx.runId,
-                type: "ladder_warning",
-                title: `Ladder warn-gate: ${ladderWarnings.length} unprotected holding(s)`,
-                message: ladderWarnings.join("; "),
-                payload: { warnings: ladderWarnings, mode: "warn" } as object,
-              },
-            });
-            console.warn(
-              `[tool] complete_run ladder warn-gate (run=${ctx.runId}):`,
-              ladderWarnings.join("; "),
-            );
-          }
-        } catch (warnErr) {
-          // Warn-gate must never break run completion.
-          console.error(
-            `[tool] complete_run ladder warn-gate errored (non-fatal):`,
-            warnErr instanceof Error ? warnErr.message : warnErr,
-          );
-        }
-      }
-
       return {
-        summary:
-          ladderWarnings.length > 0
-            ? `Run complete. ⚠ ${ladderWarnings.length} holding(s) left without a protective ladder — see ladder_warning event.`
-            : "Run complete. Briefing: skipped (deprecated).",
+        summary: "Run complete. Briefing: skipped (deprecated).",
         data: {
           ok: true,
           briefing: "skipped" as const,
@@ -324,10 +240,6 @@ export const completeRun = defineTool({
               kind: "generic" as const,
               text: "Briefing: skipped — continuity now via the account portfolio digest",
             },
-            ...ladderWarnings.map((w) => ({
-              kind: "generic" as const,
-              text: `⚠ Ladder warning: ${w}`,
-            })),
           ],
         },
         sources: [],
