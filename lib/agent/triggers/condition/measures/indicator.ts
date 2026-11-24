@@ -12,6 +12,7 @@ export const volume: MeasureDef = {
   type: "indicator",
   label: "Volume",
   word: "Above",
+  why: (_c, words) => words,
   value: { suffix: "× normal volume", placeholder: "2", range: { what: "Volume", unit: "×", over: 0, max: 50 } },
   fresh: () => ({ watch: "volume" }),
   fits: (c) => c.value != null,
@@ -27,6 +28,7 @@ export const rsi: MeasureDef = {
     { is: "below", label: "Below", means: "RSI is below the number (oversold)" },
     { is: "above", label: "Above", means: "RSI is above the number (overbought)" },
   ],
+  why: (c, words) => words.replace(/^RSI /, `RSI ${c.is === "above" ? "above" : "below"} `),
   value: { prefix: "RSI", placeholder: "30", range: { what: "RSI", min: 0, max: 100 } },
   settings: [
     {
@@ -52,6 +54,7 @@ export const strength: MeasureDef = {
   type: "indicator",
   label: "vs. S&P",
   word: "Above",
+  why: (_c, words) => words.replace(" · over ", " over "),
   // Points ahead of the S&P; behind it is legal ("not lagging by more than 5").
   value: { suffix: "points ahead of the S&P", placeholder: "0", range: { what: "Strength vs the S&P", unit: " points", min: -100, max: 500 } },
   settings: [
@@ -80,6 +83,7 @@ export const gap: MeasureDef = {
   type: "indicator",
   label: "Gap up",
   word: "Above",
+  why: (c) => `gapped up ${c.value ?? 0}%`,
   value: { suffix: "% gap up", placeholder: "4", range: { what: "A gap", unit: "%", over: 0, max: 100 } },
   rises: () => true,
   fresh: () => ({ watch: "gap" }),

@@ -390,12 +390,12 @@ function ApprovalCard() {
 
 /** Situations: the morning's work list, each stock with the reason it needs an answer today. */
 const WORK = [
-  { s: "CRWD", tag: "sale signal", l: "Closed under the $384 floor." },
-  { s: "AMD", tag: "a report", l: "Reports Thursday after the close." },
-  { s: "NVDA", tag: "floor to fix", l: "Up 31%, with the floor still at our entry." },
-  { s: "SNOW", tag: "review due", l: "Thirty days since the last look." },
-  { s: "ANET", tag: "buy price reached", l: "Pulled back to the 20-day average." },
-  { s: "LLY", tag: "a filing", l: "Filed an 8-K on Monday: a new finance chief." },
+  { s: "CRWD", tag: "Possible sell", l: "Closed under the $384 floor." },
+  { s: "AMD", tag: "Review", l: "Reports Thursday after the close." },
+  { s: "NVDA", tag: "Floor to fix", l: "Up 31%, with the floor still at our entry." },
+  { s: "SNOW", tag: "Review", l: "Thirty days since the last look." },
+  { s: "ANET", tag: "Possible buy", l: "Pulled back to the 20-day average." },
+  { s: "LLY", tag: "Review", l: "Filed an 8-K on Monday: a new finance chief." },
 ];
 
 function WorkList() {

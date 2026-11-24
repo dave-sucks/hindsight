@@ -79,7 +79,7 @@ Every thesis carries a **trigger ladder** — a set of `(condition → action)` 
 
 - **Writer authors at mint.** The thesis-writer fits the actual levels from research — add at the breakout shelf, floor under the swing low, a trail width fitted to the name's volatility — on top of the horizon-template skeleton.
 - **Tactical run re-ladders on every fire.** A rung firing never changes a level by itself; the tactical run validates the move and then *re-earns the ladder* (raises the floor, arms the next milestone, refits the trail). This is the fix for the write-once failure: without it a holding runs up and the day-one floor never moves.
-- **Daily run is the auditor.** Every morning it reads `resolved.ladderHealth` and the `UNPROTECTED_GAIN` needsAction flag (a winner whose tightest floor lags its gain), and it must act or explicitly attest. `complete_run` warn-gates unprotected holdings so a no-op review can't quietly pass.
+- **Daily run is the auditor.** Every morning it reads `resolved.ladderHealth` and the `UNPROTECTED_GAIN` needsAction flag (a winner whose tightest floor lags its gain), and it must act or explicitly attest.
 
 **Standing minimums make protection automatic.** Every HOLDING auto-carries three code-stamped protection rungs — **+10% checkpoint REVIEW / 8% trail EXIT / −12% loser REVIEW** — plus ±7% scale rungs, stamped at mint AND re-seeded at the buy fill (`place-trade.ts` held-side re-seed). Two conditions carry the gain protection: the move from our entry (cumulative % vs `avgCost`) and the trail (the move from the high since we bought, off `Position.peakPrice`, ratcheting with no agent memory required). See [`TRIGGERS.md`](./TRIGGERS.md) §2a.
 

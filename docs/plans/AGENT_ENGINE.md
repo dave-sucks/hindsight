@@ -108,8 +108,9 @@ Each agent still has its own loop: its own model call, tool assembly, retries, a
 
 One runner (`runAgent`, `lib/agent/engine/run.ts`) takes a record and its input, builds the request, gives the model the record's tools and makes the call with the record's model, step limit and time limit. Every scheduled job and the chat route call it. Behaviour that is one agent's own becomes a small hook or that agent's tools, not its own loop:
 - the Writer's data pull and its save checks;
-- the trigger run's Auto-trade path;
-- the morning run's coverage retry.
+- the trigger run's Auto-trade path.
+
+(The morning run's coverage retry was deleted on 2026-11-24: it helped no run in 30 days.)
 
 **The proof is the wire.** Before an agent moves, a test keeps the HTTP body its call sends from fixed inputs, and the record the run keeps of it, as a golden file written from the old loop. After the move the runner must send that body byte for byte (`lib/agent/portfolio-manager/run.wire.test.ts`). The test fails on a change of one field.
 
