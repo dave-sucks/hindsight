@@ -26,7 +26,7 @@ Once for every buy or add that fills, whatever brought it:
 - an Auto buy or an Auto add;
 - a buy from the Trade ticket.
 
-A fill reported twice (by the trade tool, and by the job that matches orders to the broker) runs it once. Only a finished run counts: every five minutes the order job asks again for a filled buy or add with none, up to three failed runs. After that, or two hours after the fill, you get one email naming the stock.
+A fill reported twice (by the trade tool, and by the job that matches orders to the broker) runs it once. A run that fails is tried again five minutes later, up to three tries, then you get one email naming the stock. A run that put triggers on before it failed counts as done.
 
 ## What it reads
 
@@ -63,7 +63,7 @@ The holding is guarded by its triggers from here: the trigger check reads them e
 <summary>Technical details</summary>
 
 #### Wake
-`lib/proposals/after-buy.ts` sends `app/buy.filled` once a buy or an add fills: `place_trade` and `add` on an immediate fill, `reconcile-orders.ts` on a later one. `lib/inngest/functions/after-buy-run.ts` runs the agent until one run on the order finishes (`runAfterBuy`, `mayRunAfterBuy`). `sweepAfterBuys`, at the start of each `reconcile-orders` pass, asks again for a fill from the last four days with no finished run; `AFTER_BUY_TRIES` failed runs or two hours end it with one email (`lib/emails/run-lost.ts`) and a failed run row marked `ownerTold`.
+`lib/proposals/after-buy.ts` sends `app/buy.filled` once a buy or an add fills: `place_trade` and `add` on an immediate fill, `reconcile-orders.ts` on a later one. `lib/inngest/functions/after-buy-run.ts` runs the agent unless a run on the order finished or wrote on the stock (`runAfterBuy`, `afterBuyDoneBy`). A run that ends failed fails the function; its `onFailure` is `retryThenTell` (`lib/inngest/retry-then-tell.ts`) with `buyLeft` and `tellBuy`, which emails through `lib/emails/run-lost.ts`.
 
 #### Run
 Through the agent runner (`runAgentAsRun`, `lib/agent/engine/run.ts`), as a run of mode `AFTER_BUY`, on the trigger run's model and steps (`tactical` in `lib/agent/modes.ts`). Its page is read-only. The note it writes goes on the order (`putNotesOnRunProposals` with the order's id, `lib/proposals/auto-writeup.ts`).

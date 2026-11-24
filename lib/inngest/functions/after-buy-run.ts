@@ -13,17 +13,17 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { runAgentAsRun } from "@/lib/agent/engine/run";
 import { AFTER_BUY, AFTER_BUY_ASK } from "@/lib/agent/engine/agents/after-buy";
 import { pullThesisData } from "@/lib/agent/thesis-research/pull-data";
-import { BUY_FILLED, afterBuyMessage, loadAfterBuyFacts, mayRunAfterBuy } from "@/lib/proposals/after-buy";
+import { NonRetriableError } from "inngest";
+import { BUY_FILLED, afterBuyDoneBy, afterBuyMessage, buyLeft, loadAfterBuyFacts, tellBuy } from "@/lib/proposals/after-buy";
+import { retryThenTell } from "@/lib/inngest/retry-then-tell";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 
-/** Runs After the buy on one filled order; a fill it isn't for, or one with a finished run, is skipped. */
+/** Runs After the buy on one filled order; a fill it isn't for, or one whose run did its work, is skipped. */
 export async function runAfterBuy(orderId: string): Promise<{ skipped: string } | { runId: string; status: string; noted: boolean }> {
   const facts = await loadAfterBuyFacts(orderId);
   if (!facts) return { skipped: "not a filled buy or add on a stock we hold" };
-  const tried = await prisma.researchRun.findMany({ where: { mode: "AFTER_BUY", parameters: { path: ["orderId"], equals: orderId } }, select: { id: true, status: true, startedAt: true, parameters: true } });
-  const done = tried.find((r) => r.status === "COMPLETE");
-  if (done) return { skipped: `already run (${done.id})` };
-  if (!mayRunAfterBuy(tried, new Date())) return { skipped: "a run is going, or its tries are used" };
+  const done = await afterBuyDoneBy(orderId);
+  if (done) return { skipped: `already run (${done})` };
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: facts.analystId },
     select: { id: true, userId: true, exclusionList: true, sectors: true, minPositionSize: true, maxPositionSize: true, maxPositionTotal: true, maxOpenPositions: true },
@@ -84,11 +84,16 @@ export const afterBuyRun = inngest.createFunction(
     // One at a time per order: a fill reported twice runs once, because the second finds the first finished.
     concurrency: { limit: 1, key: "event.data.orderId" },
     retries: 1,
+    // A failed run is tried again, then the owner is told.
+    onFailure: async ({ event, step }) =>
+      retryThenTell(event.data.event as unknown as { name: string; data: { orderId: string }; ts?: number }, step as unknown as Parameters<typeof retryThenTell>[1], { left: buyLeft, tell: tellBuy }),
   },
   { event: BUY_FILLED },
   async ({ event, step }) => {
     const orderId = (event.data as { orderId?: string }).orderId;
     if (!orderId) return { skipped: "no order" };
-    return step.run("after-buy", () => runAfterBuy(orderId));
+    const out = await step.run("after-buy", () => runAfterBuy(orderId));
+    if ("status" in out && out.status === "FAILED") throw new NonRetriableError(`After the buy run ${out.runId} failed`);
+    return out;
   },
 );

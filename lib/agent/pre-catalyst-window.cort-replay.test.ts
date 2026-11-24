@@ -18,6 +18,7 @@
  * (lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json).
  */
 import raw from "@/lib/agent/__fixtures__/cort-pre-catalyst-buy-2026-09-29.json";
+import { endedFailed } from "@/lib/replay/ended-failed";
 import {
   replayTool,
   prismaDouble,
@@ -146,7 +147,7 @@ async function triggerRunKickoff(extra: Record<string, unknown[]> = {}): Promise
         },
         sendEvent: jest.fn(),
       },
-    });
+    }).catch(endedFailed);
   });
   // doMock outlives the isolated registry; leave nothing faked for the next test.
   for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) {

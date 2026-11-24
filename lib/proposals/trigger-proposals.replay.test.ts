@@ -21,6 +21,7 @@
  * clock and the mail.
  */
 import fixture from "./__fixtures__/trigger-proposals-2026-10.json";
+import { endedFailed } from "@/lib/replay/ended-failed";
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, type PrismaDouble } from "@/lib/replay";
 
 type Ev = [kind: string, at: string, ...rest: unknown[]];
@@ -144,7 +145,7 @@ async function month(ticker: "NVDA" | "CEG" | "PLTR", extra: Ev[] = []) {
         for (const e of sent) {
           jest.setSystemTime(new Date(now.getTime() + 15_000));
           mockState.sell = rest[1] === "sell";
-          await tacticalRun({ event: { data: e.data }, step });
+          await tacticalRun({ event: { data: e.data }, step }).catch(endedFailed);
         }
       } else if (kind === "morning") {
         // A morning run proposed the sale again here. It reads the stock; it sells if the read hands it a sale signal.

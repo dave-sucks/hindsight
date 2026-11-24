@@ -45,7 +45,7 @@ import { typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { autoStopFillOps, loadAutoStop } from "@/lib/trading/auto-stop";
-import { sendBuyFilled, sweepAfterBuys } from "@/lib/proposals/after-buy";
+import { sendBuyFilled } from "@/lib/proposals/after-buy";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -75,11 +75,6 @@ export const reconcileOrders = inngest.createFunction(
   },
   { cron: FIVE_MIN_CRON },
   async ({ step }) => {
-    // A filled buy whose After the buy never finished: asked for again, then the owner is told.
-    await step.run("after-buys-owed", () =>
-      sweepAfterBuys().catch((err) => void console.error("[reconcile-orders] after-buy sweep failed:", err instanceof Error ? err.message : err)),
-    );
-
     // 1. Fetch every PENDING order. We can recover orders even without an
     // alpacaOrderId now, as long as they have an idempotencyKey.
     const pending = await step.run("fetch-pending-orders", async () => {

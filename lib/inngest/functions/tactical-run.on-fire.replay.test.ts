@@ -49,7 +49,7 @@ const stocks = (target: Record<string, unknown> = IOT_TARGET) => ({
 type Asked = { system: string; prompt: string; tools: string[] };
 
 /** One fire through the handler: what the model was asked, the sale and trade calls, and the rows left behind. */
-async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number; recoveryTry?: number; firstFiredAt?: string }, seed: ReturnType<typeof stocks> & { thesisUpdate?: Array<Record<string, unknown>> } = stocks(), model: { note?: string | null; verdict?: string; proposes?: boolean; fails?: boolean } = {}) {
+async function fire(data: { thesisId: string; triggerId: string; analystId: string; ticker: string; action: string; firedPrice: number; recoveryTry?: number; firstTriedAt?: string }, seed: ReturnType<typeof stocks> & { thesisUpdate?: Array<Record<string, unknown>> } = stocks(), model: { note?: string | null; verdict?: string; proposes?: boolean; fails?: boolean; closeFails?: boolean } = {}) {
   let thrown: unknown = null;
   let onFailure: unknown = null;
   const db = prismaDouble(seed);
@@ -85,6 +85,7 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
     jest.doMock("@/lib/actions/closeTrade.actions", () => ({
       closeOpenPosition: jest.fn(async (...a: unknown[]) => {
         closes.push(a);
+        if (model.closeFails) throw new Error("the broker refused the order");
         await create("order", { id: "ord_iot", positionId: a[0], symbol: "IOT", thesisId: data.thesisId, rationale: a[4], status: "AWAITING_APPROVAL", createdAt: new Date(), position: { analystId: data.analystId, symbol: "IOT" } });
         return { kind: "proposed", proposal: { orderId: "ord_iot" } };
       }),
@@ -116,7 +117,8 @@ async function fire(data: { thesisId: string; triggerId: string; analystId: stri
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
     }).catch((err: unknown) => void (thrown = err));
   });
-  if (thrown && !model.fails) throw thrown;
+  // A run that ends failed fails the function (for a retry); anything else is a real error.
+  if (thrown && (thrown as Error).name !== "NonRetriableError") throw thrown;
   for (const m of ["@/lib/agent/portfolio-block", "ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   const rows = (m: string) => (db.store as Record<string, Array<Record<string, unknown>>>)[m] ?? [];
   // The run page opens with the saved thread's first message (run-thread.ts).
@@ -135,6 +137,12 @@ describe("a trigger run that fails", () => {
     expect(r.onFailure).toEqual(expect.any(Function));
   });
 
+  it("IOT's Auto-sell whose sale errors ends failed, so it is tried again", async () => {
+    const r = await fire({ thesisId: "iot", triggerId: IOT_FLOOR.id, analystId: PEAD, ticker: "IOT", action: "EXIT", firedPrice: 41.3 }, stocks(), { closeFails: true });
+    expect(r.runs[0]).toMatchObject({ status: "FAILED" });
+    expect((r.thrown as Error).message).toContain("the Auto-sell failed");
+  });
+
   it("a sale still opens its card when the analyst's run fails", async () => {
     const r = await fire({ thesisId: "v", triggerId: V_FLOOR.id, analystId: SECULAR, ticker: "V", action: "EXIT", firedPrice: 394.5 }, stocks(), { fails: true });
     expect(r.closes).toHaveLength(1);
@@ -142,9 +150,9 @@ describe("a trigger run that fails", () => {
   });
 
   it("a fire tried again keeps its one Activity line, now on the new run", async () => {
-    const firstFiredAt = "2026-11-24T15:05:00.000Z";
+    const firstTriedAt = "2026-11-24T15:05:00.000Z";
     const line = { id: "line_1", thesisId: "iot", type: "TRIGGER_FIRED", triggerId: REVIEW.id, runId: "run_failed", summary: "Review if above $52", timestamp: new Date("2026-11-24T15:05:10Z") };
-    const r = await fire({ thesisId: "iot", triggerId: REVIEW.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.1, recoveryTry: 1, firstFiredAt }, { ...stocks(REVIEW), thesisUpdate: [line] });
+    const r = await fire({ thesisId: "iot", triggerId: REVIEW.id, analystId: PEAD, ticker: "IOT", action: "REVIEW", firedPrice: 52.1, recoveryTry: 1, firstTriedAt }, { ...stocks(REVIEW), thesisUpdate: [line] });
     const lines = r.updates.filter((u) => u.type === "TRIGGER_FIRED");
     expect(lines).toHaveLength(1);
     expect(lines[0].runId).toBe(r.runs[0].id);

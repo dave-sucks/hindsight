@@ -10,6 +10,7 @@
  * Real handlers; the model is captured, never called.
  */
 import { prismaDouble, replayTool, thesisRow, agentConfigRow, accountRow, positionRow } from "@/lib/replay";
+import { endedFailed } from "@/lib/replay/ended-failed";
 import { triggerForAgent } from "@/lib/agent/triggers/format";
 
 const PEAD = "cmnhxpjio000004jvox6kl6c7";
@@ -54,7 +55,7 @@ async function fire(fireMode: string) {
     await handler!({
       event: { data: { thesisId: "cmtg9nbdy000204jpc6cwawgg", triggerId: TRIM.id, analystId: PEAD, ticker: "NVDA", action: "TRIM", firedPrice: 254.6 } },
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
-    });
+    }).catch(endedFailed);
   });
   for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { told: told.join("\n"), toolCalls, contexts };

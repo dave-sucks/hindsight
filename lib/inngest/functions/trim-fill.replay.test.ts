@@ -11,6 +11,7 @@
  * false at a close since.
  */
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, positionRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
+import { endedFailed } from "@/lib/replay/ended-failed";
 
 const SECULAR = "cmmqxola3000004lbj7c11bfn";
 const MU = "cmv9nm3xo000o06l3om8r7ath";
@@ -59,7 +60,7 @@ async function triggerRun(db: PrismaDouble, data: Record<string, unknown>) {
       createResearchTools: () => ({ sell: { execute: async (args: unknown) => (calls.push({ tool: "sell", args }), { ok: true, summary: "Partial close proposed: MU (-30%)" }) } }),
     }));
     await import("@/lib/inngest/functions/tactical-run");
-    await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } });
+    await handler!({ event: { data }, step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() } }).catch(endedFailed);
   });
   for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma"]) jest.dontMock(m);
   return { calls, modelCalls };

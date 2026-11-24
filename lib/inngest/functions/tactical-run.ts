@@ -19,7 +19,8 @@
 
 import { NonRetriableError } from "inngest";
 import { isNotelessEdit } from "@/lib/agent/no-note";
-import { recoverFire, type FailedFire } from "@/lib/agent/triggers/lost-fire";
+import { fireLeft, tellFire, type FailedFire } from "@/lib/agent/triggers/lost-fire";
+import { retryThenTell } from "@/lib/inngest/retry-then-tell";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -80,9 +81,9 @@ interface FiredPayload {
   firedContext?: string | null;
   /** Other protective triggers that fired with this one on the same pass (DAV-254). */
   coFired?: Array<{ triggerId: string; sentence: string }>;
-  /** A failed fire tried again (lost-fire.ts). */
+  /** A failed fire tried again (lib/inngest/retry-then-tell.ts). */
   recoveryTry?: number;
-  firstFiredAt?: string;
+  firstTriedAt?: string;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -121,9 +122,9 @@ export const tacticalRun = inngest.createFunction(
     // book entry (e.g. EXIT trigger + ADD trigger firing back-to-back).
     concurrency: { limit: 4, key: "event.data.thesisId" },
     retries: 1,
-    // The trigger is already marked fired, so a failed run would lose the fire.
+    // The trigger is already marked fired, so a failed run would lose the fire: it is tried again, then the owner is told.
     onFailure: async ({ event, step }) =>
-      recoverFire(event.data.event as unknown as { data: FailedFire; ts?: number }, step as unknown as Parameters<typeof recoverFire>[1]),
+      retryThenTell(event.data.event as unknown as { name: string; data: FailedFire; ts?: number }, step as unknown as Parameters<typeof retryThenTell>[1], { left: fireLeft, tell: tellFire }),
   },
   { event: "app/thesis.trigger.fired" },
   async ({ event, step }) => {
@@ -388,9 +389,9 @@ export const tacticalRun = inngest.createFunction(
     // returns empty even when triggers genuinely fired.
     await step.run("write-trigger-fired", async () => {
       // A fire tried again keeps its one line, now on this run.
-      if (fired.recoveryTry && fired.firstFiredAt) {
+      if (fired.recoveryTry && fired.firstTriedAt) {
         const moved = await prisma.thesisUpdate.updateMany({
-          where: { thesisId: thesis.id, type: "TRIGGER_FIRED", triggerId: trigger.id, timestamp: { gte: new Date(fired.firstFiredAt) } },
+          where: { thesisId: thesis.id, type: "TRIGGER_FIRED", triggerId: trigger.id, timestamp: { gte: new Date(fired.firstTriedAt) } },
           data: { runId: run.id },
         });
         if (moved.count > 0) return;
@@ -524,6 +525,7 @@ export const tacticalRun = inngest.createFunction(
             });
           }
         });
+        if (failed) throw new NonRetriableError(`trigger run ${run.id}: the Auto-sell failed`);
         return {
           runId: run.id,
           thesisId: thesis.id,
@@ -553,10 +555,10 @@ export const tacticalRun = inngest.createFunction(
           const buys = doIt !== "TRIM";
           const payFromCash = buys ? await (await import("@/lib/trading/manual-order")).accountCash(agentConfig.userId, runEnvironment) : undefined;
           const tools = await toolsFor(buys ? { payFromCash } : {});
-          // The buy fired on a live price (a buy never fires on a stale one); without one, read it now.
+          // The buy fired on a live price (a buy never fires on a stale one); without one, or on a fire tried again, read it now.
           const price =
             doIt === "BUY"
-              ? (fired.firedPrice ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
+              ? ((fired.recoveryTry ? null : fired.firedPrice) ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
               : 0;
           let tried: { tool: string; summary: string | null };
           if (price == null) {
@@ -600,7 +602,7 @@ export const tacticalRun = inngest.createFunction(
             },
           });
         });
-        return { runId: run.id, thesisId: thesis.id, triggerId: trigger.id, ticker: thesis.ticker, action: trigger.action, fireMode: "DO_IT" as const, doIt, done };
+        throw new NonRetriableError(`trigger run ${run.id}: the Auto trade failed: ${done.error}`);
       }
       // A buy or an add that was sent, not proposed, is written up by the run after its fill (lib/proposals/after-buy.ts).
       const sentOrder = done.orderId && doIt !== "TRIM" ? await step.run("sent-or-proposed", () => prisma.order.findUnique({ where: { id: done.orderId! }, select: { status: true } })) : null;
@@ -1048,9 +1050,9 @@ export const tacticalRun = inngest.createFunction(
       await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
 
-    // A run that failed hasn't answered the fire: the failure handler tries it again, then tells the owner.
-    const failed = (outcome as { error?: string }).error;
-    if (failed) throw new NonRetriableError(`trigger run ${run.id} failed: ${failed}`);
+    // A run that ended failed hasn't answered the fire: the failure handler tries it again, then tells the owner.
+    const ended = await step.run("run-ended", () => prisma.researchRun.findUnique({ where: { id: run.id }, select: { status: true } }));
+    if (ended?.status === "FAILED") throw new NonRetriableError(`trigger run ${run.id} failed`);
 
     return {
       runId: run.id,

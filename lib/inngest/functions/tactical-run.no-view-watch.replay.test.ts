@@ -46,6 +46,10 @@ async function fire(direction: string | null) {
     returned = await handler!({
       event: { data: { thesisId: MA_ID, triggerId: WAKE.id, analystId: ANALYST, ticker: "MA", action: "REVIEW", firedPrice: 575.85 } },
       step: { run: async (_n: string, fn: () => Promise<unknown>) => JSON.parse(JSON.stringify((await fn()) ?? null)), sendEvent: jest.fn() },
+    }).catch((err: Error) => {
+      // The doubled model writes no note, so the run ends failed and the function fails for a retry.
+      if (err.name !== "NonRetriableError") throw err;
+      return { failed: err.message };
     });
   });
   for (const m of ["ai", "@/lib/agent/model", "@/lib/agent/tools", "@/lib/actions/api-keys.actions", "@/lib/inngest/client", "@/lib/prisma", "@/lib/market-data/load-market-numbers"]) jest.dontMock(m);
