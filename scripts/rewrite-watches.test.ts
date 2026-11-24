@@ -120,13 +120,13 @@ describe("what goes on: the playbook's watch triggers, priced from today's chart
     expect(said(stamped(stampFor(MA, MA_CHART, playbooks).add))).toEqual([
       "Buy if within 2% of the 50-day average",
       "Review every 7 days",
-      "Stop watching if below the 50-day average and above 1.5× normal volume",
+      "Stop watching if below the 50-day average · only on the close and above 1.5× normal volume",
     ]);
   });
 
   it("TRV: the breakout's buy at the base's pivot and Stop watching at its low; the review that needs a position comes off and nothing puts it back", () => {
     const s = said(stamped(stampFor(TRV, TRV_CHART, playbooks).add));
-    expect(s).toEqual(["Buy if above $418 · only on the close and above 1.5× normal volume and below $438.90", "Review every 7 days", "Stop watching if below $367 · only on the close"]);
+    expect(s).toEqual(["Buy if above $418 and above 1.5× normal volume and below $438.90", "Review every 7 days", "Stop watching if below $367 · only on the close"]);
     expect(s.some((x) => /after the buy/.test(x))).toBe(false);
   });
 });

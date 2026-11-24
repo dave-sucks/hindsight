@@ -9,7 +9,7 @@
  * indicator snapshot's helpers.
  */
 
-import { liveRsi, movePctOverSessions, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
+import { liveRsi, movePctOverSessions, normalVolumeShare, volumeRatio, type IndicatorSnapshot } from "@/lib/market-data/indicator-snapshot";
 import { describeCluster, insiderCluster } from "@/lib/market-data/insider-cluster";
 import type { Condition, Watch, When } from "./types";
 import { conditionsOf, isGroup } from "./types";
@@ -61,8 +61,10 @@ const FACTS: Partial<Record<Watch, Facts>> = {
     return null;
   },
   volume: (_c, snap, _px, today) => {
-    const r = volumeRatio(snap, today?.volume);
-    return r == null || today?.volume == null ? null : `volume so far ${(today.volume / 1e6).toFixed(2)}M = ${r.toFixed(2)}× the 20-day average`;
+    const r = volumeRatio(snap, today?.volume, today?.now);
+    if (r == null || today?.volume == null) return null;
+    const m = (today.volume / 1e6).toFixed(2);
+    return normalVolumeShare(today.now) < 1 ? `volume so far ${m}M = ${r.toFixed(2)}× normal by this time of day` : `volume ${m}M = ${r.toFixed(2)}× the 20-day average`;
   },
   strength: (c, snap) => {
     const window = (c.settings?.window ?? "3M") as keyof IndicatorSnapshot["rsVsSpy"];

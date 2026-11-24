@@ -83,7 +83,7 @@ describe("the seed is the spec's tables, row for row", () => {
 
   it("reads the way the pill does: a chart level by its name", () => {
     expect(PLAYBOOK_TEMPLATES.BASE_BREAKOUT.map((t) => sentenceOf(t as unknown as Trigger))).toEqual([
-      "Buy if above {pivot} · only on the close and above 1.5× normal volume and below {pivotChase}",
+      "Buy if above {pivot} and above 1.5× normal volume and below {pivotChase}",
       "Review every 7 days",
       "Review every 7 days",
       "Stop watching if below {baseLow} · only on the close",
@@ -179,5 +179,32 @@ describe("the triggers that come with the buy, priced from the chart and the buy
 
   it("MA_PULLBACK with no prior high above the buy: the Trim has no number", () => {
     expect(priced(PLAYBOOK_TEMPLATES.MA_PULLBACK, AAPL)).toEqual(["H2: no {priorHigh}"]);
+  });
+});
+
+describe("a playbook's buy reads during the day", () => {
+  const closeOnly = (p: unknown): boolean => {
+    const c = p as { settings?: { close?: boolean }; conditions?: unknown[] };
+    return c.settings?.close === true || (c.conditions ?? []).some(closeOnly);
+  };
+  it("no buy template waits for the close, and no buy reason says it does", () => {
+    const buys = Object.values(PLAYBOOK_TEMPLATES).flat().filter((t) => t.action === "ENTER");
+    expect(buys.length).toBeGreaterThan(0);
+    expect(buys.filter((t) => closeOnly(t.predicate))).toEqual([]);
+    expect(buys.filter((t) => /\ba close\b/i.test(t.rationale))).toEqual([]);
+  });
+  it("a sale or a Stop watching with a volume test reads on the close", () => {
+    const reads = (p: unknown, watch: string): boolean => {
+      const c = p as { watch?: string; conditions?: unknown[] };
+      return c.watch === watch || (c.conditions ?? []).some((x) => reads(x, watch));
+    };
+    const ends = Object.values(PLAYBOOK_TEMPLATES).flat().filter((t) => (t.action === "EXIT" || t.action === "STOP_WATCHING") && reads(t.predicate, "volume"));
+    expect(ends.length).toBeGreaterThan(0);
+    expect(ends.filter((t) => !closeOnly(t.predicate))).toEqual([]);
+  });
+  it("the breakout keeps its chase limit, and the watch's Stop watching still waits for the close", () => {
+    const list = PLAYBOOK_TEMPLATES.BASE_BREAKOUT;
+    expect(JSON.stringify(list.find((t) => t.action === "ENTER")!.predicate)).toContain("{pivotChase}");
+    expect(closeOnly(list.find((t) => t.action === "STOP_WATCHING")!.predicate)).toBe(true);
   });
 });

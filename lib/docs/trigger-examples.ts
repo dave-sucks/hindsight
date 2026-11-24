@@ -49,7 +49,7 @@ export const TRIGGER_TYPE_DOCS: readonly TriggerTypeDoc[] = [
     type: "indicator",
     blurb: "The chart's own numbers: volume, RSI, strength against the S&P, gaps.",
     checked:
-      "Read from the chart numbers computed at 6:30 AM each trading day: moving averages, highs and lows, RSI, strength against the S&P, recent gaps. They sit next to the live price on every pass. Volume and gaps also read today's volume so far, so a volume trigger is true only once the volume is really there.",
+      "Read from the chart numbers computed at 6:30 AM each trading day: moving averages, highs and lows, RSI, strength against the S&P, recent gaps. They sit next to the live price on every pass. Volume and gaps also read today's volume so far. During the session a volume trigger compares it with the normal volume by that time of day; after the close, the whole day's with the 20-day average.",
     examples: [
       { action: "REVIEW", when: { watch: "volume", value: 2 }, why: "Twice the normal volume means someone knows something. Look before it moves." },
       { action: "ENTER", when: { watch: "rsi", is: "below", value: 30 }, why: "An oversold dip in a stock whose trend is still up." },

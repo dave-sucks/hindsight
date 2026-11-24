@@ -30,7 +30,7 @@ describe("a new watch gets every one of its playbook's watch triggers, priced fr
     const w = writerPlaybookWrites({ direction: "LONG", setup_id: "EPISODIC_PIVOT" }, pull, null, playbooks);
     expect(said(w.add)).toEqual([
       "Review if above 8% gap up and above 3× normal volume",
-      "Buy if above $1153.19 · only on the close",
+      "Buy if above $1153.19",
       "Review if below $1126.86 · only on the close",
       "Review every 7 days",
       "Stop watching if below $1100.53 · only on the close",
@@ -70,7 +70,7 @@ describe("a refresh on a watch", () => {
   it("on a playbook change, the old playbook's triggers come off and the new one's go on; one written by hand stays", () => {
     const w = writerPlaybookWrites({ direction: "LONG", setup_id: "PEAD" }, pull, { direction: "LONG", status: "WATCHING", setupId: "MA_PULLBACK", triggers: [pbBuy, own] }, playbooks);
     expect(w.remove).toEqual(["pb_buy"]);
-    expect(said(w.add)).toEqual(["Buy if above $1126.86 · only on the close", "Review every 7 days", "Stop watching if below $1100.53 · only on the close"]);
+    expect(said(w.add)).toEqual(["Buy if above $1126.86", "Review every 7 days", "Stop watching if below $1100.53 · only on the close"]);
   });
 
   it("a hand-written trigger of the same kind stays, and the playbook's is not written beside it", () => {

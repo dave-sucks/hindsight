@@ -48,11 +48,11 @@ describe("a playbook trigger by its reference", () => {
   it("W2, the episodic pivot's buy, is priced at the gap day's high and marked the playbook's", async () => {
     const r = await edit({ add: [{ playbook_trigger: "W2" }] });
     expect(r.refused).toBe(false);
-    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1153.19 · only on the close"]);
+    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1153.19"]);
     expect((stored(r).triggers as Trigger[])[0]).toMatchObject({ action: "ENTER", playbook: "WATCH", rationale: "The gap day's high; on a day-2 hold above the gap day's middle, today's price." });
     // One Activity line, as every edit.
     const lines = r.db.store.thesisUpdate.flatMap((u) => ((u.fieldChanges as { triggerOps?: { to: Array<{ text: string }> } })?.triggerOps?.to ?? []).map((o) => o.text));
-    expect(lines).toEqual(["Added: Buy if above $1153.19 · only on the close"]);
+    expect(lines).toEqual(["Added: Buy if above $1153.19"]);
   });
 
   it("a reference the playbook doesn't have is refused with its references", async () => {
@@ -73,7 +73,7 @@ describe("a playbook trigger by its reference", () => {
 
   it("the same call may name the playbook it reads from", async () => {
     const r = await edit({ setup_id: "PEAD", add: [{ playbook_trigger: "W1" }] }, { setupId: null });
-    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1126.86 · only on the close"]);
+    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1126.86"]);
   });
 });
 
@@ -106,7 +106,7 @@ describe("a chart key in an agent's own trigger", () => {
   it("a refused add leaves the rest of the call to land", async () => {
     const r = await edit({ add: [review("{pivot}"), { playbook_trigger: "W2" }] });
     expect(ops(r).map((o) => o.ok)).toEqual([false, true]);
-    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1153.19 · only on the close"]);
+    expect(triggerSentences(stored(r))).toEqual(["Buy if above $1153.19"]);
   });
 });
 

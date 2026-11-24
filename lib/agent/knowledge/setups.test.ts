@@ -145,7 +145,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
     expect(r.data.found).toBe(true);
     const content = String(r.data.content);
     expect(content).toContain("Post-earnings drift (D4)");
-    expect(content).toContain("The playbook's watch triggers:\n- W1 · Buy if above {gapDayMid} (the gap day's middle) · only on the close — The gap held: a close above the gap day's middle.");
+    expect(content).toContain("The playbook's watch triggers:\n- W1 · Buy if above {gapDayMid} (the gap day's middle) — The gap held: above the gap day's middle.");
     // A holding's triggers are H1, H2…: those that come with the buy, then those written at the fill.
     expect(content).toContain("The triggers that come with the buy:\n- H1 · Sell if below {sellPrice} (the sell price) — ");
     expect(content).toContain("- H4 · Review 60 days after the buy — Hold 30–60 days.");
@@ -162,7 +162,7 @@ describe("read_knowledge_library — topic 'setup'", () => {
 
 describe("the pullback and the drift (HPE 2026-09-15)", () => {
   it("the reversal is the tactical run's confirmation", () => {
-    expect(getSetup("MA_PULLBACK")!.entry.confirmation.some((c) => c.includes("close above the prior day's high"))).toBe(true);
+    expect(getSetup("MA_PULLBACK")!.entry.confirmation.some((c) => c.includes("back above the prior day's high"))).toBe(true);
   });
 
   it("PEAD carries its window as data, and only PEAD does", () => {

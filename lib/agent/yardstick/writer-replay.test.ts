@@ -40,7 +40,7 @@ describe("a Writer mint replayed on T1's flow", () => {
     expect(saved).toMatchObject({ status: "WATCHING", direction: "LONG" });
     expect(saved.triggers.map((t) => sentenceOf(t))).toEqual([
       "Review if above 8% gap up and above 3× normal volume",
-      "Buy if above $1153.19 · only on the close",
+      "Buy if above $1153.19",
       "Review if below $1126.86 · only on the close",
       "Review every 7 days",
       "Stop watching if below $1100.53 · only on the close",
@@ -57,7 +57,7 @@ describe("a Writer mint replayed on T1's flow", () => {
     } }];
     const final = afterTailoring(saved, submit.input, wc, tailor);
     expect(final.map((t) => sentenceOf(t))).toEqual([
-      "Buy if above $1153.19 · only on the close",
+      "Buy if above $1153.19",
       "Review if below $1126.86 · only on the close",
       "Review every 7 days",
       "Stop watching if below $1100.53 · only on the close",

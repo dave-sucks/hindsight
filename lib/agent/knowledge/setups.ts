@@ -321,7 +321,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     ],
     entry: {
       confirmation: [
-        `A close above the pivot, not an intraday poke (intraday crosses fail about half the time)`,
+        `Above the pivot and holding, not a poke that slips back`,
         `Volume ≥ ${BREAKOUT_VOLUME_RATIO}× average on the breakout day`,
         `No more than ${CHASE_LIMIT_PCT}% past the pivot`,
       ],
@@ -374,7 +374,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Growth numbers mid-double-digit or better; liquidity floor met",
     ],
     entry: {
-      confirmation: ["The gap holds (day 2 closes above the gap-day midpoint)", "Volume stays heavy"],
+      confirmation: ["The gap holds (on day 2, above the gap-day midpoint)", "Volume stays heavy"],
       chaseLimitPct: CHASE_LIMIT_PCT,
     },
     sale: { maxPct: null, minAtr: MIN_STOP_ATR, floor: { key: "{gapDayLow}" } },
@@ -427,7 +427,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     ],
     entry: {
       confirmation: [
-        "The reversal: a close above the prior day's high after touching the average — the tactical run checks this on the fire",
+        "The reversal: back above the prior day's high after touching the average — the tactical run checks this on the fire",
         "The pullback came on below-average volume",
       ],
       chaseLimitPct: CHASE_LIMIT_PCT,

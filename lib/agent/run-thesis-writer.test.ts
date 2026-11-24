@@ -510,7 +510,7 @@ describe("buildWriterResearchPrompt — #1003 fixed forward (2026-11-17)", () =>
   it("a pre-catalyst mint is shown its buys to write now, and no parked review", () => {
     const block = catalyst.slice(catalyst.indexOf("PRE_CATALYST — "), catalyst.indexOf("BASE_BREAKOUT — "));
     expect(block).toContain("Buy if within 2% of the 50-day average");
-    expect(block).toContain("W3 · Buy if above {high20} (the 20-day high) · only on the close");
+    expect(block).toContain("W3 · Buy if above {high20} (the 20-day high)");
     expect(block).not.toMatch(/Review 70 days before the event/);
     expect(block).not.toMatch(/While parked/);
   });

@@ -96,6 +96,35 @@ const OLD_PLACEHOLDERS: Record<string, string> = {
 /** Volume, strength and a gap said "at least" in a sentence until 2026-11-20; they say "above" now, as the form does. */
 const saidAtLeast = (s: string) => s.replace(/above (?=[-\d.]+(?:× normal volume|% gap up| points ahead))/g, "at least ");
 
+/** The confirm lines and reasons as they read until 2026-11-23, when a playbook's buys waited for the close. */
+const INTRADAY_BUYS: ReadonlyArray<readonly [string, string]> = [
+  ["A close above the pivot, not an intraday poke (intraday crosses fail about half the time)", "Above the pivot and holding, not a poke that slips back"],
+  ["The gap holds (day 2 closes above the gap-day midpoint)", "The gap holds (on day 2, above the gap-day midpoint)"],
+  ["The reversal: a close above the prior day's high after touching the average", "The reversal: back above the prior day's high after touching the average"],
+];
+const OLD_REASONS: Readonly<Record<string, string>> = {
+  "The gap held: above the gap day's middle.": "The gap held: a close above the gap day's middle.",
+  "A close below the 50-day on volume ends the pullback.": "A close below the 50-day on volume ends the pullback. It reads during the day.",
+  "A close below the 50-day on volume: the pullback is over.": "The pullback is over.",
+};
+
+/** A template as it stood until 2026-11-23: a buy above a chart key waited for the close, and the pullback's volume rule read during the day. */
+function beforeIntradayBuys(t: Template): Template {
+  type C = { watch: string; is?: string; value?: unknown; variable?: string; settings?: Record<string, unknown> };
+  const one = (c: C): C => {
+    if (t.action === "ENTER" && c.watch === "price" && c.is === "above" && typeof c.value === "string") return { ...c, settings: { close: true } };
+    if (t.action !== "ENTER" && c.variable === "sma50" && c.settings?.close === true) {
+      const { settings: _s, ...plain } = c;
+      void _s;
+      return plain;
+    }
+    return c;
+  };
+  const p = t.predicate as unknown as C & { match?: string; conditions?: C[] };
+  const predicate = p.conditions ? { ...p, conditions: p.conditions.map(one) } : one(p);
+  return { ...t, predicate: predicate as unknown as Template["predicate"], rationale: OLD_REASONS[t.rationale] ?? t.rationale };
+}
+
 /** A playbook's list as playbookTriggerText printed it before T1: each trigger's sentence, its JSON as written, its reason. */
 function oldPlaybookTriggerText(templates: Template[], on: WrittenOn): string[] {
   const mine = templates.filter((t) => t.writtenOn === on);
@@ -118,7 +147,7 @@ function playbookLists(): Array<[string, string]> {
   for (const s of SETUPS) {
     for (const on of WRITTEN_ON) {
       for (const sep of ["\n  ", "\n"]) {
-        const was = oldPlaybookTriggerText(s.triggers, on).join(sep);
+        const was = oldPlaybookTriggerText(s.triggers.map(beforeIntradayBuys), on).join(sep);
         const is = playbookTriggerText(s.triggers, on).join(sep);
         if (was === is) continue;
         if (pairs.has(was) && pairs.get(was) !== is) throw new Error(`t1-text: one old list reads two ways now: ${was.slice(0, 120)}`);
@@ -129,4 +158,4 @@ function playbookLists(): Array<[string, string]> {
   return [...pairs];
 }
 
-export const T1_TEXT: ReadonlyArray<readonly [string, string]> = [...SENTENCES, ...PLAIN_WORDS, ...playbookLists()];
+export const T1_TEXT: ReadonlyArray<readonly [string, string]> = [...SENTENCES, ...PLAIN_WORDS, ...INTRADAY_BUYS, ...playbookLists()];

@@ -66,7 +66,7 @@ Triggers are checked every five minutes while the market is open, plus a pass at
 
 There are no waits. A filing fires once per filing, an earnings heads-up once per report and a news note once per note, whatever else has fired. A trigger's card says when it fired and what makes it ready again: "Fired Nov 18 · fires again after a close back above $150".
 
-**Two conditions are "and".** A trigger can need two conditions at once ("above $46.92 on the close, on 1.5× volume"). For either of two, write two triggers. A date count before the event can be one of them: it is then a window, the days the other condition may fire in ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). On its own it is a schedule and can't buy.
+**Two conditions are "and".** A trigger can need two conditions at once ("above $46.92, on 1.5× volume"). For either of two, write two triggers. A date count before the event can be one of them: it is then a window, the days the other condition may fire in ("Buy if within 2% of the 50-day average and within 70 days before the event date", the pre-catalyst buys). On its own it is a schedule and can't buy.
 
 What happens next is the trigger's **On fire**, in the next section. The whole path from the price check to the run, with every rule that holds a fire back: [From fire to run](../deep-dives/trigger-fire-to-run.md).
 

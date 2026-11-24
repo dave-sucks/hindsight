@@ -1,8 +1,8 @@
 /**
  * Three playbook fixes from the playbook review (2026-11-17), through the evaluator's cron handler.
  *
- * 1. PEAD's buy is the gap holding: "Buy if above {gapDayMid} · only on the close". Written on days
- *    1–3 it is already true, so it fires at the next close, never on a five-minute pass. No stock is on
+ * 1. PEAD's buy is the gap holding: "Buy if above {gapDayMid}". Written on days 1–3 it is already
+ *    true, so it fires at the next check (since 2026-11-23; it waited for the close). No stock is on
  *    the PEAD playbook yet; AAOI (PEAD Specialist, WATCHING) stands in with its 2026-11-11 gap as the
  *    11-16 snapshot stores it (+6.8%, low $51.53, middle $54.74) and its closes ($55.86 on 11-11,
  *    $52.85 on 11-12). The buy reads only the gap's middle.
@@ -10,6 +10,8 @@
  *    52% under its $247.70 close). ACN, its 11-16 snapshot (200-day $190.26).
  * 3. A watch's list has no analyst or account rule on our position: the Secular Compounder's
  *    from-entry and from-the-high reviews, as stored, are not on ACN's; on a holding they are.
+ * 5. The pullback's Stop watching reads on the close. BWXT 2026-11-16, its real tape and 11-13 snapshot
+ *    (50-day $137.48, 20-day volume 1,262,188): under the line all day and over 1.5× the pace at 1:40 PM.
  */
 import raw from "@/lib/agent/__fixtures__/acn-buys-2026-11-17.json";
 import { prismaDouble, thesisRow, agentConfigRow, accountRow, REPLAY_ACCOUNT_ID, type PrismaDouble } from "@/lib/replay";
@@ -42,7 +44,7 @@ function book(thesis: Row, analystId: string, triggers: Trigger[]): PrismaDouble
 }
 
 /** One pass at `at`, `ticker` at `price` (on the close pass, the day's close). Returns the events sent. */
-async function check(db: PrismaDouble, at: Date, ticker: string, price: number, prevClose: number, snapshot?: IndicatorSnapshot): Promise<Row[]> {
+async function check(db: PrismaDouble, at: Date, ticker: string, price: number, prevClose: number, snapshot?: IndicatorSnapshot, volume = 1_000_000): Promise<Row[]> {
   const sent: Row[] = [];
   jest.useFakeTimers({ now: at, doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
   try {
@@ -56,7 +58,7 @@ async function check(db: PrismaDouble, at: Date, ticker: string, price: number, 
             ? { data: { c: price, pc: prevClose, o: prevClose, dp: ((price - prevClose) / prevClose) * 100, t: Math.floor(at.getTime() / 1000) } }
             : { data: null },
       }));
-      jest.doMock("@/lib/alpaca", () => ({ getTodaySessionBars: async () => ({ [ticker]: { close: price, high: price, low: price, volume: 1_000_000 } }) }));
+      jest.doMock("@/lib/alpaca", () => ({ getTodaySessionBars: async () => ({ [ticker]: { close: price, high: price, low: price, volume } }) }));
       jest.doMock("@/lib/market-data/ensure-snapshots", () => ({ ensureIndicatorSnapshots: async () => new Map(snapshot ? [[ticker, snapshot]] : []) }));
       jest.doMock("@/lib/agent/triggers/earnings", () => ({ ...jest.requireActual("@/lib/agent/triggers/earnings"), fetchEarningsWindow: async () => ({ reported: new Map(), upcoming: new Map() }) }));
       jest.doMock("@/lib/market-data/sec-filings", () => ({ ...jest.requireActual("@/lib/market-data/sec-filings"), fetchBookFilings: async () => ({ byTicker: new Map() }) }));
@@ -69,21 +71,19 @@ async function check(db: PrismaDouble, at: Date, ticker: string, price: number, 
   return sent;
 }
 
-describe("1. PEAD: the buy is the gap holding, and it fires at the next close", () => {
+describe("1. PEAD: the buy is the gap holding, and it fires at the next check", () => {
   const triggers = watchTriggers("PEAD", { "{gapDayMid}": 54.74, "{gapDayLow}": 51.53 });
   const buy = triggers.find((t) => t.action === "ENTER")!;
   // Written on the gap day (day 1), so the 7-day clock isn't due.
   const aaoi = () => book({ id: AAOI, ticker: "AAOI", status: "WATCHING", direction: "LONG", createdAt: new Date("2026-11-11T16:00:00Z"), lastReviewedAt: new Date("2026-11-11T16:00:00Z") }, PEAD_ANALYST, triggers);
 
   it("reads as the gap held", () => {
-    expect(sentenceOf(buy)).toBe("Buy if above $54.74 · only on the close");
-    expect(buy.rationale).toBe("The gap held: a close above the gap day's middle.");
+    expect(sentenceOf(buy)).toBe("Buy if above $54.74");
+    expect(buy.rationale).toBe("The gap held: above the gap day's middle.");
   });
 
-  it("already true at $56.20 at 11:30 ET: no five-minute pass fires it; the 16:20 close at $55.86 does", async () => {
-    const db = aaoi();
-    expect(await check(db, new Date("2026-11-11T16:30:00Z"), "AAOI", 56.2, 48.32)).toEqual([]);
-    expect(await check(db, new Date("2026-11-11T21:20:05Z"), "AAOI", 55.86, 48.32)).toEqual([expect.objectContaining({ triggerId: buy.id, action: "ENTER", firedPrice: 55.86 })]);
+  it("already true at $56.20 at 11:30 ET: the five-minute check fires it", async () => {
+    expect(await check(aaoi(), new Date("2026-11-11T16:30:00Z"), "AAOI", 56.2, 48.32)).toEqual([expect.objectContaining({ triggerId: buy.id, action: "ENTER", firedPrice: 56.2 })]);
   });
 
   it("a close under the gap's middle ($52.85 on 11-12) is the gap not holding: nothing fires", async () => {
@@ -157,5 +157,27 @@ describe("4. edit_triggers sets 'only on the close' on an average, as the save d
   it("a high still can't wait for the close: the timing is as it was", () => {
     const high = { ...review, id: "high", predicate: { is: "above", watch: "price", variable: "high52" } } as unknown as Trigger;
     expect(edit(high, true).results[0]).toMatchObject({ ok: false, reason: expect.stringMatching(/on the close is for a typed price or an average/) });
+  });
+});
+
+describe("5. The pullback's Stop watching waits for a heavy close below the 50-day", () => {
+  const snapshot = { ...acn.snapshot, asOf: "2026-11-13", sma: { ...acn.snapshot.sma, 50: 137.48 }, volumeAvg20: 1_262_188 } as IndicatorSnapshot;
+  const PRIOR_CLOSE = 122.97;
+  const seen = new Date("2026-11-16T12:00:00Z");
+  const bwxt = () => book({ id: "bwxt", ticker: "BWXT", status: "WATCHING", direction: "LONG", createdAt: seen, lastReviewedAt: seen }, PEAD_ANALYST, watchTriggers("MA_PULLBACK", {}));
+
+  it("doesn't fire during the session, at 1.59× the pace at 1:40 PM, and fires on the 2.04× close under the line", async () => {
+    const db = bwxt();
+    await check(db, new Date("2026-11-16T15:00:00Z"), "BWXT", 120.41, PRIOR_CLOSE, snapshot, 177_054);
+    await check(db, new Date("2026-11-16T18:40:00Z"), "BWXT", 116.8, PRIOR_CLOSE, snapshot, 883_263);
+    expect(db.store.thesis[0]).toMatchObject({ status: "WATCHING" });
+    await check(db, new Date("2026-11-16T21:20:05Z"), "BWXT", 117.09, PRIOR_CLOSE, snapshot, 2_578_982);
+    expect(db.store.thesis[0]).toMatchObject({ status: "RETIRED", retiredReason: "DROPPED" });
+  });
+
+  it("a light close under the line leaves the watch", async () => {
+    const db = bwxt();
+    await check(db, new Date("2026-11-16T21:20:05Z"), "BWXT", 117.09, PRIOR_CLOSE, snapshot, 1_500_000);
+    expect(db.store.thesis[0]).toMatchObject({ status: "WATCHING" });
   });
 });
