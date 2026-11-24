@@ -10,19 +10,27 @@ import { ROW_FIELDS } from "@/lib/agent/row-for-model";
 import { SITUATIONS, guidanceCodes, type SituationCode } from "@/lib/agent/situations";
 import { situationText } from "@/lib/agent/situation-skills";
 
-/** Each situation in a sentence for a person. The text an agent reads is its skill file's own. */
-const PLAIN: Record<SituationCode, string> = {
-  PROMOTED_AWAITING: "A stock just moved from paper to live money and needs a decision this run.",
-  PROTECTIVE_SALE: "A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.",
-  BUY_ARRIVES: "A buy trigger fired on a watched stock.",
-  ADD_OR_WINNER: "An add trigger fired on a holding.",
-  REPORT: "A trigger on the company's earnings report fired: the report is coming, or it just landed.",
-  FILING: "A trigger on the company's SEC filings fired.",
-  NEWS: "Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.",
-  PROTECTION: "A gain with too little floor under it, or a floor that would lose too much of the account.",
-  REVIEW_DUE: "The review clock came round, or the price reached a level the analyst asked to look at again.",
-  SOLD_ONE_REVIEW: "A stock sold in the last two weeks is owed one look back.",
+/** What raises each situation: a trigger of yours, or a check in the code. One list for both docs pages. */
+export const RAISED_BY: Record<SituationCode, { by: "trigger" | "code"; what: string }> = {
+  PROTECTIVE_SALE: { by: "trigger", what: "A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger." },
+  BUY_ARRIVES: { by: "trigger", what: "A Buy trigger fired on a watch, or is true when the morning run reads the stock." },
+  ADD_OR_WINNER: { by: "trigger", what: "An Add trigger fired on a holding." },
+  REPORT: { by: "trigger", what: "A Review trigger on the company's earnings report fired, before the report or after it." },
+  FILING: { by: "trigger", what: "A Review trigger on the company's SEC filings fired." },
+  NEWS: { by: "trigger", what: "A Review trigger on the Market Reviewer's notes fired: it wrote a high note on the stock." },
+  REVIEW_DUE: { by: "trigger", what: "A “Review every N days” trigger came due, or any other Review trigger fired." },
+  PROTECTION: { by: "code", what: "A holding's floor (its “Sell if below” trigger) locks in much less than its gain, or a sale there would lose more than 1.5% of the account." },
+  SOLD_ONE_REVIEW: { by: "code", what: "The stock was sold in the last two weeks and no run has looked at it since." },
+  PROMOTED_AWAITING: { by: "code", what: "A paper analyst was promoted to live money, and its holdings need a decision." },
 };
+
+const BY = { trigger: "A trigger", code: "A check in the code" } as const;
+
+/** The one table of situations: each one, and what raises it. Triggers first. */
+export function situationsTableMarkdown(): string[] {
+  const codes = (Object.keys(RAISED_BY) as SituationCode[]);
+  return ["| Situation | Raised by | When |", "|---|---|---|", ...codes.map((c) => `| **${cap(SITUATIONS[c].name)}** | ${BY[RAISED_BY[c].by]} | ${RAISED_BY[c].what} |`)];
+}
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -40,18 +48,36 @@ export function situationsLibraryMarkdown(): string {
     "",
     "## How a situation works",
     "",
-    "1. A trigger fires or a clock comes due. Code works out the stock's situations from that (`situationsFor`); nothing is stored.",
-    "2. The stock shows each situation in one wording, its name and then what raised it (\"sale signal: Sell if below $804\"), the most urgent first: on its line of the stock table, on its page and on its row. Every reader gets that. An agent's row adds the situation's code in front.",
+    "1. A situation is raised by one of your triggers firing, or by one of three checks in the code. Nothing else raises one, and nothing is stored: it is worked out each time the stock is read (`situationsFor`).",
+    "2. The stock says why in one wording, the same on its line of the stock table, on its page and on the row an agent reads. When a trigger raised it, that is the trigger's own sentence (\"Sell if below $804\", \"Review every 30 days\"). When a check in the code raised it, that is the check's name (\"floor to fix\"). An agent's row puts the situation's code in front.",
     "3. The situation does one thing: it picks the text below. The text goes to the run that answers. The morning run's list carries one `guidance` entry per situation on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.",
     "4. A text can have a part for a stock we hold and a part for a stock we watch. A run is sent the part that fits its stock, whole and as written. No code writes or changes a word of it.",
     "",
+    "## The situations, and what raises each",
+    "",
+    ...situationsTableMarkdown(),
+    "",
     "## What every stock in a situation carries",
     "",
-    "The same row, whatever the situation and whoever reads it. A stock an agent opens by its ticker gets the same row. A field is included always, or when the stock has it, or when the read asks for it. A field with nothing to say is left off. To stop sending a field, delete its line in `ROW_FIELDS`.",
+    "The same row, whatever the situation and whoever reads it. A stock an agent opens by its ticker gets the same row. To stop sending a field, delete its line in `ROW_FIELDS`.",
     "",
-    "| Field | What it is | When it is included |",
+    "**On every row:**",
+    "",
+    "| Field | What it is |",
+    "|---|---|",
+    ...ROW_FIELDS.filter((f) => f.when === "always").map((f) => `| \`${f.key}\` | ${f.what} |`),
+    "",
+    "**Only on a stock it applies to:**",
+    "",
+    "| Field | What it is | Sent when |",
     "|---|---|---|",
-    ...ROW_FIELDS.map((f) => `| \`${f.key}\` | ${f.what} | ${f.when} |`),
+    ...ROW_FIELDS.filter((f) => f.when !== "always" && !f.ask).map((f) => `| \`${f.key}\` | ${f.what} | ${f.when} |`),
+    "",
+    "**Only when the agent asks for it:**",
+    "",
+    "| Field | What it is |",
+    "|---|---|",
+    ...ROW_FIELDS.filter((f) => f.ask).map((f) => `| \`${f.key}\` | ${f.what} |`),
     "",
   ];
   codes.forEach((code, i) => {
@@ -62,9 +88,9 @@ export function situationsLibraryMarkdown(): string {
       "",
       [`\`${code}\``, `rank ${i + 1} of ${codes.length}`, s.skill ? `\`${s.skill}\`` : "its text is in `SITUATIONS`"].join(" · "),
       "",
-      `**True when:** ${PLAIN[code]}`,
+      `**Raised by:** ${BY[RAISED_BY[code].by].toLowerCase()}. ${RAISED_BY[code].what}`,
       "",
-      "**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):",
+      "**How it reads, in each place it shows:**",
       "",
       `<!-- asset: situation-named ${code} -->`,
       "",

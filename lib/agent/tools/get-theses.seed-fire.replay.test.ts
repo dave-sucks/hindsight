@@ -71,6 +71,6 @@ describe("MA 10-09: the strength wake fired on a seed with its own clock", () =>
   it("a trigger run's own read of it carries the name and no text: its skill ends its instructions", async () => {
     const trigger = await read("INTRADAY_TACTICAL", ma({ direction: "LONG" }));
     expect(trigger.model.guidance).toBeUndefined();
-    expect(trigger.model.theses[0]?.situations).toEqual(["REVIEW_DUE (review due: Review if above 0 points ahead of the S&P · over 6 months)"]);
+    expect(trigger.model.theses[0]?.situations).toEqual(["REVIEW_DUE: Review if above 0 points ahead of the S&P · over 6 months"]);
   });
 });

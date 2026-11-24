@@ -15,7 +15,7 @@ export interface StockTableRow {
   status: string;
   /** The stock's analyst; null on one analyst's own read. */
   analyst: string | null;
-  /** The situations the stock is in, lead first, each as its one wording: its name, then what raised it (`situationLabels`). */
+  /** The situations the stock is in, lead first, each as its one wording: the trigger that raised it, or the name of the check that did (`situationLabels`). */
   situations: string[];
   price: number | null;
   /** The price against the close of the session before it, in %. */

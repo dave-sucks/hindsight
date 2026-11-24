@@ -261,7 +261,7 @@ export const ROW_FIELDS: readonly RowField[] = [
   { key: "company", what: "What the company does, in two sentences", when: ALWAYS, read: (r) => text(r.company) },
   { key: "id", what: "The thesis id a note or a trade names", when: ALWAYS, read: (r) => r.id },
   { key: "analyst", what: "The analyst that covers it", when: "the read covers more than one analyst", read: (r) => str(r.analyst) },
-  { key: "situations", what: "Each situation it is in: its code, then its name and what raised it", when: "it is in one", read: (r) => list<SituationCode>(r.situations).map((c) => { const said = str(obj(r.situationText)?.[c]) ?? SITUATIONS[c]?.name; return `${c}${said ? ` (${said})` : ""}`; }) },
+  { key: "situations", what: "Each situation it is in: its code, then the trigger that raised it, or the name of the check that did", when: "it is in one", read: (r) => list<SituationCode>(r.situations).map((c) => { const said = str(obj(r.situationText)?.[c]) ?? SITUATIONS[c]?.name; return said ? `${c}: ${said}` : c; }) },
   { key: "said", what: "Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days", when: ALWAYS, read: (r) => str(r.context) },
   { key: "position", what: "The shares, what we paid, the gain, when it was bought and the high since", when: "it is held", read: (r) => positionLine(r, livePrice(r)) },
   { key: "proposal_waiting", what: "A trade on it that waits for the owner", when: "one waits", read: (r) => proposalLine(r) },

@@ -8,9 +8,14 @@ Situations are how the agents spend their attention. On a given morning a few st
 
 ## Where they come from
 
-Two causes, one result. Either a **trigger** fires, or a **check in the code** finds something on its own, and the stock is left with a situation: a to-do for the next run that reads it, with the instructions for answering it.
+Two things raise a situation, and nothing else does.
 
-Each time a stock is read, its facts are turned into its list of situations. The facts come from one place, so the read, the thesis sheet and a run's close-out can't disagree.
+- **One of your triggers.** A Sell, Trim, Buy, Add or Review trigger fired, on the stock itself or inherited from its analyst or the account. The review clock is a trigger too: "Review every 30 days" comes due 30 days after the last look. Seven of the ten situations are raised this way.
+- **One of three checks in the code.** A holding's floor lags its gain; a stock was just sold; a paper analyst was promoted to live.
+
+The floor itself is a trigger ("Sell if below $804"). "Floor to fix" is the check that compares that trigger with the gain.
+
+A situation is worked out each time the stock is read and never stored, from one set of facts, so the read, the thesis sheet and a run's close-out can't disagree.
 
 <!-- asset: situation-flow -->
 
@@ -25,7 +30,7 @@ What an analyst may do is the same every time (propose a sale, a trim, a buy or 
 The note is the write-up of what the situation sent the agent to find out. Every note has the same shape, set once in the house rules: what is going on and why, what it means for why we own it, then one sentence on what the analyst did.
 
 - **The text goes to the run that answers.** A [morning run](../agents/morning-runs.md) gets the skills for the situations on its own list, once per read however many stocks share one; a [trigger run](../agents/trigger-runs.md) gets those of the one stock it woke for.
-- **One wording everywhere.** A situation on a stock reads as its name and then what raised it, such as “sale signal: Sell if below $804” or “review due: 10 days overdue”: in the stock table, on the stock's page and on the row an agent reads (`situationLabels`, `lib/agent/situations.ts`).
+- **One wording everywhere.** A situation a trigger raised reads as that trigger's own sentence, such as “Sell if below $804” or “Review every 30 days, 10 days overdue”. One a check raised reads as the check's name, such as “floor to fix”. It is the same in the stock table, on the stock's page and on the row an agent reads, where the situation's code comes first (`situationLabels`, `lib/agent/situations.ts`).
 - **Every other reader gets the name.** A read of one stock by ticker, the [Portfolio Manager](../agents/portfolio-manager.md)'s rows and [chat](../agents/chat.md) see each situation by name on the stock's row. The skills are listed in the knowledge library, so chat reads one when you ask it to act. You see the names on the thesis sheet.
 - One note on the stock answers every situation it's in. Many answers end in a [proposal](approvals.md), a trigger moved, or the stock sent back to the Writer.
 - Nothing is stored. Answer a situation and it's gone; leave it and it's back tomorrow.
@@ -34,20 +39,22 @@ The note is the write-up of what the situation sent the agent to find out. Every
 
 ## The situations
 
-A situation is why a stock is in front of its analyst now. There are three kinds, and one more that is its own case.
+A situation is why a stock is in front of its analyst now. Each is raised by a trigger or by a check in the code.
 
-| Kind | Situation | When |
+| Situation | Raised by | When |
 |---|---|---|
-| A trigger written in advance fired | **Sale signal** | A sell or trim trigger fired on a holding, or a sale you declined is still past its line. Not while a sale card for it waits for you. |
-| | **Buy price reached** | A buy trigger fired on a watch, or its condition is still true when the morning run reads the stock. |
-| | **Add** | An add trigger fired on a holding. Nearing an upside line is no situation of its own: the house has no target. |
-| Something happened | **A report** | A trigger on the company's earnings report fired, before it or after it. |
-| | **A filing** | A trigger on the company's SEC filings fired. |
-| | **News** | A trigger on the Market Reviewer's notes fired: it wrote a high note on the stock. It needs the rule "Review if the Market Reviewer writes a high note on it", which is yours to save. |
-| It is time to look again | **Review due** | The review clock came round, or the price reached a level the analyst asked to look at again. |
-| | **Floor to fix** | A holding's floor locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
-| | **Just sold** | Sold in the last two weeks, and no run has looked at it since. |
-| Its own case | **Promoted to live** | A paper analyst was promoted to live money, and its holdings need a decision. |
+| **Sale signal** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
+| **Buy price reached** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
+| **Add** | A trigger | An Add trigger fired on a holding. |
+| **A report** | A trigger | A Review trigger on the company's earnings report fired, before the report or after it. |
+| **A filing** | A trigger | A Review trigger on the company's SEC filings fired. |
+| **News** | A trigger | A Review trigger on the Market Reviewer's notes fired: it wrote a high note on the stock. |
+| **Review due** | A trigger | A “Review every N days” trigger came due, or any other Review trigger fired. |
+| **Floor to fix** | A check in the code | A holding's floor (its “Sell if below” trigger) locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
+| **Just sold** | A check in the code | The stock was sold in the last two weeks and no run has looked at it since. |
+| **Promoted to live** | A check in the code | A paper analyst was promoted to live money, and its holdings need a decision. |
+
+A sale signal is not raised while a sale card for the stock waits for you. News needs the rule "Review if the Market Reviewer writes a high note on it", which is yours to save.
 
 On a watch, a review, a report and news can each end in a buy: when the case is stronger and the playbook's buy is true today, the analyst proposes it.
 

@@ -140,12 +140,12 @@ describe("get_theses — the read", () => {
   it("every other reader gets the situation's name on the row and no text: a read by ticker, the chat, a trigger run's own read", async () => {
     const byTicker = await read({ tickers: ["SYK"] });
     expect(byTicker.model.guidance).toBeUndefined();
-    expect(byTicker.modelRow.situations).toEqual(["BUY_ARRIVES (buy price reached: Buy if below $340)", "REVIEW_DUE (review due: 10 days overdue)"]);
+    expect(byTicker.modelRow.situations).toEqual(["BUY_ARRIVES: Buy if below $340", "REVIEW_DUE: Review every 30 days, 10 days overdue"]);
     const list = await read({});
     for (const runMode of ["PRINCIPAL_CHAT", "INTRADAY_TACTICAL", "DISCOVERY"]) {
       const data = list.as(runMode);
       expect([runMode, data.guidance]).toEqual([runMode, undefined]);
-      expect(JSON.stringify(data.theses)).toContain("REVIEW_DUE (review due: 10 days overdue)");
+      expect(JSON.stringify(data.theses)).toContain("REVIEW_DUE: Review every 30 days, 10 days overdue");
     }
   });
 

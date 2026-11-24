@@ -141,7 +141,7 @@ describe("the situations a stock is in", () => {
 describe("the situations for a person: the sheet's flag line", () => {
   it("MU 10-07: the fired review is the lead's, and the one label", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
-    expect(situationLabels(sources(i))).toEqual([{ code: "REVIEW_DUE", name: "review due", detail: "Review if below $95", text: "review due: Review if below $95", lead: true }]);
+    expect(situationLabels(sources(i))).toEqual([{ code: "REVIEW_DUE", name: "review due", detail: "Review if below $95", text: "Review if below $95", lead: true }]);
   });
   it("a sale on an earnings trigger: both codes are the lead's", () => {
     const report = trig("er", "EXIT", { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "price", is: "below", value: 90 }] });
@@ -333,11 +333,21 @@ describe("MA 2026-10-09: a fired review on a watch with no view is no situation,
   });
 });
 
-describe("one wording for a situation on a stock: its name, then what raised it", () => {
+describe("one wording for a situation on a stock: the trigger that raised it, or the name of the check that did", () => {
   // MU 2026-11-23: its sale read "sale signal" in the stock table, "Trigger fired: Sell if below $804" on its page and "PROTECTIVE_SALE (sale signal)" on its row.
   it("a fired trigger is the trigger's own sentence, the same for the table, the page and the row", () => {
     const i = input({ status: "HOLDING", triggers: [trig("floor", "EXIT", below(804))] }, { activity: [fire("floor")] });
-    expect(situationLabels(sources(i)).map((x) => x.text)).toEqual(["sale signal: Sell if below $804"]);
+    expect(situationLabels(sources(i)).map((x) => x.text)).toEqual(["Sell if below $804"]);
+  });
+  // The docs drew "its review clock" as a second thing beside triggers. It is the stock's "Review every N days" trigger, and reads as it.
+  it("a review that came due is its clock trigger's sentence, with how late it is", () => {
+    const clock = trig("clock", "REVIEW", { watch: "repeat", value: 30 });
+    const s: SituationSources = { needs: [{ kind: "REVIEW_DUE", daysOverdue: 3 }], triggers: [clock], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
+    expect(situationLabels(s).map((x) => x.text)).toEqual(["Review every 30 days, 3 days overdue"]);
+  });
+  it("a code check keeps its name, then its fact", () => {
+    const s: SituationSources = { needs: [{ kind: "FLOOR_TOO_FAR", pctOfAccount: 2.1 } as never], triggers: [], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
+    expect(situationLabels(s).map((x) => x.text)).toEqual(["floor to fix, 2.1% of the account below here"]);
   });
   it("a situation with nothing to add is its name alone", () => {
     const s: SituationSources = { needs: [], triggers: [], status: "RETIRED", actionability: null, buyBlockedByFull: false, soldReview: true };
