@@ -83,8 +83,8 @@ const args = { childRunId: CHILD, analystId: CATALYST, ticker: "DYN", mode: "min
 type Submit = { execute: (a: unknown, o: unknown) => Promise<{ accepted: boolean; errors?: string[] }> };
 type Call = { messages?: Array<{ role: string; content: string }>; tools?: { submit_thesis?: Submit }; onStepFinish?: (s: unknown) => void };
 
-/** What the model sent at 00:09 — minus the scoring block, so the writer's own check refuses it. */
-const refusedFirst = { ...fx.last.input, invalidation_conditions: undefined };
+/** What the model sent at 00:09, as the Writer sends it now — minus its KPIs, so the writer's own check refuses it. */
+const refusedFirst = { ...ratedNow(fx.last.input), kpis: undefined };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -102,14 +102,14 @@ it("DYN: the loop ends on a refused submit; the refusal goes back once and the d
       opts.onStepFinish?.({ toolCalls: [], text: "## Company\nDyne makes a drug.\n## Bull Case\n- x\n## Bear Case\n- x", response: { messages: [] } });
       const r = await opts.tools.submit_thesis.execute(refusedFirst, { toolCallId: "t1", messages: [] });
       expect(r.accepted).toBe(false);
-      expect(r.errors?.join(" ")).toMatch(/invalidation_conditions/);
+      expect(r.errors?.join(" ")).toMatch(/kpis/);
       return { text: "", steps: [], response: { messages: [] } };
     }
     if (repair) {
       seen.push("repair");
       // The model is shown exactly what it sent and why it was refused.
       expect(opts.messages?.[2]?.content).toMatch(/"direction":"LONG"/);
-      expect(opts.messages?.[2]?.content).toMatch(/invalidation_conditions/);
+      expect(opts.messages?.[2]?.content).toMatch(/kpis/);
       const r = await opts.tools!.submit_thesis!.execute(ratedNow(fx.last.input), { toolCallId: "t2", messages: [] });
       expect(r.accepted).toBe(true);
       return { text: "", steps: [], response: { messages: [] } };

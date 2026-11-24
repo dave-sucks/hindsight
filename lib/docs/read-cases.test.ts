@@ -23,7 +23,7 @@ describe("the framework's read section follows row-for-model.ts", () => {
     // Every key a sample prints is one the read says it sends.
     for (const k of printed(samples.row)) expect(["row", k, keys.row.includes(k)]).toEqual(["row", k, true]);
     expect(samples.row).toMatch(/^street: .*avg \$/m);
-    expect(samples.row).toMatch(/^assumptions: /m);
+    expect(samples.row).toMatch(/^kpis: /m);
     expect(samples.row).not.toMatch(/^(bull_case|bear_case|snapshot|history): /m);
     expect(samples.full).toMatch(/^bull_case: /m);
   });

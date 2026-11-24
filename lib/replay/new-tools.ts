@@ -41,7 +41,7 @@ export function asTheNewTools(call: Record<string, unknown>, runMode = "MORNING_
   if ((status === "ARCHIVED" || status === "INVALIDATED") && has("stop_watching")) {
     out.push({ module: "stop-watching", exportName: "stopWatching", args: { thesis_id: call.thesis_id, reason: call.rationale } });
   } else if (call.rationale !== undefined && has("write_note")) {
-    const state = { conviction: call.conviction, conviction_rationale: call.conviction_rationale, outlook: call.outlook, outlook_reason: call.outlook_reason };
+    const state = { conviction: call.conviction, conviction_rationale: call.conviction_rationale, outlook: call.outlook, opinion: call.opinion ?? call.outlook_reason };
     const review = { verdict: call.verdict ?? "UNCHANGED", verdict_line: call.verdict_line, ...(has("set_conviction") ? {} : state), answers_update_id: call.answers_update_id };
     out.push({ module: "write-note", exportName: "writeNoteTool", args: { ...own, note: call.rationale, ...review, ...(runMode === "INTRADAY_TACTICAL" ? {} : { trigger_id: call.trigger_id }) } });
   }

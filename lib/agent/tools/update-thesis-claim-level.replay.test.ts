@@ -18,7 +18,7 @@ import type { Trigger } from "@/lib/agent/triggers/types";
 import type { z } from "zod";
 
 const FIXTURE = "lib/agent/__fixtures__/mu-floor-off-969-2026-09-23.json";
-const LINE = 'Your what-proves-it-wrong line still names $969; the trigger now reads "Sell if below $1041".';
+const LINE = 'A KPI line still names $969; the trigger now reads "Sell if below $1041".';
 
 /** The morning run's real save schema, read without a database. */
 async function morningRunSchema(): Promise<z.ZodTypeAny> {
@@ -69,7 +69,7 @@ async function sentVerbatim(): Promise<{ received: Record<string, unknown>; save
   return { received: out.received, save: out.save };
 }
 
-describe("MU 09-23: the floor leaves $969 while what-proves-it-wrong still names it", () => {
+describe("MU 09-23: the floor leaves $969 while a KPI line still names it", () => {
   it("the save lands the move and the reply says the claim still names the old number", async () => {
     const { received, save } = await sentVerbatim();
     expect(received.edit_triggers).toEqual(expect.arrayContaining([expect.objectContaining({ id: "t4", value: 1041 })]));
@@ -78,7 +78,7 @@ describe("MU 09-23: the floor leaves $969 while what-proves-it-wrong still names
     const row = save.db.store.thesis[0];
     expect((row.triggers as Array<{ id: string; predicate: { value: number } }>).find((x) => x.id === "t4")?.predicate.value).toBe(1041);
     // The claim is not this door's to change, so it is still the old text.
-    expect(row.invalidationConds).toEqual(entry.thesis.invalidationConds);
+    expect(row.kpis).toEqual([...((entry.thesis.keyAssumptions as string[]) ?? []), ...((entry.thesis.invalidationConds as string[]) ?? [])]);
     expect(save.result.summary).toContain(LINE);
     expect(save.result.data?.what_this_means).toEqual(expect.arrayContaining([LINE]));
   });

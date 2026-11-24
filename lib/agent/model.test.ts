@@ -289,6 +289,6 @@ describe("the Writer", () => {
     expect(names.indexOf("The message")).toBe(names.indexOf("The date and account") + 1);
     expect(names.slice(-2)).toEqual(["The stock's data", "Tool menu"]);
     expect(categories.find((c) => c.name === "The stock's data")!.sections.map((s) => s.text).join("")).toContain("STRUCTURED DATA: $DYN");
-    expect(categories[categories.length - 1].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis"]);
+    expect(categories[categories.length - 1].sections.map((s) => s.label)).toEqual(["web_search", "submit_thesis", "get_sec_filings"]);
   });
 });

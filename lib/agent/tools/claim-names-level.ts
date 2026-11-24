@@ -29,19 +29,19 @@ export function dollarFigures(text: string): number[] {
 }
 
 /**
- * One sentence per moved trigger the claim still names: "Your what-proves-it-
- * wrong line still names $969; the trigger now reads "Sell if below $1,041"."
+ * One sentence per moved trigger the claim still names: "Your KPIs
+ * still name $969; the trigger now reads "Sell if below $1,041"."
  * Empty when no trigger's price moved, or the claim names none of the old prices.
  */
 export function claimNamesOldLevel(input: {
   before: readonly Trigger[];
   after: readonly Trigger[];
   coreBelief: string | null;
-  invalidationConds: string[];
+  kpis: string[];
 }): string[] {
   const texts: Array<[string, string]> = [];
   if (input.coreBelief?.trim()) texts.push(["Your belief", input.coreBelief]);
-  if (input.invalidationConds.length) texts.push(["Your what-proves-it-wrong line", input.invalidationConds.join("\n")]);
+  if (input.kpis.length) texts.push(["A KPI line", input.kpis.join("\n")]);
   const out: string[] = [];
   for (const now of input.after) {
     const then = input.before.find((t) => t.id === now.id);

@@ -25,8 +25,7 @@ export const thesisSheetStateSelect = {
   triggers: true,
   company: true,
   coreBelief: true,
-  keyAssumptions: true,
-  invalidationConds: true,
+  kpis: true,
   fullResearch: true,
   // V2 flat-schema narrative columns (PR-9)
   snapshot: true,
@@ -48,5 +47,4 @@ export const thesisSheetStateSelect = {
   outlookReason: true,
   conviction: true,
   convictionRationale: true,
-  variantView: true,
 } as const;

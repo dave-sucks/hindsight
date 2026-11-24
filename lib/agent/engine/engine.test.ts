@@ -10,6 +10,7 @@
  * (lib/agent/__fixtures__): ./__fixtures__/*.golden.json.
  */
 import { withNewToolNames } from "./__fixtures__/tool-renames";
+import { withThesisFields } from "./__fixtures__/thesis-fields-text";
 import GOLDEN from "./__fixtures__/portfolio-manager.golden.json";
 import DIGEST_GOLDEN from "./__fixtures__/portfolio-digest.golden.json";
 import REVIEWER_GOLDEN from "./__fixtures__/market-reviewer.golden.json";
@@ -127,7 +128,7 @@ describe("the Portfolio Manager", () => {
         "\n\n## Rules",
         "\n\nYou may also start a watch on a stock no analyst holds or watches. When you judge one a really good opportunity, or the account lacks its sector or its kind of stock, look it up, then send it to research for the analyst it fits and say why in the brief; the Writer may still pass on it. One new stock a run: the rest of what is missing goes under What the account needs.\n\n## Rules",
       );
-    expect(built.instructions).toBe(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`);
+    expect(built.instructions).toBe(withThesisFields(`${role}\n\n${withNewToolNames(ownJob)}\n\n${houseAndWrite}`));
     // The stock table takes the book's place; this fixture's database has no stocks to read (its text is pinned in stock-table.test.ts and run.wire.test.ts).
     const theBook = "## The stock table\nThe stocks couldn't be read this run.";
     const marketWithoutWatching = market.slice(0, market.indexOf("\n\n### Watching"));
@@ -207,7 +208,7 @@ describe("the Market Reviewer", () => {
       ],
       context: { the_book: "## The book\nb", the_cases: "## What each thesis rests on\nc", last_output: "## Your notes in the last 5 days\n- none\n\n## Your last digest\nd" },
     });
-    expect(built.instructions).toBe(REVIEWER_GOLDEN.system);
+    expect(built.instructions).toBe(withThesisFields(REVIEWER_GOLDEN.system));
     expect(built.parts.map((p) => p.title)).toEqual(["Its instructions (market-reviewer.md)", "The date and account", "Market numbers", "The portfolio", "The book", "What each thesis rests on", "Its last output"]);
     expect(built.message.startsWith(`${dateLine(NOW, "LIVE")}\n\n## Market and portfolio\n\n### Market numbers (as of`)).toBe(true);
     expect(built.message.endsWith("\n\n## The book\nb\n\n## What each thesis rests on\nc\n\n## Your notes in the last 5 days\n- none\n\n## Your last digest\nd")).toBe(true);

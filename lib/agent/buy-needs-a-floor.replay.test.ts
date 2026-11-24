@@ -6,7 +6,7 @@
  * get_theses read them on 2026-11-04 (activity text and history left out).
  */
 import type { z } from "zod";
-import { ratedNow } from "@/lib/replay/rated";
+import { ratedNow, writtenNow } from "@/lib/replay/rated";
 import etn from "@/lib/agent/__fixtures__/row-etn-2026-11-04.json";
 import pltr from "@/lib/agent/__fixtures__/row-pltr-2026-11-04.json";
 import cogt from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
@@ -48,7 +48,7 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
   // The decision as the writer sends it: the thesis fields and its playbook (PRE_CATALYST); the save writes its watch triggers from the chart.
   const { triggers: _t, entry_price: _ep, stop_loss: _sl, target_price: _tp, target_basis: _tb, ...fields } = fx.decision as Record<string, unknown>;
   void [_t, _ep, _sl, _tp, _tb];
-  const decision = fields as unknown as ValidatedThesisDecision;
+  const decision = writtenNow(fields) as unknown as ValidatedThesisDecision;
   const chart = { price: fx.run.price, base: null, gaps: [], range: { high20: 36.95, low20: 33.1, high52w: 44, low52w: 20 }, swings: { lastLow: { price: 34.91 }, lastHigh: null } };
   const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: "COGT", mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "a refresh on a seed" };
   let build: typeof BuildWriterSaveCall;
@@ -72,7 +72,7 @@ describe("COGT 09-28, the target taken out of the writer's real decision", () =>
   });
 
   it.each(["THESIS_WRITER", "PRINCIPAL_CHAT"])("through the %s door: the seed commits LONG with a buy and a floor trigger and no target", async (mode) => {
-    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null, priceStructure: chart } as never, decision, {}, { direction: null, status: "WATCHING" }, (id) => playbookTemplates(null, id));
+    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null, priceStructure: chart } as never, decision, { direction: null, status: "WATCHING" }, (id) => playbookTemplates(null, id));
     const parsed = doors[mode].safeParse(call.toolArgs);
     if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues.slice(0, 3)));
     const r = await replayTool("update-thesis", "updateThesis", { seed: { thesis: [thesisRow({ ...fx.thesis })] }, args: parsed.data as Row, ctx: { runMode: mode }, quotes: { COGT: fx.run.price } });

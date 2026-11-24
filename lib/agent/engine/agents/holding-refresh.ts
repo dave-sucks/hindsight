@@ -25,11 +25,12 @@ export const HOLDING_REFRESH: AgentRecord = {
   maxSteps: MODES["thesis-writer"].maxSteps,
   instructions: ["the_analyst", "holding-refresh.md"],
   context: WRITER_CONTEXT,
-  tools: ["submit_thesis"],
+  // get_sec_filings reads the release and the 10-Q itself (`read`), so the thesis starts from the company's own numbers.
+  tools: ["submit_thesis", "get_sec_filings"],
   providerTools: ["web_search"],
   searchesPerCall: WEB_SEARCH_MAX_USES,
   // The run ends once its save goes through; then it edits the holding's triggers where the research changed one.
   endsWith: "submit_thesis",
   afterSave: WRITER_AFTER_SAVE,
-  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view and the claim; the save writes the thesis, and edit_triggers changes a trigger the research changed.",
+  output: "Research (the latest earnings release and filings first), then one submit_thesis call with every field: the company, the belief, the opinion, the KPIs, the bull and bear cases; the save writes the thesis, and edit_triggers changes a trigger the research changed.",
 };

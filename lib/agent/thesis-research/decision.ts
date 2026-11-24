@@ -2,11 +2,13 @@
  * decision.ts — the compact `submit_thesis` decision contract for the V2
  * thesis-writer (THESIS_WRITER_V2).
  *
- * The research model writes the 9-section note as plain text (parsed
- * server-side by parse-sections.ts) and finishes by calling submit_thesis
- * with THIS object — the thesis fields and the playbook it names, no
- * trigger: the save writes the playbook's watch triggers, priced from the
- * chart, and the writer tailors them with edit_triggers after it.
+ * The research model researches the stock and finishes by calling
+ * submit_thesis with THIS object: every thesis field (the company, the
+ * belief, the opinion, the KPIs, the bull and bear cases) and the playbook
+ * it names, no trigger. The save writes the playbook's watch triggers,
+ * priced from the chart, and the writer tailors them with edit_triggers
+ * after it. Nothing is parsed out of prose: a field the model leaves out is
+ * refused by name, never dropped unseen.
  * validateThesisDecision() returns itemized errors the model repairs in its
  * next step.
  * That repair loop replaces the V1 failure mode where a 25k-char
@@ -36,18 +38,19 @@ export const thesisDecisionSchema = z.object({
   direction: W.direction,
   rationale: z
     .string()
-    .describe("Your decision, by How you write: what the company is doing and where the stock is and why, then your call. On a refresh it is the note at the top of the stock's page."),
+    .describe("This run's note on the stock's Activity, by How you write: what you found about the company and what you decided. The opinion holds the full view, so the note stays short."),
+  company: W.company.optional(),
   horizon: W.horizon,
   setup_id: W.setup_id.optional(),
   catalyst_date: W.catalyst_day.optional(),
   core_belief: W.core_belief.optional(),
-  key_assumptions: W.key_assumptions.optional(),
-  invalidation_conditions: W.invalidation_conditions.optional(),
   outlook: W.outlook.optional(),
-  outlook_reason: W.outlook_reason.optional(),
+  opinion: W.opinion.optional(),
+  kpis: W.kpis.optional(),
+  bull_case: W.bull_points.optional(),
+  bear_case: W.bear_points.optional(),
   conviction: W.conviction.optional(),
   conviction_rationale: W.conviction_rationale.optional(),
-  variant_view: W.variant_view.optional(),
   prior_exit_acknowledgment: W.prior_exit.optional(),
   look_again: z
     .object({
@@ -169,14 +172,21 @@ export function validateThesisDecision(
 
   if (directional) {
     // ── Belief fields ─────────────────────────────────────────────────
+    // Every field of the thesis comes with every save on a view: nothing is kept from an older save unless it is sent again.
+    if (!d.company || d.company.trim().length < 20) {
+      errors.push("company: required for LONG/SHORT, at least 20 characters. What the company sells, to whom and how it makes money, in three or four sentences; send the stored text again if the business has not changed.");
+    }
     if (!d.core_belief || d.core_belief.trim().length < 10) {
-      errors.push("core_belief: required for LONG/SHORT — why we own the company, in two or three plain sentences about the business: never a stock price, a target or a date.");
+      errors.push("core_belief: required for LONG/SHORT. Why the business is worth owning, in two or three plain sentences: never a stock price, a target or a date.");
     }
-    if (!d.key_assumptions || d.key_assumptions.filter((a) => a.trim().length > 0).length < 2) {
-      errors.push("key_assumptions: ≥2 specific falsifiable premises required for LONG/SHORT.");
+    if (!d.kpis || d.kpis.filter((a) => a.trim().length > 0).length < 2) {
+      errors.push("kpis: at least two lines required for LONG/SHORT (two to four is the aim). Each is a number the company reports or a named event, with the reading that says we are on track, the reading that says we are wrong, and when it is read.");
     }
-    if (!d.invalidation_conditions || d.invalidation_conditions.filter((c) => c.trim().length > 0).length < 2) {
-      errors.push("invalidation_conditions: ≥2 readings about the business, each with where it is read, required for LONG/SHORT — never a stock price, and not 'market volatility'.");
+    if (!d.bull_case || d.bull_case.filter((b) => b.trim().length > 0).length < 2) {
+      errors.push("bull_case: at least two lines required for LONG/SHORT (three to five is the aim).");
+    }
+    if (!d.bear_case || d.bear_case.filter((b) => b.trim().length > 0).length < 2) {
+      errors.push("bear_case: at least two lines required for LONG/SHORT, on a LONG too (three to five is the aim).");
     }
 
     // ── Conviction Expression v4 ──────────────────────────────────────
@@ -190,8 +200,8 @@ export function validateThesisDecision(
     if (!d.outlook) {
       errors.push("outlook: required for LONG/SHORT — BULLISH, NEUTRAL or BEARISH: what you expect of the stock from here.");
     }
-    if (!d.outlook_reason || d.outlook_reason.trim().length === 0) {
-      errors.push("outlook_reason: required — a sentence on what you expect of the stock from here and why.");
+    if (!d.opinion || d.opinion.trim().length === 0) {
+      errors.push("opinion: required. Your full view of the stock at today's price: two or three sentences that stand alone, then the reasoning with its numbers.");
     }
   }
 

@@ -41,6 +41,9 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
   const analystId = (over.analystId as string) ?? REPLAY_ANALYST_ID;
   const { analystId: _drop, ...rest } = over;
   void _drop;
+  // A row read before the thesis fields (2026-11-24): its KPIs are its assumptions and what would prove it wrong, as the migration copied them.
+  const old = [...((over.keyAssumptions as string[] | undefined) ?? []), ...((over.invalidationConds as string[] | undefined) ?? [])];
+  if (over.kpis === undefined && old.length) rest.kpis = old;
   return {
     id: "thesis_replay",
     userId: REPLAY_USER_ID,
@@ -51,8 +54,7 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
     horizon: "TARGET",
     setupId: "BASE_BREAKOUT",
     coreBelief: "A falsifiable one-sentence claim.",
-    keyAssumptions: ["assumption one", "assumption two"],
-    invalidationConds: ["invalidation one", "invalidation two"],
+    kpis: ["kpi one: on track at 10%+, broken under 5%, read at each report", "kpi two: on track at 20%+, broken under 15%, read at each report"],
     snapshot: { text: "snapshot", citations: [] },
     bullCase: { bullets: [{ text: "bull" }], citations: [] },
     bearCase: { bullets: [{ text: "bear" }], citations: [] },
@@ -70,7 +72,6 @@ export function thesisRow(over: ThesisRowOverrides = {}): Row {
     outlookReason: "rated",
     conviction: "MEDIUM",
     convictionRationale: "reasonable",
-    variantView: null,
     catalystDate: null,
     retiredReason: null,
     closedAt: null,

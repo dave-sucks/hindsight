@@ -18,7 +18,7 @@
  * shown here on the CRWD writer mint of the same day.
  */
 import { isFilingRule, shapeName } from "@/lib/agent/triggers/condition/__fixtures__/shape-name";
-import { replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
+import { claimNow, replayTool, thesisRow, agentConfigRow, accountRow, REPLAY_ANALYST_ID } from "@/lib/replay";
 
 type Trig = { id: string; action: string; predicate: Record<string, unknown> };
 const buysOf = (triggers: unknown): Trig[] => (triggers as Trig[]).filter((t) => t.action === "ENTER");
@@ -88,7 +88,8 @@ const smmt = () =>
   });
 
 /** The chat's call, as sent: direction LONG and the buy as a price. */
-const smmtCommit = {
+// The calls as they are sent since 2026-11-24 (claimNow): their assumptions and what would prove them wrong are their KPIs.
+const smmtCommit = claimNow({
   thesis_id: "t_smmt",
   rationale:
     "Committing direction LONG to activate the priced plan. Plan unchanged: buy on a close above $17.10 and above the 20-day, floor $15.90, target $19.55.",
@@ -112,10 +113,10 @@ const smmtCommit = {
   variant_view: "Consensus treats Western OS non-significance as near-fatal; the FDA weighs the totality.",
   direction: "LONG",
   horizon: "CATALYST",
-};
+});
 
 // ── CRWD as the writer sent it (its third submission, the one that saved) ──
-const crwdMint = {
+const crwdMint = claimNow({
   ticker: "CRWD",
   company_name: "CrowdStrike Holdings",
   direction: "LONG",
@@ -172,7 +173,7 @@ const crwdMint = {
   ],
   source_kind: "WEB_SEARCH",
   source_rationale: "Mint requested on CRWD for the Secular Compounder.",
-};
+});
 
 describe("committing a direction uses the buy already on the stock", () => {
   it("SMMT: the commit lands with its one existing buy and no second one", async () => {

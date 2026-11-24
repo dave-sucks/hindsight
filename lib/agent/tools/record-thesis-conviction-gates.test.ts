@@ -71,8 +71,7 @@ function baseLongArgs(overrides: Record<string, unknown> = {}) {
     target_price: 120,
     stop_loss: 92,
     core_belief: "TEST reaches 120 within 60 days on sustained beat-and-raise.",
-    key_assumptions: ["Demand growth holds through next print.", "Margins stable above 35%."],
-    invalidation_conditions: ["Guidance cut on next print.", "Gross margin below 30%."],
+    kpis: ["Demand growth holds through next print.", "Margins stable above 35%."],
     source_kind: "WATCHLIST_REVIEW",
     source_rationale: "Reviewed during watchlist sweep; setup tightened.",
     scoring: {
@@ -245,7 +244,6 @@ describe("record_thesis — Conviction Expression v4 Layer-1 gates", () => {
         current_price: 95,
         reasoning_summary: "Passed — does not fit strategy right now.",
         risk_flags: ["Late stage chase", "RSI too high"],
-        invalidation_conditions: ["Revisit if pullback to 20d on volume."],
         source_kind: "WATCHLIST_REVIEW",
         source_rationale: "Watchlist review; passing.",
         // NO conviction, NO conviction_rationale, NO variant_view

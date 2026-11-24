@@ -113,13 +113,11 @@ const recordFields = z.object({
     .describe("One line on how you got to this ticker. Required with source_kind."),
   horizon: F.horizon,
   core_belief: F.core_belief.optional(),
-  key_assumptions: F.key_assumptions.optional(),
-  invalidation_conditions: F.invalidation_conditions.optional(),
+  kpis: F.kpis.optional(),
   outlook: F.outlook.optional(),
-  outlook_reason: F.outlook_reason.optional(),
+  opinion: F.opinion.optional(),
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
-  variant_view: F.variant_view.optional(),
   triggers: triggersInputArraySchema
     .optional()
     .describe(
@@ -351,8 +349,7 @@ export const recordThesis = defineTool({
       const beliefCheck = validateThesisBelief({
         direction: args.direction,
         coreBelief: args.core_belief ?? null,
-        keyAssumptions: args.key_assumptions ?? null,
-        invalidationConds: args.invalidation_conditions ?? null,
+        kpis: args.kpis ?? null,
       });
       if (!beliefCheck.ok) {
         console.warn(
@@ -626,7 +623,7 @@ export const recordThesis = defineTool({
       // Narrative text for downstream consumers (ThesisUpdate.rationale,
       // RunEvent.message, TradeDecision.reasoning). Prefer the V2 snapshot
       // section; fall back to legacy reasoning_summary; empty string when
-      // neither is supplied (PASS theses may carry only invalidation_conditions).
+      // neither is supplied (a PASS may carry only its KPIs).
       const narrativeText: string =
         args.reasoning_summary ?? "";
 
@@ -671,8 +668,7 @@ export const recordThesis = defineTool({
         horizon: args.horizon ?? null,
         setupId: args.setup_id ?? null,
         coreBelief: args.core_belief ?? null,
-        keyAssumptions: args.key_assumptions ?? [],
-        invalidationConds: args.invalidation_conditions ?? [],
+        kpis: args.kpis ?? [],
         // ── Conviction Expression v4 ─────────────────────────────────
         // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Layer-1 gates
         // above enforced required-when-directional + variantView-on-
@@ -681,10 +677,10 @@ export const recordThesis = defineTool({
         // path or null for PASS/PENDING.
         // What we expect of the stock from here, as the Writer judged it; never filled from the direction.
         outlook: isDirectional ? (args.outlook ?? null) : null,
-        outlookReason: isDirectional ? (args.outlook_reason ?? null) : null,
+        // The opinion: the full view at today's price (the column keeps its old name, outlookReason).
+        outlookReason: isDirectional ? (args.opinion ?? null) : null,
         conviction: args.conviction ?? null,
         convictionRationale: args.conviction_rationale ?? null,
-        variantView: args.variant_view ?? null,
         // mergedTriggers built and validated above the coreData literal.
         // Centralized so the ENTER-trigger guard can inspect the final
         // array (defaults + agent) BEFORE the row hits the
@@ -1023,8 +1019,7 @@ export const recordThesis = defineTool({
             // out of sync with the schema.
             horizon: _horizon,
             coreBelief: _belief,
-            keyAssumptions: _assumptions,
-            invalidationConds: _invalid,
+            kpis: _kpis,
             triggers: _triggers,
             catalystDate: _cdate,
             // THESIS_RESEARCH_V2 Phase 1 + PR-9 flat schema — strip every
@@ -1041,8 +1036,7 @@ export const recordThesis = defineTool({
           void _rationale;
           void _horizon;
           void _belief;
-          void _assumptions;
-          void _invalid;
+          void _kpis;
           void _triggers;
           void _cdate;
           void _rdata;

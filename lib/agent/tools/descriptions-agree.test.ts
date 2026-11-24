@@ -47,13 +47,12 @@ describe("field descriptions agree with the save", () => {
 
   it("conviction needs no view that differs from Wall Street: neither field says so", () => {
     for (const tool of ["update_thesis", "record_thesis"]) {
-      expect(describe_(tool, "variant_view")).not.toMatch(/MEDIUM|STRONG/);
       expect(describe_(tool, "conviction")).not.toMatch(/require/i);
     }
   });
 
-  it("invalidation conditions name no signal pipeline", () => {
-    expect(describe_("update_thesis", "invalidation_conditions")).not.toMatch(/signal/);
+  it("the KPIs name no signal pipeline", () => {
+    expect(describe_("update_thesis", "kpis")).not.toMatch(/signal/);
   });
 });
 
@@ -65,9 +64,9 @@ describe("the thesis fields, defined once", () => {
   it("record_thesis, update_thesis and the writer's submit_thesis say the same thing", async () => {
     const { makeSubmitThesisTool } = await import("@/lib/agent/run-thesis-writer");
     const submit = asSchema(makeSubmitThesisTool({ ticker: "X" } as never).inputSchema as never).jsonSchema as { properties: Record<string, { description?: string }> };
-    for (const field of ["core_belief", "key_assumptions", "invalidation_conditions", "conviction", "conviction_rationale", "variant_view", "direction", "horizon"]) {
+    for (const field of ["core_belief", "kpis", "opinion", "conviction", "conviction_rationale", "direction", "horizon"]) {
       const words = describe_("record_thesis", field);
-      expect(words).not.toBe("");
+      expect([field, words === ""]).toEqual([field, false]);
       expect(describe_("update_thesis", field)).toBe(words);
       expect(wordsOf(submit.properties[field])).toBe(words);
     }

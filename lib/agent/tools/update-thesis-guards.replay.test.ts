@@ -35,7 +35,7 @@ describe("the record tells the truth", () => {
     expect(notAppliedOf(row)).toEqual([expect.objectContaining({ field: "change_status", to: "WATCHING", why: "the position is still open" })]);
     // The reply keeps its shape: field and reason only.
     expect(refusedOf(r)).toEqual([{ field: "change_status", reason: expect.any(String) }]);
-    expect(r.result.data?.changed_fields).not.toContain("notApplied");
+    expect((r.result.data?.changed_fields as string[] | undefined) ?? []).not.toContain("notApplied");
   });
 
   it("a call that lands whole writes no notApplied", async () => {

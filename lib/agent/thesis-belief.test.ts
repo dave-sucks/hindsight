@@ -1,185 +1,31 @@
 /**
- * thesis-belief.test.ts — coverage for validateThesisBelief.
- *
- * Pure function; no DB, no fetches. Walks the LONG / SHORT / PASS
- * branches with all-fields-set, partial, empty-string-noise, and
- * whitespace-only edge cases.
+ * thesis-belief.test.ts — validateThesisBelief: a LONG or SHORT thesis needs
+ * its belief and two or more KPIs; a PASS and an unresearched seed need neither.
  */
 
 import { validateThesisBelief } from "./thesis-belief";
 
+const KPIS = [
+  "Net new ARR: on track at $200M+ a quarter, broken under $180M. Read at each report.",
+  "Gross margin: on track at 78%+, broken under 75%. Read in each 10-Q.",
+];
+
 describe("validateThesisBelief", () => {
-  // ── PASS ───────────────────────────────────────────────────────────────
-
-  it("PASS direction: any shape passes (gate doesn't apply)", () => {
-    expect(
-      validateThesisBelief({
-        direction: "PASS",
-        coreBelief: "",
-        keyAssumptions: [],
-        invalidationConds: [],
-      }),
-    ).toEqual({ ok: true });
-  });
-
-  it("PASS direction: missing fields entirely pass", () => {
-    expect(validateThesisBelief({ direction: "PASS" })).toEqual({ ok: true });
-  });
-
-  it("null direction (unresearched seed): bypasses the belief gate (P1-24 B4)", () => {
-    // A null-direction watchlist seed has no committed view yet; the belief
-    // contract is built when update_thesis promotes it to LONG/SHORT.
+  it("PASS and an unresearched seed: the gate doesn't apply", () => {
+    expect(validateThesisBelief({ direction: "PASS", coreBelief: "", kpis: [] })).toEqual({ ok: true });
     expect(validateThesisBelief({ direction: null })).toEqual({ ok: true });
   });
 
-  // ── LONG happy path ────────────────────────────────────────────────────
-
-  it("LONG with all three fields populated: ok", () => {
-    expect(
-      validateThesisBelief({
-        direction: "LONG",
-        coreBelief: "AI capex sustains through 2026.",
-        keyAssumptions: ["Datacenter capex >$200B/yr", "No customer churn"],
-        invalidationConds: ["Guidance cut", "Gross margin below 70%"],
-      }),
-    ).toEqual({ ok: true });
+  it("LONG with a belief and two KPIs passes; SHORT too", () => {
+    expect(validateThesisBelief({ direction: "LONG", coreBelief: "The platform keeps taking share.", kpis: KPIS })).toEqual({ ok: true });
+    expect(validateThesisBelief({ direction: "SHORT", coreBelief: "Demand is rolling over.", kpis: KPIS })).toEqual({ ok: true });
   });
 
-  it("LONG with exactly 2 assumptions and 2 invalidations: ok", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: ["a", "b"],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  // ── LONG failures ──────────────────────────────────────────────────────
-
-  it("LONG missing all three: fails with all three flagged", () => {
-    const result = validateThesisBelief({ direction: "LONG" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual([
-      "core_belief",
-      "key_assumptions",
-      "invalidation_conditions",
-    ]);
-  });
-
-  it("LONG with empty coreBelief string: fails on coreBelief", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "",
-      keyAssumptions: ["a", "b"],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual(["core_belief"]);
-  });
-
-  it("LONG with whitespace-only coreBelief: fails on coreBelief", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "    \n  ",
-      keyAssumptions: ["a", "b"],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual(["core_belief"]);
-  });
-
-  it("LONG with only 1 assumption: fails on key_assumptions", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: ["just one"],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual(["key_assumptions"]);
-  });
-
-  it("LONG with whitespace-only assumption items: fails on key_assumptions", () => {
-    // Filtering rule: empty or whitespace-only strings don't count.
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: ["real", "  ", "", "  \t  "],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual(["key_assumptions"]);
-  });
-
-  it("LONG with only 1 invalidation: fails on invalidation_conditions", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: ["a", "b"],
-      invalidationConds: ["just one"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual(["invalidation_conditions"]);
-  });
-
-  it("LONG missing two of three: flags both", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: [],
-      invalidationConds: [],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual([
-      "key_assumptions",
-      "invalidation_conditions",
-    ]);
-  });
-
-  // ── SHORT mirrors LONG ────────────────────────────────────────────────
-
-  it("SHORT with all three: ok", () => {
-    expect(
-      validateThesisBelief({
-        direction: "SHORT",
-        coreBelief: "Margin compression coming.",
-        keyAssumptions: ["Input costs rising", "No price power"],
-        invalidationConds: ["Surprise margin expansion", "Pricing power confirmed"],
-      }),
-    ).toEqual({ ok: true });
-  });
-
-  it("SHORT missing all three: fails the same way as LONG", () => {
-    const result = validateThesisBelief({ direction: "SHORT" });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.missingFields).toEqual([
-      "core_belief",
-      "key_assumptions",
-      "invalidation_conditions",
-    ]);
-  });
-
-  // ── Note formatting ────────────────────────────────────────────────────
-
-  it("note includes which fields are missing", () => {
-    const result = validateThesisBelief({
-      direction: "LONG",
-      coreBelief: "X",
-      keyAssumptions: ["a"],
-      invalidationConds: ["c", "d"],
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.note).toMatch(/Missing: key_assumptions/);
-    expect(result.note).toMatch(/structured belief/);
+  it("names each missing field: an empty belief, and fewer than two KPIs once blank lines are dropped", () => {
+    const r = validateThesisBelief({ direction: "LONG", coreBelief: "   ", kpis: [KPIS[0], "  "] });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.missingFields).toEqual(["core_belief", "kpis"]);
+    expect(r.note).toContain("kpis: two to four lines");
   });
 });

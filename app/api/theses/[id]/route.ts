@@ -83,8 +83,7 @@ export async function GET(
       // sheet so the user can see what the agent actually committed to.
       company: true,
       coreBelief: true,
-      keyAssumptions: true,
-      invalidationConds: true,
+      kpis: true,
       fullResearch: true,
       // 9 narrative sections (PR-9 flat schema).
       snapshot: true,
@@ -106,7 +105,6 @@ export async function GET(
       outlookReason: true,
       conviction: true,
       convictionRationale: true,
-      variantView: true,
       createdAt: true,
       researchRun: {
         select: {
@@ -389,8 +387,7 @@ export async function GET(
     analystName: thesis.researchRun?.agentConfig?.name ?? null,
     company: thesis.company,
     coreBelief: thesis.coreBelief,
-    keyAssumptions: thesis.keyAssumptions ?? [],
-    invalidationConds: thesis.invalidationConds ?? [],
+    kpis: thesis.kpis ?? [],
     snapshot: thesis.snapshot,
     recentCatalysts: thesis.recentCatalysts,
     fundamentals: thesis.fundamentals,
@@ -414,6 +411,5 @@ export async function GET(
     outlookReason: thesis.outlookReason,
     conviction: thesis.conviction,
     convictionRationale: thesis.convictionRationale,
-    variantView: thesis.variantView,
   });
 }

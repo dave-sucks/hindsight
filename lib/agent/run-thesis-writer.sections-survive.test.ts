@@ -8,8 +8,8 @@
  * (executeThroughSchema), and a schema without a field drops it without a
  * word. So this goes through the real save step, writerPersistPhase, with the
  * context it builds itself (buildWriterToolCtx, runMode THESIS_WRITER), a
- * note carrying a bull case and an earnings section, and checks both reach
- * the row. Decision: DOCU's 2026-09-15 refresh as the model sent it.
+ * decision carrying the company line and the bull and bear cases, and checks
+ * they reach the row. Decision: DOCU's 2026-09-15 refresh as the model sent it.
  */
 
 const mockThesisFindUnique = jest.fn();
@@ -93,12 +93,10 @@ const storedRow = {
   snapshot: null, bullCase: null, bearCase: null, recentCatalysts: null, fundamentals: null,
   latestEarnings: null, catalystsAndEvents: null, analystConsensus: null, insiderTechnical: null,
   coreBelief: "Post-earnings drift continues.",
-  keyAssumptions: ["a", "b"],
-  invalidationConds: ["c", "d"],
+  kpis: ["a", "b", "c", "d"],
   scoring: null,
   conviction: "MEDIUM",
   convictionRationale: "Medium.",
-  variantView: null,
   catalystDate: null,
   lastReviewedAt: null,
   researchUpdatedAt: new Date(),
@@ -106,21 +104,20 @@ const storedRow = {
 
 
 function research(): WriterResearchPhaseOutput {
-  const v = validateThesisDecision(ratedNow(fx.submit), {
+  // The company line and the cases come on the decision since 2026-11-24; before, they were the note's sections.
+  const v = validateThesisDecision(ratedNow({
+    ...fx.submit,
+    company: "DocuSign sells e-signature and agreement software by subscription [STRUCTURED:profile].",
+    bull_case: ["eSignature renewals are expanding into the IAM suite.", "Buybacks shrink the share count."],
+    bear_case: ["Q2 billings grew 9% against a 6% guide; a slip under the guide breaks the drift.", "Seat cuts at renewals; sign: net retention under 100%."],
+  }), {
     mode: "refresh",
     existingStatus: fx.thesis.status,
     currentPrice: 72.87,
   });
   return {
     ok: true,
-    noteText: [
-      "## Company",
-      "DocuSign sells e-signature and agreement software by subscription [STRUCTURED:profile].",
-      "## Bull Case",
-      "- eSignature renewals are expanding into the IAM suite.",
-      "## Bear Case",
-      "- Q2 billings grew 9% against a 6% guide; a slip under the guide breaks the drift.",
-    ].join("\n"),
+    noteText: "The research, as the model wrote it.",
     decision: v.decision as ValidatedThesisDecision,
     threadMessages: [],
     userPrompt: "GROUND-TRUTH DATA — DOCU",

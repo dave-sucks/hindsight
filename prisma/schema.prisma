@@ -301,10 +301,14 @@ model Thesis {
   // writer sets it from PR 4 on, and the scorecard groups by it (PR 11).
   setupId String?
 
-  coreBelief        String? // The actual claim, separate from the trade rationale
-  company           String? // Two sentences: what the company does and how it makes money. The Writer's; changed only when the business changes.
-  keyAssumptions    String[] @default([]) // Premises that must hold
-  invalidationConds String[] @default([]) // What would prove this wrong
+  coreBelief        String? // Why the business is worth owning and what has to stay true. No price.
+  company           String? // What the company sells, to whom and how it makes money. The Writer's; changed only when the business changes.
+  // The KPIs: two to four plain lines, each a number the company reports or a
+  // named event, with the reading that says we are on track, the reading that
+  // says we are wrong, and when it is read. Replaced keyAssumptions and
+  // invalidationConds (2026-11-24); those columns stay in the database until
+  // a later PR drops them.
+  kpis              String[] @default([])
 
   // Structured triggers — see lib/agent/triggers/types.ts for the full
   // discriminated-union shape. Router evaluates predicates deterministically;
@@ -376,12 +380,15 @@ model Thesis {
   // (#924); the column waits for a later PR to drop it.
   scoring Json?
 
-  // What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH, with
-  // a sentence of why. The Writer sets it with the thesis and the stock's
-  // analyst may change it at any review. Apart from `direction`, which is the
-  // kind of trade: a holding stays LONG after a rally has used up the upside.
-  // Null until someone has judged it: nothing fills it from the direction.
+  // What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH. The
+  // Writer sets it with the thesis and the stock's analyst may change it at
+  // any review. Apart from `direction`, which is the kind of trade: a holding
+  // stays LONG after a rally has used up the upside. Null until someone has
+  // judged it: nothing fills it from the direction.
   outlook             String?
+  // The opinion: the full view of the stock at today's price, matching the
+  // outlook. Its first paragraph is the summary. The column keeps its old
+  // name; every tool and agent calls it `opinion`.
   outlookReason       String?
 
   // How confident we are in the belief as written, whichever way it points:
@@ -393,9 +400,8 @@ model Thesis {
   // Why this conviction: the evidence for the belief. Sent whenever conviction is.
   convictionRationale String?
 
-  // Where we differ from Wall Street about the business, in a sentence
-  // ("analysts expect X, I think Y, because Z"). Optional at every conviction.
-  variantView         String?
+  // variantView: folded into the opinion (2026-11-24). The column stays in
+  // the database until a later PR drops it.
 
   // ── PROMOTED state context (set only at PAPER→LIVE promotion) ───────
   // Frozen at the moment the user promotes the analyst. Drives the

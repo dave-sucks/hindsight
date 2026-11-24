@@ -49,7 +49,7 @@ const schema = z.object({
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
   outlook: F.outlook.optional(),
-  outlook_reason: F.outlook_reason.optional(),
+  opinion: F.opinion.optional(),
   answers_update_id: F.answers_update_id.optional(),
   trigger_id: z.string().optional().describe("The fired trigger this note answers, by id, when more than one fired."),
   // The chat's: the principal's note to several stocks, one analyst or the account.
@@ -65,7 +65,7 @@ const schema = z.object({
 
 const THE_CHATS = { thesis_id: true, note: true, tickers: true, analyst_id: true, whole_account: true, pinned_until: true, about_date: true } as const;
 /** A look by the stock's analyst: the note that ends a review, with its verdict and any change to conviction or outlook. */
-const A_LOOKS = { thesis_id: true, note: true, verdict: true, verdict_line: true, conviction: true, conviction_rationale: true, outlook: true, outlook_reason: true, answers_update_id: true, trigger_id: true } as const;
+const A_LOOKS = { thesis_id: true, note: true, verdict: true, verdict_line: true, conviction: true, conviction_rationale: true, outlook: true, opinion: true, answers_update_id: true, trigger_id: true } as const;
 /** Every other run's note: the stock and the text. */
 const A_RUNS = { thesis_id: true, note: true } as const;
 /** The runs that review a thesis: the morning run and the trigger run. */
@@ -113,7 +113,7 @@ export const writeNoteTool = defineTool({
             convictionReason: args.conviction_rationale,
             outlookFrom: row.outlook,
             outlookTo: args.outlook,
-            outlookReason: args.outlook_reason,
+            outlookReason: args.opinion,
             hasView: row.direction === "LONG" || row.direction === "SHORT",
           });
           if (problem) return { summary: `Nothing written on $${row.ticker}. ${problem}`, data: { ok: false, error: "review_not_ended", fix: problem }, sources: [] };
@@ -128,7 +128,7 @@ export const writeNoteTool = defineTool({
           conviction: args.conviction,
           conviction_rationale: args.conviction_rationale,
           outlook: args.outlook,
-          outlook_reason: args.outlook_reason,
+          opinion: args.opinion,
           answers_update_id: args.answers_update_id,
           trigger_id: args.trigger_id,
         },

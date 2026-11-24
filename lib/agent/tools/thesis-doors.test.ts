@@ -44,20 +44,20 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
   chat: {
     write_note: ["about_date", "analyst_id", "note", "pinned_until", "thesis_id", "tickers", "whole_account"],
     edit_triggers: ["add", "edit", "remove", "setup_id", "thesis_id"],
-    set_conviction: ["conviction", "conviction_rationale", "outlook", "outlook_reason", "thesis_id"],
+    set_conviction: ["conviction", "conviction_rationale", "opinion", "outlook", "thesis_id"],
     set_catalyst_date: ["catalyst_date", "thesis_id"],
     stop_watching: ["reason", "thesis_id"],
     watch_again: ["thesis_id"],
   },
   "morning run": {
-    write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "thesis_id", "trigger_id", "verdict", "verdict_line"],
+    write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "opinion", "outlook", "thesis_id", "trigger_id", "verdict", "verdict_line"],
     edit_triggers: ["add", "edit", "remove", "setup_id", "thesis_id"],
     set_catalyst_date: ["catalyst_date", "thesis_id"],
     stop_watching: ["reason", "thesis_id"],
     watch_again: ["thesis_id"],
   },
   "trigger run": {
-    write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "verdict", "verdict_line"],
+    write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "opinion", "outlook", "verdict", "verdict_line"],
     edit_triggers: ["add", "edit", "remove"],
     // Its own stock: code fills the thesis.
     stop_watching: ["reason"],
@@ -87,7 +87,7 @@ describe("what each caller may change on a thesis, by tool", () => {
   });
 
   it("the claim, the view and the write-up are the Writer's alone", () => {
-    const writerOnly = ["core_belief", "key_assumptions", "invalidation_conditions", "direction", "horizon", "variant_view", "company", "bull_case", "bear_case", "research_data", "price_at_time", "change_status"];
+    const writerOnly = ["core_belief", "kpis", "direction", "horizon", "company", "bull_case", "bear_case", "research_data", "price_at_time", "change_status"];
     for (const [caller, doors] of Object.entries(byCaller)) {
       if (caller === "writer") continue;
       for (const fields of Object.values(doors)) expect(fields.filter((f) => writerOnly.includes(f))).toEqual([]);

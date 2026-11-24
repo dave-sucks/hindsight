@@ -4,13 +4,16 @@
  * did to the belief as written. Outlook and conviction are the thesis's
  * state; they change only in that note's save, and nothing adds verdicts up.
  *
- * Five things send a look's note back whole, each with what to send:
+ * Six things send a look's note back whole, each with what to send:
  * 1. no verdict;
  * 2. a verdict other than UNCHANGED that doesn't say what happened;
  * 3. conviction rising without STRONGER, or falling without WEAKER or BROKEN;
- * 4. a new conviction or outlook with no reason;
+ * 4. a new conviction with no reason, or a new outlook with no rewritten opinion;
  * 5. a stock with a view and no outlook yet, when the note sets none (once a
- *    stock: after that it has one).
+ *    stock: after that it has one);
+ * 6. a verdict other than UNCHANGED with no rewritten opinion: the opinion is
+ *    the stock's current view, and a look that changed the case must say so
+ *    there, because the next run starts from it.
  *
  * Outlook is otherwise a soft value: nothing here ties it to a verdict or to
  * a trade, and no tool reads it to allow or refuse anything. What a broken
@@ -29,6 +32,7 @@ export interface Review {
   convictionReason: string | undefined;
   outlookFrom: string | null;
   outlookTo: string | undefined;
+  /** The opinion sent with this note (its column is outlookReason). */
   outlookReason: string | undefined;
   /** The stock has a view (LONG or SHORT); a seed has none to rate. */
   hasView: boolean;
@@ -52,13 +56,17 @@ export function reviewProblem(r: Review): string | null {
   const verdict = verdictOf(r.verdict);
   if (!verdict) return "End the note with its verdict: STRONGER, UNCHANGED, WEAKER or BROKEN. A move in the price alone is UNCHANGED.";
   if (verdict !== "UNCHANGED" && !r.verdictLine?.trim()) {
-    return `Send verdict_line with ${verdict}: one sentence on what happened and which assumption or 'would prove it wrong' line it touched.`;
+    return `Send verdict_line with ${verdict}: one sentence on what happened and which KPI it touched.`;
   }
   const outlookMoves = r.outlookTo !== undefined && r.outlookTo !== r.outlookFrom;
   if (r.hasView && !r.outlookFrom && !r.outlookTo) {
-    return "This stock has no outlook yet: send outlook (BULLISH, NEUTRAL or BEARISH) with outlook_reason, what you expect of it from here.";
+    return "This stock has no outlook yet: send outlook (BULLISH, NEUTRAL or BEARISH) with your opinion, your full view of the stock at today's price.";
   }
-  if (outlookMoves && !r.outlookReason?.trim()) return `Send outlook_reason with outlook ${r.outlookTo}: a sentence on what you expect of the stock from here and why.`;
+  if (outlookMoves && !r.outlookReason?.trim()) return `Send your rewritten opinion with outlook ${r.outlookTo}: the new outlook changes your view of the stock at today's price.`;
+  // The opinion is the stock's current view and the next run starts from it, so a look that changed the case rewrites it.
+  if (r.hasView && verdict !== "UNCHANGED" && !r.outlookReason?.trim()) {
+    return `Send your rewritten opinion with ${verdict}: what this look found changes your view of the stock, and the next run starts from it.`;
+  }
   const from = rank(r.convictionFrom);
   const to = rank(r.convictionTo);
   if (to != null && to !== from && !r.convictionReason?.trim()) return `Send conviction_rationale with conviction ${r.convictionTo}: a sentence or two on why you are this confident now.`;

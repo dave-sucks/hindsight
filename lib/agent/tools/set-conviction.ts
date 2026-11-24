@@ -18,11 +18,11 @@ export const setConviction = defineTool({
     conviction: F.conviction.optional(),
     conviction_rationale: F.conviction_rationale.optional(),
     outlook: F.outlook.optional(),
-    outlook_reason: F.outlook_reason.optional(),
+    opinion: F.opinion.optional(),
   }),
   ui: "thesis-card" as const,
   gateLog: "set_conviction",
   progressLabel: (args) => (args.conviction ? `Setting conviction ${args.conviction}` : `Setting outlook ${args.outlook ?? ""}`),
   execute: (args, ctx) =>
-    saveThesis({ thesis_id: args.thesis_id, conviction: args.conviction, conviction_rationale: args.conviction_rationale, outlook: args.outlook, outlook_reason: args.outlook_reason }, ctx),
+    saveThesis({ thesis_id: args.thesis_id, conviction: args.conviction, conviction_rationale: args.conviction_rationale, outlook: args.outlook, opinion: args.opinion }, ctx),
 });

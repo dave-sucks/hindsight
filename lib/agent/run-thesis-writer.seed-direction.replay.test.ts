@@ -16,6 +16,7 @@
 import { statSync } from "fs";
 import type { z } from "zod";
 import fixture from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
+import { writtenNow } from "@/lib/replay/rated";
 import { replayTool, triggerSentences, thesisRow, type Row } from "@/lib/replay";
 import { playbookTemplates } from "@/lib/agent/knowledge/playbooks";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
@@ -32,7 +33,8 @@ const pull = { currentPrice: fx.run.price, catalystOnFile: null, priceStructure:
 // The decision as the writer sends it: the thesis fields and its playbook; the save writes PRE_CATALYST's watch triggers.
 const { triggers: _t, add_triggers: _a, edit_triggers: _e, remove_trigger_ids: _r, entry_price: _ep, stop_loss: _sl, target_price: _tp, ...fields } = fx.decision as Record<string, unknown>;
 void [_t, _a, _e, _r, _ep, _sl, _tp];
-const decision = fields as unknown as ValidatedThesisDecision;
+// And as the Writer sends it since 2026-11-24: its assumptions and what would prove it wrong are its KPIs.
+const decision = writtenNow(fields) as unknown as ValidatedThesisDecision;
 const playbooks = (id: string) => playbookTemplates(null, id);
 const SEED = { direction: null, status: "WATCHING" };
 
@@ -62,7 +64,7 @@ function throughTheWriterDoor(toolArgs: Record<string, unknown>): Record<string,
 }
 
 async function save(d: ValidatedThesisDecision) {
-  const call = build(args, pull, d, {}, SEED, playbooks);
+  const call = build(args, pull, d, SEED, playbooks);
   return replayTool("update-thesis", "updateThesis", {
     seed: { thesis: [thesisRow({ ...fx.thesis })] },
     args: throughTheWriterDoor(call.toolArgs),
@@ -73,13 +75,13 @@ async function save(d: ValidatedThesisDecision) {
 
 describe("COGT 09-28: the writer's refresh on a seed", () => {
   it("sends its direction on a row with no view, and never on a row with one", () => {
-    const seed = build(args, pull, decision, {}, SEED);
+    const seed = build(args, pull, decision, SEED);
     expect(seed.toolName).toBe("update_thesis");
     expect(seed.toolArgs.direction).toBe("LONG");
     expect(seed.toolArgs.rationale).not.toContain("orchestrator should re-evaluate direction");
-    const withView = build(args, pull, decision, {}, { direction: "LONG", status: "WATCHING" });
+    const withView = build(args, pull, decision, { direction: "LONG", status: "WATCHING" });
     expect(withView.toolArgs.direction).toBeUndefined();
-    const changedView = build(args, pull, { ...decision, direction: "SHORT" } as ValidatedThesisDecision, {}, { direction: "LONG", status: "WATCHING" });
+    const changedView = build(args, pull, { ...decision, direction: "SHORT" } as ValidatedThesisDecision, { direction: "LONG", status: "WATCHING" });
     expect(changedView.toolArgs.direction).toBeUndefined();
     expect(changedView.toolArgs.rationale).toContain("Writer's refreshed view is SHORT vs stored LONG");
   });
@@ -94,7 +96,7 @@ describe("COGT 09-28: the writer's refresh on a seed", () => {
     for (const price of ["Buy if above $36.95", "Stop watching if below $34.91"]) expect(said).toContain(price);
     expect(said).not.toContain("$43.35");
     expect(row.coreBelief).toBe(fx.decision.core_belief);
-    expect(row.invalidationConds).toEqual(fx.decision.invalidation_conditions);
+    expect(row.kpis).toEqual([...(fx.decision.key_assumptions as string[]), ...(fx.decision.invalidation_conditions as string[])]);
     expect(row.conviction).toBe("MEDIUM");
     const written = (result.db.store.thesisUpdate ?? []).filter((u) => u.type !== "TRIGGER_FIRED");
     expect(written).toHaveLength(1);
@@ -103,7 +105,7 @@ describe("COGT 09-28: the writer's refresh on a seed", () => {
 
   it("a PASS on a seed retires it as researched and declined (the same decision, its verdict changed: a variant, not a production call)", async () => {
     const pass = { ...decision, direction: "PASS" } as ValidatedThesisDecision;
-    expect(build(args, pull, pass, {}, SEED).toolArgs.direction).toBe("PASS");
+    expect(build(args, pull, pass, SEED).toolArgs.direction).toBe("PASS");
     const result = await save(pass);
     expect(result.crashed).toBe(false);
     expect(result.refused).toBe(false);

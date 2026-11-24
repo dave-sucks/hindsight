@@ -12,6 +12,7 @@
  */
 import type { z } from "zod";
 import fixture from "@/lib/agent/__fixtures__/cogt-seed-refresh-2026-09-28.json";
+import { writtenNow } from "@/lib/replay/rated";
 import { oldLevelFieldsAsTriggerOps, replayTool, thesisRow, type Row } from "@/lib/replay";
 import type { ValidatedThesisDecision } from "@/lib/agent/thesis-research/decision";
 import type { buildWriterSaveCall as BuildWriterSaveCall, RunThesisWriterArgs } from "@/lib/agent/run-thesis-writer";
@@ -36,7 +37,7 @@ beforeAll(async () => {
 describe("COGT's decision with its event date taken out, through the chat's save (a variant)", () => {
   it("lands as a CATALYST row with no date; the reply says the date is missing; the row says so", async () => {
     const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: "COGT", mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "variant" };
-    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, { ...(oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG") as unknown as ValidatedThesisDecision), catalyst_date: undefined }, {}, { direction: null, status: "WATCHING" });
+    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, { ...(writtenNow(oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG")) as unknown as ValidatedThesisDecision), catalyst_date: undefined }, { direction: null, status: "WATCHING" });
     expect(call.toolArgs.catalyst_date).toBeUndefined();
     const parsed = chatDoor.safeParse(call.toolArgs);
     if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues.slice(0, 5)));
@@ -58,7 +59,7 @@ describe("COGT's decision with its event date taken out, through the chat's save
 
   it("with its date the same save says nothing about it", async () => {
     const args: RunThesisWriterArgs = { childRunId: "cmukjnhy4000604l5up1m1661", analystId: "analyst_replay", ticker: "COGT", mode: "refresh", existingThesisId: fx.run.existingThesisId, reason: "as recorded" };
-    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG") as unknown as ValidatedThesisDecision, {}, { direction: null, status: "WATCHING" });
+    const call = build(args, { currentPrice: fx.run.price, catalystOnFile: null } as never, writtenNow(oldLevelFieldsAsTriggerOps(fx.decision, [], "LONG")) as unknown as ValidatedThesisDecision, { direction: null, status: "WATCHING" });
     const parsed = chatDoor.parse(call.toolArgs) as Record<string, unknown>;
     const save = await replayTool("update-thesis", "updateThesis", { seed: { thesis: [thesisRow({ ...fx.thesis })] }, args: parsed, ctx: { runMode: "PRINCIPAL_CHAT" }, quotes: { COGT: fx.run.price } });
     expect(save.refused).toBe(false);

@@ -310,8 +310,7 @@ export const getTheses = defineTool({
         company: true,
         bullCase: true,
         bearCase: true,
-        keyAssumptions: true,
-        invalidationConds: true,
+        kpis: true,
         triggers: true,
         // Fire bookkeeping for inherited rungs — resolveThesisLadder
         // overlays it so the fire state reads the same at every level.
@@ -326,7 +325,6 @@ export const getTheses = defineTool({
         outlookReason: true,
         conviction: true,
         convictionRationale: true,
-        variantView: true,
         createdAt: true,
         updatedAt: true,
         invalidatedAt: true,

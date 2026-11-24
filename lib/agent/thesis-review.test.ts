@@ -51,7 +51,7 @@ describe("how a review of a thesis ends", () => {
 
   it("a new conviction or outlook with no reason refuses the whole note, so one look is one line", () => {
     refused({ verdict: "WEAKER", verdictLine: "x", convictionTo: "LOW", convictionReason: undefined }, "Send conviction_rationale");
-    refused({ outlookTo: "NEUTRAL", outlookReason: " " }, "Send outlook_reason");
+    refused({ outlookTo: "NEUTRAL", outlookReason: " " }, "Send your rewritten opinion");
     // The level it already has, sent again, is no change and needs no reason.
     ok({ convictionTo: "MEDIUM", convictionReason: undefined });
     ok({ outlookTo: "BULLISH", outlookReason: undefined });

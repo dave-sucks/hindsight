@@ -87,8 +87,7 @@ describe("record_thesis: a new watch with a trigger on our position is refused w
       args: {
         ticker: "TRV", direction: "LONG", horizon: "COMPOUNDER", setup_id: "BASE_BREAKOUT", conviction: "MEDIUM", conviction_rationale: "A sound insurer at a fair price, waiting for its breakout.", rationale: "(the writer's)",
         core_belief: "Travelers writes commercial and personal insurance and earns on the float. We own it while underwriting stays profitable and investment income keeps growing.",
-        key_assumptions: ["The combined ratio stays under 95% through 2027", "Net investment income keeps growing as the portfolio reinvests at higher yields"],
-        invalidation_conditions: ["A reserve charge that resets the combined ratio above 100%", "Guidance for investment income cut on the next print"],
+        kpis: ["The combined ratio stays under 95% through 2027", "Net investment income keeps growing as the portfolio reinvests at higher yields", "A reserve charge that resets the combined ratio above 100%", "Guidance for investment income cut on the next print"],
         source_kind: "RESEARCH",
         triggers: [
           { action: "ENTER", predicate: { watch: "price", is: "above", value: 407.87, settings: { close: true } }, rationale: "The pivot." },

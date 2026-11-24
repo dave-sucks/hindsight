@@ -63,11 +63,10 @@ export async function loadBook(args: { accountId: string; environment: "PAPER" |
 export interface CaseRow {
   ticker: string;
   status: "HOLDING" | "WATCHING";
-  assumptions: string[];
-  wouldProveItWrong: string[];
+  kpis: string[];
 }
 
-/** What each stock's thesis rests on, a stock once (the held one when two analysts cover it); a stock with neither list is left out. */
+/** What each stock's thesis rests on, its KPIs, a stock once (the held one when two analysts cover it); a stock with none is left out. */
 export function casesText(rows: CaseRow[]): string {
   const one = new Map<string, CaseRow>();
   for (const r of rows) {
@@ -78,26 +77,25 @@ export function casesText(rows: CaseRow[]): string {
   const lines = [...one.values()]
     .sort((a, b) => a.ticker.localeCompare(b.ticker))
     .flatMap((r) => {
-      const must = clean(r.assumptions);
-      const wrong = clean(r.wouldProveItWrong);
-      if (!must.length && !wrong.length) return [];
-      return [`- ${r.ticker.toUpperCase()}`, ...must.map((x) => `  - Must stay true: ${x}`), ...wrong.map((x) => `  - Would prove it wrong: ${x}`)];
+      const kpis = clean(r.kpis);
+      if (!kpis.length) return [];
+      return [`- ${r.ticker.toUpperCase()}`, ...kpis.map((x) => `  - ${x}`)];
     });
   return ["## What each thesis rests on", ...(lines.length ? lines : ["- none written"])].join("\n");
 }
 
-/** The assumptions and what would prove it wrong, for every stock held or watched in one account's book. Null when it can't be read. */
+/** The KPIs of every stock held or watched in one account's book. Null when it can't be read. */
 export async function loadCases(args: { accountId: string; environment: "PAPER" | "LIVE" }): Promise<string | null> {
   const { prisma } = await import("@/lib/prisma");
   const theses = await prisma.thesis
     .findMany({
       where: { status: { in: ["HOLDING", "WATCHING"] }, researchRun: { agentConfig: { accountId: args.accountId, tradingEnvironment: args.environment } } },
-      select: { ticker: true, status: true, keyAssumptions: true, invalidationConds: true },
+      select: { ticker: true, status: true, kpis: true },
       orderBy: [{ ticker: "asc" }, { id: "asc" }],
     })
     .catch(() => null);
   if (!theses) return null;
   return casesText(
-    theses.map((t) => ({ ticker: t.ticker, status: t.status === "HOLDING" ? "HOLDING" : "WATCHING", assumptions: t.keyAssumptions ?? [], wouldProveItWrong: t.invalidationConds ?? [] })),
+    theses.map((t) => ({ ticker: t.ticker, status: t.status === "HOLDING" ? "HOLDING" : "WATCHING", kpis: t.kpis ?? [] })),
   );
 }

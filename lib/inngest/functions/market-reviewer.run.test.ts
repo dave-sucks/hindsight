@@ -207,18 +207,14 @@ describe("the 7:30 Market Reviewer", () => {
         "Watching (1):",
         "- ASML · Secular Compounder · ASML compounds as High-NA EUV ramps.",
         "",
-        // What each thesis rests on (#1072): the assumptions and what would prove it wrong, a stock at a time.
+        // What each thesis rests on (#1072): its KPIs, a stock at a time.
         "## What each thesis rests on",
         "- ASML",
-        "  - Must stay true: assumption one",
-        "  - Must stay true: assumption two",
-        "  - Would prove it wrong: invalidation one",
-        "  - Would prove it wrong: invalidation two",
+        "  - kpi one: on track at 10%+, broken under 5%, read at each report",
+        "  - kpi two: on track at 20%+, broken under 15%, read at each report",
         "- MU",
-        "  - Must stay true: assumption one",
-        "  - Must stay true: assumption two",
-        "  - Would prove it wrong: invalidation one",
-        "  - Would prove it wrong: invalidation two",
+        "  - kpi one: on track at 10%+, broken under 5%, read at each report",
+        "  - kpi two: on track at 20%+, broken under 15%, read at each report",
         "",
         "## Your notes in the last 5 days",
         "- none",
@@ -325,7 +321,7 @@ describe("the 7:30 Market Reviewer", () => {
     const watch = (id: string, ticker: string) =>
       thesisRow({
         id, ticker, status: "WATCHING", direction: null, horizon: "COMPOUNDER", setupId: null,
-        coreBelief: null, keyAssumptions: [], invalidationConds: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
+        coreBelief: null, kpis: [], snapshot: null, bullCase: null, bearCase: null, scoring: null, conviction: null, convictionRationale: null,
         entryPrice: null, targetPrice: null, stopLoss: null, researchUpdatedAt: null, createdAt: new Date("2026-10-01T00:00:00Z"), lastReviewedAt: null,
         triggers: [{ id: `wake_${ticker}`, action: "REVIEW", source: "AGENT", predicate: { watch: "price", is: "below", value: 1 }, rationale: "r"}],
       });

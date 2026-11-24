@@ -139,7 +139,7 @@ describe("HTFL's whole life, from the Writer's mint to the homepage", () => {
   it("1. the Writer's real mint lands WATCHING; after the save it trades the playbook's pullback buy and its Stop watching line for its own, on the close, and adds its review; the agent reads sentences back", async () => {
     const { build, schema } = await writerSave();
     const { decision, own } = htflDecision();
-    const call = build({ childRunId: fx.run.id, analystId: REPLAY_ANALYST_ID, ticker: T, mode: "mint", reason: "discovery" } as never, { currentPrice: fx.run.price, priceStructure: null } as never, decision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
+    const call = build({ childRunId: fx.run.id, analystId: REPLAY_ANALYST_ID, ticker: T, mode: "mint", reason: "discovery" } as never, { currentPrice: fx.run.price, priceStructure: null } as never, decision, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
     expect(call.toolName).toBe("record_thesis");
     expect(JSON.stringify(call.toolArgs)).not.toMatch(OLD_KEYS);
     const args = schema.parse(call.toolArgs) as Record<string, unknown>;
@@ -327,7 +327,7 @@ describe("the chat's discovery path, check-only", () => {
     expect(sent).toEqual([expect.objectContaining({ name: "app/thesis.write.requested", data: expect.objectContaining({ childRunId: writer.id, ticker: T, mode: "mint", forceWatchingMint: true }) })]);
 
     const { build, read, schema } = await writerSave();
-    const call = build(sent[0].data as never, { currentPrice: fx.run.price, priceStructure: null } as never, htflDecision().decision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
+    const call = build(sent[0].data as never, { currentPrice: fx.run.price, priceStructure: null } as never, htflDecision().decision, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
     expect(JSON.stringify(call.toolArgs)).not.toMatch(OLD_KEYS);
     const r = await replayTool("record-thesis", "recordThesis", {
       seed: d.db.store,

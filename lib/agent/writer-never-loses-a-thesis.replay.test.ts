@@ -61,7 +61,7 @@ const submitTool = (c: Case, check: (d: ValidatedThesisDecision) => Promise<Writ
 /** The Writer's mint, through the save's schema as executeThroughSchema runs it, then the real record_thesis. */
 async function mint(ticker: string, c: Case, d: ValidatedThesisDecision, extra: { parentThesisId?: string; seed?: Row[] } = {}) {
   const args: RunThesisWriterArgs = { childRunId: c.run, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "a replay", parentThesisId: extra.parentThesisId };
-  const call = build(args, { currentPrice: c.price, catalystOnFile: null } as never, d, {}, null);
+  const call = build(args, { currentPrice: c.price, catalystOnFile: null } as never, d, null);
   const parsed = recordDoor.safeParse(call.toolArgs);
   if (!parsed.success) throw new Error(`the save's schema refused: ${JSON.stringify(parsed.error.issues.slice(0, 3))}`);
   return replayTool("record-thesis", "recordThesis", {
@@ -142,16 +142,16 @@ describe("submit_thesis never says accepted unless the save will take it", () =>
   });
 
   it("after two hand-backs a refused optional field is left out, the rest is accepted, and the reply names what was left out", async () => {
-    const check = jest.fn(async (d: ValidatedThesisDecision) => (d.variant_view ? refuses("bad", [{ path: ["variant_view"], message: "Too vague." }]) : saves));
+    const check = jest.fn(async (d: ValidatedThesisDecision) => (d.catalyst_date ? refuses("bad", [{ path: ["catalyst_date"], message: "Too vague." }]) : saves));
     const { t, onAccept } = tool(check);
-    const call = ratedNow({ ...c.decision, variant_view: "Analysts expect X; I think Y." });
+    const call = ratedNow({ ...c.decision, catalyst_date: "2027-01-15" });
     expect((await t.execute(call)).accepted).toBe(false);
     expect((await t.execute(call)).accepted).toBe(false);
     const third = await t.execute(call);
     expect(third.accepted).toBe(true);
-    expect(third.saved_without).toEqual(["variant view — Too vague."]);
+    expect(third.saved_without).toEqual(["catalyst date — Too vague."]);
     const kept = onAccept.mock.calls[0][0] as ValidatedThesisDecision;
-    expect(kept.variant_view).toBeUndefined();
+    expect(kept.catalyst_date).toBeUndefined();
   });
 
   it("a refusal of the claim or of a trigger code wrote is not something a save can go without", () => {

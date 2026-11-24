@@ -37,6 +37,7 @@ import { TradeButton } from "@/components/trade/TradeButton";
 import { agentWatchTooltip } from "@/lib/agent/triggers/agent-watch";
 import { getThesisStatusDisplay, type ThesisStatus } from "@/lib/thesis-status";
 import { cn } from "@/lib/utils";
+import { firstParagraph } from "@/lib/thesis/clean-text";
 
 export type Conviction = "HIGH" | "MEDIUM" | "LOW";
 
@@ -84,7 +85,7 @@ export function StatusPill({
 
 // ── OutlookPill ──
 // What we expect of the stock from here, beside the status pill: Bullish,
-// Neutral or Bearish, with its reason on hover; "Not rated" until a look or
+// Neutral or Bearish, with the opinion's summary on hover; "Not rated" until a look or
 // the Writer has judged it. The badge is used as it is, with no class of ours.
 const OUTLOOK_DOT: Record<string, string> = { BULLISH: "bg-positive", NEUTRAL: "bg-muted-foreground", BEARISH: "bg-negative" };
 
@@ -96,7 +97,8 @@ export function OutlookPill({ outlook, reason = null }: { outlook: string | null
       {rated ? `${rated.charAt(0)}${rated.slice(1).toLowerCase()}` : "Not rated"}
     </Badge>
   );
-  const why = rated ? reason?.trim() : "No look at this stock has set its outlook yet.";
+  // The opinion's summary: its first paragraph (the whole opinion is on the stock's Overview).
+  const why = rated ? firstParagraph(reason) : "No look at this stock has set its outlook yet.";
   if (!why) return pill;
   return (
     <Tooltip>

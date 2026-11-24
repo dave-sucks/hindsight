@@ -31,8 +31,8 @@ jest.mock("@/lib/prisma", () => ({
     runMessage: { create: async ({ data }: { data: { content: string } }) => void saved.push(data.content), deleteMany: async () => ({}) },
     thesis: {
       findMany: async () => [
-        { ticker: "MU", status: "HOLDING", coreBelief: "Memory prices keep rising into 2027. The rest is detail.", keyAssumptions: ["Contract prices rise each quarter, checked at each report"], invalidationConds: ["A guidance cut at the next report"] },
-        { ticker: "ASML", status: "WATCHING", coreBelief: "Lithography demand recovers next year.", keyAssumptions: [], invalidationConds: [] },
+        { ticker: "MU", status: "HOLDING", coreBelief: "Memory prices keep rising into 2027. The rest is detail.", kpis: ["Contract prices rise each quarter, checked at each report", "A guidance cut at the next report"] },
+        { ticker: "ASML", status: "WATCHING", coreBelief: "Lithography demand recovers next year.", kpis: [] },
       ],
     },
     marketDigest: { findFirst: async () => ({ date: new Date("2026-11-11T00:00:00Z"), digest: "### Market overview\n\nStocks rose.", createdAt: new Date("2026-11-11T12:40:00Z") }) },

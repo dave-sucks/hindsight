@@ -75,8 +75,7 @@ function makeExistingRow(overrides: Record<string, unknown> = {}) {
     analystConsensus: null,
     insiderTechnical: null,
     coreBelief: "Old belief",
-    keyAssumptions: ["a1", "a2"],
-    invalidationConds: ["i1", "i2"],
+    kpis: ["a1", "a2"],
     scoring: {
       trendStrength: { score: 2, note: "ok" },
       relativeStrength: { score: 2, note: "ok" },
@@ -173,8 +172,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
           direction: null,
           scoring: {},
           coreBelief: null,
-          keyAssumptions: [],
-          invalidationConds: [],
+          kpis: [],
           targetPrice: null,
           stopLoss: null,
           conviction: null,
@@ -195,8 +193,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
           { predicate: { watch: "price", is: "above", value: 150 }, action: "REVIEW", rationale: "At $150, take profit or let it run." },
         ],
         core_belief: "TEST reaches 150 within 60 days on PEAD.",
-        key_assumptions: ["a1", "a2"],
-        invalidation_conditions: ["i1", "i2"],
+        kpis: ["a1", "a2"],
         // conviction, conviction_rationale, variant_view all missing
       });
 
@@ -216,8 +213,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
           direction: null,
           scoring: {},
           coreBelief: null,
-          keyAssumptions: [],
-          invalidationConds: [],
+          kpis: [],
           targetPrice: null,
           stopLoss: null,
           conviction: null,
@@ -238,8 +234,7 @@ describe("update_thesis — Conviction Expression v4 patch gates", () => {
           { predicate: { watch: "price", is: "above", value: 150 }, action: "REVIEW", rationale: "At $150, take profit or let it run." },
         ],
         core_belief: "TEST reaches 150 within 60 days on PEAD.",
-        key_assumptions: ["a1", "a2"],
-        invalidation_conditions: ["i1", "i2"],
+        kpis: ["a1", "a2"],
         conviction: "STRONG",
         conviction_rationale: "Composite 8, R/R 3:1, clear edge.",
         // variant_view missing — STRONG requires it

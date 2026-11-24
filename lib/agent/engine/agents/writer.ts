@@ -46,11 +46,12 @@ export const WRITER: AgentRecord = {
   instructions: ["the_analyst", "writer.md", "playbooks"],
   context: WRITER_CONTEXT,
   // submit_thesis is the Writer's own tool (makeSubmitThesisTool, lib/agent/run-thesis-writer.ts).
-  tools: ["submit_thesis"],
+  // get_sec_filings reads the release and the 10-Q itself (`read`), so the thesis starts from the company's own numbers.
+  tools: ["submit_thesis", "get_sec_filings"],
   providerTools: ["web_search"],
   searchesPerCall: WEB_SEARCH_MAX_USES,
   // The run ends once its save goes through; then it tailors the stock's triggers.
   endsWith: "submit_thesis",
   afterSave: WRITER_AFTER_SAVE,
-  output: "A research note (Company, Bull Case, Bear Case), then one submit_thesis call with its view, playbook and the claim; the save writes the thesis and the playbook's watch triggers, and edit_triggers tailors them.",
+  output: "Research (the latest earnings release and filings first), then one submit_thesis call with every field: the company, the belief, the opinion, the KPIs, the bull and bear cases and the playbook; the save writes the thesis and the playbook's watch triggers, and edit_triggers tailors them.",
 };

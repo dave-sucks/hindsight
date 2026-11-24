@@ -22,13 +22,11 @@ async function writerSaveArgs(): Promise<Record<string, unknown>> {
   let args: Record<string, unknown> = {};
   await jest.isolateModulesAsync(async () => {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
-    const { buildWriterSaveCall, sectionArgsFrom } = await import("@/lib/agent/run-thesis-writer");
-    const { parseIntoSections } = await import("@/lib/agent/thesis-research/parse-sections");
+    const { buildWriterSaveCall } = await import("@/lib/agent/run-thesis-writer");
     args = buildWriterSaveCall(
       { childRunId: "run_v", analystId: REPLAY_ANALYST_ID, ticker: "V", mode: "mint", reason: "Watchlist research" },
       null,
-      { direction: "PASS", rationale: RATIONALE, invalidation_conditions: ["A guidance cut."] } as never,
-      sectionArgsFrom(parseIntoSections(`## Company\n${VISA_COMPANY}`)),
+      { direction: "PASS", rationale: RATIONALE, kpis: ["Guidance: broken by a cut."], company: VISA_COMPANY } as never,
       null,
     ).toolArgs;
   });

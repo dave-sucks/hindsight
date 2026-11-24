@@ -38,7 +38,7 @@ async function save(keep?: Trigger[]): Promise<Record<string, unknown>> {
     jest.doMock("@/lib/prisma", () => ({ prisma: {} }));
     const { buildWriterSaveCall } = await import("@/lib/agent/run-thesis-writer");
     const { playbookTemplates } = await import("@/lib/agent/knowledge/playbooks");
-    args = buildWriterSaveCall(writerArgs, null, decision, {}, { direction: "LONG", status: "WATCHING", setupId: null, triggers: row as unknown as Trigger[], keep }, (id) => playbookTemplates(null, id)).toolArgs;
+    args = buildWriterSaveCall(writerArgs, null, decision, { direction: "LONG", status: "WATCHING", setupId: null, triggers: row as unknown as Trigger[], keep }, (id) => playbookTemplates(null, id)).toolArgs;
   });
   jest.dontMock("@/lib/prisma");
   return args;
