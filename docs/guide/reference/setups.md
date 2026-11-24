@@ -360,7 +360,7 @@ Entered through `PEAD`, `MA_PULLBACK`.
 
 `COMPOUNDER_ACCUMULATION` · playbook D11 · a buy pattern · horizons: compounder
 
-A business bought at conviction size and held through volatility, entered on confirmation rather than hope, sold only when the story breaks.
+A great business held for years, bought in two equal halves while it is in a long uptrend, sold at the floor under its last low, or on a 15% give-back from its high while still up on the buy.
 
 **Before it applies:**
 
@@ -371,20 +371,20 @@ Entered through `BASE_BREAKOUT`, `MA_PULLBACK`.
 
 **A buy is confirmed by:**
 
-- Thesis intact; volume matters less than for a trade
+- The thesis intact
+- The 50-day average rising
 - A stock at new highs on a working thesis is working, not extended
 
 **Triggers on a watch:**
 
-- Buy if above {pivot} and above 1.5× normal volume. The base's pivot, on volume.
-- Buy if within 2% of the 50-day average. Only while the 50-day is rising.
-- Buy if above the 50-day average. The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.
-- Review every 30 days. The compounder's own clock.
-- Stop watching if below the 200-day average · only on the close. The uptrend broke; not an accumulation candidate until it's back.
+- Buy if above {pivot} and above 1.5× normal volume and above the 200-day average. Above the base's high on heavy volume, in a long uptrend.
+- Buy if within 2% of the 50-day average and above the 200-day average. A pullback to a rising 50-day average, in a long uptrend.
+- Buy if above the 50-day average and above the 200-day average. Back above the 50-day average, in a long uptrend.
+- Review every 30 days. A monthly look at the business between reports.
 
 **Triggers with the buy:**
 
-- Sell if below {sellPrice}. Under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it.
+- Sell if below {sellPrice}. Under the last swing low, the last low the stock held: at most 15% under the buy and at least the playbook's ATR distance under it.
 
 **Triggers at the fill:**
 

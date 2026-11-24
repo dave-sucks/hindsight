@@ -12,7 +12,8 @@
  */
 import { replayTool, thesisRow, agentConfigRow, accountRow, type Replay } from "@/lib/replay";
 import { getSetup } from "@/lib/agent/knowledge/setups";
-import { saleRuleProblem } from "@/lib/agent/position-sizing";
+import { noLegalFloor, saleRuleProblem } from "@/lib/agent/position-sizing";
+import { playbookFloor } from "@/lib/agent/knowledge/playbooks";
 
 const AT = new Date("2026-09-09T15:37:00Z");
 const SNAPSHOT = {
@@ -77,5 +78,65 @@ describe("saleRuleProblem", () => {
   it("reads the account's minimum ATR override (production's Compounder runs at 2)", () => {
     const compounder = getSetup("COMPOUNDER_ACCUMULATION", { COMPOUNDER_ACCUMULATION: { minAtr: 2 } })!;
     expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 95, atr: 3 })).toContain("needs it at least 2 ATR away");
+  });
+  // Expert review 1.5: the compounder's floor sits at most 15% under the buy, on a floor the run names too.
+  // Past it the 15% give-back off the high always sells first. Other playbooks' caps stay trade-only.
+  it("holds a named compounder floor to 15% under the buy; a breakout on the compounder horizon keeps no cap", () => {
+    const compounder = getSetup("COMPOUNDER_ACCUMULATION", { COMPOUNDER_ACCUMULATION: { minAtr: 2 } })!;
+    expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 88, atr: 3 })).toBeNull();
+    expect(saleRuleProblem({ setup: compounder, horizon: "COMPOUNDER", entry: 100, stop: 80, atr: 3 })).toBe(
+      "the sale $80.00 is 20.0% from the buy; Compounder accumulation caps it at 15%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it",
+    );
+    expect(saleRuleProblem({ setup: getSetup("BASE_BREAKOUT")!, horizon: "COMPOUNDER", entry: 100, stop: 80, atr: 3 })).toBeNull();
+  });
+});
+
+// Production's snapshots of 2026-11-20, with the owner's 2 ATR minimum: MU's 2 ATR is 20.8% of its close, GEV's 15.5%,
+// CEG's 11.2%. Under a 15% cap the first two have no sale that keeps both rules, so the run is told once.
+describe("a stock whose minimum distance is past the playbook's widest %", () => {
+  const compounder = getSetup("COMPOUNDER_ACCUMULATION", { COMPOUNDER_ACCUMULATION: { minAtr: 2 } })!;
+  const none = (entry: number, atr: number, horizon = "COMPOUNDER") => noLegalFloor({ setup: compounder, horizon, entry, atr });
+
+  it("MU and GEV have no legal floor; CEG has one", () => {
+    expect(none(594.51, 61.84)).toBe(
+      "the stock moves too much for Compounder accumulation's 15% floor right now: 2 ATR is $123.68, 20.8% of the $594.51 buy, so no sale can be at least 2 ATR away and within 15%. Keep watching it until its daily range narrows",
+    );
+    expect(none(699.33, 54.34)).toContain("15.5% of the $699.33 buy");
+    expect(none(237.41, 13.32)).toBeNull();
+  });
+
+  it("says nothing with no ATR, or on a horizon the cap doesn't read", () => {
+    expect(none(594.51, 0)).toBeNull();
+    expect(noLegalFloor({ setup: compounder, horizon: "COMPOUNDER", entry: 594.51, atr: null })).toBeNull();
+    expect(none(594.51, 61.84, "TARGET")).toBeNull();
+  });
+
+  it("a floor code would price is refused the same way, before it tells the run to name one", () => {
+    const floor = playbookFloor({ setup: compounder, horizon: "COMPOUNDER", entry: 594.51, chart: null, atr: 61.84 });
+    expect(floor).toMatchObject({ noLegalFloor: true });
+    expect("refused" in floor && floor.refused).toMatch(/^The stock moves too much for Compounder accumulation's 15% floor right now/);
+  });
+
+  it("place_trade refuses a named floor once, with no sale left to try, and writes nothing", async () => {
+    jest.useFakeTimers({ now: new Date("2026-11-20T21:30:00Z"), doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    try {
+      const r = await replayTool("place-trade", "placeTrade", {
+        seed: {
+          thesis: [thesisRow({ id: "thesis_MU", ticker: "MU", status: "WATCHING", direction: "LONG", horizon: "COMPOUNDER", setupId: "COMPOUNDER_ACCUMULATION", conviction: "HIGH" })],
+          agentConfig: [agentConfigRow({ minPositionSize: 4000, maxPositionSize: 10000, maxPositionTotal: 20000, riskPct: 1 })],
+          account: [accountRow({ ...APPROVALS, setupOverrides: { COMPOUNDER_ACCUMULATION: { minAtr: 2 } } })],
+          tickerIndicators: [{ ...SNAPSHOT, id: "mu_1120", ticker: "MU", asOf: "2026-11-20", snapshot: { ...SNAPSHOT.snapshot, asOf: "2026-11-20", closes: [594.51], atr14: 61.84 } }],
+        },
+        args: { ticker: "MU", direction: "LONG", entry_price: 594.51, sell_if_below: 520, sell_reason: "Under the last low.", thesis_id: "thesis_MU" },
+        ctx: { runMode: "INTRADAY_TACTICAL", runEnvironment: "PAPER", minPositionSize: 4000, maxPositionSize: 10000, maxOpenPositions: 6 },
+        quotes: { MU: 594.51 },
+      });
+      expect(r.refused).toBe(true);
+      expect(r.refusal?.message).toContain("the stock moves too much for Compounder accumulation's 15% floor right now");
+      expect(r.refusal?.message).not.toMatch(/call place_trade again|Put it under/);
+      expect(r.db.store.position ?? []).toHaveLength(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

@@ -7,7 +7,8 @@
  * 1-share $922 LITE position against a $15,000 ceiling. Prose floors in
  * `analystPrompt` were Layer 3 doing Layer 1's job.
  */
-import { positionBand, positionTotalCap, DEFAULT_POSITION_CAP } from "./position-sizing";
+import { positionBand, positionTotalCap, DEFAULT_POSITION_CAP, secondHalfSize } from "./position-sizing";
+import { SETUPS } from "@/lib/agent/knowledge/setups";
 
 describe("positionBand — smallest trade to largest trade", () => {
   it("floor and ceiling come straight from the two settings", () => {
@@ -160,5 +161,32 @@ describe("sizeByRisk — shares from the stop distance (DAV-251)", () => {
   it("no riskPct → the 1% default; unknown conviction → MEDIUM", () => {
     const r = sizeByRisk({ equity: 100_000, riskPct: null, conviction: "WHATEVER", entry: 100, stop: 90, band });
     expect(r.line).toContain("1% of the $100,000 account × 0.75 for whatever conviction");
+  });
+});
+
+// Expert review 1.5: the second half is the filled first buy's dollars, held to the same halvings and the largest trade.
+describe("secondHalfSize — the compounder's second half", () => {
+  const first = { intent: "OPEN", filledQty: 30, filledPrice: 280.33 };
+  const at = (over: Partial<Parameters<typeof secondHalfSize>[0]> = {}) => secondHalfSize({ orders: [first], binary: false, regime: "RISK_ON", ceiling: 10000, ...over });
+  it("is the $8,409.90 CEG's first buy cost", () => {
+    expect(at()?.notional).toBe(8409.9);
+  });
+  it("halves in a cautious market and into a binary event, and both together", () => {
+    expect(at({ regime: "CAUTION" })?.notional).toBe(4204.95);
+    expect(at({ binary: true })?.notional).toBe(4204.95);
+    expect(at({ regime: "CAUTION", binary: true })?.notional).toBe(2102.48);
+  });
+  it("never goes over the largest trade", () => {
+    const capped = at({ ceiling: 5000 });
+    expect(capped?.notional).toBe(5000);
+    expect(capped?.line).toContain("capped at this analyst's largest trade");
+  });
+  it("is null once the holding has a filled add, or with no readable first buy", () => {
+    expect(at({ orders: [first, { intent: "ADD", filledQty: 9, filledPrice: 265.46 }] })).toBeNull();
+    expect(at({ orders: [] })).toBeNull();
+    expect(at({ orders: [{ intent: "OPEN", filledQty: null, filledPrice: 280.33 }] })).toBeNull();
+  });
+  it("only the compounder buys this way", () => {
+    expect(SETUPS.filter((s) => s.addSize === "SAME_AS_FIRST").map((s) => s.id)).toEqual(["COMPOUNDER_ACCUMULATION"]);
   });
 });

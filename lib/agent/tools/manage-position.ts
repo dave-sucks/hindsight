@@ -38,9 +38,9 @@ import { answers, staged as stagedSale } from "@/lib/proposals/staged";
 import { DEFAULT_TRIM_PCT } from "@/lib/agent/triggers/fire-mode";
 import { findRelatedThesisId } from "@/lib/proposals/execute";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
-import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForConviction, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
+import { positionTotalCap, positionBand, sizeByRisk, sizingStop, entrySizeForConviction, secondHalfSize, ADD_RISK_FRACTION } from "@/lib/agent/position-sizing";
 import { loadAutoStop } from "@/lib/trading/auto-stop";
-import { isBinaryBet } from "@/lib/agent/knowledge/setups";
+import { getSetup, isBinaryBet } from "@/lib/agent/knowledge/setups";
 import { cashShortfall } from "@/lib/trading/manual-order-rules";
 import { sendBuyFilled } from "@/lib/proposals/after-buy";
 
@@ -603,7 +603,23 @@ export async function changePosition(args: PositionChange, ctx: ToolContext): Pr
                   band: { floor: 0, ceiling: band.ceiling, floorClampedByCeiling: false },
                 })
               : null;
-          if (sized) {
+          // A playbook that buys in two equal halves: the second is the dollars of the filled first buy.
+          const setup = convictionRow?.setupId ? getSetup(convictionRow.setupId) : undefined;
+          const secondHalf =
+            setup?.addSize === "SAME_AS_FIRST" && accountRisk
+              ? secondHalfSize({
+                  orders: await prisma.order
+                    .findMany({ where: { positionId: position.id, status: "FILLED", intent: { in: ["OPEN", "ADD"] } }, select: { intent: true, filledQty: true, filledPrice: true } })
+                    .catch(() => []),
+                  binary: isBinaryBet(convictionRow!),
+                  regime: accountRisk.regime?.regime ?? null,
+                  ceiling: band.ceiling,
+                })
+              : null;
+          if (secondHalf) {
+            notional = secondHalf.notional;
+            addSizingLine = secondHalf.line;
+          } else if (sized) {
             const shares = Math.max(1, Math.floor(sized.shares * ADD_RISK_FRACTION));
             notional = shares * sizingPrice;
             addSizingLine = `Add: ${shares} shares ($${Math.round(notional).toLocaleString()}), half the size of a new buy. A new buy would be ${sized.line}${riskStop?.line ? ` ${riskStop.line}` : ""}`;

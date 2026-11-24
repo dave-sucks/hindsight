@@ -287,19 +287,63 @@ export function sizeByRisk(input: RiskSizingInput): RiskSizing | null {
 }
 
 /**
+ * The second half of a playbook that buys in two equal halves (`addSize: "SAME_AS_FIRST"`): the dollars of the
+ * holding's filled OPEN order, halved as any buy is for a binary event or a cautious market, and never over the
+ * largest trade. `orders` are the holding's filled orders. Null once it has a filled add, or when the first buy
+ * can't be read: that add takes the ordinary half-risk size.
+ */
+export function secondHalfSize(p: {
+  orders: Array<{ intent: string | null; filledQty: number | null; filledPrice: number | null }>;
+  binary: boolean;
+  regime: Regime | null;
+  ceiling: number | null;
+}): { notional: number; line: string } | null {
+  const opens = p.orders.filter((o) => o.intent === "OPEN");
+  if (opens.length !== 1 || p.orders.some((o) => o.intent === "ADD")) return null;
+  const first = (opens[0].filledQty ?? 0) * (opens[0].filledPrice ?? 0);
+  if (!Number.isFinite(first) || !(first > 0)) return null;
+  const halved = first * (p.binary ? BINARY_RISK_MULTIPLIER : 1) * (p.regime === "CAUTION" ? CAUTION_SIZE_MULTIPLIER : 1);
+  const capped = p.ceiling != null && halved > p.ceiling;
+  const notional = Math.round((capped ? (p.ceiling as number) : halved) * 100) / 100;
+  const line =
+    `Add: ${$(notional)}, the second half, from the ${$(first)} the first half cost` +
+    (p.binary ? ` × ${BINARY_RISK_MULTIPLIER} for an all-or-nothing event` : "") +
+    (p.regime === "CAUTION" ? ` × ${CAUTION_SIZE_MULTIPLIER} for a cautious market` : "") +
+    (capped ? ", capped at this analyst's largest trade" : "") +
+    ".";
+  return { notional, line };
+}
+
+/**
+ * The setup's two sale rules can't both hold: its closest distance, in ATR, is past its widest %, so every sale
+ * breaks one of them. The refusal says so once, with no sale left to try. Null when a legal sale exists, the cap
+ * doesn't apply on this horizon, or the ATR is unknown.
+ */
+export function noLegalFloor(p: { setup: Setup; horizon: string | null; entry: number; atr: number | null }): string | null {
+  const { minAtr, maxPct, maxPctOn = ["TRADE"] } = p.setup.sale;
+  if (maxPct == null || p.horizon == null || !(maxPctOn as readonly string[]).includes(p.horizon)) return null;
+  if (p.atr == null || !(p.atr > 0) || !(p.entry > 0)) return null;
+  const closest = minAtr * p.atr;
+  const pct = (closest / p.entry) * 100;
+  if (pct <= maxPct) return null;
+  return `the stock moves too much for ${p.setup.name}'s ${maxPct}% floor right now: ${minAtr} ATR is $${closest.toFixed(2)}, ${pct.toFixed(1)}% of the $${p.entry.toFixed(2)} buy, so no sale can be at least ${minAtr} ATR away and within ${maxPct}%. Keep watching it until its daily range narrows`;
+}
+
+/**
  * The setup's rules for the holding's sale, read on `sell_if_below` (until 2026-11-16 they were read on a
- * watch's line, which never sells): at least the setup's minimum ATR from the buy, and on a TRADE at most
- * its widest %. The account's setup overrides apply. Null when the sale keeps them or the ATR is unknown.
+ * watch's line, which never sells): at least the setup's minimum ATR from the buy, and at most its widest %
+ * on the horizons it names (`sale.maxPctOn`, a TRADE when unset). The account's setup overrides apply. Null
+ * when the sale keeps them or the ATR is unknown.
  */
 export function saleRuleProblem(p: { setup: Setup; horizon: string | null; entry: number; stop: number; atr: number | null }): string | null {
   const dist = Math.abs(p.entry - p.stop);
   const $ = (n: number) => `$${n.toFixed(2)}`;
-  const { minAtr, maxPct } = p.setup.sale;
+  const { minAtr, maxPct, maxPctOn = ["TRADE"] } = p.setup.sale;
   if (p.atr != null && p.atr > 0 && dist < minAtr * p.atr) {
     return `the sale ${$(p.stop)} is ${(dist / p.atr).toFixed(2)} ATR from the ${$(p.entry)} buy (ATR ${$(p.atr)}). ${p.setup.name} needs it at least ${minAtr} ATR away — inside that it sells on an ordinary day's movement. Put it under real structure at least ${$(minAtr * p.atr)} from the buy`;
   }
-  if (maxPct != null && p.horizon === "TRADE" && (dist / p.entry) * 100 > maxPct) {
-    return `the sale ${$(p.stop)} is ${((dist / p.entry) * 100).toFixed(1)}% from the buy; a TRADE on ${p.setup.name} caps it at ${maxPct}%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it`;
+  if (maxPct != null && p.horizon != null && (maxPctOn as readonly string[]).includes(p.horizon) && (dist / p.entry) * 100 > maxPct) {
+    return `the sale ${$(p.stop)} is ${((dist / p.entry) * 100).toFixed(1)}% from the buy; ${p.horizon === "TRADE" ? `a TRADE on ${p.setup.name}` : p.setup.name} caps it at ${maxPct}%. If structure needs a wider sale, the position is smaller, not the sale wider: tighten it`;
   }
   return null;
 }

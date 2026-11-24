@@ -19,7 +19,7 @@ import { CHASE_LIMIT_PCT, PLACEHOLDERS, PLACEHOLDER_NAMES, SETUPS, fillTemplate,
 import type { When } from "@/lib/agent/triggers/condition";
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { playbookChecks } from "@/lib/agent/analyst-brief";
-import { saleRuleProblem } from "@/lib/agent/position-sizing";
+import { noLegalFloor, saleRuleProblem } from "@/lib/agent/position-sizing";
 
 /** A template: a stored trigger's own fields, a condition that may name a chart level, and when it is written. */
 export const templateSchema = triggerSchema
@@ -253,7 +253,9 @@ export function buyAverageOf(templates: Template[] | null): string | null | unde
  * held to the playbook's sale rules. Otherwise why not, so the run names the
  * floor itself. Code never writes a floor that breaks the words. Pure.
  */
-export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null; buyAverage?: string | null }): { price: number; key: Placeholder } | { refused: string } {
+export function playbookFloor(p: { setup: Setup; horizon: string | null; entry: number; chart: PriceStructure | null; atr: number | null; buyAverage?: string | null }): { price: number; key: Placeholder } | { refused: string; noLegalFloor?: true } {
+  const none = noLegalFloor({ setup: p.setup, horizon: p.horizon, entry: p.entry, atr: p.atr ?? p.chart?.atr14?.dollars ?? null });
+  if (none) return { refused: `${none.charAt(0).toUpperCase()}${none.slice(1)}.`, noLegalFloor: true };
   const f = p.setup.sale.floor;
   if (!f) return { refused: "The playbook's floor names no chart key." };
   const at: FillPrices = { chart: p.chart, buy: p.entry, sale: null };
