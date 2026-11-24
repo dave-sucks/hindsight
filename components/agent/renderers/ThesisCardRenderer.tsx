@@ -91,22 +91,28 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
     const stocks = collectStockTable(readParts);
     if (theses.length === 0 && !stocks) return null;
     const noun = theses.length === 1 ? "thesis" : "theses";
+    // One list. The table already holds every stock: the ones in a situation carry their tag, and the ones
+    // this run went on to open by name are marked on their rows. Its count of situations is the table's own.
+    const inSituation = stocks ? stocks.rows.filter((r) => r.situations.length > 0).length : 0;
+    const openedIds = new Set(theses.map((t) => t.thesis_id).filter((id): id is string => typeof id === "string"));
+    const opened = stocks && theses.length > inSituation ? openedIds : undefined;
     return (
       <>
         {stocks ? (
           <div className="my-3 space-y-1">
             <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
-              <span>{`Reading ${stocks.rows.length} ${stocks.rows.length === 1 ? "stock" : "stocks"}`}</span>
+              <span>
+                {[`Reading ${stocks.rows.length} ${stocks.rows.length === 1 ? "stock" : "stocks"}`, `${inSituation} in a situation`, opened ? `opened ${theses.length}` : null].filter(Boolean).join(" · ")}
+              </span>
             </div>
-            <StockTable table={stocks} />
+            <StockTable table={stocks} opened={opened} />
           </div>
-        ) : null}
-        {theses.length > 0 ? (
+        ) : theses.length > 0 ? (
           <div className="my-3 space-y-1">
             <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
-              <span>{stocks ? `${theses.length} in a situation` : `Reading ${theses.length} ${noun}`}</span>
+              <span>{`Reading ${theses.length} ${noun}`}</span>
             </div>
             <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
           </div>
