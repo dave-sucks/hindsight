@@ -62,7 +62,7 @@ const runInput = (held: string[]) =>
     pendingApprovalCount: 1,
     watchlist: [], activeTheses: [],
     triggersFiredSinceLastRun: [], triggersMatchingNow: [],
-    earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] }, openRefusals: [],
+    earnings: { reportingSoon: [], justReported: [] }, filings: { recent: [] },
   }) as unknown as RunInput;
 
 const trail = { id: "trig_trail", predicate: { watch: "move", is: "below", value: 12, variable: "peak" }, action: "EXIT", rationale: "Protect the gain." };

@@ -25,7 +25,7 @@ import { activityFeed, type ProposalOrder, type StoredLine } from "@/lib/thesis/
 import { FEED_ORDER_SELECT } from "@/lib/thesis/activity-feed.server";
 import { ACCOUNT_ITEMS, accountActivityLine, attemptActivityLine, oneRowPerProposal, type AccountActivityLine } from "@/lib/thesis/account-activity";
 import { attemptOutcomes, refusalReason, TRADE_TOOLS } from "@/lib/portfolio/attempt-outcomes";
-import { describeRefusalTool, NO_LONGER_OWED } from "@/lib/agent/refusal-carryover";
+import { describeRefusalTool, NO_LONGER_OWED } from "@/lib/agent/refusals";
 
 type Book = { accountId: string; environment: AlpacaEnvironment };
 

@@ -11,7 +11,6 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { morningRunRequest } from "@/lib/agent/system-prompt";
 import { openingOf } from "@/lib/agent/engine/engine";
 import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gate-rejections";
-import { refusalNudge } from "@/lib/agent/refusal-carryover";
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage } from "@/lib/agent/token-usage";
 import { buildRunInput } from "@/lib/agent/run-input";
@@ -663,33 +662,20 @@ export const morningResearch = inngest.createFunction(
           // tells the agent to start the run from the top.
           const zeroToolCallsViolation = totalToolCallsSoFar === 0;
 
-          // A refused call the run never redid (2026-09-25). PLTR: place_trade
-          // refused, the run closed out and ended COMPLETE, the buy vanished.
-          // The refusal goes back to the model once, with its reason, before
-          // the run may end. What is still open after that is written on
-          // the run (action_blocked) and carried to the next run's prompt.
-          const openRefusalsBefore = await listOpenRefusalsForRun(run.id);
-          const refusalViolation = openRefusalsBefore.length > 0;
-
           const shouldRetry =
             !stopped &&
             (processViolation ||
               coverageViolation ||
               prematureExitViolation ||
-              zeroToolCallsViolation ||
-              refusalViolation) &&
+              zeroToolCallsViolation) &&
             responseMessages !== undefined &&
             responseMessages.length > 0;
 
           if (shouldRetry) {
             console.warn(
-              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} ACTIONABLE theses (fired/matching/promoted/review-due/seeds), only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation}, refusals=${openRefusalsBefore.length})`,
+              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} ACTIONABLE theses (fired/matching/promoted/review-due/seeds), only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
             );
-            const onlyRefusals =
-              refusalViolation && !processViolation && !coverageViolation && !prematureExitViolation && !zeroToolCallsViolation;
-            const nudge = onlyRefusals
-              ? refusalNudge(openRefusalsBefore)
-              : prematureExitViolation
+            const nudge = prematureExitViolation
               ? // The agent loaded data and stopped without acting. Tell it
                 // exactly what to do, in tool-call language, with no room
                 // to summarize the data it just read.
@@ -704,8 +690,6 @@ export const morningResearch = inngest.createFunction(
                 "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
                 "When in doubt, prefer write_note (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
                 "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
-            const nudgeWithRefusals =
-              refusalViolation && !onlyRefusals ? `${nudge}\n\nAlso: ${refusalNudge(openRefusalsBefore)}` : nudge;
 
             // One retry attempt over a caller-supplied message seed. Extracted so
             // we can try it twice: first seeded with the prior in-run context
@@ -784,7 +768,7 @@ export const morningResearch = inngest.createFunction(
                 { role: "user", content: userPrompt },
                 // As JSON, as the thread is saved: a Date in a tool's output fails the SDK's check (asJsonMessages).
                 ...asJsonMessages(responseMessages),
-                { role: "user", content: nudgeWithRefusals },
+                { role: "user", content: nudge },
               ]);
             } catch (seedErr) {
               // The seed was a malformed ModelMessage[] — don't lose the rescue.
@@ -793,7 +777,7 @@ export const morningResearch = inngest.createFunction(
               );
               try {
                 // Tier 2 — historyless. The first message and the system prompt carry the state.
-                retryToolCalls = await runRetry([{ role: "user", content: userPrompt }, { role: "user", content: nudgeWithRefusals }]);
+                retryToolCalls = await runRetry([{ role: "user", content: userPrompt }, { role: "user", content: nudge }]);
               } catch (retryErr) {
                 console.error(
                   `[morning-research] 🔁 ${config.name} retry failed:`,

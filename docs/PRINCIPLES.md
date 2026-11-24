@@ -125,7 +125,7 @@ Find the layer before writing anything.
 
 Most past failures were fixed with instruction text when the right fix was a refusal or a fact. The long prompts were the cost.
 
-**A refusal is an input, never an ending.** The refused call goes back with what to do instead. It stays open until the same tool lands on the same stock (`lib/agent/gate-rejections.ts`), and the next run for that analyst is told (`refused_calls`).
+**A refusal is an input, given once.** The refused call goes back as the tool's result, with what to do instead, and nothing carries it to a later run. Carried forward, refusals were redone twice in 30 days and sent runs to write on stocks already closed (2026-11-24). Every refusal is recorded, listed on its run, and shown in the stock's Activity until the same tool lands there (`lib/agent/gate-rejections.ts`).
 
 **Every field a model can pass has a contract** (`lib/agent/tools/field-contract.ts`). Each field is one of these:
 - computed by the app, so it's absent from the schema a run sees;

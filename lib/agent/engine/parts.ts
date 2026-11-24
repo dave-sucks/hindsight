@@ -134,11 +134,6 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
     about: "Who reported in the last 7 days and who reports in the next 14, outside the analyst's book, as get_earnings_calendar reads it.",
     source: "lib/agent/discovery/run.ts (earningsCalendar)",
   },
-  refused_calls: {
-    title: "Refused calls",
-    about: "This analyst's refused calls from the last 7 days that no run has redone yet.",
-    source: "lib/agent/refusal-carryover.ts",
-  },
   last_output: {
     title: "Its last output",
     about: "What the agent wrote on its last run: the Portfolio Manager's write-up; the Market Reviewer's digest and its notes of the last 5 days.",

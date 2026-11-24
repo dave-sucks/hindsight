@@ -101,7 +101,8 @@ describe("the morning run", () => {
     for (const [was, is] of [["market_numbers", "market_numbers"], ["market_digest", "market_digest"], ["portfolio_snapshot", "portfolio"], ["portfolio_digest", "portfolio_digest"], ["earnings_week", "earnings_this_week"], ["filings_week", "filings_this_week"]]) {
       expect([is, now[`message:${is}`]]).toEqual([is, old[`message:${was}`]]);
     }
-    expect(now["message:refused_calls"]).toBe(old["instructions:blocked_last_time"] === undefined ? undefined : withNewToolNames(old["instructions:blocked_last_time"]));
+    // Refused calls are no longer carried to a later run (2026-11-24).
+    expect(now["message:refused_calls"]).toBeUndefined();
     const atBuy = (c.runInput.triggersMatchingNow ?? []).filter((t) => t.action === "ENTER").map((t) => t.ticker);
     // The cash the regime line said when the snapshot couldn't be read is the kickoff's now.
     const cash = old["instructions:regime"].match(/Cash is (\$[\d,]+)\./)?.[1];

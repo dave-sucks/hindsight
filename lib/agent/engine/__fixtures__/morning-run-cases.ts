@@ -18,7 +18,6 @@ const quiet = {
   triggersMatchingNow: [],
   earnings: { reportingSoon: [], justReported: [] },
   filings: { recent: [] },
-  openRefusals: [],
 };
 
 const position = (symbol: string) => ({ symbol, direction: "LONG", quantity: 10, avgCost: 100, currentPrice: 110, unrealizedPnl: 100, unrealizedPnlPct: 10, targetPrice: null, stopLoss: null, exitStrategy: "", daysHeld: 20, activeThesisId: null, activeThesisSummary: null });
@@ -41,7 +40,6 @@ export const MORNING_CASES = {
       triggersMatchingNow: [{ thesisId: "t1", ticker: "CCC", triggerId: "trg_buy", action: "ENTER", predicateSummary: "above $120", rationale: "The pivot.", matchDetail: "at $121" }],
       earnings: { reportingSoon: [{ ticker: "AAA", date: "2026-11-19", hour: "amc" }, { ticker: "DDD", date: "2026-11-20", hour: "bmo" }], justReported: [{ ticker: "BBB", date: "2026-11-16", summary: "EPS $1.10 vs $1.00 est, a beat" }] },
       filings: { recent: [{ ticker: "AAA", date: "2026-11-17", tier: "material", summary: "8-K — major agreement signed (1.01)", url: "https://www.sec.gov/example/aaa" }] },
-      openRefusals: [{ id: "r1", tool: "place_trade", ticker: "CCC", thesisId: "t1", summary: "The buy was refused: no sell price.", detail: null, runId: "run1", createdAt: new Date("2026-11-16T13:10:00Z") }],
     },
     pieces: MORNING_PIECES,
   },

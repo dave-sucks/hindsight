@@ -17,7 +17,6 @@ import { lastOutput } from "./last-output";
 import { managerWriteup } from "./manager-writeup";
 import { playbookRecord } from "./playbook-record";
 import { holdingTriggers, playbooks, thePlaybook } from "./playbooks";
-import { refusedCalls } from "./refused-calls";
 import { situations } from "./situations";
 import { stockData } from "./stock-data";
 import { theAnalyst } from "./the-analyst";
@@ -49,7 +48,6 @@ export const FACTS: Record<Exclude<ContextId, "market_numbers" | "market_digest"
   the_analysts: theAnalysts,
   earnings_this_week: earningsThisWeek,
   filings_this_week: filingsThisWeek,
-  refused_calls: refusedCalls,
   earnings_calendar: earningsCalendarFact,
   last_output: lastOutput,
   manager_writeup: managerWriteup,
