@@ -866,7 +866,7 @@ export const tacticalRun = inngest.createFunction(
           }
         }
 
-        // A refusal reached the model as the tool's result; what is still open is listed on the run.
+        // A refusal reached the model as the tool's result; what is still open is recorded on the run.
         await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
         // ── Persist conversation messages ──────────────────────────────────

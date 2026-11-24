@@ -1,14 +1,15 @@
 /**
- * refusals.ts — a refused call, as the run page and Activity show it. Pure:
- * no database, no clock.
+ * refusals.ts — a refused call, as the app records and shows it. Pure: no
+ * database, no clock.
  *
  * A refusal reaches the model once, as the tool's result, with what to do
  * instead; nothing carries it to a later run. Each one is recorded
- * (`GateRejection`, lib/agent/gate-rejections.ts), listed on its run when it
- * ends, and shown on the stock's Activity until the same tool lands there.
+ * (`GateRejection`, lib/agent/gate-rejections.ts); the homepage Activity
+ * shows refused trades and recent open refusals
+ * (lib/thesis/account-activity.server.ts).
  */
 
-/** One open refusal, as the run page reads it. */
+/** One open refusal, as it is recorded. */
 export interface OpenRefusal {
   id: string;
   tool: string;

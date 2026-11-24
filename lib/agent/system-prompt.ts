@@ -44,7 +44,7 @@ export function morningMessage(runInput: Pick<RunInput, "triggersMatchingNow" | 
  * The morning run's request: its record (lib/agent/engine/agents/morning-run.ts),
  * its facts read for the analyst by the engine (lib/agent/context/: the
  * analyst, the market and the portfolio, its book, the week's earnings and
- * filings, the calls refused last time), and the schedule's kickoff. The
+ * filings), and the schedule's kickoff. The
  * cron and the Run button send the same request.
  */
 export async function morningRunRequest(run: ContextRun<SubjectOf<"analyst">>, runInput: Pick<RunInput, "triggersMatchingNow" | "portfolio">): Promise<BuiltRequest> {

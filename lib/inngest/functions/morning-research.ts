@@ -320,7 +320,7 @@ export const morningResearch = inngest.createFunction(
 
         // 2c. The request: the analyst's facts read for it by the engine
         // (lib/agent/context/: the analyst, the market and portfolio, its
-        // book as get_theses reads it, the week, the calls refused), its
+        // book as get_theses reads it, the week), its
         // book through the run's own get_theses; the kickoff from the run input.
         const contextRun: Parameters<typeof morningRunRequest>[0] = {
           subject: { kind: "analyst", userId: config.userId, accountId: config.accountId, environment: runEnvironment, analystId: config.id },
@@ -795,8 +795,8 @@ export const morningResearch = inngest.createFunction(
             elapsed = Date.now() - t0;
           }
 
-          // What is still refused and undone after the retry is on the run —
-          // the receipt the run page shows — and stays open for the next run.
+          // What is still refused and undone is recorded on the run (no screen
+          // shows it yet); no later run is told.
           await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
           // Count positions opened by checking DB (the place_trade tool already created them)

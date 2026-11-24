@@ -38,8 +38,8 @@
  * out and ended COMPLETE, and nothing anywhere said the buy never happened.
  * Every row is now open until the same tool lands on the same stock (or
  * thesis) for the same analyst — `resolveGateRejections`, called from the
- * wrapper on every non-refused result. An open row is listed on its run when
- * the run ends and shown on the Activity feed; it is never sent to a model
+ * wrapper on every non-refused result. An open row is recorded on its run
+ * when the run ends and shown on the homepage Activity; it is never sent to a model
  * again (2026-11-24: carried to later runs, it resolved 2 in 30 days and sent
  * runs to write on stocks that were closed). The deletion-pass use above
  * still stands.

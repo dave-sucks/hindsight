@@ -1,7 +1,7 @@
 /**
  * The morning run's prompt in each shape it takes, on a made-up book: a quiet
  * morning; a full one (reports this week and just in, filings, a buy price
- * reached, a refused call never redone, a buy waiting, two holdings, the
+ * reached, a buy waiting, two holdings, the
  * account's block); a morning whose snapshot couldn't be read; and one whose
  * filings couldn't be read (../morning-run.engine.test.ts).
  */
