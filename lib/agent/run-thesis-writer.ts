@@ -15,7 +15,7 @@
  *                     9-section note as plain TEXT and finishes by calling
  *                     the compact `submit_thesis` tool (decision fields
  *                     only, ~1-2k chars). Validation errors come back as
- *                     the tool result, so repairs cost one step, not a
+ *                     the tool result, so a fix costs one step, not a
  *                     3-minute payload regeneration.
  *   Phase Z — persist server-side: parse the note into sections
  *                     (parse-sections.ts), build the record_thesis /
@@ -103,18 +103,11 @@ import { PLAYBOOK_UNREAD, playbookWatchTriggers } from "@/lib/agent/knowledge/pl
 // run — the safety net was the routine operating point, and losing the
 // race produced empty-section runs (CEG 2026-08-11). The research call is
 // the long pole; give it real headroom. Worst-case pipeline:
-// pulls ~15s + research ≤330s + section-repair ≤90s + persist ~5s ≈ 440s,
+// pulls ~15s + research ≤330s + persist ~5s ≈ 350s,
 // well inside the Inngest route's window with margin — and typically
 // ~200-220s total.
 const RESEARCH_TIMEOUT_MS = 330_000;
-const SECTION_REPAIR_TIMEOUT_MS = 90_000;
 /** Native web-search budget for the research call (V1 synthesis used 3). */
-/**
- * Minimum parsed sections before we spend one repair turn asking for the
- * missing ones. 9 is the full template; below 5 the note is materially
- * incomplete (V1's QUALITY BAR equivalent).
- */
-const MIN_SECTIONS_BEFORE_REPAIR = 3;
 
 /** Where a stock's idea came from: a link (dispatch_thesis_research's source_link), or an author on older runs. */
 export interface IdeaSource {
@@ -601,11 +594,11 @@ export interface WriterResearchPhaseOutput {
   threadMessages: unknown[];
   /** The user prompt (data block + task) for the replay thread. */
   userPrompt: string;
-  /** The research system prompt — the save-time retry resubmits under it. */
+  /** The research system prompt — the trigger tailoring continues under it. */
   systemPrompt?: string;
-  /** Which part of the research request is which (the agent engine's), kept with the retry's request too. */
+  /** Which part of the research request is which (the agent engine's), kept with the tailoring's request too. */
   requestParts?: SentPartManifest[];
-  /** The agent whose record built it, kept with the retry's request too. */
+  /** The agent whose record built it, kept with the tailoring's request too. */
   requestAgent?: AgentId;
   stepCount: number;
   toolCallCount: number;
@@ -674,7 +667,6 @@ export async function writerResearchPhase(
 
     let accepted: ValidatedThesisDecision | null = null;
     let submitAttempts = 0;
-    let lastRejected: { raw: unknown; errors: string[] } | null = null;
     // The check saves what the save will: the playbook's watch triggers included.
     const stock = await stockForSave(args, existingThesis);
     const playbooks = await loadPlaybooks(analyst.accountId);
@@ -682,9 +674,6 @@ export async function writerResearchPhase(
     const submitThesisTool = makeSubmitThesisTool({
       ticker: T,
       held: existingThesis?.status === "HOLDING",
-      onReject: (raw, errors) => {
-        lastRejected = { raw, errors };
-      },
       validate: {
         mode: args.mode,
         existingStatus: existingThesis?.status ?? null,
@@ -730,92 +719,11 @@ export async function writerResearchPhase(
     const searchCount = run.toolCalls.filter((c) => c.tool === "web_search").length;
     const loopError = run.error ?? null;
     // Every request this phase makes, recorded on the child run at the end
-    // (token-usage.ts); the save phase's retry records its own.
+    // (token-usage.ts); the trigger tailoring records its own.
     const tokenUsage = run.usage;
     console.log(`[thesis-writer] research call child=${args.childRunId} ticker=${T}: ${stepCount} step(s), tools=[${run.toolCalls.map((c) => c.tool).join(", ") || "none"}]${loopError ? `, ended: ${loopError}` : ""}`);
-    // The repair turn's model: its request is not kept (the research call's is).
-    const model = modelFor(modeConfig.model, { runId: null, call: "Repair", source: "thesis-writer" });
-
-    let noteText = noteParts.join("\n\n");
-    let sections = parseIntoSections(noteText);
-    let sectionCount = Object.keys(sections).length;
-
-    // One targeted repair turn when the decision landed but the note is
-    // materially incomplete. Cheap (text-only, no tools) and rare.
-    if (accepted && !loopError && sectionCount < MIN_SECTIONS_BEFORE_REPAIR) {
-      const have = new Set(Object.keys(sections));
-      const wanted = [
-        ["company", "## Company"],
-        ["bullCase", "## Bull Case"],
-        ["bearCase", "## Bear Case"],
-      ].filter(([key]) => !have.has(key));
-      try {
-        // TEXT-ONLY continuation (review finding #3): replaying
-        // capturedMessages here would send tool_use/tool_result blocks
-        // (submit_thesis + server web_search) to a call with NO tools
-        // param — the API rejects that with a 400, which made the repair
-        // path dead on arrival. The note text is all the repair needs.
-        const repair = await generateText({
-          model,
-          system: systemPrompt,
-          messages: [
-            { role: "user", content: userPrompt },
-            { role: "assistant", content: noteText || "(no note text produced yet)" },
-            {
-              role: "user",
-              content: `The note is missing these sections: ${wanted.map(([, h]) => h).join(", ")}. Write ONLY the missing sections now, in the exact template format with citations. No other text.`,
-            },
-          ],
-          abortSignal: AbortSignal.timeout(SECTION_REPAIR_TIMEOUT_MS),
-        });
-        addTokenUsage(tokenUsage, repair.totalUsage, repair.steps.length);
-        if (repair.text) {
-          noteText = `${noteText}\n\n${repair.text}`;
-          capturedMessages.push(...(repair.response?.messages ?? []));
-          sections = parseIntoSections(noteText);
-          sectionCount = Object.keys(sections).length;
-        }
-      } catch (repairErr) {
-        console.warn(
-          `[thesis-writer] section repair failed (continuing with ${sectionCount} sections):`,
-          repairErr instanceof Error ? repairErr.message : repairErr,
-        );
-      }
-    }
-
-    // ── Decision repair: a refused submit is fixed, not abandoned ────────
-    // The loop can end on a refused submit_thesis with the research done
-    // and the decision one field off — whatever ended it: a stray
-    // provider-executed call in the same step (IBRX, BBIO, DYN on
-    // 2026-09-25, one step each), the step budget, or a stop condition.
-    // The refusal goes back to the model with the note it wrote, through
-    // the same submit tool, on its own budget. The Run Book promised this.
-    const rejected = lastRejected as { raw: unknown; errors: string[] } | null;
-    if ((accepted as ValidatedThesisDecision | null) === null && rejected && !loopError) {
-      await writePhaseEvent(
-        args.childRunId,
-        "Decision refused — repairing",
-        rejected.errors.join(" | "),
-        { ticker: T, submitAttempts },
-      );
-      const repaired = await resubmitWithFeedback({
-        args,
-        pullOutput,
-        systemPrompt,
-        requestParts: request.parts,
-        requestAgent: request.agent,
-        userPrompt,
-        noteText,
-        analyst,
-        existing: existingThesis,
-        ctx: saveCtx,
-        previous: rejected.raw,
-        feedback: `submit_thesis refused it:\n- ${rejected.errors.join("\n- ")}`,
-      });
-      submitAttempts += repaired.attempts;
-      capturedMessages.push(...repaired.messages);
-      if (repaired.decision) accepted = repaired.decision;
-    }
+    const noteText = noteParts.join("\n\n");
+    const sectionCount = Object.keys(parseIntoSections(noteText)).length;
 
     // Read the closure-mutated flags into locals. TS's control-flow
     // analysis can't see the submit_thesis execute callback's assignments
@@ -1322,7 +1230,7 @@ export function readWriterSaveResult(
  * record_thesis / update_thesis in check-only mode (ctx.dryRun) — the same
  * input schema, trigger ops, ladder check and status rules — and stop before
  * the write. Sections are left out: they're built by the server from the
- * note, not chosen by the model, and the save-time retry covers them.
+ * note, not chosen by the model.
  */
 export async function checkDecisionAgainstSave(input: {
   args: RunThesisWriterArgs;
@@ -1392,17 +1300,12 @@ export async function saveWhatCan(
   return outcome.wouldSave || outcome.partial ? { decision: current } : { error: outcome.error ?? "the save refused it" };
 }
 
-/**
- * The submit_thesis tool: the decision's own rules, then the save's check.
- * Used by the research loop and by the one save-time retry.
- */
+/** The submit_thesis tool: the decision's own rules, then the save's check. */
 export function makeSubmitThesisTool(opts: {
   validate: Parameters<typeof validateThesisDecision>[1];
   check: (d: ValidatedThesisDecision) => Promise<WriterSaveOutcome>;
   onAccept: (d: ValidatedThesisDecision) => void;
   onAttempt: () => number;
-  /** The last refused submit, kept so the repair step can hand it back. */
-  onReject?: (raw: unknown, errors: string[]) => void;
   ticker: string;
   /** The Holding refresh: its save names no playbook (heldDecisionSchema). */
   held?: boolean;
@@ -1420,8 +1323,8 @@ export function makeSubmitThesisTool(opts: {
     // req_011CfQtMV9NnoTrn4srRu4T9). Making every key required-and-nullable
     // trades the first limit for the second. So the model reads the typed
     // schema (every trigger kind by name), the validator coerces or drops
-    // what it still gets wrong with a note, and a refused decision is
-    // repaired once. That is the guarantee; a grammar is not available.
+    // what it still gets wrong with a note, and a refused decision comes
+    // back as the tool's result to fix. A grammar is not available.
     // (The chat's tools hit a different limit first: strict refuses a range on
     // an integer, "For 'integer' type, properties maximum, minimum are not
     // supported" (req_011CfmMgGCGJBUrYGBYDZxHS, 2026-10-06). Strict there
@@ -1435,7 +1338,6 @@ export function makeSubmitThesisTool(opts: {
         console.log(
           `[thesis-writer] submit_thesis attempt ${attempt} rejected ticker=${opts.ticker}: ${v.errors.length} error(s)`,
         );
-        opts.onReject?.(raw, v.errors);
         return {
           accepted: false,
           errors: v.errors,
@@ -1449,7 +1351,6 @@ export function makeSubmitThesisTool(opts: {
         console.log(
           `[thesis-writer] submit_thesis attempt ${attempt} refused by the save check ticker=${opts.ticker}: ${saved.error}`,
         );
-        opts.onReject?.(raw, [`The save refused this decision — ${saved.error}`]);
         return {
           accepted: false,
           errors: [`The save refused this decision — ${saved.error}`],
@@ -1460,7 +1361,6 @@ export function makeSubmitThesisTool(opts: {
       // only when the check says it will save (PRAX 11-13 was told "accepted" and lost).
       const kept = await saveWhatCan(v.decision!, saved, opts.check);
       if ("error" in kept) {
-        opts.onReject?.(raw, [`Nothing in this decision can be saved as it stands — ${kept.error}`]);
         return {
           accepted: false,
           errors: [`Nothing in this decision can be saved as it stands — ${kept.error}`],
@@ -1480,9 +1380,6 @@ export function makeSubmitThesisTool(opts: {
   });
 }
 
-/** Save-time retry budget: the model sees the refusal and resubmits, once. */
-const SAVE_RETRY_TIMEOUT_MS = 120_000;
-const SAVE_RETRY_MAX_STEPS = 3;
 
 /**
  * What the save went without, on the run's own audit row in the shape
@@ -1502,95 +1399,6 @@ async function writeDropped(thesisId: string, runId: string, dropped: DroppedIte
   } catch (err) {
     console.warn(`[thesis-writer] could not write what the save went without on ${thesisId}:`, err instanceof Error ? err.message : err);
   }
-}
-
-/**
- * The one retry, for both refusals a decision can meet: the writer's own
- * check at the end of the research loop (the loop ended on a refused
- * submit, for any reason), and the save (server-built sections, or the world moved
- * between check and save). Show the model its decision and the refusal, let
- * it resubmit through the same submit tool on a budget of its own, and
- * return the accepted decision — or null.
- */
-async function resubmitWithFeedback(input: {
-  args: RunThesisWriterArgs;
-  pullOutput: WriterPullPhaseOutput;
-  systemPrompt: string | undefined;
-  requestParts?: SentPartManifest[];
-  requestAgent?: AgentId;
-  userPrompt: string;
-  noteText: string;
-  analyst: WriterAnalyst;
-  existing: WriterExistingThesis | null;
-  ctx: ToolContext;
-  /** What the model sent, exactly. */
-  previous: unknown;
-  /** The refusal, in the refuser's own words. */
-  feedback: string;
-}): Promise<{ decision: ValidatedThesisDecision | null; attempts: number; messages: ModelMessage[] }> {
-  const { args, pullOutput, analyst, existing } = input;
-  if (!input.systemPrompt) return { decision: null, attempts: 0, messages: [] };
-  const T = args.ticker.toUpperCase();
-  let accepted: ValidatedThesisDecision | null = null;
-  let attempts = 0;
-  const messages: ModelMessage[] = [];
-  const submit = makeSubmitThesisTool({
-    ticker: T,
-    held: existing?.status === "HOLDING",
-    validate: {
-      mode: args.mode,
-      existingStatus: existing?.status ?? null,
-      currentPrice: pullOutput.pull?.currentPrice ?? null,
-    },
-    check: async (d) =>
-      checkDecisionAgainstSave({
-        args,
-        pull: pullOutput.pull,
-        decision: d,
-        ctx: input.ctx,
-        existing: await stockForSave(args, existing),
-        playbooks: await loadPlaybooks(analyst.accountId),
-      }),
-    onAttempt: () => ++attempts,
-    onAccept: (d) => {
-      accepted = d;
-    },
-  });
-  const modeConfig = MODES["thesis-writer"];
-  const model = modelFor(modeConfig.model, { runId: args.childRunId, call: "Save retry", source: "thesis-writer", parts: input.requestParts, agent: input.requestAgent });
-  try {
-    const res = await generateText({
-      model,
-      system: cachedSystem(modeConfig.provider, input.systemPrompt),
-      messages: [
-        { role: "user", content: input.userPrompt },
-        { role: "assistant", content: input.noteText || "(research note)" },
-        {
-          role: "user",
-          content:
-            `You submitted this decision:\n${JSON.stringify(input.previous)}\n\n` +
-            `${input.feedback}\n\n` +
-            "Call submit_thesis again with the decision fixed so it is accepted. Change only what the refusal names. Do not rewrite the note.",
-        },
-      ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tools: cachedTools(modeConfig.provider, { submit_thesis: submit }) as any,
-      stopWhen: [stepCountIs(SAVE_RETRY_MAX_STEPS), () => accepted !== null],
-      abortSignal: AbortSignal.timeout(SAVE_RETRY_TIMEOUT_MS),
-    });
-    await recordTokenUsage(
-      args.childRunId,
-      addTokenUsage(emptyTokenUsage(), res.totalUsage, res.steps.length),
-      modeConfig.model,
-    );
-    messages.push(...((res?.response?.messages ?? []) as ModelMessage[]));
-  } catch (err) {
-    console.warn(
-      `[thesis-writer] decision retry failed ticker=${T} child=${args.childRunId}:`,
-      err instanceof Error ? err.message : err,
-    );
-  }
-  return { decision: accepted as ValidatedThesisDecision | null, attempts, messages };
 }
 
 /** How many steps the Writer has after its save to tailor the stock's triggers, and for how long. */
@@ -1777,33 +1585,6 @@ export async function writerPersistPhase(
           outcome = await saveOnce(d);
         }
 
-        // ── One retry: hand the refusal back to the model ───────────────
-        if (!outcome.thesisId && outcome.fixable && outcome.error) {
-          await writePhaseEvent(
-            args.childRunId,
-            "Save refused — retrying once",
-            outcome.error,
-            { ticker: T, mode: args.mode },
-          );
-          const retried = await resubmitWithFeedback({
-            args,
-            pullOutput,
-            systemPrompt: research.systemPrompt,
-            requestParts: research.requestParts,
-            requestAgent: research.requestAgent,
-            userPrompt: research.userPrompt,
-            noteText: research.noteText,
-            analyst,
-            existing,
-            ctx,
-            previous: d,
-            feedback: `The save refused it: ${outcome.error}`,
-          });
-          if (retried.decision) {
-            d = retried.decision;
-            outcome = await saveOnce(d);
-          }
-        }
         thesisId = outcome.thesisId;
         // Who sent a stock nobody covered, and why, in their words: dated when the Writer started, so it reads first.
         if (thesisId && args.mode === "mint" && args.sentBrief) {

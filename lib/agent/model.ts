@@ -16,7 +16,7 @@ import type { AgentId, SentPartManifest } from "@/lib/agent/engine/types";
 export interface ModelUse {
   /** The run that keeps the request. With none, nothing is kept. */
   runId?: string | null;
-  /** Which call of the run ("Main", "Retry"). */
+  /** Which call of the run ("Main", "Tailor triggers"). */
   call: string;
   /** The code that makes it. */
   source: string;
