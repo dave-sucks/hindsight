@@ -17,7 +17,7 @@ import type { AgentRecord } from "../types";
 export const HOLDING_REFRESH: AgentRecord = {
   id: "holding_refresh",
   name: "Holding refresh",
-  does: "Re-researches a stock we own and rewrites its thesis: the belief, what would prove it wrong, and its sale, trim and add triggers, edited by id.",
+  does: "Re-researches a stock we own and rewrites its thesis: the belief, the opinion, the KPIs, and its sale, trim and add triggers, edited by id.",
   runsWhen: "When a stock we own is sent for a refresh: from the chat, a run or the Portfolio Manager.",
   messageFrom: "The sender's brief (dispatch_thesis_research, from the chat, a run or the Portfolio Manager): why it was sent, what the sender found, whose idea it was.",
   subject: "thesis",

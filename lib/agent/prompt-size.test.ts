@@ -134,8 +134,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-20: −5 each, get_theses says a row's `said` is the last 3 reviews, 3 news notes, 3 of the owner's notes and the last decline.
   // 2026-11-20: +61 on each, get_theses says every stock is a line of the `stocks` table.
   // 2026-11-23: -151 on each, get_theses's description says one row, with include_research for the bull and bear cases.
-  // 2026-11-24: +86, write_note and set_conviction take the opinion with a verdict, and the KPIs' words.
-  "research-run": 30_778,
+  // 2026-11-24: +75, write_note and set_conviction take the opinion with a verdict, the KPIs' words, and get_theses names the row's opinion and KPIs.
+  "research-run": 30_767,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
@@ -146,8 +146,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +72, the same get_theses.
   // 2026-11-19: +168, the same measure.
   // 2026-11-19: +508, stop_watching (its reason; code fills the stock).
-  // 2026-11-24: +86, the same.
-  tactical: 27_330,
+  // 2026-11-24: +75, the same.
+  tactical: 27_319,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.
@@ -175,8 +175,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +283, watch_stock's look-again is a price, the next report or the event's date.
   // 2026-11-19: +310, the same get_theses, and read_knowledge_library lists the situations (topic "situation").
   // 2026-11-19: +147, the same measure (+168), and write_note's pinned_until says a pinned note is read above the Activity lines, not that it lists the stock (−21).
-  // 2026-11-24: +146, the same, and record_thesis's KPIs and opinion.
-  principal: 46_709,
+  // 2026-11-24: +135, the same, and record_thesis's KPIs and opinion.
+  principal: 46_698,
 };
 const RUN_MODE: Record<string, string> = { "research-run": "MORNING_PLAN", tactical: "INTRADAY_TACTICAL", principal: "PRINCIPAL_CHAT" };
 

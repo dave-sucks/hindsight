@@ -341,7 +341,7 @@ export function formatTickerHistory(h: TickerHistory, opts: { lookup?: boolean }
     // Only for a reader that has get_theses (the Writer has not).
     if (opts.lookup !== false) {
       parts.push(
-        `Full prior thesis — assumptions, invalidation conditions, levels, triggers and the whole audit trail — is available: get_theses(tickers: ["${h.ticker}"], status: ["${t.status}"], include_history: true).`,
+        `Full prior thesis — the opinion, the KPIs, the triggers and the whole audit trail — is available: get_theses(tickers: ["${h.ticker}"], status: ["${t.status}"], include_history: true).`,
       );
     }
   }

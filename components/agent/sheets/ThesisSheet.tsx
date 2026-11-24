@@ -386,12 +386,9 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
  * order (2026-11-02, labels 2026-11-03; the company's two sentences moved
  * to the Overview 2026-11-05). It opens as the Overview's foot does: the
  * work flag, then the belief at the Overview's size with no label, then
- * the write-up's date and price with the View thesis link; the bull case,
- * the bear case and what would prove us wrong exposed as
- * bullets; the filings in their old place under the top block; then the
- * accordion, with its "Updated 50d ago" header row as before, holding the
- * key assumptions, where we differ from the street, and the conviction's
- * reason under its own fold. Every sentence is drawn with the Writer's
+ * the write-up's date and price with the View thesis link; the playbook
+ * with its line; the KPIs, the filings, the bull case and the bear case;
+ * then the conviction's reason under its own fold. Every sentence is drawn with the Writer's
  * citation tags removed. A row written before the company line shows
  * nothing there, never a placeholder.
  */
