@@ -154,6 +154,8 @@ export interface ThesisDossier {
   // "DROPPED"|"REPLACED"|null. Drives the terminal-status banner.
   retiredReason: string | null;
   horizon: string | null;
+  /** The stock's playbook: its name and its one sentence (how long we hold, how we buy, how we sell). Null when it names none. */
+  playbook?: { name: string; line: string | null } | null;
   /** One line per trigger at a typed price, labelled with its sentence (`priceLines`). What the chart draws. */
   priceLines: PriceLine[];
   catalystDate: string | null;

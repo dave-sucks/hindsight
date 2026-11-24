@@ -431,6 +431,16 @@ function ResearchView({
         <WrittenUpLine writtenUp={state.writtenUp} href={href} />
       </div>
 
+      {state.playbook ? (
+        <Section label="Playbook">
+          <p className="text-sm text-foreground">
+            {state.playbook.name}
+            {state.horizon ? ` · ${state.horizon.charAt(0)}${state.horizon.slice(1).toLowerCase()}` : ""}
+          </p>
+          {state.playbook.line ? <p className="text-sm text-muted-foreground">{state.playbook.line}</p> : null}
+        </Section>
+      ) : null}
+
       {kpis.length > 0 ? (
         <Section label="KPIs">
           <Bullets items={kpis} />
