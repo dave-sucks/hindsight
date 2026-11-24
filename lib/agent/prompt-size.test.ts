@@ -53,8 +53,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-20: +24, the sample stock's line says its outlook is not rated yet.
   // 2026-11-20: +37, the re-set after a blown-through price is a holding's sale and gain triggers'; a fired buy is its skill's.
   // 2026-11-23: tactical -10, the sample row is the one row every opened stock gets: no line on how to get the full row, and its assumptions with it (ROW_FIELDS).
-  // 2026-11-23: tactical -1, the sample row's situation reads "CODE: what raised it", not "CODE (name: what raised it)".
-  tactical: 14_743,
+  // 2026-11-24: tactical +3, the sample row's situations read "CODE: the tag" and two situations are renamed (possible sale, review).
+  tactical: 14_747,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.

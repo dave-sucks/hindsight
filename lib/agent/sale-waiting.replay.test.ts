@@ -144,8 +144,8 @@ describe("MU 10-13 08:00 ET: the 10-12 sale is waiting, so the sale is not the r
 
     expect(crashed).toBe(false);
     expect(result.summary).toMatch(/refused/i);
-    expect(String((result.data as { error?: string }).error)).toContain(`MU (${MU_ID}): review due`);
-    expect(String((result.data as { error?: string }).error)).not.toMatch(/sale signal/);
+    expect(String((result.data as { error?: string }).error)).toContain(`MU (${MU_ID}): review`);
+    expect(String((result.data as { error?: string }).error)).not.toMatch(/possible sale/);
     expect(db.store.researchRun[0].status).toBe("RUNNING");
   });
 });

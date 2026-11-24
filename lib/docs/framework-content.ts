@@ -119,7 +119,7 @@ export const SHEET_FIELDS: ReadonlyArray<SheetField> = [
   { id: "position", label: "Position", value: "Bought 14 shares at $404.10 on Oct 15, now $418.20 (+3.5%)", keys: ["position"] },
   { id: "proposal_waiting", label: "Proposal waiting", value: "sell 14 sh, placed 10-16 09:31 ET, expires 10-17", keys: ["proposal_waiting"] },
   { id: "chart", label: "Chart numbers", value: "20d $402 · 50d $388 · 200d $351 · RSI 64 · vs the S&P +9% over 3M", keys: ["chart"] },
-  { id: "situations", label: "Situations", value: "ADD_OR_WINNER: Add if above 10% from yesterday's close · REVIEW_DUE: Review every 30 days · fired again, 3rd day", keys: ["situations", "repeat"] },
+  { id: "situations", label: "Situations", value: "ADD_OR_WINNER: Possible add · above 10% from yesterday's close · REVIEW_DUE: Review · every 30 days · fired again, 3rd day", keys: ["situations", "repeat"] },
   { id: "triggers", label: "The plan: every trigger, as a sentence", value: "Sell if below $384 on the close · Review if above 10% from our entry · Review if above the Street's average target · Review if within 5 days before earnings · Review every 30 days", keys: ["triggers"] },
   { id: "floor_risk", label: "Floor risk and flags", value: "At the $384 floor, 14 shares lose $281, 0.3% of the account", keys: ["floor_risk", "buyBlockedByFull", "heldThroughFloor", "supersededBy"] },
   { id: "belief", label: "Core thesis", value: "The platform keeps taking share as security budgets consolidate; what has to stay true is net new ARR above $200M a quarter.", keys: ["belief"] },

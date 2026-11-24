@@ -7,7 +7,7 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill fil
 ## How a situation works
 
 1. A situation is raised by one of your triggers firing, or by one of three checks in the code. Nothing else raises one, and nothing is stored: it is worked out each time the stock is read (`situationsFor`).
-2. The stock says why in one wording, the same on its line of the stock table, on its page and on the row an agent reads. When a trigger raised it, that is the trigger's own sentence ("Sell if below $804", "Review every 30 days"). When a check in the code raised it, that is the check's name ("floor to fix"). An agent's row puts the situation's code in front.
+2. The stock shows one tag, the same on its line of the stock table, on its page and on the row an agent reads: the decision on the table, then why. A trigger's action is the decision and its condition is the why ("Possible sell · below $804", "Review · every 30 days"). A check in the code shows its name and its fact ("Floor to fix · 2.1% of the account below here"). An agent's row puts the situation's code in front.
 3. The situation does one thing: it picks the text below. The text goes to the run that answers. The morning run's list carries one `guidance` entry per situation on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.
 4. A text can have a part for a stock we hold and a part for a stock we watch. A run is sent the part that fits its stock, whole and as written. No code writes or changes a word of it.
 
@@ -15,13 +15,13 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill fil
 
 | Situation | Raised by | When |
 |---|---|---|
-| **Sale signal** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
-| **Buy price reached** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
-| **Add** | A trigger | An Add trigger fired on a holding. |
-| **A report** | A trigger | A Review trigger on the company's earnings report fired, before the report or after it. |
-| **A filing** | A trigger | A Review trigger on the company's SEC filings fired. |
-| **News** | A trigger | A Review trigger on the Market Reviewer's notes fired: it wrote a high note on the stock. |
-| **Review due** | A trigger | A “Review every N days” trigger came due, or any other Review trigger fired. |
+| **Possible sale** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
+| **Possible buy** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
+| **Possible add** | A trigger | An Add trigger fired on a holding. |
+| **Earnings report** | A trigger | A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale. |
+| **SEC filing** | A trigger | A trigger that watches the company's SEC filings fired. |
+| **News** | A trigger | A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock. |
+| **Review** | A trigger | A “Review every N days” trigger came due, or a Review trigger on a price or a move fired. |
 | **Floor to fix** | A check in the code | A holding's floor (its “Sell if below” trigger) locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
 | **Just sold** | A check in the code | The stock was sold in the last two weeks and no run has looked at it since. |
 | **Promoted to live** | A check in the code | A paper analyst was promoted to live money, and its holdings need a decision. |
@@ -108,7 +108,7 @@ Mistakes:
 - A note in place of the decision: the stock stays promoted and is asked again on the next run.
 ```
 
-## Sale signal
+## Possible sale
 
 `PROTECTIVE_SALE` · rank 2 of 10 · `sale-fired.md`
 
@@ -133,7 +133,7 @@ A stock we hold. The trigger was written while calm, so the sale goes ahead unle
 Done: one note that says why the stock fell and whether that changes why we own it, with the sale, the trim, or why you hold.
 ```
 
-## Buy price reached
+## Possible buy
 
 `BUY_ARRIVES` · rank 3 of 10 · `buy-fired.md`
 
@@ -159,7 +159,7 @@ A stock we watch. Every check holds: propose the buy with its floor. Leave the b
 Done: one note that says what is going on with the company and why now is the time to buy or not, with the buy or what you wait for.
 ```
 
-## Add
+## Possible add
 
 `ADD_OR_WINNER` · rank 4 of 10 · `add-fired.md`
 
@@ -184,11 +184,11 @@ A stock we hold. The move confirms the case: propose the add, then raise the flo
 Done: one note that says why the stock moved and whether that confirms why we own it, with the add, the floor raised and what it now locks in, or the trim.
 ```
 
-## A report
+## Earnings report
 
 `REPORT` · rank 5 of 10 · `report.md`
 
-**Raised by:** a trigger. A Review trigger on the company's earnings report fired, before the report or after it.
+**Raised by:** a trigger. A trigger that watches the company's earnings report fired, before the report or after it. Its text is added to whatever the trigger's action is: a review, or a sale.
 
 **How it reads, in each place it shows:**
 
@@ -216,11 +216,11 @@ A stock we watch. Before: the buy waits for the report. After: the case is stron
 A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Before, it names the bar. After: the report against the bar, how the stock took it, the verdict.
 ```
 
-## A filing
+## SEC filing
 
 `FILING` · rank 6 of 10 · `filing.md`
 
-**Raised by:** a trigger. A Review trigger on the company's SEC filings fired.
+**Raised by:** a trigger. A trigger that watches the company's SEC filings fired.
 
 **How it reads, in each place it shows:**
 
@@ -246,7 +246,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 `NEWS` · rank 7 of 10 · `news.md`
 
-**Raised by:** a trigger. A Review trigger on the Market Reviewer's notes fired: it wrote a high note on the stock.
+**Raised by:** a trigger. A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock.
 
 **How it reads, in each place it shows:**
 
@@ -292,11 +292,11 @@ A stock we hold. Raise the floor to just under that structure. A compounder gets
 Done: one note that says how the stock got here and what is driving it now, with the new floor and what it locks in, the trim, or why the floor stays.
 ```
 
-## Review due
+## Review
 
 `REVIEW_DUE` · rank 9 of 10 · `review.md`
 
-**Raised by:** a trigger. A “Review every N days” trigger came due, or any other Review trigger fired.
+**Raised by:** a trigger. A “Review every N days” trigger came due, or a Review trigger on a price or a move fired.
 
 **How it reads, in each place it shows:**
 

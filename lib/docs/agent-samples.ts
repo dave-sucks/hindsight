@@ -59,7 +59,7 @@ const BOOK = bookText([
 const STOCKS = stockTableText({
   asOf: "2026-11-11T21:00:00.000Z",
   rows: [
-    { ticker: "AAA", status: "held", analyst: "Case Analyst", situations: ["Sell if below $101"], price: 98.4, dayPct: -3.1, volume: 1.4, move5dPct: -6.2, move20dPct: -9.8, vsSpy1M: -7.5, vs50dPct: -8.1, offHighPct: -19.4, sinceBuyPct: -8.9, outlook: "BULLISH", conviction: "MEDIUM", nextReport: null, waiting: null },
+    { ticker: "AAA", status: "held", analyst: "Case Analyst", situations: ["Possible sell · below $101"], price: 98.4, dayPct: -3.1, volume: 1.4, move5dPct: -6.2, move20dPct: -9.8, vsSpy1M: -7.5, vs50dPct: -8.1, offHighPct: -19.4, sinceBuyPct: -8.9, outlook: "BULLISH", conviction: "MEDIUM", nextReport: null, waiting: null },
     { ticker: "BBB", status: "held", analyst: "Case Analyst", situations: [], price: 51.2, dayPct: 0.6, volume: 0.9, move5dPct: 1.8, move20dPct: 4.4, vsSpy1M: 3.1, vs50dPct: 2.7, offHighPct: -4.0, sinceBuyPct: 6.3, outlook: "BULLISH", conviction: "HIGH", nextReport: "2026-11-19", waiting: null },
     { ticker: "CCC", status: "watch", analyst: "Case Analyst", situations: [], price: 118.9, dayPct: 1.2, volume: 1.1, move5dPct: 2.9, move20dPct: 7.6, vsSpy1M: 5.0, vs50dPct: 4.3, offHighPct: -2.2, sinceBuyPct: null, outlook: "BULLISH", conviction: "MEDIUM", nextReport: null, waiting: null },
   ],
@@ -141,7 +141,7 @@ export const AGENT_SAMPLES: Partial<Record<AgentId, AgentSample>> = {
     },
   },
   morning_run: {
-    from: "a full morning: reports, a filing, a buy price reached",
+    from: "a full morning: reports, a filing, a possible buy",
     build: () => {
       const c = MORNING_CASES.full;
       return { request: dailyRunRequest(c.analyst as never, { ...asRunInput(c.runInput), portfolioPieces: PIECES }, SAMPLE_NOW) };

@@ -24,8 +24,8 @@ const INPUTS: readonly { title: string; sub: string }[] = [
 ];
 
 const STOCKS: readonly { s: string; situations: readonly string[] }[] = [
-  { s: "MU", situations: ["Review every 30 days", "floor to fix"] },
-  { s: "CRWD", situations: ["Buy if above $52.25"] },
+  { s: "MU", situations: ["Review · every 30 days", "Floor to fix"] },
+  { s: "CRWD", situations: ["Possible buy · above $52.25"] },
   { s: "LLY", situations: [] },
 ];
 
@@ -147,21 +147,21 @@ export function SituationFlow() {
 /**
  * How one situation reads in each place it shows, above its text on the
  * Situations library page (`situation-named CODE`). Every place prints the
- * same wording (lib/agent/situations.ts `situationLabels`): the sentence of
- * the trigger that raised it, or the name of the check in the code that did.
+ * same tag (lib/agent/situations.ts `situationLabels`): the decision on the
+ * table, then why.
  * The examples are worded here; a real one carries the stock's own trigger.
  */
 const EXAMPLE: Record<SituationCode, string> = {
-  PROMOTED_AWAITING: "promoted to live",
-  PROTECTIVE_SALE: "Sell if below $804",
-  BUY_ARRIVES: "Buy if above $52.25 · only on the close",
-  ADD_OR_WINNER: "Add if above 10% from yesterday's close",
-  REPORT: "Review if within 5 days before earnings",
-  FILING: "Review if it files something material with the SEC",
-  NEWS: "Review if the Market Reviewer writes a high note on it",
-  PROTECTION: "floor to fix, 2.1% of the account below here",
-  REVIEW_DUE: "Review every 30 days, 3 days overdue",
-  SOLD_ONE_REVIEW: "just sold",
+  PROMOTED_AWAITING: "Promoted to live",
+  PROTECTIVE_SALE: "Possible sell · below $804",
+  BUY_ARRIVES: "Possible buy · above $52.25 · only on the close",
+  ADD_OR_WINNER: "Possible add · above 10% from yesterday's close",
+  REPORT: "Review · within 5 days before earnings",
+  FILING: "Review · it files something material with the SEC",
+  NEWS: "Review · the Market Reviewer writes a high note on it",
+  PROTECTION: "Floor to fix · 2.1% of the account below here",
+  REVIEW_DUE: "Review · every 30 days, 3 days overdue",
+  SOLD_ONE_REVIEW: "Just sold",
 };
 
 function NamedRow({ where, children }: { where: string; children: React.ReactNode }) {

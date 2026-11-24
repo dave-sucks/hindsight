@@ -150,10 +150,10 @@ describe("Secular Compounder, 2026-11-13: the close-out owes what the read liste
     expect(owed).toEqual(["ASML", "CEG", "EME"]);
     expect(status).toBe("RUNNING");
     // CEG's floor had fired and was still past: a fired sale stays on the list (2026-11-17).
-    expect(message).toMatch(/CEG \(t_CEG\): sale signal;/);
+    expect(message).toMatch(/CEG \(t_CEG\): possible sale;/);
     expect(message).not.toMatch(/AAPL/);
-    expect(message).toMatch(/EME \(t_EME\): review due/);
-    expect(message).toMatch(/ASML \(t_ASML\): review due/);
+    expect(message).toMatch(/EME \(t_EME\): review/);
+    expect(message).toMatch(/ASML \(t_ASML\): review/);
   });
 
   it("the close-out's owed set is the read's listed set: the 12 the run's read listed, less the six the deleted situations alone listed", async () => {
