@@ -13,15 +13,17 @@ import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { runAgentAsRun } from "@/lib/agent/engine/run";
 import { AFTER_BUY, AFTER_BUY_ASK } from "@/lib/agent/engine/agents/after-buy";
 import { pullThesisData } from "@/lib/agent/thesis-research/pull-data";
-import { BUY_FILLED, afterBuyMessage, loadAfterBuyFacts } from "@/lib/proposals/after-buy";
+import { BUY_FILLED, afterBuyMessage, loadAfterBuyFacts, mayRunAfterBuy } from "@/lib/proposals/after-buy";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 
-/** Runs After the buy on one filled order; a fill it isn't for, or one already run, is skipped. */
+/** Runs After the buy on one filled order; a fill it isn't for, or one with a finished run, is skipped. */
 export async function runAfterBuy(orderId: string): Promise<{ skipped: string } | { runId: string; status: string; noted: boolean }> {
   const facts = await loadAfterBuyFacts(orderId);
   if (!facts) return { skipped: "not a filled buy or add on a stock we hold" };
-  const done = await prisma.researchRun.findFirst({ where: { mode: "AFTER_BUY", parameters: { path: ["orderId"], equals: orderId } }, select: { id: true } });
+  const tried = await prisma.researchRun.findMany({ where: { mode: "AFTER_BUY", parameters: { path: ["orderId"], equals: orderId } }, select: { id: true, status: true, startedAt: true, parameters: true } });
+  const done = tried.find((r) => r.status === "COMPLETE");
   if (done) return { skipped: `already run (${done.id})` };
+  if (!mayRunAfterBuy(tried, new Date())) return { skipped: "a run is going, or its tries are used" };
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: facts.analystId },
     select: { id: true, userId: true, exclusionList: true, sectors: true, minPositionSize: true, maxPositionSize: true, maxPositionTotal: true, maxOpenPositions: true },
@@ -79,8 +81,7 @@ export const afterBuyRun = inngest.createFunction(
   {
     id: "after-buy-run",
     name: "After the buy",
-    // One run per order: a fill reported twice (the tool and the reconciler) runs once.
-    idempotency: "event.data.orderId",
+    // One at a time per order: a fill reported twice runs once, because the second finds the first finished.
     concurrency: { limit: 1, key: "event.data.orderId" },
     retries: 1,
   },

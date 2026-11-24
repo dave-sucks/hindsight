@@ -17,7 +17,9 @@
 // theses; if the belief breaks on a holding the agent sells with
 // belief_survived false, which retires the thesis.
 
+import { NonRetriableError } from "inngest";
 import { isNotelessEdit } from "@/lib/agent/no-note";
+import { recoverFire, type FailedFire } from "@/lib/agent/triggers/lost-fire";
 import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
@@ -78,6 +80,9 @@ interface FiredPayload {
   firedContext?: string | null;
   /** Other protective triggers that fired with this one on the same pass (DAV-254). */
   coFired?: Array<{ triggerId: string; sentence: string }>;
+  /** A failed fire tried again (lost-fire.ts). */
+  recoveryTry?: number;
+  firstFiredAt?: string;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -116,6 +121,9 @@ export const tacticalRun = inngest.createFunction(
     // book entry (e.g. EXIT trigger + ADD trigger firing back-to-back).
     concurrency: { limit: 4, key: "event.data.thesisId" },
     retries: 1,
+    // The trigger is already marked fired, so a failed run would lose the fire.
+    onFailure: async ({ event, step }) =>
+      recoverFire(event.data.event as unknown as { data: FailedFire; ts?: number }, step as unknown as Parameters<typeof recoverFire>[1]),
   },
   { event: "app/thesis.trigger.fired" },
   async ({ event, step }) => {
@@ -379,6 +387,14 @@ export const tacticalRun = inngest.createFunction(
     // responded." Without this, RunInput.triggersFiredSinceLastRun
     // returns empty even when triggers genuinely fired.
     await step.run("write-trigger-fired", async () => {
+      // A fire tried again keeps its one line, now on this run.
+      if (fired.recoveryTry && fired.firstFiredAt) {
+        const moved = await prisma.thesisUpdate.updateMany({
+          where: { thesisId: thesis.id, type: "TRIGGER_FIRED", triggerId: trigger.id, timestamp: { gte: new Date(fired.firstFiredAt) } },
+          data: { runId: run.id },
+        });
+        if (moved.count > 0) return;
+      }
       // Persist a human-readable sentence — same format the sheet's
       // banner renders. Old SCREAMING_SNAKE_CASE summaries were
       // unreadable ("REVIEW trigger matched: price-below (price/time)").
@@ -1031,6 +1047,10 @@ export const tacticalRun = inngest.createFunction(
     for (const orderId of (outcome as { noted?: string[] }).noted ?? (auto?.orderId ? [auto.orderId] : [])) {
       await step.run(`note-written-${orderId}`, () => sendNoteWritten(orderId));
     }
+
+    // A run that failed hasn't answered the fire: the failure handler tries it again, then tells the owner.
+    const failed = (outcome as { error?: string }).error;
+    if (failed) throw new NonRetriableError(`trigger run ${run.id} failed: ${failed}`);
 
     return {
       runId: run.id,

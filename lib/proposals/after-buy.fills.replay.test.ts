@@ -121,7 +121,7 @@ describe("runAfterBuy, PANW's order", () => {
 
   it("an order it already ran on is skipped", async () => {
     afterTheFill();
-    db.store.researchRun = [{ id: "cmwnqr7rx000308l2q71n8ac2", mode: "AFTER_BUY", accountId: REPLAY_ACCOUNT_ID, parameters: { ticker: "PANW", thesisId: THESIS, orderId: ORDER } }];
+    db.store.researchRun = [{ id: "cmwnqr7rx000308l2q71n8ac2", mode: "AFTER_BUY", status: "COMPLETE", accountId: REPLAY_ACCOUNT_ID, parameters: { ticker: "PANW", thesisId: THESIS, orderId: ORDER } }];
     expect(await runAfterBuy(ORDER)).toEqual({ skipped: "already run (cmwnqr7rx000308l2q71n8ac2)" });
     expect(mockRunAgentAsRun).not.toHaveBeenCalled();
   });
