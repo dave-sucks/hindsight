@@ -142,7 +142,7 @@ export async function seedAccountTriggers(accountId: string): Promise<boolean> {
 export function unseededAccountFallback(accountId: string): Trigger[] {
   console.warn(
     `[trigger-levels] account=${accountId} has no seeded standing rules — ` +
-      `falling back to the code constants. Run seedAccountTriggers().`,
+      `falling back to the code constants until its next morning run seeds it (seedAccountTriggers).`,
   );
   return accountStandingRules().map((t) => ({ ...t, id: `fallback:${triggerSlot(t)}` }));
 }

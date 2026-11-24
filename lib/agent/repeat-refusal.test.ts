@@ -48,6 +48,10 @@ it("the same refused call is stopped on the third refusal, and the model is told
   expect(repeatRefusalStop(out.steps)).toBe("update_thesis was refused three times with the same call: This thesis is HOLDING.");
 });
 
+it("the guard is a stop and nothing else: no loop that takes it can be handed a message by it", () => {
+  expect(Object.keys(repeatRefusalGuard)).toEqual(["stopWhen"]);
+});
+
 it("the same call with its keys in another order is the same call", async () => {
   const reordered = Object.fromEntries(Object.entries(call).reverse());
   const { out } = await run([call, reordered, call], REFUSED);

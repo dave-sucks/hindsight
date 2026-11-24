@@ -6,8 +6,9 @@
  * cause is fixed in the tool (a save is a patch); this is the net under
  * every tool, a cap on what a run can spend. The model reads each refusal as
  * the tool's result; nothing more is said to it. A third identical refusal
- * ends the loop, and the run closes FAILED with the reason named. Every
- * agent's loop has it (the morning run, the trigger run, lib/agent/engine/run.ts).
+ * ends the loop, and the run closes FAILED with the reason named. The morning
+ * run, the trigger run and every agent the runner starts (lib/agent/engine/run.ts)
+ * have it; the chat route does not.
  */
 import { detectGateRejection, detailFromData } from "@/lib/agent/gate-rejections";
 

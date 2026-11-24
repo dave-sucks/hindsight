@@ -14,6 +14,7 @@ import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gat
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage } from "@/lib/agent/token-usage";
 import { buildRunInput } from "@/lib/agent/run-input";
+import { seedAccountTriggers } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
@@ -269,6 +270,15 @@ export const morningResearch = inngest.createFunction(
           (await resolveAlpacaCredentials(config.userId, runEnvironment)) ??
           undefined;
 
+        // An account never seeded (a signup whose seed write failed) gets its
+        // standing rules now; a seeded one is left alone (seed-account.ts).
+        // Fail-soft: the read-side fallback still protects its holdings.
+        try {
+          if (await seedAccountTriggers(config.accountId)) console.log(`[morning-research] account=${config.accountId} seeded its standing rules`);
+        } catch (err) {
+          console.error("[morning-research] seedAccountTriggers failed (non-fatal):", err);
+        }
+
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
 
         // 2d. Create tools with run context, then enforce the
@@ -333,8 +343,8 @@ export const morningResearch = inngest.createFunction(
         const toolStats: Record<string, { count: number; totalLatencyMs: number; errors: number }> = {};
         // Token accounting (2026-08-13 cost fix). Per-step usage was logged
         // to console and thrown away while the fleet quietly burned ~1M
-        // tokens per analyst per morning. Accumulated across the main loop
-        // AND the retry pass, persisted into parameters.tokenUsage so cost
+        // tokens per analyst per morning. Accumulated across the run's
+        // loop, persisted into parameters.tokenUsage so cost
         // is a queryable metric per run. cachedInput tells us whether
         // OpenAI's prompt caching is actually hitting. The counter is the
         // one every agent uses (lib/agent/token-usage.ts).
@@ -666,7 +676,7 @@ export const morningResearch = inngest.createFunction(
 
           // Per-analyst briefing deprecated (docs/plans/PORTFOLIO_DIGEST.md):
           // the account-level PortfolioDigest replaces it. No briefing write
-          // on the error/recovery path either.
+          // on the error path either.
 
           return { error: message, partialTheses, partialTrades };
         }

@@ -72,7 +72,7 @@ describe("the morning run", () => {
     const done = () => json({ id: "c1", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "Done." } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const net = network(done);
     const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [] };
-    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools", "@/lib/agent/portfolio-block", "@/lib/agent/triggers/earnings", "@/lib/market-data/sec-filings"];
+    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/triggers/seed-account", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools", "@/lib/agent/portfolio-block", "@/lib/agent/triggers/earnings", "@/lib/market-data/sec-filings"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
       let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
@@ -80,6 +80,7 @@ describe("the morning run", () => {
       jest.doMock("@/lib/inngest/client", () => inngest((h) => (handler = h)));
       jest.doMock("@/lib/agent/watchlist-symbols", () => ({ getWatchlistSymbols: async () => [] }));
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
+      jest.doMock("@/lib/agent/triggers/seed-account", () => ({ seedAccountTriggers: async () => false }));
       jest.doMock("@/lib/agent/run-input", () => ({ buildRunInput: async () => runInput }));
       jest.doMock("@/lib/agent/knowledge/load-setup-overrides", () => ({ loadSetupOverrides: async () => ({}) }));
       // The analyst's facts, read for it (lib/agent/context/): no Market and portfolio reads here, MU reporting tomorrow, no filings.

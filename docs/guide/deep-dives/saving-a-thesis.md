@@ -49,7 +49,7 @@ On a stock we hold, no agent can lower or widen a protective level, remove it, o
 
 Every refusal is recorded. The agent reads it once, as the tool's answer with what to do instead; no later run is reminded of it. The homepage Activity shows refused trades for 30 days, and other refusals still open for 14 days, until the same tool lands on the same stock. A refusal of a single field isn't shown, since the rest of that call landed. A passed stock, or one no longer watched, takes no notes or edits, and its refusal says nothing more is owed. A sold stock still takes its one review: its refusal names the note that lets it go and `watch_again`.
 
-An agent that sends the same refused call a third time is stopped, and the run closes as failed with the reason named; nothing more is said to it before then. Every agent's run has this guard, [trigger](../agents/trigger-runs.md) runs included.
+An agent that sends the same refused call a third time is stopped, and the run closes as failed with the reason named; nothing more is said to it before then. Morning runs, [trigger](../agents/trigger-runs.md) runs and the other scheduled agents have this guard; the chat does not.
 
 Status changes follow one table. An agent can drop a stock it watches (`stop_watching`, retired as dropped) or put a sold one back on watch (`watch_again`). It can't mark a stock held or sold: those follow the order.
 

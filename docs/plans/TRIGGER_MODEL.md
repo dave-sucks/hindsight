@@ -68,8 +68,8 @@ The current `needsAction` enum blurs three genuinely different things:
   invisible computed flag (§5).
 - `UNPROTECTED_GAIN` → **NOT a trigger — a ladder linter.** Its condition
   reads *the other triggers* (gain vs what the tightest floor locks). It is a
-  health check on the trigger set, same family as the `complete_run`
-  warn-gate. Keep it computed and visually distinct from rungs.
+  health check on the trigger set (the `complete_run` warn-gate, the
+  same family, was deleted 2026-11-24: it never fired). Keep it computed and visually distinct from rungs.
 - `TRIGGER_FIRED` / `TRIGGER_MATCHING_NOW` → inbox (layer 2), never rungs.
 - `PROMOTED_AWAITING_RESOLUTION` → lifecycle (layer 3), correctly unique.
 
@@ -146,8 +146,7 @@ mechanical either way (peak tracked, predicate evaluated with no agent).
    Defaults stayed **visible and overridable** rather than hard-locked, as
    intended — they're now readable on the account page instead of only in
    code. Load-bearing detail: the resolver feeds the trigger evaluator,
-   tactical-run, `get_theses`, live-evaluate and the `complete_run`
-   warn-gate, not just the UI. A level that doesn't reach the evaluator is
+   tactical-run, `get_theses` and live-evaluate, not just the UI. A level that doesn't reach the evaluator is
    a lie told in CSS.
 
 ## 6. Productization sequence (visibility → control)

@@ -112,7 +112,7 @@ the `context` block that carries them back to the agent; ladder re-edits → mor
 | What WILL a new holding get, at what thresholds? | ✅ `/settings/triggers` — account rules solid, code defaults dashed and read-only | — |
 | Did a trigger fire? What woke? What did the agent decide? | data ✅ / UI ❌ — requires spelunking thesis history + runs list separately | **P1-33**: per-trigger timeline in the thesis sheet ("fired 7/14 → tactical → pressed: +$2k add, floor 64→71") + fires/decisions/edits in the activity feed (PR8 ship-now slice) |
 | Is my whole book protected right now? | data ✅ (`ladderHealth`) / UI ❌ | **P1-33**: a book-level protection strip (per holding: gain, floor locks, trail?, nearest rung) — the "trust it's working" view |
-| Was I notified? | ✅ proposal email + ntfy push (#479) | fires/warnings notify nothing (fine for REVIEW; consider push on `ladder_warning`) |
+| Was I notified? | ✅ proposal email + ntfy push (#479) | fires notify nothing (fine for REVIEW); the `ladder_warning` event was deleted 2026-11-24 (it never fired) |
 
 **P1-33 build order (after PR-C validates):** (1) trigger timeline on the
 thesis sheet — pure read of existing rows, highest trust-per-effort; (2)
