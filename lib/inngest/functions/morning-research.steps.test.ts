@@ -9,8 +9,8 @@ import { readFileSync } from "fs";
 const source = readFileSync("lib/inngest/functions/morning-research.ts", "utf8");
 
 describe("morning-research's step caps", () => {
-  it("the main loop and the zero-tool-call recovery both stop at the mode's maxSteps", () => {
-    expect(source.match(/stepCountIs\(MODES\["research-run"\]\.maxSteps\)/g)).toHaveLength(2);
+  it("the run's one loop stops at the mode's maxSteps", () => {
+    expect(source.match(/stepCountIs\(MODES\["research-run"\]\.maxSteps\)/g)).toHaveLength(1);
   });
 
   it("no other loop in the file carries a literal 30 or 65 of its own", () => {

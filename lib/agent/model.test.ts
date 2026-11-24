@@ -72,7 +72,7 @@ describe("the morning run", () => {
     const done = () => json({ id: "c1", object: "chat.completion", created: 1, model: "gpt-5.4", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "Done." } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
     const net = network(done);
     const runInput = { portfolio: { cash: 0, buyingPower: 0, portfolioValue: 0, positions: [], exposure: { long: 0, short: 0, net: 0, utilizationPct: 0 } }, watchlist: [], activeTheses: [], triggersFiredSinceLastRun: [], triggersMatchingNow: [] };
-    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/triggers/seed-account", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools", "@/lib/agent/portfolio-block", "@/lib/agent/triggers/earnings", "@/lib/market-data/sec-filings"];
+    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/agent/watchlist-symbols", "@/lib/actions/api-keys.actions", "@/lib/agent/run-input", "@/lib/agent/knowledge/load-setup-overrides", "@/lib/agent/tools", "@/lib/agent/portfolio-block", "@/lib/agent/triggers/earnings", "@/lib/market-data/sec-filings"];
     let view: typeof import("@/lib/agent/run-requests").viewOfRecord | undefined;
     await jest.isolateModulesAsync(async () => {
       let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
@@ -80,7 +80,6 @@ describe("the morning run", () => {
       jest.doMock("@/lib/inngest/client", () => inngest((h) => (handler = h)));
       jest.doMock("@/lib/agent/watchlist-symbols", () => ({ getWatchlistSymbols: async () => [] }));
       jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
-      jest.doMock("@/lib/agent/triggers/seed-account", () => ({ ensureAccountStandingRules: async () => 0 }));
       jest.doMock("@/lib/agent/run-input", () => ({ buildRunInput: async () => runInput }));
       jest.doMock("@/lib/agent/knowledge/load-setup-overrides", () => ({ loadSetupOverrides: async () => ({}) }));
       // The analyst's facts, read for it (lib/agent/context/): no Market and portfolio reads here, MU reporting tomorrow, no filings.
@@ -103,16 +102,16 @@ describe("the morning run", () => {
     // The agent is in the row's first characters, where the Framework page looks for it.
     expect(((db.store.runMessage ?? []) as Kept[]).find((m) => m.role === "request")!.content.startsWith('{"v":1,"call":"Main","agent":"morning_run",')).toBe(true);
     expect(asSent(main.record)).toEqual([net.sent[0]]);
-    // The run's retry, when it made one, keeps its own first request.
-    for (const k of more) expect(net.sent).toContain(asSent(k.record)[0]);
+    // One call, one request: a run that ends on text is not sent again.
+    expect(more).toEqual([]);
     // The agent engine built it: Context shows each part by name.
     const names = view!(main.record).categories.map((c) => c.name);
     // Its instructions, one document, then the analyst under Context, sent with them.
     expect(names.slice(0, 2)).toEqual(["Its instructions (morning-run.md)", "The analyst"]);
     expect(names.slice(-2)).toEqual(["The message", "Tool menu"]);
-    // Every request it sent, its retry's too, opens with the first message and the book's week in it.
+    // The request opens with the first message and the book's week in it.
     const firstUser = (body: string) => (JSON.parse(body).messages as Array<{ role: string; content: string }>).find((m) => m.role === "user")!.content;
-    expect(net.sent.length).toBeGreaterThan(1);
+    expect(net.sent).toHaveLength(1);
     for (const body of net.sent) expect(firstUser(body)).toMatch(/^\w{3}, \w{3} \d+, \d{4}, [\d:]+ [AP]M ET, the PAPER account\.\n\n## Your book \(get_theses\)\n[\s\S]*\n\n## Earnings on your book this week\nReporting: MU 2026-11-19 after close[\s\S]*\n\nIt's the start of the trading day\./);
     // The run page opens with its message alone (the snapshot couldn't be read here, so the kickoff says the cash): the reads are on the Context panel.
     const thread = (db.store.runMessage as Kept[]).find((m) => m.role === "thread")!;
@@ -170,6 +169,41 @@ describe("a trigger run", () => {
     expect(names.slice(0, 2)).toEqual(["Its instructions (trigger-run.md)", "The analyst"]);
     expect(names.slice(-3)).toEqual(["The stock", "The message", "Tool menu"]);
     expect(categories.find((c) => c.name === "The message")!.sections.map((s) => s.text).join("")).toMatch(/^Tactical run on \$V\./);
+  });
+
+  it("V's floor, a run that writes no note: one call, the run FAILED, and the fire goes to the failure handler (no second request)", async () => {
+    // NVDA 11-18, ADI and HPE 11-24: a run that ended without its note was sent "Call write_note NOW" and failed anyway, all 7 in 60 days.
+    const FLOOR = { id: "84f59b07-5ad2-4f6c-882a-83f5ecce81a7", action: "EXIT", fireMode: "ASK_NOW", predicate: { watch: "price", is: "below", value: 395 }, rationale: "Sell if below $395."};
+    const db = prismaDouble({
+      thesis: [thesisRow({ id: "v", ticker: "V", status: "HOLDING", direction: "LONG", analystId: ANALYST, triggers: [FLOOR] })],
+      position: [positionRow({ id: "pos_v", symbol: "V", analystId: ANALYST, environment: "LIVE", quantity: 10, avgCost: 350 })],
+      agentConfig: [agentConfigRow({ id: ANALYST, name: "Secular Compounder", tradingEnvironment: "LIVE", maxOpenPositions: 10 })],
+      account: [accountRow({ requireApprovalBuysLive: true, requireApprovalSellsLive: true })],
+    });
+    const net = network((n) => json({ id: `resp_${n}`, object: "response", created_at: 1, model: "gpt-5.4", status: "completed", output: [{ type: "message", id: `msg_${n}`, role: "assistant", status: "completed", content: [{ type: "output_text", text: "I'd hold.", annotations: [] }] }], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } }));
+    const mods = ["@/lib/prisma", "@/lib/inngest/client", "@/lib/actions/api-keys.actions", "@/lib/actions/closeTrade.actions", "@/lib/trading/manual-order", "@/lib/agent/tools", "@/lib/market-data/load-market-numbers"];
+    let ended: unknown;
+    await jest.isolateModulesAsync(async () => {
+      let handler: ((ctx: unknown) => Promise<unknown>) | undefined;
+      jest.doMock("@/lib/prisma", () => ({ prisma: db }));
+      jest.doMock("@/lib/inngest/client", () => inngest((h) => (handler = h)));
+      jest.doMock("@/lib/actions/api-keys.actions", () => ({ resolveAlpacaCredentials: async () => null }));
+      jest.doMock("@/lib/actions/closeTrade.actions", () => ({ closeOpenPosition: jest.fn(async () => ({ kind: "proposed", proposal: { orderId: "ord_v" } })) }));
+      jest.doMock("@/lib/trading/manual-order", () => ({ accountCash: async () => 50_000 }));
+      jest.doMock("@/lib/market-data/load-market-numbers", () => ({ loadMarketNumbers: async () => jest.requireActual("@/lib/agent/__fixtures__/market-numbers-standin").STANDIN_MARKET_NUMBERS }));
+      const read = tool({ description: "Read the stock.", inputSchema: z.object({ tickers: z.array(z.string()) }), execute: async () => ({ ok: false }) });
+      jest.doMock("@/lib/agent/tools", () => ({ createResearchTools: () => ({ get_theses: read, write_note: tool({ description: "Write the review.", inputSchema: z.object({ note: z.string() }), execute: async () => ({ ok: true }) }) }) }));
+      await import("@/lib/inngest/functions/tactical-run");
+      ended = await handler!({ event: { data: { thesisId: "v", triggerId: FLOOR.id, analystId: ANALYST, ticker: "V", action: "EXIT", firedPrice: 394.5 } }, step }).catch((e: Error) => e);
+    });
+    undo(mods);
+    net.restore();
+    expect(net.sent).toHaveLength(1);
+    expect((db.store.researchRun as Array<{ status: string }>)[0].status).toBe("FAILED");
+    expect((db.store.runEvent as Array<{ type: string; title: string }>).filter((e) => e.type === "run_failed").map((e) => e.title)).toEqual(["Tactical run did not close out"]);
+    // The failure handler gets the fire (retry-then-tell): the run threw, it didn't end quietly.
+    expect(ended).toBeInstanceOf(Error);
+    expect((ended as Error).message).toMatch(/^trigger run .+ failed$/);
   });
 });
 

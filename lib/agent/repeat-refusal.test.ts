@@ -33,19 +33,18 @@ async function run(inputs: Array<Record<string, unknown>>, answer: unknown) {
     prompt: "close out",
     tools: { update_thesis: tool({ inputSchema: z.object({}).passthrough(), execute: async () => answer }) },
     stopWhen: [stepCountIs(10), repeatRefusalGuard.stopWhen],
-    prepareStep: repeatRefusalGuard.prepareStep,
   });
   return { out, prompts };
 }
 
-const NUDGE = "That update_thesis call was refused twice with the same reason. Do not send it again; write your note without the refused field.";
 const call = { thesis_id: "t_asml", direction: "LONG", change_status: "WATCHING", rationale: "The floor fired." };
 
-it("the same refused call: told not to resend from the second refusal, stopped on the third", async () => {
+it("the same refused call is stopped on the third refusal, and the model is told nothing but the refusals", async () => {
   const { out, prompts } = await run([call], REFUSED);
   expect(out.steps).toHaveLength(3);
-  expect(prompts[1]).not.toContain(NUDGE);
-  expect(prompts[2]).toContain(NUDGE);
+  // The third request is the first two calls and their refusals, nothing added by code.
+  const sent = JSON.parse(prompts[2]) as Array<{ role: string }>;
+  expect(sent.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant", "tool"]);
   expect(repeatRefusalStop(out.steps)).toBe("update_thesis was refused three times with the same call: This thesis is HOLDING.");
 });
 
@@ -62,7 +61,6 @@ it("a refused call changed each time is not stopped", async () => {
 });
 
 it("a call that lands, sent again, is not a refusal", async () => {
-  const { out, prompts } = await run([call], LANDED);
+  const { out } = await run([call], LANDED);
   expect(out.steps).toHaveLength(10);
-  expect(prompts.some((p) => p.includes(NUDGE))).toBe(false);
 });

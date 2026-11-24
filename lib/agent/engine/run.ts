@@ -6,8 +6,7 @@
  * back with its error.
  *
  * Every call keeps its request on the run (lib/agent/model.ts). The same
- * refused call sent again gets one line asking the model not to, and a third
- * time ends the loop (lib/agent/repeat-refusal.ts). An OpenAI call asks for
+ * refused call sent a third time ends the loop (lib/agent/repeat-refusal.ts). An OpenAI call asks for
  * strict tool schemas and, on a run, caches its prompt under the run's id;
  * an Anthropic call marks its instructions and its last tool for the cache.
  * A call ends at its step limit, its time limit, or once its save goes
@@ -130,7 +129,6 @@ export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Prom
       ...(record.maxOutputTokens ? { maxOutputTokens: record.maxOutputTokens } : {}),
       providerOptions: { openai: { strictJsonSchema: true, ...(args.runId ? { promptCacheKey: args.runId } : {}) } },
       stopWhen: [stepCountIs(record.maxSteps), repeatRefusalGuard.stopWhen, saved],
-      prepareStep: repeatRefusalGuard.prepareStep,
       abortSignal: AbortSignal.timeout(record.timeoutMs),
       onStepFinish(step) {
         addTokenUsage(usage, step.usage);

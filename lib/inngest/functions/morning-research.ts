@@ -2,7 +2,7 @@ import { inngest } from "@/lib/inngest/client";
 import { prisma } from "@/lib/prisma";
 import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
-import { asJsonMessages, saveRunThread } from "@/lib/agent/run-thread";
+import { saveRunThread } from "@/lib/agent/run-thread";
 import { bookCardInThread } from "@/lib/agent/book-card";
 import { bookOnScreen } from "@/lib/agent/context/the-book";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
@@ -14,7 +14,6 @@ import { listOpenRefusalsForRun, recordOpenRefusalsEvent } from "@/lib/agent/gat
 import { MODES } from "@/lib/agent/modes";
 import { addTokenUsage, emptyTokenUsage } from "@/lib/agent/token-usage";
 import { buildRunInput } from "@/lib/agent/run-input";
-import { ensureAccountStandingRules } from "@/lib/agent/triggers/seed-account";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
 import { getWatchlistSymbols } from "@/lib/agent/watchlist-symbols";
 import { agentWatchDays } from "@/lib/agent/triggers/agent-watch";
@@ -270,17 +269,6 @@ export const morningResearch = inngest.createFunction(
           (await resolveAlpacaCredentials(config.userId, runEnvironment)) ??
           undefined;
 
-        // Standing rules the account may predate (the earnings wakes,
-        // 2026-09-10). One-time top-up, stamped; a no-op every day after.
-        // Fail-soft: a missed top-up costs one day of earnings wakes; a
-        // throw here would cost the whole daily run.
-        try {
-          const added = await ensureAccountStandingRules(config.accountId);
-          if (added > 0) console.log(`[morning-research] account=${config.accountId} +${added} standing rule(s)`);
-        } catch (err) {
-          console.error("[morning-research] ensureAccountStandingRules failed (non-fatal):", err);
-        }
-
         const runInput = await buildRunInput(config.id, config.userId, alpacaCreds);
 
         // 2d. Create tools with run context, then enforce the
@@ -410,7 +398,6 @@ export const morningResearch = inngest.createFunction(
             // The same refused call three times ends the loop (repeat-refusal.ts). The step cap is the mode's
             // own number; a 30 here cut a run off with a stock still owed (2026-10-30, FTNT).
             stopWhen: [stepCountIs(MODES["research-run"].maxSteps), repeatRefusalGuard.stopWhen],
-            prepareStep: repeatRefusalGuard.prepareStep,
             // (maxDuration - 30) * 1000 leaves 30s of headroom before Vercel's
             // hard kill so the catch block can persist messages + mark the run
             // COMPLETE/FAILED cleanly. With maxDuration=800 under Pro, this is
@@ -475,325 +462,12 @@ export const morningResearch = inngest.createFunction(
             },
           });
 
-          let toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
-          let elapsed = Date.now() - t0;
+          const toolCalls = steps.reduce((sum, s) => sum + (s.toolCalls?.length ?? 0), 0);
+          const elapsed = Date.now() - t0;
           console.log(`[morning-research] Agent completed for ${config.name}: ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`);
           // Stopped for sending a refused call a third time: the run closes
-          // with what it has, FAILED with that reason, and no retry asks again.
+          // with what it has, FAILED with that reason.
           const stopped = repeatRefusalStop(steps);
-
-          // ── Process-violation retry ────────────────────────────────────────
-          // Decision-framework v1 (2026-04-25): a HOLD run with no theses and
-          // no trades IS a successful run — that's the agent saying "no
-          // A-grade setups today, preserve capital." We must NOT retry that
-          // case anymore.
-          //
-          // Retry fires only when there's a real process violation:
-          //   • get_stock_data was called for one or more tickers AND
-          //   • record_thesis count < get_stock_data ticker count (the agent
-          //     researched but skipped the thesis step)
-          //
-          // If the agent did NO research, that's a HOLD-without-research call
-          // — log a warning but treat as COMPLETE (record_run_summary should
-          // explain why; if it didn't even fire, the downstream hasWork check
-          // catches the failure).
-          // Count theses TOUCHED in this run, not just newly-created Thesis
-          // rows. Held names that hit the same-direction guard go through
-          // update_thesis — which modifies an existing Thesis row but
-          // writes a ThesisUpdate(UPDATED|REVIEWED) entry with runId =
-          // this run. Counting Thesis inserts alone undercounts those
-          // legitimate touches and false-fails compliant runs.
-          //
-          // Source of truth: distinct thesisIds attached to ThesisUpdate
-          // rows whose runId is this run.
-          const preRetryThesisCount = (
-            await prisma.thesisUpdate.findMany({
-              where: { runId: run.id },
-              select: { thesisId: true },
-              distinct: ["thesisId"],
-            })
-          ).length;
-          const stockDataTickers = new Set<string>();
-          for (const s of steps) {
-            for (const tc of s.toolCalls ?? []) {
-              if (tc.toolName === "get_stock_data") {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const t = (tc.input as any)?.ticker;
-                if (typeof t === "string") stockDataTickers.add(t.toUpperCase());
-              }
-            }
-          }
-          const researchedCount = stockDataTickers.size;
-          const processViolation =
-            researchedCount > 0 && preRetryThesisCount < researchedCount;
-          // Coverage violation (2026-08-13 fix): the expectation is the
-          // ACTIONABLE set, not the whole book. The pre-fix gate expected a
-          // touch on EVERY active thesis — stale V1 "walk everything" logic
-          // that survived into the trigger-gated V2 design, so a healthy
-          // needsAction-driven run (e.g. 3 of 21 theses actionable, 3
-          // touched) fired the retry EVERY morning. Worse, the seeded retry
-          // always crashes on the ModelMessage schema and falls back to a
-          // historyless mini-run that re-loads the whole book, burns ~25%
-          // of the run's tokens, and accomplishes nothing ("theses 3 → 0"
-          // in the logs — see docs/plans/AGENT_PERF_COST_FIX.md).
-          //
-          // The actionable set mirrors what get_theses surfaces as
-          // needsAction, approximated from runInput (price-dependent kinds
-          // like UNPROTECTED_GAIN can't be recomputed here
-          // cheaply — undercounting is fine for a gross-under-coverage
-          // safety net):
-          //   • triggers fired since last run + matching right now
-          //   • priority reviews (near target/stop alerts)
-          //   • PROMOTED rows (must resolve this run)
-          //   • review-due rows (derived due date in the past — DAV-221)
-          //   • unresearched seeds (direction=null → first-research due)
-          const nowMs = Date.now();
-          const actionableThesisIds = new Set<string>();
-          for (const f of runInput.triggersFiredSinceLastRun ?? []) {
-            actionableThesisIds.add(f.thesisId);
-          }
-          for (const m of runInput.triggersMatchingNow ?? []) {
-            actionableThesisIds.add(m.thesisId);
-          }
-          for (const t of runInput.activeTheses ?? []) {
-            const reviewDue =
-              t.reviewDueAt != null && new Date(t.reviewDueAt).getTime() <= nowMs;
-            if (t.status === "PROMOTED" || reviewDue || t.direction == null) {
-              actionableThesisIds.add(t.id);
-            }
-          }
-          const expectedCoverage = actionableThesisIds.size;
-          // ZERO-TOUCH only (review finding #1). The cron-side actionable
-          // set is an approximation from runInput streams the agent never
-          // sees — it over-counts in ordinary states (fire already answered
-          // by a tactical run, fire on a since-RETIRED thesis, ENTER
-          // suppressed by a pending buy proposal, seeds whose review was legitimately
-          // bumped). A count-vs-count comparison would re-trigger the
-          // daily phantom retry this PR removes. So the gate only fires on
-          // the shape it exists for: work signal present, agent touched
-          // NOTHING (the 2026-05-01 EVT / 05-04 Earnings Drift failure).
-          // Per-thesis closeout obligations are complete_run's warn-gate's
-          // job (Layer 1), not this blunt net's.
-          const coverageViolation =
-            expectedCoverage > 0 && preRetryThesisCount === 0;
-          if (
-            expectedCoverage > 0 &&
-            preRetryThesisCount > 0 &&
-            preRetryThesisCount < expectedCoverage
-          ) {
-            console.warn(
-              `[morning-research] coverage note: ${config.name} touched ${preRetryThesisCount}/${expectedCoverage} estimated-actionable theses — not retrying (estimate over-counts answered/suppressed fires); complete_run's warn-gate owns per-thesis closeout.`,
-            );
-          }
-
-          // Premature-exit violation: agent loaded data tools (read_signals
-          // / get_portfolio_context / get_theses) and stopped without
-          // emitting any action tool. Captures the 2026-05-07 prose-
-          // termination shape — three Step-1 tool calls returned, the
-          // model wrote a markdown thesis-by-thesis review, then the
-          // assistant turn ended without queuing the next tool call and
-          // generateText returned. coverageViolation should ALSO catch
-          // this, but it doesn't fire when expectedCoverage = 0 (analyst
-          // with empty Live Theses) and was bypassed for the 5/07 cases
-          // because response?.messages came back falsy on a text-only
-          // tail. We compute responseMessages with the same step-flatten
-          // fallback used in the persistence block so the retry has a
-          // valid context to seed from.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let responseMessages: any[] | undefined = response?.messages as
-            | // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              any[]
-            | undefined;
-          if (
-            !responseMessages ||
-            !Array.isArray(responseMessages) ||
-            responseMessages.length === 0
-          ) {
-            responseMessages = steps.flatMap((s) => {
-              const stepMsgs = (
-                s as unknown as { response?: { messages?: unknown[] } }
-              ).response?.messages;
-              return Array.isArray(stepMsgs) ? stepMsgs : [];
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            }) as any[];
-          }
-
-          // Detect "data-only" runs: every tool call so far was a Step-1
-          // data-loading tool, no get_stock_data / record_thesis /
-          // write_note / place_trade landed. Distinct from
-          // coverageViolation because it can fire on analysts whose
-          // Live Theses table is empty (new analysts, post-cleanup
-          // states) where expectedCoverage = 0.
-          const ACTION_TOOLS = new Set([
-            "get_stock_data",
-            "record_thesis",
-            "write_note",
-            "edit_triggers",
-            "set_conviction",
-            "set_catalyst_date",
-            "stop_watching",
-            "watch_again",
-            "place_trade",
-            "sell",
-            "add",
-            "record_run_summary",
-            "complete_run",
-          ]);
-          let actionToolCount = 0;
-          for (const s of steps) {
-            for (const tc of s.toolCalls ?? []) {
-              if (ACTION_TOOLS.has(tc.toolName)) actionToolCount += 1;
-            }
-          }
-          const totalToolCallsSoFar = steps.reduce(
-            (sum, s) => sum + (s.toolCalls?.length ?? 0),
-            0,
-          );
-          const prematureExitViolation =
-            totalToolCallsSoFar > 0 && actionToolCount === 0;
-
-          // Zero-tool-call violation: generateText returned but the model
-          // emitted zero tool calls of any kind. Captures the 2026-05-12
-          // Earnings Drift Trader silent-timeout shape — model produced
-          // no output at all, ran the wall clock to 240s, aborted. The
-          // existing prematureExitViolation gate requires
-          // totalToolCallsSoFar > 0 (i.e. at least Step-1 data tools
-          // landed), so it doesn't catch this. Same retry path; the nudge
-          // tells the agent to start the run from the top.
-          const zeroToolCallsViolation = totalToolCallsSoFar === 0;
-
-          const shouldRetry =
-            !stopped &&
-            (processViolation ||
-              coverageViolation ||
-              prematureExitViolation ||
-              zeroToolCallsViolation) &&
-            responseMessages !== undefined &&
-            responseMessages.length > 0;
-
-          if (shouldRetry) {
-            console.warn(
-              `[morning-research] 🔁 ${config.name} researched ${researchedCount} tickers, expected coverage ${expectedCoverage} ACTIONABLE theses (fired/matching/promoted/review-due/seeds), only ${preRetryThesisCount} touched, action tools=${actionToolCount}/${totalToolCallsSoFar} — attempting retry (process=${processViolation}, coverage=${coverageViolation}, premature=${prematureExitViolation})`,
-            );
-            const nudge = prematureExitViolation
-              ? // The agent loaded data and stopped without acting. Tell it
-                // exactly what to do, in tool-call language, with no room
-                // to summarize the data it just read.
-                "You loaded the Step-1 data tools and stopped before acting. The Live Theses block in the system prompt is the source of truth — DO NOT re-summarize it in markdown. " +
-                "Begin Step 2 NOW. For each thesis listed in the Live Theses table above, emit one tool call: " +
-                "write_note(thesis_id=<id>, note='Reviewed; no triggers, thesis intact') for the NO branch (no triggers fired), or get_stock_data + the appropriate action tool for the YES branch. " +
-                "After every Live Theses row has produced one tool call, run Step 3 (promotion check), Step 4 (discovery if slots open), Step 5/6 (record_run_summary then complete_run). " +
-                "TOOL CALLS only. No markdown narrative. Each assistant turn from this point on MUST contain at least one tool call — text-only turns terminate the run as FAILED."
-              : "You researched tickers with get_stock_data but did not record / update a thesis for each. The run will be marked FAILED unless you act NOW. " +
-                "For EVERY ticker you researched this session, emit ONE tool call as follows — TOOL CALLS only, no narration, no markdown: " +
-                "(a) If get_theses showed an ACTIVE same-direction thesis on this ticker, call write_note(thesis_id=<that id>, note='<one line>'). " +
-                "(b) Otherwise, call record_thesis(ticker, direction, ...) for new coverage. " +
-                "When in doubt, prefer write_note (this writes a REVIEWED entry to the timeline and counts as the required thesis touch). " +
-                "Then call record_run_summary. Then call complete_run. Any text output beyond a short status sentence is a failure.";
-
-            // One retry attempt over a caller-supplied message seed. Extracted so
-            // we can try it twice: first seeded with the prior in-run context
-            // (preserves the research already loaded), and — if that seed is a
-            // malformed ModelMessage[] — historyless. The reconstructed
-            // responseMessages CAN be malformed (it threw "Invalid prompt: The
-            // messages do not match the ModelMessage[] schema" and silently killed
-            // the rescue); the system prompt already carries the Live Theses table,
-            // so a historyless retry can still complete Step 2+.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const runRetry = async (messages: any[]): Promise<number> => {
-              const retry = await generateText({
-                // Same model as the main run — switches with research-run config.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Retry", source: "morning-research", parts: request.parts, agent: request.agent }),
-                system: systemPrompt,
-                messages,
-                tools,
-                // Same cache route as the main loop — the retry replays the same prefix.
-                providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
-                stopWhen: stepCountIs(15),
-                // Retry is a quick fallback — keep a tight 120s budget regardless
-                // of the main run's maxDuration. gpt-5.5 at ~13s/call still fits
-                // 9 calls in 120s, plenty for a focused finish-the-summary pass.
-                abortSignal: AbortSignal.timeout(120_000),
-                onStepFinish({ stepNumber, toolCalls: stepTools, toolResults, finishReason, usage }) {
-                  trackUsage(usage);
-                  const now = Date.now();
-                  const stepLatencyMs = now - lastStepTimeMs;
-                  lastStepTimeMs = now;
-                  const toolNames = stepTools.map((tc) => tc.toolName).join(", ") || "none";
-                  console.log(
-                    `[morning-research] RETRY STEP #${stepNumber} ${config.name} tools=[${toolNames}] finish=${finishReason}`
-                  );
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const results = (toolResults ?? []) as Array<any>;
-                  for (const call of stepTools) {
-                    const bucket = toolStats[call.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
-                    bucket.count += 1;
-                    bucket.totalLatencyMs += stepLatencyMs;
-                    toolStats[call.toolName] = bucket;
-                  }
-                  for (const r of results) {
-                    // P0-9b (retry path): same extended failure check as primary path.
-                    const out = (r?.output ?? r?.result) as {
-                      ok?: boolean;
-                      error?: string;
-                      data?: { success?: boolean; status?: string };
-                    } | undefined;
-                    const isFailure =
-                      out?.ok === false ||
-                      out?.data?.success === false ||
-                      out?.data?.status === "FAILED";
-                    if (out && isFailure) {
-                      const bucket = toolStats[r.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
-                      bucket.errors += 1;
-                      toolStats[r.toolName] = bucket;
-                      if (failedToolCalls.length < 3) {
-                        failedToolCalls.push({
-                          toolName: r.toolName ?? "unknown",
-                          error: String(out.error ?? "").slice(0, 500),
-                          at: new Date().toISOString(),
-                        });
-                      }
-                    }
-                  }
-                },
-              });
-              return retry.steps.reduce((s, x) => s + (x.toolCalls?.length ?? 0), 0);
-            };
-
-            let retryToolCalls = 0;
-            try {
-              // Tier 1 — seed from the prior in-run context.
-              retryToolCalls = await runRetry([
-                // The first message carries the market and portfolio and the book's week.
-                { role: "user", content: userPrompt },
-                // As JSON, as the thread is saved: a Date in a tool's output fails the SDK's check (asJsonMessages).
-                ...asJsonMessages(responseMessages),
-                { role: "user", content: nudge },
-              ]);
-            } catch (seedErr) {
-              // The seed was a malformed ModelMessage[] — don't lose the rescue.
-              console.error(
-                `[morning-research] 🔁 ${config.name} seeded retry rejected (${seedErr instanceof Error ? seedErr.message : seedErr}); retrying historyless`
-              );
-              try {
-                // Tier 2 — historyless. The first message and the system prompt carry the state.
-                retryToolCalls = await runRetry([{ role: "user", content: userPrompt }, { role: "user", content: nudge }]);
-              } catch (retryErr) {
-                console.error(
-                  `[morning-research] 🔁 ${config.name} retry failed:`,
-                  retryErr instanceof Error ? retryErr.message : retryErr
-                );
-              }
-            }
-            const postRetryThesisCount = await prisma.thesis.count({
-              where: { researchRunId: run.id },
-            });
-            console.log(
-              `[morning-research] 🔁 ${config.name} retry: ${retryToolCalls} tool calls, theses ${preRetryThesisCount} → ${postRetryThesisCount}`
-            );
-            toolCalls += retryToolCalls;
-            elapsed = Date.now() - t0;
-          }
 
           // What is still refused and undone is recorded on the run (no screen
           // shows it yet); no later run is told.
@@ -820,13 +494,11 @@ export const morningResearch = inngest.createFunction(
           // FAILED was the old compliance-machine bug.
           //
           // FAILED criteria (any one):
+          //   • stopped for sending the same refused call three times
           //   • record_run_summary never fired AND there's no thesis or
           //     trade decision (agent died mid-flow with no work output)
-          //   • research happened (get_stock_data called) but no theses
-          //     were recorded (process violation; retry should have caught
-          //     this, but if retry also failed, fail loudly)
-          // Same source-of-truth as the retry gate: distinct thesisIds
-          // touched via ThesisUpdate.runId. Captures both record_thesis
+          // Theses touched: distinct thesisIds on ThesisUpdate rows with
+          // this runId. Captures both record_thesis
           // (writes a CREATED entry) and update_thesis (writes UPDATED /
           // REVIEWED / TRIGGER_FIRED / etc.) so a run that legitimately
           // updates 5 held theses isn't false-failed for "0 thesis rows
@@ -846,61 +518,9 @@ export const morningResearch = inngest.createFunction(
             ]);
           const thesisCount = touchedTheses.length;
           const ranSummary = runSummaryEvent !== null;
-          const hadResearch = researchedCount > 0;
           const hasWork = thesisCount > 0 || decisionCount > 0 || ranSummary;
 
-          // Process-violation override removed 2026-04-30 (PR 3 follow-up).
-          // The old gate fired when stockDataTickers > distinctThesisTouches,
-          // which made sense in PR 2's "research every candidate, mint a
-          // thesis per ticker" world. PR 3 has the agent doing peer/sector
-          // comparison get_stock_data calls without 1:1 thesis touches —
-          // that's the new pattern. The gate false-failed legitimate runs
-          // (Earnings Drift Trader + Catalyst Event Raider on 2026-04-30
-          // both had record_run_summary fired but were marked FAILED).
-          //
-          // The retry path above (lines 240-300) still exists and still
-          // fires when researchedCount > thesisCount, giving the agent a
-          // chance to write missed theses. But we no longer override the
-          // final status to FAILED if record_run_summary did fire — the
-          // run completed its decision contract.
-          // Trade-execution gate (added 2026-05-05). primary_decision=ADD or
-          // ROTATE means the agent committed to a new position; if no trade
-          // actually landed (tradesPlaced=0), the agent narrated the trade
-          // in the run summary's decision_rationale without calling
-          // place_trade. Same recurring failure pattern as narrated theses
-          // (Stage 3) and narrated watchlist updates (Stage 4) — both have
-          // explicit prompt prohibitions plus this kind of programmatic
-          // backstop. Captured in CLAUDE.md's "RECURRING BUGS". Without this
-          // gate the run shows status=COMPLETE while no order was sent to
-          // Alpaca; observed 4-of-5 ADD/ROTATE decisions in 2026-04-29 →
-          // 05-01 window producing zero trades despite COMPLETE status.
-          let tradeExecutionGap: string | null = null;
-          if (ranSummary && tradesPlaced === 0) {
-            const summaryEvent = await prisma.runEvent.findFirst({
-              where: { runId: run.id, type: "run_summary" },
-              orderBy: { createdAt: "desc" },
-              select: { payload: true },
-            });
-            const primaryDecision =
-              summaryEvent?.payload && typeof summaryEvent.payload === "object"
-                ? (summaryEvent.payload as Record<string, unknown>).primary_decision
-                : undefined;
-            if (primaryDecision === "ADD" || primaryDecision === "ROTATE") {
-              const placeTradeCount = toolStats["place_trade"]?.count ?? 0;
-              tradeExecutionGap = `primary_decision=${primaryDecision} but no trades placed (place_trade tool calls: ${placeTradeCount}). Trade was narrated in rationale rather than executed.`;
-            }
-          }
-
-          const finalStatus =
-            stopped || tradeExecutionGap !== null
-              ? "FAILED"
-              : hasWork
-                ? "COMPLETE"
-                : "FAILED";
-          // Keep processViolationFinal for the failure-message branch
-          // below so the operator still sees diagnostic info on real
-          // failures (where record_run_summary didn't fire).
-          const processViolationFinal = false;
+          const finalStatus = stopped ? "FAILED" : hasWork ? "COMPLETE" : "FAILED";
           // Atomic: only transition RUNNING → terminal. No-op if complete_run
           // already marked it COMPLETE.
           const beltResult = await prisma.researchRun.updateMany({
@@ -910,15 +530,11 @@ export const morningResearch = inngest.createFunction(
           if (beltResult.count > 0 && finalStatus === "FAILED") {
             const reason = stopped
               ? stopped
-              : tradeExecutionGap
-              ? `trade execution gap: ${tradeExecutionGap}`
-              : processViolationFinal
-                ? `process violation: researched ${researchedCount} tickers but only recorded ${thesisCount} theses`
-                : !ranSummary
-                  ? "agent stopped before record_run_summary — no decision captured"
-                  : "no work output (no theses, no trades, no run summary)";
+              : !ranSummary
+                ? "agent stopped before record_run_summary — no decision captured"
+                : "no work output (no theses, no trades, no run summary)";
             console.warn(
-              `[morning-research] ⚠️ ${config.name} run=${run.id} FAILED — ${reason}. Steps: ${steps.length}, tool calls: ${toolCalls}, researched: ${researchedCount}, theses: ${thesisCount}, decisions: ${decisionCount}.`
+              `[morning-research] ⚠️ ${config.name} run=${run.id} FAILED — ${reason}. Steps: ${steps.length}, tool calls: ${toolCalls}, theses: ${thesisCount}, decisions: ${decisionCount}.`
             );
             // Surface the failure in the run UI
             try {
@@ -931,12 +547,9 @@ export const morningResearch = inngest.createFunction(
                   payload: {
                     steps: steps.length,
                     toolCalls,
-                    researchedCount,
                     thesisCount,
                     decisionCount,
                     ranSummary,
-                    processViolation: processViolationFinal,
-                    tradeExecutionGap,
                   } as object,
                 },
               });
@@ -964,8 +577,8 @@ export const morningResearch = inngest.createFunction(
                     byTool: toolStats,
                     failedToolCalls,
                   },
-                  // Cost accounting — model + summed usage across main loop
-                  // and retry pass. cachedInput / input = the prompt-cache
+                  // Cost accounting — model + summed usage across the
+                  // run's loop. cachedInput / input = the prompt-cache
                   // hit rate; if it stays ~0, every step re-bills the full
                   // growing context at list price.
                   tokenUsage: {
@@ -1009,94 +622,12 @@ export const morningResearch = inngest.createFunction(
         } catch (err) {
           const isTimeout = err instanceof Error && (err.name === "AbortError" || err.message.includes("aborted") || err.message.includes("timed out"));
           const abortBudgetS = MODES["research-run"].maxDuration - 30;
-          let message = isTimeout
+          const message = isTimeout
             ? `Agent timed out after ${abortBudgetS}s (${Math.round((Date.now() - t0) / 1000)}s elapsed). Any theses and trades completed before timeout are preserved.`
             : err instanceof Error ? err.message : String(err);
           console.error(`[morning-research] Agent ${isTimeout ? "TIMED OUT" : "FAILED"} for ${config.name}: ${message}`);
 
-          // ── Zero-tool-call recovery ──────────────────────────────────────
-          // If the agent emitted ZERO tool calls before the abort, that's
-          // the 2026-05-12 Earnings Drift silent-timeout shape: model
-          // produced no output at all (likely an OpenAI hang or a single
-          // text-only assistant turn the abort caught mid-stream). The
-          // in-try retry gate can't catch this because it only fires when
-          // generateText returns normally; here we hit the catch. Give the
-          // agent one more focused swing with a tighter abort before
-          // falling through to FAILED. If the recovery itself produces no
-          // tool calls, we've confirmed it's a real model/API failure and
-          // FAILED is correct.
-          const totalToolCallsBeforeRetry = Object.values(toolStats).reduce((s, b) => s + b.count, 0);
-          if (isTimeout && totalToolCallsBeforeRetry === 0) {
-            console.warn(
-              `[morning-research] 🔁 ${config.name} aborted with zero tool calls — attempting catch-path recovery`,
-            );
-            try {
-              const recoveryResp = await generateText({
-                // Same model as the main run.
-                model: modelFor(MODES["research-run"].model, { api: "chat", runId: run.id, call: "Recovery", source: "morning-research", parts: request.parts, agent: request.agent }),
-                system: systemPrompt,
-                messages: [
-                  { role: "user", content: userPrompt },
-                  {
-                    role: "user",
-                    content:
-                      `The prior attempt at your morning run produced zero tool calls before timing out. Start NOW. ` +
-                      `Your first action this turn is get_portfolio_context and get_theses in parallel — no narration before the tool calls. ` +
-                      `Then proceed with your normal playbook.`,
-                  },
-                ],
-                tools,
-                // Same cache route as the main loop — the retry replays the same prefix.
-                providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
-                stopWhen: stepCountIs(MODES["research-run"].maxSteps),
-                // Recovery is a quick fallback after a zero-tool-call timeout —
-                // keep 120s regardless of main maxDuration. If recovery itself
-                // produces no tool calls, FAILED is correct.
-                abortSignal: AbortSignal.timeout(120_000),
-              });
-              const recoveryToolCalls = recoveryResp.steps.reduce(
-                (sum, s) => sum + (s.toolCalls?.length ?? 0),
-                0,
-              );
-              console.log(
-                `[morning-research] catch-path recovery: ${recoveryResp.steps.length} steps, ${recoveryToolCalls} tool calls`,
-              );
-              if (recoveryToolCalls > 0) {
-                // The agent did work this time. Update toolStats so the
-                // status decision below (and the FAILED/COMPLETE branch)
-                // sees the recovered call count, and persist messages so
-                // /runs/[id] shows the recovered thread.
-                for (const s of recoveryResp.steps) {
-                  for (const tc of s.toolCalls ?? []) {
-                    const bucket = toolStats[tc.toolName] ?? { count: 0, totalLatencyMs: 0, errors: 0 };
-                    bucket.count += 1;
-                    toolStats[tc.toolName] = bucket;
-                  }
-                }
-                await saveRunThread(
-                  run.id,
-                  {
-                    opening: [
-                      { role: "user", content: [{ type: "text", text: openingOf(request) }] },
-                      ...bookCard,
-                      { role: "user", content: "(catch-path recovery: prior attempt produced zero tool calls — restarting)" },
-                    ],
-                    messages: recoveryResp.response?.messages,
-                    steps: recoveryResp.steps,
-                  },
-                  "morning-research",
-                );
-                message = `Recovered after zero-tool-call abort. Recovery produced ${recoveryToolCalls} tool calls.`;
-              }
-            } catch (recoveryErr) {
-              console.error(
-                `[morning-research] catch-path recovery failed for ${config.name}:`,
-                recoveryErr instanceof Error ? recoveryErr.message : recoveryErr,
-              );
-            }
-          }
-
-          // Check if any theses/trades were placed before the timeout (or during recovery)
+          // Check if any theses/trades were placed before the timeout
           const partialTheses = await prisma.thesis.count({ where: { researchRunId: run.id } });
           const partialTrades = await prisma.tradeDecision.count({ where: { runId: run.id, decision: "BUY" } });
           const hasPartialWork = partialTheses > 0 || partialTrades > 0;
