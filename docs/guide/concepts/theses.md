@@ -46,9 +46,9 @@ It is not how bullish we are and not whether to buy today, so high conviction in
 - **Stronger:** the evidence supports the thesis more than before.
 - **Unchanged:** nothing bore on it. A move in the price alone is unchanged.
 - **Weaker:** the evidence goes against it, not fatally.
-- **Broken:** a KPI broke, or the belief no longer holds.
+- **Broken:** the belief no longer holds. A KPI that missed is where the analyst looks hardest, not the verdict by itself: a one-off, a change in how the company reports the number, or guidance raised past the miss can leave the belief standing.
 
-Any verdict but unchanged says what happened and which KPI it touched. The opinion is rewritten when the look changed the analyst's call: always with a broken case or a new outlook, and on a stronger or weaker case only when it changes what the analyst would do. News that moves the case a little leaves the opinion as it is.
+Any verdict but unchanged says what happened and which KPI it touched. The opinion is rewritten when the look changed the analyst's call: always with a broken case or a new outlook, on a stronger or weaker case only when it changes what the analyst would do, and when the price has moved so far that what the opinion says the price assumes is no longer true. News that moves the case a little leaves the opinion as it is.
 
 Six things send a look's note back whole, each with what to send (`lib/agent/thesis-review.ts`):
 
@@ -134,7 +134,7 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 <!-- asset: thesis-lifecycle -->
 
 - **Sold.** A profit-take, or a sale where the analyst says the belief still holds, sends the thesis back to Watching. The triggers that need a position come off; the rest stay as written, and nothing is added. Any other sale retires it as sold, and within two weeks it gets one look back: watch it again, or let it go.
-- **Proven wrong.** A KPI broke, or the belief no longer holds. A holding is sold; a watch is retired.
+- **Proven wrong.** The belief no longer holds: the business stopped doing what it says. A holding is sold; a watch is retired.
 - **Dropped or replaced.** Taken off the watchlist (by an agent, by you, or by a watch's "Stop watching if" line closing below), or replaced by a newer thesis. The history stays.
 
 ## Statuses

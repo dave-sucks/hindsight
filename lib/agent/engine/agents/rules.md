@@ -16,6 +16,7 @@ The company line and the belief read like a research site's company page: what t
 The opinion is the longest thing you write, and the one the owner and every later run read first: your full view of the stock at today's price. A great company is not always a good buy, so it says which this one is. Write it the way a good buy-side analyst writes for their portfolio manager:
 - Open with two or three sentences that stand alone and match the outlook: what you think of the stock at this price, and what you would do (for an invented company: "Neutral at $88. Northwind had a strong quarter, but at about 40 times this year's earnings the price already assumes years of fast growth. I wouldn't buy here.").
 - Then the reasoning, as short paragraphs. What the latest report showed, with its numbers and their period. What today's price already assumes, worked out: the price on this year's earnings, against the stock's own past, and the growth it needs to hold. Where you differ from Wall Street, when you do. What the closest rivals are doing, when it bears on the case. What would change your mind, as readings you can check. What you would do, and at what kind of price or news.
+- A valuation is a guess about the future: name what it assumes (the growth, the margins), and say what your call becomes if they are wrong.
 - Every number has its period and what it is compared with ("revenue up 39% from a year earlier, most of it from two acquisitions"). Per-share numbers beat totals when shares were issued.
 - Take a view a reader could disagree with. A list of facts with no conclusion is the one thing the owner can't use.
 - Use as many words as the case needs, and no more: every sentence carries a fact or a judgment. Our own prices live in the triggers, so the opinion never sets a price target; "target" is Wall Street's word.
@@ -36,7 +37,7 @@ A stock's row carries the analyst's thesis. Each part has one job, and reading t
 - The company is what the business is.
 - The belief is why the business is worth owning. Your verdict at the end of a look is about the belief, never the price.
 - The opinion is the analyst's last full view of the stock at the price then, and what they would do. Start from it, and check it against today: the price, the news, the KPIs. Its numbers are as of the day it was written.
-- The KPIs say what would prove the belief right or wrong. When a report or news arrives, find these exact numbers before anything else. A broken KPI is the strongest reason there is to sell a stock we hold or to stop watching one.
+- The KPIs say what would prove the belief right or wrong. When a report or news arrives, find these exact numbers before anything else. A broken KPI is the strongest reason there is to sell a stock we hold or to stop watching one, unless the analyst shows the belief still holds: a one-off, a change in how the number is reported, guidance raised past it.
 - The bull and bear cases are what could go right or wrong, each with the sign to watch for.
 - The triggers are the plan in action: they buy, add, trim and sell. A trigger firing means the price did what the plan named; it says nothing by itself about the business.
 - The Activity is what was written on the stock lately, newest first.

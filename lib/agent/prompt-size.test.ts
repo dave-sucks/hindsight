@@ -36,7 +36,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-20: +1,313 each, how a look ends: the verdict, and when conviction and outlook change, imported by the morning run and the trigger run.
   // 2026-11-20: +32, step 2 names the `stocks` table in place of the quiet lines (lib/agent/stock-table.ts).
   // 2026-11-24: +3,723, the thesis fields: How you write says how the opinion is written and that a note is about the company and the stock, never the app; Reading a stock says what each part of a thesis is for; how a look ends rewrites the opinion when a look changed the analyst's call, and leaves it when news moves the case a little.
-  daily: 15_156,
+  // 2026-11-24: +615, a missed KPI is a hard look, not the verdict by itself; the opinion is rewritten when the price has moved past what it says the price assumes; a valuation names what it assumes.
+  daily: 15_771,
   // 2026-11-17: −54, the re-set duty no longer points at the deleted Manage line, and the row's playbook_checks is named by its new name.
   // 2026-11-17: +112, the sale's answer says it stays on the morning list while the price is past the line, and fires again only after a close back on the other side.
   // 2026-11-17: +65, step 4 names the triggers written at the fill and a sale's price, and a watch's buy and Stop watching triggers come off by id.
@@ -55,7 +56,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-20: +37, the re-set after a blown-through price is a holding's sale and gain triggers'; a fired buy is its skill's.
   // 2026-11-23: tactical -10, the sample row is the one row every opened stock gets: no line on how to get the full row, and its assumptions with it (ROW_FIELDS).
   // 2026-11-24: +3,695, the same, and the trigger run anchors its decision on the KPIs and the opinion.
-  tactical: 18_439,
+  // 2026-11-24: +615, the same.
+  tactical: 19_054,
   // 2026-11-05: +487, the setup prices a view and never decides one; a view you'd look at again is a watch with its review, not a pass; the floor's note says what a close below it means.
   // 2026-11-13: +177, what would prove it wrong is the business, never a stock price, an average, a high or low, or a gap; the belief has no stock price.
   // 2026-11-13: +99, when the first message has what the chat already found, research only what that leaves open.
@@ -76,7 +78,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-19: +40, the same: a view with no buy yet carries its look-again on the save (a report or a day), a price one through edit_triggers.
   // 2026-11-19: +48, the look-again's day is the day after the stock's event date in catalyst_date.
   // 2026-11-24: +3,969, the thesis fields: the research rules say what to read first (the earnings release and the filing) and how each field of the one save is written; How you write says how the opinion is written; Reading a stock; a PASS sends one KPI line or more, what would change its mind.
-  writer: 21_942,
+  // 2026-11-24: +266, a missed KPI and a valuation, in the house rules.
+  writer: 22_208,
   // 2026-11-05: +377, discovery's dispatch step sends the chat's notes and, for someone's thesis, the post itself (research_notes, idea_source).
   // 2026-11-06: +76, "(PASS with status WATCHING is for a stock you haven't formed a view on yet)" in discovery's watch step.
   // 2026-11-14: +156, the approval schema: a trigger's proposal has no expiresAt, stays open or is WITHDRAWN on the close, and keeps its proposedPrice.
@@ -93,7 +96,8 @@ const RECORDED: Record<keyof typeof SAMPLE_PROMPTS, number> = {
   // 2026-11-20: +104, set_conviction changes the outlook too.
   // 2026-11-23: +1, the Daily Run is at 10 AM.
   // 2026-11-24: +3,060, the same How you write and Reading a stock, and the chat's lines name the KPIs and the opinion.
-  chat: 37_364,
+  // 2026-11-24: +266, the same.
+  chat: 37_630,
 };
 
 /**
@@ -135,7 +139,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-20: +61 on each, get_theses says every stock is a line of the `stocks` table.
   // 2026-11-23: -151 on each, get_theses's description says one row, with include_research for the bull and bear cases.
   // 2026-11-24: +86, write_note and set_conviction take the opinion with a verdict, the KPIs' words, and get_theses names the row's opinion and KPIs.
-  "research-run": 30_778,
+  // 2026-11-24: +72, the verdict's BROKEN: a missed KPI breaks the belief only when the business no longer does what it says.
+  "research-run": 30_850,
   // 2026-11-18: −497, get_market_context leaves the trigger run: the market numbers block carries the same numbers.
   // 2026-11-18: −987 on the trigger run, its stock (the ticker, the thesis id, the trigger id) leaves place_trade, close_position, manage_position and update_thesis: tactical-run.ts hands it to the tools.
   // 2026-11-18: −450, the same: write_note, edit_triggers, sell and add.
@@ -147,7 +152,8 @@ const RECORDED_TOOLS: Record<string, number> = {
   // 2026-11-19: +168, the same measure.
   // 2026-11-19: +508, stop_watching (its reason; code fills the stock).
   // 2026-11-24: +86, the same.
-  tactical: 27_330,
+  // 2026-11-24: +72, the same.
+  tactical: 27_402,
   // 2026-11-07: +810, write_note can address one note to several stocks, one analyst or the whole account, pinned until a date (lib/agent/shared-notes.ts).
   // 2026-11-13: +372, the same two field texts on record_thesis and update_thesis.
   // 2026-11-14: +87, the same get_portfolio_context description.

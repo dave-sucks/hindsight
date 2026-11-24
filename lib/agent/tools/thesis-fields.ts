@@ -126,7 +126,7 @@ export function thesisFields() {
       .string()
       .describe(
         "What the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is STRONGER. STRONGER: it supports the belief more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the belief, not fatally. " +
-          "BROKEN: a KPI broke, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line; BROKEN comes with the rewritten opinion too.",
+          "BROKEN: the belief no longer holds. A KPI that missed is BROKEN only when the business no longer does what the belief says. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line; BROKEN comes with the rewritten opinion too.",
       ),
     verdict_line: z.string().describe("One sentence: what happened and which KPI it touched, when there is one."),
     answers_update_id: z
