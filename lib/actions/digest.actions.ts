@@ -6,7 +6,7 @@
  *
  * The Daily Portfolio Digest is written after close by the `portfolio-digest`
  * Inngest cron, one row per (accountId, environment, date) in the
- * PortfolioDigest table. The market digest is written at 7:30 AM ET by the
+ * PortfolioDigest table. The market digest is written at 9:00 AM ET by the
  * Market Reviewer, one row per book per day in MarketDigest. Each action
  * surfaces the most-recent row for the current user's account + the requested
  * book (PAPER vs LIVE). Strictly read-only.

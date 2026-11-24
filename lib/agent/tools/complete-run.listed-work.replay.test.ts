@@ -61,8 +61,8 @@ const stored = ({ price, ...t }: Fx["theses"][number]): Row => (void price, t);
 const date = (v: unknown) => (typeof v === "string" ? new Date(v) : v ?? null);
 const dated = (r: Row, keys: string[]): Row => ({ ...r, ...Object.fromEntries(keys.filter((k) => k in r).map((k) => [k, date(r[k])])) });
 
-/** The book as the run read it; with the run's own answers when `answered` (saved with no note when `noteless`, 2026-11-18). */
-function seed(answered: boolean, noteless = false): Record<string, Row[]> {
+/** The book as the run read it; with the run's own answers when `answered` (saved with no note when `noteless`, 2026-11-18), and `more` stocks saved after it. */
+function seed(answered: boolean, noteless = false, more: Fx["theses"] = []): Record<string, Row[]> {
   const run = { id: REPLAY_RUN_ID, status: "RUNNING", mode: "MORNING_PLAN", agentConfigId: REPLAY_ANALYST_ID, parameters: {}, startedAt: new Date("2026-11-13T13:03:26.258Z"), completedAt: null };
   // A line's run mode only titles it in the feed, so the fixture does not keep it.
   const line = (u: Row & { runId?: string; mode?: string }): Row => ({
@@ -79,11 +79,13 @@ function seed(answered: boolean, noteless = false): Record<string, Row[]> {
     runEvent: [{ id: "ev_summary", runId: REPLAY_RUN_ID, type: "run_summary", title: "Run summary", message: null, payload: {}, createdAt: new Date("2026-11-13T13:04:40Z") }],
     agentConfig: [agentConfigRow({ triggers: fx.analyst.triggers.map(rule), setupIds: fx.analyst.setupIds, maxOpenPositions: fx.analyst.maxOpenPositions })],
     account: [accountRow({ triggers: fx.account.triggers.map(rule), triggersSeededAt: new Date(fx.account.triggersSeededAt), setupOverrides: fx.account.setupOverrides })],
-    thesis: fx.theses.map(stored).map((t) =>
+    thesis: [...fx.theses, ...more].map(stored).map((t) =>
       thesisRow({
         // The fixture leaves out empty columns; the row builder's defaults are a plan this stock may not have.
         direction: null, setupId: null, horizon: null, entryPrice: null, targetPrice: null, stopLoss: null, catalystDate: null, closedAt: null, triggerState: {},
         ...dated(t, ["createdAt", "lastReviewedAt", "researchUpdatedAt", "catalystDate", "closedAt"]),
+        // The read takes the newest-saved first; the fixture keeps no save time, so a stock's is its last review.
+        updatedAt: new Date((t.updatedAt as string | undefined) ?? (t.lastReviewedAt as string)),
         triggers: ((t.triggers as Row[] | undefined) ?? []).map(rule),
         researchRun: { agentConfigId: REPLAY_ANALYST_ID, agentConfig: { name: "Secular Compounder", setupIds: fx.analyst.setupIds } },
       }),
@@ -97,7 +99,14 @@ function seed(answered: boolean, noteless = false): Record<string, Row[]> {
   };
 }
 
-const quotes = Object.fromEntries(fx.theses.map((t) => [t.ticker, t.price]));
+/** Fifteen quiet stocks saved after every stock in the fixture: FTNT's row, which nothing lists, under other names. */
+const FILLERS: Fx["theses"] = Array.from({ length: 15 }, (_, i) => ({
+  ...fx.theses.find((t) => t.ticker === "FTNT")!,
+  id: `t_Q${i}`,
+  ticker: `Q${i}`,
+  updatedAt: "2026-11-13T12:00:00.000Z",
+}));
+const quotes = Object.fromEntries([...fx.theses, ...FILLERS].map((t) => [t.ticker, t.price]));
 const ctx = { runMode: "MORNING_PLAN", runEnvironment: "LIVE", maxOpenPositions: fx.analyst.maxOpenPositions };
 
 /** The clock at a production moment; the double's timers stay real. */
@@ -114,18 +123,19 @@ async function at<T>(iso: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** The run's verbatim opening read: the tickers it listed as work. */
-async function listedByTheRead(): Promise<string[]> {
+async function listedByTheRead(more: Fx["theses"] = []): Promise<{ listed: string[]; leftOut: string | undefined }> {
   const { result, crashed } = await at(READ_AT, () =>
-    replayTool("get-theses", "getTheses", { seed: seed(false), args: { limit: 25, detail: "actionable" }, ctx, quotes }),
+    replayTool("get-theses", "getTheses", { seed: seed(false, false, more), args: { limit: 25, detail: "actionable" }, ctx, quotes }),
   );
   expect(crashed).toBe(false);
-  return ((result.data as { theses?: Array<{ ticker: string }> }).theses ?? []).map((r) => r.ticker).sort();
+  const data = result.data as { theses?: Array<{ ticker: string }>; left_out?: string };
+  return { listed: (data.theses ?? []).map((r) => r.ticker).sort(), leftOut: data.left_out };
 }
 
 /** complete_run at the run's second call (08:05 ET): its refusal, and the tickers it names. */
-async function closeOut(answered: boolean, noteless = false): Promise<{ message: string; owed: string[]; status: unknown }> {
+async function closeOut(answered: boolean, noteless = false, more: Fx["theses"] = []): Promise<{ message: string; owed: string[]; status: unknown }> {
   const { result, crashed, db } = await at("2026-11-13T13:05:25.000Z", () =>
-    replayTool("complete-run", "completeRun", { seed: seed(answered, noteless), args: {}, ctx, quotes }),
+    replayTool("complete-run", "completeRun", { seed: seed(answered, noteless, more), args: {}, ctx, quotes }),
   );
   expect(crashed).toBe(false);
   const message = String((result.data as { error?: string } | undefined)?.error ?? "");
@@ -147,7 +157,7 @@ describe("Secular Compounder, 2026-11-13: the close-out owes what the read liste
   });
 
   it("the close-out's owed set is the read's listed set: the 12 the run's read listed, less the six the deleted situations alone listed", async () => {
-    const listed = await listedByTheRead();
+    const { listed } = await listedByTheRead();
     const { owed } = await closeOut(false);
     expect(owed).toEqual(listed);
     expect(listed).toEqual(LISTED_NOW);
@@ -167,4 +177,26 @@ describe("Secular Compounder, 2026-11-13: the close-out owes what the read liste
     expect(noteless.owed).toEqual(none.owed);
     expect(noteless.status).toBe("RUNNING");
   }, 30_000);
+});
+
+describe("the same book with 15 more stocks: 28 stocks, and a read limited to 25", () => {
+  it("lists every stock in work and cuts only quiet ones, so the close-out owes what the read listed", async () => {
+    const { listed, leftOut } = await listedByTheRead(FILLERS);
+    const { owed } = await closeOut(false, false, FILLERS);
+    // On main the read cut by when each stock was saved: ETN, ASML and EME (the oldest) were left out with their
+    // work, the close-out still owed them, and the read listed only CEG, GEV and NOW.
+    expect(listed).toEqual(LISTED_NOW);
+    expect(owed).toEqual(listed);
+    // 28 stocks, 25 shown: three quiet ones are the three left out.
+    expect(leftOut).toMatch(/^3 more stocks match this read/);
+  });
+
+  it("keeps every stock in work when they alone outnumber the limit", async () => {
+    const { result } = await at(READ_AT, () =>
+      replayTool("get-theses", "getTheses", { seed: seed(false, false, FILLERS), args: { limit: 4, detail: "actionable" }, ctx, quotes }),
+    );
+    const data = result.data as { theses: Array<{ ticker: string }>; quiet_theses: unknown[] };
+    expect(data.theses.map((t) => t.ticker).sort()).toEqual(LISTED_NOW);
+    expect(data.quiet_theses).toHaveLength(0);
+  });
 });

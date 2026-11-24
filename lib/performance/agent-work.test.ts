@@ -3,6 +3,7 @@ jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 import { readFileSync } from "fs";
 import { join } from "path";
 import { SITUATIONS } from "@/lib/agent/situations";
+import { PROPOSAL_ENDS } from "./agent-work-terms";
 import {
   CATEGORIES, MERGED_CODE, SITUATION_CATEGORY, THREAD_SHAPE, buildAgentWork, fireAction, indexOf, longestStreak, measureLabel, outcomeOf, triggerRunCode,
   type Raw, type RunRow, type UpdateRow,
@@ -164,5 +165,22 @@ describe("the tab's numbers", () => {
     const shown = Object.fromEntries(merged.situations.codes.map((c) => [c.code, c.shown]));
     expect(shown).toMatchObject({ REPORT: 1, REVIEW_DUE: 0, BUY_ARRIVES: 0 });
     expect(shown).not.toHaveProperty("NOTE_TO_ANSWER");
+  });
+});
+
+describe("Proposals by stock: every way a proposal can stand or end has a column", () => {
+  const order = (id: string, status: string) => ({ id, thesisId: "t1", symbol: "CEG", intent: "CLOSE", status, createdAt: at("2026-11-11T15:01:00Z") });
+  // Since a trigger's proposal can be withdrawn by the close pass, WITHDRAWN is one more end: it counted in the total with no column.
+  const w = buildAgentWork(
+    raw({ orders: ["EXPIRED", "FILLED", "REJECTED", "WITHDRAWN", "WITHDRAWN", "AWAITING_APPROVAL"].map((st, i) => order(`o${i}`, st)) }),
+    { days: 7, analystId: null, since: at("2026-11-06T00:00:00Z"), now: at("2026-11-13T00:00:00Z") },
+  );
+
+  it("counts a withdrawn proposal under its own column, and the columns add up to the total", () => {
+    const [row] = w.proposals;
+    expect(PROPOSAL_ENDS.map(([label, status]) => [label, row.status[status] ?? 0])).toEqual([
+      ["Expired", 1], ["Filled", 1], ["Declined", 1], ["Withdrawn", 2], ["Waiting", 1],
+    ]);
+    expect(PROPOSAL_ENDS.reduce((n, [, status]) => n + (row.status[status] ?? 0), 0)).toBe(row.total);
   });
 });

@@ -96,7 +96,7 @@ export function runNotes(notes: readonly SharedNoteRow[], analystId: string | nu
   );
 }
 
-/** Who wrote it: you, or an agent (the 7:30 Market Reviewer). */
+/** Who wrote it: you, or an agent (the 9:00 Market Reviewer). */
 export function authorWords(author: string): string {
   return author === "OWNER" ? "Your note" : "Agent note";
 }

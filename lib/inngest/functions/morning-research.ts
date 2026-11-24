@@ -408,8 +408,9 @@ export const morningResearch = inngest.createFunction(
                 promptCacheKey: run.id,
               },
             },
-            // The same refused call three times ends the loop (repeat-refusal.ts).
-            stopWhen: [stepCountIs(30), repeatRefusalGuard.stopWhen],
+            // The same refused call three times ends the loop (repeat-refusal.ts). The step cap is the mode's
+            // own number; a 30 here cut a run off with a stock still owed (2026-10-30, FTNT).
+            stopWhen: [stepCountIs(MODES["research-run"].maxSteps), repeatRefusalGuard.stopWhen],
             prepareStep: repeatRefusalGuard.prepareStep,
             // (maxDuration - 30) * 1000 leaves 30s of headroom before Vercel's
             // hard kill so the catch block can persist messages + mark the run
@@ -1063,7 +1064,7 @@ export const morningResearch = inngest.createFunction(
                 tools,
                 // Same cache route as the main loop — the retry replays the same prefix.
                 providerOptions: { openai: { strictJsonSchema: true, promptCacheKey: run.id } },
-                stopWhen: stepCountIs(30),
+                stopWhen: stepCountIs(MODES["research-run"].maxSteps),
                 // Recovery is a quick fallback after a zero-tool-call timeout —
                 // keep 120s regardless of main maxDuration. If recovery itself
                 // produces no tool calls, FAILED is correct.

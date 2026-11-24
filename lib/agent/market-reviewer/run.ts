@@ -1,5 +1,5 @@
 /**
- * The Market Reviewer V1: one run per traded book at 7:30 AM ET each weekday
+ * The Market Reviewer V1: one run per traded book at 9:00 AM ET each weekday
  * (lib/inngest/functions/market-reviewer.ts). Its record
  * (lib/agent/engine/agents/market-reviewer.ts) runs through the agent runner
  * (lib/agent/engine/run.ts): its instructions and one first message (the

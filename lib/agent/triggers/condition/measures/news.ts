@@ -1,4 +1,4 @@
-/** News: a high note the Market Reviewer wrote on the stock. The 7:30 notes' weight decides how soon the analyst looks; only high starts a look. */
+/** News: a high note the Market Reviewer wrote on the stock. The 9:00 notes' weight decides how soon the analyst looks; only high starts a look. */
 
 import type { MeasureDef } from "../measure";
 

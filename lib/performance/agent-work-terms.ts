@@ -35,3 +35,8 @@ export const MODE_LABEL: Record<string, string> = {
   MORNING_PLAN: "Morning", INTRADAY_TACTICAL: "Trigger", THESIS_WRITER: "Writer", PRINCIPAL_CHAT: "Chat",
   PORTFOLIO_DIGEST: "Portfolio Digest", MARKET_REVIEWER: "Market Reviewer", AFTER_BUY: "After the buy",
 };
+
+/** How a proposal can stand or end, as the Order's status: the Proposals by stock columns, in order. */
+export const PROPOSAL_ENDS = [
+  ["Expired", "EXPIRED"], ["Filled", "FILLED"], ["Declined", "REJECTED"], ["Withdrawn", "WITHDRAWN"], ["Waiting", "AWAITING_APPROVAL"],
+] as const;

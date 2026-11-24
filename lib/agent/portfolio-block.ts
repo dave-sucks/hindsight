@@ -7,7 +7,7 @@
  *   book's coming reports, written by code when the request is built
  *   (lib/market-data/market-numbers.ts). The same numbers get_market_context
  *   reports.
- * - **Market digest:** the 7:30 Market Reviewer's digest (the market's day,
+ * - **Market digest:** the 9:00 Market Reviewer's digest (the market's day,
  *   researched, with its sources), stamped, if it is from the last 4 days.
  *   Its own headings are moved down to ####, so they sit inside its part.
  * - **Portfolio snapshot:** the account's numbers, written by code when the
