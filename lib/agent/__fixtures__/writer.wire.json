@@ -21,7 +21,10 @@
        "content": [
         {
          "type": "text",
-         "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nA clean beat-and-raise on Nov 17, from the PEAD screen.\n\nWrite the research note now, then call submit_thesis.\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $AAON\nPrice $78.71."
+         "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nA clean beat-and-raise on Nov 17, from the PEAD screen.\n\nWrite the research note now, then call submit_thesis.\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $AAON\nPrice $78.71.",
+         "cache_control": {
+          "type": "ephemeral"
+         }
         }
        ]
       }
@@ -295,7 +298,10 @@
         "content": [
          {
           "type": "text",
-          "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nA clean beat-and-raise on Nov 17, from the PEAD screen.\n\nWrite the research note now, then call submit_thesis.\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $AAON\nPrice $78.71."
+          "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nA clean beat-and-raise on Nov 17, from the PEAD screen.\n\nWrite the research note now, then call submit_thesis.\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $AAON\nPrice $78.71.",
+          "cache_control": {
+           "type": "ephemeral"
+          }
          }
         ]
        }
@@ -651,7 +657,10 @@
        "content": [
         {
          "type": "text",
-         "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nIts report is in: refresh the thesis.\n\nWrite the research note now, then call submit_thesis.\n\n## $MU, its row (get_theses)\n(not read on this pass: get_theses(tickers: [\"MU\"]))\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $MU\nPrice $650."
+         "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nIts report is in: refresh the thesis.\n\nWrite the research note now, then call submit_thesis.\n\n## $MU, its row (get_theses)\n(not read on this pass: get_theses(tickers: [\"MU\"]))\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $MU\nPrice $650.",
+         "cache_control": {
+          "type": "ephemeral"
+         }
         }
        ]
       }
@@ -907,7 +916,10 @@
         "content": [
          {
           "type": "text",
-          "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nIts report is in: refresh the thesis.\n\nWrite the research note now, then call submit_thesis.\n\n## $MU, its row (get_theses)\n(not read on this pass: get_theses(tickers: [\"MU\"]))\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $MU\nPrice $650."
+          "text": "Wed, Nov 18, 2026, 10:00 AM ET, the LIVE account.\n\n## Why you were dispatched\nIts report is in: refresh the thesis.\n\nWrite the research note now, then call submit_thesis.\n\n## $MU, its row (get_theses)\n(not read on this pass: get_theses(tickers: [\"MU\"]))\n\n## Your record by playbook (closed trades since 2026-05-27)\n- PEAD: 4 trades, 2 won.\n\n## GROUND-TRUTH DATA — use these numbers; do not invent or contradict\nSTRUCTURED DATA: $MU\nPrice $650.",
+          "cache_control": {
+           "type": "ephemeral"
+          }
          }
         ]
        }
