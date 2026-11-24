@@ -199,7 +199,7 @@ function flagDetail(s: SituationSources, f: NeedsAction): Raised[] {
 export function situationLabels(s: SituationSources): SituationLabel[] {
   const lead = new Set(s.needs[0] ? flagCodes(s, s.needs[0]) : []);
   const raised = new Map<SituationCode, Raised>();
-  for (const f of s.needs) for (const d of flagDetail(s, f)) for (const code of d.codes) if (!raised.has(code)) raised.set(code, d);
+  for (const f of s.needs) for (const d of flagDetail(s, f)) for (const code of d.codes) if (d.detail && !raised.has(code)) raised.set(code, d);
   if (s.buyBlockedByFull && !raised.has("BUY_ARRIVES")) raised.set("BUY_ARRIVES", { codes: ["BUY_ARRIVES"], detail: "its analyst holds its limit of stocks", decision: DECISION.ENTER });
   return situationsFor(s).map((code) => {
     const name = SITUATIONS[code].name;
@@ -209,7 +209,7 @@ export function situationLabels(s: SituationSources): SituationLabel[] {
   });
 }
 
-/** The tags of a stock's situations, each once: one trigger can raise two situations (a sale on earnings is a sale and a report). */
+/** The tags of a stock's situations, each once: one trigger can raise two situations (a review that watches earnings and a filing). */
 export function situationTags(s: SituationSources): string[] {
   return [...new Set(situationLabels(s).map((x) => x.text))];
 }

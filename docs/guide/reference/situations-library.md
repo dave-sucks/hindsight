@@ -55,7 +55,7 @@ The same row, whatever the situation and whoever reads it. A stock an agent open
 | Field | What it is | Sent when |
 |---|---|---|
 | `analyst` | The analyst that covers it | the read covers more than one analyst |
-| `situations` | Each situation it is in: its code, then the trigger that raised it, or the name of the check that did | it is in one |
+| `situations` | Each situation it is in: its code, then its tag (the decision on the table, then why) | it is in one |
 | `position` | The shares, what we paid, the gain, when it was bought and the high since | it is held |
 | `proposal_waiting` | A trade on it that waits for the owner | one waits |
 | `floor_risk` | How far the floor lags the gain, or how much of the account it would lose | it is held and its floor is out of line with its gain |
