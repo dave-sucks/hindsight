@@ -32,7 +32,7 @@ const WIDTH: Partial<Record<keyof StockTableRow, string>> = {
 const STATUS: Record<string, string> = { held: "HOLDING", watch: "WATCHING", promoted: "PROMOTED" };
 const isNumber = (col: StockColumn) => col.kind !== "text";
 
-function Cell({ row, col, opened }: { row: StockTableRow; col: StockColumn; opened: boolean }) {
+function Cell({ row, col }: { row: StockTableRow; col: StockColumn }) {
   const value = row[col.key];
   if (col.key === "ticker")
     return (
@@ -61,8 +61,7 @@ function Cell({ row, col, opened }: { row: StockTableRow; col: StockColumn; open
             <span className="truncate font-medium text-foreground">{tag}</span>
           </span>
         ))}
-        {opened ? <Badge variant="outline">Opened</Badge> : null}
-        {!row.situations.length && !opened ? <span className="text-muted-foreground">—</span> : null}
+        {row.situations.length ? null : <span className="text-muted-foreground">—</span>}
       </span>
     );
   const empty = value == null || (Array.isArray(value) && value.length === 0);
@@ -71,8 +70,7 @@ function Cell({ row, col, opened }: { row: StockTableRow; col: StockColumn; open
   return <span className={`text-right text-sm tabular-nums ${tone}`}>{stockCell(row, col)}</span>;
 }
 
-/** `opened`: the thesis ids the run went on to open by name, marked on their rows. */
-export function StockTable({ table, opened }: { table: StockTableData; opened?: ReadonlySet<string> }) {
+export function StockTable({ table }: { table: StockTableData }) {
   const [open, setOpen] = useState<StockTableRow | null>(null);
   const cols = columnsOf(table);
   if (table.rows.length === 0) return <p className="text-sm text-muted-foreground">No stocks held or watched.</p>;
@@ -108,7 +106,7 @@ export function StockTable({ table, opened }: { table: StockTableData; opened?: 
               style={grid}
             >
               {cols.map((c) => (
-                <Cell key={c.key} row={row} col={c} opened={c.key === "situations" && row.id != null && (opened?.has(row.id) ?? false)} />
+                <Cell key={c.key} row={row} col={c} />
               ))}
             </div>
           ))}

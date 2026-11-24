@@ -86,37 +86,36 @@ export function ThesisCardRenderer({ toolName, toolCallId, loading }: Props) {
     if (allLoading) {
       return <ReadThesesTableSkeleton />;
     }
-    const theses = collectReadTheses(readParts);
-    // A read of the whole list carries the stock table: the rows the agent was given, column for column.
+    // Each read shows as what it was. A read of the whole list carries the stock table (the rows the agent was
+    // given, column for column) and the stocks in a situation; a read by ticker is the stocks the run opened.
     const stocks = collectStockTable(readParts);
-    if (theses.length === 0 && !stocks) return null;
-    const noun = theses.length === 1 ? "thesis" : "theses";
-    // One list. The table already holds every stock: the ones in a situation carry their tag, and the ones
-    // this run went on to open by name are marked on their rows. Its count of situations is the table's own.
-    const inSituation = stocks ? stocks.rows.filter((r) => r.situations.length > 0).length : 0;
-    const openedIds = new Set(theses.map((t) => t.thesis_id).filter((id): id is string => typeof id === "string"));
-    const opened = stocks && theses.length > inSituation ? openedIds : undefined;
+    const listed = collectReadTheses(readParts.filter(carriesTable));
+    const opened = collectReadTheses(readParts.filter((p) => !carriesTable(p)));
+    if (listed.length === 0 && opened.length === 0 && !stocks) return null;
+    const list = (label: string, theses: ThesisCardData[]) =>
+      theses.length > 0 ? (
+        <div className="my-3 space-y-1">
+          <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
+            <span>{label}</span>
+          </div>
+          <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
+        </div>
+      ) : null;
+    const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
     return (
       <>
         {stocks ? (
           <div className="my-3 space-y-1">
             <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
               <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
-              <span>
-                {[`Reading ${stocks.rows.length} ${stocks.rows.length === 1 ? "stock" : "stocks"}`, `${inSituation} in a situation`, opened ? `opened ${theses.length}` : null].filter(Boolean).join(" · ")}
-              </span>
+              <span>{`Reading ${count(stocks.rows.length, "stock", "stocks")}`}</span>
             </div>
-            <StockTable table={stocks} opened={opened} />
-          </div>
-        ) : theses.length > 0 ? (
-          <div className="my-3 space-y-1">
-            <div className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <HugeiconsIcon icon={MessageSearch01Icon} className="size-3.5 shrink-0" />
-              <span>{`Reading ${theses.length} ${noun}`}</span>
-            </div>
-            <ReadThesesTable theses={theses} onRowClick={setOpenThesis} />
+            <StockTable table={stocks} />
           </div>
         ) : null}
+        {list(`${listed.length} in a situation`, listed)}
+        {list(stocks || listed.length ? `Opened ${count(opened.length, "stock", "stocks")}` : `Reading ${count(opened.length, "thesis", "theses")}`, opened)}
         {openThesis ? (
           <ThesisSheet
             open={openThesis !== null}
@@ -226,6 +225,13 @@ function ThesisCarouselSkeleton({ count }: { count: number }) {
  * (ThesisCardData[] in render shape). Use cards when present, fall back
  * to a minimal mapping from theses for older results.
  */
+/** Whether a read's result carries the stock table: a read of the whole list, not of stocks by name. */
+function carriesTable(p: Record<string, unknown>): boolean {
+  const r = (p.result ?? p.output) as Record<string, unknown> | undefined;
+  const data = (r?.ok === true && r.data ? r.data : r) as { stocks?: StockTableData } | undefined;
+  return Array.isArray(data?.stocks?.rows);
+}
+
 /** The stock table of the first read of the whole list in this message, when one carries it. */
 function collectStockTable(parts: Record<string, unknown>[]): StockTableData | null {
   for (const p of parts) {
