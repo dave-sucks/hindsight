@@ -63,6 +63,14 @@ describe("fireLeft", () => {
     expect(await fireLeft(fire(), TRIED)).toBe("tell");
   });
 
+  it("a run that saved a change with no note and then failed did not answer the fire: it is tried again", async () => {
+    // A trigger edit or a conviction saved without a note (NO_NOTE) answers nothing, as at the run's own close-out.
+    const edit = { id: "e1", thesisId: "t1", runId: "r1", type: "UPDATED", fieldChanges: { noNote: { from: null, to: true } }, timestamp: later };
+    book({ researchRun: [run("FAILED")], thesisUpdate: [edit] });
+    expect(await fireLeft(fire({ action: "ADD" }), TRIED)).toBe("retry");
+    expect(await fireLeft(fire(), TRIED)).toBe("retry");
+  });
+
   it("a finished run on a review is done", async () => {
     book({ researchRun: [run("COMPLETE")] });
     expect(await fireLeft(fire({ action: "REVIEW" }), TRIED)).toBe("done");

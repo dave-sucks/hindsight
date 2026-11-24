@@ -7,7 +7,7 @@
 import { prisma } from "@/lib/prisma";
 import type { AlpacaCredentials } from "@/lib/alpaca";
 import { loadStockFacts, type FactsRow, type StockFacts } from "@/lib/agent/stock-facts";
-import { situationLabels } from "@/lib/agent/situations";
+import { situationTags } from "@/lib/agent/situations";
 import { movePctOverSessions, volumeRatio } from "@/lib/market-data/indicator-snapshot";
 import { EARNINGS_LOOKAHEAD_DAYS, fetchEarningsWindow } from "@/lib/agent/triggers/earnings";
 import { sortStockRows, type StockTable, type StockTableRow } from "@/lib/agent/stock-table";
@@ -51,7 +51,7 @@ export function stockTableFromFacts(
       ticker: t.ticker.toUpperCase(),
       status: STATUS[t.status] ?? t.status.toLowerCase(),
       analyst: opts.nameAnalyst ? (t.researchRun?.agentConfig?.name ?? null) : null,
-      situations: sources ? situationLabels(sources).map((x) => x.text) : [],
+      situations: sources ? situationTags(sources) : [],
       price,
       dayPct: load.dayChange[t.ticker] ?? null,
       // Read at the price's own time: a stock with no print yet today still carries yesterday's whole day.

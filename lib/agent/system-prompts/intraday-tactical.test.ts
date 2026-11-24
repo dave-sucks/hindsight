@@ -148,7 +148,7 @@ describe("a trigger fire's request — confirm by the setup, one run per fire, t
       }),
     );
     expect(prompt).toContain("The situations $MU is in (PROTECTIVE_SALE, NEWS), and what each asks:");
-    expect(prompt).toContain("PROTECTIVE_SALE — sale signal\n" + situationText("PROTECTIVE_SALE", true));
+    expect(prompt).toContain("PROTECTIVE_SALE — possible sell\n" + situationText("PROTECTIVE_SALE", true));
     expect(prompt).toContain("Two sales that fired together get one decision.");
     expect(prompt.indexOf("PROTECTIVE_SALE — ")).toBeLessThan(prompt.indexOf("NEWS — news\nNews on a stock."));
     // The end of the instructions, before the stock's facts in the first message.

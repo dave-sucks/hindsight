@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * How a stock gets put up for an answer: its facts go into one function on
- * every read, and what comes out is its list of situations. A stock with
- * any is on the day's work list; one with none is a quiet line. The names
- * are the real ones from SITUATIONS. Wires are measured from the boxes; on a
+ * How a stock gets put up for an answer: a trigger of its own or one of three
+ * checks in the code raises a situation, worked out on every read. A stock
+ * with any is on the day's work list; one with none is a quiet line. Each
+ * reads as situationLabels words it. Wires are measured from the boxes; on a
  * phone it stacks and they drop away.
  */
 
@@ -17,16 +17,15 @@ import { FlagNotificationIcon } from "@/components/ui/flag-notification-icon";
 import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 const INPUTS: readonly { title: string; sub: string }[] = [
-  { title: "Its triggers", sub: "One fired, or one is true now" },
-  { title: "Its review clock", sub: "It came round" },
-  { title: "Its floor", sub: "Too far behind the gain, or too much to lose" },
-  { title: "A note", sub: "Yours or a pinned one, not yet answered" },
-  { title: "A recent sale", sub: "Sold in the last two weeks" },
+  { title: "One of its triggers", sub: "Sell, Trim, Buy, Add or Review: it fired, or its review came due" },
+  { title: "Check: its floor", sub: "The floor lags the gain, or risks too much of the account" },
+  { title: "Check: a recent sale", sub: "Sold in the last two weeks, not looked at since" },
+  { title: "Check: promoted to live", sub: "A paper analyst went live" },
 ];
 
 const STOCKS: readonly { s: string; situations: readonly string[] }[] = [
-  { s: "MU", situations: ["review due", "floor to fix"] },
-  { s: "CRWD", situations: ["buy price reached"] },
+  { s: "MU", situations: ["Review · every 30 days", "Floor to fix"] },
+  { s: "CRWD", situations: ["Possible buy · above $52.25"] },
   { s: "LLY", situations: [] },
 ];
 
@@ -90,7 +89,7 @@ export function SituationFlow() {
 
       <div className="relative grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.1fr)] md:items-center md:gap-x-14">
         <div className="flex flex-col gap-2">
-          <Mono className="pb-1 text-xs uppercase tracking-wide text-muted-foreground">A stock&apos;s facts</Mono>
+          <Mono className="pb-1 text-xs uppercase tracking-wide text-muted-foreground">What raises one</Mono>
           {INPUTS.map((x, i) => (
             <div
               key={x.title}
@@ -148,21 +147,21 @@ export function SituationFlow() {
 /**
  * How one situation reads in each place it shows, above its text on the
  * Situations library page (`situation-named CODE`). Every place prints the
- * same wording (lib/agent/situations.ts `situationLabels`): the situation's
- * name, then what raised it on that stock. The examples are worded here; a
- * real one carries the stock's own trigger.
+ * same tag (lib/agent/situations.ts `situationLabels`): the decision on the
+ * table, then why.
+ * The examples are worded here; a real one carries the stock's own trigger.
  */
-const RAISED_BY: Record<SituationCode, string | null> = {
-  PROMOTED_AWAITING: null,
-  PROTECTIVE_SALE: "Sell if below $804",
-  BUY_ARRIVES: "Buy if above $52.25 · only on the close",
-  ADD_OR_WINNER: "Add if above 10% from yesterday's close",
-  REPORT: "Review if within 5 days before earnings",
-  FILING: "Review if it files something material with the SEC",
-  NEWS: "Review if the Market Reviewer writes a high note on it",
-  PROTECTION: "2.1% of the account below here",
-  REVIEW_DUE: "Review every 30 days",
-  SOLD_ONE_REVIEW: null,
+const EXAMPLE: Record<SituationCode, string> = {
+  PROMOTED_AWAITING: "Promoted to live",
+  PROTECTIVE_SALE: "Possible sell · below $804",
+  BUY_ARRIVES: "Possible buy · a close above $52.25",
+  ADD_OR_WINNER: "Possible add · up 10% on the day",
+  REPORT: "Review · earnings within 5 days",
+  FILING: "Review · filed something material with the SEC",
+  NEWS: "Review · a high note from the Market Reviewer",
+  PROTECTION: "Floor to fix · 2.1% of the account below here",
+  REVIEW_DUE: "Review · every 30 days, 3 days overdue",
+  SOLD_ONE_REVIEW: "Just sold",
 };
 
 function NamedRow({ where, children }: { where: string; children: React.ReactNode }) {
@@ -178,8 +177,7 @@ export function SituationNamed({ arg }: { arg?: string }) {
   const code = arg as SituationCode;
   const s = SITUATIONS[code];
   if (!s) return null;
-  const raised = RAISED_BY[code];
-  const said = raised ? `${s.name}: ${raised}` : s.name;
+  const said = EXAMPLE[code];
   const sold = code === "SOLD_ONE_REVIEW";
   return (
     <Card>
@@ -199,7 +197,7 @@ export function SituationNamed({ arg }: { arg?: string }) {
             )}
           </NamedRow>
           <NamedRow where="On the stock's row, as an agent reads it">
-            <Mono>{sold ? `sold_to_review: [{ ticker, sold_on, ask, situations: ["${code}"] }]` : `situations: ["${code} (${said})"]`}</Mono>
+            <Mono>{sold ? `sold_to_review: [{ ticker, sold_on, ask, situations: ["${code}"] }]` : `situations: ["${code}: ${said}"]`}</Mono>
           </NamedRow>
           <NamedRow where="Its instructions arrive as">
             <Mono>{`guidance.${code}`}</Mono> in the morning run&apos;s list{sold ? "" : ", or with the fire in a trigger run"}

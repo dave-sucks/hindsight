@@ -3,11 +3,13 @@
  * check won't fire it again until a close finds it false: the fire is tried
  * again (lib/inngest/retry-then-tell.ts), and the owner is told if it still
  * fails. What is left, read from the database: an order on the stock since the
- * try means it was acted on; a run for it that finished, or wrote on the
- * stock, means it was answered. An Auto trade is tried again only while its
+ * try means it was acted on; a run for it that finished, or wrote its note on
+ * the stock, means it was answered. A change saved with no note answers
+ * nothing (isNotelessEdit), as at the run's own close-out. An Auto trade is tried again only while its
  * trigger still holds.
  */
 import { prisma } from "@/lib/prisma";
+import { isNotelessEdit } from "@/lib/agent/no-note";
 import { sendRunLostEmail } from "@/lib/emails/run-lost";
 import { parseTriggersResilient } from "./schema";
 import { trueNowIds } from "./true-now";
@@ -40,10 +42,10 @@ export async function fireLeft(fire: FailedFire, triedAt: Date): Promise<Left> {
     },
     select: { id: true, status: true },
   });
-  // A run that wrote on the stock (beyond the fire's own line) answered it, finished or not.
+  // A run that wrote its note on the stock answered it, finished or not.
   const wrote = runs.length
-    ? await prisma.thesisUpdate.findFirst({ where: { runId: { in: runs.map((r) => r.id) }, type: { not: "TRIGGER_FIRED" } }, select: { id: true } })
-    : null;
+    ? (await prisma.thesisUpdate.findMany({ where: { runId: { in: runs.map((r) => r.id) }, type: { not: "TRIGGER_FIRED" } }, select: { fieldChanges: true } })).some((u) => !isNotelessEdit(u.fieldChanges))
+    : false;
   // The analyst answered and what followed failed: only a sale still owes the owner its card.
   if (wrote || runs.some((r) => r.status === "COMPLETE")) return fire.action === "EXIT" ? "tell" : "done";
   // An Auto trade has no agent to read the stock now: it goes again only while its trigger still holds.

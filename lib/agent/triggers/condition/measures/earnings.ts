@@ -28,6 +28,11 @@ export const report: MeasureDef = {
     if (n === 0) return "on the day of earnings";
     return `within ${n} ${n === 1 ? "day" : "days"} ${c.is === "after" ? "after" : "before"} earnings`;
   },
+  why: (c) => {
+    const n = c.value ?? 0;
+    const days = `${n} ${n === 1 ? "day" : "days"}`;
+    return c.is === "after" ? (n === 0 ? "reported today" : `reported in the last ${days}`) : `earnings within ${days}`;
+  },
   fresh: () => ({ watch: "report", is: "before" }),
   fits: (c) => c.value != null && (c.is === "before" || c.is === "after"),
   shape: "Earnings is before or after the report, a number of days.",
@@ -44,6 +49,7 @@ export const surprise: MeasureDef = {
   ],
   value: { suffix: "% or more", placeholder: "0", range: { what: "A surprise", unit: "%", min: 0 }, zero: "any amount" },
   actions: ["REVIEW"],
+  why: (c) => `an earnings ${c.is === "miss" ? "miss" : "beat"}${(c.value ?? 0) > 0 ? ` of ${c.value}% or more` : ""}`,
   fresh: () => ({ watch: "surprise", is: "beat", value: 0 }),
   fits: (c) => c.is === "beat" || c.is === "miss",
   shape: "A result is a beat or a miss.",

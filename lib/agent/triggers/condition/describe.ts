@@ -113,6 +113,22 @@ export function conditionText(c: Condition): string {
   return `${conditionParts(c).label} ${words}`.trim();
 }
 
+/** A condition on a flagged stock's tag: the measure's own `why` if it has one, else its sentence words. */
+export function whyText(w: When): string {
+  return conditionsOf(w)
+    .map((c) => {
+      const m = measureOf(c);
+      return `${isWindowIn(w, c) ? "within " : ""}${m.why ? m.why(c, valueText(c, "words")) : conditionText(c)}`;
+    })
+    .join(" and ");
+}
+
+/** A stored condition for a tag, without the action: "down 12% from the high since we bought". */
+export function conditionWhy(p: unknown): string {
+  const w = shapeOf(p);
+  return w ? whyText(w) : "a removed condition";
+}
+
 export function whenText(w: When): string {
   // A window inside an "and" is the days the others may hold in: "within 70 days before the event date".
   return conditionsOf(w).map((c) => `${isWindowIn(w, c) ? "within " : ""}${conditionText(c)}`).join(" and ");

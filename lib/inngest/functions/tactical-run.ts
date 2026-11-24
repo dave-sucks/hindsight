@@ -26,7 +26,7 @@ import { prisma } from "@/lib/prisma";
 import { writeThesisUpdate } from "@/lib/agent/thesis-updates";
 import { generateText, stepCountIs, type ToolSet } from "ai";
 import { repeatRefusalGuard, repeatRefusalStop } from "@/lib/agent/repeat-refusal";
-import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
+import { saveRunThread } from "@/lib/agent/run-thread";
 import { modelFor } from "@/lib/agent/model";
 import { createResearchTools } from "@/lib/agent/tools";
 import { resolveAlpacaCredentials } from "@/lib/actions/api-keys.actions";
@@ -725,7 +725,6 @@ export const tacticalRun = inngest.createFunction(
           providerOptions: { openai: openaiOptions },
           // The same refused call three times ends the loop (repeat-refusal.ts).
           stopWhen: [stepCountIs(MODES["tactical"].maxSteps), repeatRefusalGuard.stopWhen],
-          prepareStep: repeatRefusalGuard.prepareStep,
           abortSignal: AbortSignal.timeout(
             (MODES["tactical"].maxDuration - 30) * 1000,
           ),
@@ -734,26 +733,23 @@ export const tacticalRun = inngest.createFunction(
           },
         });
 
-        let toolCalls = steps.reduce(
+        const toolCalls = steps.reduce(
           (sum, s) => sum + (s.toolCalls?.length ?? 0),
           0,
         );
-        let elapsed = Date.now() - t0;
+        const elapsed = Date.now() - t0;
         console.log(
           `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} ${steps.length} steps, ${toolCalls} tool calls, ${elapsed}ms`,
         );
 
-        // Every step whose messages are saved, for the thread's tool results.
-        const threadSteps: RunStep[] = [...steps];
         // Stopped for sending a refused call a third time: the run closes
-        // with what it has, FAILED with that reason, and no retry asks again.
+        // with what it has, FAILED with that reason.
         const stopped = repeatRefusalStop(steps);
 
         // ── Compute responseMessages with step-flatten fallback ────────────
         // AI SDK v6 sometimes returns response.messages empty on a text-only
-        // tail (the same shape morning-research's prematureExitViolation
-        // path saw on 2026-05-07). The persistence block + the retry below
-        // both need a usable conversation, so resolve once up here.
+        // tail (the shape the morning run saw on 2026-05-07). The persistence
+        // block needs a usable conversation, so resolve once up here.
         let responseMessages = response?.messages;
         if (
           !responseMessages ||
@@ -768,115 +764,24 @@ export const tacticalRun = inngest.createFunction(
           }) as typeof responseMessages;
         }
 
-        // ── Closeout retry ─────────────────────────────────────────────────
-        // Mirrors morning-research's prematureExitViolation gate. Tactical
-        // runs require write_note as the closeout contract. If the agent
-        // skipped it (typically because the assistant turn ended with text
-        // like "Now I'll decide..." and AI SDK terminated the loop), give
-        // the model one focused chance to write the closeout row before
-        // marking the run FAILED. 2026-05-07 captured 1 of 18 tactical
-        // runs (Earnings Drift Trader) hitting this exact contract miss.
-        // A change saved with no note does not close the run out: only a note answers (isNotelessEdit).
-        const answeredRows = async () =>
-          (await prisma.thesisUpdate.findMany({ where: { runId: run.id, thesisId: thesis.id, type: { not: "TRIGGER_FIRED" } }, select: { fieldChanges: true } }))
-            .filter((u) => !isNotelessEdit(u.fieldChanges)).length;
-        let closedOut = (await answeredRows()) > 0;
-        if (
-          !closedOut &&
-          !stopped &&
-          responseMessages &&
-          responseMessages.length > 0
-        ) {
-          console.warn(
-            `[tactical-run] thesis=${thesis.id} trigger=${trigger.id} did not close out (${steps.length} steps, ${toolCalls} tool calls) — attempting retry`,
-          );
-          try {
-            const retryResp = await generateText({
-              model: modelFor(MODES["tactical"].model, { runId: run.id, call: "Retry", source: "tactical-run", parts: request.parts, agent: request.agent }),
-              system: systemPrompt,
-              messages: [
-                {
-                  role: "user",
-                  content: [{ type: "text", text: userPrompt }],
-                },
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(responseMessages as any[]),
-                {
-                  role: "user",
-                  content:
-                    `You did not close out with write_note. The tactical contract requires exactly one write_note(note="<your note>") call before complete_run. ` +
-                    `Call write_note NOW with a note on what you decided (or "Trigger fired but no action taken — <reason>" if validation failed). Then complete_run. ` +
-                    `TOOL CALLS only — no narration, no markdown, no transition prose.`,
-                },
-              ],
-              tools,
-              providerOptions: { openai: openaiOptions },
-              stopWhen: stepCountIs(5),
-              abortSignal: AbortSignal.timeout(60_000),
-            });
-            addTokenUsage(tokenUsage, retryResp.totalUsage, retryResp.steps.length);
-            const retrySteps = retryResp.steps.length;
-            const retryToolCalls = retryResp.steps.reduce(
-              (s, x) => s + (x.toolCalls?.length ?? 0),
-              0,
-            );
-            console.log(
-              `[tactical-run] thesis=${thesis.id} retry: ${retrySteps} steps, ${retryToolCalls} tool calls`,
-            );
-            toolCalls += retryToolCalls;
-            elapsed = Date.now() - t0;
-
-            // Append retry messages so the persisted thread shows the
-            // full recovery sequence on /runs/[id].
-            let retryMessages = retryResp.response?.messages;
-            if (
-              !retryMessages ||
-              !Array.isArray(retryMessages) ||
-              retryMessages.length === 0
-            ) {
-              retryMessages = retryResp.steps.flatMap((s) => {
-                const stepMsgs = (
-                  s as unknown as { response?: { messages?: unknown[] } }
-                ).response?.messages;
-                return Array.isArray(stepMsgs) ? stepMsgs : [];
-              }) as typeof retryMessages;
-            }
-            if (retryMessages && retryMessages.length > 0) {
-              threadSteps.push(...retryResp.steps);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              responseMessages = [
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(responseMessages as any[]),
-                {
-                  role: "user",
-                  content:
-                    "(retry nudge: you did not close out with write_note — call it now)",
-                },
-                ...retryMessages,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ] as any[];
-            }
-
-            closedOut = (await answeredRows()) > 0;
-          } catch (retryErr) {
-            console.error(
-              `[tactical-run] retry failed for thesis=${thesis.id}:`,
-              retryErr instanceof Error ? retryErr.message : retryErr,
-            );
-          }
-        }
+        // ── Close-out ──────────────────────────────────────────────────────
+        // A trigger run answers its fire with a note. One that ends without a
+        // note is FAILED, and the failure handler tries the fire again, then
+        // tells the owner. A change saved with no note does not close the run out (isNotelessEdit).
+        const closedOut = (
+          await prisma.thesisUpdate.findMany({ where: { runId: run.id, thesisId: thesis.id, type: { not: "TRIGGER_FIRED" } }, select: { fieldChanges: true } })
+        ).some((u) => !isNotelessEdit(u.fieldChanges));
 
         // A refusal reached the model as the tool's result; what is still open is recorded on the run.
         await recordOpenRefusalsEvent(run.id, await listOpenRefusalsForRun(run.id));
 
         // ── Persist conversation messages ──────────────────────────────────
-        // /runs/[id] replays from this row (run-thread.ts). Includes any
-        // retry sequence so the user sees the full recovery, not just the
-        // original tail. It opens with the fire's facts and the ask; the
-        // blocks the model read are on the Context panel.
+        // /runs/[id] replays from this row (run-thread.ts). It opens with the
+        // fire's facts and the ask; the blocks the model read are on the
+        // Context panel.
         await saveRunThread(
           run.id,
-          { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }], messages: responseMessages, steps: threadSteps },
+          { opening: [{ role: "user", content: [{ type: "text", text: openingOf(request) }] }], messages: responseMessages, steps },
           "tactical-run",
         );
 

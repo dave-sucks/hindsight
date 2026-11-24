@@ -179,7 +179,7 @@ function WorkFlagLine({
   // ONE flag line.
   // Each situation in the one wording the stock table and an agent's row print (situationLabels); the flag alone when a read carries no situations.
   const flag = needsAction ? needsActionFlag(needsAction) : null;
-  const said = situations.map((x) => x.text ?? x.name);
+  const said = [...new Set(situations.map((x) => x.text ?? x.name))];
   const view = latestNoteView({
     status,
     hasNote: false,
