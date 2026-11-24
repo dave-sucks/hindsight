@@ -24,6 +24,8 @@ export const price: MeasureDef = {
     { is: "below", label: "Below", means: "the price is below the value (a pullback)" },
     { is: "above", label: "Above", means: "the price is above the value (a breakout, adding on strength)" },
   ],
+  // A level read only on the close says so in words: "a close above $52.25".
+  why: (c, words) => `${c.settings?.close ? "a close " : ""}${c.is === "above" ? "above" : "below"} ${words.replace(" · only on the close", "")}`,
   value: { prefix: "$", placeholder: "0.00", range: { what: "A typed price", unit: "$", over: 0 }, missing: "Enter a price, or use a price variable." },
   variables: { mode: "replace", options: PRICE_VARIABLES, title: "Use a price instead" },
   settings: [
@@ -85,6 +87,12 @@ export const move: MeasureDef = {
       { is: "below", variables: ["peak"], range: { what: "A trail", unit: "%", min: 1, under: 100, why: "Under 1% fires on noise the moment a high is set." } },
       { is: "below", range: { what: "A fall", unit: "%", over: 0, under: 100, why: "A fall of 100% or more can't happen." } },
     ],
+  },
+  // "up 7% on the day", "down 12% from the high since we bought"; within a line reads as the sentence does.
+  why: (c, words) => {
+    if (c.is !== "above" && c.is !== "below") return `within ${words}`;
+    const dir = c.is === "above" ? "up" : "down";
+    return c.variable === "prev_close" ? `${dir} ${c.value ?? 0}% on the day` : `${dir} ${words}`;
   },
   variables: {
     mode: "from",

@@ -207,7 +207,7 @@ describe("MU 10-13 before 08:00 ET: the read says lapses, not declines", () => {
     const text = JSON.stringify(result);
     expect(result.summary).toMatch(/refused/i);
     expect(text).toContain("MU (");
-    expect(text).toContain("sale signal");
+    expect(text).toContain("possible sell");
     expect(text).not.toMatch(/declined/i);
   });
 
