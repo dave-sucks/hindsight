@@ -7,6 +7,7 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 - Only the lead edits it. When a unit finishes, the lead updates the unit's row (status, PR), adds anything later units must know to "Changed shared things", and marks the next unit **Next**.
 - A unit that finds something wrong outside its own scope reports it to the lead, who writes one line under "Structure questions" or "Found, not yet assigned". Nobody fixes it outside its unit.
 - Status values: **Next**, Building, In review (PR open), Done, Bulk (reviewed inside a bulk unit), Deleted.
+- **Since Nov 20 each unit has two steps** (§8): a proposal page of before → after changes, resting on how traders in that style work, then, after the owner's yes, one PR with the changes he kept. Our book is small and was paused mid-rebuild, so its counts never make the case for a change. The owner picks the order: the compounder playbook first, then a situation's skill, then the trigger run's instructions.
 - Depth comes from unit 0's counts (`docs/plans/EXPERT_REVIEW_USAGE.md`): **own** (a unit of its own), **bulk** (reviewed with others in one unit), **delete?** (unused: the unit asks whether a trader in that style needs it; a deletion needs a trader's reason, never the count alone).
 
 ---
@@ -24,10 +25,10 @@ The running record of the review in `docs/PRINCIPLES.md` §8. One lead session (
 | Unit | What | Depth | Status | PR |
 |---|---|---|---|---|
 | 1.1 | The rules for everything: the account's and each analyst's standing rules. Earnings (set), a big day on volume (not set; first count how often 5%, 7% and 10% moves on 2× volume happened on the book in 12 weeks, leaving out report days, then choose per analyst), and news that wakes a look. Also the stocks with no playbook (9 of 17 positions in 12 weeks; the owner, Nov 19): their rules are these rules, and should a stock be bought with no playbook at all? Also the trail's fire mode, since 80 of 91 sale proposals expired. | own: the account's 6% trail fired 98 times on 10 holdings; the filing and report rules 27 times | In review | [#1073](https://github.com/dave-sucks/hindsight/pull/1073) |
-| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone). From 1.1: a trail measured in the stock's own average true range, and volume read against the same time of day (today it is volume so far over 20 whole days, so a 2× test reads low until late in the session). | **Next** | |
+| 1.2 | The measures a rule can use (`lib/agent/triggers/condition/measures/`): are the measures traders actually use there (volume against normal, gap, distance from the 52-week high, relative strength, an average's slope), named the way traders say them? | own: no stored trigger uses `rsi`, `strength`, `gap` or `insiders` (keep-or-delete questions, not deletions on usage alone). From 1.1: a trail measured in the stock's own average true range, and volume read against the same time of day (today it is volume so far over 20 whole days, so a 2× test reads low until late in the session). | Paused (Nov 20: the owner took 1.5 first) | |
 | 1.3 | Playbook: Base breakout | own, short: 3 picks, 1 trade in 12 weeks | | |
 | 1.4 | Playbook: Pullback to a rising average (MA_PULLBACK) | own: the Writer's first choice (34 in 30 days) | | |
-| 1.5 | Playbook: Compounder accumulation | own: 4 of 7 holdings; its 200-day rule fired 153 times in 12 weeks | | |
+| 1.5 | Playbook: Compounder accumulation. Also: is a 200-day break the right end of a compounder watch, and the account's 6% trail against the compounder analyst's "down 15% from its high, a question, not a sale" (both below) | own: 4 of 7 holdings | In review, the lead's fixes checked; not to merge before it is scored with its set (§7) | [#1091](https://github.com/dave-sucks/hindsight/pull/1091) |
 | 1.6 | Playbook: Drift after earnings (PEAD) | own: 8 picks, 1 trade | | |
 | 1.7 | Playbook: Episodic pivot | bulk, inside 1.9: 1 pick, no trade | | |
 | 1.8 | Playbook: Before an event (PRE_CATALYST) | own: 24 picks, 4 trades closed in 12 weeks | | |
@@ -56,7 +57,7 @@ For each playbook unit, review all of it: what the watch waits for, the buy, the
 | 3.4 | Time to look again (today `REVIEW_DUE`) | own: 109 rows, 16 runs | | |
 | 3.5 | What code finds with no trigger: a floor to fix, just sold, promoted to live | bulk: 1, 2 and 0 rows. Promoted stays, since two analysts are still on paper. | | |
 
-Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situation, one short skill each, with a holding part and a watch part. "A note to answer" is deleted in that design, so it has no unit. The units review the skills once E.8 builds them.
+Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situation, one short skill each, with a holding part and a watch part. "A note to answer" is deleted in that design, so it has no unit. The nine skills shipped Nov 19 (#1074, `lib/agent/engine/skills/`), so the units review those files.
 
 ## Layer 4: actions
 
@@ -89,8 +90,11 @@ Layer 3 follows the owner's Nov 19 design (roadmap E.8): three kinds of situatio
 
 What a finished unit changed that later units quote. Newest first.
 
+- **The owner's standing rules, Nov 23 (applied in production, his decision):** 25 account and analyst rules became 13. Account: a 30-day clock, a look before and after a report, a material filing, a 6% trail that fires only while still up at least 1% from the buy, a look on a day up 8% and a day down 7% with no volume test, and a look on a Market Reviewer high note (all Send to Agent). The 14 stored close-only buys now read during the day; new ones follow when the intraday-buys PR merges, and #1091 must drop its close-only reclaim before it merges. Secular Compounder: a 15% trail with the same condition, in the account trail's slot. Catalyst and Mergers: 10 days before the event and the 8.01 filing. PEAD and Quality Leaders: none. Rules come back one at a time, when a real case calls for one. This replaces the two calls under unit 1.1 below.
+- **Unit 1.5 (#1091, open):** the compounder's watch has no price end, each buy needs the stock above its 200-day, the floor sits at most 15% under the buy, and the second half is the first buy's dollars, once, with a cautious market's and a binary event's halving and the largest trade. A stock whose minimum ATR distance is past the 15% cap is refused once. A new Secular Compounder's seed sells on a 15% give-back from the high, in the account trail's slot. The owner's analyst is unchanged. Write-up: `docs/plans/EXPERT_REVIEW_1_5.md`.
+
 - **Unit 1.1 (#1073):** a new account's rules are the reviewed set (`accountSeedTriggers`): the 6% trail off the high (Send to Agent), a look on a big day up and on a big day down (7% from yesterday's close on at least 2× the 20-day average volume, Send to Agent), a look in the 5 days before a report (Flag for Review) and the day after (Send to Agent), the material-filing look and the 7-day clock. The up-7% add is gone from the seed: an add is a playbook's trigger on the stock. The owner's account is unchanged by the PR. A trigger's reason says only what it protects or waits for, never what to do when it fires. That is the fire mode's job or a skill's (3.x). Write-up: `docs/plans/EXPERT_REVIEW_1_1.md`.
-- **Unit 1.1, the review's calls on the owner's account,** made in Settings → Triggers and his to refuse: the trail's On fire becomes Auto-sell (approvals stay on, so it is a proposal at the fire with no agent deciding first), and the two big-day looks are added. Not yet applied.
+- **Unit 1.1, the review's calls on the owner's account,** made in Settings → Triggers and his to refuse: the trail's On fire becomes Auto-sell (approvals stay on, so it is a proposal at the fire with no agent deciding first), and the two big-day looks are added. Replaced by the owner's Nov 23 rules above.
 - **Unit 0 (#1070):** `docs/plans/EXPERT_REVIEW_USAGE.md` holds the 30-day counts for every tool, context item, situation, playbook and inherited rule, with each item's size. Quote it for any "how often" before counting again. Most of those 30 days ran on the old build, so any unit that measures a rule's effect counts again from Nov 17 (triggers work like orders) or Nov 19 (the one-job tools). Fire counts before Nov 17 include the old re-fires: 12 to 14 sale fires a day, 1 a day since.
 
 ## Structure questions
@@ -108,8 +112,14 @@ Things a unit thought were wrong in the structure, for the lead and the owner. O
 
 Found before the review started, from the watch rewrite of Nov 19. Each belongs to a unit above.
 
+- **1.5, the give-back on holdings already past it (the owner's decision):** all four live compounder holdings are 23–40% off their highs. Changing the 15% review into a sale is a new rule, true at the next check, so it raises four sale proposals at once.
+- **1.5, the old stop-watching line:** it dropped FTNT and NOW at the Nov 20 close, and CRWD and WST still carry it.
+- **4.2, a stop-watching line used as a review:** BWXT's fires on a 5% down day on 1.5× volume, and its reason says "worth reviewing". Fired, it ends the watch with no run.
+- **3.5, a floor to fix:** `UNPROTECTED_GAIN`'s 6-point gap flags every compounder up 8% or more each morning. The gap should be the playbook's.
+
 - **1.8, before an event:** the playbook ends the watch 21 days before the event date, while the Writer wanted a look after the decision (CORT, Nov 19).
 - **1.5, compounder accumulation:** "Stop watching if below the 200-day average" was true on BWXT, ETN and NOW. The Writer took it off on BWXT and ETN because the business was strong. Is a 200-day break the right end of a compounder watch?
+- **1.2 and 1.5, a rising 50-day that nothing checks:** "Only while the 50-day is rising" is only in the reason text of three playbooks' near-50-day buys (`playbook-templates.ts` lines 54, 73 and 102), and the condition also fires on a falling 50-day. Six Writer runs (NVDA, ETN, BWXT, FTNT, SRRK, PRAX) told the owner such a buy was "dormant" when it would fire. The fix belongs in the condition: a rising or falling setting on the average, so what fires is what the reason says. 1.2 builds the setting, after open PR #1076, which touches the same files. 1.5's page moves the words to "Confirm a buy by" until then. (From the Nov 20 production review.)
 - ~~**1.1 and 1.3, price stops written long ago:**~~ Answered by 1.1: MSFT's line was written Nov 13, six days before it fired correctly on the close. A stop-watching line is not re-priced at each review, or it never fires. What MSFT lacked was a playbook (1.1's no-playbook question).
 - **4.2 and 5.6, After the buy wrote a true add:** on Nov 19 it put "Add if below $406.88 · only on the close" on PANW at $361, already true when written. The owner removed it. (Found by 1.1.)
 - **3.3, something happened:** what to check on a big day (the company's own news or the whole market) belongs in that skill, not in the big-day trigger's reason. (From 1.1.)

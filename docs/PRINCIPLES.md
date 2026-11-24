@@ -168,19 +168,20 @@ A later layer quotes an earlier one; it never re-edits it. A unit that finds an 
 - how often each situation and each playbook occurs;
 - how often each rule fires.
 
-Anything rare or unused is reviewed in bulk, in one unit. Anything used daily, or anything that reaches a trade, gets its own unit. A count decides how deep a review goes, never whether a thing stays: "nothing used it" says how and when we write it may be wrong. A deletion needs a trader's reason, from what traders in that style do and keep.
+Anything rare or unused is reviewed in bulk, in one unit. Anything used daily, or anything that reaches a trade, gets its own unit. A count decides how deep a review goes, never whether a thing stays: "nothing used it" says how and when we write it may be wrong, or only that the book was paused. A deletion needs a trader's reason, from what traders in that style do and keep.
 
 **For every item in a unit** (a field, a rule, a sentence), answer three questions:
 1. What exactly would an expert in this style look at or do here? Name who works this way.
 2. Do our words, fields and numbers say exactly that?
 3. Is it in its one right home (§3, §4), written the way §5 says?
 
-**What a unit produces.** A before → after for every item it changes, field by field and sentence by sentence. Each change carries:
-- the trader's reason;
-- how often it would have fired or mattered on the real book over the last 12 weeks, counted from market data and the database, with no model calls;
+**What a unit produces.** First a proposal page: a before → after for every item it would change, in the words, the numbers and the shape of the data an agent sees, field by field and sentence by sentence. Each change carries:
+- the trader's reason, naming who works this way;
 - the framework check.
 
-That is one PR per unit, scored with its layer (§7).
+The case rests on how traders in that style work, never on our book. The book is small and was paused mid-rebuild, so a count from it only says how today's build behaves. A unit quotes one only where that helps, and never as the reason for a change.
+
+Nothing is built until the owner says yes to the page. Then the unit builds the changes he kept as one PR, scored with its layer (§7). The owner may take a unit out of the order below.
 
 **What a unit never does:** add a concept, a layer, an agent or a mode; restructure; or drift into a plan. If the structure looks wrong, the unit says so in one line in the ledger and finishes its own work.
 
