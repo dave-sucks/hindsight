@@ -47,13 +47,15 @@ export async function buyLeft(data: { orderId: string }): Promise<Left> {
 export async function tellBuy(data: { orderId: string }): Promise<void> {
   const facts = await loadAfterBuyFacts(data.orderId);
   if (!facts) return;
-  await sendRunLostEmail({
+  const sent = await sendRunLostEmail({
     accountId: facts.accountId,
     userId: facts.userId,
     ticker: facts.ticker,
     subject: `${facts.ticker}: After the buy didn't run`,
     body: `${facts.ticker} filled at $${facts.fillPrice.toFixed(2)}, but After the buy didn't finish, so its holding triggers aren't on. ${facts.floor ? `It still has "${facts.floor.sentence}".` : "It has no floor."}`,
   });
+  // Unsent, the step fails and is tried again.
+  if (!sent) throw new Error(`the email about ${facts.ticker}'s After the buy didn't send`);
 }
 
 /** The trade the run is sent: what filled, the floor, what led to it, and its note. */

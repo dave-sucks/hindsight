@@ -137,7 +137,8 @@ export const tacticalRun = inngest.createFunction(
     ) {
       return { skipped: "missing-payload" };
     }
-    const fired = payload as FiredPayload;
+    // A fire tried again reads the price now: the one it fired at is minutes old.
+    const fired = (payload.recoveryTry ? { ...payload, firedPrice: null } : payload) as FiredPayload;
 
     // ── Load thesis + trigger + position ──────────────────────────────
     // Note on step.run: Inngest JSON-serializes the return value, so Dates
@@ -555,10 +556,10 @@ export const tacticalRun = inngest.createFunction(
           const buys = doIt !== "TRIM";
           const payFromCash = buys ? await (await import("@/lib/trading/manual-order")).accountCash(agentConfig.userId, runEnvironment) : undefined;
           const tools = await toolsFor(buys ? { payFromCash } : {});
-          // The buy fired on a live price (a buy never fires on a stale one); without one, or on a fire tried again, read it now.
+          // The buy fired on a live price (a buy never fires on a stale one); without one, read it now.
           const price =
             doIt === "BUY"
-              ? ((fired.recoveryTry ? null : fired.firedPrice) ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
+              ? (fired.firedPrice ?? freshQuotePrice((await getLiveQuote(thesis.ticker, { caller: "other" })).quote, new Date()))
               : 0;
           let tried: { tool: string; summary: string | null };
           if (price == null) {

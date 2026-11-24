@@ -92,7 +92,13 @@ describe("After the buy fails, on KEYS's fill", () => {
     keys({ researchRun: [run("run_failed", "FAILED")] });
     expect(await buyLeft({ orderId: ORDER })).toBe("retry");
     mockRunAgentAsRun.mockResolvedValue({ runId: "run_retry", status: "COMPLETE" });
-    expect(await runAfterBuy(ORDER)).toEqual({ runId: "run_retry", status: "COMPLETE", noted: false });
+    expect(await runAfterBuy(ORDER, true)).toEqual({ runId: "run_retry", status: "COMPLETE", noted: false });
+  });
+
+  it("a fill reported twice runs once: the second report leaves a failed run to its retry", async () => {
+    keys({ researchRun: [run("run_failed", "FAILED")] });
+    expect(await runAfterBuy(ORDER)).toEqual({ skipped: "a run on this order failed; its retry runs it again" });
+    expect(mockRunAgentAsRun).not.toHaveBeenCalled();
   });
 
   it("a run that put triggers on and then failed did its work: no second run, no email", async () => {
@@ -106,6 +112,12 @@ describe("After the buy fails, on KEYS's fill", () => {
     expect(await buyLeft({ orderId: ORDER })).toBe("done");
     keys({}, { status: "RETIRED" });
     expect(await buyLeft({ orderId: ORDER })).toBe("done");
+  });
+
+  it("an email that didn't send fails the step, so it is tried again", async () => {
+    keys();
+    mockEmail.mockResolvedValueOnce(false);
+    await expect(tellBuy({ orderId: ORDER })).rejects.toThrow("didn't send");
   });
 
   it("the email names the stock and the floor it still has", async () => {

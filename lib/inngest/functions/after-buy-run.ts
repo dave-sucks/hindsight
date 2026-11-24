@@ -18,12 +18,18 @@ import { BUY_FILLED, afterBuyDoneBy, afterBuyMessage, buyLeft, loadAfterBuyFacts
 import { retryThenTell } from "@/lib/inngest/retry-then-tell";
 import { putNotesOnRunProposals, sendNoteWritten } from "@/lib/proposals/auto-writeup";
 
-/** Runs After the buy on one filled order; a fill it isn't for, or one whose run did its work, is skipped. */
-export async function runAfterBuy(orderId: string): Promise<{ skipped: string } | { runId: string; status: string; noted: boolean }> {
+/**
+ * Runs After the buy on one filled order; a fill it isn't for, or one whose run did its work, is skipped. A fill
+ * reported twice runs once: a second report finds the first run, and a failed one is the failure handler's to try again.
+ */
+export async function runAfterBuy(orderId: string, retry = false): Promise<{ skipped: string } | { runId: string; status: string; noted: boolean }> {
   const facts = await loadAfterBuyFacts(orderId);
   if (!facts) return { skipped: "not a filled buy or add on a stock we hold" };
   const done = await afterBuyDoneBy(orderId);
   if (done) return { skipped: `already run (${done})` };
+  if (!retry && (await prisma.researchRun.count({ where: { mode: "AFTER_BUY", parameters: { path: ["orderId"], equals: orderId } } })) > 0) {
+    return { skipped: "a run on this order failed; its retry runs it again" };
+  }
   const analyst = await prisma.agentConfig.findUnique({
     where: { id: facts.analystId },
     select: { id: true, userId: true, exclusionList: true, sectors: true, minPositionSize: true, maxPositionSize: true, maxPositionTotal: true, maxOpenPositions: true },
@@ -90,9 +96,9 @@ export const afterBuyRun = inngest.createFunction(
   },
   { event: BUY_FILLED },
   async ({ event, step }) => {
-    const orderId = (event.data as { orderId?: string }).orderId;
+    const { orderId, recoveryTry } = event.data as { orderId?: string; recoveryTry?: number };
     if (!orderId) return { skipped: "no order" };
-    const out = await step.run("after-buy", () => runAfterBuy(orderId));
+    const out = await step.run("after-buy", () => runAfterBuy(orderId, (recoveryTry ?? 0) > 0));
     if ("status" in out && out.status === "FAILED") throw new NonRetriableError(`After the buy run ${out.runId} failed`);
     return out;
   },
