@@ -117,10 +117,9 @@ export const tacticalRun = inngest.createFunction(
   {
     id: "tactical-run",
     name: "Tactical Run (event-driven)",
-    // Concurrency cap — multiple triggers can fire in the same minute. We
-    // serialize per-thesis to avoid two tactical runs racing on the same
-    // book entry (e.g. EXIT trigger + ADD trigger firing back-to-back).
-    concurrency: { limit: 4, key: "event.data.thesisId" },
+    // One run per stock at a time: a second fire waits for the first run, then
+    // reads what it did (a stock it stopped watching is skipped at load-context).
+    concurrency: { limit: 1, key: "event.data.thesisId" },
     retries: 1,
     // The trigger is already marked fired, so a failed run would lose the fire: it is tried again, then the owner is told.
     onFailure: async ({ event, step }) =>
