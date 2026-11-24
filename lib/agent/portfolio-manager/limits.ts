@@ -6,7 +6,7 @@
  *   - get_theses: any holding, and WATCHES_A_RUN watched stocks a run.
  *   - PROPOSALS_A_RUN trade proposals a run.
  *   - NEW_STOCKS_A_RUN stocks nobody covers sent to research a run.
- *   - A note goes with a trade, a research request or a trigger edit this run
+ *   - A note goes with a trade or a research request this run
  *     made on that stock; the rest of its view is its write-up.
  *   - Its trades always wait for the owner (`isManagerRun` at each trade
  *     tool's approval check), whatever the account's switches say.
@@ -55,7 +55,6 @@ const TRADES: Record<string, string> = { place_trade: "ticker", add: "ticker", s
  */
 export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Promise<string | null>): ToolSet {
   const proposed: string[] = [];
-  const noteAllowed = new Set<string>();
   // The stocks sent to research this run, by ticker: the send names the stock, not a thesis.
   const researched = new Set<string>();
   type Exec = (input: Record<string, unknown>, options: unknown) => Promise<unknown>;
@@ -85,16 +84,10 @@ export function withRunLimits(real: ToolSet, tickerOf: (thesisId: string) => Pro
   out.dispatch_thesis_research = wrap("dispatch_thesis_research", () => null, (input) => {
     if (typeof input.ticker === "string") researched.add(input.ticker.toUpperCase());
   });
-  // A trigger edit allows a note on that stock, as a trade or a research request does, once one of its ops landed.
-  out.edit_triggers = wrap("edit_triggers", () => null, (input, result) => {
-    const ops = (result as { data?: { trigger_ops?: Array<{ ok?: boolean }> } } | null)?.data?.trigger_ops ?? [];
-    if (typeof input.thesis_id === "string" && ops.some((o) => o.ok)) noteAllowed.add(input.thesis_id);
-  });
   out.write_note = wrap("write_note", async (input) => {
     const id = String(input.thesis_id ?? "");
-    if (noteAllowed.has(id)) return null;
     const ticker = (await tickerOf(id))?.toUpperCase();
-    return ticker && (proposed.includes(ticker) || researched.has(ticker)) ? null : "A note goes with a trade, a research request or a trigger edit you made on that stock this run. Put this view in your write-up.";
+    return ticker && (proposed.includes(ticker) || researched.has(ticker)) ? null : "A note goes with a trade or a research request you made on that stock this run. Put this view in your write-up.";
   });
   return out as ToolSet;
 }

@@ -24,7 +24,6 @@ import { loadFillChart } from "@/lib/proposals/fill-chart";
 import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import { levelSlotOf, typedPriceOf } from "@/lib/agent/triggers/price-levels";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
-import { isManagerRun } from "@/lib/agent/portfolio-manager/limits";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { applyTriggerOps, collision, type TriggerOpResult } from "@/lib/agent/triggers/ops";
 import type { Template } from "@/lib/agent/knowledge/playbook-templates";
@@ -67,12 +66,6 @@ const schema = z.object({
     .enum([...SETUP_IDS, NO_SETUP_FITS])
     .optional()
     .describe("The playbook these triggers are written on, or NONE when none fits; on a stock we hold, naming one writes its triggers written at the fill."),
-});
-
-/** The Portfolio Manager's triggers take each action's default On fire (a sale or trim asks an agent): its trades always wait for the owner. */
-const managerSchema = schema.omit({ setup_id: true }).extend({
-  add: z.array(z.union([playbookTrigger, ownTrigger.omit({ fireMode: true })])).max(20).optional().describe(schema.shape.add.description ?? TRIGGER_EDITS.add),
-  edit: z.array(editTriggerOpSchema.omit({ fire_mode: true })).optional().describe(TRIGGER_EDITS.edit),
 });
 
 /** The Writer, the Holding refresh and After the buy price from the chart: a price is a key or a line, never a typed number; any other number stays one. */
@@ -277,7 +270,7 @@ export const editTriggers = defineTool({
     "On a stock we hold, only the principal moves a safety line down. If you think one is wrong, keep it and give the number you'd suggest in your note.",
   schema,
   // A trigger run, the Writer and After the buy edit their own stock (tactical-run.ts, run-thesis-writer.ts, after-buy-run.ts); the Writer and After the buy price from the chart. The playbook is named by the morning run and the chat, as update_thesis's setup_id was.
-  schemaFor: (ctx) => (pricesFromTheChart(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : isManagerRun(ctx) ? managerSchema : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
+  schemaFor: (ctx) => (pricesFromTheChart(ctx) ? writerSchema : ctx.runStock ? schema.omit({ thesis_id: true, setup_id: true }) : ctx.runMode === "PRINCIPAL_CHAT" ? chatSchema : schema),
   fromRun: (ctx) => (ctx.runStock ? { thesis_id: ctx.runStock.thesisId } : null),
   ui: "thesis-card" as const,
   gateLog: "edit_triggers",
@@ -322,13 +315,9 @@ export const editTriggers = defineTool({
     if (refused.length && nothingElse) {
       return { summary: `No trigger change: ${refused.map((r) => r.reason).join(" ")}`, data: { ok: false, error: "not_written", message: refused.map((r) => `${r.text} — ${r.reason}`).join(" "), trigger_ops: refused } };
     }
-    // A fire mode the Portfolio Manager sends anyway is dropped here too: the edit items pass unknown keys through.
-    const manager = isManagerRun(ctx);
-    const adds = manager ? (priced as Array<{ fireMode?: unknown }>).map(({ fireMode: _f, ...t }) => (void _f, t)) : priced;
-    const edit = manager ? editsPriced.edits.map(({ fire_mode: _f, ...e }) => (void _f, e)) : editsPriced.edits;
     // On a trigger run the fire's price stands in when the quote fails (a buy's side is read off it).
     const saved = await saveThesis(
-      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId || undefined, add_triggers: adds as never, edit_triggers: edit as never, remove_trigger_ids: removes.map((r) => r.id), setup_id: manager ? undefined : args.setup_id },
+      { thesis_id: args.thesis_id, trigger_id: ctx.runStock?.triggerId || undefined, add_triggers: priced as never, edit_triggers: editsPriced.edits as never, remove_trigger_ids: removes.map((r) => r.id), setup_id: args.setup_id },
       ctx,
       { removeReasons: Object.fromEntries(removes.flatMap((r) => (r.reason?.trim() ? [[r.id, r.reason.trim()]] : []))) },
     );
