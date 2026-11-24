@@ -41,10 +41,9 @@ describe("the Portfolio Manager's get_theses", () => {
 
 describe("the run's limits, held by its tools", () => {
   const calls: string[] = [];
-  // A trigger edit here lands one op, as a real one that changed something does.
-  const tool = (name: string) => ({ execute: async () => (calls.push(name), { ok: true, summary: "done", ...(name === "edit_triggers" ? { data: { trigger_ops: [{ ok: true }] } } : {}) }) });
+  const tool = (name: string) => ({ execute: async () => (calls.push(name), { ok: true, summary: "done" }) });
   const tools = () =>
-    withRunLimits(Object.fromEntries(["place_trade", "add", "sell", "write_note", "edit_triggers", "dispatch_thesis_research", "get_theses"].map((n) => [n, tool(n)])) as unknown as ToolSet, async (id) => ({ th_v: "V", th_mu: "MU" })[id] ?? null);
+    withRunLimits(Object.fromEntries(["place_trade", "add", "sell", "write_note", "dispatch_thesis_research", "get_theses"].map((n) => [n, tool(n)])) as unknown as ToolSet, async (id) => ({ th_v: "V", th_mu: "MU" })[id] ?? null);
   const call = (t: ToolSet, name: string, input: Record<string, unknown>) => (t[name] as unknown as { execute: (i: unknown, o: unknown) => Promise<{ ok: boolean; error?: string }> }).execute(input, {});
 
   it(`refuses a proposal after ${PROPOSALS_A_RUN}, across the three trade tools`, async () => {
@@ -56,7 +55,7 @@ describe("the run's limits, held by its tools", () => {
     expect(fourth).toMatchObject({ ok: false, error: expect.stringContaining("WST, CEG, NVDA") });
   });
 
-  it("a note goes only with a trade, a research request or a trigger edit this run made on that stock", async () => {
+  it("a note goes only with a trade or a research request this run made on that stock", async () => {
     const t = tools();
     expect(await call(t, "write_note", { thesis_id: "th_v", note: "Still holding." })).toMatchObject({ ok: false, error: expect.stringContaining("write-up") });
     await call(t, "sell", { ticker: "v" });
@@ -64,22 +63,6 @@ describe("the run's limits, held by its tools", () => {
     await call(t, "dispatch_thesis_research", { ticker: "mu", brief: "Its case reads out of date." });
     expect((await call(t, "write_note", { thesis_id: "th_mu", note: "Why it needs research." })).ok).toBe(true);
     expect((await call(t, "write_note", { thesis_id: "th_x", note: "Buy it on the break." })).ok).toBe(false);
-    await call(t, "edit_triggers", { thesis_id: "th_x", add: [{ action: "ENTER" }] });
-    expect((await call(t, "write_note", { thesis_id: "th_x", note: "Buy it on the break." })).ok).toBe(true);
-  });
-
-  it("a trigger edit allows the note only when one of its ops landed", async () => {
-    const edit = (ops: Array<{ ok: boolean }>) => ({ execute: async () => ({ ok: true, summary: "done", data: { ok: true, trigger_ops: ops } }) });
-    const real = { edit_triggers: edit([]), write_note: tool("write_note") } as unknown as ToolSet;
-    const t = withRunLimits(real, async () => "WST");
-    await call(t, "edit_triggers", { thesis_id: "th_none" });
-    expect((await call(t, "write_note", { thesis_id: "th_none", note: "x" })).ok).toBe(false);
-    const refused = withRunLimits({ edit_triggers: edit([{ ok: false }]), write_note: tool("write_note") } as unknown as ToolSet, async () => "WST");
-    await call(refused, "edit_triggers", { thesis_id: "th_refused", edit: [{ id: "floor", value: 1 }] });
-    expect((await call(refused, "write_note", { thesis_id: "th_refused", note: "x" })).ok).toBe(false);
-    const landed = withRunLimits({ edit_triggers: edit([{ ok: false }, { ok: true }]), write_note: tool("write_note") } as unknown as ToolSet, async () => "WST");
-    await call(landed, "edit_triggers", { thesis_id: "th_landed", add: [{ action: "ENTER" }] });
-    expect((await call(landed, "write_note", { thesis_id: "th_landed", note: "x" })).ok).toBe(true);
   });
 
   it("a refused trade is not counted", async () => {
