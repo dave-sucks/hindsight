@@ -10,8 +10,8 @@ Every trade it proposes waits for your approval, like any run's. It never rewrit
 Model: gpt-5.4
 Starts: Tue and Thu · 10:30 AM ET
 Steps: up to 40
-Tools: theses by ticker, stock data, web search, filings, a note, trigger edits, the trades, a research request
-Saves: a write-up, notes on stocks, trigger edits, proposals, research requests
+Tools: theses by ticker, stock data, web search, filings, a note, the trades, a research request
+Saves: a write-up, notes on stocks, proposals, research requests
 ```
 
 ## When the market starts it
@@ -74,8 +74,8 @@ A run told a limit in its job text went past it, so these are in code:
 - **Three proposals a run.** A fourth is refused.
 - **One new stock a run** sent to research. A second is refused, and goes in its write-up under what the account needs.
 - **Its trades always wait for you**, whatever your approval switches say.
-- **A note only with a trade, a research request or a trigger edit** it made on that stock this run. Its view of every other stock is in its write-up, so its notes don't fill a stock's Activity.
-- **Its save is a note and its trigger edits** ("buy it if X happens"): no status or conviction, and no lowering a floor.
+- **A note only with a trade or a research request** it made on that stock this run. Its view of every other stock is in its write-up, so its notes don't fill a stock's Activity.
+- **It changes no trigger.** A stock's triggers are its analyst's; its save is a note, with no status or conviction.
 
 The rest of its rules above are instructions in its job text.
 

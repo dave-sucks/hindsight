@@ -101,7 +101,7 @@ const listOf = (x: unknown): Array<Record<string, unknown>> => (Array.isArray(x)
 
 /**
  * One record as the run page shows it: its instructions, its first message,
- * and on a longer request (a chat message, a retry) the conversation since and
+ * and on a longer request (a chat message, the Writer's tailoring) the conversation since and
  * the newest message. Reads the three bodies the agents send: Chat Completions
  * (`messages`), Responses (`input`) and Anthropic (`system` and `messages`).
  */

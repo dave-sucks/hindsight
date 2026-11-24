@@ -87,14 +87,6 @@ function standingWakeTriggers(): Trigger[] {
   return [...earningsStandingTriggers(), ...secFilingStandingTriggers()];
 }
 
-/**
- * Accounts seeded before this date are missing a standing wake — the
- * earnings rules (2026-09-10) or the filing rule (2026-09-15). One-time
- * top-up: `ensureAccountStandingRules` adds what's missing and bumps the
- * seed stamp, so a later deletion by the principal sticks.
- */
-const STANDING_RULES_SINCE = new Date("2026-09-15T00:00:00Z");
-
 export function accountSeedTriggers(): Trigger[] {
   return [
     // The review clock for a stock with none of its own: a weekly look, as a
@@ -137,41 +129,6 @@ export async function seedAccountTriggers(accountId: string): Promise<boolean> {
 }
 
 /**
- * Bring an already-seeded account up to the current standing set — the
- * earnings and filing wakes. Runs at the top of every morning run and is a
- * no-op once the seed stamp is past `STANDING_RULES_SINCE`, which is what keeps
- * it from resurrecting a rule the principal deleted: added once, stamped,
- * never again. Unseeded accounts go through the normal seed. Returns how
- * many rules were added.
- */
-export async function ensureAccountStandingRules(accountId: string): Promise<number> {
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    select: { triggers: true, triggersSeededAt: true },
-  });
-  if (!account) return 0;
-  if (account.triggersSeededAt == null) {
-    return (await seedAccountTriggers(accountId)) ? accountSeedTriggers().length : 0;
-  }
-  if (account.triggersSeededAt >= STANDING_RULES_SINCE) return 0;
-
-  const current = Array.isArray(account.triggers) ? (account.triggers as unknown as Trigger[]) : [];
-  const have = new Set(current.map(triggerSlot));
-  const missing = standingWakeTriggers()
-    .filter((t) => !have.has(triggerSlot(t)))
-    .map((t) => withFireMode({ ...t, id: globalThis.crypto.randomUUID() }));
-
-  await prisma.account.update({
-    where: { id: accountId },
-    data: {
-      triggers: [...current, ...missing] as unknown as object,
-      triggersSeededAt: new Date(),
-    },
-  });
-  return missing.length;
-}
-
-/**
  * Safety net for an account that was never seeded — a signup that raced
  * the seeding write, or a row created before this existed and missed the
  * backfill. Returns the code constants so its holdings keep their
@@ -185,7 +142,7 @@ export async function ensureAccountStandingRules(accountId: string): Promise<num
 export function unseededAccountFallback(accountId: string): Trigger[] {
   console.warn(
     `[trigger-levels] account=${accountId} has no seeded standing rules — ` +
-      `falling back to the code constants. Run seedAccountTriggers().`,
+      `falling back to the code constants until its next morning run seeds it (seedAccountTriggers).`,
   );
   return accountStandingRules().map((t) => ({ ...t, id: `fallback:${triggerSlot(t)}` }));
 }

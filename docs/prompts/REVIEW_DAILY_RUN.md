@@ -162,7 +162,6 @@ Carried over from the pre-2026-05-26 rubric. The newer checks (A–E + G) layer 
 - `complete_run` called cleanly? Any preflight refusals?
 - `record_run_summary` populated with the 5 buckets correctly?
 - Narration→execution gap on any `close_position` calls? P0-12 lives at `complete_run` preflight now ([lib/agent/tools/complete-run.ts:362-375](../../lib/agent/tools/complete-run.ts), `checkNarrationExecutionGap`). If the gate fired, the run logs will show a `RunEvent(type='run_failed', title='Narration without tool call ...')`.
-- Premature-exit retry path: did `morning-research.ts` re-fire on a `prematureExitViolation` or `coverageMissing` shape?
 - Overdue-review backlog trend (>7d, any-overdue) vs prior
 
 ### G. Resolver actionability adherence ([PR #360](https://github.com/dave-sucks/hindsight/pull/360))
@@ -399,18 +398,11 @@ Apply per morning run (and cross-reference the day's tactical runs):
    decision vs user click — schema note in [Section H](#h-proposal-flow-integrity-pr-364)).
    Flag any exit whose tag would mis-route the cooldown.
 
-5. **Did any run leave a HOLDING with no protective rung?** `complete_run`
-   carries the Game Plan PR-C **ladder warn-gate** (warn-mode, never blocks —
-   [lib/agent/tools/complete-run.ts:214](../../lib/agent/tools/complete-run.ts)).
-   When a run finishes with a HOLDING that has no floor and no trail, it writes a
-   `RunEvent(type='ladder_warning', title='Ladder warn-gate: N unprotected
-   holding(s)')`. Query today's `RunEvent WHERE type='ladder_warning'`; for every
-   holding named, confirm the *next* action (this run's own late edit, a follow-up
-   tactical, or a flagged carry into tomorrow) closes the gap. A holding that
-   sits unprotected across multiple `ladder_warning` events on consecutive days
-   is the IONS setup re-forming — escalate it in the TL;DR, don't bury it. (The
-   gate is warn-only for the first live cycle; treat a warning as a finding to
-   chase, not proof the run failed.)
+5. **Is any HOLDING left with no sell trigger?** Every buy gets its "Sell if
+   below" at the fill (`armHeldLadderOnFill`), so a holding with no EXIT on its
+   ladder (its own or inherited) is a bug. Check the book for one. A holding
+   that sits unprotected for days is the IONS setup re-forming — escalate it in
+   the TL;DR, don't bury it.
 
 6. **Authority sanity — did the right layer set the level?** Spot-check that the
    levels edited today were set by whoever is entitled to set them

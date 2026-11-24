@@ -11,6 +11,7 @@ export const note: MeasureDef = {
   value: { none: true, placeholder: "a high note from the Market Reviewer" },
   actions: ["REVIEW"],
   says: () => "the Market Reviewer writes a high note on it",
+  why: () => "a high note from the Market Reviewer",
   fresh: () => ({ watch: "note" }),
   fits: () => true,
   shape: "A news note takes nothing more: it is the Market Reviewer's high note on the stock.",

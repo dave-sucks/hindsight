@@ -6,7 +6,7 @@
 import { readFileSync, statSync } from "fs";
 import path from "path";
 import { computeNeedsAction, type NeedsActionInput } from "./needs-action";
-import { guidanceCodes, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationsFor, type SituationCode, type SituationSources } from "./situations";
+import { guidanceCodes, listsTheStock, measuresOf, SITUATIONS, situationLabels, situationTags, situationsFor, type SituationCode, type SituationSources } from "./situations";
 import { MERGED_CODE } from "@/lib/performance/agent-work-terms";
 import type { Trigger } from "./triggers/types";
 
@@ -141,7 +141,7 @@ describe("the situations a stock is in", () => {
 describe("the situations for a person: the sheet's flag line", () => {
   it("MU 10-07: the fired review is the lead's, and the one label", () => {
     const i = input({ triggers: [trig("rev", "REVIEW", below(95))] }, { activity: [fire("rev")] });
-    expect(situationLabels(sources(i))).toEqual([{ code: "REVIEW_DUE", name: "review due", detail: "Review if below $95", text: "review due: Review if below $95", lead: true }]);
+    expect(situationLabels(sources(i))).toEqual([{ code: "REVIEW_DUE", name: "review", detail: "below $95", text: "Review · below $95", lead: true }]);
   });
   it("a sale on an earnings trigger: both codes are the lead's", () => {
     const report = trig("er", "EXIT", { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "price", is: "below", value: 90 }] });
@@ -333,14 +333,38 @@ describe("MA 2026-10-09: a fired review on a watch with no view is no situation,
   });
 });
 
-describe("one wording for a situation on a stock: its name, then what raised it", () => {
+describe("one tag for a situation on a stock: the decision on the table, then why", () => {
   // MU 2026-11-23: its sale read "sale signal" in the stock table, "Trigger fired: Sell if below $804" on its page and "PROTECTIVE_SALE (sale signal)" on its row.
-  it("a fired trigger is the trigger's own sentence, the same for the table, the page and the row", () => {
+  it("a fired trigger is its action as the decision and its condition as the why, the same for the table, the page and the row", () => {
     const i = input({ status: "HOLDING", triggers: [trig("floor", "EXIT", below(804))] }, { activity: [fire("floor")] });
-    expect(situationLabels(sources(i)).map((x) => x.text)).toEqual(["sale signal: Sell if below $804"]);
+    expect(situationLabels(sources(i)).map((x) => x.text)).toEqual(["Possible sell · below $804"]);
+  });
+  // The docs drew "its review clock" as a second thing beside triggers. It is the stock's "Review every N days" trigger, and reads as it.
+  it("a review that came due is a review, with its clock trigger and how late it is", () => {
+    const clock = trig("clock", "REVIEW", { watch: "repeat", value: 30 });
+    const s: SituationSources = { needs: [{ kind: "REVIEW_DUE", daysOverdue: 3 }], triggers: [clock], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
+    expect(situationLabels(s).map((x) => x.text)).toEqual(["Review · every 30 days, 3 days overdue"]);
+  });
+  // A review that watches earnings and a filing together is an earnings report and a filing. The stock shows one tag.
+  it("one trigger that raises two situations shows one tag, and both codes get it", () => {
+    const both = { match: "all", conditions: [{ watch: "surprise", is: "miss", value: 0 }, { watch: "filing", variable: "tier:MATERIAL" }] };
+    const i = input({ status: "HOLDING", triggers: [trig("both", "REVIEW", both)] }, { activity: [fire("both")] });
+    expect(situationLabels(sources(i)).map((x) => x.code)).toEqual(["REPORT", "FILING"]);
+    expect(situationTags(sources(i))).toEqual(["Review · an earnings miss and filed something material with the SEC"]);
+  });
+  // MSFT-style add rule and a 30% trim: the tag says the move as a person would, and a trim keeps its size.
+  it("says a move on the day in plain words, and a trim with its size", () => {
+    const add = input({ status: "HOLDING", triggers: [trig("add", "ADD", { watch: "move", is: "above", value: 7, variable: "prev_close" })] }, { activity: [fire("add")] });
+    expect(situationTags(sources(add))).toEqual(["Possible add · up 7% on the day"]);
+    const trim = input({ status: "HOLDING", triggers: [{ ...trig("trim", "TRIM", { watch: "price", is: "above", value: 150 }), trimPct: 30 }] }, { activity: [fire("trim")] });
+    expect(situationTags(sources(trim))).toEqual(["Possible trim 30% · above $150"]);
+  });
+  it("a code check keeps its name, then its fact", () => {
+    const s: SituationSources = { needs: [{ kind: "FLOOR_TOO_FAR", pctOfAccount: 2.1 } as never], triggers: [], status: "HOLDING", actionability: null, buyBlockedByFull: false, soldReview: false };
+    expect(situationLabels(s).map((x) => x.text)).toEqual(["Floor to fix · 2.1% of the account below here"]);
   });
   it("a situation with nothing to add is its name alone", () => {
     const s: SituationSources = { needs: [], triggers: [], status: "RETIRED", actionability: null, buyBlockedByFull: false, soldReview: true };
-    expect(situationLabels(s)).toEqual([{ code: "SOLD_ONE_REVIEW", name: "just sold", detail: null, text: "just sold", lead: false }]);
+    expect(situationLabels(s)).toEqual([{ code: "SOLD_ONE_REVIEW", name: "just sold", detail: null, text: "Just sold", lead: false }]);
   });
 });

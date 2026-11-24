@@ -224,6 +224,6 @@ describe("DAV-315 — a declined sale becomes the next run's job", () => {
     // The flag still puts IOT on the run's list: no row on it, no finish.
     const silent = await replayTool("complete-run", "completeRun", { seed, args: {}, quotes: { IOT: PRICE_NEXT_DAY } });
     expect(silent.result.summary).toMatch(/refused/i);
-    expect(JSON.stringify(silent.result)).toContain("IOT (t_iot): sale signal");
+    expect(JSON.stringify(silent.result)).toContain("IOT (t_iot): possible sell");
   });
 });

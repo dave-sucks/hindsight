@@ -64,7 +64,6 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
   },
   "portfolio manager": {
     write_note: ["note", "thesis_id"],
-    edit_triggers: ["add", "edit", "remove", "thesis_id"],
   },
 };
 

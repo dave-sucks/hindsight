@@ -12,8 +12,8 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["then write your review with update_thesis.", "then write your review with write_note."],
   ["then write your note with update_thesis.", "then write your note with write_note."],
   ["correct the call and make it, or record in `update_thesis` why it stands.", "correct the call and make it, or record in `write_note` why it stands."],
-  ["How: place_trade buys a stock we watch, manage_position trims or adds to one we own, close_position sells one. Code sizes every buy and add. Right after each, write your note on that stock with update_thesis:", "How: place_trade buys a stock we watch, add buys more of one we own, sell sells all or part of one, edit_triggers changes a stock's triggers. Code sizes every buy and add. Right after each, write your note on that stock with write_note:"],
-  ["- You write a note only on a stock you proposed a trade on or sent to research this run; the tool refuses any other. A note is all your update_thesis writes: a stock's triggers, status and conviction are its analyst's.", "- You write a note only on a stock you proposed a trade on, sent to research or edited the triggers of this run; the tool refuses any other. A stock's status and conviction are its analyst's."],
+  ["How: place_trade buys a stock we watch, manage_position trims or adds to one we own, close_position sells one. Code sizes every buy and add. Right after each, write your note on that stock with update_thesis:", "How: place_trade buys a stock we watch, add buys more of one we own, sell sells all or part of one. Code sizes every buy and add. Right after each, write your note on that stock with write_note:"],
+  ["- You write a note only on a stock you proposed a trade on or sent to research this run; the tool refuses any other. A note is all your update_thesis writes: a stock's triggers, status and conviction are its analyst's.", "- You write a note only on a stock you proposed a trade on or sent to research this run; the tool refuses any other. A stock's status and conviction are its analyst's."],
   ["one `update_thesis` on a stock answers all of its situations", "one `write_note` on a stock answers all of its situations"],
   ["3. Exactly one update_thesis. Its rationale is your note: the principal reads it on the trade.", "3. Exactly one write_note. It is your note: the principal reads it on the trade."],
   ["the next turn is the update_thesis call with your note", "the next turn is the write_note call with your note"],
@@ -51,6 +51,9 @@ export const TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
 
 /** The same renames in the situation texts (lib/agent/situations.ts), the trigger run's lines among them. */
 export const SITUATION_RENAMES: ReadonlyArray<readonly [string, string]> = [
+  // 2026-11-24: a situation is named for the decision on the table.
+  ["BUY_ARRIVES — buy price reached", "BUY_ARRIVES — possible buy"],
+  ["PROTECTIVE_SALE — sale signal", "PROTECTIVE_SALE — possible sell"],
   ["- Defer: update_thesis with change_status \"WATCHING\". The next run looks at it again.", "- Defer: watch_again. The next run looks at it again."],
   ["Answered: place_trade, or that update_thesis.", "Answered: place_trade, or that watch_again."],
   ["- Sell: close_position with reason STOP, answering belief_survived as its description says, or trim with manage_position partial_close; then one update_thesis.", "- Sell: sell, answering belief_survived as its description says, or trim with sell and a percent; then one write_note."],

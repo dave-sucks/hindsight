@@ -6,55 +6,82 @@ This file is built from `SITUATIONS` in `lib/agent/situations.ts`, the skill fil
 
 ## How a situation works
 
-1. A trigger fires or a clock comes due. Code works out the stock's situations from that (`situationsFor`); nothing is stored.
-2. The stock shows each situation in one wording, its name and then what raised it ("sale signal: Sell if below $804"), the most urgent first: on its line of the stock table, on its page and on its row. Every reader gets that. An agent's row adds the situation's code in front.
+1. A situation is raised by one of your triggers firing, or by one of three checks in the code. Nothing else raises one, and nothing is stored: it is worked out each time the stock is read (`situationsFor`).
+2. The stock shows one tag, the same on its line of the stock table, on its page and on the row an agent reads: the decision on the table, then why. A trigger's action is the decision and its condition is the why ("Possible sell · below $804", "Review · every 30 days"). A check in the code shows its name and its fact ("Floor to fix · 2.1% of the account below here"). An agent's row puts the situation's code in front.
 3. The situation does one thing: it picks the text below. The text goes to the run that answers. The morning run's list carries one `guidance` entry per situation on the day's list, however many stocks share it. A trigger run gets its stock's texts with the fire. No other read carries a text; the chat reads one from the knowledge library when it is asked to act.
 4. A text can have a part for a stock we hold and a part for a stock we watch. A run is sent the part that fits its stock, whole and as written. No code writes or changes a word of it.
 
+## The situations, and what raises each
+
+| Situation | Raised by | When |
+|---|---|---|
+| **Possible sell** | A trigger | A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger. |
+| **Possible buy** | A trigger | A Buy trigger fired on a watch, or is true when the morning run reads the stock. |
+| **Possible add** | A trigger | An Add trigger fired on a holding. |
+| **Earnings report** | A trigger | A trigger that watches the company's earnings report fired, before the report or after it. |
+| **SEC filing** | A trigger | A trigger that watches the company's SEC filings fired. |
+| **News** | A trigger | A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock. |
+| **Review** | A trigger | A “Review every N days” trigger came due, or a Review trigger on a price or a move fired. |
+| **Floor to fix** | A check in the code | A holding's floor (its “Sell if below” trigger) locks in much less than its gain, or a sale there would lose more than 1.5% of the account. |
+| **Just sold** | A check in the code | The stock was sold in the last two weeks and no run has looked at it since. |
+| **Promoted to live** | A check in the code | A paper analyst was promoted to live money, and its holdings need a decision. |
+
 ## What every stock in a situation carries
 
-The same row, whatever the situation and whoever reads it. A stock an agent opens by its ticker gets the same row. A field is included always, or when the stock has it, or when the read asks for it. A field with nothing to say is left off. To stop sending a field, delete its line in `ROW_FIELDS`.
+The same row, whatever the situation and whoever reads it. A stock an agent opens by its ticker gets the same row. To stop sending a field, delete its line in `ROW_FIELDS`.
 
-| Field | What it is | When it is included |
+**On every row:**
+
+| Field | What it is |
+|---|---|
+| `stock` | The ticker, held or watch, the direction, the playbook, the outlook and conviction |
+| `company` | What the company sells, to whom and how it makes money |
+| `id` | The thesis id a note or a trade names |
+| `said` | Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days |
+| `price` | The price, the day's move and when it printed |
+| `triggers` | Every trigger as its sentence, the stock's own with their ids, then the ones it inherits |
+| `belief` | The belief |
+| `opinion` | The analyst's full view of the stock at today's price; its first paragraph is the summary |
+| `kpis` | The KPIs: what tells us the belief is right, each with the reading that says on track, the reading that says wrong, and when it is read |
+| `conviction_rationale` | Why the conviction is what it is |
+| `chart` | This morning's averages, range, RSI, strength against the S&P and volume |
+| `street` | Wall Street's ratings, target range and EPS consensus |
+| `research` | When the research was written and at what price |
+
+**Only on a stock it applies to:**
+
+| Field | What it is | Sent when |
 |---|---|---|
-| `stock` | The ticker, held or watch, the direction, the playbook, the outlook and conviction | always |
-| `company` | What the company sells, to whom and how it makes money | always |
-| `id` | The thesis id a note or a trade names | always |
 | `analyst` | The analyst that covers it | the read covers more than one analyst |
-| `situations` | Each situation it is in: its code, then its name and what raised it | it is in one |
-| `said` | Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days | always |
+| `situations` | Each situation it is in: its code, then its tag (the decision on the table, then why) | it is in one |
 | `position` | The shares, what we paid, the gain, when it was bought and the high since | it is held |
 | `proposal_waiting` | A trade on it that waits for the owner | one waits |
-| `price` | The price, the day's move and when it printed | always |
 | `floor_risk` | How far the floor lags the gain, or how much of the account it would lose | it is held and its floor is out of line with its gain |
-| `triggers` | Every trigger as its sentence, the stock's own with their ids, then the ones it inherits | always |
-| `belief` | The belief | always |
-| `opinion` | The analyst's full view of the stock at today's price; its first paragraph is the summary | always |
-| `kpis` | The KPIs: what tells us the belief is right, each with the reading that says on track, the reading that says wrong, and when it is read | always |
-| `bull_case` | The bull case | the read asks for the research |
-| `bear_case` | The bear case | the read asks for the research |
-| `conviction_rationale` | Why the conviction is what it is | always |
 | `playbook_checks` | What its playbook checks, and on a watch the triggers that come with the buy | its playbook is named |
 | `setup` | Its playbook's name and failure signs, in one line | its playbook has no checks to list |
 | `buyBlockedByFull` | Its buy can't go through: its analyst holds its limit of stocks | it is watched, its buy fired and its analyst is full |
 | `heldThroughFloor` | The owner declined its sale or let it lapse: how often, their words, the low since | it is held, that happened in the last 7 days and the price is still past the floor |
 | `supersededBy` | The newer thesis that replaced it | one did |
-| `snapshot` | The research summary | the read asks for the research |
-| `chart` | This morning's averages, range, RSI, strength against the S&P and volume | always |
-| `street` | Wall Street's ratings, target range and EPS consensus | always |
-| `research` | When the research was written and at what price | always |
 | `catalyst` | Its event date | its thesis has one, or its playbook needs one and it is missing |
 | `repeat` | That the same trigger has fired again with nothing changed since | it has |
 | `paper_record` | Its record on paper: days held, the gain, the reviews | it was promoted to live |
-| `history` | The raw Activity log | the read asks for the history |
+
+**Only when the agent asks for it:**
+
+| Field | What it is |
+|---|---|
+| `bull_case` | The bull case |
+| `bear_case` | The bear case |
+| `snapshot` | The research summary |
+| `history` | The raw Activity log |
 
 ## Promoted to live
 
 `PROMOTED_AWAITING` · rank 1 of 10 · its text is in `SITUATIONS`
 
-**True when:** A stock just moved from paper to live money and needs a decision this run.
+**Raised by:** a check in the code. A paper analyst was promoted to live money, and its holdings need a decision.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named PROMOTED_AWAITING -->
 
@@ -79,13 +106,13 @@ Mistakes:
 - A note in place of the decision: the stock stays promoted and is asked again on the next run.
 ```
 
-## Sale signal
+## Possible sell
 
 `PROTECTIVE_SALE` · rank 2 of 10 · `sale-fired.md`
 
-**True when:** A sell or trim trigger fired on a holding, or a sale you declined or let expire is still past its line.
+**Raised by:** a trigger. A Sell or Trim trigger fired on a holding. A sale you declined or let lapse keeps it while the price is still past the trigger.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named PROTECTIVE_SALE -->
 
@@ -104,13 +131,13 @@ A stock we hold. The trigger was written while calm, so the sale goes ahead unle
 Done: one note that says why the stock fell and whether that changes why we own it, with the sale, the trim, or why you hold.
 ```
 
-## Buy price reached
+## Possible buy
 
 `BUY_ARRIVES` · rank 3 of 10 · `buy-fired.md`
 
-**True when:** A buy trigger fired on a watched stock.
+**Raised by:** a trigger. A Buy trigger fired on a watch, or is true when the morning run reads the stock.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named BUY_ARRIVES -->
 
@@ -130,13 +157,13 @@ A stock we watch. Every check holds: propose the buy with its floor. Leave the b
 Done: one note that says what is going on with the company and why now is the time to buy or not, with the buy or what you wait for.
 ```
 
-## Add
+## Possible add
 
 `ADD_OR_WINNER` · rank 4 of 10 · `add-fired.md`
 
-**True when:** An add trigger fired on a holding.
+**Raised by:** a trigger. An Add trigger fired on a holding.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named ADD_OR_WINNER -->
 
@@ -155,13 +182,13 @@ A stock we hold. The move confirms the case: propose the add, then raise the flo
 Done: one note that says why the stock moved and whether that confirms why we own it, with the add, the floor raised and what it now locks in, or the trim.
 ```
 
-## A report
+## Earnings report
 
 `REPORT` · rank 5 of 10 · `report.md`
 
-**True when:** A trigger on the company's earnings report fired: the report is coming, or it just landed.
+**Raised by:** a trigger. A trigger that watches the company's earnings report fired, before the report or after it.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named REPORT -->
 
@@ -187,13 +214,13 @@ A stock we watch. Before: the buy waits for the report. After: the case is stron
 A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Before, it names the bar. After: the report against the bar, how the stock took it, the verdict.
 ```
 
-## A filing
+## SEC filing
 
 `FILING` · rank 6 of 10 · `filing.md`
 
-**True when:** A trigger on the company's SEC filings fired.
+**Raised by:** a trigger. A trigger that watches the company's SEC filings fired.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named FILING -->
 
@@ -217,9 +244,9 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 `NEWS` · rank 7 of 10 · `news.md`
 
-**True when:** Something happened to the company, or the stock had a day far outside its normal. Nothing puts a stock here yet.
+**Raised by:** a trigger. A trigger that watches the Market Reviewer's notes fired: it wrote a high note on the stock.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named NEWS -->
 
@@ -243,9 +270,9 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 
 `PROTECTION` · rank 8 of 10 · `floor-to-fix.md`
 
-**True when:** A gain with too little floor under it, or a floor that would lose too much of the account.
+**Raised by:** a check in the code. A holding's floor (its “Sell if below” trigger) locks in much less than its gain, or a sale there would lose more than 1.5% of the account.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named PROTECTION -->
 
@@ -263,13 +290,13 @@ A stock we hold. Raise the floor to just under that structure. A compounder gets
 Done: one note that says how the stock got here and what is driving it now, with the new floor and what it locks in, the trim, or why the floor stays.
 ```
 
-## Review due
+## Review
 
 `REVIEW_DUE` · rank 9 of 10 · `review.md`
 
-**True when:** The review clock came round, or the price reached a level the analyst asked to look at again.
+**Raised by:** a trigger. A “Review every N days” trigger came due, or a Review trigger on a price or a move fired.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named REVIEW_DUE -->
 
@@ -294,9 +321,9 @@ Change how often you look only with a reason: slower for a quiet stock, sooner b
 
 `SOLD_ONE_REVIEW` · rank 10 of 10 · `just-sold.md`
 
-**True when:** A stock sold in the last two weeks is owed one look back.
+**Raised by:** a check in the code. The stock was sold in the last two weeks and no run has looked at it since.
 
-**How it reads, in each place it shows** (the same wording everywhere: its name, then what raised it):
+**How it reads, in each place it shows:**
 
 <!-- asset: situation-named SOLD_ONE_REVIEW -->
 

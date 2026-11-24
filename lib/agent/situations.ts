@@ -6,8 +6,8 @@
  */
 import type { NeedsAction, NeedsActionInput } from "@/lib/agent/needs-action";
 import type { Trigger } from "@/lib/agent/triggers/types";
-import { isGroup, measureOf, shapeOf, type MeasureDef, type When } from "@/lib/agent/triggers/condition";
-import { sentenceOf } from "@/lib/agent/triggers/condition/describe";
+import { isGroup, measureOf, reviewClockDays, shapeOf, type MeasureDef, type When } from "@/lib/agent/triggers/condition";
+import { actionLabel, conditionWhy, trimPctOf } from "@/lib/agent/triggers/condition/describe";
 import { needsActionFlag } from "@/lib/agent/needs-action-line";
 
 /**
@@ -117,15 +117,15 @@ The note: what the company and the stock have done since the paper buy, and whet
 Mistakes:
 - A note in place of the decision: the stock stays promoted and is asked again on the next run.`,
   },
-  PROTECTIVE_SALE: { name: "sale signal", skill: "sale-fired.md" },
-  BUY_ARRIVES: { name: "buy price reached", skill: "buy-fired.md" },
-  ADD_OR_WINNER: { name: "add", skill: "add-fired.md" },
-  REPORT: { name: "a report", skill: "report.md" },
-  FILING: { name: "a filing", skill: "filing.md" },
+  PROTECTIVE_SALE: { name: "possible sell", skill: "sale-fired.md" },
+  BUY_ARRIVES: { name: "possible buy", skill: "buy-fired.md" },
+  ADD_OR_WINNER: { name: "possible add", skill: "add-fired.md" },
+  REPORT: { name: "earnings report", skill: "report.md" },
+  FILING: { name: "SEC filing", skill: "filing.md" },
   // A trigger that watches the Market Reviewer's notes fired: a high note landed on the stock.
   NEWS: { name: "news", skill: "news.md" },
   PROTECTION: { name: "floor to fix", skill: "floor-to-fix.md" },
-  REVIEW_DUE: { name: "review due", skill: "review.md" },
+  REVIEW_DUE: { name: "review", skill: "review.md" },
   SOLD_ONE_REVIEW: { name: "just sold", skill: "just-sold.md" },
 };
 
@@ -138,32 +138,57 @@ export function guidanceCodes(status: string, codes: readonly SituationCode[], r
   return runMode === "INTRADAY_TACTICAL" ? codes.filter((c) => !NOT_FOR_THE_TRIGGER_RUN.has(c)) : [...codes];
 }
 
-/** A situation on one stock, in the one wording every place uses: its name, then what raised it. */
+/** A situation on one stock, in the one wording every place uses. */
 export interface SituationLabel {
   code: SituationCode;
   name: string;
-  /** What raised it on this stock: the trigger's own sentence, or the one fact a code check has. Null when there is nothing to add. */
+  /** What raised it on this stock: the trigger's condition, or the one fact a code check has. Null when there is nothing to add. */
   detail: string | null;
-  /** The name and the detail as one line: "sale signal: Sell if below $804". */
+  /**
+   * The tag every place prints: the decision on the table, then why. A trigger's action is the decision
+   * and its condition the why ("Possible sell · below $804", "Review · every 30 days"); a check in the code
+   * is its name, then its fact ("Floor to fix · 2.1% of the account below here").
+   */
   text: string;
   /** Whether today's lead flag is what put the stock in it. */
   lead: boolean;
 }
 
-/** What raised a flag, in a few words: a trigger's own sentence as saved, or the one fact a code check carries. */
-function flagDetail(s: SituationSources, f: NeedsAction): Array<{ codes: SituationCode[]; detail: string | null }> {
-  const sentence = (id: string, fallback: string) => {
+/** The decision a trigger puts on the table, by its action. A review names no direction: the look decides. */
+const DECISION: Record<string, string> = { EXIT: "Possible sell", TRIM: "Possible trim", ENTER: "Possible buy", ADD: "Possible add", REVIEW: "Review" };
+/** A trim says its size: "Possible trim 30%". */
+const decisionOf = (action: string, t?: { trimPct?: number | null }) => (action === "TRIM" && t ? `${DECISION.TRIM} ${trimPctOf(t)}%` : (DECISION[action] ?? actionLabel(action)));
+
+/** A trigger as a flagged stock's tag: its action as the decision, then what it watches. "Possible sell · below $804". */
+export function triggerTag(t: { action: string; predicate: unknown; trimPct?: number | null }): string {
+  return tag(decisionOf(t.action, t), conditionWhy(t.predicate));
+}
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const tag = (decision: string, why: string | null) => (why ? `${decision} · ${why}` : decision);
+
+type Raised = { codes: SituationCode[]; detail: string | null; decision?: string };
+
+/** What raised a flag: a trigger (its action is the decision, its condition the why), or the one fact a code check carries. */
+function flagDetail(s: SituationSources, f: NeedsAction): Raised[] {
+  // The fired trigger as saved; one no longer on the stock falls back to the fire's own words.
+  const fired = (id: string, action: string, fallback: string): Raised => {
     const t = s.triggers.find((x) => x.id === id);
-    return t ? sentenceOf(t) : fallback;
+    return { codes: fireCodes(s, id, action), detail: t ? conditionWhy(t.predicate) : fallback, decision: decisionOf(action, t) };
   };
   switch (f.kind) {
     case "TRIGGER_FIRED":
-      return [f, ...(f.alsoFired ?? [])].map((x) => ({ codes: fireCodes(s, x.triggerId, x.action), detail: sentence(x.triggerId, x.summary) }));
+      return [f, ...(f.alsoFired ?? [])].map((x) => fired(x.triggerId, x.action, x.summary));
     case "TRIGGER_MATCHING_NOW":
-      return [{ codes: fireCodes(s, f.triggerId, f.action), detail: sentence(f.triggerId, f.predicateSummary) }];
+      return [fired(f.triggerId, f.action, f.predicateSummary)];
     case "SALE_DECLINED": {
       const flag = needsActionFlag(f);
-      return [{ codes: flagCodes(s, f), detail: `${flag.name.toLowerCase()}${flag.detail ? `, ${flag.detail}` : ""}` }];
+      return [{ codes: flagCodes(s, f), detail: `${flag.name.toLowerCase()}${flag.detail ? `, ${flag.detail}` : ""}`, decision: DECISION.EXIT }];
+    }
+    case "REVIEW_DUE": {
+      // The review clock is a trigger ("Review every 30 days"): the first one on the stock, as reviewDue reads it.
+      const clock = s.triggers.find((t) => { const w = shapeOf(t.predicate); return w != null && reviewClockDays(w) != null; });
+      const late = needsActionFlag(f).detail;
+      return [{ codes: flagCodes(s, f), detail: clock ? `${conditionWhy(clock.predicate)}${late ? `, ${late}` : ""}` : late, decision: DECISION.REVIEW }];
     }
     default:
       return [{ codes: flagCodes(s, f), detail: needsActionFlag(f).detail }];
@@ -173,14 +198,20 @@ function flagDetail(s: SituationSources, f: NeedsAction): Array<{ codes: Situati
 /** Every situation the stock is in, lead first, each in the one wording the stock table, the stock's page and an agent's row all print. */
 export function situationLabels(s: SituationSources): SituationLabel[] {
   const lead = new Set(s.needs[0] ? flagCodes(s, s.needs[0]) : []);
-  const details = new Map<SituationCode, string>();
-  for (const f of s.needs) for (const d of flagDetail(s, f)) for (const code of d.codes) if (d.detail && !details.has(code)) details.set(code, d.detail);
-  if (s.buyBlockedByFull && !details.has("BUY_ARRIVES")) details.set("BUY_ARRIVES", "its analyst holds its limit of stocks");
+  const raised = new Map<SituationCode, Raised>();
+  for (const f of s.needs) for (const d of flagDetail(s, f)) for (const code of d.codes) if (d.detail && !raised.has(code)) raised.set(code, d);
+  if (s.buyBlockedByFull && !raised.has("BUY_ARRIVES")) raised.set("BUY_ARRIVES", { codes: ["BUY_ARRIVES"], detail: "its analyst holds its limit of stocks", decision: DECISION.ENTER });
   return situationsFor(s).map((code) => {
     const name = SITUATIONS[code].name;
-    const detail = details.get(code) ?? null;
-    return { code, name, detail, text: detail ? `${name}: ${detail}` : name, lead: lead.has(code) };
+    const r = raised.get(code);
+    const detail = r?.detail ?? null;
+    return { code, name, detail, text: tag(r?.decision ?? cap(name), detail), lead: lead.has(code) };
   });
+}
+
+/** The tags of a stock's situations, each once: one trigger can raise two situations (a review that watches earnings and a filing). */
+export function situationTags(s: SituationSources): string[] {
+  return [...new Set(situationLabels(s).map((x) => x.text))];
 }
 
 const LABELS_THAT_LIST = new Set(["ENTER_NOW", "PROMOTED_DECIDE_TODAY"]);
