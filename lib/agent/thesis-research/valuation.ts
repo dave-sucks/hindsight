@@ -81,7 +81,7 @@ export function valuationLines(v: ValuationInput): string | null {
   if (four.length === 4) earnings.push(times(p, four.reduce((a, b) => a + b, 0), "the last four quarters' EPS"));
   const gap = basisGap(v);
   if (!gap && v.epsFiscalYear != null) earnings.push(times(p, v.epsFiscalYear, "this fiscal year's EPS consensus"));
-  if (v.nextQuarterEstimate != null) earnings.push(times(p, v.nextQuarterEstimate * 4, "next quarter's EPS estimate × 4"));
+  if (v.nextQuarterEstimate != null) earnings.push(times(p, v.nextQuarterEstimate * 4, "next quarter's EPS estimate on the reported basis × 4"));
   else if (!gap && v.epsNextQuarter != null) earnings.push(times(p, v.epsNextQuarter * 4, "next quarter's EPS consensus × 4"));
   if (earnings.length) lines.push(`Earnings: ${earnings.join(" · ")}`);
   if (gap) {

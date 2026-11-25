@@ -38,7 +38,7 @@ describe("valuationLines", () => {
     const docu = { price: 80.79, marketCap: null, quarterlyEps: [1.16, 1.09, 1.01, 1.01], epsFiscalYear: 2.15, epsNextQuarter: 0.53, nextQuarterEstimate: 1.2003, lastYear: null };
     expect(valuationLines(docu)).toBe(
       [
-        "Earnings: 18.9× the last four quarters' EPS ($4.27) · 16.8× next quarter's EPS estimate × 4 ($4.80)",
+        "Earnings: 18.9× the last four quarters' EPS ($4.27) · 16.8× next quarter's EPS estimate on the reported basis × 4 ($4.80)",
         "No multiple on the Street's EPS consensus ($2.15 this fiscal year): its next quarter ($0.53) is 2.3× off the estimate for that quarter on the reported quarters' basis ($1.20), so it is likely on a different basis (GAAP and adjusted).",
       ].join("\n"),
     );
@@ -46,7 +46,7 @@ describe("valuationLines", () => {
 
   it("keeps the consensus when the same quarter agrees, through a seasonal quarter (CEG $2.77 and $2.73)", () => {
     const out = valuationLines({ ...ACN, price: 280.2, quarterlyEps: [5.06, 2.55, 2.74, 2.3], epsFiscalYear: 12.7, epsNextQuarter: 2.77, nextQuarterEstimate: 2.7303 });
-    expect(out).toContain("22.1× this fiscal year's EPS consensus ($12.70) · 25.7× next quarter's EPS estimate × 4 ($10.92)");
+    expect(out).toContain("22.1× this fiscal year's EPS consensus ($12.70) · 25.7× next quarter's EPS estimate on the reported basis × 4 ($10.92)");
     expect(out).not.toContain("No multiple");
   });
 
