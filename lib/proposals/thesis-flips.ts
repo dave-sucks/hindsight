@@ -281,6 +281,8 @@ export function shouldRecycleToWatching(
  *     an Auto-sell, and manual UI closes) routes through there, so they all flip identically.
  *   • closeThesisOnApproval (below) — the approval path, when an
  *     AWAITING_APPROVAL close proposal is later approved.
+ *   • reconcile-orders' moveStockOffHolding — a sale whose fill came after
+ *     the sender stopped waiting (the Close button while the market is shut).
  *
  * Audit row type stays `CLOSED` (not STATUS_CHANGED): the dashboard activity
  * feed + run-summary bucket the close on `type === "CLOSED"`, and the
