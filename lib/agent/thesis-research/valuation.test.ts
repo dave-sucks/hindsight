@@ -34,6 +34,22 @@ describe("valuationLines", () => {
     expect(out).toBe("Earnings: 16.9× this fiscal year's EPS consensus ($14.68) · 15.9× next quarter's EPS consensus × 4 ($15.60)");
   });
 
+  it("puts no multiple on a consensus far off the reported quarters, and says why (IOT 2026-11-25)", () => {
+    const iot = { price: 38.14, marketCap: null, quarterlyEps: [0.2, 0.17, 0.18, 0.15], epsFiscalYear: 0.13, epsNextQuarter: 0.03, lastYear: null };
+    expect(valuationLines(iot)).toBe(
+      [
+        "Earnings: 54.5× the last four quarters' EPS ($0.70)",
+        "No multiple on the Street's EPS consensus: its next quarter ($0.03) is 6.7× off the last reported quarter ($0.20), so the two are likely on different bases (GAAP and adjusted).",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps the consensus multiples through a seasonal quarter (CEG $5.06 to $2.77)", () => {
+    const out = valuationLines({ ...ACN, price: 280.2, quarterlyEps: [5.06, 2.55, 2.74, 2.3], epsFiscalYear: 12.7, epsNextQuarter: 2.77 });
+    expect(out).toContain("22.1× this fiscal year's EPS consensus ($12.70)");
+    expect(out).not.toContain("No multiple");
+  });
+
   it("is nothing without a price", () => {
     expect(valuationLines({ ...ACN, price: null })).toBeNull();
   });
