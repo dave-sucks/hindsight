@@ -13,6 +13,7 @@
  *
  * Pure: the loader is load-snapshot.ts.
  */
+import { firstParagraph } from "@/lib/thesis/clean-text";
 
 export interface SnapshotHolding {
   ticker: string;
@@ -218,7 +219,9 @@ const gist = (note: string) => {
 /** The fields a holding's line and a watch's line share: the 5- and 20-day moves and the conviction. */
 function movesAndConviction(x: { move5dPct?: number | null; move20dPct?: number | null; conviction?: string | null; outlook?: string | null; outlookReason?: string | null }): string {
   const moves = [x.move5dPct != null ? `5-day ${signedPct(x.move5dPct)}` : null, x.move20dPct != null ? `20-day ${signedPct(x.move20dPct)}` : null].filter(Boolean).join(", ");
-  const outlook = x.outlook ? ` · outlook ${x.outlook.toLowerCase()}${x.outlookReason?.trim() ? ` (${x.outlookReason.trim()})` : ""}` : "";
+  // The opinion's first paragraph is its summary; the whole opinion is on the stock's own row.
+  const summary = firstParagraph(x.outlookReason);
+  const outlook = x.outlook ? ` · outlook ${x.outlook.toLowerCase()}${summary ? ` (${summary})` : ""}` : "";
   return `${moves ? ` · ${moves}` : ""}${outlook}${x.conviction ? ` · conviction ${x.conviction}` : ""}`;
 }
 

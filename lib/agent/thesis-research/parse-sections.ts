@@ -1,71 +1,14 @@
 /**
- * parse-sections.ts — the parser for the Writer's research note: three
- * sections, each of which is read by the agents and shown on the page.
+ * parse-sections.ts — the source markers in what the Writer saves
+ * ([STRUCTURED:<field>], [WEB:<url>]): read out as citations, and taken out of
+ * the text they sat in.
  *
- *   ## Company    → { text, citations }   two sentences: what it does, how it makes money
- *   ## Bull Case  → { bullets: [{ text, citation? }] }
- *   ## Bear Case  → { bullets: [{ text, citation? }] }
- *
- * Until 2026-11-03 the note had nine sections (snapshot, recent catalysts,
- * fundamentals, latest earnings, catalysts and events, analyst consensus,
- * insider and technical, and the two kept here). The six that went were
- * essays of data from mint day, read by no run; their facts are live data
- * now. Keep SECTION_HEADERS in sync with the note template in the writer's
- * research prompt (buildWriterResearchPrompt) — a renamed header here or
- * there silently drops the section.
+ * Until 2026-11-24 the Writer wrote a research note in prose and this file cut
+ * it into the company line and the bull and bear cases by their headers; a
+ * header the model didn't write exactly dropped its section with nothing
+ * said. Those are fields of the save now (`submit_thesis`), refused by name
+ * when missing.
  */
-
-type SectionKind = "text" | "bullets";
-export const SECTION_HEADERS: Array<{
-  key: string;
-  pattern: RegExp;
-  kind: SectionKind;
-}> = [
-  { key: "company", pattern: /^##\s+Company\b/im, kind: "text" },
-  { key: "bullCase", pattern: /^##\s+Bull Case\b/im, kind: "bullets" },
-  { key: "bearCase", pattern: /^##\s+Bear Case\b/im, kind: "bullets" },
-];
-
-/**
- * Prose section — matches record_thesis `sectionTextSchema`.
- */
-export interface ParsedTextSection {
-  text: string;
-  citations: string[];
-}
-
-/**
- * Single bulleted row with optional inline citation. `citation` is the
- * FIRST [STRUCTURED:...] or [WEB:...] marker found in the bullet's text
- * (kept raw — the renderer parses it).
- */
-export interface ParsedBullet {
-  text: string;
-  citation?: string;
-}
-
-/**
- * Bullet-list section — matches record_thesis `sectionBulletSchema`.
- */
-export interface ParsedBulletSection {
-  bullets: ParsedBullet[];
-}
-
-export interface ParsedSections {
-  company?: ParsedTextSection;
-  bullCase?: ParsedBulletSection;
-  bearCase?: ParsedBulletSection;
-}
-
-export interface ResearchCitation {
-  /** "STRUCTURED:revenue_2025" or "WEB:https://..." */
-  raw: string;
-  kind: "structured" | "web";
-  /** For STRUCTURED: the field key. For WEB: the URL. */
-  ref: string;
-  /** For WEB: best-effort domain from URL. */
-  domain?: string;
-}
 
 export function parseCitations(text: string): string[] {
   const out: string[] = [];
@@ -94,107 +37,4 @@ export function withoutCitationMarkers(text: string): string {
     .replace(/\s*\[(?:STRUCTURED|WEB):[^\]]*\]/g, "")
     .replace(/[ \t]+([.,;:])/g, "$1")
     .trim();
-}
-
-export function citationsFromRaw(rawList: string[]): ResearchCitation[] {
-  return rawList.map((raw): ResearchCitation => {
-    const colon = raw.indexOf(":");
-    const kindStr = raw.slice(0, colon).toUpperCase();
-    const ref = raw.slice(colon + 1);
-    if (kindStr === "WEB") {
-      let domain: string | undefined;
-      try {
-        domain = new URL(ref).hostname;
-      } catch {
-        /* malformed url — leave domain undefined */
-      }
-      return { raw, kind: "web", ref, domain };
-    }
-    return { raw, kind: "structured", ref };
-  });
-}
-
-/**
- * Bullet-line matcher. Accepts the most common markdown bullet
- * conventions the synthesis model might emit:
- *   - hyphen-bullet      `- foo`
- *   - asterisk-bullet    `* foo`
- *   - bullet-glyph       `• foo` / `◦ foo` / `▪ foo`
- *   - numbered           `1. foo` / `2) foo`
- *
- * We split on those line-starts so each bullet's text is the rest of the
- * line. Multi-line bullets (with wrapped or sub-content) get folded onto
- * one line — Markdown spec says trailing lines without a leading bullet
- * are continuations; we keep them as-is via the lookahead.
- */
-const BULLET_LINE_RE =
-  /(?:^|\n)\s*(?:[-*•◦▪]|\d+[.)])\s+([^\n]+(?:\n(?!\s*(?:[-*•◦▪]|\d+[.)])\s+)[^\n]+)*)/g;
-
-/**
- * Pull the FIRST [STRUCTURED:...] or [WEB:...] marker out of bullet text,
- * if present. The bullet's text is NOT mutated — the marker stays inline.
- */
-function firstCitationOf(text: string): string | undefined {
-  const re = /\[(STRUCTURED|WEB):([^\]]+)\]/;
-  const match = re.exec(text);
-  if (!match) return undefined;
-  return `${match[1]}:${match[2]}`;
-}
-
-function parseBullets(body: string): ParsedBullet[] {
-  const bullets: ParsedBullet[] = [];
-  let m: RegExpExecArray | null;
-  // Reset lastIndex defensively — global regex state is per-instance.
-  BULLET_LINE_RE.lastIndex = 0;
-  while ((m = BULLET_LINE_RE.exec(body)) !== null) {
-    const text = m[1].trim();
-    if (!text) continue;
-    const citation = firstCitationOf(text);
-    bullets.push(citation !== undefined ? { text, citation } : { text });
-  }
-  return bullets;
-}
-
-export function parseIntoSections(text: string): ParsedSections {
-  // Find each section header's index, then slice text between consecutive
-  // headers. Headers not present in the model output simply stay undefined.
-  const positions: { key: string; start: number; kind: SectionKind }[] = [];
-  for (const { key, pattern, kind } of SECTION_HEADERS) {
-    const match = pattern.exec(text);
-    if (match) positions.push({ key, start: match.index, kind });
-  }
-  positions.sort((a, b) => a.start - b.start);
-
-  const sections: ParsedSections = {};
-  for (let i = 0; i < positions.length; i++) {
-    const { key, start, kind } = positions[i];
-    const end = i + 1 < positions.length ? positions[i + 1].start : text.length;
-    // Strip the header line itself.
-    const block = text.slice(start, end);
-    const newline = block.indexOf("\n");
-    const body = newline >= 0 ? block.slice(newline + 1).trim() : "";
-    if (!body) continue;
-
-    if (kind === "bullets") {
-      const bullets = parseBullets(body);
-      if (bullets.length === 0) {
-        // Fallback: model wrote the section as prose despite the prompt
-        // asking for bullets. Wrap the body as a single bullet so the
-        // section isn't silently dropped — better to render one fat
-        // bullet than a missing section. Citation extraction still applies.
-        const citation = firstCitationOf(body);
-        (sections as Record<string, ParsedBulletSection>)[key] = {
-          bullets: [citation !== undefined ? { text: body, citation } : { text: body }],
-        };
-      } else {
-        (sections as Record<string, ParsedBulletSection>)[key] = { bullets };
-      }
-    } else {
-      (sections as Record<string, ParsedTextSection>)[key] = {
-        text: body,
-        citations: parseCitations(body),
-      };
-    }
-  }
-  return sections;
 }

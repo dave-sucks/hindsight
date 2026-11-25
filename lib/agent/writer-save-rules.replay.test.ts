@@ -65,7 +65,7 @@ const MA = { ...belief, horizon: "TARGET", direction: "LONG", catalyst_date: und
 
 describe("A. a watch the save would leave with nothing that can fire is refused", () => {
   it("SNDK's view with no playbook and its look-again after the January report saves, with that one review", () => {
-    const call = buildWriterSaveCall(args("SNDK"), pull(SNDK_CHART), SNDK, {}, null, playbooks);
+    const call = buildWriterSaveCall(args("SNDK"), pull(SNDK_CHART), SNDK, null, playbooks);
     expect(said(call.toolArgs.triggers)).toEqual(["Review if within 1 day after earnings"]);
     expect(nothingCanFireRefusal(call, SNDK, null)).toBeNull();
   });
@@ -73,7 +73,7 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
   it("the same view with no look-again is refused at the check, saying what to do", async () => {
     const { look_again: _l, ...noLook } = SNDK;
     void _l;
-    const call = buildWriterSaveCall(args("SNDK"), pull(SNDK_CHART), noLook as ValidatedThesisDecision, {}, null, playbooks);
+    const call = buildWriterSaveCall(args("SNDK"), pull(SNDK_CHART), noLook as ValidatedThesisDecision, null, playbooks);
     expect(call.toolArgs.triggers).toEqual([]);
     const refusal =
       "This would save a LONG watch with nothing on it that can fire: no buy, no trigger and no review, so it could never come back. " +
@@ -87,7 +87,7 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
     const named = { ...MA, setup_id: "MA_PULLBACK" } as ValidatedThesisDecision;
     const stamped = writerPlaybookWrites(named, { priceStructure: MA_CHART } as never, { ...MA_CLEARED, setupId: null }, playbooks).add.map((t, i) => ({ ...(triggerInputSchema.parse(t) as Trigger), id: `stamp-${i}` }));
     const stock: StockForSave = { ...MA_CLEARED, triggers: stamped };
-    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, {}, stock, playbooks);
+    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, stock, playbooks);
     expect(call.toolArgs.add_triggers).toBeUndefined();
     expect(nothingCanFireRefusal(call, named, stock)).toBeNull();
   });
@@ -99,13 +99,13 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
 
   it("cleared and nothing put on, a refresh naming its own playbook again writes none, so it is refused, and told what can pass", () => {
     const named = { ...MA, setup_id: "MA_PULLBACK" } as ValidatedThesisDecision;
-    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, {}, MA_CLEARED, playbooks);
+    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, MA_CLEARED, playbooks);
     expect(call.toolArgs.add_triggers).toBeUndefined();
     expect(nothingCanFireRefusal(call, named, MA_CLEARED)).toBe(REFRESH_FIX);
   });
 
   it("the same rewrite naming no playbook and no look-again is refused the same way; a view keeps its direction, so no PASS is offered", () => {
-    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), MA, {}, MA_CLEARED, playbooks);
+    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), MA, MA_CLEARED, playbooks);
     expect(nothingCanFireRefusal(call, MA, MA_CLEARED)).toBe(REFRESH_FIX);
   });
 
@@ -113,7 +113,7 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
     const named = { ...MA, setup_id: "ESTIMATE_REVISION" } as ValidatedThesisDecision;
     const onIt = writerPlaybookWrites({ ...MA, setup_id: "MA_PULLBACK" } as ValidatedThesisDecision, { priceStructure: MA_CHART } as never, { ...MA_CLEARED, setupId: null }, playbooks).add.map((t, i) => ({ ...(triggerInputSchema.parse(t) as Trigger), id: `stamp-${i}` }));
     const stock: StockForSave = { ...MA_CLEARED, triggers: onIt };
-    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, {}, stock, playbooks);
+    const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, stock, playbooks);
     expect(call.toolArgs.remove_trigger_ids).toHaveLength(3);
     expect(nothingCanFireRefusal(call, named, stock)).toBe(
       "This would save a LONG watch with nothing on it that can fire: no buy, no trigger and no review, so it could never come back. " +
@@ -124,18 +124,18 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
   it("a PASS, a stock we hold, or a refresh that leaves the stock's own triggers on are not refused", () => {
     const pass = { ...MA, direction: "PASS" } as ValidatedThesisDecision;
     const refresh = args("MA", { mode: "refresh", existingThesisId: "x" });
-    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), pass, {}, MA_CLEARED, playbooks), pass, MA_CLEARED)).toBeNull();
+    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), pass, MA_CLEARED, playbooks), pass, MA_CLEARED)).toBeNull();
     const held: StockForSave = { ...MA_CLEARED, status: "HOLDING" };
-    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), MA, {}, held, playbooks), MA, held)).toBeNull();
+    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), MA, held, playbooks), MA, held)).toBeNull();
     const own = { id: "own", action: "REVIEW", predicate: { watch: "report", is: "before", value: 3 }, rationale: "Before the print." } as Trigger;
     const kept: StockForSave = { ...MA_CLEARED, triggers: [own] };
-    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), MA, {}, kept, playbooks), MA, kept)).toBeNull();
+    expect(nothingCanFireRefusal(buildWriterSaveCall(refresh, pull(MA_CHART), MA, kept, playbooks), MA, kept)).toBeNull();
   });
 });
 
 describe("B and C. a new watch keeps its look-again beside the clock it was sent with", () => {
   it("CORT, sent with a 30-day clock: the clock and the look-again the day after the FDA decision both stand; the playbook's 7-day clock is not written, and says so", () => {
-    const call = buildWriterSaveCall(args("CORT", { reviewCadenceDays: 30 }), pull(CORT_CHART), CORT, {}, null, playbooks);
+    const call = buildWriterSaveCall(args("CORT", { reviewCadenceDays: 30 }), pull(CORT_CHART), CORT, null, playbooks);
     const saved = said(call.toolArgs.triggers);
     expect(saved).toContain("Review every 30 days");
     expect(saved).toContain("Review 1 day after the event date");
@@ -145,7 +145,7 @@ describe("B and C. a new watch keeps its look-again beside the clock it was sent
   });
 
   it("CORT with no clock sent: the playbook's 7-day clock and the look-again both stand", () => {
-    const call = buildWriterSaveCall(args("CORT"), pull(CORT_CHART), CORT, {}, null, playbooks);
+    const call = buildWriterSaveCall(args("CORT"), pull(CORT_CHART), CORT, null, playbooks);
     const saved = said(call.toolArgs.triggers);
     expect(saved).toContain("Review every 7 days");
     expect(saved).toContain("Review 1 day after the event date");
@@ -155,7 +155,7 @@ describe("B and C. a new watch keeps its look-again beside the clock it was sent
   it("a look-again on a refresh is its own trigger: the stock's review clock stays as it is", () => {
     const clock = { id: "clock", action: "REVIEW", predicate: { watch: "repeat", value: 30 }, rationale: "Monthly." } as Trigger;
     const stock: StockForSave = { direction: "LONG", status: "WATCHING", setupId: null, triggers: [clock] };
-    const call = buildWriterSaveCall(args("CORT", { mode: "refresh", existingThesisId: "x" }), pull(CORT_CHART), { ...CORT, setup_id: undefined } as ValidatedThesisDecision, {}, stock, playbooks);
+    const call = buildWriterSaveCall(args("CORT", { mode: "refresh", existingThesisId: "x" }), pull(CORT_CHART), { ...CORT, setup_id: undefined } as ValidatedThesisDecision, stock, playbooks);
     expect(said(call.toolArgs.add_triggers)).toEqual(["Review 1 day after the event date"]);
     expect(call.toolArgs.remove_trigger_ids).toBeUndefined();
   });

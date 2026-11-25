@@ -107,14 +107,12 @@ const updateSchema = z.object({
     ),
   price_at_time: F.live_price.optional(),
   core_belief: F.core_belief.optional(),
-  key_assumptions: F.key_assumptions.optional(),
-  invalidation_conditions: F.invalidation_conditions.optional(),
+  kpis: F.kpis.optional(),
   setup_id: F.setup_id_or_none.optional(),
   outlook: F.outlook.optional(),
-  outlook_reason: F.outlook_reason.optional(),
+  opinion: F.opinion.optional(),
   conviction: F.conviction.optional(),
   conviction_rationale: F.conviction_rationale.optional(),
-  variant_view: F.variant_view.optional(),
   direction: F.direction.optional(),
   horizon: F.horizon.optional(),
   catalyst_date: F.catalyst_date.nullable().optional(),
@@ -166,13 +164,11 @@ type UpdatePatch = Partial<{
   bearCase: object;
   researchUpdatedAt: Date;
   coreBelief: string | null;
-  keyAssumptions: string[];
-  invalidationConds: string[];
+  kpis: string[];
   outlook: string | null;
   outlookReason: string | null;
   conviction: string | null;
   convictionRationale: string | null;
-  variantView: string | null;
   horizon: string | null;
   catalystDate: Date | null;
   lastReviewedAt: Date | null;
@@ -313,13 +309,13 @@ export function inOwnWords<T extends { data: unknown }>(saved: T, door: string):
 
 /** Each field update_thesis compares with the stored row, and the column that stores it. */
 const FIELD_COLUMNS: Array<[keyof UpdateArgs, string]> = [
-  ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["key_assumptions", "keyAssumptions"],
-  ["invalidation_conditions", "invalidationConds"], ["outlook", "outlook"], ["outlook_reason", "outlookReason"], ["conviction", "conviction"],
+  ["direction", "direction"], ["core_belief", "coreBelief"], ["company", "company"], ["kpis", "kpis"],
+  ["outlook", "outlook"], ["opinion", "outlookReason"], ["conviction", "conviction"],
   ["conviction_rationale", "convictionRationale"], ["horizon", "horizon"], ["setup_id", "setupId"],
   ["bull_case", "bullCase"], ["bear_case", "bearCase"], ["research_data", "researchData"],
 ];
 /** Every field a hand edit can have set, with its column (the fields compared above). */
-const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [...FIELD_COLUMNS, ["variant_view", "variantView"], ["catalyst_date", "catalystDate"]];
+const HAND_FIELDS: Array<[keyof UpdateArgs, string]> = [...FIELD_COLUMNS, ["catalyst_date", "catalystDate"]];
 
 /**
  * The principal's edit wins. A field or trigger the principal set by hand
@@ -393,7 +389,6 @@ export function dropUnchanged(
   if (isUnresearchedSeed(row.direction) && args.direction) return args;
   const out: Record<string, unknown> = { ...args };
   for (const [k, col] of FIELD_COLUMNS) if (out[k] !== undefined && sameValue(out[k], row[col])) out[k] = undefined;
-  if (out.variant_view !== undefined && sameValue(String(out.variant_view).trim() || null, row.variantView || null)) out.variant_view = undefined;
   if (out.catalyst_date !== undefined && sameValue(out.catalyst_date ? new Date(String(out.catalyst_date)) : null, row.catalystDate ?? null)) {
     out.catalyst_date = undefined;
   }
@@ -452,13 +447,11 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       bearCase: true,
       company: true,
       coreBelief: true,
-      keyAssumptions: true,
-      invalidationConds: true,
+      kpis: true,
       outlook: true,
       outlookReason: true,
       conviction: true,
       convictionRationale: true,
-      variantView: true,
       horizon: true,
       setupId: true,
       catalystDate: true,
@@ -775,9 +768,9 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
         `then decide what you still owe the stock. Left alone, the seed is asked again on its clock.`
       : `$${existing.ticker} is an unresearched seed awaiting first research. update_thesis calls on seed theses MUST include \`direction\` to commit to a view. ` +
         `Three legal commitments:\n` +
-        `  • \`direction: "LONG"\` + horizon + a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one) on the stock or in add_triggers, and a Stop watching line (action STOP_WATCHING, "Stop watching if below $X") if its playbook has one, + core_belief + key_assumptions (≥2) + invalidation_conditions (≥2) + rationale — bullish, stays WATCHING.\n` +
+        `  • \`direction: "LONG"\` + horizon + a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one) on the stock or in add_triggers, and a Stop watching line (action STOP_WATCHING, "Stop watching if below $X") if its playbook has one, + core_belief + kpis (≥2) + rationale — bullish, stays WATCHING.\n` +
         `  • \`direction: "SHORT"\` + same structural fields — bearish, stays WATCHING.\n` +
-        `  • \`direction: "PASS"\` + invalidation_conditions (≥1) + rationale — researched, declined. Auto-flips to PASSED.\n` +
+        `  • \`direction: "PASS"\` + kpis (≥1: what would change your mind) + rationale — researched, declined. Auto-flips to PASSED.\n` +
         `Refining a PENDING's reasoning/bullets without committing direction buries it on the watchlist and surfaces it again later with no progress. That's a soft fail dressed up as a review. Decide and commit.`;
     return {
       summary: anAgent
@@ -833,8 +826,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
         missing.push("a next action (a buy, action ENTER, or a review, action REVIEW, that can lead to one, in add_triggers; a Stop watching line is optional)");
       }
       if (!args.core_belief || args.core_belief.trim().length === 0) missing.push("core_belief");
-      if (!args.key_assumptions || args.key_assumptions.filter((s) => s.trim().length > 0).length < 2) missing.push("key_assumptions (≥2)");
-      if (!args.invalidation_conditions || args.invalidation_conditions.filter((s) => s.trim().length > 0).length < 2) missing.push("invalidation_conditions (≥2)");
+      if (!args.kpis || args.kpis.filter((s) => s.trim().length > 0).length < 2) missing.push("kpis (≥2)");
       // Conviction Expression v4 — PENDING promotion requires the
       // same writer-side fields record_thesis would have required.
       if (!args.conviction) missing.push("conviction (HIGH/MEDIUM/LOW)");
@@ -855,15 +847,15 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     }
     // PENDING → PASS: need flip-criteria.
     if (args.direction === "PASS") {
-      const inv = args.invalidation_conditions ?? [];
+      const inv = args.kpis ?? [];
       if (inv.filter((s) => s.trim().length > 0).length < 1) {
         return {
-          summary: `Refused PENDING→PASS on $${existing.ticker} — invalidation_conditions required.`,
+          summary: `Refused PENDING→PASS on $${existing.ticker} — kpis required.`,
           data: {
             ok: false,
             error: "pending_pass_missing_invalidation",
             message:
-              `Flipping PENDING to PASS still needs invalidation_conditions (≥1). PASS is institutional memory; the value of that memory is what would change the verdict. Without flip-criteria a future encounter has nothing to compare against.`,
+              `Flipping PENDING to PASS still needs kpis (≥1): what would change your mind. PASS is institutional memory; the value of that memory is what would change the verdict.`,
           },
           sources: [],
         };
@@ -878,8 +870,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     if (args.conviction !== undefined && !sent.conviction_rationale?.trim()) {
       refuseField("conviction", "Send conviction_rationale with it: a sentence or two on why you are this confident now, or the old reason stops matching.", "no reason given for the new conviction");
     }
-    if (args.outlook !== undefined && !sent.outlook_reason?.trim()) {
-      refuseField("outlook", "Send outlook_reason with it: a sentence on what you expect of the stock from here and why.", "no reason given for the new outlook");
+    if (args.outlook !== undefined && !sent.opinion?.trim()) {
+      refuseField("outlook", "Send the rewritten opinion with it: your view of the stock at today's price, which the new outlook changes.", "no opinion sent with the new outlook");
     }
   }
 
@@ -959,10 +951,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   }
 
   if (args.core_belief !== undefined) patch.coreBelief = args.core_belief;
-  if (args.key_assumptions !== undefined)
-    patch.keyAssumptions = args.key_assumptions;
-  if (args.invalidation_conditions !== undefined)
-    patch.invalidationConds = args.invalidation_conditions;
+  if (args.kpis !== undefined) patch.kpis = args.kpis;
   // The entry / target / stop columns are NOT written here. A level change
   // is a trigger op; the columns are recomputed from the resulting trigger
   // list in the ops block below. Writing the column directly is
@@ -996,16 +985,13 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   }
   // Conviction Expression v4 — persist patched conviction fields.
   // Coherence + consistency gates above already ran; values here are
-  // safe to write. Empty-string for variantView is normalized to null
-  // (writer way to clear an obsolete edge).
+  // safe to write.
   if (args.conviction !== undefined) patch.conviction = args.conviction;
   if (args.conviction_rationale !== undefined)
     patch.convictionRationale = args.conviction_rationale;
   if (args.outlook !== undefined) patch.outlook = args.outlook;
-  if (args.outlook_reason !== undefined) patch.outlookReason = args.outlook_reason;
-  if (args.variant_view !== undefined)
-    patch.variantView =
-      args.variant_view.trim().length === 0 ? null : args.variant_view;
+  // The opinion: the full view at today's price (the column keeps its old name, outlookReason).
+  if (args.opinion !== undefined) patch.outlookReason = args.opinion;
   if (args.horizon !== undefined) patch.horizon = args.horizon;
   if (args.setup_id !== undefined) patch.setupId = args.setup_id;
   if (args.catalyst_date !== undefined)
@@ -1121,7 +1107,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
             before: existingTriggers,
             after: applied.triggers,
             coreBelief: (patch.coreBelief ?? existing.coreBelief) ?? null,
-            invalidationConds: patch.invalidationConds ?? existing.invalidationConds ?? [],
+            kpis: patch.kpis ?? existing.kpis ?? [],
           }),
         );
       }
@@ -1384,13 +1370,11 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     "researchData",
     // Belief
     "coreBelief",
-    "keyAssumptions",
-    "invalidationConds",
+    "kpis",
     "outlook",
     "outlookReason",
     "conviction",
     "convictionRationale",
-    "variantView",
     "direction",
     "horizon",
     "catalystDate",
@@ -1515,8 +1499,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     fieldChanges.snapshot ||
     fieldChanges.bullCase ||
     fieldChanges.bearCase ||
-    fieldChanges.invalidationConds ||
-    fieldChanges.keyAssumptions
+    fieldChanges.kpis
   ) {
     summaryParts.push("rationale updated");
   }

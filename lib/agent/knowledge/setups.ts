@@ -145,6 +145,12 @@ export interface Setup {
   failureSigns: string[];
   /** The playbook's paragraph, condensed. */
   summary: string;
+  /**
+   * One sentence for the owner: how long we hold, how we buy and how we sell, from what the
+   * playbook's triggers do. Shown on the Thesis tab beside the playbook's name; no agent reads it.
+   * The compounder's comes with its second half (expert review 1.5).
+   */
+  line?: string;
   /** The triggers the playbook writes on a stock, the seed of Settings → Playbook (./playbook-templates). */
   triggers: Template[];
 }
@@ -335,6 +341,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "Breakout-day volume below average",
       "A breakout into earnings week",
     ],
+    line: "A trade of weeks to months: buy the breakout from a tight base on heavy volume, sell at most 8% below the buy, and trim half at the next high.",
     summary:
       "A Stage 2 stock consolidates for 4–8+ weeks in a tightening range under a clear ceiling, then breaks out on heavy volume — sellers are exhausted and institutions are buying with size.",
   },
@@ -358,6 +365,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "Sized by risk; 0.25–1% of account at risk.",
     failureSigns: ["No follow-through in 3–5 days", "Closes back inside the flag"],
+    line: "A trade of days to weeks: buy a leader breaking out of a tight flag on volume, and sell under the buy day's low.",
     summary:
       "A leader that already ran pulls back in an orderly way and surfs its rising short averages; the next leg starts when the range expands upward. No analyst runs this today.",
   },
@@ -381,6 +389,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "Sized by risk; a wide gap-day low means fewer shares.",
     failureSigns: ["The gap fills", "Closes below the gap-day midpoint", "Volume fades on day 2"],
+    line: "A trade of days to months after a big surprise: buy above the surprise day's high, and sell under that day's low.",
     summary:
       "A neglected stock reprices on unexpected news with volume many times average; institutions need weeks to build positions, so real gaps start multi-month moves. Breakaway earnings gaps fill within a month under 30% of the time.",
   },
@@ -411,6 +420,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
       "A beat with flat or vague guidance",
       "Revisions don't follow in the 1–10 days after the print",
     ],
+    line: "A trade of weeks after a strong report: buy while the stock holds the report's jump, sell under that day's low or 8% below the buy, trim half at the next high, and hold 30 to 60 days.",
     summary:
       "A clean beat-and-raise the market under-reacts to drifts for weeks. This is the setup where the condition is already true on the day the plan is written.",
   },
@@ -436,6 +446,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: ["Closes below the 50-day on heavy volume", "The pullback comes on rising volume"],
+    line: "A trend held for weeks to months: buy the pullback to a rising average, sell under the pullback's low or on a heavy close below the 50-day, and trim half at the prior high.",
     summary:
       "Buying a confirmed uptrend at a discount with a natural stop — the moving average is where institutions re-buy. MSFT touched its 50-day repeatedly on the way from $418 to $497.",
   },
@@ -454,6 +465,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "Sized by risk. Best used as a scale-in rule on a held compounder.",
     failureSigns: ["Closes below the 200-day"],
+    line: "A trade of days: buy a sharp drop in a stock above its 200-day, and sell when the bounce is done or it falls below the 200-day.",
     summary:
       "A stock above its 200-day that flushes hard for a few days tends to snap back within a week. Not a primary seat — a scale-in rule for a held compounder.",
   },
@@ -476,6 +488,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     failureSigns: ["Relative strength rolls over"],
+    line: "A screen for leaders near their highs. A breakout or pullback playbook does the buying.",
     summary:
       "Stocks near their 52-week high and ahead of the market keep outperforming for up to 12 months (George & Hwang). A ranking, not a trigger.",
   },
@@ -506,6 +519,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: BINARY_RISK_MULTIPLIER,
     sizing: `Half the normal risk. If a −50% gap would cost more than ${BINARY_MAX_GAP_LOSS_PCT}% of equity, the position is too big.`,
     failureSigns: ["Run-up stalls inside the window", "Negative read-across from a peer's decision"],
+    line: "A trade into a dated event: buy in the 70 days before it at half the normal risk, and sell 7 days before it unless we choose to hold through.",
     summary:
       "A dated decision. Trade the run-up (buy 6–8 weeks before, sell 1–2 before, never holding the coin flip) or hold through at a size that survives a −60% gap.",
   },
@@ -528,6 +542,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "Sized by risk.",
     failureSigns: ["Insiders sell into the rally"],
+    line: "A screen for stocks where three or more insiders bought in a month. A breakout or pullback does the buying, and it sells under the insiders' lowest price or 12% below the buy.",
     summary:
       "Three or more insiders buying within a month predicts positive returns over 6–12 months — roughly double a single buy.",
   },
@@ -551,6 +566,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: "From the entry setup used.",
     failureSigns: ["Revisions turn down"],
+    line: "A screen for stocks whose earnings estimates are going up. Another playbook does the buying.",
     summary: "Rising estimates extend post-earnings drift; the Zacks Rank in one line.",
   },
   {
@@ -594,6 +610,7 @@ const CATALOG: Omit<Setup, "triggers">[] = [
     riskMultiplier: 1,
     sizing: `From the entry setup used; at most ${MAX_NAMES_PER_INDUSTRY} names per industry group.`,
     failureSigns: ["The group turns Lagging — a review for every name in it"],
+    line: "A screen for the strongest industry groups. Another playbook does the buying.",
     summary: "Stocks move in groups and leadership rotates; three longs in one group are one bet.",
   },
 ];

@@ -347,6 +347,26 @@ function FilingsBlock({ data }: { data: FilingsResponse }) {
   );
 }
 
+/**
+ * The opinion: the analyst's full view of the stock at today's price. Its
+ * first paragraph is the summary, drawn larger; the rest is the reasoning.
+ */
+function OpinionView({ text }: { text: string }) {
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (!paragraphs.length) return null;
+  return (
+    <Section label="Opinion">
+      <div className="space-y-3">
+        {paragraphs.map((p, i) => (
+          <p key={i} className={i === 0 ? "text-base text-foreground leading-relaxed" : "text-sm text-muted-foreground leading-relaxed"}>
+            <Prose text={p} />
+          </p>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 /** A row of the tab's accordion: its label, a chevron, the content on a click. */
 function Fold({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -366,12 +386,9 @@ function Fold({ label, children }: { label: string; children: ReactNode }) {
  * order (2026-11-02, labels 2026-11-03; the company's two sentences moved
  * to the Overview 2026-11-05). It opens as the Overview's foot does: the
  * work flag, then the belief at the Overview's size with no label, then
- * the write-up's date and price with the View thesis link; the bull case,
- * the bear case and what would prove us wrong exposed as
- * bullets; the filings in their old place under the top block; then the
- * accordion, with its "Updated 50d ago" header row as before, holding the
- * key assumptions, where we differ from the street, and the conviction's
- * reason under its own fold. Every sentence is drawn with the Writer's
+ * the write-up's date and price with the View thesis link; the playbook
+ * with its line; the KPIs, the filings, the bull case and the bear case;
+ * then the conviction's reason under its own fold. Every sentence is drawn with the Writer's
  * citation tags removed. A row written before the company line shows
  * nothing there, never a placeholder.
  */
@@ -393,15 +410,13 @@ function ResearchView({
   const belief = clean(state.coreBelief);
   const bull = caseBullets(state.bullCase);
   const bear = caseBullets(state.bearCase);
-  const wrong = (state.invalidationConds ?? []).filter(Boolean).map((text) => ({ text }));
-  const assumptions = (state.keyAssumptions ?? []).filter(Boolean).map((text) => ({ text }));
-  const variant = clean(state.variantView);
+  const kpis = (state.kpis ?? []).filter(Boolean).map((text) => ({ text }));
   const reason = clean(state.convictionRationale);
   const convictionWord = state.conviction
     ? `${state.conviction.charAt(0)}${state.conviction.slice(1).toLowerCase()} conviction`
     : "Conviction";
   const updatedAt = state.writtenUp?.at ?? state.researchUpdatedAt;
-  if (!company && !belief && bull.length === 0 && bear.length === 0 && wrong.length === 0 && assumptions.length === 0 && !variant) {
+  if (!company && !belief && bull.length === 0 && bear.length === 0 && kpis.length === 0) {
     return <p className="text-sm text-muted-foreground">No research on this stock yet.</p>;
   }
   return (
@@ -412,6 +427,22 @@ function ResearchView({
         {belief ? <p className="text-lg font-normal text-foreground leading-relaxed">{belief}</p> : null}
         <WrittenUpLine writtenUp={state.writtenUp} href={href} />
       </div>
+
+      {state.playbook ? (
+        <Section label="Playbook">
+          <p className="text-sm text-foreground">
+            {state.playbook.name}
+            {state.horizon ? ` · ${state.horizon.charAt(0)}${state.horizon.slice(1).toLowerCase()}` : ""}
+          </p>
+          {state.playbook.line ? <p className="text-sm text-muted-foreground">{state.playbook.line}</p> : null}
+        </Section>
+      ) : null}
+
+      {kpis.length > 0 ? (
+        <Section label="KPIs">
+          <Bullets items={kpis} />
+        </Section>
+      ) : null}
 
       {filings ? <FilingsBlock data={filings} /> : null}
 
@@ -427,31 +458,13 @@ function ResearchView({
         </Section>
       ) : null}
 
-      {wrong.length > 0 ? (
-        <Section label="What would prove us wrong">
-          <Bullets items={wrong} />
-        </Section>
-      ) : null}
-
-      {assumptions.length > 0 || variant || reason ? (
+      {reason ? (
         <div className="space-y-2">
           <SectionLabel action={updatedAt ? <p className="text-xs text-muted-foreground">Updated {relativeTime(updatedAt)}</p> : null}>Research notes</SectionLabel>
         <div className="rounded-lg border divide-y">
-          {assumptions.length > 0 ? (
-            <Fold label="Key assumptions">
-              <Bullets items={assumptions} />
-            </Fold>
-          ) : null}
-          {variant ? (
-            <Fold label="Where we differ from the street">
-              <p>{variant}</p>
-            </Fold>
-          ) : null}
-          {reason ? (
-            <Fold label={convictionWord}>
-              <p>{reason}</p>
-            </Fold>
-          ) : null}
+          <Fold label={convictionWord}>
+            <p>{reason}</p>
+          </Fold>
         </div>
         </div>
       ) : null}
@@ -915,6 +928,7 @@ export function ThesisBody({
   const columns = cn(surface === "page" && "grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]");
   // The company first (the owner, 2026-11-05), then the standing opinion, under the chips on Overview.
   const company = state.company?.trim() ? stripCitationTags(state.company) : null;
+  const opinion = state.outlookReason?.trim() ? state.outlookReason : null;
   const website = quote?.website ?? null;
   const host = website ? website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") : null;
   const facts = [quote?.exchange, quote?.industry].filter((v): v is string => Boolean(v?.trim()));
@@ -965,6 +979,8 @@ export function ThesisBody({
           {factChips}
         </div>
       ) : null}
+      {/* The opinion: the analyst's full view at today's price, the main thing on Overview (the owner, 2026-11-24). */}
+      {opinion ? <OpinionView text={opinion} /> : null}
       {overviewStats}
 
       {/* Agent insights: the newest 5 Activity lines with a written paragraph, in the Activity tab's own design. */}

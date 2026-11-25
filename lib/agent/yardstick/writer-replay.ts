@@ -97,6 +97,14 @@ export function writerOwnCalls(submit: Call, tailor: Call[]): Call[] {
   ];
 }
 
+/** The stock's "Sell if below" prices as saved, by id: on a holding the tailoring's ids need not be in the request, so the sale-loosened grade reads them here too. */
+export function salePricesSaved(saved: ReturnType<typeof savedByWriter>): Map<string, number> {
+  return new Map(saved.triggers.flatMap((t) => {
+    const p = t.action === "EXIT" ? typedPriceOf(t) : null;
+    return p != null ? [[t.id, p] as [string, number]] : [];
+  }));
+}
+
 /** The tailoring with each price moved by a key written as code writes it: the sale-loosened grade reads the number, not the key. */
 export function withKeysPriced(saved: ReturnType<typeof savedByWriter>, c: WriterReplayCase, tailor: Call[]): Call[] {
   const floor = saved.triggers.find((t) => levelSlotOf(t, saved.direction) === "FLOOR" && t.action === "EXIT");

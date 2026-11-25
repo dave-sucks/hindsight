@@ -34,46 +34,41 @@ describe("the yardstick's grades", () => {
     expect(inventedNumbers("Two to 4 assumptions, checked in 2027, 3 times.", INPUTS)).toEqual([]);
   });
 
-  it("a checkable belief passes; a price in it, a vague assumption or a price in what would prove it wrong does not", () => {
+  it("a checkable belief passes; a price in it, a KPI with no point it is read at or a KPI that reads a price does not", () => {
     expect(beliefProblems({
       core_belief: "AAON sells cooling for data centers, and orders are growing faster than it can build.",
-      key_assumptions: ["Backlog stays above $1.5B, checked at the Q4 report in February 2027.", "Data-center sales grow 100%+ a year, checked at each quarterly report."],
-      invalidation_conditions: ["A guidance cut at the next report.", "Backlog falls two quarters in a row."],
+      kpis: ["Backlog: on track above $1.5B, broken if it falls two quarters in a row. Read at each report.", "Data-center sales: on track at 100%+ a year, broken by a guidance cut. Read at each quarterly report."],
     })).toEqual([]);
     expect(beliefProblems({
       core_belief: "Worth $120 within 60 days.",
-      key_assumptions: ["Demand stays strong."],
-      invalidation_conditions: ["A close below the 50-day average."],
+      kpis: ["Demand stays strong."],
     })).toEqual([
       "the belief names a price",
       "the belief names a target or a time to a price",
-      "1 assumptions (two to four)",
-      'an assumption with no number: "Demand stays strong."',
-      'an assumption with no point it is checked at: "Demand stays strong."',
-      'proof it\'s wrong reads a price: "A close below the 50-day average."',
+      "1 KPIs (two to four)",
+      'a KPI with no point it is read at: "Demand stays strong."',
+    ]);
+    expect(beliefProblems({ core_belief: "AAON sells cooling.", kpis: ["Orders grow, read at each report.", "A close below the 50-day average, checked each week."] })).toEqual([
+      'a KPI reads a price: "A close below the 50-day average, checked each week."',
     ]);
   });
 
   it("a business figure is not a price: CORT's revenue and guidance bars pass; a share price fails (2026-11-18)", () => {
-    const thesis = (belief: string, wrong: string[]) => ({
-      core_belief: belief,
-      key_assumptions: ["Korlym revenue stays above $200M a quarter, checked at the Q4 report in February 2027.", "EPS above $1.10, checked at the Q4 report."],
-      invalidation_conditions: wrong,
-    });
+    const thesis = (belief: string, kpis: string[]) => ({ core_belief: belief, kpis });
     expect(beliefProblems(thesis("Corcept sells Korlym ($91M a quarter) and is worth more once relacorilant is approved.", [
       "Korlym revenue falls below $200M in a quarter.",
       "Full-year guidance cut below $1.0B at the Q4 report.",
       "EPS below $1.10 at the next report.",
     ]))).toEqual([]);
-    expect(beliefProblems(thesis("Worth more at $72.40 than the market thinks.", ["A dilutive raise at a price below $80.", "The stock closes below its 200-day average."]))).toEqual([
+    expect(beliefProblems(thesis("Worth more at $72.40 than the market thinks.", ["A dilutive raise at a price below $80, read in the next 10-Q.", "The stock closes below its 200-day average, checked at each report."]))).toEqual([
       "the belief names a price",
-      'proof it\'s wrong reads a price: "A dilutive raise at a price below $80."',
-      'proof it\'s wrong reads a price: "The stock closes below its 200-day average."',
+      'a KPI reads a price: "A dilutive raise at a price below $80, read in the next 10-Q."',
+      'a KPI reads a price: "The stock closes below its 200-day average, checked at each report."',
     ]);
   });
 
-  it("the bars it sets in its assumptions are not facts it claims", () => {
-    const calls = [{ toolName: "submit_thesis", input: { rationale: "Sales grew 84%.", key_assumptions: ["Revenue stays above $230M, checked at the Q4 report."], invalidation_conditions: ["Guidance below $1.3B."] } }];
+  it("the bars it sets in its KPIs are not facts it claims", () => {
+    const calls = [{ toolName: "submit_thesis", input: { rationale: "Sales grew 84%.", kpis: ["Revenue: on track above $230M, read at the Q4 report.", "Guidance: broken below $1.3B."] } }];
     expect(grade({ calls, narration: "" }, INPUTS, {}).invented).toEqual([]);
   });
 

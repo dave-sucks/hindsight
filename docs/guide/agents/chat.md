@@ -18,7 +18,7 @@ user: Why are we still holding AVGO after the report?
 tools: Reading $AVGO's thesis (+1 more)
 - AVGO: Holding since June · up 18.4% · floor $1,610 · Street average $2,050
 - Beat by 6%, raised AI revenue guidance; the stock fell 3% on the day
-text: The belief is intact. $AVGO (−3.1%) beat and raised; the drop was the sector selling, not the company. None of the things that would prove it wrong has happened.
+text: The belief is intact. $AVGO (−3.1%) beat and raised; the drop was the sector selling, not the company. None of its KPIs has broken.
 user: Good. Raise the floor to $1,650.
 tools: Updating $AVGO's thesis
 - AVGO: Floor raised from $1,610 to $1,650

@@ -51,10 +51,16 @@ describe("how a review of a thesis ends", () => {
 
   it("a new conviction or outlook with no reason refuses the whole note, so one look is one line", () => {
     refused({ verdict: "WEAKER", verdictLine: "x", convictionTo: "LOW", convictionReason: undefined }, "Send conviction_rationale");
-    refused({ outlookTo: "NEUTRAL", outlookReason: " " }, "Send outlook_reason");
+    refused({ outlookTo: "NEUTRAL", outlookReason: " " }, "Send your rewritten opinion");
     // The level it already has, sent again, is no change and needs no reason.
     ok({ convictionTo: "MEDIUM", convictionReason: undefined });
     ok({ outlookTo: "BULLISH", outlookReason: undefined });
+  });
+
+  it("a broken case always comes with the rewritten opinion; a stronger or weaker one only when the analyst's call changed, which is not refused", () => {
+    refused({ verdict: "BROKEN", verdictLine: "The drug was rejected.", outlookReason: undefined }, "Send your rewritten opinion with BROKEN");
+    ok({ verdict: "WEAKER", verdictLine: "Orders slipped a little.", outlookReason: undefined });
+    ok({ verdict: "STRONGER", verdictLine: "A new customer signed.", outlookReason: undefined });
   });
 
   it("outlook is a soft value: a broken verdict may leave it as it is, and no sale is asked for", () => {

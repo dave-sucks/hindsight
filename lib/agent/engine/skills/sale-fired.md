@@ -1,7 +1,7 @@
 A sale or trim trigger fired. A trigger written in advance to sell or trim this holding fired or is true now, or the owner declined that sale and the price is still past it.
 
 1. Why is the stock down? Look at its own news, its sector and the market.
-2. Does that touch why we own it? Go down what would prove it wrong. Name any line that has happened.
+2. Does that touch why we own it? Go down the KPIs. Name any line that has happened.
 3. Is the price still past the trigger's price? A give-back is counted from the high since we bought, not from a high read off a chart.
 4. Did the owner decline this sale, or let it lapse? Read their words.
 

@@ -10,7 +10,7 @@ A thesis is the record every agent reads and edits. Its life is a loop: research
 
 A thesis has two halves, written and kept by different hands.
 
-- **The claim** is the research, written by [the Writer](../agents/writer.md): the belief (why we own the company and what has to stay true, in plain words), the two or three assumptions it rests on, what would prove it wrong, the case for and against, and a score. Every agent reads it as the claim of record. Only a new write-up changes the belief, its assumptions and what would prove it wrong; [chat](../agents/chat.md) sends the stock to the Writer when you ask for one. A morning run or chat can change its conviction.
+- **The claim** is the research, written by [the Writer](../agents/writer.md): the company, the belief (why the business is worth owning and what has to stay true, in plain words), the opinion (the full view of the stock at today's price, with the outlook), the KPIs (two to four readings that would prove the belief right or wrong), and the case for and against. Every agent reads it as the claim of record. Only a new write-up changes the company, the belief and the KPIs; [chat](../agents/chat.md) sends the stock to the Writer when you ask for one. A look rewrites the opinion when it learns something or changes the outlook, and can change the conviction.
 - **The [triggers](triggers.md):** one sentence each saying when to buy, add, trim, sell or look again. A stock has its triggers and nothing else: "the buy" and "the floor" are names for kinds of trigger, and there is no plan or price target of our own beside them ([Price targets](price-targets.md)). This is the half the agents keep up to date, one trigger at a time.
 
 Alongside both sits what's been said: the stock's Activity, one list. A trigger firing, an analyst's note, a proposal and what you did with it, your own notes and edits are each one line in it. A declined or expired proposal shows the stock's price at that moment, as an approved one shows the fill; an order that never went through approval (approvals off, or your own click) is one line, its fill. The Activity tab shows the whole list (`lib/thesis/activity-feed.ts`). The next look at the stock reads it as one list, newest first, one sentence per line, the same for every agent (`activityRead`, `lib/agent/stock-context.ts`). The rule is a filter: the last 3 reviews (a run's line with a note; a run that saved its note twice is one review), the newest 3 of the Market Reviewer's news notes of medium or high impact, your newest 3 notes, and your last decline that carries words. Every kind has a number (`READ`), and nothing older than 45 days is read (`READ_DAYS`). Trigger edits, trigger fires, proposal steps with no words and low-impact news are left out; they stay on the Activity tab. Each sentence has the same parts: what it is, who wrote it, when, the price then, the verdict's word when it has one, and the note ("Review by its analyst, Nov 18, 8:01 AM at $39.27: weaker. …"). The [Portfolio Manager](../agents/portfolio-manager.md)'s rows carry the same list. The Overview's "Agent insights" is the newest 5 lines that carry a written paragraph (a trigger fire's figures don't count), with the first period in its heading; hovering the heading says what the agents read instead. A proposal waiting for you is pinned to the top of the Overview as the card. The home page's Activity is the same lists across the book, cut to the trades (each proposal's steps and every fill, a sale with its gain on what the shares cost) and the changes of watch status (started watching, stopped watching with the reason written on the line, a position opened or closed, a pass), each named by what is stored on the line, never by its words (`lib/thesis/account-activity.ts`). Beside them are the trades that never became a proposal: a trigger that fired and the analyst held ("Held, not sold", "Buy passed"), a trade a rule blocked, a run that broke, and any other refusal still open ("Thesis research blocked"). A refusal and a broken run are not Activity lines, so these are read from the runs, orders and refusals (`lib/portfolio/attempt-outcomes.ts`). A review's title says what kind of review it was, from the trigger that woke it: after a sale line fired, a "Sale review" with that line's condition ("Sale review below $42.70"); on a review trigger, "Pre-earnings review", "Post-earnings review", "Scheduled review" (the review clock), "Checkpoint review" (so many days after the buy), "Filing review", or "Review" with the price or chart condition it answered ("Review below the 200-day average"); a review no trigger woke is "Review". A line keeps the rule it answered as it stood, so the title holds after the rule is edited or removed; a morning note that names no trigger is linked by the app to the one fire open on the stock, or to the review clock when the review was due, so a clock review reads "Scheduled review". A review can end with a verdict (stronger, unchanged, weaker or broken) and name the earlier note it answers: its title carries the word ("Pre-earnings review · weaker"), and the agent's copy of the line carries the word and the line's id. The app gives each line it makes a title and never a paragraph: every paragraph you read is an analyst's words or yours.
@@ -22,7 +22,8 @@ A note can also be written once to several stocks: a list of them, one analyst o
 Every agent writes for you in plain English, in one of two styles (`lib/agent/engine/agents/rules.md`):
 
 - **A note** (a review, a trigger run's decision, a trade's reason, a run-summary line) is one short paragraph, two to four sentences and about 60 to 90 words, said the way a markets podcaster would say it: short sentences, everyday words, none of the desk's ("catalyst", "thesis intact", "re-rate", "exposure"). It answers "what's going on with this stock, and what should I do?" in three parts: the first sentence says what happened and what the analyst is doing about it ("Microsoft jumped after earnings, and I'm proposing we add 4 shares"); then why and what the analyst makes of it (the company, or just its group?), with what you own and are up or down; then what would change the call. It keeps the two or three numbers that matter and drops the rest. What to find out comes from the stock's [situation](situations.md); the note is what was found. It never opens with a level or a trigger; a stop or a level appears at most once, in that last sentence. It picks up from the last note rather than repeating it.
-- **The stock's standing description** (the company line, the belief, the bull and bear cases, the variant view) reads like a company page: what the company does and how it makes money, why we own it, the case for and against, and what has to stay true. The numbers, the earnings history and what Wall Street thinks are live data beside it, never prose.
+- **The company line and the belief** read like a company page: what the company does and how it makes money, and why we own it.
+- **The opinion** is the longest thing an analyst writes and the first thing you read on the Overview: two or three sentences that stand alone, then the reasoning with its numbers, written the way a buy-side analyst writes for a portfolio manager.
 
 Before writing a decision note, an agent searches the web once for the stock's latest news, so the note can say why it moved. If it still doesn't know, it says so. None of the app's shorthand reaches you: no setup names, no "drift", no "rung".
 
@@ -30,13 +31,13 @@ Before writing a decision note, an agent searches the web once for the stock's l
 
 A thesis has two pieces of state, and every look by its analyst ends with one event.
 
-**Outlook** is what we expect of the stock from here: bullish, neutral or bearish, with a sentence of why. The Writer must set it, with its reason, on every thesis it writes. Nothing fills it in from the direction: a thesis written before outlooks existed has none, reads "Not rated", and gets one at its analyst's first look. The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching, and an agent reads the word on the stock's line and the reason wherever it reads the conviction's.
+**Outlook** is what we expect of the stock from here: bullish, neutral or bearish, and the opinion says why. The Writer must set it, with the opinion, on every thesis it writes. Nothing fills it in from the direction: a thesis written before outlooks existed has none, reads "Not rated", and gets one at its analyst's first look. The analyst may change it at any look, on any verdict: a rally that uses up the upside turns bullish into neutral while nothing about the company changed. No code acts on it. It shows as a pill beside Holding or Watching, and an agent reads the word on the stock's line and the opinion on its row.
 
 **Conviction** is how confident we are in the belief as written, whichever way it points:
 
 - **High:** the evidence clearly supports it, and nothing against it is unanswered.
 - **Medium:** reasoned and plausible; untested, or the evidence is mixed.
-- **Low:** thin or contested; an assumption has missed or is in doubt.
+- **Low:** thin or contested; a KPI has missed or is in doubt.
 
 It is not how bullish we are and not whether to buy today, so high conviction in a neutral or a bearish outlook is a real view. It sizes a buy. A move in the price is not a reason for it, though what the price already reflects can be part of the belief.
 
@@ -45,23 +46,24 @@ It is not how bullish we are and not whether to buy today, so high conviction in
 - **Stronger:** the evidence supports the thesis more than before.
 - **Unchanged:** nothing bore on it. A move in the price alone is unchanged.
 - **Weaker:** the evidence goes against it, not fatally.
-- **Broken:** something written under what would prove it wrong has happened, or the belief no longer holds.
+- **Broken:** the belief no longer holds. A KPI that missed is where the analyst looks hardest, not the verdict by itself: a one-off, a change in how the company reports the number, or guidance raised past the miss can leave the belief standing.
 
-Any verdict but unchanged says what happened and which assumption it touched.
+Any verdict but unchanged says what happened and which KPI it touched. The opinion is rewritten when the look changed the analyst's call: always with a broken case or a new outlook, on a stronger or weaker case only when it changes what the analyst would do, and when the price has moved so far that what the opinion says the price assumes is no longer true. News that moves the case a little leaves the opinion as it is.
 
-Five things send a look's note back whole, each with what to send (`lib/agent/thesis-review.ts`):
+Six things send a look's note back whole, each with what to send (`lib/agent/thesis-review.ts`):
 
 1. It has no verdict.
 2. Its verdict isn't unchanged and it doesn't say what happened.
 3. Conviction rises without stronger, or falls without weaker or broken.
-4. A new conviction or outlook comes with no reason.
+4. A new conviction comes with no reason, or a new outlook with no rewritten opinion.
 5. The stock has no outlook yet and the note sets none. That happens once a stock.
+6. The verdict is broken and no rewritten opinion comes with it.
 
 Outlook is otherwise a soft value. No tool reads it to allow or refuse anything: a buy does not need a bullish outlook, and a bearish or a broken one forces no sale. What a broken belief usually means (conviction low, the outlook no longer bullish, the sale proposed on a holding) is guidance in the analysts' instructions, `how-a-look-ends.md`, not a rule. Nothing adds verdicts up, and agents read the current outlook and conviction with their reasons, never their history. The post-trade write-up after an Auto trade is not a look: its note carries no verdict.
 
 You change either one yourself from the chat (`set_conviction`), with no verdict.
 
-A thesis shows in three tabs, the same on its sheet, on the trade page and on the stock's page (the stock's page adds its Financials and News tabs and Hindsight's history of the stock under Activity). With no live thesis, the stock's page shows the newest one as history, its pill saying how it ended (Passed, Dropped, Sold) and its notes under Agent insights; only a stock never researched reads "No research yet" (`thesisToShow`, `lib/thesis-status.ts`). **Overview** is the timeline: the price, the chart, the flag for today's work, the Agent insights (the newest 5 written-up Activity lines) and the triggers, with the levels, the two analyst cards (the rating split, and the Street's targets on a line with the price and our entry) and the earnings record under them. **Research** is the analyst's view, in this order: the company in two sentences under "About <the company>", the belief under "Core thesis" with the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38"), the bull case, the bear case and what would prove us wrong as bullets, the recent SEC filings, then, folded, the assumptions (each ending with when and where it is checked) where we differ from the street, and the conviction's reason under its tier. The top row of the sheet and the trade page is the nav: the status pill and the conviction chip ("High conviction", with a flame on High and Strong), then at the right edge the pin, a ··· menu (Send to agent, Trade, Close trade with its warning) and, on the sheet, an expand button to the full page on the left and the X on the right. Under it, one line: the stock's logo, ticker and name. **Activity** is the whole list. A row written before the company line shows nothing where it would be, never a placeholder.
+A thesis shows in three tabs, the same on its sheet, on the trade page and on the stock's page (the stock's page adds its Financials and News tabs and Hindsight's history of the stock under Activity). With no live thesis, the stock's page shows the newest one as history, its pill saying how it ended (Passed, Dropped, Sold) and its notes under Agent insights; only a stock never researched reads "No research yet" (`thesisToShow`, `lib/thesis-status.ts`). **Overview** is the timeline: the price, the chart, the flag for today's work, the Agent insights (the newest 5 written-up Activity lines) and the triggers, with the levels, the two analyst cards (the rating split, and the Street's targets on a line with the price and our entry) and the earnings record under them. The Overview opens with the company and then the opinion, the analyst's full view at today's price, its first paragraph larger. **Thesis** is the rest of the analyst's view, in this order: the belief with the date the Writer wrote it and the stock's price that day ("Written Sep 13 at $38.38"), the playbook with its horizon and its one sentence on how long we hold, how we buy and how we sell, the KPIs, the recent SEC filings, the bull case and the bear case, then, folded, the conviction's reason under its tier. The top row of the sheet and the trade page is the nav: the status pill and the conviction chip ("High conviction", with a flame on High and Strong), then at the right edge the pin, a ··· menu (Send to agent, Trade, Close trade with its warning) and, on the sheet, an expand button to the full page on the left and the X on the right. Under it, one line: the stock's logo, ticker and name. **Activity** is the whole list. A row written before the company line shows nothing where it would be, never a placeholder.
 
 ## Where it comes from
 
@@ -92,16 +94,38 @@ And you can ask about any thesis in chat, any time.
 
 As the price and the story move, agents keep the triggers current one at a time, by id: re-price a buy the price left behind, raise a floor under a gain, reset the levels after a fire. Each change is one line in the stock's Activity, with who made it and why. When the research gets old, the stock goes back to the Writer for a refresh.
 
-Who may change what:
-
-- **The Writer:** the whole thesis, claim included, and the playbook's watch triggers.
-- **Chat:** the triggers, the conviction and the catalyst date, whether we watch the stock, and notes. The belief and direction go through the Writer.
-- **A morning run:** the same, and its verdict on a review.
-- **A trigger run:** the triggers, its verdict and a note.
-- **The Portfolio Manager:** notes and triggers.
-- **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
-
 One rule holds over all of them: no agent can lower a floor on a stock we hold. Only you move it down.
+
+## Who writes and reads each part
+
+Each part has its writers, and each agent gets what its job needs. An agent that covers many stocks reads the **stock table**: one line a stock, the same columns for every reader (the price and its moves, against the S&P, the outlook, the conviction, the next report, a trade waiting), the morning run's cut to its analyst and the Portfolio Manager's the whole account (`lib/agent/stock-table.ts`). A stock in a situation, or one an agent asks for by name, comes as its **row**, the same fields for every agent and every situation (`ROW_FIELDS`, `lib/agent/row-for-model.ts`): the company, the belief, the opinion, the KPIs, the conviction's reason, the triggers, the Activity, the position, the price, the chart and Wall Street's view. The bull and bear cases come when a read asks for the research. The portfolio snapshot, which most agents get, shows each holding's opinion by its first paragraph.
+
+| Part | Written by | When | Read by |
+|---|---|---|---|
+| **Company** | The Writer, the Holding refresh | Each write-up; sent again unchanged unless the business changed | Every row |
+| **Belief** | The Writer, the Holding refresh | Each write-up | Every row; the trade's grade at a sale |
+| **KPIs** | The Writer, the Holding refresh | Each write-up | Every row; the Market Reviewer; the trade's grade. A look starts its verdict from them |
+| **Bull and bear cases** | The Writer, the Holding refresh | Each write-up | The stock's page; a read that asks for the research |
+| **Opinion** | The Writer and the Holding refresh; a look; chat at your word | Each write-up; a look that changed the analyst's call (always with a broken case or a new outlook) | Every row; the first paragraph in the portfolio snapshot and on the Overview's outlook pill; the trade's grade |
+| **Outlook** | The same as the opinion, always with it | The same | The stock table, every row, the pill |
+| **Conviction** | The Writer and the Holding refresh; a look; chat at your word | Each write-up; a look whose evidence moved it, with its reason | The stock table, every row; it sizes a buy |
+| **Verdict** | A look's note | Every look | The next look, in the stock's Activity |
+| **Notes** | Every run on the stock, and you | Each run that acts on the stock | The stock's Activity, and the next run |
+| **Playbook line** | Nobody at run time: one fixed sentence per playbook | | You, on the Thesis tab. No agent reads it |
+
+Agent by agent:
+
+- **[The Writer](../agents/writer.md)** (a new stock, or a watch's refresh) reads the stock's data, its filings and the web, and saves every part in one `submit_thesis`. A part it leaves out comes back to it by name.
+- **The Holding refresh** does the same for a stock we own.
+- **[After the buy](../agents/after-the-buy.md)** reads the stock's row, puts on the playbook's holding triggers and writes a note. It changes no part of the thesis.
+- **A [morning run](../agents/morning-runs.md)** reads its analyst's stock table and the row of every stock in a situation. Each look ends with a note and its verdict, and may change the conviction, the outlook and the opinion. It sends a stock to the Writer when the company, the belief or the KPIs need rewriting.
+- **A [trigger run](../agents/trigger-runs.md)** reads its stock's row and looks at that one stock the same way, starting from the KPIs and the opinion. It can send the stock to the Writer.
+- **The post-trade write-up** reads its stock's row and writes the trade's reason as its note. It gives no verdict and changes nothing else.
+- **[The Portfolio Manager](../agents/portfolio-manager.md)** reads the account's stock table and the rows it asks for. It writes notes, edits triggers, trades and sends stocks to the Writer, and never changes an analyst's conviction, outlook or opinion.
+- **[The Market Reviewer](../agents/market-reviewer.md)** reads the book and each stock's KPIs, and writes news notes against them. It changes no part.
+- **[Chat](../agents/chat.md)** reads what you ask about. It changes the conviction, the outlook and the opinion only at your word, each with its reason, and sends a stock to the Writer for a new write-up.
+- **The trade's grade** (at a sale) reads the belief, the KPIs and the last opinion, and grades the trade against them.
+- **You:** any trigger on the thesis sheet, a yes or no on every proposal, and notes through chat, which the next run answers first.
 
 How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/saving-a-thesis.md).
 
@@ -110,7 +134,7 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 <!-- asset: thesis-lifecycle -->
 
 - **Sold.** A profit-take, or a sale where the analyst says the belief still holds, sends the thesis back to Watching. The triggers that need a position come off; the rest stay as written, and nothing is added. Any other sale retires it as sold, and within two weeks it gets one look back: watch it again, or let it go.
-- **Proven wrong.** Something on its "wrong if" list happened. A holding is sold; a watch is retired.
+- **Proven wrong.** The belief no longer holds: the business stopped doing what it says. A holding is sold; a watch is retired.
 - **Dropped or replaced.** Taken off the watchlist (by an agent, by you, or by a watch's "Stop watching if" line closing below), or replaced by a newer thesis. The history stays.
 
 ## Statuses
@@ -130,7 +154,7 @@ How a save lands or is refused, field by field: [Saving a thesis](../deep-dives/
 A review's verdict is on its Activity line: `ThesisUpdate.verdict` (STRONGER · UNCHANGED · WEAKER · BROKEN), `verdictLine` and `answersUpdateId`, written by `write_note`. `activityRead` in `lib/agent/stock-context.ts` builds the one list every agent reads (`READ`), and `ownerSets` there reads off the same lines when you last changed a trigger and what it was.
 
 #### The parts
-`coreBelief`, `keyAssumptions`, `invalidationConds`, `bullCase`, `bearCase`, `snapshot`, `conviction`, `setupId`, `triggers`
+`company`, `coreBelief`, the opinion (stored in `outlookReason`), `outlook`, `kpis`, `bullCase`, `bearCase`, `conviction`, `setupId`, `triggers`
 
 #### Written by
 The Writer: `submit_thesis`, then code runs the save (`record_thesis` for a new thesis, `update_thesis` for a rewrite; neither is on any agent's list), which writes its playbook's watch triggers; then the Writer tailors them with `edit_triggers`. A seed is minted by the app or the analyst builder, never by an agent. Send to agent on a stock's page is `sendToThesisWriter` in `lib/actions/watchlist.actions.ts`.

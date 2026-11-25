@@ -165,7 +165,7 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     ["submit_thesis.rationale", wordsOf(submit().rationale)],
     ["record_run_summary.decision_rationale", wordsOf(props("record_run_summary").decision_rationale)],
     ["record_run_summary.ranked_picks.reasoning", wordsOf(props("record_run_summary").ranked_picks?.items?.properties?.reasoning)],
-    ...["core_belief", "conviction_rationale", "variant_view"].map(
+    ...["company", "core_belief", "opinion", "kpis", "conviction_rationale"].map(
       (f): [string, string] => [`update_thesis.${f}`, wordsOf(props("update_thesis")[f])],
     ),
   ];
@@ -188,8 +188,10 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     expect(VOICE_RULES).toContain("Numbers: keep the two or three that matter (the move, what you're up or down, the level the call turns on) and drop the rest; a date or a share count isn't one of them.");
     for (const term of ["catalyst", '"thesis intact"', "constructive", "re-rate", "multiple", "risk/reward", "exposure", "positioning"]) expect(VOICE_RULES).toContain(term);
     expect(VOICE_RULES).not.toMatch(/three to six sentences/);
-    // The standing description: a company page.
-    expect(VOICE_RULES).toContain("reads like a research site's company page: what the company does; what it has done lately, with dates; the numbers that matter (growth, profits, valuation); what Wall Street thinks; what has to stay true. Sourced, never a trade formula.");
+    // The company line and the belief: a company page. The opinion: a buy-side analyst's view at today's price (2026-11-24).
+    expect(VOICE_RULES).toContain("The company line and the belief read like a research site's company page: what the company does, and what has to stay true. Sourced, never a trade formula.");
+    expect(VOICE_RULES).toContain("The opinion is the longest thing you write, and the one the owner and every later run read first: your full view of the stock at today's price.");
+    expect(VOICE_RULES).toContain("5. Write about the company and the stock, never about the app.");
     expect(VOICE_RULES).toMatch(/never the reason by itself: "the stop at \$41\.42", not "the floor fired"/);
     // Always look it up, one search per stock.
     expect(VOICE_RULES).toContain("Before a decision note on a stock, run one web_search for its latest news. One per stock per run.");
@@ -214,27 +216,27 @@ describe("the field texts ask for the standard, and carry none of our shorthand"
     }
   });
 
-  it("the belief is why we own the company, never a price path", () => {
+  it("the belief is why the business is worth owning, never a price path", () => {
     const words = wordsOf(props("update_thesis").core_belief);
-    expect(words).toMatch(/Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true/);
-    expect(words).toMatch(/never the trade: no stock price, no price path, no target, no dates/);
+    expect(words).toMatch(/Why the business is worth owning, in two or three plain sentences: what it does well and what has to stay true/);
+    expect(words).toMatch(/never the trade: no stock price, no target, no dates/);
     expect(wordsOf(submit().core_belief)).toBe(words);
   });
 
   // IOT, 2026-11-04: the field's own example was "a close below the 50-day average", and the Writer wrote a swing low with volume.
-  it("what would prove it wrong is the business, never a stock price, in every text the Writer reads", () => {
-    const words = wordsOf(props("update_thesis").invalidation_conditions);
-    expect(words).toMatch(/Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price/);
+  it("the KPIs are the business, never a stock price, in every text the Writer reads", () => {
+    const words = wordsOf(props("update_thesis").kpis);
+    expect(words).toMatch(/Business readings only, never a stock price: the triggers hold the price/);
     expect(words).not.toMatch(/a close below/i);
-    expect(wordsOf(submit().invalidation_conditions)).toBe(words);
-    expect(SAMPLE_PROMPTS.writer()).toMatch(/Never a stock price, an average, a high or\s+low, or a gap, with or without volume/);
+    expect(wordsOf(submit().kpis)).toBe(words);
+    expect(SAMPLE_PROMPTS.writer()).toMatch(/Business readings only; the triggers hold the\s+price/);
     expect(SAMPLE_PROMPTS.writer()).not.toMatch(/outcome \+ timeframe|price level alone/);
   });
 
   it("the writer asks for the company line and a belief about the business", () => {
     const writer = SAMPLE_PROMPTS.writer();
-    expect(writer).toContain("`## Company`: two plain sentences: what the company does and how it makes money.");
-    expect(writer).toContain("core_belief: why we own the company");
+    expect(writer).toContain("**company**: what the company sells, to whom, and how it makes money");
+    expect(writer).toContain("**core_belief**: why the business is worth owning");
     expect(writer).not.toMatch(/outcome \+ timeframe \+\s+mechanism|which of YOUR\s+SETUPS it is/);
   });
 

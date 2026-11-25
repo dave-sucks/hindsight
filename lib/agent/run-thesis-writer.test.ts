@@ -164,9 +164,9 @@ describe("buildWriterResearchPrompt — status branching", () => {
       existingThesis: null,
     });
 
-    it("frames the mint as WATCHING, entry-gated coverage", () => {
+    it("frames the mint as a watch", () => {
       expect(writerRecordFor({ mode: "mint", existingThesis: null }).id).toBe("writer");
-      expect(prompt).toContain("A new stock is saved as WATCHING (entry-gated)");
+      expect(prompt).toContain("A new stock is saved as a watch.");
     });
 
     it("uses a watch's triggers", () => {
@@ -181,9 +181,9 @@ describe("buildWriterResearchPrompt — status branching", () => {
       existingThesis: null,
     });
 
-    it("names every section header the server-side parser keys on", () => {
-      for (const header of ["## Company", "## Bull Case", "## Bear Case"]) {
-        expect(prompt).toContain(header);
+    it("names every field the save takes, the company and the bull and bear cases among them", () => {
+      for (const field of ["**company**", "**core_belief**", "**opinion**", "**kpis**", "**bull_case**", "**bear_case**"]) {
+        expect(prompt).toContain(field);
       }
     });
 
@@ -193,8 +193,8 @@ describe("buildWriterResearchPrompt — status branching", () => {
       expect(prompt).not.toContain("2:1 MANDATORY");
     });
 
-    it("tells the model repairs are field-fixes, not note rewrites", () => {
-      expect(prompt).toContain("do NOT rewrite the research note");
+    it("tells the model a refused save fixes the fields it names, and leaves the rest", () => {
+      expect(prompt).toContain("fix the fields it names and call it again; leave the rest as it was");
     });
   });
 });
@@ -214,19 +214,18 @@ describe("buildWriterResearchPrompt — date-awareness gate (P1-5 / PR #354)", (
     });
     // Whitespace-normalized — the template wraps these phrases across lines.
     const flat = prompt.replace(/\s+/g, " ");
-    expect(flat).toContain("has NOT yet occurred");
-    expect(flat).toContain("discard the ENTIRE claim");
-    expect(flat).toContain('do not "fix" the number');
+    expect(flat).toContain("Any event dated later than today has not happened yet");
+    expect(flat).toContain("drop the whole claim rather than fix its numbers");
   });
 
-  it("renders the date-awareness block BEFORE the research note's rules", () => {
+  it("renders the date-awareness block BEFORE what to read first", () => {
     const prompt = writerSent({
       ...baseOpts,
       mode: "refresh",
       existingThesis: existingThesis("HOLDING"),
     });
     const dateIdx = prompt.indexOf("## Date awareness");
-    const jobIdx = prompt.indexOf("## Step 1");
+    const jobIdx = prompt.indexOf("## What to read first");
     expect(dateIdx).toBeGreaterThan(-1);
     expect(jobIdx).toBeGreaterThan(-1);
     expect(dateIdx).toBeLessThan(jobIdx);
@@ -383,13 +382,8 @@ describe("sectionArgsFrom — citation objects, not strings", () => {
 
   it("converts text and bullet sections to the persist schema shape", () => {
     const args = sectionArgsFrom({
-      company: { text: "Sells widgets [STRUCTURED:profile]; revenue is subscription [WEB:https://e.com/x].", citations: ["STRUCTURED:profile", "WEB:https://e.com/x"] },
-      bullCase: {
-        bullets: [
-          { text: "b1", citation: "WEB:https://e.com/y" },
-          { text: "b2" },
-        ],
-      },
+      company: "Sells widgets [STRUCTURED:profile]; revenue is subscription [WEB:https://e.com/x].",
+      bull_case: ["b1 [WEB:https://e.com/y]", "b2"],
     });
     // The company line is a plain column: its source markers are stripped, not kept as citations.
     expect(args.company).toBe("Sells widgets; revenue is subscription.");

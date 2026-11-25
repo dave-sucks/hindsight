@@ -154,6 +154,8 @@ export interface ThesisDossier {
   // "DROPPED"|"REPLACED"|null. Drives the terminal-status banner.
   retiredReason: string | null;
   horizon: string | null;
+  /** The stock's playbook: its name and its one sentence (how long we hold, how we buy, how we sell). Null when it names none. */
+  playbook?: { name: string; line: string | null } | null;
   /** One line per trigger at a typed price, labelled with its sentence (`priceLines`). What the chart draws. */
   priceLines: PriceLine[];
   catalystDate: string | null;
@@ -192,24 +194,23 @@ export interface ThesisDossier {
   // Structural belief — load-bearing fields the trade-evaluator + tactical
   // agent read. Surfaced to the sheet so the user can see what the agent
   // actually committed to.
-  /** Two sentences: what the company does and how it makes money. The Writer's; null on rows written before 2026-11-03. */
+  /** What the company sells, to whom and how it makes money. The Writer's; null on rows written before 2026-11-03. */
   company: string | null;
   coreBelief: string | null;
-  keyAssumptions: string[];
-  invalidationConds: string[];
+  /** The KPIs: what tells us the belief is right, one line each. */
+  kpis: string[];
   // ── Conviction Expression v4 (writer-side) ──────────────────────────
   // See docs/plans/CONVICTION_EXPRESSION.md §3-§4. Tier verdict +
   // one-sentence rationale + the writer's contrarian take. Null on
   // PASS / PENDING / pre-v4 legacy rows. The conviction badge in
   // ThesisSheet header keys off `conviction`; tooltip shows
-  // `convictionRationale`; the variantView callout block keys off
-  // `variantView` (rendered only when present).
-  /** What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH, and why. */
+  // `convictionRationale`.
+  /** What we expect of the stock from here: BULLISH, NEUTRAL or BEARISH. */
   outlook?: string | null;
+  /** The opinion: the full view of the stock at today's price. Its first paragraph is the summary. */
   outlookReason?: string | null;
   conviction: "HIGH" | "MEDIUM" | "LOW" | null;
   convictionRationale: string | null;
-  variantView: string | null;
   // ── V2 9-section narrative dossier (PR-9 flat schema) ────────────────
   // The 9 first-class JSONB columns that replaced the `researchSections`
   // blob. Three retypes of legacy fields (snapshot ↔ reasoningSummary,

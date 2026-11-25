@@ -22,7 +22,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 import { writeNoteTool } from "./write-note";
 import { editTriggers } from "./edit-triggers";
 
-const NOTE_DOOR = ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "verdict", "verdict_line"];
+const NOTE_DOOR = ["answers_update_id", "conviction", "conviction_rationale", "note", "opinion", "outlook", "verdict", "verdict_line"];
 const EDIT_DOOR = ["add", "edit", "remove"];
 const runStock = { ticker: "NVDA", thesisId: "thesis_run", triggerId: "trig_fired" };
 const ctx = (runMode: string) => ({ runId: "r", userId: "u", accountId: "a", analystId: "an", runMode, ...(runMode === "INTRADAY_TACTICAL" ? { runStock } : {}) }) as never;

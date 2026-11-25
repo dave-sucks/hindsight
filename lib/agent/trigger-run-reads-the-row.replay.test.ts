@@ -108,9 +108,9 @@ describe("DOCU 2026-09-28: the pullback buy, read through get_theses", () => {
     // A watch: what a fire checks, then the playbook's "Sell if below", the one trigger that comes with the buy the run names.
     const sale = PLAYBOOK_TEMPLATES.MA_PULLBACK.filter((t) => t.writtenOn === "PROPOSAL" && t.action === "EXIT");
     expect(row.playbook_checks).toEqual([...playbookChecks(getSetup("MA_PULLBACK")!, "decision"), ...playbookTriggerText(sale, "PROPOSAL")]);
-    // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not what would prove a holding wrong.
+    // A buy reads the chart numbers and the Street (the replay seeds no snapshot and no Street row, so those two are absent here), not its KPIs alone.
     // Plan checks were deleted (2026-11-13): no plan_checks line, and the writer's own read of the case waits for the review clock.
-    shortRow(row, saved, ["would_prove_it_wrong"], ["position", "plan_checks"]);
+    shortRow(row, saved, ["kpis"], ["position", "plan_checks"]);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.docu.fire.triggerId}]`))).toMatch(/^Buy if below \$67 · fired 09-28 13:30 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(situationText("BUY_ARRIVES", false));
@@ -129,8 +129,8 @@ describe("NVDA 2026-10-08: the $236 floor on a held stock, read through get_thes
     expect(row.position).toMatch(/^33 sh at \$218\.23 → \$234\.24 \(\+7\.3%\), \$7,730; opened 08-31; high since we bought \$242\.51$/);
     // A holding: its triggers are on the stock, so only what a fire checks.
     expect(row.playbook_checks).toEqual(playbookChecks(getSetup("PEAD")!, "decision"));
-    // A sale signal reads the position and what would prove us wrong, not the Street or the writer's dated read.
-    shortRow(row, saved, ["position", "would_prove_it_wrong"], []);
+    // A sale signal reads the position and the KPIs, not the Street or the writer's dated read.
+    shortRow(row, saved, ["position", "kpis"], []);
     expect((row.triggers as string[]).find((l) => l.includes(`[id ${fx.nvda.fire.triggerId}]`))).toMatch(/^Sell if below \$236 · fired 10-08 13:31 ET/);
     expect(prompt).toContain(JSON.stringify(row, null, 2));
     expect(prompt).toContain(situationText("PROTECTIVE_SALE", true));

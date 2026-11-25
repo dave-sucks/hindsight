@@ -59,8 +59,8 @@ describe("answering a review: its skill, which the read carries with the stock",
     expect(review).not.toMatch(/does not answer a fire|will refuse|is refused/i);
   });
 
-  it("tells a held stock's review to go down what would prove it wrong", () => {
-    expect(review).toContain("Go down what would prove it wrong, then the assumptions. Name any line that has happened or failed.");
+  it("tells a held stock's review to go down its KPIs", () => {
+    expect(review).toContain("Go down the KPIs. Name any line that has happened or failed.");
     expect(review).toContain("A line proved the case wrong: propose the sale.");
   });
 
@@ -94,7 +94,7 @@ describe("get_theses — a held stock on the work list carries the list the prom
             entryPrice: 300,
             targetPrice: 420,
             stopLoss: 220,
-            invalidationConds: conditions,
+            kpis: conditions,
             triggers: [rung],
           }),
         ],
@@ -118,6 +118,6 @@ describe("get_theses — a held stock on the work list carries the list the prom
     const rows = (result as { data?: { theses?: Array<Record<string, unknown>> } }).data?.theses ?? [];
     const ceg = rows.find((r) => r.ticker === "CEG");
     expect((ceg?.needsAction as { kind?: string } | null)?.kind).toBe("TRIGGER_FIRED");
-    expect(ceg?.invalidationConds).toEqual(conditions);
+    expect(ceg?.kpis).toEqual(conditions);
   });
 });

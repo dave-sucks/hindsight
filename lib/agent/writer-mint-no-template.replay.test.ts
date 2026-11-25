@@ -16,8 +16,7 @@ const decision = {
   horizon: "COMPOUNDER",
   rationale: "Bullish on the business; no level worth waiting for until the next report, so I'll look again on the clock.",
   core_belief: "The company compounds as its subscription base grows and margins widen with scale.",
-  key_assumptions: ["Subscription revenue grows above 20%, checked at each quarterly report.", "Gross margin stays above 75%, in each 10-Q."],
-  invalidation_conditions: ["A guidance cut at the next report.", "Gross margin under 72% in the 10-Q."],
+  kpis: ["Subscription revenue grows above 20%, checked at each quarterly report.", "Gross margin stays above 75%, in each 10-Q."],
   conviction: "MEDIUM",
   conviction_rationale: "A good business at a full price; I want the chart to come to me.",
 } as unknown as ValidatedThesisDecision;
@@ -31,7 +30,7 @@ async function writerMint(reviewCadenceDays: number | null) {
   });
   jest.dontMock("@/lib/prisma");
   const args = { childRunId: "writer_run", analystId: REPLAY_ANALYST_ID, ticker: "ACME", mode: "mint" as const, reason: "new coverage", reviewCadenceDays };
-  const call = build!(args, { currentPrice: 100 } as never, decision, {}, null);
+  const call = build!(args, { currentPrice: 100 } as never, decision, null);
   expect(call.toolName).toBe("record_thesis");
   return replayTool("record-thesis", "recordThesis", {
     seed: { agentConfig: [agentConfigRow({ setupIds: ["COMPOUNDER_ACCUMULATION"] })], account: [accountRow()] },

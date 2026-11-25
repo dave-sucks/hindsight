@@ -11,15 +11,13 @@
  *
  *   Phase P — pull    deterministic parallel data pulls (~10s)
  *                     lib/agent/thesis-research/pull-data.ts
- *   Phase R — research ONE generateText call: the model writes the
- *                     9-section note as plain TEXT and finishes by calling
- *                     the compact `submit_thesis` tool (decision fields
- *                     only, ~1-2k chars). Validation errors come back as
- *                     the tool result, so a fix costs one step, not a
- *                     3-minute payload regeneration.
- *   Phase Z — persist server-side: parse the note into sections
- *                     (parse-sections.ts), build the record_thesis /
- *                     update_thesis args programmatically, and call the
+ *   Phase R — research ONE generateText call: the model researches and
+ *                     finishes by calling `submit_thesis` with every
+ *                     thesis field. Validation errors come back as the
+ *                     tool result, so repairs cost one step. Nothing is
+ *                     parsed out of its prose.
+ *   Phase Z — persist server-side: build the record_thesis /
+ *                     update_thesis args from the decision, and call the
  *                     EXISTING tools' execute() — every Layer-1 gate runs
  *                     unchanged. Terminal status is derived from whether a
  *                     thesis row actually landed (no complete_run in this
@@ -71,11 +69,7 @@ import {
   pullThesisData,
   type ThesisPullResult,
 } from "@/lib/agent/thesis-research/pull-data";
-import {
-  parseIntoSections,
-  withoutCitationMarkers,
-  type ParsedSections,
-} from "@/lib/agent/thesis-research/parse-sections";
+import { parseCitations, withoutCitationMarkers } from "@/lib/agent/thesis-research/parse-sections";
 import {
   lookAgainTrigger,
   notWrittenTrigger,
@@ -381,13 +375,6 @@ export interface WriterResearchPromptOpts {
   environment?: "PAPER" | "LIVE";
 }
 
-/**
- * System prompt for the single research call. The model writes the full
- * 9-section note as plain text, then calls submit_thesis ONCE with the
- * compact decision object. Section headers here MUST stay in sync with
- * SECTION_HEADERS in parse-sections.ts — the server parses this exact
- * template.
- */
 /** The chat's own results on the stock, as it read them (chat-findings.ts). Empty when it sent none. */
 export function chatFoundBlock(found: string | null | undefined, T: string): string {
   if (!found?.trim()) return "";
@@ -722,14 +709,16 @@ export async function writerResearchPhase(
     // (token-usage.ts); the trigger tailoring records its own.
     const tokenUsage = run.usage;
     console.log(`[thesis-writer] research call child=${args.childRunId} ticker=${T}: ${stepCount} step(s), tools=[${run.toolCalls.map((c) => c.tool).join(", ") || "none"}]${loopError ? `, ended: ${loopError}` : ""}`);
+
     const noteText = noteParts.join("\n\n");
-    const sectionCount = Object.keys(parseIntoSections(noteText)).length;
 
     // Read the closure-mutated flags into locals. TS's control-flow
     // analysis can't see the submit_thesis execute callback's assignments
     // (microsoft/TypeScript#9998), so without the assertion `accepted`
     // stays narrowed to its `null` initializer here.
     const finalDecision = accepted as ValidatedThesisDecision | null;
+    // How many of the three research sections the decision carries (a count for the run's record).
+    const sectionCount = finalDecision ? [finalDecision.company, finalDecision.bull_case?.length, finalDecision.bear_case?.length].filter(Boolean).length : 0;
 
     const result: WriterResearchPhaseOutput = {
       ok: finalDecision !== null,
@@ -757,7 +746,7 @@ export async function writerResearchPhase(
       args.childRunId,
       result.ok ? "Research complete" : "Research failed",
       result.ok && finalDecision
-        ? `${sectionCount}/9 sections, ${searchCount} web search${searchCount === 1 ? "" : "es"}, decision ${finalDecision.direction} (${finalDecision.conviction ?? "—"}), submit attempts: ${submitAttempts}.`
+        ? `${sectionCount}/3 sections, ${searchCount} web search${searchCount === 1 ? "" : "es"}, decision ${finalDecision.direction} (${finalDecision.conviction ?? "—"}), submit attempts: ${submitAttempts}.`
         : result.error ?? "unknown",
       {
         ticker: T,
@@ -821,21 +810,27 @@ export function toCitationObject(raw: string): {
 }
 
 
-function toSchemaBulletSection(s: { bullets: Array<{ text: string; citation?: string }> }) {
+/** A line of the bull or bear case, saved as a bullet with its first citation ([WEB:url] or [STRUCTURED:field]) as the chip. */
+function toSchemaBulletSection(lines: string[] | undefined) {
+  const kept = (lines ?? []).map((l) => l.trim()).filter(Boolean);
+  if (!kept.length) return undefined;
   return {
-    bullets: s.bullets.map((b) => ({
-      text: b.text,
-      ...(b.citation !== undefined ? { citation: toCitationObject(b.citation) } : {}),
-    })),
+    bullets: kept.map((text) => {
+      const first = parseCitations(text)[0];
+      return { text, ...(first !== undefined ? { citation: toCitationObject(first) } : {}) };
+    }),
   };
 }
 
-export function sectionArgsFrom(sections: ParsedSections): SectionArgs {
+/** The research sections the save writes, from the decision: each one as the Writer sent it, or left as stored when it sent none. */
+export function sectionArgsFrom(d: Pick<ThesisDecisionInput, "company" | "bull_case" | "bear_case">): SectionArgs {
   const out: SectionArgs = {};
   // The company line is saved without its source markers: a plain column, read on every row.
-  if (sections.company) out.company = withoutCitationMarkers(sections.company.text);
-  if (sections.bullCase) out.bull_case = toSchemaBulletSection(sections.bullCase);
-  if (sections.bearCase) out.bear_case = toSchemaBulletSection(sections.bearCase);
+  if (d.company?.trim()) out.company = withoutCitationMarkers(d.company.trim());
+  const bull = toSchemaBulletSection(d.bull_case);
+  if (bull) out.bull_case = bull;
+  const bear = toSchemaBulletSection(d.bear_case);
+  if (bear) out.bear_case = bear;
   return out;
 }
 
@@ -959,7 +954,6 @@ export function buildWriterSaveCall(
   args: RunThesisWriterArgs,
   pull: WriterPullPhaseOutput["pull"],
   d: ValidatedThesisDecision,
-  sectionArgs: SectionArgs,
   existing: { direction: string | null; status: string | null; setupId?: string | null; triggers?: Trigger[]; keep?: Trigger[] } | null,
   playbooks: WriterPlaybooks = null,
 ): WriterSaveCall {
@@ -973,7 +967,7 @@ export function buildWriterSaveCall(
   const eventDate = resolveEventDate(d, pull);
   const notes = [...(d.notes ?? []), ...(eventDate.note ? [eventDate.note] : [])];
   const rationale = notes.length ? `${d.rationale}\n\n${notes.map((n) => `[${n}]`).join("\n")}` : d.rationale;
-  const sections = sectionArgs;
+  const sections = sectionArgsFrom(d);
   const writes = writerPlaybookWrites(d, pull, args.mode === "mint" ? null : existing, playbooks);
   if (args.mode === "mint") {
     const look = lookAgainTrigger(d.look_again);
@@ -1004,13 +998,11 @@ export function buildWriterSaveCall(
         horizon: d.horizon,
         catalyst_date: eventDate.iso,
         outlook: d.outlook,
-        outlook_reason: d.outlook_reason,
+        opinion: d.opinion,
         conviction: d.conviction,
         conviction_rationale: d.conviction_rationale,
-        variant_view: d.variant_view,
         core_belief: d.core_belief,
-        key_assumptions: d.key_assumptions,
-        invalidation_conditions: d.invalidation_conditions,
+        kpis: d.kpis,
         // A PASS carries no triggers (record_thesis's gate).
         triggers: d.direction === "PASS" ? undefined : sent.triggers,
         // P1-35: pass the model's engagement with a recent sale through
@@ -1049,13 +1041,11 @@ export function buildWriterSaveCall(
       horizon: d.horizon,
       catalyst_date: eventDate.iso,
       outlook: d.outlook,
-      outlook_reason: d.outlook_reason,
+      opinion: d.opinion,
       conviction: d.conviction,
       conviction_rationale: d.conviction_rationale,
-      variant_view: d.variant_view,
       core_belief: d.core_belief,
-      key_assumptions: d.key_assumptions,
-      invalidation_conditions: d.invalidation_conditions,
+      kpis: d.kpis,
       add_triggers: writes.add.length || refreshLook ? [...writes.add, ...(refreshLook ? [refreshLook] : [])] : undefined,
       remove_trigger_ids: writes.remove.length ? writes.remove : undefined,
       price_at_time: pull?.currentPrice ?? undefined,
@@ -1240,7 +1230,7 @@ export async function checkDecisionAgainstSave(input: {
   existing: StockForSave | null;
   playbooks?: WriterPlaybooks;
 }): Promise<WriterSaveOutcome> {
-  const call = buildWriterSaveCall(input.args, input.pull, input.decision, {}, input.existing, input.playbooks ?? null);
+  const call = buildWriterSaveCall(input.args, input.pull, input.decision, input.existing, input.playbooks ?? null);
   const nothing = nothingCanFireRefusal(call, input.decision, input.existing);
   if (nothing) return { thesisId: null, wouldSave: false, error: nothing, fixable: true };
   const checkCtx: ToolContext = { ...input.ctx, dryRun: true };
@@ -1256,7 +1246,7 @@ export async function checkDecisionAgainstSave(input: {
 const SAVE_CHECK_HAND_BACKS = 2;
 
 /** The decision fields a save can go without: none of them is the claim or a trigger. */
-const DROPPABLE_FIELDS = new Set(["setup_id", "conviction_rationale", "variant_view", "catalyst_date"]);
+const DROPPABLE_FIELDS = new Set(["setup_id", "conviction_rationale", "catalyst_date"]);
 
 /**
  * The decision without what the save's schema refused: one optional field.
@@ -1520,8 +1510,6 @@ export async function writerPersistPhase(
     // ── Persist the thesis through the existing Layer-1 gates ──────────
     if (research.ok && research.decision && analyst) {
       let d = research.decision;
-      const sections = parseIntoSections(research.noteText);
-      const sectionArgs = sectionArgsFrom(sections);
       const ctx = await buildWriterToolCtx(args, analyst);
 
       if (args.mode === "mint") {
@@ -1552,7 +1540,7 @@ export async function writerPersistPhase(
       const playbooks = await loadPlaybooks(analyst.accountId);
       let notWritten: DroppedItem[] = [];
       const saveOnce = async (decision: ValidatedThesisDecision): Promise<WriterSaveOutcome> => {
-        const call = buildWriterSaveCall(args, pullOutput.pull, decision, sectionArgs, saveExisting, playbooks);
+        const call = buildWriterSaveCall(args, pullOutput.pull, decision, saveExisting, playbooks);
         notWritten = call.notWritten;
         const toolInstance = call.toolName === "record_thesis" ? recordThesis(ctx) : updateThesis(ctx);
         const result = await executeThroughSchema(toolInstance, call.toolName, call.toolArgs);

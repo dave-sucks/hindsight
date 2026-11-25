@@ -24,7 +24,7 @@ import { createResearchTools } from "@/lib/agent/tools";
 
 /** The morning run's thesis tools, one job each since 2026-11-18, and the fields each shows the model. */
 const DOORS: Record<string, string[]> = {
-  write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "outlook", "outlook_reason", "thesis_id", "trigger_id", "verdict", "verdict_line"],
+  write_note: ["answers_update_id", "conviction", "conviction_rationale", "note", "opinion", "outlook", "thesis_id", "trigger_id", "verdict", "verdict_line"],
   edit_triggers: ["add", "edit", "remove", "setup_id", "thesis_id"],
   set_catalyst_date: ["catalyst_date", "thesis_id"],
   stop_watching: ["reason", "thesis_id"],

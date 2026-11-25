@@ -19,15 +19,13 @@ const held = (): Row => ({
   setupId: "PEAD",
   conviction: "HIGH",
   coreBelief: "IOT drifts to $47 within 60 days. [STRUCTURED:Earnings History]",
-  keyAssumptions: ["ARR customers grow 38% [WEB:https://example.com/a]", "Revisions continue up"],
-  invalidationConds: ["A close below $36.50 on volume", "Q3 ARR under $120M"],
+  kpis: ["ARR customers grow 38% [WEB:https://example.com/a]", "Revisions continue up", "Q3 ARR under $120M"],
   snapshot: { text: "**First sentence** of the picture [STRUCTURED:Snapshot]. Second sentence says more. Third sentence goes on for a good while longer than the others to push the whole text well past three hundred characters, so that the short row has to stop at a sentence boundary, as the rule says, instead of cutting a word in half somewhere in the middle of this very long sentence. Fourth sentence.", citations: [] },
   bullCase: { bullets: [{ text: "**Clean beat:** EPS +25% [STRUCTURED:Earnings History]" }, { text: "Upgrades [WEB:https://example.com/b]" }] },
   bearCase: { bullets: [{ text: "FCF margin guided lower" }] },
   catalystDate: "2026-10-29T00:00:00.000Z",
   scoring: { composite: 8, entryQuality: { score: 2, note: "pullback to the 50-day" }, trendStrength: { score: 2, note: "above the 200-day" }, relativeStrength: { score: 2, note: "leads SPY" }, catalystFreshness: { score: 2, note: "reported 10 days ago" } },
   convictionRationale: "All four signals clean [STRUCTURED:Earnings History].",
-  variantView: "Consensus sees deceleration; I see the ARR cohort.",
   researchUpdatedAt: "2026-10-05T13:35:48.491Z",
   researchPriceThen: 39.55,
   researchAge: { daysOld: 2, freshness: "fresh", horizonThreshold: 30 },
@@ -87,7 +85,7 @@ describe("the short row", () => {
   it("has the keys in reading order and nothing that is empty", () => {
     expect(Object.keys(row)).toEqual([
       "stock", "id", "situations", "said", "position", "proposal_waiting", "price", "triggers",
-      "belief", "assumptions", "would_prove_it_wrong", "conviction_rationale", "variant_view",
+      "belief", "kpis", "conviction_rationale",
       "setup", "chart", "research", "catalyst", "repeat",
     ]);
   });
@@ -109,10 +107,8 @@ describe("the short row", () => {
       'Review if it files something material with the SEC · inherited · fired 10-01 09:00 ET · "Read the filing first." [id acct_filing]',
     ]);
     expect(row.belief).toBe("IOT drifts to $47 within 60 days.");
-    expect(row.assumptions).toEqual(["ARR customers grow 38%", "Revisions continue up"]);
-    expect(row.would_prove_it_wrong).toEqual(["A close below $36.50 on volume", "Q3 ARR under $120M"]);
+    expect(row.kpis).toEqual(["ARR customers grow 38%", "Revisions continue up", "Q3 ARR under $120M"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
-    expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
     expect(row.setup).toBe("PEAD, Post-earnings drift. Failure looks like: The gap-day low breaks; Revisions don't follow.");
     expect(row.chart).toBe("as of the 2026-10-07 close: 20d $39.70 · 50d $39.47 · 200d $33.68 · RSI 56 (14-day, from the closes and the live price) · 20d range $36.40–$44.21 · 52w high $47.47 · ATR $1.99 · vs the S&P 1M -0.6% / 3M +6.1% · 20d avg volume 5.7M · 5d +2.1% · 20d +6.4%");
     expect(row.research).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
@@ -130,7 +126,7 @@ describe("the short row", () => {
   });
 
   it("carries no score notes, no raw facts, no bookkeeping and no source tags", () => {
-    for (const k of ["bull_case", "bear_case", "snapshot", "bullCase", "bearCase", "convictionRationale", "variantView", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
+    for (const k of ["bull_case", "bear_case", "snapshot", "bullCase", "bearCase", "convictionRationale", "outlookReason", "resolved", "needsAction", "triggerState", "researchAge", "unapprovedExitCount", "history", "inheritedTriggers", "proposals", "coreBelief", "context"]) {
       expect(row).not.toHaveProperty(k);
     }
     expect(JSON.stringify(row)).not.toMatch(/\[(STRUCTURED|WEB)/);
@@ -161,7 +157,6 @@ describe("the full row", () => {
     expect(row.bull_case).toEqual(["Clean beat: EPS +25%", "Upgrades"]);
     expect(row.bear_case).toEqual(["FCF margin guided lower"]);
     expect(row.conviction_rationale).toBe("All four signals clean.");
-    expect(row.variant_view).toBe("Consensus sees deceleration; I see the ARR cohort.");
     expect(String(row.snapshot)).toMatch(/Fourth sentence\.$/);
     expect(row.research).toBe("Written 2026-10-05 at $39.55, 2 days ago.");
     expect(row.history).toEqual([{ id: "u1", type: "REVIEWED" }]);

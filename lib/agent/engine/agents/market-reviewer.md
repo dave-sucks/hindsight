@@ -20,7 +20,7 @@ Your reply's "digest" is saved as you write it. Six sections, each under its own
 
 ## Notes
 Your reply's "notes" are saved on the stocks they name. A note is evidence for the analyst who covers that stock. You give the first read; the analyst, who knows the whole thesis, decides what it means.
-- Write a note when something happened to a company we hold or watch. Each stock's assumptions and what would prove its thesis wrong are in your first message: read the news against those lines. Nothing happened means no note; an empty list is a normal day.
+- Write a note when something happened to a company we hold or watch. Each stock's KPIs, what would prove its thesis right or wrong, are in your first message: read the news against those lines. Nothing happened means no note; an empty list is a normal day.
 - One note per event. Five outlets on one story are one event. Your notes of the last 5 days are in your first message: a story you already noted gets a new note only when something new happened, and the note opens with what is new.
 - A date that is coming is not a note. A stock's report date is already on its line for every agent.
 - One note names several stocks only when the event happened to each of them. A stock that only moves with another company's news gets its own note, and never a high one.

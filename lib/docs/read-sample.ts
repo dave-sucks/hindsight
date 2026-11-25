@@ -25,12 +25,14 @@ export const CRWD_ROW: Row = {
   conviction: "MEDIUM",
   company: "CrowdStrike sells cloud-delivered endpoint and identity security on one agent; revenue is subscription, growing about 30% a year.",
   coreBelief: "The platform keeps taking share as security budgets consolidate; what has to stay true is net new ARR above $200M a quarter.",
-  keyAssumptions: ["Net new ARR above $200M, checked at the Q3 report on December 2", "Gross margin holds above 78%"],
-  invalidationConds: ["Net new ARR under $180M at the Q3 report", "A second outage with customer churn named on the call"],
+  kpis: [
+    "Net new ARR: on track at $200M+ a quarter, broken under $180M. Read at the Q3 report on December 2.",
+    "Gross margin: on track at 78%+, broken under 75%. Read at each report.",
+    "Outages: broken by a second outage that customers name as a reason to leave on a call.",
+  ],
   bullCase: { bullets: [{ text: "The beat and raise" }, { text: "Falcon Flex adoption" }, { text: "Module attach" }, { text: "The margin step-up" }, { text: "The buyback" }] },
   bearCase: { bullets: [{ text: "Valuation at 90× earnings" }, { text: "The July outage's legal tail" }, { text: "A slowing net new ARR cohort" }, { text: "Insider selling" }] },
   convictionRationale: "MEDIUM: the business is compounding, but the stock is extended 18% above its 50-day and estimates have not moved in a month.",
-  variantView: "The Street models 25% growth; I think Flex pulls it to 30% because attach is running ahead of plan.",
   setup: {
     id: "PEAD",
     name: "Post-earnings drift",

@@ -77,41 +77,41 @@ export function thesisFields() {
     core_belief: z
       .string()
       .describe(
-        "Why we own the company, in two or three plain sentences: what it does, why it is worth owning, and what has to stay true. " +
-          "About the business, never the trade: no stock price, no price path, no target, no dates, no shorthand.",
+        "Why the business is worth owning, in two or three plain sentences: what it does well and what has to stay true. " +
+          "About the business, never the trade: no stock price, no target, no dates. The opinion holds the price.",
       ),
     company: z
       .string()
       .describe(
-        "What the company does and how it makes money, in two plain sentences (\"Samsara sells connected-operations software and the sensors that feed it to fleets; revenue is subscription, growing about 30% a year.\"). " +
-          "Written once; changed only when the business changes.",
+        "What the company sells, to whom, and how it makes money, in three or four plain sentences: the revenue mix and the deal or change that last reshaped the business, with its date. " +
+          "Send the stored text again unless the business has changed.",
       ),
-    key_assumptions: z
+    kpis: z
       .array(z.string())
       .describe(
-        "Specific, checkable premises that must stay true for the core belief, two or more on LONG or SHORT, each ending with when and where it is checked " +
-          "(\"…, checked at the Q3 report on December 4\"; \"…, in each 10-Q\"). A premise with no reading and no date cannot be checked.",
-      ),
-    invalidation_conditions: z
-      .array(z.string())
-      .describe(
-        "Specific things you could observe in the business that would prove the thesis wrong, each a reading and where it is read (a guidance cut at the next report, gross margin under 70% in the 10-Q, the largest customer leaving), two or more on LONG or SHORT. " +
-          "Never a stock price, an average, a high or low, or a gap, with or without volume: the triggers hold the price. Exits are graded against them; on a PASS they are what would change your mind.",
+        "The KPIs: two to four lines that tell us whether the belief is right. Each is one number the company reports or one named event that would end the case: " +
+          "what it is, the reading that says we are on track, the reading that says we are wrong, and when it is read " +
+          "(\"Northwind freight bookings: on track at 10%+ a year, broken under 5%. Read at each report.\"). " +
+          "Business readings only, never a stock price: the triggers hold the price. Replaces the stored list whole.",
       ),
     outlook: z
       .enum(OUTLOOKS)
       .describe(
-        "What you expect of the stock from here: BULLISH, NEUTRAL or BEARISH. It can change with no news about the company: a rally that uses up the upside turns BULLISH into NEUTRAL. Comes with outlook_reason.",
+        "What you expect of the stock from here: BULLISH, NEUTRAL or BEARISH. It can change with no news about the company: a rally that uses up the upside turns BULLISH into NEUTRAL. Comes with the opinion.",
       ),
-    outlook_reason: z.string().describe("Why this outlook, in a sentence: what you expect of the stock from here and why."),
+    opinion: z
+      .string()
+      .describe(
+        "Your opinion of the stock at today's price, written by \"The opinion\" in How you write: two or three sentences that stand alone, matching the outlook, then the reasoning with its numbers and dates. " +
+          "It replaces the stored opinion whole.",
+      ),
     conviction: z
       .enum(["HIGH", "MEDIUM", "LOW"])
       .describe(
-        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, an assumption has missed or is in doubt. " +
+        "How confident you are in the belief as written, whichever way it points. HIGH: the evidence clearly supports it and nothing against it is unanswered. MEDIUM: reasoned and plausible, but untested, or the evidence is mixed. LOW: thin or contested, a KPI has missed or is in doubt. " +
           "It is not how bullish you are and not whether to buy today: HIGH with a NEUTRAL outlook is a real view. Comes with conviction_rationale.",
       ),
     conviction_rationale: z.string().describe("Why you are this confident, in a few plain sentences: the evidence for the belief. A move in the price or the chart is not evidence; what the price already reflects can be part of the belief."),
-    variant_view: z.string().describe("Where you differ from Wall Street about the business, in plain words: 'analysts expect X, I think Y, because Z'. Leave it out when you don't."),
     live_price: z
       .number()
       .describe(
@@ -126,9 +126,9 @@ export function thesisFields() {
       .string()
       .describe(
         "What the evidence since the last look did to the belief as written, not to the stock: evidence that backs a bearish belief is STRONGER. STRONGER: it supports the belief more than before. UNCHANGED: nothing bore on it. WEAKER: it goes against the belief, not fatally. " +
-          "BROKEN: something written under 'would prove it wrong' has happened, or the belief no longer holds. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line.",
+          "BROKEN: the belief no longer holds. A KPI that missed is BROKEN only when the business no longer does what the belief says. A move in the price alone is UNCHANGED. Any verdict but UNCHANGED comes with verdict_line; BROKEN comes with the rewritten opinion too.",
       ),
-    verdict_line: z.string().describe("One sentence: what happened and which assumption or 'would prove it wrong' line it touched, when there is one."),
+    verdict_line: z.string().describe("One sentence: what happened and which KPI it touched, when there is one."),
     answers_update_id: z
       .string()
       .describe("The id of the earlier Activity line this note answers, when it answers one (the pre-report note, after the report): the [id …] at the end of that line."),
@@ -137,5 +137,12 @@ export function thesisFields() {
     research_data: z.string().describe("The writer's raw data block, passed through verbatim for the card's data tab."),
     bull_case: sectionBullets.describe("Bull case: three to five cited bullets."),
     bear_case: sectionBullets.describe("Bear case: three to five cited bullets, on a LONG too."),
+    // The Writer's own: plain lines, saved as the bullets above.
+    bull_points: z
+      .array(z.string())
+      .describe("The bull case: three to five reasons it could work, each one claim with its number and a citation ([WEB:url] or [STRUCTURED:field]). Replaces the stored bull case whole."),
+    bear_points: z
+      .array(z.string())
+      .describe("The bear case: three to five risks, each one claim with its number, then the sign that would show it is happening, and a citation. Name the rival or the number; \"competition\" or \"volatility\" alone is not a risk. Required on a LONG too. Replaces the stored bear case whole."),
   };
 }

@@ -8,11 +8,11 @@ import { SITUATIONS, type SituationCode } from "@/lib/agent/situations";
 
 type Row = Record<string, unknown>;
 
-// MU on 2026-11-23: held, a sale signal up; its row had 11 fields under the per-situation map and its assumptions were not among them.
+// MU on 2026-11-23: held, a sale signal up; its row had 11 fields under the per-situation map and its assumptions were not among them (its KPIs, since 2026-11-24).
 const mu = (over: Row = {}): Row => ({
   id: "t_mu", ticker: "MU", status: "HOLDING", direction: "LONG", setupId: "COMPOUNDER_ACCUMULATION", outlook: "NEUTRAL", conviction: "MEDIUM",
-  company: "Micron makes memory chips.", coreBelief: "HBM supply stays short.", keyAssumptions: ["HBM margin holds"], invalidationConds: ["A guidance cut"],
-  convictionRationale: "The next report decides it.", outlookReason: "Volatile until Dec 17.", variantView: "The Street prices a 2027 peak.",
+  company: "Micron makes memory chips.", coreBelief: "HBM supply stays short.", kpis: ["HBM margin holds", "A guidance cut"],
+  convictionRationale: "The next report decides it.", outlookReason: "Volatile until Dec 17.",
   bullCase: { bullets: [{ text: "Contracted pricing." }] }, bearCase: { bullets: [{ text: "Cycle rolls over." }] }, snapshot: { text: "A long summary." },
   context: "the Activity list", triggers: [{ id: "f", says: "Sell if below $804" }], history: [{ id: "u1" }],
   position: { quantity: 11, avgCost: 911.42, openedAt: "2026-10-01T14:00:00.000Z", peakPrice: 1100 }, price: { current: 708.2, dayChangePct: 19.1 },
@@ -26,7 +26,7 @@ describe("the row", () => {
     const sale = keys(["PROTECTIVE_SALE"]);
     for (const code of Object.keys(SITUATIONS) as SituationCode[]) expect([code, keys([code])]).toEqual([code, sale]);
     expect(keys([])).toEqual(sale);
-    expect(sale).toEqual(expect.arrayContaining(["company", "assumptions", "would_prove_it_wrong", "conviction_rationale", "outlook_reason", "variant_view", "playbook_checks", "position"]));
+    expect(sale).toEqual(expect.arrayContaining(["company", "kpis", "conviction_rationale", "opinion", "playbook_checks", "position"]));
   });
 
   it("carries the long research and the raw history only when the read asks for them", () => {

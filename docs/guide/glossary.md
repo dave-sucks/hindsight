@@ -17,7 +17,8 @@ When the code, a prompt or a doc uses one of these words, it means this.
 
 - **Thesis:** one analyst's view of one stock, and its triggers. Every stock on the book has one. See [Theses](concepts/theses.md).
 - **Belief:** one sentence we can be wrong about, with an outcome, a timeframe and the reason.
-- **Wrong if:** what would prove the belief wrong, written before the buy.
+- **Opinion:** the analyst's full view of the stock at today's price, with the outlook. Rewritten whenever a look learns something.
+- **KPIs:** two to four readings, each a number the company reports or a named event, that would prove the belief right or wrong, written before the buy.
 - **Playbook:** the kind of trade, one of twelve (post-earnings drift, a pullback to a rising average, a run-up into a dated event…). Each has what must be true first and how a buy is confirmed, and its triggers: its watch triggers, written when the Writer names it, and its holding triggers, put on after the buy (Settings → Playbook). The code calls it a setup (`setupId`).
 - **Conviction:** how strongly the analyst holds the belief. It scales the size of the buy.
 - **Horizon:** how long the thesis means to hold: **catalyst** (until a dated event resolves), **trade** (days to weeks, tight stop), **target** (weeks to months, to a set price) or **compounder** (months to years). It sets how fast the research goes stale.

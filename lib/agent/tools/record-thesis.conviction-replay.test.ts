@@ -19,8 +19,7 @@ const mintArgs = {
   catalyst_date: "2027-01-21T00:00:00.000Z",
   reasoning_summary: "Dated binary; watch until a base forms above the range low.",
   core_belief: "Dyne's DYNE-251 BLA is approved by the 2027-01-21 PDUFA date on the FDA's own accepted filing.",
-  key_assumptions: ["No RTF or clinical hold before the date.", "Cash runway past the decision."],
-  invalidation_conditions: ["A complete response letter.", "An equity raise below $12."],
+  kpis: ["No RTF or clinical hold before the date.", "Cash runway past the decision."],
   scoring: {
     trendStrength: { score: 0, note: "Broke the 200-day." },
     relativeStrength: { score: 0, note: "Lags SPY on every window." },

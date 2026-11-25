@@ -28,14 +28,15 @@ const validLong: ThesisDecisionInput = {
   setup_id: "BASE_BREAKOUT",
   core_belief:
     "NVDA prints ≥$50B data-center revenue by Q4 FY26 as Blackwell replaces Hopper at hyperscalers.",
-  key_assumptions: ["DC capex stays above $200B/yr", "Blackwell yields hold above 60%"],
-  invalidation_conditions: ["Gross margin below 70% on next print", "Guidance cut on DC revenue"],
+  company: "Sells the chips most AI data centers run on, and the software that runs them; data-center revenue is most of the total.",
+  kpis: ["Data-center revenue: on track at $50B+ a quarter by Q4, broken under $40B. Read at each report.", "Gross margin: on track at 70%+, broken under 68%. Read at each report."],
+  bull_case: ["Blackwell replaces Hopper at every hyperscaler [WEB:https://e.com/a]", "Cloud spending guides keep rising [WEB:https://e.com/b]", "Software attach grows [WEB:https://e.com/c]"],
+  bear_case: ["Customers build their own chips; sign: a hyperscaler cuts orders", "Export rules tighten; sign: a new rule names Blackwell", "Margins dip in the ramp; sign: gross margin under 70%"],
   outlook: "BULLISH",
-  outlook_reason: "The data-center ramp is not in the price yet.",
+  opinion: "The data-center ramp is not in the price yet.",
   conviction: "HIGH",
   conviction_rationale:
     "I really like this setup — the catalyst is ahead and consensus is too conservative on DC revenue.",
-  variant_view: "Consensus models $42B DC; channel checks support $50B+ — 2 quarters underweighted.",
 };
 
 const mintOpts = { mode: "mint" as const, existingStatus: null, currentPrice: 101 };
@@ -62,13 +63,12 @@ describe("validateThesisDecision — accept paths", () => {
 });
 
 describe("validateThesisDecision — belief + conviction requirements (LONG/SHORT)", () => {
-  it("rejects missing core_belief / thin assumptions / thin invalidations", () => {
-    const v = validateThesisDecision(ratedNow({ ...validLong, core_belief: undefined, key_assumptions: ["only one"], invalidation_conditions: [] }), mintOpts);
+  it("rejects a missing core_belief and fewer than two KPIs, by name", () => {
+    const v = validateThesisDecision(ratedNow({ ...validLong, core_belief: undefined, kpis: ["only one"] }), mintOpts);
     expect(v.ok).toBe(false);
     const all = v.errors.join(" ");
     expect(all).toContain("core_belief");
-    expect(all).toContain("key_assumptions");
-    expect(all).toContain("invalidation_conditions");
+    expect(all).toContain("kpis: at least two lines");
   });
 
   it("a HIGH conviction needs no view that differs from Wall Street: it is stored as sent", () => {

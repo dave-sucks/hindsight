@@ -20,8 +20,10 @@ const docu: ThesisDecisionInput = {
   horizon: "TARGET",
   rationale: "Post-earnings drift after a clean beat; buy a pullback toward the gap area rather than chase.",
   core_belief: "DOCU re-rates as IAM seat growth keeps billings above 8%.",
-  key_assumptions: ["Billings growth stays above 8%", "Gross margin holds above 80%"],
-  invalidation_conditions: ["Next-quarter billings guide below 6%", "Gross margin under 78% in the 10-Q"],
+  company: "DocuSign sells electronic signature and agreement software to businesses; revenue is subscription, growing about 8% a year.",
+  kpis: ["Billings: on track at 8%+ growth, broken under 6%. Read at each report.", "Gross margin: on track at 80%+, broken under 78%. Read in each 10-Q."],
+  bull_case: ["A clean beat and raise", "IAM seats growing", "Buybacks"],
+  bear_case: ["Billings slow; sign: a guide under 6%", "Margins slip; sign: gross margin under 78%"],
   conviction: "MEDIUM",
   conviction_rationale: "The beat was real and the stock held the gap, but the multiple already moved a lot.",
 };

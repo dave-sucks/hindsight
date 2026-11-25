@@ -12,6 +12,7 @@
 
 import type { PriceStructure } from "@/lib/market-data/price-structure";
 import { epsDetail, type StreetFacts } from "@/lib/market-data/street-consensus";
+import { valuationLines } from "@/lib/agent/thesis-research/valuation";
 
 interface StockDataInput {
   ticker: string;
@@ -30,7 +31,6 @@ interface StockDataInput {
     week52Low?: number | null;
     marketCap?: number | null;
     beta?: number | null;
-    pe?: number | null;
   };
   /** The chart (lib/market-data/price-structure.ts) + which feed its volume came from. */
   technicals?: (PriceStructure & { volumeFeed?: "sip" | "iex" }) | null;
@@ -77,6 +77,8 @@ interface FinancialsInput {
     roe: number | null;
     roic: number | null;
   } | null;
+  /** Shares outstanding (Finnhub profile); the pull prices the market cap with it. */
+  sharesOutstanding?: number | null;
   errors?: string[];
 }
 
@@ -282,7 +284,6 @@ function buildSnapshot(s: StockDataInput): string {
   const tagBits: string[] = [];
   if (q?.marketCap != null) tagBits.push(`Market cap: ${fmtDollar(q.marketCap, { compact: true })}`);
   if (q?.beta != null) tagBits.push(`Beta: ${q.beta.toFixed(2)}`);
-  if (q?.pe != null) tagBits.push(`P/E: ${q.pe.toFixed(1)}`);
   if (tagBits.length) lines.push(tagBits.join(" · "));
 
   if (lines.length === 0) lines.push("(snapshot unavailable)");
@@ -505,7 +506,6 @@ function buildFinancials(f: FinancialsInput | null): string {
     // underlying `f.ratios` object still carries them; only the rendered
     // line is trimmed.
     const parts: string[] = [];
-    if (f.ratios.pe != null) parts.push(`P/E ${f.ratios.pe.toFixed(1)}`);
     if (f.ratios.pegRatio != null) parts.push(`PEG ${f.ratios.pegRatio.toFixed(2)}`);
     if (f.ratios.debtToEquity != null) parts.push(`D/E ${f.ratios.debtToEquity.toFixed(2)}`);
     if (f.ratios.currentRatio != null) parts.push(`Current ${f.ratios.currentRatio.toFixed(2)}`);
@@ -579,6 +579,23 @@ function buildAnalystCoverage(a: AnalystCoverageInput | null): string {
   if (eps) lines.push(`EPS consensus: ${eps}`);
   if (a.errors && a.errors.length > 0) lines.push(`(partial — ${a.errors.join("; ")})`);
   return lines.join("\n");
+}
+
+/** The stock's multiples at today's price, worked out by code (valuation.ts). */
+function buildValuation(inputs: DataBlockInputs): string | null {
+  const price = inputs.stockData.quote?.current ?? null;
+  const street = inputs.analystCoverage?.street ?? null;
+  const annual = inputs.financials?.annual ?? [];
+  const last = annual.length ? annual[annual.length - 1] : null;
+  const body = valuationLines({
+    price,
+    marketCap: inputs.stockData.quote?.marketCap ?? null,
+    quarterlyEps: (inputs.earningsHistory?.history ?? []).map((q) => q.eps.actual).filter((n) => Number.isFinite(n)),
+    epsFiscalYear: street?.epsFiscalYear ?? null,
+    epsNextQuarter: street?.epsNextQuarter ?? null,
+    lastYear: last ? { year: last.year, revenue: last.revenue, freeCashFlow: last.freeCashFlow } : null,
+  });
+  return body && price != null ? `## Valuation at $${price.toFixed(2)}\n\n${body}` : null;
 }
 
 function buildInsider(i: InsiderInput | null): string {
@@ -729,6 +746,9 @@ Pulled ${pulledStr} — use these numbers as ground truth.
   if (eventOnFile) sections.push(`## Event date on file\n\n${eventOnFile}`);
 
   sections.push(`## Analyst Coverage\n\n${buildAnalystCoverage(inputs.analystCoverage)}`);
+
+  const valuation = buildValuation(inputs);
+  if (valuation) sections.push(valuation);
 
   sections.push(`## Analyst Price Targets (snapshot)\n\n${buildAnalystTargets(stockData)}`);
 

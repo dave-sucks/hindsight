@@ -24,7 +24,7 @@ import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { prisma } from "@/lib/prisma";
 import { modelFor } from "@/lib/agent/model";
-import { cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
+import { cachedMessages, cachedSystem, cachedTools } from "@/lib/agent/prompt-cache";
 import { repeatRefusalGuard } from "@/lib/agent/repeat-refusal";
 import { addTokenUsage, emptyTokenUsage, recordTokenUsage, type TokenUsage } from "@/lib/agent/token-usage";
 import { saveRunThread, type RunStep } from "@/lib/agent/run-thread";
@@ -129,6 +129,8 @@ export async function runAgent(record: RunnableRecord, args: RunAgentArgs): Prom
       ...(record.maxOutputTokens ? { maxOutputTokens: record.maxOutputTokens } : {}),
       providerOptions: { openai: { strictJsonSchema: true, ...(args.runId ? { promptCacheKey: args.runId } : {}) } },
       stopWhen: [stepCountIs(record.maxSteps), repeatRefusalGuard.stopWhen, saved],
+      // Each step's messages with the last one marked, so the next step reads the conversation so far from the cache (Anthropic; the chat does the same).
+      prepareStep: ({ messages }) => ({ messages: cachedMessages(provider, messages) }),
       abortSignal: AbortSignal.timeout(record.timeoutMs),
       onStepFinish(step) {
         addTokenUsage(usage, step.usage);

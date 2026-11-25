@@ -29,7 +29,7 @@ export const evaluateTrade = inngest.createFunction(
     const { positionId } = event.data as { positionId: string };
 
     // Step 1: Fetch position + thesis from DB. Selects the structured
-    // belief fields (coreBelief / keyAssumptions / invalidationConds) so
+    // belief fields (coreBelief / kpis / the opinion) so
     // the GPT-4o post-mortem can grade against the falsifiable claim,
     // not just the trade rationale. Pre-this-PR the eval saw only the
     // narrative — couldn't tell when an assumption flipped under it.
@@ -48,8 +48,8 @@ export const evaluateTrade = inngest.createFunction(
                   bullCase: true,
                   sourceSignalIds: true,
                   coreBelief: true,
-                  keyAssumptions: true,
-                  invalidationConds: true,
+                  kpis: true,
+                  outlookReason: true,
                   horizon: true,
                   direction: true,
                 },
@@ -92,14 +92,11 @@ export const evaluateTrade = inngest.createFunction(
         const lines: string[] = [];
         if (thesis.horizon) lines.push(`Horizon: ${thesis.horizon}`);
         if (thesis.coreBelief) lines.push(`\nCore belief: ${thesis.coreBelief}`);
-        if (thesis.keyAssumptions?.length) {
-          lines.push(`\nKey assumptions (must remain true for the belief to hold):`);
-          for (const a of thesis.keyAssumptions) lines.push(`- ${a}`);
+        if (thesis.kpis?.length) {
+          lines.push(`\nKPIs (each with the reading that says on track and the reading that says wrong):`);
+          for (const k of thesis.kpis) lines.push(`- ${k}`);
         }
-        if (thesis.invalidationConds?.length) {
-          lines.push(`\nInvalidation conditions (would prove the belief wrong):`);
-          for (const i of thesis.invalidationConds) lines.push(`- ${i}`);
-        }
+        if (thesis.outlookReason) lines.push(`\nThe analyst's last opinion at the price then:\n${thesis.outlookReason}`);
         return lines.length > 0 ? `\n\n${lines.join("\n")}` : "";
       })();
 
@@ -109,7 +106,7 @@ export const evaluateTrade = inngest.createFunction(
         model: openai("gpt-4o-mini"),
         system:
           "You are a trading coach evaluating closed paper trades. Be honest and constructive. Focus on what the analyst got right, what they missed, and what they should learn. " +
-          "When the thesis included a structured belief (core_belief + key_assumptions + invalidation_conditions), grade against the BELIEF, not just the trade rationale: did each key_assumption actually hold through the hold period? Did any invalidation_condition come true? If the trade closed at a profit but the belief was already broken, name that — \"right outcome, wrong reasons\" is still a learning. " +
+          "When the thesis included a belief and KPIs, grade against the BELIEF, not just the trade rationale: did each KPI stay on track through the hold period, or did one break? If the trade closed at a profit but the belief was already broken, name that — \"right outcome, wrong reasons\" is still a learning. " +
           "Keep it to 3-4 paragraphs.",
         prompt: `Evaluate this closed paper trade:
 

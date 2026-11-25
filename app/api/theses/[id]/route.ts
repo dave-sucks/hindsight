@@ -23,6 +23,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
+import { getSetup } from "@/lib/agent/knowledge/setups";
 import { createClient } from "@/lib/supabase/server";
 import { getAccountId } from "@/lib/auth/account";
 import {
@@ -42,6 +43,12 @@ const FEED_WINDOW = 60;
 import { loadActivityFeed } from "@/lib/thesis/activity-feed.server";
 import { writeupComing } from "@/lib/proposals/auto-writeup";
 import { writtenUpPrice } from "@/lib/thesis/written-up";
+
+/** The stock's playbook as the Thesis tab shows it: its name without the bracketed aliases, and its one sentence. */
+function playbookOf(setupId: string | null): { name: string; line: string | null } | null {
+  const setup = setupId ? getSetup(setupId) : undefined;
+  return setup ? { name: setup.name.replace(/\s*\([^)]*\)\s*$/, ""), line: setup.line ?? null } : null;
+}
 
 export async function GET(
   req: Request,
@@ -72,6 +79,7 @@ export async function GET(
       invalidReason: true,
       retiredReason: true,
       horizon: true,
+      setupId: true,
       catalystDate: true,
       lastReviewedAt: true,
       triggers: true,
@@ -83,8 +91,7 @@ export async function GET(
       // sheet so the user can see what the agent actually committed to.
       company: true,
       coreBelief: true,
-      keyAssumptions: true,
-      invalidationConds: true,
+      kpis: true,
       fullResearch: true,
       // 9 narrative sections (PR-9 flat schema).
       snapshot: true,
@@ -106,7 +113,6 @@ export async function GET(
       outlookReason: true,
       conviction: true,
       convictionRationale: true,
-      variantView: true,
       createdAt: true,
       researchRun: {
         select: {
@@ -362,6 +368,7 @@ export async function GET(
     invalidReason: thesis.invalidReason,
     retiredReason: thesis.retiredReason,
     horizon: thesis.horizon,
+    playbook: playbookOf(thesis.setupId),
     // One chart line per trigger at a typed price, labelled with its own
     // sentence. Nothing stores a level: a stock has triggers and nothing else.
     priceLines: priceLines(triggers),
@@ -389,8 +396,7 @@ export async function GET(
     analystName: thesis.researchRun?.agentConfig?.name ?? null,
     company: thesis.company,
     coreBelief: thesis.coreBelief,
-    keyAssumptions: thesis.keyAssumptions ?? [],
-    invalidationConds: thesis.invalidationConds ?? [],
+    kpis: thesis.kpis ?? [],
     snapshot: thesis.snapshot,
     recentCatalysts: thesis.recentCatalysts,
     fundamentals: thesis.fundamentals,
@@ -414,6 +420,5 @@ export async function GET(
     outlookReason: thesis.outlookReason,
     conviction: thesis.conviction,
     convictionRationale: thesis.convictionRationale,
-    variantView: thesis.variantView,
   });
 }

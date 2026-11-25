@@ -35,17 +35,15 @@ The same row, whatever the situation and whoever reads it. A stock an agent open
 | Field | What it is |
 |---|---|
 | `stock` | The ticker, held or watch, the direction, the playbook, the outlook and conviction |
-| `company` | What the company does, in two sentences |
+| `company` | What the company sells, to whom and how it makes money |
 | `id` | The thesis id a note or a trade names |
 | `said` | Its Activity: the last 3 reviews, 3 news notes, 3 of the owner's notes and the owner's last decline, from the last 45 days |
 | `price` | The price, the day's move and when it printed |
 | `triggers` | Every trigger as its sentence, the stock's own with their ids, then the ones it inherits |
 | `belief` | The belief |
-| `assumptions` | What must stay true |
-| `would_prove_it_wrong` | What would prove the case wrong |
+| `opinion` | The analyst's full view of the stock at today's price; its first paragraph is the summary |
+| `kpis` | The KPIs: what tells us the belief is right, each with the reading that says on track, the reading that says wrong, and when it is read |
 | `conviction_rationale` | Why the conviction is what it is |
-| `outlook_reason` | Why the outlook is what it is |
-| `variant_view` | Where we differ from Wall Street |
 | `chart` | This morning's averages, range, RSI, strength against the S&P and volume |
 | `street` | Wall Street's ratings, target range and EPS consensus |
 | `research` | When the research was written and at what price |
@@ -124,7 +122,7 @@ Mistakes:
 A sale or trim trigger fired. A trigger written in advance to sell or trim this holding fired or is true now, or the owner declined that sale and the price is still past it.
 
 1. Why is the stock down? Look at its own news, its sector and the market.
-2. Does that touch why we own it? Go down what would prove it wrong. Name any line that has happened.
+2. Does that touch why we own it? Go down the KPIs. Name any line that has happened.
 3. Is the price still past the trigger's price? A give-back is counted from the high since we bought, not from a high read off a chart.
 4. Did the owner decline this sale, or let it lapse? Read their words.
 
@@ -201,17 +199,17 @@ A report. A trigger on this company's earnings report fired: it is coming, or it
 
 Before the report:
 1. What is expected, and how has the stock moved into it?
-2. Which number or assumption must the report clear? Your note sets that bar.
+2. Which KPI must the report clear? Your note sets that bar.
 
 After the report:
 1. What did they report against expectations? Judge a surprise on an estimate under $0.05 a share in dollars.
 2. What did management say comes next? Read the call before trusting a number.
 3. How did the stock take it?
-4. Which assumption does it touch, and did it clear the bar?
+4. Which KPI does it touch, and did it clear the bar?
 
-A stock we hold. Before: size it for a 10% move either way from the last close. Trim, hold through, or raise the floor, and add nothing into the report. After: a broken assumption is a sale: propose it. A miss with the case intact stays, floored under structure: say what would change your mind. A beat on both lines, guidance raised: raise the floor, and add if the playbook allows it. A profit beat with revenue short came from costs: raise nothing on it. A beat the stock fell on: raise the floor.
+A stock we hold. Before: size it for a 10% move either way from the last close. Trim, hold through, or raise the floor, and add nothing into the report. After: a broken KPI is a sale: propose it. A miss with the case intact stays, floored under structure: say what would change your mind. A beat on both lines, guidance raised: raise the floor, and add if the playbook allows it. A profit beat with revenue short came from costs: raise nothing on it. A beat the stock fell on: raise the floor.
 
-A stock we watch. Before: the buy waits for the report. After: the case is stronger and the playbook's buy is true today: propose the buy. An assumption broke: stop watching, or send it to the Writer. Otherwise move the buy price to where the chart now puts it, or leave it.
+A stock we watch. Before: the buy waits for the report. After: the case is stronger and the playbook's buy is true today: propose the buy. A KPI broke: stop watching, or send it to the Writer. Otherwise move the buy price to where the chart now puts it, or leave it.
 
 A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Before, it names the bar. After: the report against the bar, how the stock took it, the verdict.
 ```
@@ -232,7 +230,7 @@ A beat alone is no reason to buy, nor a miss alone to sell. Done: one note. Befo
 A filing. The company filed with the SEC, and a trigger on its filings fired. The fire names the filing and its link.
 
 1. What does the document say? Read it. Its item number names the kind of filing. Only the document says which way it cuts.
-2. Which line of the case does it touch? Go down the assumptions and what would prove it wrong. Name the line, or say it touches none.
+2. Which line of the case does it touch? Go down the KPIs. Name the line, or say it touches none.
 3. What follows?
 
 A stock we hold. A restatement means the numbers may be false: propose the sale unless it is clearly small and beside the case, and say which. Bankruptcy or a delisting notice: propose the sale. A late report: find the stated reason, raise the floor, and add nothing until it is filed. A finance chief leaving suddenly: raise the floor. A planned succession changes nothing. An agreed takeover caps the stock at the deal price: weigh selling. New shares sold: add nothing, and check what the money is for.
@@ -258,7 +256,7 @@ It touches no line: do nothing, and say why in a sentence. Done: one note that s
 News on a stock. Something happened to this company, or the stock had a day far outside its normal. What woke you is in the stock's Activity.
 
 1. What happened, and when? Read the source and check it against the stock's own price and volume since. If it repeats something already in Activity, or you can't confirm it, say so and stop. On an unusual day with no news named, find out why it moved; if you can't, say that.
-2. Which line of the case does it touch? Go down the assumptions and what would prove it wrong. Name the one line, or say it touches none. A stock that only moved with its group touches none.
+2. Which line of the case does it touch? Go down the KPIs. Name the one line, or say it touches none. A stock that only moved with its group touches none.
 3. What follows?
 
 A stock we hold. It proved the case wrong: propose the sale. It weakened it: raise the floor or trim, and say what would make it a sale. It strengthened it: add if the playbook allows one here, or do nothing. Never lower a floor.
@@ -308,7 +306,7 @@ Done: one note that says how the stock got here and what is driving it now, with
 A review. Nothing may have happened. The review clock came due, or the price reached a level you asked to look at again.
 
 1. What has happened to the company and the stock since your last note? If nothing, say so.
-2. Is the case still true? Go down what would prove it wrong, then the assumptions. Name any line that has happened or failed.
+2. Is the case still true? Go down the KPIs. Name any line that has happened or failed.
 3. Is the playbook still working? Check its failure signs and its time limit.
 4. Do the triggers still fit the price? Look for a buy price the stock has left behind, a floor far under the gain, a trigger that fired and was never replaced.
 

@@ -35,7 +35,7 @@ describe("only a note answers a stock (a morning run)", () => {
 
   it("the note after it answers the fire and moves the clock", async () => {
     const first = await replayTool("set-conviction", "setConviction", { seed: seedWithFire(), ctx: morning, args: { thesis_id: "t_aaa", conviction: "LOW", conviction_rationale: "Orders slowed." }, quotes: { AAA: 98 } });
-    const r = await replayTool("write-note", "writeNoteTool", { seed: first.db.store as never, ctx: morning, args: { thesis_id: "t_aaa", note: "Orders slowed two quarters running; the floor stands and I'd sell under it.", verdict: "WEAKER", verdict_line: "Orders fell for a second quarter." }, quotes: { AAA: 98 } });
+    const r = await replayTool("write-note", "writeNoteTool", { seed: first.db.store as never, ctx: morning, args: { thesis_id: "t_aaa", note: "Orders slowed two quarters running; the floor stands and I'd sell under it.", verdict: "WEAKER", verdict_line: "Orders fell for a second quarter.", opinion: "Neutral at $98. Orders fell for a second quarter, so the growth the price assumed is in doubt; I'd hold to the floor and sell under it." }, quotes: { AAA: 98 } });
     const note = lines(r.db).find((u) => u.rationale)!;
     expect(note.triggerId).toBe("floor");
     expect((r.db.store.thesis[0].lastReviewedAt as Date).getTime()).toBeGreaterThan(LOOKED.getTime());

@@ -12,8 +12,8 @@
  * - Nothing invented: every number it writes appears in its inputs, within
  *   1% (a replay has no web search, so a number from nowhere is invented).
  * - A belief someone can check: no stock price in the belief; two to four
- *   assumptions, each with a number and when it is checked; what would prove
- *   it wrong names the business, never a price, an average or a gap.
+ *   KPIs, each saying when it is read, and none reading a price, an average
+ *   or a gap.
  * - The sale price never loosened: no edit lowers a "Sell if below" price,
  *   and none removes one.
  */
@@ -121,14 +121,12 @@ export function beliefProblems(thesis: Record<string, unknown>): string[] {
   const belief = String(thesis.core_belief ?? "");
   if (stockPricesIn(belief).length) problems.push("the belief names a price");
   if (/price target|within \d+ (days|weeks)/i.test(belief)) problems.push("the belief names a target or a time to a price");
-  const assumptions = Array.isArray(thesis.key_assumptions) ? (thesis.key_assumptions as unknown[]).map(String) : [];
-  if (assumptions.length < 2 || assumptions.length > 4) problems.push(`${assumptions.length} assumptions (two to four)`);
-  for (const a of assumptions) {
-    if (!/\d/.test(a)) problems.push(`an assumption with no number: "${a.slice(0, 80)}"`);
-    if (!/(check|report|quarter|Q[1-4]|10-[QK]|earnings|guidance|call|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i.test(a)) problems.push(`an assumption with no point it is checked at: "${a.slice(0, 80)}"`);
+  const kpis = Array.isArray(thesis.kpis) ? (thesis.kpis as unknown[]).map(String) : [];
+  if (kpis.length < 2 || kpis.length > 4) problems.push(`${kpis.length} KPIs (two to four)`);
+  for (const k of kpis) {
+    if (!/(read|check|report|quarter|Q[1-4]|10-[QK]|earnings|guidance|call|decision|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i.test(k)) problems.push(`a KPI with no point it is read at: "${k.slice(0, 80)}"`);
+    if (stockPricesIn(k).length || /\d+-day|moving average|52-week|gap-day|\bgap\b|clos(?:e|es|ed|ing) (below|above|under|over)|trades? (below|above|under|over)/i.test(k)) problems.push(`a KPI reads a price: "${k.slice(0, 80)}"`);
   }
-  const wrong = Array.isArray(thesis.invalidation_conditions) ? (thesis.invalidation_conditions as unknown[]).map(String) : [];
-  for (const w of wrong) if (stockPricesIn(w).length || /\d+-day|moving average|52-week|gap-day|\bgap\b|clos(?:e|es|ed|ing) (below|above|under|over)|trades? (below|above|under|over)/i.test(w)) problems.push(`proof it's wrong reads a price: "${w.slice(0, 80)}"`);
   return problems;
 }
 
@@ -158,15 +156,15 @@ export function salePricesShown(inputs: string): Map<string, number> {
 
 /**
  * What it states as fact for the owner or the next agent: notes, reasons, the
- * belief, its narration. Not its assumptions or what would prove it wrong:
- * the numbers there are bars it sets ("revenue stays above $230M"), its call
- * to make, not facts it claims.
+ * belief, the opinion, its narration. Not its KPIs: the numbers there are
+ * bars it sets ("revenue stays above $230M"), its call to make, not facts it
+ * claims.
  */
 export function writtenText(calls: GradedCall[], narration: string): string {
   const parts = [narration];
   for (const c of calls) {
     const a = input(c);
-    for (const k of ["rationale", "entry_rationale", "sell_reason", "notes", "reason", "core_belief", "conviction_rationale", "company"]) if (typeof a[k] === "string") parts.push(a[k] as string);
+    for (const k of ["rationale", "entry_rationale", "sell_reason", "notes", "reason", "core_belief", "conviction_rationale", "company", "opinion"]) if (typeof a[k] === "string") parts.push(a[k] as string);
     for (const t of [...list(a.triggers), ...list(a.add_triggers), ...list(a.edit_triggers)]) if (typeof t.rationale === "string") parts.push(t.rationale);
   }
   return parts.join("\n");

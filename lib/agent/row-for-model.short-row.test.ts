@@ -1,19 +1,20 @@
 /**
- * The row carries the view (the assumptions, the conviction rationale, the variant view) on every
+ * The row carries the view (the KPIs, the conviction rationale) on every
  * stock an agent decides on; the bull and bear cases and the research summary come when the read asks. Fixture: CEG's held row from scripts/hero-cases/ceg-plan-stands, cut short, with every field set.
  */
 import fixture from "@/lib/agent/__fixtures__/short-row-ceg-2026-09-25.json";
 import { rowForModel } from "@/lib/agent/row-for-model";
 
 type Row = Record<string, unknown>;
-const saved = (): Row => ({ ...fixture }) as Row;
+// Read as the migration left it (2026-11-24): its KPIs are its assumptions and what would prove it wrong.
+const saved = (): Row => ({ ...fixture, kpis: [...fixture.keyAssumptions, ...fixture.invalidationConds] }) as Row;
 
 it("the row prints these keys, in this order", () => {
   const row = rowForModel(saved()) as Row;
   expect(Object.keys(row)).toEqual([
     "stock", "id", "analyst", "situations", "said", "position", "proposal_waiting", "price",
-    "floor_risk", "triggers", "belief", "assumptions", "would_prove_it_wrong",
-    "conviction_rationale", "variant_view",
+    "floor_risk", "triggers", "belief", "kpis",
+    "conviction_rationale",
     "playbook_checks", "buyBlockedByFull", "heldThroughFloor", "supersededBy", "chart",
     "research", "catalyst", "repeat",
   ]);

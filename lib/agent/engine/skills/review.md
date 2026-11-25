@@ -1,7 +1,7 @@
 A review. Nothing may have happened. The review clock came due, or the price reached a level you asked to look at again.
 
 1. What has happened to the company and the stock since your last note? If nothing, say so.
-2. Is the case still true? Go down what would prove it wrong, then the assumptions. Name any line that has happened or failed.
+2. Is the case still true? Go down the KPIs. Name any line that has happened or failed.
 3. Is the playbook still working? Check its failure signs and its time limit.
 4. Do the triggers still fit the price? Look for a buy price the stock has left behind, a floor far under the gain, a trigger that fired and was never replaced.
 

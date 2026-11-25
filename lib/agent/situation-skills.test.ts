@@ -113,7 +113,7 @@ describe("what the skills say", () => {
     expect(review).toContain("If you gave the same answer last time, change a trigger or say what is different now.");
   });
   it("a sale: the story or only the price, and the owner's decline is read; a floor is raised, not lowered", () => {
-    expect(file("PROTECTIVE_SALE")).toContain("Go down what would prove it wrong");
+    expect(file("PROTECTIVE_SALE")).toContain("Go down the KPIs");
     expect(file("PROTECTIVE_SALE")).toContain("Did the owner decline this sale, or let it lapse?");
     for (const c of SKILLS) expect([c, /lower (the|a) (floor|sale price)|move the floor down|loosen/i.test(file(c).replace("Never lower a floor.", ""))]).toEqual([c, false]);
   });

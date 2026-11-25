@@ -22,7 +22,7 @@ The folders match the sidebar:
 ## The loop, on one stock
 
 1. **[Discovery](agents/discovery.md)** finds a stock that fits an [analyst](concepts/analysts.md): CRWD beat, raised its year and held the gap. Or you ask for research in [chat](agents/chat.md), or add the stock to the watchlist yourself.
-2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the belief, what would prove it wrong, and its [triggers](concepts/triggers.md): its playbook's watch triggers, a buy and the line that ends the watch. The stock goes on the watchlist as Watching.
+2. **[The Writer](agents/writer.md)** researches it and writes its [thesis](concepts/theses.md): the company, the belief, the opinion at today's price, the KPIs that would prove it wrong, and its [triggers](concepts/triggers.md): its playbook's watch triggers, a buy and the line that ends the watch. The stock goes on the watchlist as Watching.
 3. **The trigger check** watches its triggers every five minutes. When the buy fires, a **[trigger run](agents/trigger-runs.md)** looks at that one stock and proposes the buy.
 4. **You approve** the **[proposal](concepts/approvals.md)** (on paper, approval is off by default and the buy goes straight through). The buy goes to the broker, the thesis turns to Holding, its floor guards it, and one run puts on its holding triggers ([After the buy](agents/after-the-buy.md)).
 5. **[Morning runs](agents/morning-runs.md)** read the analyst's whole book every run day and answer each stock in a **[situation](concepts/situations.md)**: a review that came due, a floor to raise, earnings, your notes.

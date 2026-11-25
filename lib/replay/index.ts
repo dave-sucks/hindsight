@@ -4,6 +4,7 @@
  */
 export { replayTool, type Replay, type ReplayOptions, type ReplayResult } from "@/lib/replay/replay";
 export { oldLevelFieldsAsTriggerOps } from "@/lib/replay/old-level-fields";
+export { claimNow, ratedNow, writtenNow } from "@/lib/replay/rated";
 export { asTheNewTools, replayCalls, sendAsTheRunWould, type ToolCall } from "@/lib/replay/new-tools";
 export { prismaDouble, type PrismaDouble, type Row, type StoreSeed } from "@/lib/replay/prisma-double";
 export {

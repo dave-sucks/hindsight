@@ -161,7 +161,7 @@ async function writerMint(ticker: string, run: { id: string }, decision: Record<
   });
   const v = validateThesisDecision(ratedNow(decision as ThesisDecisionInput), { mode: "mint", existingStatus: null, currentPrice: price });
   expect(v.errors).toEqual([]);
-  const call = w.buildWriterSaveCall({ childRunId: run.id, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "discovery" } as never, { currentPrice: price, priceStructure: null } as never, v.decision as ValidatedThesisDecision, {}, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
+  const call = w.buildWriterSaveCall({ childRunId: run.id, analystId: REPLAY_ANALYST_ID, ticker, mode: "mint", reason: "discovery" } as never, { currentPrice: price, priceStructure: null } as never, v.decision as ValidatedThesisDecision, null, (id) => PLAYBOOK_TEMPLATES[id as keyof typeof PLAYBOOK_TEMPLATES]);
   const r = await replayTool("record-thesis", "recordThesis", {
     seed: { agentConfig: [agentConfigRow({ setupIds: ["PEAD", "EPISODIC_PIVOT", "MA_PULLBACK"] })], account: [accountRow()] },
     args: schema.parse(call.toolArgs) as Record<string, unknown>,

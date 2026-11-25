@@ -256,11 +256,9 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
         { predicate: { watch: "price", is: "above", value: 210 }, action: "REVIEW", rationale: "At $210, take profit or let it run." },
       ],
       core_belief: "Aerospace cycle demand outruns supply through 2027.",
-      key_assumptions: [
+      kpis: [
         "Build rates keep rising into 2027.",
         "Pricing power holds through supplier negotiations.",
-      ],
-      invalidation_conditions: [
         "Build-rate cuts at either major airframer.",
         "Two quarters of margin compression.",
       ],

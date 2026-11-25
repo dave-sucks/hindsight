@@ -91,7 +91,7 @@ export const CONTEXT: Record<ContextId, ContextDef> = {
   },
   the_cases: {
     title: "What each thesis rests on",
-    about: "For every stock we hold or watch: its assumptions and what would prove it wrong, as its thesis has them.",
+    about: "For every stock we hold or watch: its KPIs, as its thesis has them.",
     source: "lib/agent/book.ts (loadCases)",
   },
   the_analysts: {
