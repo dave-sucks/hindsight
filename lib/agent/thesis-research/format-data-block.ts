@@ -79,6 +79,8 @@ interface FinancialsInput {
   } | null;
   /** Shares outstanding (Finnhub profile); the pull prices the market cap with it. */
   sharesOutstanding?: number | null;
+  /** The currency the company reports in (Finnhub profile); the valuation leaves its figures out when it isn't dollars. */
+  reportingCurrency?: string | null;
   errors?: string[];
 }
 
@@ -192,6 +194,8 @@ export interface DataBlockInputs {
    * in the last 100 days"; { failed } → said so, never shown as none.
    */
   lastReport?: { date: string; daysAgo: number } | { failed: true } | null;
+  /** The next report's EPS estimate from the earnings calendar, on the reported quarters' basis; for the valuation. */
+  nextReportEps?: number | null;
   /**
    * The dated event the company announced in its own filing (a PDUFA date
    * from an 8-K), read from EDGAR. Undefined → not printed; null → none on
@@ -593,6 +597,8 @@ function buildValuation(inputs: DataBlockInputs): string | null {
     quarterlyEps: (inputs.earningsHistory?.history ?? []).map((q) => q.eps.actual).filter((n) => Number.isFinite(n)),
     epsFiscalYear: street?.epsFiscalYear ?? null,
     epsNextQuarter: street?.epsNextQuarter ?? null,
+    nextQuarterEstimate: inputs.nextReportEps ?? null,
+    reportingCurrency: inputs.financials?.reportingCurrency ?? null,
     lastYear: last ? { year: last.year, revenue: last.revenue, freeCashFlow: last.freeCashFlow } : null,
   });
   return body && price != null ? `## Valuation at $${price.toFixed(2)}\n\n${body}` : null;
