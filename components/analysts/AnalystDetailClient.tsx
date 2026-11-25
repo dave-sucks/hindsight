@@ -129,13 +129,10 @@ function sliceByRange(
 // ── Sidebar trade row (uses shared TradeRow component) ───────────────────────
 
 // Map the real Position.status (+ outcome for closed wins/losses) to TradeRow's
-// display key. The trivial enum → display map TradeRow's dot/label needs — not a
-// fictional combined status. Held=OPEN, proposal=PENDING, closed splits on the
-// real `outcome` field.
+// display key. Rows are held (OPEN) or sold (CLOSED, split on the real
+// `outcome` field); proposals never reach this list.
 function tradeRowStatus(status: string, outcome: string | null): string {
   if (status === "OPEN") return "OPEN";
-  if (status === "PENDING_APPROVAL") return "PENDING";
-  if (status === "CANCELLED") return "CANCELLED";
   if (outcome === "WIN") return "CLOSED_WIN";
   if (outcome === "LOSS") return "CLOSED_LOSS";
   return "CLOSED_EXPIRED";
