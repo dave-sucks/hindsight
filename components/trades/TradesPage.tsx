@@ -65,7 +65,7 @@ interface TradesPageProps {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FilterTab = 'ALL' | 'OPEN' | 'CLOSED' | 'WON' | 'LOST';
+type FilterTab = 'ALL' | 'HOLDING' | 'CLOSED' | 'WON' | 'LOST';
 
 /**
  * What the P&L column measures. Lifetime is the position's gain since entry
@@ -199,19 +199,17 @@ export default function TradesPage({
 
   const filtered = useMemo(() => {
     switch (tab) {
-      // PENDING (an unapproved buy proposal) is NOT closed — "not OPEN" is
-      // the wrong test. Filter on the terminal states explicitly, and keep
-      // pending alongside open so it stays reachable from a tab.
-      case 'OPEN':
+      // Every row is a stock we own or owned (a buy awaiting approval is not
+      // on this page). PENDING is a holding with an approved order still
+      // filling, so it stays under Holding.
+      case 'HOLDING':
         return allTrades.filter((t) => t.status === 'OPEN' || t.status === 'PENDING');
       case 'CLOSED':
         return allTrades.filter(
           (t) =>
             t.status === 'CLOSED_WIN' ||
             t.status === 'CLOSED_LOSS' ||
-            t.status === 'CLOSED_EXPIRED' ||
-            t.status === 'CANCELLED' ||
-            t.status === 'REJECTED',
+            t.status === 'CLOSED_EXPIRED',
         );
       case 'WON':
         return allTrades.filter((t) => t.status === 'CLOSED_WIN');
@@ -226,7 +224,7 @@ export default function TradesPage({
 
   const tabs: { value: FilterTab; label: string }[] = [
     { value: 'ALL', label: 'All' },
-    { value: 'OPEN', label: 'Open' },
+    { value: 'HOLDING', label: 'Holding' },
     { value: 'CLOSED', label: 'Closed' },
     { value: 'WON', label: 'Won' },
     { value: 'LOST', label: 'Lost' },
@@ -302,10 +300,9 @@ export default function TradesPage({
                 closedAt: trade.closedAt,
               });
               const shortId = shortAlpacaId(trade.alpacaOrderId);
-              // Trade-as-Proposal — when set, this trade is an Order(AWAITING_APPROVAL)
-              // not a real position yet (for buys) or a pending close (for sells).
-              // The P&L slot gets [Approve][Reject] buttons; the status dot turns amber.
-              // See docs/plans/TRADE_AS_PROPOSAL.md.
+              // Trade-as-Proposal — when set, a sale, trim or add on this holding
+              // waits for your approval (Order AWAITING_APPROVAL); the status
+              // dot turns amber. See docs/plans/TRADE_AS_PROPOSAL.md.
               // Approved and sent to Alpaca, not filled yet — same order, but
               // there's nothing left to review, so it reads "Executing" in the
               // slot the Review control had.

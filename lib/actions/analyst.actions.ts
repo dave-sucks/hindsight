@@ -304,9 +304,10 @@ export async function getAnalystDetail(
   if (!config) return null;
 
   const [recentPositions, totalRuns, totalTheses, watchlistTheses] = await Promise.all([
-    // Last 20 positions attributed to this analyst
+    // Last 20 trades attributed to this analyst: held or sold. A buy awaiting
+    // approval, or one that never filled (CANCELLED), owned no shares.
     prisma.position.findMany({
-      where: { accountId, analystId },
+      where: { accountId, analystId, status: { in: ["OPEN", "CLOSED"] } },
       orderBy: { openedAt: "desc" },
       take: 20,
       select: {
@@ -367,9 +368,10 @@ export async function getAnalystDetail(
     }),
   ]);
 
-  // Compute stats from all positions for this analyst.
+  // Compute stats from all of this analyst's trades (held or sold; the same
+  // rule as above, so the "Trades" count leaves out proposals).
   const allPositions = await prisma.position.findMany({
-    where: { accountId, analystId },
+    where: { accountId, analystId, status: { in: ["OPEN", "CLOSED"] } },
     select: { outcome: true, realizedPnl: true },
   });
 

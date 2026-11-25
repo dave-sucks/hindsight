@@ -194,13 +194,9 @@ export interface DashboardData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Closed-position display key from the real Position.status + outcome. The
-// position query feeding closedTrades is `status IN (CLOSED, CANCELLED)`, so
-// CANCELLED maps straight through; CLOSED splits into win/loss/breakeven from
-// the real `outcome` field — no fictional combined status, just the trivial
-// (status, outcome) → display-key map that TradeRow's dot/label needs.
-const closedTradeStatus = (status: string, outcome: string | null): TradeStatus => {
-  if (status === "CANCELLED") return "CANCELLED";
+// A sold position's display key, from its real `outcome`: win, loss or
+// breakeven — the trivial outcome → display-key map that TradeRow's dot needs.
+const closedTradeStatus = (outcome: string | null): TradeStatus => {
   if (outcome === "WIN") return "CLOSED_WIN";
   if (outcome === "LOSS") return "CLOSED_LOSS";
   return "CLOSED_EXPIRED";
@@ -436,7 +432,9 @@ export async function getDashboardData(
       orderBy: { openedAt: "desc" },
     }).catch(() => [] as never[]),
     prisma.position.findMany({
-      where: { accountId, status: { in: ["CLOSED", "CANCELLED"] }, environment },
+      // Sold positions only. CANCELLED is a buy that never filled (a declined,
+      // expired or withdrawn proposal): no shares were ever owned, so it is no trade.
+      where: { accountId, status: "CLOSED", environment },
       include: {
         analyst: { select: { name: true } },
         decisions: {
@@ -806,7 +804,7 @@ export async function getDashboardData(
       currentPrice: closePrice,
       targetPrice: p.targetPrice ?? p.avgCost * 1.1,
       stopPrice: p.stopLoss ?? p.avgCost * 0.9,
-      status: closedTradeStatus(p.status, p.outcome),
+      status: closedTradeStatus(p.outcome),
       pnl: realizedPnl,
       pnlPct: positionCost > 0 ? (realizedPnl / positionCost) * 100 : 0,
       openedAt: p.openedAt.toISOString(),
