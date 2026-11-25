@@ -548,7 +548,8 @@ export async function closeOpenPosition(
   //     analyst's thesis. Idempotent + fail-soft: the helper no-ops if the
   //     agent tool already flipped the thesis, and never throws (the fill is
   //     already committed). PENDING fills (4a) intentionally skip this — the
-  //     position isn't CLOSED yet; reconcile-orders flips on actual fill.
+  //     position isn't CLOSED yet; reconcile-orders flips on actual fill
+  //     (moveStockOffHolding).
   if (position.analystId) {
     const { closeThesisForPosition } = await import("@/lib/proposals/thesis-flips");
     // The analyst's words on the sale, or none: the title says what sold.
