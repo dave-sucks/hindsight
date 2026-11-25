@@ -55,10 +55,14 @@ export const getFinancialsDeep = defineTool({
 
   execute: async ({ ticker }) => {
     const T = ticker.toUpperCase();
-    const [filed, metricRes] = await Promise.all([
+    const [filed, metricRes, profileRes] = await Promise.all([
       getReportedFinancials(T, "annual", 5),
       finnhub(`/stock/metric?symbol=${T}&metric=all`, 2),
+      // The share count, so the Writer's pull prices the market cap at today's price (valuation.ts).
+      finnhub(`/stock/profile2?symbol=${T}`, 2),
     ]);
+    const millions = (profileRes.data as { shareOutstanding?: number } | null)?.shareOutstanding;
+    const sharesOutstanding = typeof millions === "number" && millions > 0 ? millions * 1_000_000 : null;
 
     const errors: string[] = [];
     if (filed.error) errors.push(`financials-reported: ${filed.error}`);
@@ -191,6 +195,7 @@ export const getFinancialsDeep = defineTool({
         annual,
         forwardEstimates,
         ratios,
+        sharesOutstanding,
         errors,
         items,
       },

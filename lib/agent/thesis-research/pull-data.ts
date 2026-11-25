@@ -217,9 +217,10 @@ export async function pullThesisData(
           dayLow: sd.quote.low ?? null,
           week52High: sd?.financials?.high52w ?? null,
           week52Low: sd?.financials?.low52w ?? null,
-          marketCap: sd?.company?.marketCap ?? null,
+          // At today's price when the share count came back; Finnhub's own is at its last price.
+          marketCap:
+            financials?.sharesOutstanding && sd.quote.price ? financials.sharesOutstanding * sd.quote.price : (sd?.company?.marketCap ?? null),
           beta: sd?.financials?.beta ?? null,
-          pe: sd?.financials?.peRatio ?? null,
         }
       : undefined,
     technicals: sd?.technicals ?? null,

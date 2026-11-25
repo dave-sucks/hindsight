@@ -123,3 +123,20 @@ describe("formatDataBlock — the last report's date (HPE 2026-09-15)", () => {
     expect(formatDataBlock(inputs(null))).not.toContain("Last report:");
   });
 });
+
+describe("formatDataBlock — the valuation at today's price (blind test 2026-11-24)", () => {
+  // The block carried two unlabeled P/Es at Finnhub's price (CEG 43.1 and 22.9)
+  // and no forward one; the Writer divided for itself (ACN 16.7×, really 17.0×).
+  const out = formatDataBlock({
+    ...inputs(null),
+    stockData: { ticker: "ACN", quote: { current: 247.7, changePercent: -1.1, marketCap: 247.7 * 590.74e6 } } as never,
+    earningsHistory: { history: [3.29, 3.8, 2.93, 3.94].map((actual, i) => ({ quarter: `Q${4 - i}`, reportedAt: null, revenue: { actual: null, estimate: null, surprisePct: null }, eps: { actual, estimate: actual, surprisePct: 0 }, outcome: "INLINE" as const })), beats: 0, misses: 0, beatRatePct: null },
+    analystCoverage: { consensus: null, priceTargets: null, street: { epsFiscalYear: 14.68, epsNextQuarter: 3.9 } as never },
+  });
+  it("prints each multiple with what it divides by", () => {
+    expect(out).toContain("## Valuation at $247.70\n\nEarnings: 17.7× the last four quarters' EPS ($13.96) · 16.9× this fiscal year's EPS consensus ($14.68)");
+  });
+  it("prints no P/E of Finnhub's in the snapshot", () => {
+    expect(out).not.toMatch(/P\/E/);
+  });
+});
