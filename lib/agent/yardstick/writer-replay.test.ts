@@ -7,9 +7,9 @@
 jest.mock("@/lib/prisma", () => ({ prisma: {} }));
 jest.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: jest.fn(() => ({})), send: jest.fn() } }));
 import { chartFromText } from "./chart-text";
-import { afterTailoring, savedByWriter, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "./writer-replay";
+import { afterTailoring, salePricesSaved, savedByWriter, withKeysPriced, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "./writer-replay";
 import { score } from "./action";
-import { pricesSet } from "./grade";
+import { pricesSet, saleLoosened } from "./grade";
 import { sentenceOf } from "@/lib/agent/triggers/condition";
 import type { Trigger } from "@/lib/agent/triggers/types";
 
@@ -88,6 +88,16 @@ describe("a held refresh replayed on T1's flow", () => {
     const final = afterTailoring(saved, { direction: "LONG" }, held, keyed);
     expect(final.map((t) => sentenceOf(t))).toEqual(["Sell if below $1100.53"]);
     expect(writerInOldShape({ toolName: "submit_thesis", input: { direction: "LONG" } }, saved, final, held, keyed).input).toEqual({ direction: "LONG", edit_triggers: [{ id: "floor", price: "{gapDayLow}", rationale: "Under the gap day's low." }] });
+  });
+
+  it("a floor moved down by a key is caught at the number code writes, though the request never showed its id (CEG 2026-11-24)", () => {
+    const high = { ...floor, predicate: { watch: "price", is: "below", value: 5000 } } as Trigger;
+    const c: WriterReplayCase = { ...held, existing: { ...held.existing!, triggers: [high] } };
+    const saved = savedByWriter({ direction: "LONG" }, c);
+    const moved = [{ toolName: "edit_triggers", input: { edit: [{ id: "floor", price: "{gapDayLow}", rationale: "Room to breathe." }] } }];
+    const own = writerOwnCalls({ toolName: "submit_thesis", input: { direction: "LONG" } }, withKeysPriced(saved, c, moved));
+    expect(saleLoosened(own, new Map())).toEqual([]);
+    expect(saleLoosened(own, salePricesSaved(saved))).toEqual(["floor: $5000 → $1100.53"]);
   });
 });
 

@@ -65,7 +65,7 @@ import { grade, saleLoosened, salePricesShown } from "@/lib/agent/yardstick/grad
 import { score, type Call, type Expect } from "@/lib/agent/yardstick/action";
 import { explainOldShape, waitsForNote } from "@/lib/agent/yardstick/old-shape";
 import { chartFromText } from "@/lib/agent/yardstick/chart-text";
-import { afterTailoring, savedByWriter, withKeysPriced, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "@/lib/agent/yardstick/writer-replay";
+import { afterTailoring, salePricesSaved, savedByWriter, withKeysPriced, writerInOldShape, writerOwnCalls, type WriterReplayCase } from "@/lib/agent/yardstick/writer-replay";
 import { nothingCanFire, tailorMessage } from "@/lib/agent/run-thesis-writer";
 
 interface HeroCase {
@@ -701,7 +701,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     }
     // A Writer saves, then tailors the stock's triggers with edit_triggers (T1); it is graded as one submit_thesis in the cases' shape.
     const submitCall = c.mode === "thesis-writer" ? calls.find((x) => x.toolName === "submit_thesis") : undefined;
-    let writer: { tailor: Call[]; final: Trigger[]; scored: Call; own: Call[]; priced: Call[] } | null = null;
+    let writer: { tailor: Call[]; final: Trigger[]; scored: Call; own: Call[]; priced: Call[]; sales: Map<string, number> } | null = null;
     if (submitCall) {
       const wc = writerCaseOf(c);
       const decision = (submitCall.input ?? {}) as Record<string, unknown>;
@@ -715,7 +715,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
       invalid.push(...t.invalid);
       if (t.text.trim()) text += t.text;
       const final = afterTailoring(saved, decision, wc, t.calls);
-      writer = { tailor: t.calls, final, scored: writerInOldShape(submitCall, saved, final, wc, t.calls), own: writerOwnCalls(submitCall, t.calls), priced: writerOwnCalls(submitCall, withKeysPriced(saved, wc, t.calls)) };
+      writer = { tailor: t.calls, final, scored: writerInOldShape(submitCall, saved, final, wc, t.calls), own: writerOwnCalls(submitCall, t.calls), priced: writerOwnCalls(submitCall, withKeysPriced(saved, wc, t.calls)), sales: salePricesSaved(saved) };
       calls.push(...t.calls);
     }
     // Graded in the cases' shape: today's one-job calls as the tools they replaced; a call it can't key is listed.
@@ -742,7 +742,7 @@ async function runCase(name: string, runs: number, writtenPath: string | null, i
     const gradedOn = readShown.length ? `${shown}\n${JSON.stringify(readShown)}` : shown;
     const grades = { ...grade({ calls: writer ? writer.own : graded, narration: text }, gradedOn, c.grade ?? {}), ...(afterBuy ? { floorAttempts: afterBuy.floorAttempts } : {}) };
     // A sale moved by a key is read at the number code writes for it.
-    if (writer) grades.saleLoosened = saleLoosened(writer.priced, salePricesShown(gradedOn));
+    if (writer) grades.saleLoosened = saleLoosened(writer.priced, new Map([...salePricesShown(gradedOn), ...writer.sales]));
     console.log(`GRADES ${JSON.stringify(grades)}`);
     if (writtenPath) appendFileSync(writtenPath, JSON.stringify({ case: name, run: i, pass: verdict.pass, why: verdict.why, grades, narration: text.trim(), saved: writtenBy(graded), triggerFields, invalid, handedBack, unmapped, graded, ...(readShown.length ? { readShown } : {}), calls: calls.map((c) => ({ tool: c.toolName, input: c.input })) }) + "\n");
   }
