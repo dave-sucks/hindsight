@@ -16,8 +16,11 @@ export interface ValuationInput {
   marketCap: number | null;
   /** Reported EPS of the last quarters, newest first (the figure the estimates are measured against). */
   quarterlyEps: number[];
+  /** The Street's EPS consensus (Nasdaq): this fiscal year and next quarter. */
   epsFiscalYear: number | null;
   epsNextQuarter: number | null;
+  /** The estimate for the next report on the reported quarters' own basis (Finnhub's calendar). */
+  nextQuarterEstimate?: number | null;
   /** The newest filed year, in dollars. */
   lastYear: { year: string; revenue: number | null; freeCashFlow: number | null } | null;
 }
@@ -39,18 +42,31 @@ function times(price: number, eps: number, what: string): string {
 }
 
 /**
- * How far apart the Street's next quarter and the newest reported quarter are,
- * when that is more than 3×; else null. The reported quarters are Finnhub's and
- * the consensus is Nasdaq's, and the two can be on different bases: IOT
- * (2026-11-25) reported $0.20 adjusted while the consensus read $0.03 GAAP, and
- * the block printed 293× beside 54.5×. One quarter seldom moves 3×; a season
- * does not (CEG $5.06 to $2.77 is 1.8×).
+ * The reported quarters and their next-report estimate are Finnhub's; the
+ * fiscal-year consensus is Nasdaq's, and for some stocks the two are on
+ * different bases: IOT (2026-11-25) reported $0.20 adjusted while Nasdaq's
+ * consensus read $0.03 GAAP, and the block printed 293× beside 54.5×; DOCU,
+ * PANW, CRWD, ESTC, WDAY and CRM read the same way. The test is the same
+ * quarter in both: Nasdaq's next quarter more than 1.5× off Finnhub's estimate
+ * for it (DOCU $0.53 and $1.20; CEG $2.77 and $2.73 agree). With no Finnhub
+ * estimate, Nasdaq's next quarter more than 3× off the last reported quarter
+ * (a season stays under it: CEG $5.06 to $2.77 is 1.8×).
  */
-const BASIS_APART = 3;
-function basisApart(lastQuarter: number | undefined, nextQuarter: number | null): number | null {
-  if (lastQuarter == null || nextQuarter == null || lastQuarter <= 0 || nextQuarter <= 0) return null;
-  const r = Math.max(lastQuarter, nextQuarter) / Math.min(lastQuarter, nextQuarter);
-  return r > BASIS_APART ? r : null;
+const SAME_QUARTER_APART = 1.5;
+/** Two vendors' estimates for the same quarter on one basis sit within about 10% (CEG, MU, ACN, V); past that, both figures are printed. */
+const SAME_QUARTER_DIFFERS = 1.1;
+const LAST_QUARTER_APART = 3;
+const ratio = (a: number, b: number) => Math.max(a, b) / Math.min(a, b);
+function basisGap(v: ValuationInput): { r: number; against: number; what: string } | null {
+  const street = v.epsNextQuarter;
+  if (street == null || street <= 0) return null;
+  const est = v.nextQuarterEstimate;
+  if (est != null && est > 0) {
+    return ratio(street, est) > SAME_QUARTER_APART ? { r: ratio(street, est), against: est, what: "the estimate for that quarter on the reported quarters' basis" } : null;
+  }
+  const last = v.quarterlyEps[0];
+  if (last == null || last <= 0) return null;
+  return ratio(street, last) > LAST_QUARTER_APART ? { r: ratio(street, last), against: last, what: "the last reported quarter" } : null;
 }
 
 /** The section's lines, or null when there is no price to value. */
@@ -63,17 +79,23 @@ export function valuationLines(v: ValuationInput): string | null {
   const earnings: string[] = [];
   const four = v.quarterlyEps.slice(0, 4);
   if (four.length === 4) earnings.push(times(p, four.reduce((a, b) => a + b, 0), "the last four quarters' EPS"));
-  const apart = basisApart(v.quarterlyEps[0], v.epsNextQuarter);
-  if (!apart) {
-    if (v.epsFiscalYear != null) earnings.push(times(p, v.epsFiscalYear, "this fiscal year's EPS consensus"));
-    if (v.epsNextQuarter != null) earnings.push(times(p, v.epsNextQuarter * 4, "next quarter's EPS consensus × 4"));
-  }
+  const gap = basisGap(v);
+  if (!gap && v.epsFiscalYear != null) earnings.push(times(p, v.epsFiscalYear, "this fiscal year's EPS consensus"));
+  if (v.nextQuarterEstimate != null) earnings.push(times(p, v.nextQuarterEstimate * 4, "next quarter's EPS estimate × 4"));
+  else if (!gap && v.epsNextQuarter != null) earnings.push(times(p, v.epsNextQuarter * 4, "next quarter's EPS consensus × 4"));
   if (earnings.length) lines.push(`Earnings: ${earnings.join(" · ")}`);
-  if (apart) {
+  if (gap) {
     lines.push(
-      `No multiple on the Street's EPS consensus: its next quarter (${usd(v.epsNextQuarter!)}) is ${apart.toFixed(1)}× off the last reported quarter (${usd(v.quarterlyEps[0])}), ` +
-        "so the two are likely on different bases (GAAP and adjusted).",
+      `No multiple on the Street's EPS consensus${v.epsFiscalYear != null ? ` (${usd(v.epsFiscalYear)} this fiscal year)` : ""}: ` +
+        `its next quarter (${usd(v.epsNextQuarter!)}) is ${gap.r.toFixed(1)}× off ${gap.what} (${usd(gap.against)}), so it is likely on a different basis (GAAP and adjusted).`,
     );
+  } else {
+    // Under the line but not the same: both figures, so a reader sees the gap (CRM $2.41 and $3.47, KEYS $2.81 and $3.66).
+    const est = v.nextQuarterEstimate;
+    const street = v.epsNextQuarter;
+    if (est != null && est > 0 && street != null && street > 0 && ratio(street, est) > SAME_QUARTER_DIFFERS) {
+      lines.push(`The Street's next quarter (${usd(street)}) and the estimate on the reported quarters' basis (${usd(est)}) differ by ${Math.round((ratio(street, est) - 1) * 100)}%: the consensus may be on a different basis.`);
+    }
   }
 
   const y = v.lastYear;

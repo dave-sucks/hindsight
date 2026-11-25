@@ -251,7 +251,18 @@ export async function pullThesisData(
     })
     .catch((): { failed: true } => ({ failed: true }));
 
+  // The next report's EPS estimate on the reported quarters' own basis (the
+  // valuation checks Nasdaq's consensus against it, valuation.ts). Fail-open.
+  const nextReportEps = await fetchCalendarRows({
+    symbol: T,
+    from: pulledAt.toISOString().slice(0, 10),
+    to: new Date(pulledAt.getTime() + 120 * 86_400_000).toISOString().slice(0, 10),
+  })
+    .then((rows) => rows.filter((r) => r.epsActual == null && r.epsEstimate != null).sort((a, b) => a.reportDate.localeCompare(b.reportDate))[0]?.epsEstimate ?? null)
+    .catch(() => null);
+
   const rawDataBlock = formatDataBlock({
+    nextReportEps,
     history: sd?.priorCoverage ?? null,
     insiderCluster: clusterLine,
     lastReport,
