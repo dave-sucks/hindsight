@@ -79,6 +79,8 @@ interface FinancialsInput {
   } | null;
   /** Shares outstanding (Finnhub profile); the pull prices the market cap with it. */
   sharesOutstanding?: number | null;
+  /** The currency the company reports in (Finnhub profile); the valuation leaves its figures out when it isn't dollars. */
+  reportingCurrency?: string | null;
   errors?: string[];
 }
 
@@ -596,6 +598,7 @@ function buildValuation(inputs: DataBlockInputs): string | null {
     epsFiscalYear: street?.epsFiscalYear ?? null,
     epsNextQuarter: street?.epsNextQuarter ?? null,
     nextQuarterEstimate: inputs.nextReportEps ?? null,
+    reportingCurrency: inputs.financials?.reportingCurrency ?? null,
     lastYear: last ? { year: last.year, revenue: last.revenue, freeCashFlow: last.freeCashFlow } : null,
   });
   return body && price != null ? `## Valuation at $${price.toFixed(2)}\n\n${body}` : null;

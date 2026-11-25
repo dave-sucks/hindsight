@@ -21,6 +21,8 @@ export interface ValuationInput {
   epsNextQuarter: number | null;
   /** The estimate for the next report on the reported quarters' own basis (Finnhub's calendar). */
   nextQuarterEstimate?: number | null;
+  /** What the company reports in; the price is the US listing's, in dollars. */
+  reportingCurrency?: string | null;
   /** The newest filed year, in dollars. */
   lastYear: { year: string; revenue: number | null; freeCashFlow: number | null } | null;
 }
@@ -74,6 +76,18 @@ export function valuationLines(v: ValuationInput): string | null {
   const p = v.price;
   if (p == null || !Number.isFinite(p) || p <= 0) return null;
   const lines: string[] = [];
+
+  // A company that reports in another currency (ASML in euros, 2026-11-25): its quarters, its estimate, its sales and its cash are not in the
+  // price's dollars, so no multiple is worked out on them; the Street's consensus is the US listing's, in dollars.
+  const cur = v.reportingCurrency?.toUpperCase();
+  if (cur && cur !== "USD") {
+    const street: string[] = [];
+    if (v.epsFiscalYear != null) street.push(times(p, v.epsFiscalYear, "this fiscal year's EPS consensus"));
+    if (v.epsNextQuarter != null) street.push(times(p, v.epsNextQuarter * 4, "next quarter's EPS consensus × 4"));
+    if (street.length) lines.push(`Earnings: ${street.join(" · ")}`);
+    lines.push(`It reports in ${cur} and the price is in dollars, so no multiple is worked out on its reported figures (its quarters, its sales, its cash flow); the Street's consensus is in dollars.`);
+    return lines.join("\n");
+  }
 
   const cap = v.marketCap != null && v.marketCap > 0 ? v.marketCap : null;
   const earnings: string[] = [];

@@ -61,8 +61,11 @@ export const getFinancialsDeep = defineTool({
       // The share count, so the Writer's pull prices the market cap at today's price (valuation.ts).
       finnhub(`/stock/profile2?symbol=${T}`, 2),
     ]);
-    const millions = (profileRes.data as { shareOutstanding?: number } | null)?.shareOutstanding;
+    const profile = profileRes.data as { shareOutstanding?: number; estimateCurrency?: string; currency?: string } | null;
+    const millions = profile?.shareOutstanding;
     const sharesOutstanding = typeof millions === "number" && millions > 0 ? millions * 1_000_000 : null;
+    // What the company reports in (ASML euros, TSM Taiwan dollars); the price is the US listing's, in dollars.
+    const reportingCurrency = profile?.estimateCurrency ?? profile?.currency ?? null;
 
     const errors: string[] = [];
     if (filed.error) errors.push(`financials-reported: ${filed.error}`);
@@ -196,6 +199,7 @@ export const getFinancialsDeep = defineTool({
         forwardEstimates,
         ratios,
         sharesOutstanding,
+        reportingCurrency,
         errors,
         items,
       },

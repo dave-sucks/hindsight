@@ -68,6 +68,17 @@ describe("valuationLines", () => {
     expect(valuationLines({ ...ACN, price: 280.2, quarterlyEps: [5.06, 2.55, 2.74, 2.3], epsFiscalYear: 12.7, epsNextQuarter: 2.77 })).not.toContain("No multiple");
   });
 
+  it("works out nothing on the figures of a company that reports in another currency (ASML in euros)", () => {
+    const asml = { price: 1303.61, marketCap: 1303.61 * 393e6, quarterlyEps: [9.6, 8.7, 8.4, 8.3], epsFiscalYear: 46.51, epsNextQuarter: 17.22, nextQuarterEstimate: 15.17, reportingCurrency: "EUR", lastYear: { year: "2025", revenue: 32_700e6, freeCashFlow: 11_000e6 } };
+    expect(valuationLines(asml)).toBe(
+      [
+        "Earnings: 28.0× this fiscal year's EPS consensus ($46.51) · 18.9× next quarter's EPS consensus × 4 ($68.88)",
+        "It reports in EUR and the price is in dollars, so no multiple is worked out on its reported figures (its quarters, its sales, its cash flow); the Street's consensus is in dollars.",
+      ].join("\n"),
+    );
+    expect(valuationLines({ ...ACN, reportingCurrency: "USD" })).toBe(valuationLines(ACN));
+  });
+
   it("is nothing without a price", () => {
     expect(valuationLines({ ...ACN, price: null })).toBeNull();
   });
