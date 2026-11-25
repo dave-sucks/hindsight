@@ -31,6 +31,7 @@ import { addWatchlistItem } from "@/lib/actions/watchlist.actions";
 import { sendWriterAfterBuy } from "@/lib/trading/after-buy";
 import {
   addRoom,
+  MANUAL_RATIONALE,
   planManualOrder,
   type ManualOrderInput,
   type TradeLane,
@@ -53,8 +54,6 @@ export interface TradeTicket {
   marketOpen: boolean;
   lanes: TradeLane[];
 }
-
-const MANUAL_RATIONALE = "Placed by you from the Trade button.";
 
 async function livePrice(ticker: string, userId: string, environment: Environment) {
   const creds = (await resolveAlpacaCredentials(userId, environment)) ?? undefined;

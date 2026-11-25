@@ -118,7 +118,7 @@ export async function armHeldLadderOnFill(opts: {
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
-  via: "place_trade" | "approved proposal";
+  via: "place_trade" | "approved proposal" | "its fill";
 }): Promise<void> {
   try {
     // A promoted row (re-entered on the first live run) is the one bought, else the newest watch. Either way
