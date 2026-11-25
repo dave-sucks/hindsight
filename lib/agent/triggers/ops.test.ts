@@ -258,15 +258,15 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
       ],
       hpe,
     );
+    // Its Stop watching line stays: an agent can't take one off (the owner, 2026-11-25). The rest lands.
     expect(out.results).toEqual([
       { op: "remove", id: "eb59bfe1", ok: true, text: "Removed: Buy if above $58.50" },
-      { op: "remove", id: "0127a7f6", ok: true, text: "Removed: Stop watching if below $54.90" },
+      expect.objectContaining({ op: "remove", id: "0127a7f6", ok: false, reason: expect.stringContaining("A Stop watching line only tightens") }),
       { op: "remove", id: "d5dc23fd", ok: true, text: "Removed: Review if above $66.50" },
       { op: "add", id: "new-1", ok: true, text: "Added: Buy if above $57.25", saved: "Buy if above $57.25 — Buy the reclaim of $57.25." },
     ]);
-    expect(out.triggers).toEqual([
-      expect.objectContaining({ id: "new-1", action: "ENTER", predicate: { watch: "price", is: "above", value: 57.25 } }),
-    ]);
+    expect(out.triggers.map((t) => t.id).sort()).toEqual(["0127a7f6", "new-1"]);
+    expect(out.triggers).toContainEqual(expect.objectContaining({ id: "new-1", action: "ENTER", predicate: { watch: "price", is: "above", value: 57.25 } }));
   });
 
   it("an edit of a trigger the same call removes lands neither; it comes back by id — say which — and the rest lands", () => {
@@ -283,7 +283,7 @@ describe("applyTriggerOps — a removal and its replacement in one call", () => 
         text: "Edit and remove: Review every 7 days",
         reason: "Edited and removed in the same call — say which: send the edit or the removal, not both.",
       },
-      { op: "remove", id: "floor", ok: true, text: "Removed: Stop watching if below $150" },
+      expect.objectContaining({ op: "remove", id: "floor", ok: false, reason: expect.stringContaining("A Stop watching line only tightens") }),
     ]);
     expect(out.triggers.find((t) => t.id === "clock")).toEqual(expect.objectContaining({ predicate: { watch: "repeat", value: 7 } }));
   });
@@ -362,5 +362,55 @@ describe("describeTrigger", () => {
     expect(describeTrigger({ ...floor, action: "STOP_WATCHING" })).toBe("Stop watching if below $150");
     expect(describeTrigger(clock)).toBe("Review every 7 days");
     expect(describeTrigger({ ...clock, predicate: { watch: "surprise", is: "beat", value: 0 } })).toBe("Review if earnings beat any amount");
+  });
+});
+
+describe("applyTriggerOps — a watch's Stop watching line only tightens (the owner, 2026-11-25)", () => {
+  // Nov 19: the watch rewrite's Writer runs took the line off ETN and BWXT, and a
+  // Writer lowered CGEM's from $12.77 to $8.47; the watches stayed on after
+  // breaking their own lines.
+  const line = (value: number, extra: Partial<Trigger> = {}): Trigger => ({ ...stopLine, predicate: { watch: "price", is: "below", value, settings: { close: true } }, ...extra });
+  const onWatch = (ops: Parameters<typeof applyTriggerOps>[0]["ops"], actor: "AGENT" | "PRINCIPAL" | "SYSTEM" = "AGENT") =>
+    applyTriggerOps({ stored: [buy, line(150), clock], ops, direction: "LONG", status: "WATCHING", actor, mintId });
+
+  it("an agent can't take it off", () => {
+    const out = onWatch([{ op: "remove", id: "floor" }]);
+    expect(out.results).toEqual([expect.objectContaining({ op: "remove", id: "floor", ok: false, reason: expect.stringContaining("only the owner removes or lowers one") })]);
+    expect(out.triggers.some((t) => t.action === "STOP_WATCHING")).toBe(true);
+  });
+
+  it("an agent can't lower it, and can raise it", () => {
+    const lower = onWatch([{ op: "edit", id: "floor", value: 120, rationale: "Room to breathe." }]);
+    expect(lower.results[0]).toEqual(expect.objectContaining({ ok: false, reason: expect.stringContaining("loosens it") }));
+    expect(lower.triggers.find((t) => t.id === "floor")!.predicate).toEqual(expect.objectContaining({ value: 150 }));
+    const higher = onWatch([{ op: "edit", id: "floor", value: 160, rationale: "The base low moved up." }]);
+    expect(higher.results[0]).toEqual(expect.objectContaining({ ok: true }));
+    expect(higher.triggers.find((t) => t.id === "floor")!.predicate).toEqual(expect.objectContaining({ value: 160 }));
+  });
+
+  it("moving it to another measure is a removal and an add: the removal is refused, so the old line stays beside the new one (WST, Nov 19)", () => {
+    const out = onWatch([
+      { op: "remove", id: "floor" },
+      { op: "add", trigger: { id: "", predicate: { watch: "price", is: "below", variable: "sma200", settings: { close: true } }, action: "STOP_WATCHING", rationale: "Below the 200-day instead." } },
+    ]);
+    expect(out.results.map((r) => [r.op, r.ok])).toEqual([["remove", false], ["add", true]]);
+    expect(out.triggers.filter((t) => t.action === "STOP_WATCHING")).toHaveLength(2);
+  });
+
+  it("a window before the event only opens earlier: 21 days before can become 30, never 10; and a line can't start waiting for the close", () => {
+    const dated = (value: number): Trigger => ({ ...stopLine, id: "dated", predicate: { watch: "from_date", variable: "event", is: "before", value } });
+    const run = (value: number) => applyTriggerOps({ stored: [dated(21)], ops: [{ op: "edit", id: "dated", value, rationale: "Moved." }], direction: "LONG", status: "WATCHING", actor: "AGENT", mintId });
+    expect(run(10).results[0]).toEqual(expect.objectContaining({ ok: false }));
+    expect(run(30).results[0]).toEqual(expect.objectContaining({ ok: true }));
+    const intraday = { ...stopLine, predicate: { watch: "price", is: "below", value: 150 } } as Trigger;
+    const later = applyTriggerOps({ stored: [intraday], ops: [{ op: "edit", id: "floor", close: true, rationale: "On the close." } as never], direction: "LONG", status: "WATCHING", actor: "AGENT", mintId });
+    expect(later.results[0]).toEqual(expect.objectContaining({ ok: false, reason: expect.stringContaining("loosens it") }));
+    expect(later.triggers.find((t) => t.id === "floor")!.predicate).toEqual({ watch: "price", is: "below", value: 150 });
+  });
+
+  it("the owner can take it off or lower it; the app's own lines are not an agent's", () => {
+    expect(onWatch([{ op: "remove", id: "floor" }], "PRINCIPAL").results[0]).toEqual(expect.objectContaining({ ok: true }));
+    expect(onWatch([{ op: "edit", id: "floor", value: 120, rationale: "Wider." }], "PRINCIPAL").results[0]).toEqual(expect.objectContaining({ ok: true }));
+    expect(onWatch([{ op: "remove", id: "floor" }], "SYSTEM").results[0]).toEqual(expect.objectContaining({ ok: true }));
   });
 });

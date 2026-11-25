@@ -75,6 +75,8 @@ import {
 } from "./price-levels";
 import {
   describeRatchetViolation,
+  describeWatchLineViolation,
+  watchLineViolations,
   protectiveRatchetViolations,
 } from "./ratchet";
 import type { When } from "@/lib/agent/triggers/condition";
@@ -267,9 +269,13 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, extra: Pick<TriggerOpResult, "unchanged" | "to"> = {}) =>
     results.push({ op, id, ok: false, text, reason, ...extra });
 
-  /** The one gate an agent's edit runs on a stock we own. */
+  /** The one gate an agent's edit runs: a stock we own keeps its protective sell lines, a watch its Stop watching lines. */
   const ratchetReason = (next: Trigger[]): string | null => {
-    if (actor !== "AGENT" || !held) return null;
+    if (actor !== "AGENT") return null;
+    if (!held) {
+      const w = watchLineViolations({ before: stored, after: next });
+      return w.length ? w.map(describeWatchLineViolation).join(" ") : null;
+    }
     const v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });
     return v.length ? v.map(describeRatchetViolation).join(" ") : null;
   };

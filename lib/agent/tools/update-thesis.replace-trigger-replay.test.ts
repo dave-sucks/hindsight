@@ -134,8 +134,11 @@ describe("the fixture is the production call", () => {
       "Removed: Review if above $146": "Removed: Review if above $146 · only on the close",
     };
     const now = (text: string) => ON_THE_CLOSE[SAID_NOW[text] ?? text] ?? SAID_NOW[text] ?? text;
-    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: now(text) })));
-    expect(stored.map((t) => shapeName(t.predicate))).toEqual(["report:after"]);
+    // Its Stop watching line stays: an agent can't take one off (the owner,
+    // 2026-11-25). Production removed it; every other line lands as it did.
+    const KEPT = "Removed: Stop watching if below $132 · only on the close";
+    expect(lines).toEqual(fx.savedOps.map(({ op, id, text }) => ({ op, id, text: now(text) })).filter((l) => l.text !== KEPT));
+    expect(stored.map((t) => [t.action, shapeName(t.predicate)]).sort()).toEqual([["REVIEW", "report:after"], ["STOP_WATCHING", "price:below"]]);
   });
 });
 
@@ -159,13 +162,15 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, shapeName(t.predicate)])).toEqual([
+    // The four new triggers, and the Stop watching line an agent can't take off (the owner, 2026-11-25).
+    expect(now.map((t) => [t.action, shapeName(t.predicate)]).sort()).toEqual([
       ["REVIEW", "price:above"],
-      ["REVIEW", "repeat"],
       ["REVIEW", "price:below"],
+      ["REVIEW", "repeat"],
       ["REVIEW", "report:after"],
+      ["STOP_WATCHING", "price:below"],
     ]);
-    expect(now[0].predicate).toMatchObject({ watch: "price", is: "above", value: 146 });
+    expect(now.find((t) => t.action === "REVIEW" && shapeName(t.predicate) === "price:above")!.predicate).toMatchObject({ watch: "price", is: "above", value: 146 });
     // A wake, not a target: a stock with no buy, and nothing stores a level.
     expect((row.triggers as Trigger[]).some((t) => t.action === "ENTER")).toBe(false);
     expect(saved.db.store.thesisUpdate).toHaveLength(1);
@@ -183,14 +188,15 @@ describe("VST 2026-09-28 — the writer's refresh, through its check and its sav
     expect(saved.refused).toBe(false);
     const row = (saved.db.store.thesis as Array<Record<string, unknown>>).find((t) => t.id === fx.thesisBefore.id)!;
     const now = row.triggers as Trigger[];
-    expect(now.map((t) => [t.action, t.predicate])).toEqual([
-      ["REVIEW", { watch: "repeat", value: 30 }],
-      ["REVIEW", { watch: "price", is: "below", value: 132, settings: { close: true } }],
+    expect(now.filter((t) => t.action === "REVIEW").map((t) => t.predicate)).toEqual([
+      { watch: "repeat", value: 30 },
+      { watch: "price", is: "below", value: 132, settings: { close: true } },
       // The writer sent fromDay 0; the setting is deleted, so the save drops it.
-      ["REVIEW", { watch: "report", is: "after", value: 2 }],
+      { watch: "report", is: "after", value: 2 },
     ]);
+    // Of the old triggers only the Stop watching line is left: an agent can't take it off (the owner, 2026-11-25).
     const old = new Set(fx.thesisBefore.triggers.map((t) => t.id));
-    expect(now.some((t) => old.has(t.id))).toBe(false);
+    expect(now.filter((t) => old.has(t.id)).map((t) => t.action)).toEqual(["STOP_WATCHING"]);
     expect((row.triggers as Trigger[]).some((t) => t.action === "ENTER")).toBe(false);
     expect(saved.db.store.thesisUpdate).toHaveLength(1);
   });

@@ -107,7 +107,7 @@ Otherwise the stock is now in a [situation](situations.md), which tells the agen
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch there is no floor: its Stop watching line is free to change. A sale you decline asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, its Stop watching line only tightens the same way: no agent can remove it, lower it, wait longer for it or move it to another measure; you can. An agent that thinks the watch is over stops watching the stock. A sale you decline asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>
@@ -140,7 +140,7 @@ Stored on `Account.marketTriggers`, a column no stock's ladder reads, and checke
 `STOP_WATCHING` is its own action ("Stop watching if", `actionLabel` in `condition/describe.ts`), on a stock we don't hold and never as an account or analyst rule. Its timing is its saved `settings.close`, shown the same in the pill and the dialog. The trigger evaluator sends its fire on a WATCHING thesis to `stopWatching` (`lib/agent/triggers/stop-watching.ts`), which retires it as DROPPED with one Activity line and withdraws a waiting buy; on a promoted row the fire is written down for the morning run. `resolveLadder` (`lib/agent/triggers/levels.ts`) reads a sale only on a holding and a Stop watching line only on a watch.
 
 #### Floors
-`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; your edits on the sheet are exempt.
+`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; a watch's Stop watching lines, `watchLineViolations` in the same file. Your edits on the sheet are exempt from both.
 
 #### Stop when buying
 `autoStopOps` and `loadAutoStop` in `lib/trading/auto-stop.ts`, applied by `armHeldLadderOnFill` after the trade's own levels: the sale floor `DO_IT` and the owner's, the review line `ASK_NOW` in the price-below review slot. An approval prices it off the live price then (`approveProposal`, `lib/proposals/execute.ts`); the fill moves it to the line under the price paid (`autoStopFillOps`, applied by `moveStopWhenBuyingToFill` in `lib/inngest/functions/reconcile-orders.ts`). Sizing: `sizingStop` in `lib/agent/position-sizing.ts`, called by `place_trade` and `add`. `Account.autoStopOnBuy` / `autoStopPct` (default off, 8%); `AgentConfig` holds the same two, null meaning the account's. Saved by `saveAutoStop` in `lib/actions/auto-stop.actions.ts` (0.5–50%).

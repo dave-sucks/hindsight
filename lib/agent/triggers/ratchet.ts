@@ -158,3 +158,41 @@ export function describeRatchetViolation(v: RatchetViolation): string {
       return `"${rung}" is set to "${fireModeLabel(fireModeOf(v.before), "EXIT")}"; your edit sets it to "${fireModeLabel(fireModeOf(v.after ?? v.before), "EXIT")}". That slows the protection on a stock we own.`;
   }
 }
+
+/**
+ * A watch's Stop watching lines, the same one-way rule (the owner, 2026-11-25):
+ * an agent may tighten one, never remove or loosen it. On Nov 19 the watch
+ * rewrite's Writer runs took the line off ETN, BWXT, CORT, ESTC and NVDA,
+ * loosened WST's and TRV's, and a Writer lowered CGEM's from $12.77 to $8.47 in
+ * its own run, so watches that had broken their own lines stayed on. Only the
+ * owner removes or lowers one; an agent that wants a watch gone stops watching
+ * it. A line moved to another measure counts as removed (the two can't be
+ * weighed against each other). Thesis-stored lines only: a watch inherits none.
+ */
+export function watchLineViolations(args: { before: Trigger[]; after: Trigger[] }): RatchetViolation[] {
+  const lines = (ts: Trigger[]) => {
+    const m = new Map<string, Trigger>();
+    for (const t of ts) {
+      if (!isWellFormed(t) || t.action !== "STOP_WATCHING") continue;
+      const bucket = triggerSlot(t);
+      if (!m.has(bucket)) m.set(bucket, t);
+    }
+    return m;
+  };
+  const before = lines(args.before);
+  const after = lines(args.after);
+  const out: RatchetViolation[] = [];
+  for (const [bucket, prev] of before) {
+    const next = after.get(bucket);
+    if (!next) out.push({ bucket, reason: "REMOVED", before: prev });
+    else if (weakens(prev.predicate, next.predicate)) out.push({ bucket, reason: "LOWERED", before: prev, after: next });
+  }
+  return out;
+}
+
+/** The refusal for a Stop watching line an agent tried to remove or loosen. */
+export function describeWatchLineViolation(v: RatchetViolation): string {
+  const line = sentenceOf(v.before);
+  const what = v.reason === "LOWERED" && v.after ? `"${line}" → "${sentenceOf(v.after)}" loosens it` : `"${line}": your edit takes it off`;
+  return `${what}. A Stop watching line only tightens; only the owner removes or lowers one. Leave it or tighten it, or stop watching the stock if the case is over.`;
+}

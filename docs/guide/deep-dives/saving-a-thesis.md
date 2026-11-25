@@ -69,7 +69,7 @@ Status changes follow one table. An agent can drop a stock it watches (`stop_wat
 `applyTriggerOps` in `lib/agent/triggers/ops.ts`, shared with the thesis sheet and the buy's fill. Then one check of the result, `checkLadder`.
 
 #### Ratchet
-`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`, run by `ops.ts` when the actor is an agent and the status is `HOLDING`. An agent's save always sends `actor: "AGENT"`; the sheet sends `PRINCIPAL`.
+`protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`, run by `ops.ts` when the actor is an agent and the status is `HOLDING`; on any other status, `watchLineViolations`: an agent's op that removes or loosens a Stop watching line is refused. An agent's save always sends `actor: "AGENT"`; the sheet sends `PRINCIPAL`.
 
 #### Refusals
 `GateRejection` in `prisma/schema.prisma`, written by `recordGateRejection` and closed by `resolveGateRejections` (`lib/agent/gate-rejections.ts`). Shown by `loadAttempts` in `lib/thesis/account-activity.server.ts`; recorded on the run by `recordOpenRefusalsEvent` (an `action_blocked` event no screen shows yet); a closed stock's refusal is `terminal_status` in `lib/agent/thesis-transitions.ts`. The repeat guard is `lib/agent/repeat-refusal.ts` (stop at 3), wired into `morning-research.ts`, `tactical-run.ts` and the agent runner (`lib/agent/engine/run.ts`).
