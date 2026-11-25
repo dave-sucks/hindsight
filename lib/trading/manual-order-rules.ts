@@ -50,6 +50,9 @@ export type ManualOrderPlan =
 /** How far the price may move between the review screen and the click. */
 export const MAX_PRICE_MOVE = 0.02;
 
+/** Every Trade-ticket order's reason: the order check reads it to keep the ticket's sale yours. */
+export const MANUAL_RATIONALE = "Placed by you from the Trade button.";
+
 const sameShares = (a: number, b: number) => Math.abs(a - b) < 1e-6;
 const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
