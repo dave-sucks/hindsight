@@ -35,7 +35,7 @@
  */
 
 import { triggerSlot } from "./condition/slot";
-import { loosens, sentenceOf, shapeOf } from "./condition";
+import { conditionsOf, loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import { FIRE_MODE_SPEED, fireModeLabel, fireModeOf } from "./fire-mode";
 import type { Trigger } from "./types";
@@ -167,32 +167,40 @@ export function describeRatchetViolation(v: RatchetViolation): string {
  * its own run, so watches that had broken their own lines stayed on. Only the
  * owner removes or lowers one; an agent that wants a watch gone stops watching
  * it. A line moved to another measure counts as removed (the two can't be
- * weighed against each other). Thesis-stored lines only: a watch inherits none.
+ * weighed against each other). A line may come off in a call that leaves the
+ * stock no buy: the Writer takes the buy and the line off together when there
+ * is no price worth waiting for (writer.md). Each line is followed by its id,
+ * so a second line of a kind on an old row is guarded too. Thesis-stored
+ * lines only: a watch inherits none.
  */
-export function watchLineViolations(args: { before: Trigger[]; after: Trigger[] }): RatchetViolation[] {
-  const lines = (ts: Trigger[]) => {
-    const m = new Map<string, Trigger>();
-    for (const t of ts) {
-      if (!isWellFormed(t) || t.action !== "STOP_WATCHING") continue;
-      const bucket = triggerSlot(t);
-      if (!m.has(bucket)) m.set(bucket, t);
-    }
-    return m;
-  };
-  const before = lines(args.before);
-  const after = lines(args.after);
+export function watchLineViolations(args: { before: Trigger[]; after: Trigger[]; buyStays: boolean }): RatchetViolation[] {
   const out: RatchetViolation[] = [];
-  for (const [bucket, prev] of before) {
-    const next = after.get(bucket);
-    if (!next) out.push({ bucket, reason: "REMOVED", before: prev });
-    else if (weakens(prev.predicate, next.predicate)) out.push({ bucket, reason: "LOWERED", before: prev, after: next });
+  for (const prev of args.before) {
+    if (!isWellFormed(prev) || prev.action !== "STOP_WATCHING") continue;
+    const bucket = triggerSlot(prev);
+    const next = args.after.find((t) => t.id === prev.id);
+    const change = next && isWellFormed(next) && next.action === "STOP_WATCHING" ? lineChange(prev.predicate, next.predicate) : "REMOVED";
+    if (change === "REMOVED" && args.buyStays) out.push({ bucket, reason: "REMOVED", before: prev });
+    if (change === "LOWERED") out.push({ bucket, reason: "LOWERED", before: prev, after: next });
   }
   return out;
+}
+
+/** A Stop watching line's new condition against its old one, each condition of a two-condition line on its own. */
+function lineChange(prev: When, next: When): "REMOVED" | "LOWERED" | null {
+  const a = shapeOf(prev);
+  const b = shapeOf(next);
+  if (!a || !b) return "REMOVED";
+  const was = conditionsOf(a);
+  const now = conditionsOf(b);
+  const same = was.length === now.length && was.every((c, i) => c.watch === now[i].watch && c.is === now[i].is && c.variable === now[i].variable);
+  if (!same) return "REMOVED";
+  return was.some((c, i) => loosens(c, now[i])) ? "LOWERED" : null;
 }
 
 /** The refusal for a Stop watching line an agent tried to remove or loosen. */
 export function describeWatchLineViolation(v: RatchetViolation): string {
   const line = sentenceOf(v.before);
-  const what = v.reason === "LOWERED" && v.after ? `"${line}" → "${sentenceOf(v.after)}" loosens it` : `"${line}": your edit takes it off`;
-  return `${what}. A Stop watching line only tightens; only the owner removes or lowers one. Leave it or tighten it, or stop watching the stock if the case is over.`;
+  const what = v.reason === "LOWERED" && v.after ? `"${line}" → "${sentenceOf(v.after)}" loosens it` : `"${line}": your edit takes it off while the stock keeps a buy`;
+  return `${what}. A Stop watching line only tightens, and comes off only with the stock's buy; the owner changes it on the stock's sheet. Leave it or tighten it, or stop watching the stock if the case is over.`;
 }

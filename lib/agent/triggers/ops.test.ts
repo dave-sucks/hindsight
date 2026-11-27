@@ -373,10 +373,35 @@ describe("applyTriggerOps — a watch's Stop watching line only tightens (the ow
   const onWatch = (ops: Parameters<typeof applyTriggerOps>[0]["ops"], actor: "AGENT" | "PRINCIPAL" | "SYSTEM" = "AGENT") =>
     applyTriggerOps({ stored: [buy, line(150), clock], ops, direction: "LONG", status: "WATCHING", actor, mintId });
 
-  it("an agent can't take it off", () => {
+  it("an agent can't take it off while the stock keeps a buy", () => {
     const out = onWatch([{ op: "remove", id: "floor" }]);
-    expect(out.results).toEqual([expect.objectContaining({ op: "remove", id: "floor", ok: false, reason: expect.stringContaining("only the owner removes or lowers one") })]);
+    expect(out.results).toEqual([expect.objectContaining({ op: "remove", id: "floor", ok: false, reason: expect.stringContaining("comes off only with the stock's buy") })]);
     expect(out.triggers.some((t) => t.action === "STOP_WATCHING")).toBe(true);
+  });
+
+  it("it comes off with the buy, in either order, as the Writer takes both off when there is no price worth waiting for", () => {
+    for (const ops of [[{ op: "remove", id: "floor" }, { op: "remove", id: "buy" }], [{ op: "remove", id: "buy" }, { op: "remove", id: "floor" }]] as const) {
+      const out = onWatch([...ops]);
+      expect(out.results.every((r) => r.ok)).toBe(true);
+      expect(out.triggers.map((t) => t.id)).toEqual(["clock"]);
+    }
+    // A new buy in the same call is a buy that stays.
+    const swapped = onWatch([{ op: "remove", id: "floor" }, { op: "remove", id: "buy" }, { op: "add", trigger: { ...buy, id: "", rationale: "A new buy." } }]);
+    expect(swapped.results.find((r) => r.id === "floor")).toEqual(expect.objectContaining({ ok: false }));
+  });
+
+  it("each line is followed by its id: a second line of the kind on an old row is guarded too", () => {
+    const out = applyTriggerOps({ stored: [buy, line(150), line(140, { id: "floor-2" })], ops: [{ op: "remove", id: "floor-2" }], direction: "LONG", status: "WATCHING", actor: "AGENT", mintId });
+    expect(out.results[0]).toEqual(expect.objectContaining({ id: "floor-2", ok: false }));
+    expect(out.triggers.map((t) => t.id)).toContain("floor-2");
+  });
+
+  it("a two-condition line can't be loosened in one of its parts, and tightens in either (BWXT's 'down 5% on the day on 1.5× volume')", () => {
+    const pair: Trigger = { ...stopLine, id: "pair", predicate: { match: "all", conditions: [{ watch: "move", is: "below", value: 5, variable: "day" }, { watch: "volume", is: "above", value: 1.5 }] } as never };
+    const edit = (value: number, part: number) => applyTriggerOps({ stored: [buy, pair], ops: [{ op: "edit", id: "pair", value, part, rationale: "Moved." }], direction: "LONG", status: "WATCHING", actor: "AGENT", mintId });
+    expect(edit(50, 1).results[0]).toEqual(expect.objectContaining({ ok: false, reason: expect.stringContaining("loosens it") }));
+    expect(edit(8, 0).results[0]).toEqual(expect.objectContaining({ ok: false }));
+    expect(edit(1.2, 1).results[0]).toEqual(expect.objectContaining({ ok: true }));
   });
 
   it("an agent can't lower it, and can raise it", () => {

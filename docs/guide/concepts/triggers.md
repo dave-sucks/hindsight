@@ -107,7 +107,7 @@ Otherwise the stock is now in a [situation](situations.md), which tells the agen
 
 ## Floors only go up
 
-On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, its Stop watching line only tightens the same way: no agent can remove it, lower it, wait longer for it or move it to another measure; you can. An agent that thinks the watch is over stops watching the stock. A sale you decline asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
+On a stock we hold, no agent can lower a floor, widen a trail, remove a protective trigger, or slow a sale down (from Auto-sell to Send to Agent); the save refuses it. No agent can make a buy, add or trim Auto. On a stock we only watch, its Stop watching line only tightens the same way: no agent can lower it or wait longer for it, and none can remove it or move it to another measure while the stock keeps a buy; it comes off with the buy, and you can change it on the stock's sheet. An agent that thinks the watch is over stops watching the stock. A sale you decline asks the analyst again each day the price stays past the line, and the analyst proposes the sale again or says why it holds. An agent that thinks the line is wrong names the level in its note, and only you move it down.
 
 <details>
 <summary>Technical details</summary>

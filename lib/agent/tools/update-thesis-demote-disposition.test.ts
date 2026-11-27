@@ -163,10 +163,8 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
     // The wakes survive.
     expect(triggers.filter((t) => t.action === "REVIEW")).toHaveLength(2);
-    // No buy is left on the stock, and nothing stores one. The Stop watching
-    // line stays: an agent can't take one off (the owner, 2026-11-25).
-    expect(triggers.some((t) => t.action === "ENTER" || t.action === "EXIT")).toBe(false);
-    expect(triggers.filter((t) => t.action === "STOP_WATCHING")).toHaveLength(1);
+    // No price line is left on the stock, and nothing stores one.
+    expect(triggers.some((t) => t.action === "ENTER" || t.action === "EXIT" || t.action === "STOP_WATCHING")).toBe(false);
     expect(data).not.toHaveProperty("entryPrice");
     // Not a direction change — the analyst's stance stays on record.
     expect(data.direction).toBeUndefined();
@@ -215,7 +213,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     );
   });
 
-  it("removing every trigger an agent may remove on a directional watch is accepted; its Stop watching line stays (DAV-209; the owner, 2026-11-25)", async () => {
+  it("removing every trigger on a directional watch is accepted — zero triggers is legal (DAV-209)", async () => {
     // FLIPPED 2026-09-08. This used to refuse with missing_enter_trigger on
     // the "every watch carries a wake" rule. Clearing the ladder now leaves
     // a name in view with nothing on it, which is a state a person is
@@ -229,7 +227,7 @@ describe("update_thesis — the demote disposition (DAV-224)", () => {
     expect(result.data?.ok).not.toBe(false);
     expect(mockThesisUpdate).toHaveBeenCalled();
     const patch = mockThesisUpdate.mock.calls[0][0].data as Record<string, unknown>;
-    expect((patch.triggers as Trigger[]).map((t) => t.action)).toEqual(["STOP_WATCHING"]);
+    expect(patch.triggers).toEqual([]);
   });
 
   it("promote: a soft watch commits to a full plan through the direction path", async () => {

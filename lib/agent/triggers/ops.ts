@@ -269,11 +269,16 @@ export function applyTriggerOps(input: ApplyTriggerOpsInput): ApplyTriggerOpsOut
   const refuse = (op: TriggerOpResult["op"], id: string, text: string, reason: string, extra: Pick<TriggerOpResult, "unchanged" | "to"> = {}) =>
     results.push({ op, id, ok: false, text, reason, ...extra });
 
+  // Whether the stock keeps a buy once this call lands: a watch's Stop watching line comes off only with its buy.
+  const buyStays =
+    input.stored.some((t) => t.action === "ENTER" && !deleted.has(t.id)) ||
+    input.ops.some((o) => ((o.op === "add" || o.op === "replace") && o.trigger.action === "ENTER") || (o.op === "edit" && o.action === "ENTER"));
+
   /** The one gate an agent's edit runs: a stock we own keeps its protective sell lines, a watch its Stop watching lines. */
   const ratchetReason = (next: Trigger[]): string | null => {
     if (actor !== "AGENT") return null;
     if (!held) {
-      const w = watchLineViolations({ before: stored, after: next });
+      const w = watchLineViolations({ before: stored, after: next, buyStays });
       return w.length ? w.map(describeWatchLineViolation).join(" ") : null;
     }
     const v = protectiveRatchetViolations({ direction, before: stored, after: next, inherited });

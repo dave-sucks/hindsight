@@ -79,6 +79,37 @@ describe("TRV, a watch: a trigger on our position is refused at the save, the re
   }, LOAD_MS);
 });
 
+const BUY = "968ed379-b566-4419-9094-b01238612cd8";
+const LINE = "e1642d0c-b315-4bee-ac35-e23a531a1b1c";
+
+describe("TRV, a watch: its Stop watching line comes off only with its buy (the owner, 2026-11-25)", () => {
+  it("an agent's edit taking off 'Stop watching if below $391' while the buy stays is refused, and the line stays", async () => {
+    const { result, db } = await save({ remove_trigger_ids: [LINE] });
+    expect(ops(result).find((o) => o.id === LINE)).toMatchObject({ ok: false });
+    expect(stored(db).some((x) => x.id === LINE)).toBe(true);
+  }, LOAD_MS);
+
+  it("taking off the buy and the line together lands", async () => {
+    const { db } = await save({ remove_trigger_ids: [BUY, LINE] });
+    expect(stored(db).some((x) => x.id === BUY || x.id === LINE)).toBe(false);
+  }, LOAD_MS);
+
+  it("the Writer's save swapping the old playbook's watch triggers for the new one's is code's, so it lands with the buy kept", async () => {
+    const { result, db } = await save({
+      setup_id: "MA_PULLBACK",
+      playbook_off_ids: [BUY, LINE],
+      add_triggers: [
+        { action: "ENTER", predicate: { watch: "price", is: "above", value: 396, variable: "sma50" }, rationale: "The 50-day pullback." },
+        { action: "STOP_WATCHING", predicate: { watch: "price", is: "below", value: 0, variable: "sma200", settings: { close: true } }, rationale: "A close below the 200-day says the uptrend is over." },
+      ],
+    });
+    expect(ops(result).filter((o) => o.ok === false)).toEqual([]);
+    const after = stored(db);
+    expect(after.some((x) => x.id === BUY || x.id === LINE)).toBe(false);
+    expect(after.filter((x) => x.predicate.variable === "sma200")).toHaveLength(1);
+  }, LOAD_MS);
+});
+
 describe("record_thesis: a new watch with a trigger on our position is refused with the fix", () => {
   it("'Review 60 days after the buy' on a mint", async () => {
     const { result, db } = await replayTool("record-thesis", "recordThesis", {
