@@ -47,7 +47,7 @@ describe("the setup catalog", () => {
     for (const s of SETUPS) {
       expect(Object.keys(s).filter((k) => ["stop", "target", "trail", "time", "manage"].includes(k))).toEqual([]);
       expect("template" in s.entry || "text" in s.entry).toBe(false);
-      expect(Object.keys(s.sale).filter((k) => k !== "floor")).toEqual(["maxPct", "minAtr"]);
+      expect(Object.keys(s.sale).filter((k) => k !== "floor" && k !== "maxPctOn")).toEqual(["maxPct", "minAtr"]);
     }
   });
 
@@ -79,7 +79,7 @@ describe("the setup catalog", () => {
       'PEAD {gapDayLow} or {"pctUnder":8}',
       'MA_PULLBACK {swingLow} or {"atrUnderBuyAverage":true}',
       "PRE_CATALYST {swingLow}",
-      "COMPOUNDER_ACCUMULATION {swingLow} at most 25%",
+      "COMPOUNDER_ACCUMULATION {swingLow} at most 15%",
     ]);
   });
 

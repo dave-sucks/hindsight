@@ -14,7 +14,7 @@
 
 import type { FireMode } from "@/lib/agent/triggers/fire-mode";
 import type { TriggerAction } from "@/lib/agent/triggers/types";
-import type { SetupId, TemplatePredicate } from "./setups";
+import type { SetupId, TemplateCondition, TemplatePredicate } from "./setups";
 
 export const WRITTEN_ON = ["WATCH", "PROPOSAL", "FILL"] as const;
 export type WrittenOn = (typeof WRITTEN_ON)[number];
@@ -32,7 +32,8 @@ export interface Template {
 
 // A buy reads during the day: only a Stop watching or a review waits for the close.
 const breakout: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }, { watch: "price", is: "below", value: "{pivotChase}" }] };
-const near50: TemplatePredicate = { watch: "move", is: "near", value: 2, variable: "sma50" };
+const near50: TemplateCondition = { watch: "move", is: "near", value: 2, variable: "sma50" };
+const aboveThe200: TemplateCondition = { watch: "price", is: "above", variable: "sma200" };
 // Volume so far is paced during the day, so a sale or a Stop watching that reads it waits for the close.
 const under50OnVolume: TemplatePredicate = { match: "all", conditions: [{ watch: "price", is: "below", variable: "sma50", settings: { close: true } }, { watch: "volume", value: 1.5 }] };
 const above = (value: `{${string}}`): TemplatePredicate => ({ watch: "price", is: "above", value });
@@ -100,13 +101,13 @@ export const PLAYBOOK_TEMPLATES: Record<SetupId, Template[]> = {
     { action: "REVIEW", fireMode: "ASK_NOW", predicate: onClose("below", "{gapDayMid}"), rationale: "The gap day's middle, on the holding.", writtenOn: "PROPOSAL" },
     { action: "REVIEW", predicate: afterBuy(7), rationale: "5 sessions. After 3–5 sessions of progress, the run takes a partial.", writtenOn: "FILL" },
   ],
+  // The watch has no price end: a business leaves the list when it breaks, at a look. Every buy waits for the long uptrend.
   COMPOUNDER_ACCUMULATION: [
-    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }] }, rationale: "The base's pivot, on volume.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: near50, rationale: "Only while the 50-day is rising.", writtenOn: "WATCH" },
-    { action: "ENTER", predicate: { watch: "price", is: "above", variable: "sma50" }, rationale: "The first half, in an uptrend: above a rising 50-day. Already true when written means buy the first half now.", writtenOn: "WATCH" },
-    ...clock(30, "The compounder's own clock."),
-    { action: "STOP_WATCHING", predicate: { watch: "price", is: "below", variable: "sma200", settings: { close: true } }, rationale: "The uptrend broke; not an accumulation candidate until it's back.", writtenOn: "WATCH" },
-    { action: "EXIT", predicate: sell, rationale: "Under the last base's low or swing low, at most 25% under the buy, at least the playbook's ATR distance under it.", writtenOn: "PROPOSAL" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", value: "{pivot}" }, { watch: "volume", value: 1.5 }, aboveThe200] }, rationale: "Above the base's high on heavy volume, in a long uptrend.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [near50, aboveThe200] }, rationale: "A pullback to a rising 50-day average, in a long uptrend.", writtenOn: "WATCH" },
+    { action: "ENTER", predicate: { match: "all", conditions: [{ watch: "price", is: "above", variable: "sma50" }, aboveThe200] }, rationale: "Back above the 50-day average, in a long uptrend.", writtenOn: "WATCH" },
+    ...clock(30, "A monthly look at the business between reports."),
+    { action: "EXIT", predicate: sell, rationale: "Under the last swing low, the last low the stock held: at most 15% under the buy and at least the playbook's ATR distance under it.", writtenOn: "PROPOSAL" },
     { action: "REVIEW", predicate: afterBuy(60), rationale: "The business checkpoint.", writtenOn: "FILL" },
     { action: "ADD", predicate: { watch: "move", is: "above", value: 7, variable: "entry" }, rationale: "The second half.", writtenOn: "FILL" },
   ],

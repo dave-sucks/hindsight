@@ -33,6 +33,7 @@ import { armHeldLadderOnFill } from "@/lib/proposals/thesis-flips";
 import {
   positionBand,
   entrySizeForConviction,
+  noLegalFloor,
   saleRuleProblem,
   sizeByRisk,
   sizingStop,
@@ -123,7 +124,7 @@ const withSale = <T extends z.ZodObject>(schema: T) =>
   });
 
 /** A buy's default floor: its thesis's playbook key on today's chart (playbookFloor). A short's cover has no key. */
-async function priceTheFloor(a: { thesisId: string; ticker: string; entry: number; direction: string; accountId: string }): Promise<{ price: number } | { refused: string }> {
+async function priceTheFloor(a: { thesisId: string; ticker: string; entry: number; direction: string; accountId: string }): Promise<{ price: number } | { refused: string; noLegalFloor?: true }> {
   if (a.direction !== "LONG") return { refused: "A short's cover price has no playbook key." };
   const thesis = await prisma.thesis.findUnique({ where: { id: a.thesisId }, select: { setupId: true, horizon: true } });
   const setup = thesis?.setupId ? getSetup(thesis.setupId, await loadSetupOverrides(a.accountId)) : undefined;
@@ -394,7 +395,7 @@ export const placeTrade = defineTool({
       // None named: the playbook's floor, priced from today's chart and held to its sale rules; else the run names it.
       if (stop == null) {
         const floor = await priceTheFloor({ thesisId: args.thesis_id, ticker, entry: args.entry_price, direction: args.direction, accountId: ctx.accountId });
-        if ("refused" in floor) return blocked(ticker, args.direction, "no floor", `Trade blocked: ${floor.refused} Name the floor (sell_if_below) under structure on the chart, with its reason.`);
+        if ("refused" in floor) return blocked(ticker, args.direction, "no floor", floor.noLegalFloor ? `Trade blocked: ${floor.refused}` : `Trade blocked: ${floor.refused} Name the floor (sell_if_below) under structure on the chart, with its reason.`);
         stop = floor.price;
       }
       if (stop != null) {
@@ -455,6 +456,8 @@ export const placeTrade = defineTool({
       const setup = stop != null && sizingThesis?.setupId ? getSetup(sizingThesis.setupId, await loadSetupOverrides(ctx.accountId)) : undefined;
       if (setup && stop != null) {
         const atr = (await loadIndicatorSnapshots([ticker]).catch(() => null))?.get(ticker)?.atr14 ?? null;
+        const none = noLegalFloor({ setup, horizon: sizingThesis?.horizon ?? null, entry: args.entry_price, atr: atr != null ? Math.round(atr * 100) / 100 : null });
+        if (none) return blocked(ticker, args.direction, "no legal floor", `Trade blocked: ${none}.`);
         const bad = saleRuleProblem({ setup, horizon: sizingThesis?.horizon ?? null, entry: args.entry_price, stop, atr: atr != null ? Math.round(atr * 100) / 100 : null });
         if (bad) return blocked(ticker, args.direction, "the sale breaks its playbook's rule", `Trade blocked: ${bad}. Then call place_trade again.`);
       }

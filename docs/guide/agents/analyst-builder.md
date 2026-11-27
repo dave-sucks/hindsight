@@ -65,7 +65,7 @@ If you ask for changes, it proposes again. The editor first sorts each request i
 When you accept, the analyst is created in one step:
 
 - Its watchlist lands as **seeds**: stocks with no view yet, each due its first research. The next [morning run](morning-runs.md) sends them to [the Writer](writer.md).
-- Its signature playbook's reviews are written onto its Triggers tab, where every stock it holds inherits them. You can edit them there. A PEAD, catalyst or compounder signature has reviews; any other has none, so its tab starts blank. None of them sells: the account's own sell rules cover every holding.
+- Its signature playbook's reviews are written onto its Triggers tab, where every stock it holds inherits them. You can edit them there. A PEAD or catalyst signature has reviews, a compounder signature has its one sale, and any other has none, so its tab starts blank. The compounder's "Sell if below 15% from the high since we bought and above 1% from our entry" takes the place of the account's trail on every stock it holds. The others leave the sale to the account's rules.
 
 The editor's proposal saves the same fields, with no direction and the money only when you name an amount; it can remove a market-cap bound. A field it leaves out keeps its value, and changing the playbooks later leaves the Triggers tab as it is (its re-seed shows what the new signature playbook would add). Its watchlist only adds: each new name lands as a seed, a stock the analyst already holds or watches gets nothing beside it, and a stock left out stays watched. Its change list shows only the names Apply adds, and no row for a field it leaves out. A watch is dropped from its own page, or by a run.
 

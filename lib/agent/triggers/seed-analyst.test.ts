@@ -10,6 +10,7 @@ import { analystStandingTriggers, SETUP_STANDING_RULES } from "@/lib/agent/knowl
 import { triggersArraySchema } from "./schema";
 import { triggerSlot } from "./condition/slot";
 import { addProblem } from "@/lib/agent/triggers/condition";
+import { writtenNote } from "./note";
 import type { Trigger } from "./types";
 
 let n = 0;
@@ -41,9 +42,28 @@ describe("the seat templates", () => {
     expect(analystStandingTriggers([], mintId)).toEqual([]);
     expect(analystStandingTriggers(["PEAD", "BASE_BREAKOUT"], mintId)).toHaveLength(2);
   });
-  it("a new analyst starts with no sale and no add on a down day: the account's sale rules govern every holding", () => {
-    const rules = Object.entries(SETUP_STANDING_RULES).flatMap(([seat, rs]) => (rs ?? []).map((r) => ({ seat, action: r.action, predicate: r.predicate })));
-    expect(rules.filter((r) => r.action === "EXIT" || r.action === "TRIM" || (r.action === "ADD" && (r.predicate as { is?: string }).is === "below"))).toEqual([]);
+  // The Secular Compounder's live rule, as stored on 2026-11-23.
+  const LIVE_RULE: Trigger = {
+    id: "6e49a20e-8844-4071-a1b8-1d0061d949f7",
+    action: "EXIT",
+    source: "PRINCIPAL",
+    fireMode: "ASK_NOW",
+    predicate: { match: "all", conditions: [{ is: "below", value: 15, watch: "move", variable: "peak" }, { is: "above", value: 1, watch: "move", variable: "entry" }] },
+    rationale: "The give-back on a winner: 15% off the high since we bought, while we are still up on the buy.",
+  };
+  it("one seat carries a sale, the compounder's give-back in the account trail's slot; no seat trims or adds on a down day", () => {
+    const rules = Object.entries(SETUP_STANDING_RULES).flatMap(([seat, rs]) => (rs ?? []).map((r) => ({ seat, action: r.action, predicate: r.predicate, fireMode: r.fireMode })));
+    expect(rules.filter((r) => r.action === "EXIT" || r.action === "TRIM" || (r.action === "ADD" && (r.predicate as { is?: string }).is === "below"))).toEqual([
+      { seat: "COMPOUNDER_ACCUMULATION", action: "EXIT", predicate: LIVE_RULE.predicate, fireMode: "ASK_NOW" },
+    ]);
+    const trail = { action: "EXIT" as const, predicate: { match: "all", conditions: [{ is: "below", value: 6, watch: "move", variable: "peak" }, { is: "above", value: 1, watch: "move", variable: "entry" }] } };
+    expect(triggerSlot(SETUP_STANDING_RULES.COMPOUNDER_ACCUMULATION![0])).toBe(triggerSlot(trail));
+  });
+  it("the compounder's seed is the owner's live rule and nothing else: a re-seed adds nothing, and his words still reach a run", () => {
+    expect(SETUP_STANDING_RULES.COMPOUNDER_ACCUMULATION).toHaveLength(1);
+    expect(SETUP_STANDING_RULES.COMPOUNDER_ACCUMULATION![0].rationale).toBe(LIVE_RULE.rationale);
+    expect(reseedDiff(["COMPOUNDER_ACCUMULATION"], [LIVE_RULE], mintId)).toMatchObject({ toAdd: [], foreign: [] });
+    expect(writtenNote(LIVE_RULE)).toBe(LIVE_RULE.rationale);
   });
 });
 

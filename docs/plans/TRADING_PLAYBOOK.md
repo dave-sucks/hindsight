@@ -343,14 +343,15 @@ like. "Trigger vocabulary" notes what Hindsight can express today.
   uptrend, take the breakout. Vocabulary: `OR[breakout condition, NEAR_SMA
   50 + reversal, VS_SMA 50 reclaim]` plus **buy now** when one is already
   true.
-- **Tranches.** First tranche 50% of target size; second on strength (+7%
-  from the first fill, or a new high after a pause) or on a held pullback
-  to the 50-day in a market-wide dip with the thesis intact. Never add into
-  company-specific bad news.
-- **Stop.** Thesis invalidation, named in advance (guidance cut ×2, margin
-  break, capital-allocation failure). Price alarms are *reviews*: a close
-  below the 200-day; a 15% give-back from the high. A **catastrophe line**
-  at 20–25% off the high is the only automatic sale.
+- **Tranches.** Two equal halves: the first sized so a sale at the floor
+  costs the risk per trade, the second the same dollars once the stock is
+  up 7% from the buy. Never add into company-specific bad news.
+- **Stop** (expert review 1.5). Two sales, each sent to the analyst: the
+  floor, under the last low the stock held and at most 15% under the buy;
+  and on a winner, a 15% give-back from the high since we bought, the
+  analyst's rule, which replaces the account's trail. The business leaves
+  the list when it breaks (guidance cut, margin break, the named
+  invalidation). Every buy waits for the stock above its 200-day.
 - **Target.** A 3–5 year valuation case; trims only at valuation extremes.
 - **Time.** A 60-day business checkpoint ("is what I said would happen
   starting to happen?"), never a time stop.
@@ -463,7 +464,7 @@ for TRADE-horizon partials.
 | TRADE | Close below the 10- or 20-day MA, or a chandelier stop 2–3 ATR under the 22-day high ([StockCharts](https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/chandelier-exit)) |
 | TARGET | Armed after +10%: max(3 ATR, 12–15%) under the high, or a close under the 21-day EMA |
 | CATALYST | The structural stop until the event; the event is the exit |
-| COMPOUNDER | No automatic sale under 20–25%; 15% give-back and a close under the 200-day are **reviews** |
+| COMPOUNDER | On a winner, a 15% give-back from the high (the analyst's rule) |
 
 The trail is the reason winners get to run; the 8% flat trail on a
 position trade is the reason HPE and PRAX gave back 16–17 points.
@@ -497,9 +498,9 @@ Never average down: "only losers average losers."
 **Position trades (D5, D8).** The plan's stop and trail; the prior high as
 a partial; the catalyst as the exit.
 
-**Compounders (D11).** Only a named invalidation sells. Price alarms open a
-review with one question: is the reason we bought still true? Trim on
-valuation extremes. The 25% catastrophe line is the one automatic sale.
+**Compounders (D11).** The floor under the last low the stock held, and on a
+winner a 15% give-back from the high. Each goes to the analyst, and the
+owner approves the sale.
 
 **Every sale answers "did the story break or did the price?"** Hindsight
 already asks this (`belief_survived`); the answer decides whether the name
