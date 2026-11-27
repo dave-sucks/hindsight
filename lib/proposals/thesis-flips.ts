@@ -118,7 +118,7 @@ export async function armHeldLadderOnFill(opts: {
   positionId: string;
   runId?: string | null;
   /** Where the fill came from — used only in the audit row's wording. */
-  via: "place_trade" | "approved proposal";
+  via: "place_trade" | "approved proposal" | "its fill";
 }): Promise<void> {
   try {
     // A promoted row (re-entered on the first live run) is the one bought, else the newest watch. Either way
@@ -281,6 +281,8 @@ export function shouldRecycleToWatching(
  *     an Auto-sell, and manual UI closes) routes through there, so they all flip identically.
  *   • closeThesisOnApproval (below) — the approval path, when an
  *     AWAITING_APPROVAL close proposal is later approved.
+ *   • reconcile-orders' moveStockOffHolding — a sale whose fill came after
+ *     the sender stopped waiting (the Close button while the market is shut).
  *
  * Audit row type stays `CLOSED` (not STATUS_CHANGED): the dashboard activity
  * feed + run-summary bucket the close on `type === "CLOSED"`, and the

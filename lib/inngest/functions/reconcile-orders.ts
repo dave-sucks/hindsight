@@ -16,8 +16,8 @@
  *      record (the call never landed).
  *
  * FILLED handling dispatches on Order.intent:
- *   OPEN          → update Position.avgCost to real fill, log OPENED
- *   CLOSE         → Position.status=CLOSED with realized P&L, log CLOSED
+ *   OPEN          → update Position.avgCost to real fill, log OPENED, and the stock onto Holding
+ *   CLOSE         → Position.status=CLOSED with realized P&L, log CLOSED, and the stock off Holding
  *   PARTIAL_CLOSE → Position.quantity -= filledQty, realize partial P&L
  *   ADD           → Position.quantity += filledQty, recompute avgCost
  *   (null/legacy) → fall back to side-based dispatch (BUY=open, SELL=close)
@@ -46,6 +46,8 @@ import { parseTriggersResilient } from "@/lib/agent/triggers/schema";
 import type { Trigger } from "@/lib/agent/triggers/types";
 import { autoStopFillOps, loadAutoStop } from "@/lib/trading/auto-stop";
 import { sendBuyFilled } from "@/lib/proposals/after-buy";
+import { armHeldLadderOnFill, closeThesisForPosition } from "@/lib/proposals/thesis-flips";
+import { MANUAL_RATIONALE } from "@/lib/trading/manual-order-rules";
 
 const FIVE_MIN_CRON = "TZ=America/New_York */5 4-19 * * 1-5";
 
@@ -62,6 +64,9 @@ interface PendingOrderRow {
   intent: string | null;
   closeReason: string | null;
   closeSource: string | null;
+  /** A sale's words and the agent's "the belief survived", for the stock's line when the sale fills here. */
+  rationale?: string | null;
+  closeBeliefSurvived?: boolean | null;
   /** The triggers a proposal answered: a filled trim or add takes them off the stock (lib/agent/triggers/filled). */
   thesisId?: string | null;
   triggerIds?: string[];
@@ -99,6 +104,8 @@ export const reconcileOrders = inngest.createFunction(
           intent: true,
           closeReason: true,
           closeSource: true,
+          rationale: true,
+          closeBeliefSurvived: true,
           thesisId: true,
           triggerIds: true,
         },
@@ -268,6 +275,84 @@ async function maybeEvaluateClosedPosition(order: PendingOrderRow): Promise<void
   } catch (err) {
     console.warn(
       `[reconcile-orders] could not request the post-trade write-up for ${order.positionId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * A buy that fills here makes the stock a holding, the same move a sender
+ * makes once the broker has the order (armHeldLadderOnFill): the watch
+ * triggers off and the approved sale on. Without it, a buy whose send came back
+ * uncertain (a timeout or a server error) but landed was filled here and left
+ * the stock on Watching, where no sale trigger is read and After the buy, which
+ * runs only on a holding, skipped it. A buy moved at its approval finds the
+ * stock held and nothing changes. Fail-soft.
+ */
+async function moveStockOntoHolding(order: PendingOrderRow, fillPrice: number): Promise<void> {
+  if ((order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE")) !== "OPEN") return;
+  try {
+    const position = await prisma.position.findUnique({
+      where: { id: order.positionId },
+      select: { status: true, analystId: true, symbol: true, stopLoss: true, stopReason: true, targetPrice: true },
+    });
+    if (!position || position.status !== "OPEN" || !position.analystId) return;
+    const held = await prisma.thesis.count({
+      where: { ticker: position.symbol, status: "HOLDING", researchRun: { agentConfigId: position.analystId } },
+    });
+    if (held > 0) return;
+    await armHeldLadderOnFill({
+      analystId: position.analystId,
+      ticker: position.symbol,
+      fillPrice,
+      targetPrice: position.targetPrice ?? null,
+      stopLoss: position.stopLoss ?? null,
+      // The Trade ticket's sale is yours, as its approval writes it.
+      stopIsOwners: order.rationale === MANUAL_RATIONALE,
+      stopReason: position.stopReason ?? null,
+      positionId: order.positionId,
+      via: "its fill",
+    });
+  } catch (err) {
+    console.warn(
+      `[reconcile-orders] ${order.symbol}'s buy filled; the stock could not be moved onto Holding: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * A whole sale that fills here moves the stock off Holding, the same flip a
+ * sender makes when it sees the fill itself (closeThesisForPosition). Without
+ * it, a sale whose fill came later than the sender's short wait (the Close
+ * button while the market is shut, filled at the next open) closed the
+ * position and left the stock reading Holding. A sale flipped at its approval
+ * finds no holding here and nothing changes. It acts only when this fill closed
+ * the position and the analyst has no other position open or waiting on the
+ * stock, so a re-buy is never retired by an old sale. Fail-soft.
+ */
+async function moveStockOffHolding(order: PendingOrderRow, fillPrice: number): Promise<void> {
+  if ((order.intent ?? (order.side === "BUY" ? "OPEN" : "CLOSE")) !== "CLOSE") return;
+  try {
+    const position = await prisma.position.findUnique({
+      where: { id: order.positionId },
+      select: { status: true, analystId: true, symbol: true, closeReason: true },
+    });
+    if (!position || position.status !== "CLOSED" || !position.analystId) return;
+    const another = await prisma.position.count({
+      where: { analystId: position.analystId, symbol: position.symbol, status: { in: ["OPEN", "PENDING_APPROVAL"] } },
+    });
+    if (another > 0) return;
+    await closeThesisForPosition({
+      analystId: position.analystId,
+      ticker: position.symbol,
+      positionId: order.positionId,
+      closeReason: position.closeReason ?? order.closeReason ?? "MANUAL",
+      rationale: order.rationale ?? null,
+      priceAtTime: fillPrice,
+      beliefSurvived: order.closeBeliefSurvived ?? null,
+    });
+  } catch (err) {
+    console.warn(
+      `[reconcile-orders] ${order.symbol}'s sale filled; the stock could not be moved off Holding: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
@@ -471,7 +556,9 @@ async function applyFillByIntent(
 
   // Outside the transaction, so a write-up is only requested for a fill that
   // actually committed (DAV-304). Here rather than at the two call sites
-  // above: one place that knows a fill landed.
+  // above: one place that knows a fill landed. The stock moves first, so the write-up reads it sold.
+  if (handled) await moveStockOntoHolding(order, fillPrice);
+  if (handled) await moveStockOffHolding(order, fillPrice);
   if (handled) await maybeEvaluateClosedPosition(order);
   // A filled trim or add uses up its trim or add triggers: the ones its proposal answered, and the stock's own that fired.
   if (handled && (order.intent === "PARTIAL_CLOSE" || order.intent === "ADD") && order.thesisId) {
