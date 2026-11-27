@@ -99,6 +99,22 @@ describe("a held refresh replayed on T1's flow", () => {
     expect(saleLoosened(own, new Map())).toEqual([]);
     expect(saleLoosened(own, salePricesSaved(saved))).toEqual(["floor: $5000 → $1100.53"]);
   });
+
+  it("a floor moved onto the 50-day by a name that isn't a key is caught at the 50-day, though the save refused it (CEG 2026-11-24)", () => {
+    // CEG's refresh, run 1: twice it sent "{sma50}" for its $280 floor, with the 50-day at $269.51. The other numbers are stand-ins.
+    const block = `Current: $280.00
+Range — 20-day $262.10–$305.40 · 52-week $181.00–$381.00
+Moving averages — 20-day $284.20 (falling; price -1.5%) · 50-day $269.51 (rising; price +3.9%) · 200-day $250.00 (rising; price +12.0%) · 21-day EMA $279.10`;
+    const ceg = { id: "cafcc57b-4b0c-47ee-b2c2-d4cd6e0b942e", action: "EXIT", predicate: { watch: "price", is: "below", value: 280 }, rationale: "The floor." } as Trigger;
+    const c: WriterReplayCase = { ticker: "CEG", mode: "refresh", existing: { status: "HOLDING", direction: "LONG", setupId: null, triggers: [ceg] }, chart: chartFromText(block) };
+    expect(c.chart).toMatchObject({ sma: { d20: { value: 284.2 }, d50: { value: 269.51 }, d150: null, d200: { value: 250 } }, ema: { d10: null, d21: 279.1 } });
+    const saved = savedByWriter({ direction: "LONG" }, c);
+    const tried = [{ toolName: "edit_triggers", input: { edit: [{ id: ceg.id, price: "{sma50}", rationale: "Room to breathe." }] } }];
+    // The save refuses it: the line stays at $280.
+    expect(afterTailoring(saved, { direction: "LONG" }, c, tried).map((t) => sentenceOf(t))).toEqual(["Sell if below $280"]);
+    const own = writerOwnCalls({ toolName: "submit_thesis", input: { direction: "LONG" } }, withKeysPriced(saved, c, tried));
+    expect(saleLoosened(own, salePricesSaved(saved))).toEqual([`${ceg.id}: $280 → $269.51`]);
+  });
 });
 
 describe("a view kept with a look-again (SNDK 2026-11-04)", () => {
