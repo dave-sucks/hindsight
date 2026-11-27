@@ -55,7 +55,7 @@ const opsOn = (result: unknown, id: string) => ((result as { data?: { trigger_op
 describe("MU 10:56:57 — the writer's refresh for the chat", () => {
   it("keeps the chat's buy, stop and target: the playbook's triggers are written only where nothing stands", async () => {
     const args = await save(row as unknown as Trigger[]);
-    expect(args.remove_trigger_ids).toBeUndefined();
+    expect(args.playbook_off_ids).toBeUndefined();
     const { result, db } = await replay(args);
     for (const id of [BUY, "ba421f37-1a10-4fbd-aba8-cafc161c2c6e", "bb928325-0cde-4168-a03c-aca52371fc8f"]) expect(opsOn(result, id)).toEqual([]);
     const buy = (db.store.thesis[0] as { triggers: Array<{ id: string; predicate?: { value?: number }; condition?: { value?: number } }> }).triggers.find((x) => x.id === BUY)!;

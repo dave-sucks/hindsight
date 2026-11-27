@@ -108,7 +108,9 @@ export function loosens(prev: When, next: When): boolean {
   const level = levelOf(prev);
   const a = prev.value ?? 0;
   const b = next.value ?? 0;
-  if (level ? (level.above ? b > a : b < a) : b > a) return true;
+  // A window before a date (N days before the event, or before a report) opens earlier with more days, so fewer days is the looser one.
+  const fewerIsLooser = prev.is === "before";
+  if (level ? (level.above ? b > a : b < a) : fewerIsLooser ? b < a : b > a) return true;
   const n = (v: unknown) => (typeof v === "number" ? v : v === true ? 1 : 0);
   return settingDefs(next).some((s) => s.looser === true && n(next.settings?.[s.key]) > n(prev.settings?.[s.key]));
 }

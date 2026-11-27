@@ -590,6 +590,12 @@ the reason and the rest of the call lands (`data.trigger_ops` on the tool):
   holds a different kind of number, as before.
 - On a held stock an agent may only tighten a protective sell level (§ the
   ratchet, DAV-185); the principal is exempt.
+- On a watch an agent may only tighten a Stop watching line: lowering it,
+  waiting longer for it, or removing it or moving it to another measure while
+  the stock keeps a buy, is refused (`watchLineViolations`, ratchet.ts,
+  2026-11-25). It comes off with the buy. The principal is exempt, and so is
+  the Writer's save taking off the old playbook's watch triggers
+  (`playbook_off_ids`, code's).
 - After all ops, ONE check on the derived plan: ordering everywhere, and a
   buy trigger where a floor or target is armed. A stop above the buy price is
   refused for anyone. There is no reward/risk (gone 2026-11-04, its ratio

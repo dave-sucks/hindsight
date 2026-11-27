@@ -35,7 +35,7 @@
  */
 
 import { triggerSlot } from "./condition/slot";
-import { loosens, sentenceOf, shapeOf } from "./condition";
+import { conditionsOf, loosens, sentenceOf, shapeOf } from "./condition";
 import { protectiveExitCloseReason } from "./types";
 import { FIRE_MODE_SPEED, fireModeLabel, fireModeOf } from "./fire-mode";
 import type { Trigger } from "./types";
@@ -157,4 +157,50 @@ export function describeRatchetViolation(v: RatchetViolation): string {
     case "FIREMODE_DEMOTED":
       return `"${rung}" is set to "${fireModeLabel(fireModeOf(v.before), "EXIT")}"; your edit sets it to "${fireModeLabel(fireModeOf(v.after ?? v.before), "EXIT")}". That slows the protection on a stock we own.`;
   }
+}
+
+/**
+ * A watch's Stop watching lines, the same one-way rule (the owner, 2026-11-25):
+ * an agent may tighten one, never remove or loosen it. On Nov 19 the watch
+ * rewrite's Writer runs took the line off ETN, BWXT, CORT, ESTC and NVDA,
+ * loosened WST's and TRV's, and a Writer lowered CGEM's from $12.77 to $8.47 in
+ * its own run, so watches that had broken their own lines stayed on. Only the
+ * owner removes or lowers one; an agent that wants a watch gone stops watching
+ * it. A line moved to another measure counts as removed (the two can't be
+ * weighed against each other). A line may come off in a call that leaves the
+ * stock no buy: the Writer takes the buy and the line off together when there
+ * is no price worth waiting for (writer.md). Each line is followed by its id,
+ * so a second line of a kind on an old row is guarded too. Thesis-stored
+ * lines only: a watch inherits none.
+ */
+export function watchLineViolations(args: { before: Trigger[]; after: Trigger[]; buyStays: boolean }): RatchetViolation[] {
+  const out: RatchetViolation[] = [];
+  for (const prev of args.before) {
+    if (!isWellFormed(prev) || prev.action !== "STOP_WATCHING") continue;
+    const bucket = triggerSlot(prev);
+    const next = args.after.find((t) => t.id === prev.id);
+    const change = next && isWellFormed(next) && next.action === "STOP_WATCHING" ? lineChange(prev.predicate, next.predicate) : "REMOVED";
+    if (change === "REMOVED" && args.buyStays) out.push({ bucket, reason: "REMOVED", before: prev });
+    if (change === "LOWERED") out.push({ bucket, reason: "LOWERED", before: prev, after: next });
+  }
+  return out;
+}
+
+/** A Stop watching line's new condition against its old one, each condition of a two-condition line on its own. */
+function lineChange(prev: When, next: When): "REMOVED" | "LOWERED" | null {
+  const a = shapeOf(prev);
+  const b = shapeOf(next);
+  if (!a || !b) return "REMOVED";
+  const was = conditionsOf(a);
+  const now = conditionsOf(b);
+  const same = was.length === now.length && was.every((c, i) => c.watch === now[i].watch && c.is === now[i].is && c.variable === now[i].variable);
+  if (!same) return "REMOVED";
+  return was.some((c, i) => loosens(c, now[i])) ? "LOWERED" : null;
+}
+
+/** The refusal for a Stop watching line an agent tried to remove or loosen. */
+export function describeWatchLineViolation(v: RatchetViolation): string {
+  const line = sentenceOf(v.before);
+  const what = v.reason === "LOWERED" && v.after ? `"${line}" → "${sentenceOf(v.after)}" loosens it` : `"${line}": your edit takes it off while the stock keeps a buy`;
+  return `${what}. A Stop watching line only tightens, and comes off only with the stock's buy; the owner changes it on the stock's sheet. Leave it or tighten it, or stop watching the stock if the case is over.`;
 }

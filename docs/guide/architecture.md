@@ -30,7 +30,7 @@ Each of these is defined once, and everything that needs it reads it from there.
 - **A trigger edit:** `applyTriggerOps` in `lib/agent/triggers/ops.ts`, for agents and the trigger editor alike. Its words: `lib/agent/triggers/condition/describe.ts`. When it fires: `shouldFire` in `lib/agent/triggers/evaluate.ts`.
 - **The size of a trade:** `sizeByRisk` in `lib/agent/position-sizing.ts`, shared by the trade tools and the Settings screen.
 - **The approval gate:** `maybeAwaitApproval` in `lib/proposals/maybe-await-approval.ts`. What an approval does to the thesis: `lib/proposals/thesis-flips.ts`.
-- **The floor rule:** `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`.
+- **The floor rule:** `protectiveRatchetViolations` in `lib/agent/triggers/ratchet.ts`; a watch's Stop watching lines, `watchLineViolations` beside it.
 - **What an agent is made of:** its record and instructions in `lib/agent/engine/agents/`, its facts in `lib/agent/context/`, its tools in `lib/agent/tools/`, its schedule in `lib/agent/engine/schedule.ts`. The morning run, the trigger run and chat take their tool lists from `lib/agent/modes.ts`.
 
 ## Everything runs on a clock

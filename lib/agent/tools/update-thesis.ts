@@ -121,6 +121,8 @@ const updateSchema = z.object({
   add_triggers: triggersInputArraySchema.optional().describe(TRIGGER_EDITS.add),
   edit_triggers: z.array(editTriggerOpSchema).optional().describe(TRIGGER_EDITS.edit),
   remove_trigger_ids: z.array(z.string()).optional().describe(TRIGGER_EDITS.remove),
+  // The Writer's save fills this (writerPlaybookWrites); no agent sends it, so no agent rule gates the removal.
+  playbook_off_ids: z.array(z.string()).optional().describe("The old playbook's watch triggers, by id, that come off when the stock's playbook changes."),
   company: F.company.optional(),
   bull_case: F.bull_case.optional(),
   bear_case: F.bear_case.optional(),
@@ -523,7 +525,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
   // call still changes something.
   const asksAChange =
     HAND_FIELDS.some(([k]) => args[k] !== undefined) ||
-    !!(args.edit_triggers?.length || args.remove_trigger_ids?.length || args.add_triggers?.length);
+    !!(args.edit_triggers?.length || args.remove_trigger_ids?.length || args.playbook_off_ids?.length || args.add_triggers?.length);
   const hand = asksAChange ? await handEditsSince(existing.id, ctx) : null;
   if (hand) {
     const at = hand.at.toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
@@ -537,7 +539,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
     const hit = (t: unknown) => touched(collision(stored, t as Trigger, existing.direction)?.id);
     const refusedOps = [
       ...(args.edit_triggers ?? []).filter((e) => touched(e.id)).map((e) => ({ op: "edit" as const, id: e.id })),
-      ...(args.remove_trigger_ids ?? []).filter(touched).map((id) => ({ op: "remove" as const, id })),
+      ...[...(args.remove_trigger_ids ?? []), ...(args.playbook_off_ids ?? [])].filter(touched).map((id) => ({ op: "remove" as const, id })),
       ...(args.add_triggers ?? []).filter(hit).map((t) => ({ op: "edit" as const, id: collision(stored, t as Trigger, existing.direction)!.id })),
     ];
     if (refusedOps.length > 0) {
@@ -547,6 +549,7 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
         ...args,
         edit_triggers: args.edit_triggers?.filter((e) => !touched(e.id)),
         remove_trigger_ids: args.remove_trigger_ids?.filter((id) => !touched(id)),
+        playbook_off_ids: args.playbook_off_ids?.filter((id) => !touched(id)),
         add_triggers: args.add_triggers?.filter((t) => !hit(t)),
       };
     }
@@ -902,8 +905,9 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       rationale: e.rationale,
       close: e.close,
     })),
-    ...(args.remove_trigger_ids ?? []).map((id) => ({ op: "remove" as const, id })),
+    ...[...(args.remove_trigger_ids ?? []), ...(args.playbook_off_ids ?? [])].map((id) => ({ op: "remove" as const, id })),
   ];
+  const playbookOff = new Set(args.playbook_off_ids ?? []);
 
   // The levels above this thesis, resolved against an EMPTY thesis array
   // so we see them unmasked by the thesis's own triggers. Lazy: this is
@@ -1052,10 +1056,15 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
       const levelDirection = ("direction" in patch ? patch.direction : existing.direction) as string | null;
       const levelStatus = (patch.status ?? existing.status) as string | null;
       const existingTriggers = parseTriggersResilient(existing.triggers).triggers as Trigger[];
+      // The old playbook's watch triggers come off as code's removal (the save's, not the model's), then the rest of the call as the agent's.
+      const isOff = (o: TriggerOp) => o.op === "remove" && playbookOff.has(o.id);
+      const off = triggerOps.some(isOff)
+        ? applyTriggerOps({ stored: existingTriggers, inherited: inheritedLadder, ops: triggerOps.filter(isOff), direction: levelDirection, status: levelStatus, actor: "SYSTEM", mintId: () => randomUUID() })
+        : null;
       const apply = (ops: TriggerOp[]) => applyTriggerOps({
-        stored: existingTriggers,
+        stored: off?.triggers ?? existingTriggers,
         inherited: inheritedLadder,
-        ops,
+        ops: ops.filter((o) => !isOff(o)),
         direction: levelDirection,
         status: levelStatus,
         actor: "AGENT",
@@ -1068,7 +1077,8 @@ export async function saveThesis(args: UpdateArgs, ctx: ToolContext, extra: { re
         currentPrice: resolvedPriceAtTime,
         mintId: () => randomUUID(),
       });
-      const applied = apply(triggerOps);
+      const rest = apply(triggerOps);
+      const applied = { triggers: rest.triggers, results: [...(off?.results ?? []), ...rest.results] };
       const check = applied.results.some((r) => r.ok)
         ? checkLadder({ triggers: applied.triggers, inherited: inheritedLadder, direction: levelDirection, status: levelStatus, actor: "AGENT" })
         : null;

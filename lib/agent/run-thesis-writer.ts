@@ -1047,7 +1047,7 @@ export function buildWriterSaveCall(
       core_belief: d.core_belief,
       kpis: d.kpis,
       add_triggers: writes.add.length || refreshLook ? [...writes.add, ...(refreshLook ? [refreshLook] : [])] : undefined,
-      remove_trigger_ids: writes.remove.length ? writes.remove : undefined,
+      playbook_off_ids: writes.remove.length ? writes.remove : undefined,
       price_at_time: pull?.currentPrice ?? undefined,
       ...sections,
     },
@@ -1099,11 +1099,11 @@ export function oneOfEachKind(groups: ReadonlyArray<{ whose: string; triggers: A
 export function nothingCanFireRefusal(call: WriterSaveCall, d: Pick<ValidatedThesisDecision, "direction">, existing: StockForSave | null): string | null {
   if (d.direction !== "LONG" && d.direction !== "SHORT") return null;
   if (existing?.status === "HOLDING") return null;
-  const a = call.toolArgs as { ticker?: string; triggers?: unknown[]; add_triggers?: unknown[]; remove_trigger_ids?: string[] };
+  const a = call.toolArgs as { ticker?: string; triggers?: unknown[]; add_triggers?: unknown[]; playbook_off_ids?: string[] };
   const left =
     call.toolName === "record_thesis"
       ? (a.triggers ?? []).length
-      : (existing?.triggers ?? []).filter((t) => !(a.remove_trigger_ids ?? []).includes(t.id)).length + (a.add_triggers ?? []).length;
+      : (existing?.triggers ?? []).filter((t) => !(a.playbook_off_ids ?? []).includes(t.id)).length + (a.add_triggers ?? []).length;
   if (left > 0) return null;
   const refresh = call.toolName === "update_thesis";
   const view = refresh && existing?.direction != null;
@@ -1111,7 +1111,7 @@ export function nothingCanFireRefusal(call: WriterSaveCall, d: Pick<ValidatedThe
   // What can pass: a refresh writes a playbook's triggers only when the playbook changes (#1065).
   const fix = !refresh
     ? `Name the playbook whose watch triggers this chart can price today (setup_id), or give ${look}.`
-    : (a.remove_trigger_ids ?? []).length
+    : (a.playbook_off_ids ?? []).length
       ? `Keep its playbook (${existing?.setupId}): naming another takes its triggers off, and the one named puts none on that this chart can price today. Or give ${look}.`
       : `Give ${look}. A refresh puts a playbook's watch triggers on only when it names ${existing?.setupId ? `another playbook than ${existing.setupId}` : "a playbook"} whose triggers this chart can price today.`;
   return `This would save a ${d.direction} watch with nothing on it that can fire: no buy, no trigger and no review, so it could never come back. ${fix}${view ? "" : " Or PASS with the reason."}`;

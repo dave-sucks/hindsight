@@ -186,6 +186,7 @@ export const FIELD_CONTRACT: Record<string, FieldContract[]> = {
     f("add_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("edit_triggers", "JUDGED", { rule: "TRIGGER_SHAPE" }),
     f("remove_trigger_ids", "IDENTITY", { note: "A wrong id is refused by id; the rest of the call lands." }),
+    f("playbook_off_ids", "COMPUTED", { note: "The Writer's save fills it: the old playbook's watch triggers when the playbook changes." }),
     f("change_status", "CHOSEN"),
     f("research_data", "CARRIED"),
     ...RESEARCH_BLOCKS,

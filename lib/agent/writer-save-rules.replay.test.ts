@@ -114,7 +114,7 @@ describe("A. a watch the save would leave with nothing that can fire is refused"
     const onIt = writerPlaybookWrites({ ...MA, setup_id: "MA_PULLBACK" } as ValidatedThesisDecision, { priceStructure: MA_CHART } as never, { ...MA_CLEARED, setupId: null }, playbooks).add.map((t, i) => ({ ...(triggerInputSchema.parse(t) as Trigger), id: `stamp-${i}` }));
     const stock: StockForSave = { ...MA_CLEARED, triggers: onIt };
     const call = buildWriterSaveCall(args("MA", { mode: "refresh", existingThesisId: "cmum2tf9m000d04jfv0szuiap" }), pull(MA_CHART), named, stock, playbooks);
-    expect(call.toolArgs.remove_trigger_ids).toHaveLength(3);
+    expect(call.toolArgs.playbook_off_ids).toHaveLength(3);
     expect(nothingCanFireRefusal(call, named, stock)).toBe(
       "This would save a LONG watch with nothing on it that can fire: no buy, no trigger and no review, so it could never come back. " +
         "Keep its playbook (MA_PULLBACK): naming another takes its triggers off, and the one named puts none on that this chart can price today. Or give look_again: after_next_report, or after_event with the event's date in catalyst_date.",
@@ -157,6 +157,6 @@ describe("B and C. a new watch keeps its look-again beside the clock it was sent
     const stock: StockForSave = { direction: "LONG", status: "WATCHING", setupId: null, triggers: [clock] };
     const call = buildWriterSaveCall(args("CORT", { mode: "refresh", existingThesisId: "x" }), pull(CORT_CHART), { ...CORT, setup_id: undefined } as ValidatedThesisDecision, stock, playbooks);
     expect(said(call.toolArgs.add_triggers)).toEqual(["Review 1 day after the event date"]);
-    expect(call.toolArgs.remove_trigger_ids).toBeUndefined();
+    expect(call.toolArgs.playbook_off_ids).toBeUndefined();
   });
 });
