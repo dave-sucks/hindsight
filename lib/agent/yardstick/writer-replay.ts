@@ -105,13 +105,33 @@ export function salePricesSaved(saved: ReturnType<typeof savedByWriter>): Map<st
   }));
 }
 
-/** The tailoring with each price moved by a key written as code writes it: the sale-loosened grade reads the number, not the key. */
+/** The average a key names ({sma50}, {ema21}), read off the chart the case was shown; null for any other key. */
+function averageOnChart(key: string, chart: PriceStructure | null): number | null {
+  const m = /^\{(sma|ema)(\d+)\}$/i.exec(key);
+  if (!m || !chart) return null;
+  const line = m[1].toLowerCase() === "sma" ? chart.sma?.[`d${m[2]}` as keyof PriceStructure["sma"]]?.value : chart.ema?.[`d${m[2]}` as keyof PriceStructure["ema"]];
+  return typeof line === "number" ? line : null;
+}
+
+/**
+ * The tailoring with each price moved by a key written as code writes it: the sale-loosened grade reads the number,
+ * not the key. An edit the save refused is still what the run tried: one naming an average on the chart ({sma50},
+ * not a key, CEG 2026-11-24) is graded at that average.
+ */
 export function withKeysPriced(saved: ReturnType<typeof savedByWriter>, c: WriterReplayCase, tailor: Call[]): Call[] {
   const floor = saved.triggers.find((t) => levelSlotOf(t, saved.direction) === "FLOOR" && t.action === "EXIT");
   const at = { chart: c.chart, buy: null, sale: floor ? typedPriceOf(floor) : null };
   return tailor.map((t) => {
     if (t.toolName !== "edit_triggers") return t;
     const a = (t.input ?? {}) as { edit?: Edit[] };
-    return { ...t, input: { ...a, edit: priceEditsWith(a.edit ?? [], { at }, [], false).edits } };
+    const { edits, refused } = priceEditsWith(a.edit ?? [], { at }, [], false);
+    const tried = (a.edit ?? []).flatMap((e) => {
+      const n = typeof e.price === "string" && refused.some((r) => r.id === e.id) ? averageOnChart(e.price, c.chart) : null;
+      if (n == null) return [];
+      const { price: _price, ...rest } = e;
+      void _price;
+      return [{ ...rest, value: n } as Edit];
+    });
+    return { ...t, input: { ...a, edit: [...edits, ...tried] } };
   });
 }

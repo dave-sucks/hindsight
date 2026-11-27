@@ -21,11 +21,23 @@ export function chartFromText(text: string): PriceStructure | null {
     date: g[1], direction: g[2], pct: Number(g[3]), volumeRatio: g[4] != null ? Number(g[4]) : null, low: $(g[5]), mid: $(g[6]), high: $(g[7]),
   }));
   const price = text.match(/Current: \$([\d,.]+)/);
+  // The averages line: "Moving averages — 20-day $281.40 (…) · 50-day $269.51 (…) · … · 10-day EMA $279.10".
+  const averages = text.match(/Moving averages — ([^\n]*)/)?.[1] ?? "";
+  const sma = (days: number) => {
+    const m = averages.match(new RegExp(`\\b${days}-day \\$([\\d,.]+)`));
+    return m ? { value: $(m[1]) } : null;
+  };
+  const ema = (days: number) => {
+    const m = averages.match(new RegExp(`\\b${days}-day EMA \\$([\\d,.]+)`));
+    return m ? $(m[1]) : null;
+  };
   return {
     price: price ? $(price[1]) : null,
     range: { low20: $(range[1]), high20: $(range[2]), low52w: $(range[3]), high52w: $(range[4]) },
     swings: { lastHigh: high ? { price: $(high[1]), date: high[2] } : null, lastLow: low ? { price: $(low[1]), date: low[2] } : null },
     base: base ? { lengthBars: Number(base[1]), startDate: base[2], endDate: base[3], pivot: $(base[4]), low: $(base[5]) } : null,
     gaps,
+    sma: { d20: sma(20), d50: sma(50), d150: sma(150), d200: sma(200) },
+    ema: { d10: ema(10), d21: ema(21) },
   } as unknown as PriceStructure;
 }
