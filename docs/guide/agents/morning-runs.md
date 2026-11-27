@@ -80,6 +80,8 @@ The market's mood sets how hard it leans in. Risk-on is full size. Cautious (the
 
 It also checks the list: every stock the read listed as work needs an answer from this run, any save on it, a note-only review included. The list is the read's own, worked out the same way from the same facts, so every stock on it is owed and nothing else is. A book longer than the read's limit never cuts the list: the limit trims only the quiet stocks, one line each. If one has no answer, `complete_run` names it with its situations and the run goes back to it.
 
+A run that stops after `complete_run` refused it never finished: it is saved as failed, with the refusal as the reason.
+
 On the live account, its proposals wait in your queue. Its new levels are triggers, and from here [trigger runs](trigger-runs.md) act on them through the day.
 
 ## Tools
@@ -105,6 +107,7 @@ Its record, `MORNING_RUN` (`lib/agent/engine/agents/morning-run.ts`), whose run 
 
 #### Close-out
 `complete_run` credits a sale from the `Order` table, not the run's words (`lib/agent/summary-action-check.ts`). The stocks it owes are `listsTheStock` (`lib/agent/situations.ts`) over `loadStockFacts` (`lib/agent/stock-facts.ts`), what `get_theses` lists (on the default read its `limit` applies to the quiet stocks only, so a stock in work is never cut); any `ThesisUpdate` this run but a trigger fire answers one. A trigger run or a Writer run owes only its own stock.
+A run still open when the model stops is closed by the job (`morning-research.ts`): failed if `complete_run`'s last reply was a refusal (`refusedCloseOut`) or the same call was refused three times, otherwise complete if it saved any work.
 
 #### What was sent
 The run page's Context shows the request the run's newest model call started with (its own, or a follow-up after it), exactly as it was sent, kept by `modelFor` (`lib/agent/model.ts`). The conversation on the page opens with its message (`openingOf`, `lib/agent/engine/engine.ts`), then the book's `get_theses` card: the one read, as the screen gets it, saved with the thread by the cron and the Run button and streamed first on a live run (`lib/agent/book-card.ts`, `bookOnScreen` in `context/the-book.ts`). A follow-up leaves the card out of what the model is sent (`historyForModel`, `lib/agent/prompt-cache.ts`), so the book reaches it once, in its first message. The instructions and the reads are in Context.

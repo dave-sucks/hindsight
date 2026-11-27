@@ -25,6 +25,23 @@ import {
   etWeekdayName,
 } from "@/lib/market-hours";
 
+/**
+ * complete_run is the morning run's close-out. When its last call was refused and the model stopped
+ * there, the run did not complete; this is the refusal, else null.
+ */
+function refusedCloseOut(steps: ReadonlyArray<{ toolResults?: ReadonlyArray<unknown> }>): string | null {
+  let last: string | null = null;
+  for (const step of steps) {
+    for (const r of step.toolResults ?? []) {
+      const res = r as { toolName?: string; output?: unknown; result?: unknown };
+      if (res.toolName !== "complete_run") continue;
+      const out = (res.output ?? res.result) as { ok?: boolean; summary?: string; error?: string; data?: { ok?: boolean } } | undefined;
+      last = out?.ok === false || out?.data?.ok === false ? out.summary ?? out.error ?? "complete_run refused" : null;
+    }
+  }
+  return last;
+}
+
 // ─── Agent Watch write-ups (DAV-349) ─────────────────────────────────────────
 
 /** At most this many write-ups a morning per account, oldest Agent Watch first. */
@@ -505,6 +522,7 @@ export const morningResearch = inngest.createFunction(
           //
           // FAILED criteria (any one):
           //   • stopped for sending the same refused call three times
+          //   • complete_run refused the close and the model stopped there
           //   • record_run_summary never fired AND there's no thesis or
           //     trade decision (agent died mid-flow with no work output)
           // Theses touched: distinct thesisIds on ThesisUpdate rows with
@@ -530,7 +548,8 @@ export const morningResearch = inngest.createFunction(
           const ranSummary = runSummaryEvent !== null;
           const hasWork = thesisCount > 0 || decisionCount > 0 || ranSummary;
 
-          const finalStatus = stopped ? "FAILED" : hasWork ? "COMPLETE" : "FAILED";
+          const refused = refusedCloseOut(steps);
+          const finalStatus = stopped || refused ? "FAILED" : hasWork ? "COMPLETE" : "FAILED";
           // Atomic: only transition RUNNING → terminal. No-op if complete_run
           // already marked it COMPLETE.
           const beltResult = await prisma.researchRun.updateMany({
@@ -540,6 +559,8 @@ export const morningResearch = inngest.createFunction(
           if (beltResult.count > 0 && finalStatus === "FAILED") {
             const reason = stopped
               ? stopped
+              : refused
+                ? `the run stopped after ${refused}`
               : !ranSummary
                 ? "agent stopped before record_run_summary — no decision captured"
                 : "no work output (no theses, no trades, no run summary)";
