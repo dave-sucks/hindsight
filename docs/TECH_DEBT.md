@@ -142,6 +142,37 @@ covers more entry points (CI, new clones, worktree creation).
 
 ---
 
+## TD-5 — Three rules decide whether a run ended Complete or Failed
+
+**Source:** 2026-11-27, the morning-run fix for a run `complete_run`
+refused (Oct 14, 19 and 30, all Secular Compounder).
+
+**What is true today:**
+- A morning run is closed by `complete_run`. When the model stops
+  without that, the job closes it: FAILED when `complete_run`'s last
+  reply was a refusal or the same call was refused three times;
+  otherwise COMPLETE if the run saved any note, decision or summary,
+  FAILED if it saved none. A run cut off by the time limit is COMPLETE
+  if it left a thesis or a buy.
+- A trigger run is COMPLETE only when it wrote its note on the stock,
+  else FAILED (and tried again).
+- `complete_run` marks a run COMPLETE when its checks passed and a
+  later step threw.
+
+**Why it matters:** "Complete" means something different for each run,
+and nothing written says what a finished morning run is. The run pages
+and the daily digest count on the word.
+
+**Why not urgent:** 135 morning runs in the 75 days to 2026-11-27; 3
+were not closed by `complete_run`, all after its refusals, and those
+now save as FAILED.
+
+**Fix shape:** decide what "done" means for each kind of run (likely
+the trigger run's rule: the run's own close-out decides), then put it
+in one place every run's ending reads.
+
+---
+
 ## How to use this file
 
 - Spotted a code smell that's not tied to the thesis architecture
